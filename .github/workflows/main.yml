@@ -1,0 +1,35 @@
+name: Upload to Google Cloud App Engine
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - id: Auth
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v0
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@master
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 14
+      - run: npm install
+      - run: npm run build
+
+      - id: Deploy
+        name: 'Deploy to App Engine'
+        uses: google-github-actions/deploy-appengine@v0

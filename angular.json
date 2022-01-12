@@ -1,4 +1,7 @@
 {
+  "cli": {
+    "analytics": "144c6660-09ef-4a68-8c35-5cd33288991f"
+  },
   "version": 1,
   "projects": {
     "api": {
@@ -10,7 +13,7 @@
           "builder": "@nrwl/node:build",
           "outputs": ["{options.outputPath}"],
           "options": {
-            "outputPath": "dist/apps/api",
+            "outputPath": "dist/api",
             "main": "apps/api/src/main.ts",
             "tsConfig": "apps/api/tsconfig.app.json",
             "assets": ["apps/api/src/assets"]
@@ -78,7 +81,7 @@
           "builder": "@angular-devkit/build-angular:browser",
           "outputs": ["{options.outputPath}"],
           "options": {
-            "outputPath": "dist/apps/chansey",
+            "outputPath": "dist/chansey",
             "index": "apps/chansey/src/index.html",
             "main": "apps/chansey/src/main.ts",
             "polyfills": "apps/chansey/src/polyfills.ts",
