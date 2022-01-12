@@ -1,0 +1,13 @@
+runtime: nodejs16
+
+entrypoint: 'npm run cloud'
+
+handlers:
+- url: /api/.*
+  script: auto
+- url: /(.*\.(gif|png|jpeg|jpg|css|js|ico|svg))$
+  static_files: dist/chansey/\1
+  upload: dist/(.*)
+- url: /.*
+  static_files: dist/chansey/index.html
+  upload: dist/chansey/index.html
