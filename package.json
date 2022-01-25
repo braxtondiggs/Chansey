@@ -4,9 +4,9 @@
   "license": "MIT",
   "scripts": {
     "ng": "nx",
-    "start": "nx serve",
+    "start": "nx run-many --parallel --target=serve --all",
+    "build": "nx run-many --target=build --parallel --max-parallel=3 --all",
     "cloud": "node dist/api/main.js",
-    "build": "nx build --prod && nx build api --prod",
     "test": "nx test"
   },
   "private": true,
