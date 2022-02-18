@@ -1,4 +1,8 @@
 
+```mermaid
+graph LR
+A --> B
+```
 
 # Chansey
 
