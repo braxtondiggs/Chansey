@@ -1,9 +1,8 @@
 name: Upload to Google Cloud App Engine
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -29,8 +28,8 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: 14
-      - run: npm install
-      - run: npm run build
+      - run: npm ci
+      - run: npx nx affected --target=build --parallel=3
 
       - id: Deploy
         name: 'Deploy to App Engine'
