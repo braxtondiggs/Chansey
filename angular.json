@@ -1,7 +1,4 @@
 {
-  "cli": {
-    "analytics": "144c6660-09ef-4a68-8c35-5cd33288991f"
-  },
   "version": 1,
   "projects": {
     "api": {
@@ -10,13 +7,19 @@
       "projectType": "application",
       "architect": {
         "build": {
-          "builder": "@nrwl/node:build",
-          "outputs": ["{options.outputPath}"],
+          "builder": "@nrwl/webpack:webpack",
+          "outputs": [
+            "{options.outputPath}"
+          ],
           "options": {
             "outputPath": "dist/api",
             "main": "apps/api/src/main.ts",
             "tsConfig": "apps/api/tsconfig.app.json",
-            "assets": ["apps/api/src/assets"]
+            "assets": [
+              "apps/api/src/assets"
+            ],
+            "target": "node",
+            "compiler": "tsc"
           },
           "configurations": {
             "production": {
@@ -33,23 +36,29 @@
           }
         },
         "serve": {
-          "builder": "@nrwl/node:execute",
+          "builder": "@nrwl/node:node",
           "options": {
             "buildTarget": "api:build"
           }
         },
         "lint": {
           "builder": "@nrwl/linter:eslint",
-          "outputs": ["{options.outputFile}"],
+          "outputs": [
+            "{options.outputFile}"
+          ],
           "options": {
-            "lintFilePatterns": ["apps/api/**/*.ts"]
+            "lintFilePatterns": [
+              "apps/api/**/*.ts"
+            ]
           }
         },
         "test": {
           "builder": "@nrwl/jest:jest",
-          "outputs": ["coverage/apps/api"],
+          "outputs": [
+            "coverage/apps/api"
+          ],
           "options": {
-            "jestConfig": "apps/api/jest.config.js",
+            "jestConfig": "apps/api/jest.config.ts",
             "passWithNoTests": true
           }
         }
@@ -63,9 +72,13 @@
       "architect": {
         "lint": {
           "builder": "@nrwl/linter:eslint",
-          "outputs": ["{options.outputFile}"],
+          "outputs": [
+            "{options.outputFile}"
+          ],
           "options": {
-            "lintFilePatterns": ["libs/api-interfaces/**/*.ts"]
+            "lintFilePatterns": [
+              "libs/api-interfaces/**/*.ts"
+            ]
           }
         }
       },
@@ -79,7 +92,9 @@
       "architect": {
         "build": {
           "builder": "@angular-devkit/build-angular:browser",
-          "outputs": ["{options.outputPath}"],
+          "outputs": [
+            "{options.outputPath}"
+          ],
           "options": {
             "outputPath": "dist/chansey",
             "index": "apps/chansey/src/index.html",
@@ -91,7 +106,9 @@
               "apps/chansey/src/favicon.ico",
               "apps/chansey/src/assets"
             ],
-            "styles": ["apps/chansey/src/styles.scss"],
+            "styles": [
+              "apps/chansey/src/styles.scss"
+            ],
             "scripts": []
           },
           "configurations": {
@@ -159,9 +176,11 @@
         },
         "test": {
           "builder": "@nrwl/jest:jest",
-          "outputs": ["coverage/apps/chansey"],
+          "outputs": [
+            "coverage/apps/chansey"
+          ],
           "options": {
-            "jestConfig": "apps/chansey/jest.config.js",
+            "jestConfig": "apps/chansey/jest.config.ts",
             "passWithNoTests": true
           }
         }
@@ -187,14 +206,20 @@
         },
         "lint": {
           "builder": "@nrwl/linter:eslint",
-          "outputs": ["{options.outputFile}"],
+          "outputs": [
+            "{options.outputFile}"
+          ],
           "options": {
-            "lintFilePatterns": ["apps/chansey-e2e/**/*.{js,ts}"]
+            "lintFilePatterns": [
+              "apps/chansey-e2e/**/*.{js,ts}"
+            ]
           }
         }
       },
       "tags": [],
-      "implicitDependencies": ["chansey"]
+      "implicitDependencies": [
+        "chansey"
+      ]
     }
   }
 }
