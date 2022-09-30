@@ -1,7 +1,7 @@
 {
   "npmScope": "chansey",
   "affected": {
-    "defaultBase": "main"
+    "defaultBase": "master"
   },
   "cli": {
     "packageManager": "npm"
