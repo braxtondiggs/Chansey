@@ -1,7 +1,6 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { UtilService } from './util.service';
 import { Book } from './app/app.entity';
 
 const logger = new Logger('MikroORM');
@@ -13,8 +12,7 @@ const entities = [Book];
       isGlobal: true,
       cache: true,
       load: [async () => {
-        const utils = new UtilService();
-        const client_url = await utils.getSecret('MONGO_CLIENTURL');
+        const client_url = process.env.MONGO_URL;
         return { client_url };
       }],
     }),
@@ -30,8 +28,7 @@ const entities = [Book];
     }),
     MikroOrmModule.forFeature({ entities })
   ],
-  exports: [MikroOrmModule],
-  providers: [UtilService]
+  exports: [MikroOrmModule]
 })
 export class OrmModule {
 }
