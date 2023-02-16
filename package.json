@@ -9,6 +9,7 @@
     "ng": "nx",
     "start": "nx run-many --parallel --target=serve --all",
     "build": "nx run-many --target=build --parallel --max-parallel=3 --all",
+    "start:prod": "nx run-many --target=serve --all --prod",
     "api": "nx run api:serve",
     "site": "nx run chansey:serve",
     "test": "nx test",
