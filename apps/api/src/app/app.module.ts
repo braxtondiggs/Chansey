@@ -1,17 +1,28 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { HealthModule } from '../health/health.module';
+import { LoggerModule } from 'nestjs-pino';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { TasksService } from './task.service';
+import { HealthModule } from '../health/health.module';
 import { OrmModule } from '../orm.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            singleLine: true
+          },
+        },
+      },
+    }),
     HealthModule,
     OrmModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, TasksService],
 })
 export class AppModule { }

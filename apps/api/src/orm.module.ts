@@ -1,10 +1,11 @@
-import { Module, Logger } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { Book } from './app/app.entity';
+import { Logger, Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
+import { Coin } from './app/entities/coin.entity';
 
 const logger = new Logger('MikroORM');
-const entities = [Book];
+const entities = [Coin];
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ const entities = [Book];
     MikroOrmModule.forRootAsync({
       useFactory: (config: ConfigService) => ({
         clientUrl: config.get('client_url'),
+        dbName: 'Chansey',
         debug: !process.env.production,
         entities,
         logger: logger.log.bind(logger),

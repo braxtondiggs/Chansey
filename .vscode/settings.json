@@ -1,5 +1,17 @@
 {
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
-  "cSpell.words": ["chansey", "devkit", "fastify", "Mikro", "nestjs", "nrwl"]
+  "eslint.validate": ["typescript"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll": true
+  },
+  "cSpell.words": [
+    "chansey",
+    "devkit",
+    "fastify",
+    "Mikro",
+    "nestjs",
+    "nrwl",
+    "pino"
+  ]
 }
