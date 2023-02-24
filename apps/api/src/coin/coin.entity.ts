@@ -5,10 +5,13 @@ import type { ObjectId } from '@mikro-orm/mongodb';
 export class Coin {
 
   @PrimaryKey()
-  _id: ObjectId;
+  _id!: ObjectId;
 
   @SerializedPrimaryKey()
   id!: string;
+
+  @Property()
+  slug!: string;
 
   @Property()
   name!: string;
@@ -18,4 +21,9 @@ export class Coin {
 
   @Property({ onUpdate: () => new Date() })
   updatedAt: Date = new Date();
+
+  constructor(slug: string, name: string) {
+    this.slug = slug;
+    this.name = name;
+  }
 }
