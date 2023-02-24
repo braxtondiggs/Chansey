@@ -46,8 +46,12 @@
     "@fastify/static": "^6.9.0",
     "@master-chief/alpaca": "^6.3.20",
     "@mikro-orm/core": "^5.6.11",
+    "@mikro-orm/entity-generator": "^5.6.11",
+    "@mikro-orm/migrations-mongodb": "^5.6.11",
+    "@mikro-orm/mongo-highlighter": "^1.0.0",
     "@mikro-orm/mongodb": "^5.6.11",
     "@mikro-orm/nestjs": "^5.1.7",
+    "@mikro-orm/seeder": "^5.6.11",
     "@nestjs/axios": "^2.0.0",
     "@nestjs/common": "9.1.2",
     "@nestjs/config": "^2.3.1",
@@ -110,5 +114,12 @@
     "ts-jest": "28.0.8",
     "ts-node": "10.9.1",
     "typescript": "4.8.4"
+  },
+  "mikro-orm": {
+    "useTsNode": true,
+    "configPaths": [
+      "./apps/api/src/mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
   }
 }
