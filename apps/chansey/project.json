@@ -7,16 +7,23 @@
   "targets": {
     "build": {
       "executor": "@angular-devkit/build-angular:browser",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
-        "outputPath": "dist/chansey",
+        "outputPath": "dist/client",
         "index": "apps/chansey/src/index.html",
         "main": "apps/chansey/src/main.ts",
         "polyfills": "apps/chansey/src/polyfills.ts",
         "tsConfig": "apps/chansey/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
-        "assets": ["apps/chansey/src/favicon.ico", "apps/chansey/src/assets"],
-        "styles": ["apps/chansey/src/styles.scss"],
+        "assets": [
+          "apps/chansey/src/favicon.ico",
+          "apps/chansey/src/assets"
+        ],
+        "styles": [
+          "apps/chansey/src/styles.scss"
+        ],
         "scripts": []
       },
       "configurations": {
@@ -84,7 +91,9 @@
     },
     "test": {
       "executor": "@nrwl/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/apps/chansey"],
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/chansey"
+      ],
       "options": {
         "jestConfig": "apps/chansey/jest.config.ts",
         "passWithNoTests": true

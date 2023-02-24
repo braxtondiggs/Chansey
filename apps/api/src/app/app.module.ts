@@ -1,4 +1,7 @@
+import { join } from 'path';
+
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AppController } from './app.controller';
@@ -18,6 +21,10 @@ import { OrmModule } from '../orm.module';
           },
         },
       },
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', '../dist/client'),
+      exclude: ['/api/(.*)']
     }),
     HealthModule,
     OrmModule
