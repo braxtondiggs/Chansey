@@ -1,5 +1,5 @@
 import { Entity, PrimaryKey, Property, SerializedPrimaryKey } from '@mikro-orm/core';
-import type { ObjectId } from '@mikro-orm/mongodb';
+import { ObjectId } from '@mikro-orm/mongodb';
 
 @Entity()
 export class Coin {
