@@ -18,10 +18,7 @@ export class CoinService {
   async scrapeCoins() {
     try {
       this.logger.log('New Coins Cron');
-      const [coins, oldCoins] = await Promise.all([
-        this.gecko.coinList({ include_platform: false }),
-        this.coin.getCoins()
-      ]);
+      const [coins, oldCoins] = await Promise.all([this.gecko.coinList({ include_platform: false }), this.getCoins()]);
       const newCoins = coins.filter((coin) => !oldCoins.find((oldCoin) => oldCoin.slug === coin.id));
       newCoins.forEach(({ id, name }) => this.create({ slug: id, name }));
       await this.coin.flush();
