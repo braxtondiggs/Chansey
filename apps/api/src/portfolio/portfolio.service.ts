@@ -16,25 +16,28 @@ export class PortfolioService {
     return portfolio;
   }
 
-  async getPortfolio(): Promise<Portfolio[]> {
-    return await this.portfolio.findAll({
-      populate: ['coin']
-    });
+  async getPortfolio(user: User): Promise<Portfolio[]> {
+    return await this.portfolio.find(
+      { user },
+      {
+        populate: ['coin']
+      }
+    );
   }
 
-  async getPortfolioById(id: string) {
-    return await this.portfolio.findOne({ id });
+  async getPortfolioById(id: string, user: User): Promise<Portfolio> {
+    return await this.portfolio.findOne({ id, user }, { populate: ['coin'] });
   }
 
-  async updatePortfolioItem(id: string, item: UpdatePortfolioDto): Promise<Portfolio> {
-    const existingItem = await this.getPortfolioById(id);
+  async updatePortfolioItem(id: string, item: UpdatePortfolioDto, user: User): Promise<Portfolio> {
+    const existingItem = await this.getPortfolioById(id, user);
     wrap(existingItem).assign(item);
     await this.portfolio.persistAndFlush(existingItem);
     return existingItem;
   }
 
-  async deletePortfolioItem(id: string) {
-    const post = await this.getPortfolioById(id);
+  async deletePortfolioItem(id: string, user: User): Promise<void> {
+    const post = await this.getPortfolioById(id, user);
     return await this.portfolio.removeAndFlush(post);
   }
 }

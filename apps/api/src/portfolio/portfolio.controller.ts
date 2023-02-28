@@ -11,13 +11,15 @@ export class PortfolioController {
   constructor(private readonly portfolio: PortfolioService) {}
 
   @Get()
-  async getPortfolio() {
-    return this.portfolio.getPortfolio();
+  @UseGuards(JwtAuthenticationGuard)
+  async getPortfolio(@Req() { user }: RequestWithUser) {
+    return this.portfolio.getPortfolio(user);
   }
 
   @Get(':id')
-  getPortfolioById(@Param() { id }: FindOneParams) {
-    return this.portfolio.getPortfolioById(id);
+  @UseGuards(JwtAuthenticationGuard)
+  getPortfolioById(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
+    return this.portfolio.getPortfolioById(id, user);
   }
 
   @Post()
@@ -28,13 +30,17 @@ export class PortfolioController {
 
   @Patch(':id')
   @UseGuards(JwtAuthenticationGuard)
-  async updatePortfolioItem(@Param() { id }: FindOneParams, @Body() dto: CreatePortfolioDto) {
-    return this.portfolio.updatePortfolioItem(id, dto);
+  async updatePortfolioItem(
+    @Param() { id }: FindOneParams,
+    @Body() dto: CreatePortfolioDto,
+    @Req() { user }: RequestWithUser
+  ) {
+    return this.portfolio.updatePortfolioItem(id, dto, user);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard)
-  async deletePortfolioItem(@Param() { id }: FindOneParams) {
-    return this.portfolio.deletePortfolioItem(id);
+  async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
+    return this.portfolio.deletePortfolioItem(id, user);
   }
 }
