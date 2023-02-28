@@ -1,10 +1,10 @@
 import { IsNotEmpty, IsString } from 'class-validator';
-export class CreateCoinDto {
+
+export class CreatePortfolioDto {
   @IsString()
   @IsNotEmpty()
-  slug: string;
+  type: string;
 
   @IsString()
-  @IsNotEmpty()
-  name: string;
+  coin: string;
 }
