@@ -49,15 +49,14 @@
             }
           }
         ]
+      },
+      "parserOptions": {
+        "project": ["./tsconfig.base.json"]
       }
     },
     {
       "files": ["*.ts", "*.tsx"],
-      "extends": [
-        "plugin:@nrwl/nx/typescript",
-        "plugin:import/recommended",
-        "plugin:import/typescript"
-      ],
+      "extends": ["plugin:@nrwl/nx/typescript", "plugin:import/recommended", "plugin:import/typescript"],
       "rules": {}
     },
     {

@@ -1,4 +1,3 @@
-
 import compression from '@fastify/compress';
 import fastifyCsrf from '@fastify/csrf-protection';
 import helmet from '@fastify/helmet';
@@ -25,7 +24,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new LoggerErrorInterceptor());
 
   app.setGlobalPrefix('api');
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({ transform: true }));
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0', () => {
