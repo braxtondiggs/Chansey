@@ -8,6 +8,7 @@ import { CoinService } from './coin.service';
 @Module({
   imports: [MikroOrmModule.forFeature({ entities: [Coin] })],
   providers: [CoinService],
-  controllers: [CoinController]
+  controllers: [CoinController],
+  exports: [CoinService]
 })
-export class CoinModule { }
+export class CoinModule {}

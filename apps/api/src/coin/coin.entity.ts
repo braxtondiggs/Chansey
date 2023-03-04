@@ -3,7 +3,6 @@ import { ObjectId } from '@mikro-orm/mongodb';
 
 @Entity()
 export class Coin {
-
   @PrimaryKey()
   _id!: ObjectId;
 
@@ -17,13 +16,50 @@ export class Coin {
   name!: string;
 
   @Property()
+  symbol: string;
+
+  @Property()
+  description?: string;
+
+  @Property()
+  image?: string;
+
+  @Property()
+  genesis?: string;
+
+  @Property()
+  marketRank?: number;
+
+  @Property()
+  geckoRank?: number;
+
+  @Property()
+  developerScore?: number;
+
+  @Property()
+  communityScore?: number;
+
+  @Property()
+  liquidityScore?: number;
+
+  @Property()
+  PublicInterestScore?: number;
+
+  @Property()
+  sentiment_up?: number;
+
+  @Property()
+  sentiment_down?: number;
+
+  @Property()
   createdAt: Date = new Date();
 
   @Property({ onUpdate: () => new Date() })
   updatedAt: Date = new Date();
 
-  constructor(slug: string, name: string) {
+  constructor(slug: string, symbol: string, name: string) {
     this.slug = slug;
+    this.symbol = symbol;
     this.name = name;
   }
 }
