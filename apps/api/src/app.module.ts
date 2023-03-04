@@ -9,10 +9,12 @@ import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthenticationModule } from './authentication/authentication.module';
+import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
 import MikroOrmConfig from './config/mikro-orm.config';
 import { HealthModule } from './health/health.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { TaskModule } from './task/task.module';
 
 @Module({
   imports: [
@@ -34,7 +36,9 @@ import { PortfolioModule } from './portfolio/portfolio.module';
     AuthenticationModule,
     HealthModule,
     CoinModule,
-    PortfolioModule
+    CategoryModule,
+    PortfolioModule,
+    TaskModule
   ],
   controllers: [AppController],
   providers: [AppService]

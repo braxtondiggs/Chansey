@@ -1,0 +1,59 @@
+import { HttpService } from '@nestjs/axios';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { CoinGeckoClient } from 'coingecko-api-v3';
+import { firstValueFrom } from 'rxjs';
+
+import { CategoryService } from '../category/category.service';
+import { CoinService } from '../coin/coin.service';
+
+@Injectable()
+export class TaskService {
+  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
+  private readonly logger = new Logger(TaskService.name);
+
+  constructor(private category: CategoryService, private coin: CoinService, private http: HttpService) {}
+
+  @Cron('0 0 * * MON', {
+    name: 'scrape coins'
+  }) // every monday at 12:00:00 AM
+  async coins() {
+    try {
+      this.logger.log('New Coins Cron');
+      const [coins, oldCoins] = await Promise.all([
+        this.gecko.coinList({ include_platform: false }),
+        this.coin.getCoins()
+      ]);
+      const newCoins = coins.filter((coin) => !oldCoins.find((oldCoin) => oldCoin.slug === coin.id));
+      await this.coin.createMany(newCoins.map(({ id: slug, symbol, name }) => ({ slug, symbol, name })));
+      if (newCoins.length > 0) this.logger.log(`New Coins: ${newCoins.map(({ name }) => name).join(', ')}`);
+    } catch (e) {
+      this.logger.error(e);
+    } finally {
+      this.logger.log('New Coins Cron Complete');
+    }
+  }
+
+  @Cron('30 0 * * MON', {
+    name: 'scrape categories'
+  }) // every monday at 12:30:00 AM
+  async categories() {
+    try {
+      this.logger.log('New Category Cron');
+      const [{ data: categories }, oldCategories] = await Promise.all([
+        firstValueFrom(this.http.get('https://api.coingecko.com/api/v3/coins/categories/list')) as Promise<any>,
+        this.category.getCategories()
+      ]);
+      const newCategories = categories
+        .map((c) => ({ slug: c.category_id, symbol: c.symbol, name: c.name }))
+        .filter((category) => !oldCategories.find((oldCategory) => oldCategory.slug === category.slug));
+      await this.category.createMany(newCategories);
+      if (newCategories.length > 0)
+        this.logger.log(`New Categories: ${newCategories.map(({ name }) => name).join(', ')}`);
+    } catch (e) {
+      this.logger.error(e);
+    } finally {
+      this.logger.log('New Category Cron Complete');
+    }
+  }
+}

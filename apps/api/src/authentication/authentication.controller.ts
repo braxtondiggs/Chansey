@@ -7,7 +7,7 @@ import JwtAuthenticationGuard from './jwt-authentication.guard';
 import { LocalAuthenticationGuard } from './localAuthentication.guard';
 import RequestWithUser from './requestWithUser.interface';
 
-@Controller('authentication')
+@Controller('auth')
 export class AuthenticationController {
   constructor(private readonly authentication: AuthenticationService) {}
 

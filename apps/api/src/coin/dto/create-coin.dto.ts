@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsDateString, IsDecimal, IsNotEmpty, IsNumber, IsString, IsUrl } from 'class-validator';
 export class CreateCoinDto {
   @IsString()
   @IsNotEmpty()
@@ -7,4 +7,40 @@ export class CreateCoinDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  @IsString()
+  symbol: string;
+
+  @IsString()
+  description?: string;
+
+  @IsUrl()
+  image?: string;
+
+  @IsDateString()
+  genesis?: string;
+
+  @IsNumber()
+  marketRank?: number;
+
+  @IsNumber()
+  geckoRank?: number;
+
+  @IsDecimal()
+  developerScore?: number;
+
+  @IsDecimal()
+  communityScore?: number;
+
+  @IsDecimal()
+  liquidityScore?: number;
+
+  @IsDecimal()
+  publicInterestScore?: number;
+
+  @IsDecimal()
+  sentiment_up?: number;
+
+  @IsDecimal()
+  sentiment_down?: number;
 }
