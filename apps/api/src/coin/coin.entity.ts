@@ -57,9 +57,7 @@ export class Coin {
   @Property({ onUpdate: () => new Date() })
   updatedAt: Date = new Date();
 
-  constructor(slug: string, symbol: string, name: string) {
-    this.slug = slug;
-    this.symbol = symbol;
-    this.name = name;
+  constructor(coin: Partial<Coin>) {
+    Object.assign(this, coin);
   }
 }

@@ -6,13 +6,22 @@ import { firstValueFrom } from 'rxjs';
 
 import { CategoryService } from '../category/category.service';
 import { CoinService } from '../coin/coin.service';
+import { environment } from '../environments/environment';
+import { PortfolioService } from '../portfolio/portfolio.service';
+import { PriceService } from '../price/price.service';
 
 @Injectable()
 export class TaskService {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(TaskService.name);
 
-  constructor(private category: CategoryService, private coin: CoinService, private http: HttpService) {}
+  constructor(
+    private category: CategoryService,
+    private coin: CoinService,
+    private http: HttpService,
+    private portfolio: PortfolioService,
+    private price: PriceService
+  ) {}
 
   @Cron('0 0 * * MON', {
     name: 'scrape coins'
@@ -54,6 +63,28 @@ export class TaskService {
       this.logger.error(e);
     } finally {
       this.logger.log('New Category Cron Complete');
+    }
+  }
+
+  @Cron('* * * * *', {
+    name: 'scrape coin prices',
+    disabled: !environment.production
+  }) // every minute
+  async prices() {
+    try {
+      const portfolio = await this.portfolio.getPortfolio();
+      const coins = [...new Set(portfolio.map(({ coin }) => coin))];
+      const ids = coins.map(({ slug }) => slug).join(',');
+      const prices = await this.gecko.simplePrice({ ids, vs_currencies: 'usd' });
+
+      const data = Object.keys(coins).map((key) => ({
+        price: prices[coins[key].slug].usd,
+        coin: coins[key].id
+      }));
+
+      await this.price.createMany(data);
+    } catch (e) {
+      this.logger.error(e);
     }
   }
 }
