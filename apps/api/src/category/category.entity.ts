@@ -21,8 +21,7 @@ export class Category {
   @Property({ onUpdate: () => new Date() })
   updatedAt: Date = new Date();
 
-  constructor(slug: string, name: string) {
-    this.slug = slug;
-    this.name = name;
+  constructor(category: Partial<Category>) {
+    Object.assign(this, category);
   }
 }

@@ -14,6 +14,7 @@ import { CoinModule } from './coin/coin.module';
 import MikroOrmConfig from './config/mikro-orm.config';
 import { HealthModule } from './health/health.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { PriceModule } from './price/price.module';
 import { TaskModule } from './task/task.module';
 
 @Module({
@@ -34,10 +35,11 @@ import { TaskModule } from './task/task.module';
     }),
     MikroOrmModule.forRoot(MikroOrmConfig),
     AuthenticationModule,
-    HealthModule,
-    CoinModule,
     CategoryModule,
+    CoinModule,
+    HealthModule,
     PortfolioModule,
+    PriceModule,
     TaskModule
   ],
   controllers: [AppController],

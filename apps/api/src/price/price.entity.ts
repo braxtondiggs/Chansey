@@ -2,10 +2,9 @@ import { Entity, ManyToOne, PrimaryKey, Property, SerializedPrimaryKey } from '@
 import { ObjectId } from '@mikro-orm/mongodb';
 
 import { Coin } from '../coin/coin.entity';
-import User from '../users/user.entity';
 
 @Entity()
-export class Portfolio {
+export class Price {
   @PrimaryKey()
   _id!: ObjectId;
 
@@ -13,21 +12,15 @@ export class Portfolio {
   id!: string;
 
   @Property()
-  type?: string = 'manual';
+  price!: number;
 
   @ManyToOne(() => Coin)
   coin: Coin;
 
-  @ManyToOne()
-  user: User;
-
   @Property()
   createdAt: Date = new Date();
 
-  @Property({ onUpdate: () => new Date() })
-  updatedAt: Date = new Date();
-
-  constructor(portfolio: Partial<Portfolio>) {
-    Object.assign(this, portfolio);
+  constructor(price: Partial<Price>) {
+    Object.assign(this, price);
   }
 }

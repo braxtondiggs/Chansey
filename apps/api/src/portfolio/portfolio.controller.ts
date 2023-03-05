@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+  UsePipes,
+  ValidationPipe
+} from '@nestjs/common';
 
 import { CreatePortfolioDto } from './dto';
 import { PortfolioService } from './portfolio.service';
@@ -13,7 +25,7 @@ export class PortfolioController {
   @Get()
   @UseGuards(JwtAuthenticationGuard)
   async getPortfolio(@Req() { user }: RequestWithUser) {
-    return this.portfolio.getPortfolio(user);
+    return this.portfolio.getPortfolioByUser(user);
   }
 
   @Get(':id')
@@ -24,6 +36,7 @@ export class PortfolioController {
 
   @Post()
   @UseGuards(JwtAuthenticationGuard)
+  @UsePipes(new ValidationPipe({ transform: true }))
   async createPortfolioItem(@Body() dto: CreatePortfolioDto, @Req() { user }: RequestWithUser) {
     return this.portfolio.createPortfolioItem(dto, user);
   }

@@ -16,13 +16,17 @@ export class PortfolioService {
     return portfolio;
   }
 
-  async getPortfolio(user: User): Promise<Portfolio[]> {
+  async getPortfolioByUser(user: User): Promise<Portfolio[]> {
     return await this.portfolio.find(
       { user },
       {
         populate: ['coin']
       }
     );
+  }
+
+  async getPortfolio(): Promise<Portfolio[]> {
+    return await this.portfolio.findAll();
   }
 
   async getPortfolioById(id: string, user: User): Promise<Portfolio> {
