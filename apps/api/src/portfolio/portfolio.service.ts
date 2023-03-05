@@ -26,7 +26,9 @@ export class PortfolioService {
   }
 
   async getPortfolio(): Promise<Portfolio[]> {
-    return await this.portfolio.findAll();
+    return await this.portfolio.findAll({
+      populate: ['coin']
+    });
   }
 
   async getPortfolioById(id: string, user: User): Promise<Portfolio> {

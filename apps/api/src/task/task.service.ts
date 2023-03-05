@@ -1,3 +1,4 @@
+import { MikroORM, UseRequestContext } from '@mikro-orm/core';
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -16,16 +17,18 @@ export class TaskService {
   private readonly logger = new Logger(TaskService.name);
 
   constructor(
-    private category: CategoryService,
-    private coin: CoinService,
-    private http: HttpService,
-    private portfolio: PortfolioService,
-    private price: PriceService
+    private readonly category: CategoryService,
+    private readonly coin: CoinService,
+    private readonly http: HttpService,
+    private readonly orm: MikroORM, // NOTE: don't delete this
+    private readonly portfolio: PortfolioService,
+    private readonly price: PriceService
   ) {}
 
   @Cron('0 0 * * MON', {
     name: 'scrape coins'
   }) // every monday at 12:00:00 AM
+  @UseRequestContext()
   async coins() {
     try {
       this.logger.log('New Coins Cron');
@@ -46,6 +49,7 @@ export class TaskService {
   @Cron('30 0 * * MON', {
     name: 'scrape categories'
   }) // every monday at 12:30:00 AM
+  @UseRequestContext()
   async categories() {
     try {
       this.logger.log('New Category Cron');
@@ -70,6 +74,7 @@ export class TaskService {
     name: 'scrape coin prices',
     disabled: !environment.production
   }) // every minute
+  @UseRequestContext()
   async prices() {
     try {
       const portfolio = await this.portfolio.getPortfolio();

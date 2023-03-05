@@ -18,7 +18,7 @@ export class CoinService {
   }
 
   async create(dto: CreateCoinDto, flush = false): Promise<Coin> {
-    const coin = this.coin.create(dto);
+    const coin = this.coin.create(new Coin(dto));
     this.coin.persist(coin);
     if (flush) await this.coin.flush();
     return coin;
