@@ -71,12 +71,12 @@ export class TaskService {
   }
 
   @Cron('* * * * *', {
-    name: 'scrape coin prices',
-    disabled: !environment.production
+    name: 'scrape coin prices'
   }) // every minute
   @UseRequestContext()
   async prices() {
     try {
+      this.logger.log('New Price Cron');
       const portfolio = await this.portfolio.getPortfolio();
       const coins = [...new Set(portfolio.map(({ coin }) => coin))];
       const ids = coins.map(({ slug }) => slug).join(',');
