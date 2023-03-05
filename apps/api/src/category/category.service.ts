@@ -18,7 +18,7 @@ export class CategoryService {
   }
 
   async create(dto: CreateCategoryDto, flush = false): Promise<Category> {
-    const category = this.category.create(dto);
+    const category = this.category.create(new Category(dto));
     this.category.persist(category);
     if (flush) await this.category.flush();
     return category;

@@ -15,7 +15,7 @@ export class Price {
   price!: number;
 
   @ManyToOne(() => Coin)
-  coin: Coin;
+  coin!: Coin;
 
   @Property()
   createdAt: Date = new Date();

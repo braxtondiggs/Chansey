@@ -10,7 +10,7 @@ export class PriceService {
   constructor(@InjectRepository(Price) private readonly price: EntityRepository<Price>) {}
 
   async create(dto: CreatePriceDto, flush = false): Promise<Price> {
-    const price = this.price.create(dto);
+    const price = this.price.create(new Price(dto));
     this.price.persist(price);
     if (flush) await this.price.flush();
     return price;
