@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber } from 'class-validator';
 
 import { Coin } from '../../coin/coin.entity';
 
@@ -7,7 +7,6 @@ export class CreatePriceDto {
   @IsNotEmpty()
   price: number;
 
-  @IsString()
   @IsNotEmpty()
   coin: Coin;
 }
