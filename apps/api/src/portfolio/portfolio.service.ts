@@ -1,6 +1,7 @@
 import { EntityRepository, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable } from '@nestjs/common';
+import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { Portfolio } from './portfolio.entity';
@@ -8,10 +9,12 @@ import User from '../users/user.entity';
 
 @Injectable()
 export class PortfolioService {
+  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   constructor(@InjectRepository(Portfolio) private readonly portfolio: EntityRepository<Portfolio>) {}
 
   async createPortfolioItem(dto: CreatePortfolioDto, user: User): Promise<Portfolio> {
-    const portfolio = this.portfolio.create({ ...dto, user });
+    //const coin = await this.gecko.coinId({ id: dto.coin, localization: false, developer_data: false });
+    const portfolio = this.portfolio.create(new Portfolio({ ...dto, user }));
     await this.portfolio.persistAndFlush(portfolio);
     return portfolio;
   }
