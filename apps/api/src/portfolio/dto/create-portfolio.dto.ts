@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsString } from 'class-validator';
 
 import { Coin } from '../../coin/coin.entity';
-import User from '../../users/user.entity';
+import User from '../../users/users.entity';
 
 export class CreatePortfolioDto {
   @IsNotEmpty()

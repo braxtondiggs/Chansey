@@ -2,7 +2,7 @@ import { Entity, ManyToOne, PrimaryKey, Property, SerializedPrimaryKey } from '@
 import { ObjectId } from '@mikro-orm/mongodb';
 
 import { Coin } from '../coin/coin.entity';
-import User from '../users/user.entity';
+import User from '../users/users.entity';
 
 @Entity()
 export class Portfolio {
