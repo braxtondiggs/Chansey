@@ -7,7 +7,6 @@ import { firstValueFrom } from 'rxjs';
 
 import { CategoryService } from '../category/category.service';
 import { CoinService } from '../coin/coin.service';
-import { environment } from '../environments/environment';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PriceService } from '../price/price.service';
 
@@ -71,7 +70,8 @@ export class TaskService {
   }
 
   @Cron('* * * * *', {
-    name: 'scrape coin prices'
+    name: 'scrape coin prices',
+    disabled: process.env.NODE_ENV === 'development'
   }) // every minute
   @UseRequestContext()
   async prices() {
