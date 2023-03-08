@@ -1,9 +1,9 @@
-import { EntityRepository } from '@mikro-orm/core';
+import { EntityRepository, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable } from '@nestjs/common';
 
-import { CreateUserDto } from './dto/createUser.dto';
-import User from './user.entity';
+import { CreateUserDto, UpdateUserDto } from './dto';
+import User from './users.entity';
 
 @Injectable()
 class UsersService {
@@ -26,6 +26,13 @@ class UsersService {
     const newUser = this.userRepository.create(user);
     await this.userRepository.persistAndFlush(newUser);
     return newUser;
+  }
+
+  async updateUser(dto: UpdateUserDto, user: User) {
+    const existingItem = await this.getById(user.id);
+    wrap(existingItem).assign(dto);
+    await this.userRepository.persistAndFlush(existingItem);
+    return existingItem;
   }
 }
 

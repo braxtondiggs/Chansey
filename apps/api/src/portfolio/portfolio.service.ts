@@ -5,7 +5,7 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { Portfolio } from './portfolio.entity';
-import User from '../users/user.entity';
+import User from '../users/users.entity';
 
 @Injectable()
 export class PortfolioService {

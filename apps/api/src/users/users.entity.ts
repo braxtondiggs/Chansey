@@ -15,6 +15,11 @@ export default class User {
   @Property()
   name: string;
 
+  @Property({
+    hidden: true
+  })
+  binance: string;
+
   @Property()
   createdAt: Date = new Date();
 
@@ -23,4 +28,8 @@ export default class User {
 
   @Property({ hidden: true })
   password: string;
+
+  constructor(user: Partial<User>) {
+    Object.assign(this, user);
+  }
 }
