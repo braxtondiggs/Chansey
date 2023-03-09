@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcrypt';
 
-import RegisterDto from './dto/register.dto';
+import { RegisterDto } from './dto/register.dto';
 import TokenPayload from './tokenPayload.interface';
 import UsersService from '../users/users.service';
 import isRecord from '../utils/isRecord';

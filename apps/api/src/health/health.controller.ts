@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiExcludeController } from '@nestjs/swagger';
 import {
   HealthCheck,
   HealthCheckService,
@@ -7,6 +8,7 @@ import {
   MikroOrmHealthIndicator
 } from '@nestjs/terminus';
 
+@ApiExcludeController()
 @Controller('health')
 export class HealthController {
   constructor(
@@ -14,7 +16,7 @@ export class HealthController {
     private readonly http: HttpHealthIndicator,
     private readonly memory: MemoryHealthIndicator,
     private readonly mikroOrm: MikroOrmHealthIndicator
-  ) { }
+  ) {}
 
   @Get()
   @HealthCheck()
@@ -22,7 +24,7 @@ export class HealthController {
     return this.health.check([
       () => this.http.pingCheck('coingecko', 'https://api.coingecko.com/api/v3/ping'),
       () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
-      () => this.mikroOrm.pingCheck('mikroOrm'),
+      () => this.mikroOrm.pingCheck('mikroOrm')
     ]);
   }
 }
