@@ -5,6 +5,7 @@ import { IsString } from 'class-validator';
 import { CreateUserDto } from './create-user.dto';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
-  @ApiProperty({ example: 'Braxton Diggs', description: "User's name" })
+  //@ApiProperty({ example: 'Braxton Diggs', description: "User's name" })
+  @IsString()
   binance: string;
 }

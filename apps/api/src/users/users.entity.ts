@@ -1,7 +1,8 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt } from 'crypto';
-import { promisify } from 'util';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 
 import {
+  AfterLoad,
+  BeforeUpdate,
   Column,
   CreateDateColumn,
   Entity,
@@ -13,8 +14,8 @@ import {
 
 import { Portfolio } from '../portfolio/portfolio.entity';
 
+const key = createHash('sha256').update('Nixnogen').digest();
 const iv = randomBytes(16);
-const key2 = createHash('sha256').update(String(process.env.JWT_SECRET)).digest('base64').substr(0, 32);
 
 @Entity()
 export default class User {
@@ -30,6 +31,25 @@ export default class User {
   @Column()
   password: string;
 
+  @Column({ nullable: true })
+  private binance: string;
+
+  private binanceAPIKey: string;
+
+  @BeforeUpdate()
+  async encryptBinance() {
+    if (!this.binance) return;
+    const cipher = createCipheriv('aes-256-cbc', key, iv);
+    this.binance = Buffer.concat([cipher.update(this.binance), cipher.final()]).toString('hex');
+  }
+
+  @AfterLoad()
+  async decryptBinance() {
+    if (!this.binance) return;
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+    this.binanceAPIKey = Buffer.concat([decipher.update(this.binance, 'hex'), decipher.final()]).toString();
+  }
+
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
 
@@ -38,24 +58,4 @@ export default class User {
 
   @OneToMany(() => Portfolio, (portfolio) => portfolio.user)
   portfolios: Portfolio[];
-
-  /*@Property({
-    hidden: false,
-    onUpdate: async (user: User) => {
-      console.log('onUpdate');
-      console.log(user);
-      // const key = (await promisify(scrypt)('user.binance', 'salt', 32)) as Buffer;
-      // const cipher = createCipheriv('aes-256-ctr', key2, iv);
-      user.binance = 'hello'; // Buffer.concat([cipher.update(key), cipher.final()]).toString();
-      // return user;
-      return 'hello';
-    }
-  })
-  binance: string;
-
-  @Property({ name: 'binanceAPIKey', persist: false, hidden: false })
-  get binanceAPIKey(): string {
-    const decipher = createDecipheriv('aes-256-ctr', key2, iv);
-    return Buffer.concat([decipher.update(Buffer.from('this.binance')), decipher.final()]).toString();
-  }*/
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 
@@ -24,8 +24,9 @@ class UsersService {
     return (await this.user.insert(user)).generatedMaps[0] as User;
   }
 
-  async update(user: UpdateUserDto) {
-    return await this.user.save(user);
+  async update(dto: UpdateUserDto, user: User) {
+    const data = this.user.create({ ...user, ...dto });
+    return await this.user.update(user.id, data);
   }
 }
 

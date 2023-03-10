@@ -16,8 +16,8 @@ export class UserController {
   @Patch()
   @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({})
-  async updateUser(@Body() dto: UpdateUserDto) {
-    return this.user.update(dto);
+  async updateUser(@Body() dto: UpdateUserDto, @Req() { user }: RequestWithUser) {
+    return this.user.update(dto, user);
   }
 
   @UseGuards(JwtAuthenticationGuard)
