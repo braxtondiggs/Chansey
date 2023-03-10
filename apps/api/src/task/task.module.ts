@@ -1,7 +1,7 @@
-import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { TaskService } from './task.service';
 import { Category } from '../category/category.entity';
@@ -14,11 +14,7 @@ import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
 
 @Module({
-  imports: [
-    HttpModule,
-    MikroOrmModule.forFeature({ entities: [Category, Coin, Price, Portfolio] }),
-    ScheduleModule.forRoot()
-  ],
+  imports: [HttpModule, TypeOrmModule.forFeature([Category, Coin, Price, Portfolio]), ScheduleModule.forRoot()],
   providers: [TaskService, CoinService, CategoryService, PriceService, PortfolioService]
 })
 export class TaskModule {}

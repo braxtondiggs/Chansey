@@ -4,8 +4,8 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swa
 import { UpdateUserDto } from './dto/update-user.dto';
 import User from './users.entity';
 import UsersService from './users.service';
-import JwtAuthenticationGuard from '../authentication/jwt-authentication.guard';
-import RequestWithUser from '../authentication/requestWithUser.interface';
+import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 
 @ApiTags('User')
 @ApiBearerAuth('token')
@@ -16,8 +16,8 @@ export class UserController {
   @Patch()
   @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({})
-  async updateUser(@Body() dto: UpdateUserDto, @Req() { user }: RequestWithUser) {
-    return this.user.updateUser(dto, user);
+  async updateUser(@Body() dto: UpdateUserDto) {
+    return this.user.update(dto);
   }
 
   @UseGuards(JwtAuthenticationGuard)
@@ -29,6 +29,7 @@ export class UserController {
     isArray: false
   })
   authenticate(@Req() request: RequestWithUser) {
+    delete request.user.password;
     return request.user;
   }
 }

@@ -1,26 +1,18 @@
-import { Entity, ManyToOne, PrimaryKey, Property, SerializedPrimaryKey } from '@mikro-orm/core';
-import { ObjectId } from '@mikro-orm/mongodb';
+import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, Timestamp } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
 
 @Entity()
 export class Price {
-  @PrimaryKey()
-  _id!: ObjectId;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @SerializedPrimaryKey()
-  id!: string;
+  @Column({ type: 'decimal' })
+  price: number;
 
-  @Property()
-  price!: number;
+  @ManyToOne(() => Coin, (coin) => coin.prices, { eager: true })
+  coin: Coin;
 
-  @ManyToOne(() => Coin)
-  coin!: Coin;
-
-  @Property()
-  createdAt: Date = new Date();
-
-  constructor(price: Partial<Price>) {
-    Object.assign(this, price);
-  }
+  @CreateDateColumn({ select: false })
+  createdAt: Timestamp;
 }

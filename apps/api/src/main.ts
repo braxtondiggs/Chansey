@@ -18,28 +18,30 @@ async function bootstrap() {
     })
   );
 
-  const config = new DocumentBuilder()
-    .setTitle('Chansey')
-    .setVersion('1.0')
-    .addServer('/api')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter JWT token',
-        in: 'header'
-      },
-      'token'
-    )
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true // this
-    }
-  });
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('Chansey')
+      .setVersion('1.0')
+      .addServer('/api')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          name: 'JWT',
+          description: 'Enter JWT token',
+          in: 'header'
+        },
+        'token'
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true // this
+      }
+    });
+  }
 
   await app.register(helmet, {
     contentSecurityPolicy: {

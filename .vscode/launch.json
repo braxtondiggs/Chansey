@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Nest Debug",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "run", "api:serve:debug", "--", "--inspect-brk"],
+      "console": "integratedTerminal",
+      "restart": true,
+      "autoAttachChildProcesses": true
+    }
+  ]
+}

@@ -11,6 +11,6 @@ export class CreatePortfolioDto {
   @IsNotEmpty()
   type: string;
 
-  @IsNotEmpty()
-  user: User;
+  /*@IsNotEmpty()
+  user: User;*/
 }
