@@ -43,8 +43,8 @@ const isProduction = process.env.NODE_ENV === 'production';
       migrationsTableName: 'migration',
       password: process.env.PGPASSWORD,
       port: parseInt(process.env.PGPORT),
-      ssl: isProduction,
-      synchronize: !isProduction,
+      // ssl: isProduction,
+      synchronize: true, // TODO: Fix for production !isProduction,
       type: 'postgres',
       username: process.env.PGUSER,
       uuidExtension: 'pgcrypto'
