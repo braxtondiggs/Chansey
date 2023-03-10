@@ -1,63 +1,73 @@
-import { Entity, PrimaryKey, Property, SerializedPrimaryKey } from '@mikro-orm/core';
-import { ObjectId } from '@mikro-orm/mongodb';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Timestamp,
+  UpdateDateColumn
+} from 'typeorm';
+
+import { Portfolio } from '../portfolio/portfolio.entity';
+import { Price } from '../price/price.entity';
 
 @Entity()
 export class Coin {
-  @PrimaryKey()
-  _id!: ObjectId;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @SerializedPrimaryKey()
-  id!: string;
+  @Column({ unique: true })
+  slug: string;
 
-  @Property()
-  slug!: string;
+  @Column({ unique: true })
+  name: string;
 
-  @Property()
-  name!: string;
-
-  @Property()
+  @Column()
   symbol: string;
 
-  @Property()
+  @Column({ nullable: true })
   description?: string;
 
-  @Property()
+  @Column({ nullable: true })
   image?: string;
 
-  @Property()
-  genesis?: string;
+  @Column({ type: 'date', nullable: true })
+  genesis?: Date;
 
-  @Property()
+  @Column({ nullable: true })
   marketRank?: number;
 
-  @Property()
+  @Column({ nullable: true })
   geckoRank?: number;
 
-  @Property()
+  @Column({ type: 'decimal', nullable: true })
   developerScore?: number;
 
-  @Property()
+  @Column({ type: 'decimal', nullable: true })
   communityScore?: number;
 
-  @Property()
+  @Column({ type: 'decimal', nullable: true })
   liquidityScore?: number;
 
-  @Property()
-  PublicInterestScore?: number;
+  @Column({ type: 'decimal', nullable: true })
+  publicInterestScore?: number;
 
-  @Property()
+  @Column({ type: 'decimal', nullable: true })
   sentiment_up?: number;
 
-  @Property()
+  @Column({ type: 'decimal', nullable: true })
   sentiment_down?: number;
 
-  @Property()
-  createdAt: Date = new Date();
+  @CreateDateColumn({ select: false })
+  createdAt: Timestamp;
 
-  @Property({ onUpdate: () => new Date() })
-  updatedAt: Date = new Date();
+  @UpdateDateColumn({ select: false })
+  updatedAt: Timestamp;
 
-  constructor(coin: Partial<Coin>) {
-    Object.assign(this, coin);
-  }
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin)
+  portfolios: Portfolio[];
+
+  @OneToMany(() => Price, (price) => price.coin)
+  prices: Price[];
 }
+new Error('Function not implemented.');

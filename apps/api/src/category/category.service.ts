@@ -1,33 +1,32 @@
-import { EntityRepository } from '@mikro-orm/core';
-import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { ILike, Repository } from 'typeorm';
 
 import { Category } from './category.entity';
-import { CreateCategoryDto } from './dto/create-category.dto';
+import { CreateCategoryDto, UpdateCategoryDto } from './dto/';
 
 @Injectable()
 export class CategoryService {
-  constructor(@InjectRepository(Category) private readonly category: EntityRepository<Category>) {}
+  constructor(@InjectRepository(Category) private readonly category: Repository<Category>) {}
 
   async getCategories(): Promise<Category[]> {
-    return await this.category.findAll();
+    return await this.category.find();
   }
 
-  async getCategoryById(id: string): Promise<Category> {
-    return await this.category.findOne({ id });
+  async getCategoryById(categoryId: string): Promise<Category> {
+    return await this.category.findOneBy({ id: categoryId });
   }
 
-  async create(dto: CreateCategoryDto, flush = false): Promise<Category> {
-    const category = this.category.create(new Category(dto));
-    this.category.persist(category);
-    if (flush) await this.category.flush();
-    return category;
+  async create(Category: CreateCategoryDto): Promise<Category> {
+    const category = await this.category.findOne({ where: { name: ILike(`%${Category.name}%`) } });
+    return category ?? ((await this.category.insert(Category)).generatedMaps[0] as Category);
   }
 
-  async createMany(dto: CreateCategoryDto[]): Promise<Category[]> {
-    const promise = dto.map((c) => this.create(c));
-    const categories = await Promise.all(promise);
-    await this.category.flush();
-    return categories;
+  async update(Category: UpdateCategoryDto) {
+    return await this.category.save(Category);
+  }
+
+  async remove(categoryId: string) {
+    return await this.category.delete(categoryId);
   }
 }

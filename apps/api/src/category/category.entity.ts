@@ -1,27 +1,19 @@
-import { Entity, PrimaryKey, Property, SerializedPrimaryKey } from '@mikro-orm/core';
-import { ObjectId } from '@mikro-orm/mongodb';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Timestamp, UpdateDateColumn } from 'typeorm';
 
 @Entity()
 export class Category {
-  @PrimaryKey()
-  _id!: ObjectId;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @SerializedPrimaryKey()
-  id!: string;
+  @Column({ unique: true })
+  slug: string;
 
-  @Property()
-  slug!: string;
+  @Column({ unique: true })
+  name: string;
 
-  @Property()
-  name!: string;
+  @CreateDateColumn({ select: false })
+  createdAt: Timestamp;
 
-  @Property()
-  createdAt: Date = new Date();
-
-  @Property({ onUpdate: () => new Date() })
-  updatedAt: Date = new Date();
-
-  constructor(category: Partial<Category>) {
-    Object.assign(this, category);
-  }
+  @UpdateDateColumn({ select: false })
+  updatedAt: Timestamp;
 }

@@ -1,6 +1,6 @@
-import { EntityRepository, wrap } from '@mikro-orm/core';
-import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { ILike, Repository } from 'typeorm';
 
 import { CreateUserDto, UpdateUserDto } from './dto';
 import User from './users.entity';
@@ -9,30 +9,23 @@ import User from './users.entity';
 class UsersService {
   constructor(
     @InjectRepository(User)
-    private readonly userRepository: EntityRepository<User>
+    private readonly user: Repository<User>
   ) {}
 
   async getByEmail(email: string) {
-    const user = await this.userRepository.findOne({ email });
-    return user;
+    return await this.user.findOne({ where: { email }, relations: ['portfolios'] });
   }
 
   async getById(id: string) {
-    const user = await this.userRepository.findOne({ id });
-    return user;
+    return await this.user.findOneBy({ id });
   }
 
   async create(user: CreateUserDto) {
-    const newUser = this.userRepository.create(user);
-    await this.userRepository.persistAndFlush(newUser);
-    return newUser;
+    return (await this.user.insert(user)).generatedMaps[0] as User;
   }
 
-  async updateUser(dto: UpdateUserDto, user: User) {
-    const existingItem = await this.getById(user.id);
-    wrap(existingItem).assign(dto);
-    await this.userRepository.persistAndFlush(existingItem);
-    return existingItem;
+  async update(user: UpdateUserDto) {
+    return await this.user.save(user);
   }
 }
 

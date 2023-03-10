@@ -1,4 +1,3 @@
-import { MikroORM, UseRequestContext } from '@mikro-orm/core';
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -19,7 +18,6 @@ export class TaskService {
     private readonly category: CategoryService,
     private readonly coin: CoinService,
     private readonly http: HttpService,
-    private readonly orm: MikroORM, // NOTE: don't delete this
     private readonly portfolio: PortfolioService,
     private readonly price: PriceService
   ) {}
@@ -27,7 +25,6 @@ export class TaskService {
   @Cron('0 0 * * MON', {
     name: 'scrape coins'
   }) // every monday at 12:00:00 AM
-  @UseRequestContext()
   async coins() {
     try {
       this.logger.log('New Coins Cron');
@@ -36,7 +33,7 @@ export class TaskService {
         this.coin.getCoins()
       ]);
       const newCoins = coins.filter((coin) => !oldCoins.find((oldCoin) => oldCoin.slug === coin.id));
-      await this.coin.createMany(newCoins.map(({ id: slug, symbol, name }) => ({ slug, symbol, name })));
+      await Promise.all(newCoins.map(({ id: slug, symbol, name }) => this.coin.create({ slug, symbol, name })));
       if (newCoins.length > 0) this.logger.log(`New Coins: ${newCoins.map(({ name }) => name).join(', ')}`);
     } catch (e) {
       this.logger.error(e);
@@ -48,7 +45,6 @@ export class TaskService {
   @Cron('30 0 * * MON', {
     name: 'scrape categories'
   }) // every monday at 12:30:00 AM
-  @UseRequestContext()
   async categories() {
     try {
       this.logger.log('New Category Cron');
@@ -59,7 +55,7 @@ export class TaskService {
       const newCategories = categories
         .map((c) => ({ slug: c.category_id, symbol: c.symbol, name: c.name }))
         .filter((category) => !oldCategories.find((oldCategory) => oldCategory.slug === category.slug));
-      await this.category.createMany(newCategories);
+      await Promise.all(newCategories.map((category) => this.category.create(category)));
       if (newCategories.length > 0)
         this.logger.log(`New Categories: ${newCategories.map(({ name }) => name).join(', ')}`);
     } catch (e) {
@@ -73,7 +69,6 @@ export class TaskService {
     name: 'scrape coin prices',
     disabled: process.env.NODE_ENV === 'development'
   }) // every minute
-  @UseRequestContext()
   async prices() {
     try {
       this.logger.log('New Price Cron');
@@ -87,7 +82,7 @@ export class TaskService {
         coin: coins[key].id
       }));
 
-      await this.price.createMany(data);
+      await Promise.all(data.map((price) => this.price.create(price)));
     } catch (e) {
       this.logger.error(e);
     }

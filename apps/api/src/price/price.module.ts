@@ -1,11 +1,11 @@
-import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { Price } from './price.entity';
 import { PriceService } from './price.service';
 
 @Module({
-  imports: [MikroOrmModule.forFeature({ entities: [Price] })],
+  imports: [TypeOrmModule.forFeature([Price])],
   providers: [PriceService],
   exports: [PriceService]
 })

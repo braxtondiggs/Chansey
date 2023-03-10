@@ -1,33 +1,38 @@
-import { EntityRepository } from '@mikro-orm/core';
-import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { ILike, Repository } from 'typeorm';
 
 import { Coin } from './coin.entity';
-import { CreateCoinDto } from './dto/create-coin.dto';
+import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
 @Injectable()
 export class CoinService {
-  constructor(@InjectRepository(Coin) private readonly coin: EntityRepository<Coin>) {}
+  constructor(@InjectRepository(Coin) private readonly coin: Repository<Coin>) {}
 
   async getCoins(): Promise<Coin[]> {
-    return await this.coin.findAll();
+    const coins = await this.coin.find();
+    return coins.map((coin) => {
+      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+      return coin;
+    });
   }
 
-  async getCoinById(id: string): Promise<Coin> {
-    return await this.coin.findOne({ id });
-  }
-
-  async create(dto: CreateCoinDto, flush = false): Promise<Coin> {
-    const coin = this.coin.create(new Coin(dto));
-    this.coin.persist(coin);
-    if (flush) await this.coin.flush();
+  async getCoinById(coinId: string): Promise<Coin> {
+    const coin = await this.coin.findOneBy({ id: coinId });
+    Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
   }
 
-  async createMany(dto: CreateCoinDto[]): Promise<Coin[]> {
-    const promise = dto.map((c) => this.create(c));
-    const coins = await Promise.all(promise);
-    await this.coin.flush();
-    return coins;
+  async create(Coin: CreateCoinDto): Promise<Coin> {
+    const coin = await this.coin.findOne({ where: { name: ILike(`%${Coin.name}%`) } });
+    return coin ?? ((await this.coin.insert(Coin)).generatedMaps[0] as Coin);
+  }
+
+  async update(coin: UpdateCoinDto) {
+    return await this.coin.save(coin);
+  }
+
+  async remove(coinId: string) {
+    return await this.coin.delete(coinId);
   }
 }
