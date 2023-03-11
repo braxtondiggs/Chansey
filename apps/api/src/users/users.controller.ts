@@ -1,4 +1,3 @@
-import { AuthToken } from '@authorizerdev/authorizer-js';
 import {
   Body,
   ClassSerializerInterceptor,
@@ -15,6 +14,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import User from './users.entity';
 import UsersService from './users.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 
 @ApiTags('User')
 @ApiBearerAuth('token')
@@ -26,7 +26,7 @@ export class UserController {
   @Patch()
   @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({})
-  async updateUser(@Body() dto: UpdateUserDto, @Req() { user }: { user: User }) {
+  async updateUser(@Body() dto: UpdateUserDto, @Req() { user }: RequestWithUser) {
     return this.user.update(dto, user);
   }
 
@@ -38,7 +38,7 @@ export class UserController {
     type: User,
     isArray: false
   })
-  authenticate(@Req() { user }: AuthToken) {
-    return new User(user);
+  authenticate(@Req() { user }: RequestWithUser) {
+    return user;
   }
 }

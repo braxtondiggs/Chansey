@@ -18,7 +18,6 @@ import { PortfolioService } from './portfolio.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 import FindOneParams from '../utils/findOneParams';
-import { AuthToken } from '@authorizerdev/authorizer-js';
 
 @ApiTags('Portfolio')
 @ApiBearerAuth('token')
@@ -54,7 +53,7 @@ export class PortfolioController {
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard)
-  async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: AuthToken) {
+  async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
     // return this.portfolio.deletePortfolioItem(id, user);
   }
 }
