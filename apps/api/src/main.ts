@@ -1,4 +1,5 @@
 import compression from '@fastify/compress';
+import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import helmet from '@fastify/helmet';
 import { ValidationPipe } from '@nestjs/common';
@@ -55,6 +56,7 @@ async function bootstrap() {
   });
   await app.register(fastifyCsrf);
   await app.register(compression);
+  await app.register(fastifyCookie);
   app.useLogger(app.get(Logger));
   app.useGlobalInterceptors(new LoggerErrorInterceptor());
 

@@ -19,7 +19,7 @@ export class PortfolioService {
   }
 
   async getPortfolioById(portfolioId: string): Promise<Portfolio> {
-    return await this.portfolio.findOneBy({ id: portfolioId });
+    return await this.portfolio.findOne({ where: { id: portfolioId }, relations: ['coin'] });
   }
 
   async getPortfolioByUser(user: User): Promise<Portfolio[]> {

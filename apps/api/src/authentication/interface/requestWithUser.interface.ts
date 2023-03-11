@@ -1,3 +1,4 @@
+import { AuthToken } from '@authorizerdev/authorizer-js';
 import { FastifyRequest } from 'fastify';
 
 import User from '../../users/users.entity';
