@@ -27,12 +27,18 @@ export default class UsersService {
     return await this.user.findOneBy({ id });
   }
 
-  async getBinanceInfo(user: User) {
+  getBinance(user: User) {
     user = instanceToPlain(new User(user)) as User;
-    const binance = Binance({
+    return Binance({
       apiKey: user.binanceAPIKey,
-      apiSecret: user.binanceSecretKey
+      apiSecret: user.binanceSecretKey,
+      httpBase: 'https://api.binance.us'
+      // httpFuturesBase: 'https://fapi.binance.us'
     });
+  }
+
+  async getBinanceInfo(user: User) {
+    const binance = this.getBinance(user);
     return await binance.accountInfo();
   }
 }
