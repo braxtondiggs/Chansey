@@ -36,7 +36,7 @@ export class AuthenticationService {
     try {
       const authUser = await this.auth.login({ email, password });
       if (authUser) {
-        this.user
+        return this.user
           .getById(authUser.user.id)
           .then(() => {
             return authUser;
