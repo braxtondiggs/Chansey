@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { CreatePortfolioDto } from './dto';
+import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { PortfolioService } from './portfolio.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import RequestWithUser from '../authentication/interface/requestWithUser.interface';
@@ -34,8 +34,8 @@ export class PortfolioController {
 
   @Get(':id')
   @UseGuards(JwtAuthenticationGuard)
-  getPortfolioById(@Param() { id }: FindOneParams) {
-    return this.portfolio.getPortfolioById(id);
+  getPortfolioById(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
+    return this.portfolio.getPortfolioById(id, user.id);
   }
 
   @Post()
@@ -47,13 +47,17 @@ export class PortfolioController {
 
   @Patch(':id')
   @UseGuards(JwtAuthenticationGuard)
-  async updatePortfolioItem(@Param() { id }: FindOneParams, @Body() dto: CreatePortfolioDto) {
-    // return this.portfolio.updatePortfolioItem(id, dto, user);
+  async updatePortfolioItem(
+    @Param() { id }: FindOneParams,
+    @Body() dto: UpdatePortfolioDto,
+    @Req() { user }: RequestWithUser
+  ) {
+    return this.portfolio.updatePortfolioItem(id, user.id, dto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard)
   async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
-    // return this.portfolio.deletePortfolioItem(id, user);
+    return this.portfolio.deletePortfolioItem(id, user.id);
   }
 }

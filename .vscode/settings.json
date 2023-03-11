@@ -1,7 +1,7 @@
 {
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
-  "cSpell.words": ["chansey", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
+  "cSpell.words": ["authorizerdev", "chansey", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
   "editor.formatOnPaste": true,
   "prettier.configPath": ".prettierrc",
   "[typescript]": {

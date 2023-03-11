@@ -16,4 +16,8 @@ export class Category {
 
   @UpdateDateColumn({ select: false })
   updatedAt: Timestamp;
+
+  constructor(partial: Partial<Category>) {
+    Object.assign(this, partial);
+  }
 }

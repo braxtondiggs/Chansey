@@ -18,8 +18,8 @@ export class PortfolioService {
     });
   }
 
-  async getPortfolioById(portfolioId: string): Promise<Portfolio> {
-    return await this.portfolio.findOne({ where: { id: portfolioId }, relations: ['coin'] });
+  async getPortfolioById(portfolioId: string, userId: string): Promise<Portfolio> {
+    return await this.portfolio.findOne({ where: { id: portfolioId, user: { id: userId } }, relations: ['coin'] });
   }
 
   async getPortfolioByUser(user: User): Promise<Portfolio[]> {
@@ -48,11 +48,17 @@ export class PortfolioService {
     return portfolio ?? ((await this.portfolio.insert({ ...Portfolio, user })).generatedMaps[0] as Portfolio);
   }
 
-  async updatePortfolioItem(Portfolio: UpdatePortfolioDto): Promise<Portfolio> {
-    return await this.portfolio.save(Portfolio);
+  async updatePortfolioItem(portfolioId: string, userId: string, dto: UpdatePortfolioDto): Promise<Portfolio> {
+    const data = this.getPortfolioById(portfolioId, userId);
+    return await this.portfolio.save(new Portfolio({ ...data, ...dto }));
   }
 
-  async deletePortfolioItem(portfolioId: string) {
-    return await this.portfolio.delete(portfolioId);
+  async deletePortfolioItem(portfolioId: string, userId: string) {
+    return await this.portfolio.delete({
+      id: portfolioId,
+      user: {
+        id: userId
+      }
+    });
   }
 }
