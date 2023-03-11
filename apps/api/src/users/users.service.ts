@@ -24,7 +24,7 @@ export default class UsersService {
   }
 
   async getById(id: string) {
-    return await this.user.findOneBy({ id });
+    return await this.user.findOneByOrFail({ id });
   }
 
   getBinance(user: User) {
