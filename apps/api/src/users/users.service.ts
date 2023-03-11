@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Binance from 'binance-api-node';
+import { instanceToPlain } from 'class-transformer';
 import { Repository } from 'typeorm';
 
 import { UpdateUserDto } from './dto';
@@ -23,5 +25,14 @@ export default class UsersService {
 
   async getById(id: string) {
     return await this.user.findOneBy({ id });
+  }
+
+  async getBinanceInfo(user: User) {
+    user = instanceToPlain(new User(user)) as User;
+    const binance = Binance({
+      apiKey: user.binanceAPIKey,
+      apiSecret: user.binanceSecretKey
+    });
+    return await binance.accountInfo();
   }
 }

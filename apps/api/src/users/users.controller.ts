@@ -38,7 +38,14 @@ export class UserController {
     type: User,
     isArray: false
   })
-  authenticate(@Req() { user }: RequestWithUser) {
+  get(@Req() { user }: RequestWithUser) {
     return user;
+  }
+
+  @UseGuards(JwtAuthenticationGuard)
+  @Get('info')
+  @ApiOperation({})
+  info(@Req() { user }: RequestWithUser) {
+    return this.user.getBinanceInfo(user);
   }
 }
