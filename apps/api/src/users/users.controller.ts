@@ -1,5 +1,14 @@
 import { AuthToken } from '@authorizerdev/authorizer-js';
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  ClassSerializerInterceptor,
+  Controller,
+  Get,
+  Patch,
+  Req,
+  UseGuards,
+  UseInterceptors
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -10,6 +19,7 @@ import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.g
 @ApiTags('User')
 @ApiBearerAuth('token')
 @Controller('user')
+@UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
   constructor(private readonly user: UsersService) {}
 
@@ -29,6 +39,6 @@ export class UserController {
     isArray: false
   })
   authenticate(@Req() { user }: AuthToken) {
-    return user;
+    return new User(user);
   }
 }

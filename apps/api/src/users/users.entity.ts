@@ -1,8 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'crypto';
 import { promisify } from 'util';
 
+import { Exclude, Expose } from 'class-transformer';
 import {
-  AfterLoad,
   BeforeUpdate,
   Column,
   CreateDateColumn,
@@ -20,10 +20,13 @@ export default class User {
   @PrimaryColumn({ unique: true })
   id: string;
 
+  @Exclude()
   @Column({ nullable: true })
-  private binance: string;
+  binance: string;
 
-  private binanceAPIKey: string;
+  @Exclude()
+  @Column({ nullable: true })
+  binanceSecret: string;
 
   @BeforeUpdate()
   async encryptBinance() {
@@ -38,8 +41,21 @@ export default class User {
     ]).toString('hex')}`;
   }
 
-  @AfterLoad()
-  async decryptBinance() {
+  @BeforeUpdate()
+  async encryptBinanceSecret() {
+    if (!this.binanceSecret || this.binanceSecret === this.binanceSecretKey) return;
+    const iv = randomBytes(16);
+    const salt = randomBytes(16);
+    const key = (await promisify(scrypt)(process.env.JWT_SECRET, salt, 32)) as Buffer;
+    const cipher = createCipheriv('aes-256-cbc', key, iv);
+    this.binanceSecret = `${iv.toString('hex')}:${salt.toString('hex')}:${Buffer.concat([
+      cipher.update(this.binanceSecret),
+      cipher.final()
+    ]).toString('hex')}`;
+  }
+
+  @Expose()
+  get binanceAPIKey() {
     if (!this.binance) return;
     const [ivs, salts, binance] = this.binance.split(':');
     const iv = Buffer.from(ivs, 'hex');
@@ -47,8 +63,18 @@ export default class User {
     const key = scryptSync(process.env.JWT_SECRET, salt, 32);
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
-    // console.log(Buffer.concat([decipher.update(this.binance, 'hex'), decipher.final()]).toString());
-    this.binanceAPIKey = Buffer.concat([decipher.update(binance, 'hex'), decipher.final()]).toString();
+    return Buffer.concat([decipher.update(binance, 'hex'), decipher.final()]).toString();
+  }
+
+  @Expose()
+  get binanceSecretKey() {
+    const [ivs, salts, binanceSecret] = this.binanceSecret.split(':');
+    const iv = Buffer.from(ivs, 'hex');
+    const salt = Buffer.from(salts, 'hex');
+    const key = scryptSync(process.env.JWT_SECRET, salt, 32);
+
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+    return Buffer.concat([decipher.update(binanceSecret, 'hex'), decipher.final()]).toString();
   }
 
   @CreateDateColumn({ select: false })
@@ -59,4 +85,8 @@ export default class User {
 
   @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { onDelete: 'CASCADE' })
   portfolios: Portfolio[];
+
+  constructor(partial: Partial<User>) {
+    Object.assign(this, partial);
+  }
 }
