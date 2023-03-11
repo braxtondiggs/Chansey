@@ -69,5 +69,8 @@ export class Coin {
 
   @OneToMany(() => Price, (price) => price.coin)
   prices: Price[];
+
+  constructor(partial: Partial<Coin>) {
+    Object.assign(this, partial);
+  }
 }
-new Error('Function not implemented.');

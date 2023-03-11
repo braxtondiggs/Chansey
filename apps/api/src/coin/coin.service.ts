@@ -28,8 +28,9 @@ export class CoinService {
     return coin ?? ((await this.coin.insert(Coin)).generatedMaps[0] as Coin);
   }
 
-  async update(coin: UpdateCoinDto) {
-    return await this.coin.save(coin);
+  async update(coinId: string, coin: UpdateCoinDto) {
+    const data = await this.getCoinById(coinId);
+    return await this.coin.save(new Coin({ ...data, ...coin }));
   }
 
   async remove(coinId: string) {

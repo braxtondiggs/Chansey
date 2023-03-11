@@ -33,4 +33,8 @@ export class Portfolio {
   @ManyToOne(() => User, (user) => user.portfolios)
   @JoinTable()
   user: User;
+
+  constructor(partial: Partial<Portfolio>) {
+    Object.assign(this, partial);
+  }
 }

@@ -18,7 +18,7 @@ export class CreateCoinDto {
   image?: string;
 
   @IsDateString()
-  genesis?: string;
+  genesis?: Date;
 
   @IsNumber()
   marketRank?: number;

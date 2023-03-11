@@ -22,8 +22,9 @@ export class CategoryService {
     return category ?? ((await this.category.insert(Category)).generatedMaps[0] as Category);
   }
 
-  async update(Category: UpdateCategoryDto) {
-    return await this.category.save(Category);
+  async update(categoryId: string, category: UpdateCategoryDto) {
+    const data = await this.getCategoryById(categoryId);
+    return await this.category.save(new Category({ ...data, ...category }));
   }
 
   async remove(categoryId: string) {
