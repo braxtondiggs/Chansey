@@ -66,7 +66,7 @@ export default class User {
 
   @Expose()
   get binanceAPIKey() {
-    if (!this.binance) return;
+    if (!this.binance || !this.binance.includes(':')) return;
     const [ivs, salts, binance] = this.binance.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
@@ -78,6 +78,7 @@ export default class User {
 
   @Expose()
   get binanceSecretKey() {
+    if (!this.binanceSecret || !this.binanceSecret.includes(':')) return;
     const [ivs, salts, binanceSecret] = this.binanceSecret.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
