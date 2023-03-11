@@ -1,4 +1,3 @@
-import { AuthToken } from '@authorizerdev/authorizer-js';
 import { Body, Controller, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
@@ -7,6 +6,7 @@ import { AuthenticationService } from './authentication.service';
 import { LogInDto } from './dto/login.dto';
 import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
+import RequestWithUser from './interface/requestWithUser.interface';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 
 @ApiTags('Authentication')
@@ -26,7 +26,7 @@ export class AuthenticationController {
   @ApiOperation({})
   @ApiBody({ type: LogInDto })
   @ApiBearerAuth('token')
-  async logIn(@Req() { user }: { user: AuthToken }, @Res() response: FastifyReply) {
+  async logIn(@Req() { user }: RequestWithUser, @Res() response: FastifyReply) {
     const cookie = this.authentication.getCookieWithJwtToken(user.id_token, user.expires_in);
     response.header('Set-Cookie', cookie);
     return response.send(user);

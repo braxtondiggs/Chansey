@@ -20,6 +20,16 @@ export default class User {
   @PrimaryColumn({ unique: true })
   id: string;
 
+  given_name: string;
+  family_name: string;
+  email: string;
+
+  @Exclude()
+  id_token: string;
+
+  @Exclude()
+  expires_in: number;
+
   @Exclude()
   @Column({ nullable: true })
   binance: string;
