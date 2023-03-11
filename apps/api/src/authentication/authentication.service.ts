@@ -1,18 +1,12 @@
 import { Authorizer } from '@authorizerdev/authorizer-js';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import UsersService from '../users/users.service';
 
 @Injectable()
 export class AuthenticationService {
-  constructor(
-    private readonly user: UsersService,
-    private readonly jwt: JwtService,
-    private readonly config: ConfigService
-  ) {}
+  constructor(private readonly user: UsersService) {}
 
   public auth = new Authorizer({
     authorizerURL: 'https://authorizer-production-ffa1.up.railway.app',
