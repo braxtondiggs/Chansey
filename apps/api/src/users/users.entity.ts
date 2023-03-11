@@ -1,4 +1,5 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'crypto';
+import { promisify } from 'util';
 
 import {
   AfterLoad,
@@ -7,29 +8,17 @@ import {
   CreateDateColumn,
   Entity,
   OneToMany,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Timestamp,
   UpdateDateColumn
 } from 'typeorm';
 
 import { Portfolio } from '../portfolio/portfolio.entity';
 
-const key = createHash('sha256').update('Nixnogen').digest();
-const iv = randomBytes(16);
-
 @Entity()
 export default class User {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ unique: true })
   id: string;
-
-  @Column({ unique: true })
-  email: string;
-
-  @Column()
-  name: string;
-
-  @Column()
-  password: string;
 
   @Column({ nullable: true })
   private binance: string;
@@ -38,16 +27,28 @@ export default class User {
 
   @BeforeUpdate()
   async encryptBinance() {
-    if (!this.binance) return;
+    if (!this.binance || this.binance === this.binanceAPIKey) return;
+    const iv = randomBytes(16);
+    const salt = randomBytes(16);
+    const key = (await promisify(scrypt)(process.env.JWT_SECRET, salt, 32)) as Buffer;
     const cipher = createCipheriv('aes-256-cbc', key, iv);
-    this.binance = Buffer.concat([cipher.update(this.binance), cipher.final()]).toString('hex');
+    this.binance = `${iv.toString('hex')}:${salt.toString('hex')}:${Buffer.concat([
+      cipher.update(this.binance),
+      cipher.final()
+    ]).toString('hex')}`;
   }
 
   @AfterLoad()
   async decryptBinance() {
     if (!this.binance) return;
+    const [ivs, salts, binance] = this.binance.split(':');
+    const iv = Buffer.from(ivs, 'hex');
+    const salt = Buffer.from(salts, 'hex');
+    const key = scryptSync(process.env.JWT_SECRET, salt, 32);
+
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
-    this.binanceAPIKey = Buffer.concat([decipher.update(this.binance, 'hex'), decipher.final()]).toString();
+    // console.log(Buffer.concat([decipher.update(this.binance, 'hex'), decipher.final()]).toString());
+    this.binanceAPIKey = Buffer.concat([decipher.update(binance, 'hex'), decipher.final()]).toString();
   }
 
   @CreateDateColumn({ select: false })
@@ -56,6 +57,6 @@ export default class User {
   @UpdateDateColumn({ select: false })
   updatedAt: Timestamp;
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.user)
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { onDelete: 'CASCADE' })
   portfolios: Portfolio[];
 }

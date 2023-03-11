@@ -18,6 +18,7 @@ import { PortfolioService } from './portfolio.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 import FindOneParams from '../utils/findOneParams';
+import { AuthToken } from '@authorizerdev/authorizer-js';
 
 @ApiTags('Portfolio')
 @ApiBearerAuth('token')
@@ -34,30 +35,26 @@ export class PortfolioController {
 
   @Get(':id')
   @UseGuards(JwtAuthenticationGuard)
-  getPortfolioById(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
+  getPortfolioById(@Param() { id }: FindOneParams) {
     return this.portfolio.getPortfolioById(id);
   }
 
   @Post()
   @UseGuards(JwtAuthenticationGuard)
-  // @UsePipes(new ValidationPipe({ transform: true }))
+  @UsePipes(new ValidationPipe({ transform: true }))
   async createPortfolioItem(@Body() dto: CreatePortfolioDto, @Req() { user }: RequestWithUser) {
     return this.portfolio.createPortfolioItem(dto, user);
   }
 
-  /*@Patch(':id')
+  @Patch(':id')
   @UseGuards(JwtAuthenticationGuard)
-  async updatePortfolioItem(
-    @Param() { id }: FindOneParams,
-    @Body() dto: CreatePortfolioDto,
-    @Req() { user }: RequestWithUser
-  ) {
-    return this.portfolio.updatePortfolioItem(id, dto, user);
+  async updatePortfolioItem(@Param() { id }: FindOneParams, @Body() dto: CreatePortfolioDto) {
+    // return this.portfolio.updatePortfolioItem(id, dto, user);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard)
-  async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
-    return this.portfolio.deletePortfolioItem(id, user);
-  }*/
+  async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: AuthToken) {
+    // return this.portfolio.deletePortfolioItem(id, user);
+  }
 }

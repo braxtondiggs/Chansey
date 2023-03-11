@@ -1,12 +1,10 @@
+import { Authorizer } from '@authorizerdev/authorizer-js';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { compare, hash } from 'bcrypt';
 
-import TokenPayload from './interface/tokenPayload.interface';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import UsersService from '../users/users.service';
-import isRecord from '../utils/isRecord';
 
 @Injectable()
 export class AuthenticationService {
@@ -16,44 +14,34 @@ export class AuthenticationService {
     private readonly config: ConfigService
   ) {}
 
+  public auth = new Authorizer({
+    authorizerURL: 'https://authorizer-production-ffa1.up.railway.app',
+    clientID: '9c5ae276-7627-4240-bb9d-8b4bff96891b',
+    redirectURL: 'https://chansey.up.railway.app'
+  });
+
   public async register(registrationData: CreateUserDto) {
-    const hashedPassword = await hash(registrationData.password, 10);
     try {
-      return await this.user.create({
-        ...registrationData,
-        password: hashedPassword
-      });
+      const response = await this.auth.signup(registrationData);
+      if (response) await this.user.create(response?.user?.id);
+      return response;
     } catch (error: unknown) {
-      if (isRecord(error) && error.code === '23505') {
-        throw new HttpException('User with that email already exists', HttpStatus.BAD_REQUEST);
-      }
       throw new HttpException('Something went wrong', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  public getCookieWithJwtToken(userId: string) {
-    const payload: TokenPayload = { userId };
-    const token = this.jwt.sign(payload);
-    return `Authentication=${token}; HttpOnly; Path=/; Max-Age=${this.config.get('JWT_EXPIRATION_TIME')}`;
+  public getCookieWithJwtToken(token: string, expires_in: number) {
+    return `Authentication=${token}; HttpOnly; Path=/; Max-Age=${expires_in}`;
   }
 
   public getCookieForLogOut() {
     return `Authentication=; HttpOnly; Path=/; Max-Age=0`;
   }
 
-  public async getAuthenticatedUser(email: string, plainTextPassword: string) {
+  public async getAuthenticatedUser(email: string, password: string) {
     try {
-      const user = await this.user.getByEmail(email);
-      await this.verifyPassword(plainTextPassword, user.password);
-      return user;
+      return await this.auth.login({ email, password });
     } catch (error) {
-      throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
-    }
-  }
-
-  private async verifyPassword(plainTextPassword: string, hashedPassword: string) {
-    const isPasswordMatching = await compare(plainTextPassword, hashedPassword);
-    if (!isPasswordMatching) {
       throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
     }
   }
