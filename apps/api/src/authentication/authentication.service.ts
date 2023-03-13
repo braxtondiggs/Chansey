@@ -35,17 +35,12 @@ export class AuthenticationService {
   public async getAuthenticatedUser(email: string, password: string) {
     try {
       const authUser = await this.auth.login({ email, password });
-      if (authUser) {
-        return this.user
-          .getById(authUser.user.id)
-          .then(() => {
-            return authUser;
-          })
-          .catch(async () => {
-            await this.user.create(authUser.user.id);
-            return authUser;
-          });
-      }
+      if (!authUser) return authUser;
+      return await this.user
+        .getById(authUser.user.id)
+        .then(() => authUser)
+        .catch(async () => await this.user.create(authUser.user.id))
+        .finally(() => authUser);
     } catch (error) {
       throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
     }
