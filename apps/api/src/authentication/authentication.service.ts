@@ -9,9 +9,9 @@ export class AuthenticationService {
   constructor(private readonly user: UsersService) {}
 
   public auth = new Authorizer({
-    authorizerURL: 'https://authorizer-production-ffa1.up.railway.app',
+    authorizerURL: 'https://auth.cymbit.com/',
     clientID: '9c5ae276-7627-4240-bb9d-8b4bff96891b',
-    redirectURL: 'https://chansey.up.railway.app'
+    redirectURL: 'https://cymbit.com/auth/callback'
   });
 
   public async register(registrationData: CreateUserDto) {

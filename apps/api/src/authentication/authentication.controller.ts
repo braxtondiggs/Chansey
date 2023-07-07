@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
 
 import { AuthenticationService } from './authentication.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LogInDto } from './dto/login.dto';
 import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
@@ -39,5 +40,11 @@ export class AuthenticationController {
   async logOut(@Res() response: FastifyReply) {
     response.header('Set-Cookie', this.authentication.getCookieForLogOut());
     return { message: 'Logout successful' };
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({})
+  async forgotPassword(@Body() { email }: ForgotPasswordDto) {
+    return this.authentication.auth.forgotPassword({ email });
   }
 }
