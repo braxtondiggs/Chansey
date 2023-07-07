@@ -10,7 +10,7 @@ export class AuthenticationService {
 
   public auth = new Authorizer({
     authorizerURL: 'https://auth.cymbit.com/',
-    clientID: '9c5ae276-7627-4240-bb9d-8b4bff96891b',
+    clientID: '36df15e4-a0c6-4881-8ed7-6bbb61f4e5f0',
     redirectURL: 'https://cymbit.com/auth/callback'
   });
 
