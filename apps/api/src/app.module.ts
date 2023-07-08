@@ -1,6 +1,6 @@
 import { join } from 'path';
 
-import { MiddlewareConsumer, Module, NestModule, OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
@@ -11,6 +11,7 @@ import { AuthenticationModule } from './authentication/authentication.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
 import { HealthModule } from './health/health.module';
+import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
 import { TaskModule } from './task/task.module';
@@ -53,6 +54,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     CategoryModule,
     CoinModule,
     HealthModule,
+    OrderModule,
     PortfolioModule,
     PriceModule,
     TaskModule
