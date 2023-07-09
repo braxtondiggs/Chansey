@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import Binance from 'binance-api-node';
+import Binance, { Binance as BinanceClient } from 'binance-api-node';
 import { instanceToPlain } from 'class-transformer';
 import { Repository } from 'typeorm';
 
@@ -9,6 +9,8 @@ import User from './users.entity';
 
 @Injectable()
 export default class UsersService {
+  binance: BinanceClient;
+
   constructor(
     @InjectRepository(User)
     private readonly user: Repository<User>
@@ -28,13 +30,15 @@ export default class UsersService {
   }
 
   getBinance(user: User) {
+    if (this.binance) return this.binance;
     user = instanceToPlain(new User(user)) as User;
-    return Binance({
+    this.binance = Binance({
       apiKey: user.binanceAPIKey,
       apiSecret: user.binanceSecretKey,
       httpBase: 'https://api.binance.us'
       // httpFuturesBase: 'https://fapi.binance.us'
     });
+    return this.binance;
   }
 
   async getBinanceInfo(user: User) {
