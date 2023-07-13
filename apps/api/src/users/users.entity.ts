@@ -13,6 +13,7 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
+import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
 
 @Entity()
@@ -96,6 +97,9 @@ export default class User {
 
   @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { onDelete: 'CASCADE' })
   portfolios: Portfolio[];
+
+  @OneToMany(() => Order, (order) => order.user, { onDelete: 'CASCADE' })
+  orders: Order[];
 
   constructor(partial: Partial<User>) {
     Object.assign(this, partial);
