@@ -5,6 +5,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
 
+import { AlgorithmModule } from './algorithm/algorithm.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthenticationModule } from './authentication/authentication.module';
@@ -50,6 +51,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       username: process.env.PGUSER,
       uuidExtension: 'pgcrypto'
     }),
+    AlgorithmModule,
     AuthenticationModule,
     CategoryModule,
     CoinModule,
