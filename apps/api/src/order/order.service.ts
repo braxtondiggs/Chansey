@@ -15,16 +15,6 @@ export class OrderService {
     private readonly user: UsersService
   ) {}
 
-  async createTestOrder(side: OrderSide_LT, order: OrderDto, user: User) {
-    const binance = this.user.getBinance(user);
-    return await binance.orderTest({
-      symbol: order.symbol,
-      side,
-      quantity: order.quantity,
-      type: OrderType.MARKET as any
-    });
-  }
-
   async createOrder(side: OrderSide_LT, order: OrderDto, user: User) {
     const { symbol, quantity } = await this.isExchangeValid(order, OrderType.MARKET, user);
     const binance = this.user.getBinance(user);
@@ -63,12 +53,12 @@ export class OrderService {
     return await binance.openOrders({ symbol: 'BTCUSD' });
   }
 
-  private async getExchangeInfo(symbol: string, user: User) {
+  private async getExchangeInfo(symbol: string, user?: User) {
     const binance = this.user.getBinance(user);
     return await binance.exchangeInfo({ symbol });
   }
 
-  private async isExchangeValid(order: OrderDto, orderType: OrderType, user: User) {
+  async isExchangeValid(order: OrderDto, orderType: OrderType, user?: User) {
     const { symbols } = await this.getExchangeInfo(order.symbol, user);
     const filters = symbols[0].filters;
     const priceFilter = filters.find((filter) => filter.filterType === 'PRICE_FILTER') as SymbolPriceFilter;

@@ -7,7 +7,7 @@ import UsersService from '../users/users.service';
 
 @Injectable()
 export class AuthenticationService {
-  constructor(readonly configService: ConfigService, private readonly user: UsersService) {}
+  constructor(readonly config: ConfigService, private readonly user: UsersService) {}
 
   public auth = new Authorizer({
     authorizerURL: 'https://auth.cymbit.com/',
@@ -48,7 +48,7 @@ export class AuthenticationService {
   }
 
   public validateAPIKey(key: string) {
-    const APIKey = this.configService.get('CHANSEY_API_KEY');
+    const APIKey = this.config.get('CHANSEY_API_KEY');
     if (key?.split(' ')[1] === APIKey) return true;
   }
 }
