@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import Binance, { Binance as BinanceClient } from 'binance-api-node';
 import { instanceToPlain } from 'class-transformer';
@@ -13,7 +14,8 @@ export default class UsersService {
 
   constructor(
     @InjectRepository(User)
-    private readonly user: Repository<User>
+    private readonly user: Repository<User>,
+    private readonly config: ConfigService
   ) {}
 
   async create(id: string) {
@@ -29,8 +31,17 @@ export default class UsersService {
     return await this.user.findOneByOrFail({ id });
   }
 
+  getDefaultBinance() {
+    return Binance({
+      apiKey: this.config.get('BINANCE_API_KEY'),
+      apiSecret: this.config.get('BINANCE_SECRET_KEY'),
+      httpBase: 'https://api.binance.us'
+    });
+  }
+
   getBinance(user: User) {
     if (this.binance) return this.binance;
+    if (!user) return this.getDefaultBinance();
     user = instanceToPlain(new User(user)) as User;
     this.binance = Binance({
       apiKey: user.binanceAPIKey,

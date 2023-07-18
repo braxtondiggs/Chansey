@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 
 import { OrderDto } from './dto/order.dto';
 import { OrderService } from './order.service';
+import { TestnetService } from './testnet/testnet.service';
+import { APIAuthenticationGuard } from '../authentication/guard/api-authentication.guard';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 import FindOneParams from '../utils/findOneParams';
@@ -11,7 +13,7 @@ import FindOneParams from '../utils/findOneParams';
 @ApiBearerAuth('token')
 @Controller('order')
 export class OrderController {
-  constructor(private readonly order: OrderService) {}
+  constructor(private readonly order: OrderService, private readonly testnet: TestnetService) {}
 
   @Get()
   @UseGuards(JwtAuthenticationGuard)
@@ -49,16 +51,22 @@ export class OrderController {
   }
 
   @Post('buy/test')
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({})
-  async createTestBuyOrder(@Body() dto: OrderDto, @Req() { user }: RequestWithUser) {
-    return this.order.createTestOrder('BUY', dto, user);
+  @UseGuards(APIAuthenticationGuard)
+  @ApiOperation({
+    summary: 'Create a test buy order',
+    description: 'This endpoint is used to create a test buy order. It will not be executed on the exchange.'
+  })
+  async createTestBuyOrder(@Body() dto: OrderDto) {
+    return this.testnet.createOrder('BUY', dto);
   }
 
   @Post('sell/test')
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({})
-  async createTestSellOrder(@Body() dto: OrderDto, @Req() { user }: RequestWithUser) {
-    return this.order.createTestOrder('SELL', dto, user);
+  @UseGuards(APIAuthenticationGuard)
+  @ApiOperation({
+    summary: 'Create a test sell order',
+    description: 'This endpoint is used to create a test sell order. It will not be executed on the exchange.'
+  })
+  async createTestSellOrder(@Body() dto: OrderDto) {
+    return 'Sup'; // this.testnet.createOrder('SELL', dto, user);
   }
 }
