@@ -6,5 +6,8 @@
   "prettier.configPath": ".prettierrc",
   "[typescript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "editor.codeActionsOnSave": {
+    "source.addMissingImports": true
   }
 }

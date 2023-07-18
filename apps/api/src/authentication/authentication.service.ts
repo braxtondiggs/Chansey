@@ -1,12 +1,13 @@
 import { Authorizer } from '@authorizerdev/authorizer-js';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import UsersService from '../users/users.service';
 
 @Injectable()
 export class AuthenticationService {
-  constructor(private readonly user: UsersService) {}
+  constructor(readonly configService: ConfigService, private readonly user: UsersService) {}
 
   public auth = new Authorizer({
     authorizerURL: 'https://auth.cymbit.com/',
@@ -44,5 +45,10 @@ export class AuthenticationService {
     } catch (error) {
       throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
     }
+  }
+
+  public validateAPIKey(key: string) {
+    const APIKey = this.configService.get('CHANSEY_API_KEY');
+    if (key?.split(' ')[1] === APIKey) return true;
   }
 }
