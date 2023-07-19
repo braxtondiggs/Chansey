@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import {
   Column,
   CreateDateColumn,
@@ -15,9 +16,11 @@ import User from '../users/users.entity';
 @Entity()
 export class Portfolio {
   @PrimaryGeneratedColumn('uuid')
+  @ApiProperty()
   id: string;
 
   @Column({ default: 'manual' })
+  @ApiProperty()
   type: string;
 
   @CreateDateColumn({ select: false })
@@ -28,6 +31,7 @@ export class Portfolio {
 
   @ManyToOne(() => Coin, (coin) => coin.portfolios)
   @JoinTable()
+  @ApiProperty({ type: Coin })
   coin: Coin;
 
   @ManyToOne(() => User, (user) => user.portfolios)

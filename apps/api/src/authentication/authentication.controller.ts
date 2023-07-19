@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
 
 import { AuthenticationService } from './authentication.service';
@@ -16,7 +16,7 @@ export class AuthenticationController {
   constructor(private readonly authentication: AuthenticationService) {}
 
   @Post('register')
-  @ApiOperation({})
+  @ApiOperation({ description: 'Register a new user', summary: 'Register' })
   async register(@Body() user: CreateUserDto) {
     return this.authentication.register(user);
   }
@@ -24,7 +24,9 @@ export class AuthenticationController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(LocalAuthenticationGuard)
   @Post('login')
-  @ApiOperation({})
+  @ApiOperation({ description: 'Login to the application', summary: 'Login' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'User logged in successfully' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid credentials' })
   @ApiBody({ type: LogInDto })
   @ApiBearerAuth('token')
   async logIn(@Req() { user }: RequestWithUser, @Res() response: FastifyReply) {
@@ -35,7 +37,9 @@ export class AuthenticationController {
 
   @UseGuards(JwtAuthenticationGuard)
   @Post('logout')
-  @ApiOperation({})
+  @ApiOperation({ description: 'Logout of the application', summary: 'Logout' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'User logged out successfully' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid credentials' })
   @ApiBearerAuth('token')
   async logOut(@Res() response: FastifyReply) {
     response.header('Set-Cookie', this.authentication.getCookieForLogOut());
@@ -43,7 +47,7 @@ export class AuthenticationController {
   }
 
   @Post('forgot-password')
-  @ApiOperation({})
+  @ApiOperation({ description: 'Forgot password', summary: 'Forgot password' })
   async forgotPassword(@Body() { email }: ForgotPasswordDto) {
     return this.authentication.auth.forgotPassword({ email });
   }
