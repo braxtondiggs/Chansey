@@ -35,6 +35,16 @@ async function bootstrap() {
         },
         'token'
       )
+      .addApiKey(
+        {
+          type: 'apiKey',
+          name: 'Api-Key',
+          scheme: 'apiKey',
+          description: 'Enter API key',
+          in: 'header'
+        },
+        'api-key'
+      )
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document, {
