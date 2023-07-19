@@ -9,8 +9,8 @@ export class ApiKeyStrategy extends PassportStrategy(HeaderAPIKeyStrategy, 'api-
   constructor(private readonly authentication: AuthenticationService) {
     super(
       {
-        header: 'Authorization',
-        prefix: 'Api-Key'
+        header: 'Api-Key',
+        prefix: ''
       },
       true,
       async (apiKey: string, done: (error: Error | null, valid?: boolean) => void) => {

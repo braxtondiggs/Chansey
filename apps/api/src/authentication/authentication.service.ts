@@ -49,6 +49,6 @@ export class AuthenticationService {
 
   public validateAPIKey(key: string) {
     const APIKey = this.config.get('CHANSEY_API_KEY');
-    if (key?.split(' ')[1] === APIKey) return true;
+    if (key === APIKey) return true;
   }
 }
