@@ -27,6 +27,6 @@ export class TestnetController {
     description: 'This endpoint is used to create a test sell order. It will not be executed on the exchange.'
   })
   async createTestSellOrder(@Body() dto: OrderDto) {
-    return 'Sup'; // this.testnet.createOrder('SELL', dto, user);
+    return this.testnet.createOrder('SELL', dto);
   }
 }
