@@ -11,11 +11,13 @@ import { AppService } from './app.service';
 import { AuthenticationModule } from './authentication/authentication.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
+import { ExchangeModule } from './exchange/exchange.module';
 import { HealthModule } from './health/health.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
 import { TaskModule } from './task/task.module';
+import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
 @Module({
@@ -55,6 +57,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     AuthenticationModule,
     CategoryModule,
     CoinModule,
+    ExchangeModule,
     HealthModule,
     OrderModule,
     PortfolioModule,
@@ -62,6 +65,12 @@ const isProduction = process.env.NODE_ENV === 'production';
     TaskModule
   ],
   controllers: [AppController],
-  providers: [AppService]
+  providers: [
+    AppService,
+    {
+      provide: 'APP_FILTER',
+      useClass: HttpExceptionFilter
+    }
+  ]
 })
 export class AppModule {}
