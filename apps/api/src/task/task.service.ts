@@ -6,6 +6,9 @@ import { firstValueFrom } from 'rxjs';
 
 import { CategoryService } from '../category/category.service';
 import { CoinService } from '../coin/coin.service';
+import { Exchange } from '../exchange/exchange.entity';
+import { ExchangeService } from '../exchange/exchange.service';
+import { TickerService } from '../exchange/ticker/ticker.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PriceService } from '../price/price.service';
 
@@ -17,9 +20,11 @@ export class TaskService {
   constructor(
     private readonly category: CategoryService,
     private readonly coin: CoinService,
+    private readonly exchange: ExchangeService,
     private readonly http: HttpService,
     private readonly portfolio: PortfolioService,
-    private readonly price: PriceService
+    private readonly price: PriceService,
+    private readonly ticker: TickerService
   ) {}
 
   @Cron('0 0 * * MON', {
@@ -83,6 +88,73 @@ export class TaskService {
       }));
 
       await Promise.all(data.map((price) => this.price.create(price)));
+    } catch (e) {
+      this.logger.error(e);
+    }
+  }
+
+  @Cron('45 0 * * MON', {
+    name: 'scrape coin exchanges and tickers',
+    disabled: process.env.NODE_ENV === 'development'
+  }) // every monday at 12:45:00 AM
+  async exchanges() {
+    try {
+      const supported_exchanges = ['binance_us']; //, 'coinbase_pro', 'gemini', 'kraken', 'kucoin'];
+      for (const exchange_slug of supported_exchanges) {
+        const data = await this.gecko.exchangeId(exchange_slug);
+        const coins = await this.coin.getCoins();
+        const exchanges = await this.exchange.getExchanges();
+        const { tickers } = data;
+
+        for (const ticker of tickers) {
+          console.log(data);
+          await this.exchange.updateExchange(
+            exchange_slug,
+            new Exchange({
+              name: data.name,
+              slug: exchange_slug,
+              url: data.url,
+              image: data.image,
+              country: data.country,
+              yearEstablished: data.year_established,
+              trustScore: data.trust_score,
+              trustScoreRank: data.trust_score_rank,
+              tradeVolume24HBtc: data.trade_volume_24h_btc,
+              tradeVolume24HNormalized: data.trade_volume_24h_btc_normalized,
+              facebook: data.facebook_url,
+              reddit: data.reddit_url,
+              telegram: data.telegram_url,
+              twitter: data.twitter_handle,
+              otherUrl1: data.other_url_1,
+              otherUrl2: data.other_url_2,
+              centralized: data.centralized
+            })
+          );
+          if (ticker.is_anomaly || ticker.is_stale) {
+            const { id = null } = await this.ticker.getTickerByCoin(
+              ticker.coin_id,
+              ticker.target_coin_id,
+              ticker.market.identifier
+            );
+            if (id) this.ticker.deleteTicker(id);
+            return;
+          }
+          const base_coin = coins.find((coin) => coin.symbol === ticker.base.toLowerCase());
+          const target_coin = coins.find((coin) => coin.symbol === ticker.target.toLowerCase());
+          const exchange = exchanges.find((ex) => ex.slug === ticker.market.identifier.toLowerCase());
+          if (!base_coin || !target_coin || !exchange) return;
+          await this.ticker.saveTicker({
+            coin: base_coin,
+            target: target_coin,
+            exchange,
+            volume: ticker.volume,
+            lastTraded: ticker.last_traded_at,
+            fetchAt: ticker.last_fetch_at,
+            tradeUrl: ticker.trade_url,
+            spreedPercentage: ticker.bid_ask_spread_percentage
+          });
+        }
+      }
     } catch (e) {
       this.logger.error(e);
     }

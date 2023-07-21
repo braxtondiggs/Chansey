@@ -8,6 +8,11 @@ export class CreateExchangeDto {
   name: string;
 
   @IsString()
+  @IsNotEmpty()
+  @ApiProperty()
+  slug: string;
+
+  @IsString()
   @ApiProperty()
   description?: string;
 
@@ -74,8 +79,4 @@ export class CreateExchangeDto {
   @IsUrl()
   @ApiProperty()
   otherUrl2?: string;
-
-  @IsUrl()
-  @ApiProperty()
-  otherUrl3?: string;
 }

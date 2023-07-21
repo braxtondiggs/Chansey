@@ -21,13 +21,21 @@ export class ExchangeService {
     return await this.exchange.findOne({ where: { id: exchangeId } });
   }
 
+  async getExchangeByName(name: string): Promise<Exchange> {
+    return await this.exchange.findOne({ where: { name: ILike(`%${name}%`) } });
+  }
+
+  async getExchangeBySlug(slug: string): Promise<Exchange> {
+    return await this.exchange.findOne({ where: { slug } });
+  }
+
   async createExchange(Exchange: CreateExchangeDto): Promise<Exchange> {
     const coin = await this.exchange.findOne({ where: { name: ILike(`%${Exchange.name}%`) } });
     return coin ?? ((await this.exchange.insert(Exchange)).generatedMaps[0] as Exchange);
   }
 
-  async updateExchange(exchangeId: string, dto: UpdateExchangeDto): Promise<Exchange> {
-    const data = this.getExchangeById(exchangeId);
+  async updateExchange(exchangeSlug: string, dto: UpdateExchangeDto): Promise<Exchange> {
+    const data = await this.getExchangeBySlug(exchangeSlug);
     return await this.exchange.save(new Exchange({ ...data, ...dto }));
   }
 

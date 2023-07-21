@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsString, IsUrl } from 'class-validator';
 
 import { Coin } from '../../../coin/coin.entity';
 import { Exchange } from '../../exchange.entity';
@@ -10,13 +10,9 @@ export class CreateTickerDto {
   @ApiProperty()
   volume: number;
 
-  @IsBoolean()
+  @IsNumber()
   @ApiProperty()
-  stale?: boolean;
-
-  @IsBoolean()
-  @ApiProperty()
-  anomaly?: boolean;
+  spreedPercentage?: number;
 
   @IsDateString()
   @ApiProperty()
@@ -25,6 +21,10 @@ export class CreateTickerDto {
   @IsDateString()
   @ApiProperty()
   fetchAt: Date;
+
+  @IsUrl()
+  @ApiProperty()
+  tradeUrl?: string;
 
   @IsString()
   @IsNotEmpty()

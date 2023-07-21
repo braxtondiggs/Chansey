@@ -19,6 +19,10 @@ export class Exchange {
 
   @Column({ unique: true })
   @ApiProperty()
+  slug: string;
+
+  @Column({ unique: true })
+  @ApiProperty()
   name: string;
 
   @Column({ nullable: true })
@@ -45,11 +49,11 @@ export class Exchange {
   @ApiProperty()
   trustScoreRank?: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
   @ApiProperty()
   tradeVolume24HBtc?: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
   @ApiProperty()
   tradeVolume24HNormalized?: number;
 
@@ -88,10 +92,6 @@ export class Exchange {
   @Column({ nullable: true })
   @ApiProperty()
   otherUrl2?: string;
-
-  @Column({ nullable: true })
-  @ApiProperty()
-  otherUrl3?: string;
 
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
