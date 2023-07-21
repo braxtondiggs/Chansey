@@ -19,17 +19,17 @@ export class Ticker {
   @ApiProperty()
   id: string;
 
-  @Column({ type: 'decimal' })
+  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
   @ApiProperty()
   volume: number;
 
-  @Column({ default: false })
+  @Column({ nullable: true })
   @ApiProperty()
-  stale?: boolean;
+  tradeUrl?: string;
 
-  @Column({ default: false })
+  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
   @ApiProperty()
-  anomaly?: boolean;
+  spreedPercentage?: number;
 
   @Column({ type: 'timestamptz' })
   @ApiProperty()

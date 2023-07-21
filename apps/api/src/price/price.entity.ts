@@ -9,7 +9,7 @@ export class Price {
   @ApiProperty()
   id: string;
 
-  @Column({ type: 'decimal' })
+  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
   @ApiProperty()
   price: number;
 

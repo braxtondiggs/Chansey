@@ -49,7 +49,7 @@ export class PortfolioService {
   }
 
   async updatePortfolioItem(portfolioId: string, userId: string, dto: UpdatePortfolioDto): Promise<Portfolio> {
-    const data = this.getPortfolioById(portfolioId, userId);
+    const data = await this.getPortfolioById(portfolioId, userId);
     return await this.portfolio.save(new Portfolio({ ...data, ...dto }));
   }
 
