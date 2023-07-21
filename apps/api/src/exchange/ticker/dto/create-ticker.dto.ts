@@ -12,7 +12,7 @@ export class CreateTickerDto {
 
   @IsNumber()
   @ApiProperty()
-  spreedPercentage?: number;
+  spreadPercentage?: number;
 
   @IsDateString()
   @ApiProperty()

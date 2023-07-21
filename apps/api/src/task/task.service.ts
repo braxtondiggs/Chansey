@@ -80,10 +80,17 @@ export class TaskService {
       const portfolio = await this.portfolio.getPortfolio();
       const coins = [...new Set(portfolio.map(({ coin }) => coin))];
       const ids = coins.map(({ slug }) => slug).join(',');
-      const prices = await this.gecko.simplePrice({ ids, vs_currencies: 'usd' });
+      const prices = await this.gecko.simplePrice({
+        ids,
+        vs_currencies: 'usd',
+        include_market_cap: true,
+        include_last_updated_at: true
+      });
 
       const data = Object.keys(coins).map((key) => ({
         price: prices[coins[key].slug].usd,
+        marketCap: prices[coins[key].slug].usd_market_cap,
+        geckoLastUpdatedAt: new Date(prices[coins[key].slug].last_updated_at * 1000),
         coin: coins[key].id
       }));
 
@@ -107,7 +114,6 @@ export class TaskService {
         const { tickers } = data;
 
         for (const ticker of tickers) {
-          console.log(data);
           await this.exchange.updateExchange(
             exchange_slug,
             new Exchange({
@@ -151,12 +157,53 @@ export class TaskService {
             lastTraded: ticker.last_traded_at,
             fetchAt: ticker.last_fetch_at,
             tradeUrl: ticker.trade_url,
-            spreedPercentage: ticker.bid_ask_spread_percentage
+            spreadPercentage: ticker.bid_ask_spread_percentage
           });
         }
       }
     } catch (e) {
       this.logger.error(e);
     }
+  }
+
+  @Cron('0 23 * * *', {
+    name: 'scrape coin exchanges and tickers',
+    disabled: process.env.NODE_ENV === 'development'
+  }) // every day at 11:00:00 PM
+  async coinDetailed() {
+    this.logger.log('Detailed Coins Cron');
+    const portfolio = await this.portfolio.getPortfolio();
+    const coins = [...new Set(portfolio.map(({ coin }) => coin))];
+
+    for (const { id, slug } of coins) {
+      const coin = await this.gecko.coinId({ id: slug, localization: false, tickers: false });
+
+      this.coin.update(id, {
+        description: coin.description.en,
+        image: coin.image.large || coin.image.small || coin.image.thumb,
+        genesis: coin.genesis_date,
+        totalSupply: coin.market_data.total_supply,
+        circulatingSupply: coin.market_data.circulating_supply,
+        maxSupply: coin.market_data.max_supply,
+        marketRank: coin.market_cap_rank,
+        geckoRank: coin.coingecko_rank,
+        developerScore: coin.developer_score,
+        communityScore: coin.community_score,
+        liquidityScore: coin.liquidity_score,
+        publicInterestScore: coin.public_interest_score,
+        sentimentUp: coin.sentiment_votes_up_percentage,
+        sentimentDown: coin.sentiment_votes_down_percentage,
+        ath: coin.market_data.ath.usd,
+        atl: coin.market_data.atl.usd,
+        athDate: coin.market_data.ath_date.usd,
+        atlDate: coin.market_data.atl_date.usd,
+        athChange: coin.market_data.ath_change_percentage.usd,
+        atlChange: coin.market_data.atl_change_percentage.usd,
+        geckoLastUpdatedAt: coin.market_data.last_updated
+      });
+    }
+  }
+  catch(e) {
+    this.logger.error(e);
   }
 }

@@ -19,7 +19,7 @@ export class Ticker {
   @ApiProperty()
   id: string;
 
-  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
+  @Column({ type: 'decimal', default: 0 })
   @ApiProperty()
   volume: number;
 
@@ -27,9 +27,9 @@ export class Ticker {
   @ApiProperty()
   tradeUrl?: string;
 
-  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
+  @Column({ type: 'decimal', default: 0 })
   @ApiProperty()
-  spreedPercentage?: number;
+  spreadPercentage?: number;
 
   @Column({ type: 'timestamptz' })
   @ApiProperty()

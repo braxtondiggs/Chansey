@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CoinGeckoClient } from 'coingecko-api-v3';
 import { Repository } from 'typeorm';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
@@ -9,7 +8,6 @@ import User from '../users/users.entity';
 
 @Injectable()
 export class PortfolioService {
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   constructor(@InjectRepository(Portfolio) private readonly portfolio: Repository<Portfolio>) {}
 
   async getPortfolio(): Promise<Portfolio[]> {
@@ -34,8 +32,8 @@ export class PortfolioService {
   }
 
   async createPortfolioItem(Portfolio: CreatePortfolioDto, user: User): Promise<Portfolio> {
-    //const coin = await this.gecko.coinId({ id: dto.coin, localization: false, developer_data: false });
     const portfolio = await this.portfolio.findOne({
+      // NOTE: For some stupid ass reason if the coin id is incorrect (Must be UUID) then typeorm will just omit the where statement for the coin. Resulting in just the users profile to return. Need ta fix for this would be very confusing down the road. Can lookup coin to see if valid first but this omits the whole purpose
       where: {
         coin: {
           id: Portfolio.coin.id
