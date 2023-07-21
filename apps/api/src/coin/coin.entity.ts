@@ -9,6 +9,7 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
+import { Ticker } from '../exchange/ticker/ticker.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { Price } from '../price/price.entity';
 
@@ -48,31 +49,71 @@ export class Coin {
 
   @Column({ nullable: true })
   @ApiProperty()
+  totalSupply?: number;
+
+  @Column({ nullable: true })
+  @ApiProperty()
+  circulatingSupply?: number;
+
+  @Column({ nullable: true })
+  @ApiProperty()
+  maxSupply?: number;
+
+  @Column({ nullable: true })
+  @ApiProperty()
   geckoRank?: number;
 
-  @Column({ type: 'decimal', nullable: true })
+  @Column({ type: 'decimal', default: null })
   @ApiProperty()
   developerScore?: number;
 
-  @Column({ type: 'decimal', nullable: true })
+  @Column({ type: 'decimal', default: null })
   @ApiProperty()
   communityScore?: number;
 
-  @Column({ type: 'decimal', nullable: true })
+  @Column({ type: 'decimal', default: null })
   @ApiProperty()
   liquidityScore?: number;
 
-  @Column({ type: 'decimal', nullable: true })
+  @Column({ type: 'decimal', default: null })
   @ApiProperty()
   publicInterestScore?: number;
 
-  @Column({ type: 'decimal', nullable: true })
+  @Column({ type: 'decimal', default: null })
   @ApiProperty()
-  sentiment_up?: number;
+  sentimentUp?: number;
 
-  @Column({ type: 'decimal', nullable: true })
+  @Column({ type: 'decimal', default: null })
   @ApiProperty()
-  sentiment_down?: number;
+  sentimentDown?: number;
+
+  @Column({ type: 'decimal', default: null })
+  @ApiProperty()
+  ath: number;
+
+  @Column({ type: 'decimal', default: null })
+  @ApiProperty()
+  athChange: number;
+
+  @Column({ type: 'timestamptz', default: null })
+  @ApiProperty()
+  athDate: Date;
+
+  @Column({ type: 'decimal', default: null })
+  @ApiProperty()
+  atl: number;
+
+  @Column({ type: 'decimal', default: null })
+  @ApiProperty()
+  atlChange: number;
+
+  @Column({ type: 'timestamptz', default: null })
+  @ApiProperty()
+  atlDate: Date;
+
+  @Column({ type: 'timestamptz', default: null })
+  @ApiProperty()
+  geckoLastUpdatedAt: Date;
 
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
@@ -93,6 +134,13 @@ export class Coin {
     isArray: true
   })
   prices: Price[];
+
+  @OneToMany(() => Ticker, (ticker) => ticker.coin)
+  @ApiProperty({
+    type: Ticker,
+    isArray: true
+  })
+  tickers: Ticker[];
 
   constructor(partial: Partial<Coin>) {
     Object.assign(this, partial);

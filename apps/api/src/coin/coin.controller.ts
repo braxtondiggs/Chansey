@@ -1,9 +1,10 @@
-import { Controller, Get, HttpStatus, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Param, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 import FindOneParams from '../utils/findOneParams';
 
 @ApiTags('Coin')
@@ -28,5 +29,22 @@ export class CoinController {
   @ApiResponse({ status: HttpStatus.OK, description: 'The coin record', type: Coin, isArray: false })
   getCoinById(@Param() { id }: FindOneParams): Promise<Coin> {
     return this.coin.getCoinById(id);
+  }
+
+  @Get('symbol/:symbol')
+  @UseGuards(JwtAuthenticationGuard)
+  @ApiParam({ name: 'symbol', required: true, description: 'The symbol of the coin', type: String })
+  @ApiOperation({ summary: 'Get coin by symbol', description: 'This endpoint is used to get a coin by symbol.' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'The coin record', type: Coin, isArray: false })
+  getCoinBySymbol(@Param() { symbol }): Promise<Coin> {
+    return this.coin.getCoinBySymbol(symbol, true);
+  }
+
+  @Get('exchange')
+  @UseGuards(JwtAuthenticationGuard)
+  @ApiParam({ name: 'exchange', required: true, description: 'The exchange of the coin', type: String })
+  @ApiOperation({ summary: 'Get coin by exchange', description: 'This endpoint is used to get a coin by exchange.' })
+  getCoinByExchange(@Req() { user }: RequestWithUser): Promise<any> {
+    return this.coin.getExchangeInfo(user);
   }
 }

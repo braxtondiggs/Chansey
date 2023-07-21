@@ -9,9 +9,17 @@ export class Price {
   @ApiProperty()
   id: string;
 
-  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
+  @Column({ type: 'decimal', default: 0 })
   @ApiProperty()
   price: number;
+
+  @Column({ type: 'decimal', default: 0 })
+  @ApiProperty()
+  marketCap: number;
+
+  @Column({ type: 'timestamptz' })
+  @ApiProperty()
+  geckoLastUpdatedAt: Timestamp;
 
   @ManyToOne(() => Coin, (coin) => coin.prices, { eager: true })
   coin: Coin;

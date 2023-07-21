@@ -49,11 +49,11 @@ export class Exchange {
   @ApiProperty()
   trustScoreRank?: number;
 
-  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
+  @Column({ type: 'decimal', default: 0 })
   @ApiProperty()
   tradeVolume24HBtc?: number;
 
-  @Column({ type: 'decimal', precision: 30, scale: 15, default: 0 })
+  @Column({ type: 'decimal', default: 0 })
   @ApiProperty()
   tradeVolume24HNormalized?: number;
 
