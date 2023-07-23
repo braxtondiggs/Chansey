@@ -53,7 +53,7 @@ export class Ticker {
   @JoinTable()
   coin: Coin;
 
-  @ManyToOne(() => Coin)
+  @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true })
   @JoinTable()
   target: Coin;
 
