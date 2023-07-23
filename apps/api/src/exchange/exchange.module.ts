@@ -9,6 +9,7 @@ import { TickerService } from './ticker/ticker.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Exchange, Ticker])],
+  exports: [ExchangeService, TickerService],
   controllers: [ExchangeController],
   providers: [ExchangeService, TickerService]
 })

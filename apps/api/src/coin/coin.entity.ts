@@ -146,3 +146,9 @@ export class Coin {
     Object.assign(this, partial);
   }
 }
+
+export enum CoinRelations {
+  PRICES = 'prices',
+  PORTFOLIOS = 'portfolios',
+  TICKERS = 'tickers'
+}
