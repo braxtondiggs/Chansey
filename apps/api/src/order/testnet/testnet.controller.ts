@@ -1,9 +1,10 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 
+import { TestnetDto } from './dto/testnet.dto';
 import { TestnetService } from './testnet.service';
 import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
-import { OrderDto } from '../dto/order.dto';
+import { OrderSide } from '../order.entity';
 
 @ApiTags('Order')
 @UseGuards(APIAuthenticationGuard)
@@ -17,8 +18,8 @@ export class TestnetController {
     summary: 'Create a test buy order',
     description: 'This endpoint is used to create a test buy order. It will not be executed on the exchange.'
   })
-  async createTestBuyOrder(@Body() dto: OrderDto) {
-    return this.testnet.createOrder('BUY', dto);
+  async createTestBuyOrder(@Body() dto: TestnetDto) {
+    return this.testnet.createOrder(OrderSide.BUY, dto);
   }
 
   @Post('sell')
@@ -26,7 +27,7 @@ export class TestnetController {
     summary: 'Create a test sell order',
     description: 'This endpoint is used to create a test sell order. It will not be executed on the exchange.'
   })
-  async createTestSellOrder(@Body() dto: OrderDto) {
-    return this.testnet.createOrder('SELL', dto);
+  async createTestSellOrder(@Body() dto: TestnetDto) {
+    return this.testnet.createOrder(OrderSide.SELL, dto);
   }
 }

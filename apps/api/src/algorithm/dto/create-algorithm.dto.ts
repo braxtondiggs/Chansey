@@ -1,11 +1,13 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsNotEmpty, IsString } from 'class-validator';
 
 export class CreateAlgorithmDto {
   @IsNotEmpty()
   @IsString()
+  @ApiProperty({ example: 'Test Algorithm' })
   name: string;
 
   @IsBoolean()
-  @IsNotEmpty()
-  status: boolean;
+  @ApiProperty({ example: true })
+  status?: boolean;
 }
