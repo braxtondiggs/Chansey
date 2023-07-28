@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { Algorithm } from './../algorithm/algorithm.entity';
+import { AlgorithmService } from './../algorithm/algorithm.service';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
@@ -16,7 +18,7 @@ import UsersService from '../users/users.service';
 @Module({
   controllers: [OrderController, TestnetController],
   exports: [OrderService, TestnetService],
-  imports: [ConfigModule, TypeOrmModule.forFeature([Order, Testnet, Ticker, User])],
-  providers: [OrderService, UsersService, TestnetService, TickerService]
+  imports: [ConfigModule, TypeOrmModule.forFeature([Algorithm, Order, Testnet, Ticker, User])],
+  providers: [AlgorithmService, OrderService, UsersService, TestnetService, TickerService]
 })
 export class OrderModule {}

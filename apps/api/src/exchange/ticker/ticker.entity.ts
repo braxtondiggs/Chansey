@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  AfterLoad,
   Column,
   CreateDateColumn,
   Entity,
@@ -39,6 +40,12 @@ export class Ticker {
   @ApiProperty()
   fetchAt: Date;
 
+  public symbol: string;
+  @AfterLoad()
+  getSymbol() {
+    this.symbol = `${this.coin.symbol}${this.target.symbol}`.toUpperCase();
+  }
+
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
 
@@ -49,7 +56,7 @@ export class Ticker {
   @JoinTable()
   exchange: Exchange;
 
-  @ManyToOne(() => Coin)
+  @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true })
   @JoinTable()
   coin: Coin;
 

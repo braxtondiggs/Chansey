@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
+import { TestnetDto } from './testnet/dto/testnet.dto';
 import User from '../users/users.entity';
 import UsersService from '../users/users.service';
 
@@ -58,7 +59,7 @@ export class OrderService {
     return await binance.exchangeInfo({ symbol });
   }
 
-  async isExchangeValid(order: OrderDto, orderType: OrderType, user?: User) {
+  async isExchangeValid(order: OrderDto | TestnetDto, orderType: OrderType, user?: User) {
     try {
       const { symbols } = await this.getExchangeInfo(order.symbol, user);
       const filters = symbols[0].filters;
@@ -86,7 +87,7 @@ export class OrderService {
       // if (+order.quantity * +order.price < minNotionalValue) throw new Error('Order is less than minimum notional value');
       if (+order.quantity % stepSize) {
         const precision = symbols[0].quotePrecision;
-        order.quantity = (+order.quantity - (+order.quantity % stepSize)).toFixed(precision).toString();
+        order.quantity = parseFloat((+order.quantity - (+order.quantity % stepSize)).toFixed(precision)).toString();
       }
       return order;
     } catch (e) {
