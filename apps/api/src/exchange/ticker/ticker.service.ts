@@ -9,7 +9,11 @@ import { Ticker } from './ticker.entity';
 export class TickerService {
   constructor(@InjectRepository(Ticker) private readonly ticker: Repository<Ticker>) {}
 
-  async getTickerByCoin(base: string, target: string, exchange: string): Promise<Ticker> {
+  async getTickerByCoin(
+    base: string,
+    target: string,
+    exchange = '9ae80950-cdd6-4ea3-97a9-6f20f584e932' // Binance
+  ): Promise<Ticker> {
     return await this.ticker.findOne({
       where: {
         coin: {

@@ -101,11 +101,11 @@ export class TaskService {
   }
 
   @Cron('45 0 * * MON', {
-    name: 'scrape coin exchanges and tickers',
-    disabled: process.env.NODE_ENV === 'development'
+    name: 'scrape coin exchanges and tickers'
   }) // every monday at 12:45:00 AM
   async exchanges() {
     try {
+      this.logger.log('Ticker Cron');
       const supported_exchanges = ['binance_us']; //, 'coinbase_pro', 'gemini', 'kraken', 'kucoin'];
       for (const exchange_slug of supported_exchanges) {
         const data = await this.gecko.exchangeId(exchange_slug);
@@ -136,20 +136,18 @@ export class TaskService {
               centralized: data.centralized
             })
           );
-          if (ticker.is_anomaly || ticker.is_stale) {
-            const { id = null } = await this.ticker.getTickerByCoin(
-              ticker.coin_id,
-              ticker.target_coin_id,
-              ticker.market.identifier
-            );
-            if (id) this.ticker.deleteTicker(id);
-            return;
-          }
           const base_coin = coins.find((coin) => coin.symbol === ticker.base.toLowerCase());
           const target_coin = coins.find((coin) => coin.symbol === ticker.target.toLowerCase());
           const exchange = exchanges.find((ex) => ex.slug === ticker.market.identifier.toLowerCase());
-          if (!base_coin || !target_coin || !exchange) return;
+          if (!base_coin || !target_coin || !exchange) continue;
+
+          const tickerCoin = await this.ticker.getTickerByCoin(base_coin.id, target_coin.id, exchange.id);
+          if (ticker.is_anomaly || ticker.is_stale) {
+            if (tickerCoin?.id) this.ticker.deleteTicker(tickerCoin?.id);
+            continue;
+          }
           await this.ticker.saveTicker({
+            id: tickerCoin?.id,
             coin: base_coin,
             target: target_coin,
             exchange,
@@ -167,8 +165,7 @@ export class TaskService {
   }
 
   @Cron('0 23 * * *', {
-    name: 'scrape coin exchanges and tickers',
-    disabled: process.env.NODE_ENV === 'development'
+    name: 'Update coin detailed'
   }) // every day at 11:00:00 PM
   async coinDetailed() {
     this.logger.log('Detailed Coins Cron');

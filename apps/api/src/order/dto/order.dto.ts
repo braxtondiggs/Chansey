@@ -1,15 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, ValidateIf } from 'class-validator';
 
 export class OrderDto {
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
-  @ApiProperty()
+  @ApiProperty({ example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f' }) // NOTE: This is the UUID of the coin BTC
   symbol: string;
 
   @IsString()
   @IsNotEmpty()
-  @ApiProperty()
+  @ApiProperty({ example: '0.001' })
   quantity: string;
 
   @IsString()
