@@ -34,7 +34,7 @@ export default class UsersService {
   getDefaultBinance() {
     return Binance({
       apiKey: this.config.get('BINANCE_API_KEY'),
-      apiSecret: this.config.get('BINANCE_SECRET_KEY'),
+      apiSecret: this.config.get('BINANCE_API_SECRET'),
       httpBase: 'https://api.binance.us'
     });
   }

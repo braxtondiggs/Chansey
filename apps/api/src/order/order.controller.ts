@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/comm
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { OrderDto } from './dto/order.dto';
+import { OrderSide } from './order.entity';
 import { OrderService } from './order.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import RequestWithUser from '../authentication/interface/requestWithUser.interface';
@@ -38,13 +39,13 @@ export class OrderController {
   @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({})
   async createBuyOrder(@Body() dto: OrderDto, @Req() { user }: RequestWithUser) {
-    return this.order.createOrder('BUY', dto, user);
+    return this.order.createOrder(OrderSide.BUY, dto, user);
   }
 
   @Post('sell')
   @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({})
   async createSellOrder(@Body() dto: OrderDto, @Req() { user }: RequestWithUser) {
-    return this.order.createOrder('SELL', dto, user);
+    return this.order.createOrder(OrderSide.SELL, dto, user);
   }
 }

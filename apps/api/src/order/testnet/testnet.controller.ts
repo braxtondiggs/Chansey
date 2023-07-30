@@ -1,9 +1,11 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 
+import algoIdParams from './dto/algoid.dto';
 import { TestnetDto } from './dto/testnet.dto';
 import { TestnetService } from './testnet.service';
 import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
+import FindOneParams from '../../utils/findOneParams';
 import { OrderSide } from '../order.entity';
 
 @ApiTags('Order')
@@ -29,5 +31,41 @@ export class TestnetController {
   })
   async createTestSellOrder(@Body() dto: TestnetDto) {
     return this.testnet.createOrder(OrderSide.SELL, dto);
+  }
+
+  @Get('orders')
+  @ApiOperation({
+    summary: 'Get test orders',
+    description: 'This endpoint is used to get all test orders.'
+  })
+  async getTestOrders() {
+    return this.testnet.getOrders();
+  }
+
+  @Get('orders/:id')
+  @ApiOperation({
+    summary: 'Get test order',
+    description: 'This endpoint is used to get a test order.'
+  })
+  async getTestOrder(@Param() { id }: FindOneParams) {
+    return this.testnet.getOrder(id);
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Get test order summary',
+    description: 'This endpoint is used to get a test  order summary.'
+  })
+  async getTestOrderSummary() {
+    return this.testnet.getOrderSummary();
+  }
+
+  @Delete('orders/:algoId')
+  @ApiOperation({
+    summary: 'Delete test orders by algoId',
+    description: 'This endpoint is used to delete test orders by algoId.'
+  })
+  async deleteTestOrders(@Param() { algoId }: algoIdParams) {
+    return this.testnet.deleteOrders(algoId);
   }
 }

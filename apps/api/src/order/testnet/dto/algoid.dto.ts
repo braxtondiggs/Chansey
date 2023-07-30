@@ -1,6 +1,6 @@
 import { IsUUID } from 'class-validator';
 
-export default class FindOneParams {
+export default class algoIdParams {
   @IsUUID()
-  id: string;
+  algoId: string;
 }
