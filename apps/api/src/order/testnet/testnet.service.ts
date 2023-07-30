@@ -7,7 +7,6 @@ import { TestnetDto } from './dto/testnet.dto';
 import { Testnet } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerService } from '../../exchange/ticker/ticker.service';
-import User from '../../users/users.entity';
 import UsersService from '../../users/users.service';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
@@ -24,6 +23,7 @@ export class TestnetService {
   ) {}
 
   async createOrder(side: OrderSide, order: TestnetDto) {
+    const binance = this.user.getDefaultBinance();
     const ticker = await this.ticker.getTickerByCoin(order.symbol, '0e968a4f-88c3-4dbf-8ff6-4420d248a2e0'); // NOTE: USDT
     order.symbol = ticker.symbol;
 
@@ -37,6 +37,13 @@ export class TestnetService {
     ]);
     const price = response[ticker.coin.slug]?.usd;
 
+    await binance.orderTest({
+      quantity,
+      side,
+      symbol: order.symbol,
+      type: OrderType.MARKET as any
+    });
+
     return (
       await this.testnet.insert({
         quantity,
@@ -48,13 +55,23 @@ export class TestnetService {
     ).generatedMaps[0] as Testnet;
   }
 
-  private async validateOrder(side: OrderSide, order: TestnetDto, user: User) {
-    const binance = this.user.getBinance(user);
-    return await binance.orderTest({
-      symbol: order.symbol,
-      side,
-      quantity: order.quantity,
-      type: OrderType.MARKET as any
+  async getOrders() {
+    const orders = await this.testnet.find();
+    return orders.map((order) => {
+      Object.keys(order).forEach((key) => order[key] === null && delete order[key]);
+      return order;
     });
+  }
+
+  async getOrder(orderId: string) {
+    return await this.testnet.findOne({ where: { id: orderId } });
+  }
+
+  async deleteOrders(algoId: string) {
+    return await this.testnet.delete({ algorithm: { id: algoId } });
+  }
+
+  async getOrderSummary() {
+    return 'Hello Word';
   }
 }

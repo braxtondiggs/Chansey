@@ -137,7 +137,7 @@ export class TaskService {
     }
   }
 
-  @Cron('40 0 * * *', {
+  @Cron('40 0 * * MON', {
     name: 'scrape exchange tickers'
   }) // every monday at 12:40:00 AM
   async tickers() {
