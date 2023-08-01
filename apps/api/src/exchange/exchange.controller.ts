@@ -12,6 +12,7 @@ import {
   ValidationPipe
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { DeleteResult } from 'typeorm';
 
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { Exchange } from './exchange.entity';
@@ -79,7 +80,7 @@ export class ExchangeController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'The exchange item has been successfully deleted.',
-    type: Exchange
+    type: DeleteResult
   })
   async deleteExchangeItem(@Param() { id }: FindOneParams) {
     return this.exchange.deleteExchange(id);

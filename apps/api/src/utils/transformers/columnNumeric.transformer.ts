@@ -3,6 +3,7 @@ export class ColumnNumericTransformer {
     return data;
   }
   from(data: string): number {
+    if (data === null) return null;
     return parseFloat(data);
   }
 }
