@@ -28,7 +28,7 @@ export class OrderService {
     await this.order.insert({
       clientOrderId: action.clientOrderId,
       orderId: action.orderId.toString(),
-      quantity: order.quantity,
+      quantity: Number(order.quantity),
       side: side as OrderSide,
       status: action.status as OrderStatus,
       symbol: order.symbol,

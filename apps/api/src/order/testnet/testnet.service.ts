@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CoinGeckoClient } from 'coingecko-api-v3';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 
-import { TestnetDto } from './dto/testnet.dto';
+import { TestnetDto, TestnetSummaryDuration } from './dto';
 import { Testnet } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerService } from '../../exchange/ticker/ticker.service';
@@ -46,7 +46,7 @@ export class TestnetService {
 
     return (
       await this.testnet.insert({
-        quantity,
+        quantity: Number(quantity),
         side,
         price,
         algorithm,
@@ -71,7 +71,53 @@ export class TestnetService {
     return await this.testnet.delete({ algorithm: { id: algoId } });
   }
 
-  async getOrderSummary() {
-    return 'Hello Word';
+  async getOrderSummary(type = '1d') {
+    const time = TestnetSummaryDuration[type];
+
+    const orders = await this.testnet.find({
+      where: { createdAt: Between(new Date(Date.now() - time), new Date()) },
+      order: { createdAt: 'ASC' },
+      relations: ['coin']
+    });
+
+    const coins = new Set();
+
+    orders.forEach((order) => {
+      const { coin } = order;
+      coins.add(coin.slug);
+    });
+
+    const response = await this.gecko.simplePrice({
+      ids: Array.from(coins).join(','),
+      vs_currencies: 'usd'
+    });
+
+    const prices = Object.entries(response).map(([key, { usd }]) => ({ [key]: usd }));
+
+    // calculate profit/loss for each coin
+    const summary = orders.reduce(
+      (acc, order) => {
+        const { coin, quantity, side, price } = order;
+        const { slug } = coin;
+
+        const coinPrice = prices.find((price) => price[slug])?.[slug];
+        const profit = side === OrderSide.BUY ? (coinPrice - price) * quantity : (price - coinPrice) * quantity;
+
+        acc[slug].profitLoss += profit;
+        acc[slug].percentage += (profit / (price * quantity)) * 100;
+
+        return acc;
+      },
+      Object.fromEntries(
+        Array.from(coins).map((coin) => [
+          coin,
+          {
+            profitLoss: 0,
+            percentage: 0
+          }
+        ])
+      )
+    );
+    return summary;
   }
 }
