@@ -17,6 +17,22 @@ export class AlgorithmService {
     });
   }
 
+  async getActiveAlgorithms(): Promise<Algorithm[]> {
+    const algorithms = await this.algorithm.find({ where: { status: true } });
+    return algorithms.map((algorithm) => {
+      Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
+      return algorithm;
+    });
+  }
+
+  async getAlgorithmsForTesting(): Promise<Algorithm[]> {
+    const algorithms = await this.algorithm.find({ where: { evaluate: true, status: true } });
+    return algorithms.map((algorithm) => {
+      Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
+      return algorithm;
+    });
+  }
+
   async getAlgorithmById(algorithmId: string): Promise<Algorithm> {
     const algorithm = await this.algorithm.findOneBy({ id: algorithmId });
     Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);

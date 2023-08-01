@@ -13,6 +13,7 @@ import {
   ValidationPipe
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { DeleteResult } from 'typeorm';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { Portfolio } from './portfolio.entity';
@@ -90,7 +91,7 @@ export class PortfolioController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'The portfolio item has been successfully deleted.',
-    type: Portfolio
+    type: DeleteResult
   })
   async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
     return this.portfolio.deletePortfolioItem(id, user.id);
