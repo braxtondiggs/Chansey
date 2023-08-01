@@ -5,7 +5,7 @@ export class Algorithm {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: false, unique: true })
+  @Column({ unique: true })
   name: string;
 
   @Column({ default: false })

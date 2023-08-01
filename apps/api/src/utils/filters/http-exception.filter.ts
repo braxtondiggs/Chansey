@@ -8,12 +8,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<FastifyReply>();
     const request = ctx.getRequest<FastifyRequest>();
     const status = exception.getStatus();
+    const errResponse = exception.getResponse() as { error: string; message: string; statusCode: number };
+    const message = errResponse?.message || exception.message;
 
     response.status(status).send({
-      statusCode: status,
-      timestamp: new Date().toISOString(),
+      error: errResponse?.error || exception.message,
+      message,
       path: request.url,
-      message: exception.message
+      statusCode: status,
+      timestamp: new Date().toISOString()
     });
   }
 }

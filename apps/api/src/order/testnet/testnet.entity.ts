@@ -1,14 +1,6 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  JoinTable,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-  Timestamp,
-  UpdateDateColumn
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinTable, ManyToOne, PrimaryGeneratedColumn, Timestamp } from 'typeorm';
 
+import { ColumnNumericTransformer } from './../../utils/transformers';
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { Coin } from '../../coin/coin.entity';
 import { OrderSide } from '../order.entity';
@@ -18,30 +10,26 @@ export class Testnet {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: false })
-  quantity: string;
+  @Column({ type: 'decimal', transformer: new ColumnNumericTransformer() })
+  quantity: number;
 
-  @Column({ type: 'numeric', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', transformer: new ColumnNumericTransformer() })
   price: number;
 
   @Column({
     type: 'enum',
-    enum: [OrderSide.BUY, OrderSide.SELL],
-    nullable: false
+    enum: [OrderSide.BUY, OrderSide.SELL]
   })
   side: OrderSide;
 
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
-  updatedAt: Timestamp;
-
-  @ManyToOne(() => Coin)
+  @ManyToOne(() => Coin, { nullable: false })
   @JoinTable()
   coin: Coin;
 
-  @ManyToOne(() => Algorithm)
+  @ManyToOne(() => Algorithm, { nullable: false })
   @JoinTable()
   algorithm: Algorithm;
 

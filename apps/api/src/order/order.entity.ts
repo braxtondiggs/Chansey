@@ -1,6 +1,7 @@
 import { Column, Entity, JoinTable, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 import User from '../users/users.entity';
+import { ColumnNumericTransformer } from '../utils/transformers';
 
 export const enum OrderType {
   LIMIT = 'LIMIT',
@@ -34,20 +35,20 @@ export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: false })
+  @Column()
   symbol: string;
 
-  @Column({ nullable: false, type: 'bigint' })
+  @Column({ type: 'bigint' })
   orderId: string;
 
-  @Column({ nullable: false })
+  @Column()
   clientOrderId: string;
 
-  @Column({ nullable: false, type: 'bigint' })
+  @Column({ type: 'bigint' })
   transactTime: string;
 
-  @Column({ nullable: false })
-  quantity: string;
+  @Column({ type: 'decimal', transformer: new ColumnNumericTransformer() })
+  quantity: number;
 
   @Column({
     type: 'enum',
@@ -59,26 +60,23 @@ export class Order {
       OrderStatus.PARTIALLY_FILLED,
       OrderStatus.PENDING_CANCEL,
       OrderStatus.REJECTED
-    ],
-    nullable: false
+    ]
   })
   status: OrderStatus;
 
   @Column({
     type: 'enum',
-    enum: [OrderSide.BUY, OrderSide.SELL],
-    nullable: false
+    enum: [OrderSide.BUY, OrderSide.SELL]
   })
   side: OrderSide;
 
   @Column({
     type: 'enum',
-    enum: [OrderType.LIMIT, OrderType.MARKET],
-    nullable: false
+    enum: [OrderType.LIMIT, OrderType.MARKET]
   })
   type: OrderType;
 
-  @ManyToOne(() => User, (user) => user.orders)
+  @ManyToOne(() => User, (user) => user.orders, { nullable: false })
   @JoinTable()
   user: User;
 
