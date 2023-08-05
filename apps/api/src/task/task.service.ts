@@ -78,8 +78,7 @@ export class TaskService {
   async prices() {
     try {
       this.logger.log('New Price Cron');
-      const portfolio = await this.portfolio.getPortfolio();
-      const coins = [...new Set(portfolio.map(({ coin }) => coin))];
+      const coins = await this.portfolio.getPortfolioCoins();
       const ids = coins.map(({ slug }) => slug).join(',');
       const prices = await this.gecko.simplePrice({
         ids,
@@ -191,8 +190,7 @@ export class TaskService {
   }) // every day at 11:00:00 PM
   async coinDetailed() {
     this.logger.log('Detailed Coins Cron');
-    const portfolio = await this.portfolio.getPortfolio();
-    const coins = [...new Set(portfolio.map(({ coin }) => coin))];
+    const coins = await this.portfolio.getPortfolioCoins();
 
     for (const { id, slug } of coins) {
       const coin = await this.gecko.coinId({ id: slug, localization: false, tickers: false });

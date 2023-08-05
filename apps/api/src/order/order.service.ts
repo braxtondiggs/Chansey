@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { TestnetDto } from './testnet/dto/testnet.dto';
-import User from '../users/users.entity';
+import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
 
 @Injectable()

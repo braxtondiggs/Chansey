@@ -12,7 +12,7 @@ import { Testnet } from './testnet/testnet.entity';
 import { TestnetService } from './testnet/testnet.service';
 import { Ticker } from '../exchange/ticker/ticker.entity';
 import { TickerService } from '../exchange/ticker/ticker.service';
-import User from '../users/users.entity';
+import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
 
 @Module({

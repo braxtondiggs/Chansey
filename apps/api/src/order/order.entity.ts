@@ -1,6 +1,6 @@
 import { Column, Entity, JoinTable, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
-import User from '../users/users.entity';
+import { User } from '../users/users.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
 
 export const enum OrderType {

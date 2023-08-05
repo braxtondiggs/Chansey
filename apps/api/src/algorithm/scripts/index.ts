@@ -1,3 +1,3 @@
-export * from './test-algorithm.service';
-export * from './test-algorithm1234.service';
+export * from './moving-average.service';
+export * from './mean-reversion.service';
 // TODO: Make code dynamically export all services in this directory
