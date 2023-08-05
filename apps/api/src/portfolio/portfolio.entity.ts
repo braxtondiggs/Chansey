@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
-import User from '../users/users.entity';
+import { User } from '../users/users.entity';
 
 @Entity()
 export class Portfolio {

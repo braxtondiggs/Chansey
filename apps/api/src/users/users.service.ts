@@ -6,7 +6,7 @@ import { instanceToPlain } from 'class-transformer';
 import { Repository } from 'typeorm';
 
 import { UpdateUserDto } from './dto';
-import User from './users.entity';
+import { User } from './users.entity';
 
 @Injectable()
 export default class UsersService {

@@ -4,7 +4,8 @@ import { Repository } from 'typeorm';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { Portfolio } from './portfolio.entity';
-import User from '../users/users.entity';
+import { Coin } from '../coin/coin.entity';
+import { User } from '../users/users.entity';
 
 @Injectable()
 export class PortfolioService {
@@ -14,6 +15,11 @@ export class PortfolioService {
     return await this.portfolio.find({
       relations: ['coin']
     });
+  }
+
+  async getPortfolioCoins(): Promise<Coin[]> {
+    const portfolios = await this.getPortfolio();
+    return [...new Set(portfolios.map(({ coin }) => coin))];
   }
 
   async getPortfolioById(portfolioId: string, userId: string): Promise<Portfolio> {

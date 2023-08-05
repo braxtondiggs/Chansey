@@ -23,6 +23,10 @@ export class Algorithm {
   name: string;
   slug: string;
 
+  @Column({ nullable: true })
+  @ApiProperty()
+  description: string;
+
   @Column({ default: false })
   @ApiProperty()
   status: boolean;
@@ -34,6 +38,10 @@ export class Algorithm {
   @Column({ type: 'decimal', transformer: new ColumnNumericTransformer(), nullable: true })
   @ApiProperty()
   weight: number;
+
+  @Column({ default: '* * * * *' })
+  @ApiProperty()
+  cron: string;
 
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;

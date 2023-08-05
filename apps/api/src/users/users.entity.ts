@@ -17,7 +17,7 @@ import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
 
 @Entity()
-export default class User {
+export class User {
   @PrimaryColumn({ unique: true })
   id: string;
 

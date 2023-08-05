@@ -17,7 +17,7 @@ import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
-import User from '../users/users.entity';
+import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
 
 @Module({
