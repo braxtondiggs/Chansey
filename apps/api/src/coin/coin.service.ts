@@ -1,9 +1,10 @@
-import { Injectable, NotAcceptableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class CoinService {
@@ -19,7 +20,7 @@ export class CoinService {
 
   async getCoinById(coinId: string, relations?: CoinRelations[]): Promise<Coin> {
     const coin = await this.coin.findOne({ where: { id: coinId }, relations });
-    if (!coin) throw new NotAcceptableException('Coin not found');
+    if (!coin) throw new NotFoundCustomException('Coin', { id: coinId });
     Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
   }
@@ -29,7 +30,7 @@ export class CoinService {
       where: { symbol: symbol.toLowerCase() },
       relations
     });
-    if (!coin) throw new NotAcceptableException('Coin not found');
+    if (!coin) throw new NotFoundCustomException('Coin', { symbol });
     Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
   }
@@ -41,10 +42,13 @@ export class CoinService {
 
   async update(coinId: string, coin: UpdateCoinDto) {
     const data = await this.getCoinById(coinId);
+    if (!data) new NotFoundCustomException('Coin', { id: coinId });
     return await this.coin.save(new Coin({ ...data, ...coin }));
   }
 
   async remove(coinId: string) {
-    return await this.coin.delete(coinId);
+    const response = await this.coin.delete(coinId);
+    if (!response.affected) new NotFoundCustomException('Coin', { id: coinId });
+    return response;
   }
 }

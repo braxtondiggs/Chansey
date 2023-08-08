@@ -33,11 +33,11 @@ export class User {
 
   @Exclude()
   @Column({ nullable: true })
-  binance: string;
+  binance?: string;
 
   @Exclude()
   @Column({ nullable: true })
-  binanceSecret: string;
+  binanceSecret?: string;
 
   @BeforeUpdate()
   async encryptBinance() {

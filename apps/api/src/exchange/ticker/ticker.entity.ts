@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinTable,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -15,6 +16,7 @@ import { Coin } from '../../coin/coin.entity';
 import { Exchange } from '../exchange.entity';
 
 @Entity()
+@Index(['coin', 'target', 'exchange'], { unique: true })
 export class Ticker {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty()
@@ -52,14 +54,17 @@ export class Ticker {
   @UpdateDateColumn({ select: false })
   updatedAt: Timestamp;
 
+  @Index('ticker_exchangeId_index')
   @ManyToOne(() => Exchange, (exchange) => exchange.tickers)
   @JoinTable()
   exchange: Exchange;
 
+  @Index('ticker_coinId_index')
   @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true })
   @JoinTable()
   coin: Coin;
 
+  @Index('ticker_targetId_index')
   @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true })
   @JoinTable()
   target: Coin;

@@ -91,7 +91,8 @@ export class TaskService {
         price: prices[coins[key].slug].usd,
         marketCap: prices[coins[key].slug].usd_market_cap,
         geckoLastUpdatedAt: new Date(prices[coins[key].slug].last_updated_at * 1000),
-        coin: coins[key].id
+        coin: coins[key].id,
+        coinId: coins[key].id
       }));
 
       await Promise.all(data.map((price) => this.price.create(price)));

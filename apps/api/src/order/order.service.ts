@@ -8,6 +8,7 @@ import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { TestnetDto } from './testnet/dto/testnet.dto';
 import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class OrderService {
@@ -46,7 +47,9 @@ export class OrderService {
 
   async getOrder(user: User, orderId: number) {
     const binance = this.user.getBinance(user);
-    return await binance.getOrder({ symbol: 'BTCUSD', orderId });
+    const order = await binance.getOrder({ symbol: 'BTCUSD', orderId });
+    if (!order) throw new NotFoundCustomException('Order', { id: orderId.toString() });
+    return order;
   }
 
   async getOpenOrders(user: User) {

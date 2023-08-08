@@ -1,4 +1,13 @@
-import { Column, CreateDateColumn, Entity, JoinTable, ManyToOne, PrimaryGeneratedColumn, Timestamp } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinTable,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Timestamp
+} from 'typeorm';
 
 import { ColumnNumericTransformer } from './../../utils/transformers';
 import { Algorithm } from '../../algorithm/algorithm.entity';
@@ -22,13 +31,16 @@ export class Testnet {
   })
   side: OrderSide;
 
+  @Index()
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
 
+  @Index('testnet_coinId_index')
   @ManyToOne(() => Coin, { nullable: false })
   @JoinTable()
   coin: Coin;
 
+  @Index('testnet_algorithmId_index')
   @ManyToOne(() => Algorithm, { nullable: false })
   @JoinTable()
   algorithm: Algorithm;

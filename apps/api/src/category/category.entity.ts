@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Timestamp, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Timestamp, UpdateDateColumn } from 'typeorm';
 
 @Entity()
 export class Category {
@@ -7,10 +7,12 @@ export class Category {
   @ApiProperty()
   id: string;
 
+  @Index()
   @Column({ unique: true })
   @ApiProperty()
   slug: string;
 
+  @Index()
   @Column({ unique: true })
   @ApiProperty()
   name: string;
