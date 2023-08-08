@@ -4,6 +4,7 @@ import { ILike, Repository } from 'typeorm';
 
 import { Algorithm } from './algorithm.entity';
 import { CreateAlgorithmDto, UpdateAlgorithmDto } from './dto/';
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class AlgorithmService {
@@ -35,6 +36,7 @@ export class AlgorithmService {
 
   async getAlgorithmById(algorithmId: string): Promise<Algorithm> {
     const algorithm = await this.algorithm.findOneBy({ id: algorithmId });
+    if (!algorithm) throw new NotFoundCustomException('Algorithm', { id: algorithmId });
     Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
     return algorithm;
   }
@@ -46,10 +48,13 @@ export class AlgorithmService {
 
   async update(algorithmId: string, algorithm: UpdateAlgorithmDto) {
     const data = await this.getAlgorithmById(algorithmId);
+    if (!data) throw new NotFoundCustomException('Algorithm', { id: algorithmId });
     return await this.algorithm.save(new Algorithm({ ...data, ...algorithm }));
   }
 
   async remove(algorithmId: string) {
-    return await this.algorithm.delete(algorithmId);
+    const response = await this.algorithm.delete(algorithmId);
+    if (!response.affected) throw new NotFoundCustomException('Algorithm', { id: algorithmId });
+    return response;
   }
 }

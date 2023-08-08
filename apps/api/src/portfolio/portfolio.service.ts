@@ -6,6 +6,7 @@ import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { Portfolio } from './portfolio.entity';
 import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class PortfolioService {
@@ -23,11 +24,16 @@ export class PortfolioService {
   }
 
   async getPortfolioById(portfolioId: string, userId: string): Promise<Portfolio> {
-    return await this.portfolio.findOne({ where: { id: portfolioId, user: { id: userId } }, relations: ['coin'] });
+    const portfolio = await this.portfolio.findOne({
+      where: { id: portfolioId, user: { id: userId } },
+      relations: ['coin']
+    });
+    if (!portfolio) throw new NotFoundCustomException('Portfolio', { id: portfolioId });
+    return portfolio;
   }
 
   async getPortfolioByUser(user: User): Promise<Portfolio[]> {
-    return await this.portfolio.find({
+    const portfolio = await this.portfolio.find({
       where: {
         user: {
           id: user.id
@@ -35,6 +41,8 @@ export class PortfolioService {
       },
       relations: ['coin']
     });
+    if (!portfolio) throw new NotFoundCustomException('Portfolio', { user: user.id });
+    return portfolio;
   }
 
   async createPortfolioItem(Portfolio: CreatePortfolioDto, user: User): Promise<Portfolio> {
@@ -54,15 +62,18 @@ export class PortfolioService {
 
   async updatePortfolioItem(portfolioId: string, userId: string, dto: UpdatePortfolioDto): Promise<Portfolio> {
     const data = await this.getPortfolioById(portfolioId, userId);
+    if (!data) throw new NotFoundCustomException('Portfolio', { id: portfolioId });
     return await this.portfolio.save(new Portfolio({ ...data, ...dto }));
   }
 
   async deletePortfolioItem(portfolioId: string, userId: string) {
-    return await this.portfolio.delete({
+    const response = await this.portfolio.delete({
       id: portfolioId,
       user: {
         id: userId
       }
     });
+    if (!response.affected) throw new NotFoundCustomException('Portfolio', { id: portfolioId });
+    return response;
   }
 }

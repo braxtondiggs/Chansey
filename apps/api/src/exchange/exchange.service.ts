@@ -4,6 +4,7 @@ import { ILike, Repository } from 'typeorm';
 
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { Exchange } from './exchange.entity';
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class ExchangeService {
@@ -18,28 +19,37 @@ export class ExchangeService {
   }
 
   async getExchangeById(exchangeId: string): Promise<Exchange> {
-    return await this.exchange.findOne({ where: { id: exchangeId } });
+    const exchange = await this.exchange.findOne({ where: { id: exchangeId } });
+    if (!exchange) throw new NotFoundCustomException('Exchange', { id: exchangeId });
+    return exchange;
   }
 
   async getExchangeByName(name: string): Promise<Exchange> {
-    return await this.exchange.findOne({ where: { name: ILike(`%${name}%`) } });
+    const exchange = await this.exchange.findOne({ where: { name: ILike(`%${name}%`) } });
+    if (!exchange) throw new NotFoundCustomException('Exchange', { name });
+    return exchange;
   }
 
   async getExchangeBySlug(slug: string): Promise<Exchange> {
-    return await this.exchange.findOne({ where: { slug } });
+    const exchange = await this.exchange.findOne({ where: { slug } });
+    if (!exchange) throw new NotFoundCustomException('Exchange', { slug });
+    return exchange;
   }
 
   async createExchange(Exchange: CreateExchangeDto): Promise<Exchange> {
-    const coin = await this.exchange.findOne({ where: { name: ILike(`%${Exchange.name}%`) } });
-    return coin ?? ((await this.exchange.insert(Exchange)).generatedMaps[0] as Exchange);
+    const exchange = await this.exchange.findOne({ where: { name: ILike(`%${Exchange.name}%`) } });
+    return exchange ?? ((await this.exchange.insert(Exchange)).generatedMaps[0] as Exchange);
   }
 
   async updateExchange(exchangeSlug: string, dto: UpdateExchangeDto): Promise<Exchange> {
     const data = await this.getExchangeBySlug(exchangeSlug);
+    if (!data) throw new NotFoundCustomException('Exchange', { slug: exchangeSlug });
     return await this.exchange.save(new Exchange({ ...data, ...dto }));
   }
 
   async deleteExchange(exchangeId: string) {
-    return await this.exchange.delete(exchangeId);
+    const response = await this.exchange.delete(exchangeId);
+    if (!response.affected) throw new NotFoundCustomException('Exchange', { id: exchangeId });
+    return response;
   }
 }

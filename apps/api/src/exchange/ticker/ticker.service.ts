@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { UpdateTickerDto } from './dto';
 import { Ticker } from './ticker.entity';
+import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 
 @Injectable()
 export class TickerService {
@@ -14,7 +15,7 @@ export class TickerService {
     target: string,
     exchange = '9ae80950-cdd6-4ea3-97a9-6f20f584e932' // Binance
   ): Promise<Ticker> {
-    return await this.ticker.findOne({
+    const ticker = await this.ticker.findOne({
       where: {
         coin: {
           id: base
@@ -27,6 +28,8 @@ export class TickerService {
         }
       }
     });
+    if (!ticker) throw new NotFoundException('Ticker not found');
+    return ticker;
   }
 
   async saveTicker(dto: UpdateTickerDto): Promise<Ticker> {
@@ -35,6 +38,8 @@ export class TickerService {
   }
 
   async deleteTicker(tickerId: string) {
-    return await this.ticker.delete(tickerId);
+    const response = await this.ticker.delete(tickerId);
+    if (!response.affected) throw new NotFoundCustomException('Ticker', { id: tickerId });
+    return response;
   }
 }

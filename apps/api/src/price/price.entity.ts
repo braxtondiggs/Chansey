@@ -1,10 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
 
 @Entity()
+@Index(['coin', 'createdAt'], { unique: true })
 export class Price {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty()
@@ -22,14 +23,19 @@ export class Price {
   @ApiProperty()
   geckoLastUpdatedAt: Date;
 
+  @Index('price_coinId_index')
   @ManyToOne(() => Coin, (coin) => coin.prices, { nullable: false })
   coin: Coin;
 
   @CreateDateColumn()
   createdAt: Date;
 
-  @Column({ nullable: true })
+  @Column()
   coinId: string;
+
+  constructor(partial: Partial<Price>) {
+    Object.assign(this, partial);
+  }
 }
 
 export interface PriceSummary {

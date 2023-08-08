@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryGeneratedColumn,
   Timestamp,
@@ -17,10 +18,12 @@ export class Exchange {
   @ApiProperty()
   id: string;
 
+  @Index()
   @Column({ unique: true })
   @ApiProperty()
   slug: string;
 
+  @Index()
   @Column({ unique: true })
   @ApiProperty()
   name: string;

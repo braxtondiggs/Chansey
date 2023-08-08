@@ -8,6 +8,7 @@ import { Testnet } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerService } from '../../exchange/ticker/ticker.service';
 import UsersService from '../../users/users.service';
+import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
 
@@ -64,11 +65,15 @@ export class TestnetService {
   }
 
   async getOrder(orderId: string) {
-    return await this.testnet.findOne({ where: { id: orderId } });
+    const order = await this.testnet.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundCustomException('Testnet', { id: orderId });
+    return order;
   }
 
   async deleteOrders(algoId: string) {
-    return await this.testnet.delete({ algorithm: { id: algoId } });
+    const response = await this.testnet.delete({ algorithm: { id: algoId } });
+    if (!response.affected) throw new NotFoundCustomException('Testnet', { algorithm: algoId });
+    return response;
   }
 
   async getOrderSummary(type = '1d') {

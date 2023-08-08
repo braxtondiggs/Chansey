@@ -14,7 +14,7 @@ export class PriceService {
     return (await this.price.insert(Price)).generatedMaps[0];
   }
 
-  async findAll(coins: string[] | string, range = PriceRange['all']) {
+  async findAll(coins: string[] | string, range = PriceRange['all']): Promise<Price[]> {
     const coin = Array.isArray(coins) ? { id: In(coins) } : { id: coins };
     const time = PriceRangeTime[range];
     return await this.price.find({

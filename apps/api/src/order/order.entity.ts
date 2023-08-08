@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinTable, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 import { User } from '../users/users.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
@@ -76,6 +76,7 @@ export class Order {
   })
   type: OrderType;
 
+  @Index('order_userId_index')
   @ManyToOne(() => User, (user) => user.orders, { nullable: false })
   @JoinTable()
   user: User;

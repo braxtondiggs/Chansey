@@ -5,6 +5,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   Timestamp,
   UpdateDateColumn
@@ -13,11 +14,13 @@ import {
 import { ColumnNumericTransformer } from './../utils/transformers/columnNumeric.transformer';
 
 @Entity()
+@Index(['status', 'evaluate'])
 export class Algorithm {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty()
   id: string;
 
+  @Index()
   @Column({ unique: true })
   @ApiProperty()
   name: string;
@@ -25,8 +28,9 @@ export class Algorithm {
 
   @Column({ nullable: true })
   @ApiProperty()
-  description: string;
+  description?: string;
 
+  @Index()
   @Column({ default: false })
   @ApiProperty()
   status: boolean;
@@ -37,7 +41,7 @@ export class Algorithm {
 
   @Column({ type: 'decimal', transformer: new ColumnNumericTransformer(), nullable: true })
   @ApiProperty()
-  weight: number;
+  weight?: number;
 
   @Column({ default: '* * * * *' })
   @ApiProperty()
