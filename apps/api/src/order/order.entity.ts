@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinTable, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
+import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
 
@@ -80,6 +81,11 @@ export class Order {
   @ManyToOne(() => User, (user) => user.orders, { nullable: false })
   @JoinTable()
   user: User;
+
+  @Index('order_coinId_index')
+  @ManyToOne(() => Coin, { nullable: false })
+  @JoinTable()
+  coin: Coin;
 
   constructor(partial: Partial<Order>) {
     Object.assign(this, partial);

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsString, IsUrl } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsNumber, IsString, IsUrl } from 'class-validator';
 
 import { Coin } from '../../../coin/coin.entity';
 import { Exchange } from '../../exchange.entity';

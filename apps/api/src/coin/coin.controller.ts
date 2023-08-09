@@ -38,4 +38,16 @@ export class CoinController {
   getCoinBySymbol(@Param() { symbol }): Promise<Coin> {
     return this.coin.getCoinBySymbol(symbol, [CoinRelations.TICKERS]);
   }
+
+  @Get(':id/historical')
+  @UseGuards(JwtAuthenticationGuard)
+  @ApiParam({ name: 'id', required: true, description: 'The id of the coin', type: String })
+  @ApiOperation({
+    summary: 'Get historical data for coin',
+    description: 'This endpoint is used to get historical data for a coin.'
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'The coin record', type: Coin, isArray: false })
+  getCoinHistoricalData(@Param() { id }: FindOneParams): Promise<any> {
+    return this.coin.getCoinHistoricalData(id);
+  }
 }
