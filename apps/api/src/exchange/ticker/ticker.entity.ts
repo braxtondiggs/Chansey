@@ -55,17 +55,17 @@ export class Ticker {
   updatedAt: Timestamp;
 
   @Index('ticker_exchangeId_index')
-  @ManyToOne(() => Exchange, (exchange) => exchange.tickers)
+  @ManyToOne(() => Exchange, (exchange) => exchange.tickers, { onDelete: 'CASCADE' })
   @JoinTable()
   exchange: Exchange;
 
   @Index('ticker_coinId_index')
-  @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true })
+  @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true, onDelete: 'CASCADE' })
   @JoinTable()
   coin: Coin;
 
   @Index('ticker_targetId_index')
-  @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true })
+  @ManyToOne(() => Coin, (coin) => coin.tickers, { eager: true, onDelete: 'CASCADE' })
   @JoinTable()
   target: Coin;
 
