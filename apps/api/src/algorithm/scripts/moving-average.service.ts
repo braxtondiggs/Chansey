@@ -3,11 +3,9 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
 import { PortfolioService } from './../../portfolio/portfolio.service';
-import { OrderService } from '../../order/order.service';
 import { PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
-import { AlgorithmService } from '../algorithm.service';
 
 @Injectable()
 export class MovingAverageService {
@@ -17,8 +15,6 @@ export class MovingAverageService {
   private prices: PriceSummaryByDay;
   private readonly logger = new Logger(MovingAverageService.name);
   constructor(
-    private readonly algorithmService: AlgorithmService,
-    private readonly order: OrderService,
     private readonly portfolio: PortfolioService,
     private readonly price: PriceService,
     private readonly schedulerRegistry: SchedulerRegistry
@@ -35,7 +31,6 @@ export class MovingAverageService {
 
     this.schedulerRegistry.addCronJob(`${this.algorithm.name} Service`, job);
     job.start();
-    this.cronJob();
   }
 
   private async cronJob() {

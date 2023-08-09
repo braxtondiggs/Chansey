@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { firstValueFrom } from 'rxjs';
 
@@ -71,10 +71,10 @@ export class TaskService {
     }
   }
 
-  @Cron('* * * * *', {
-    name: 'scrape coin prices',
-    disabled: process.env.NODE_ENV === 'development'
-  }) // every minute
+  @Cron(CronExpression.EVERY_5_MINUTES, {
+    name: 'scrape coin prices'
+    // disabled: process.env.NODE_ENV === 'development'
+  })
   async prices() {
     try {
       this.logger.log('New Price Cron');

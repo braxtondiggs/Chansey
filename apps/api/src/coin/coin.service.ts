@@ -51,4 +51,9 @@ export class CoinService {
     if (!response.affected) new NotFoundCustomException('Coin', { id: coinId });
     return response;
   }
+
+  async getCoinHistoricalData(coinId: string) {
+    const _coin = await this.getCoinById(coinId);
+    return 'Not Working'; // TODO: Add historical data
+  }
 }

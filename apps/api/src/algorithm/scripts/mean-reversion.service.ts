@@ -2,26 +2,33 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
-import { TestnetSummary as PriceRange } from '../../order/testnet/dto/testnet-summary.dto';
+import { TestnetService } from './../../order/testnet/testnet.service';
+import { OrderSide } from '../../order/order.entity';
+import {
+  TestnetSummary as PriceRange,
+  TestnetSummaryDuration as PriceSummary
+} from '../../order/testnet/dto/testnet-summary.dto';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Price } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
-import { AlgorithmService } from '../algorithm.service';
-import { CoinGeckoClient } from 'coingecko-api-v3';
 
 @Injectable()
 export class MeanReversionService {
   readonly id = 'f206b716-6be3-499f-8186-2581e9755a98';
   private algorithm: Algorithm;
   private prices: Price[];
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
+  private readonly threshold = {
+    LOW: 1.5,
+    MEDIUM: 2,
+    HIGH: 3
+  };
   private readonly logger = new Logger(MeanReversionService.name);
   constructor(
-    private readonly algorithmService: AlgorithmService,
     private readonly price: PriceService,
     private readonly portfolio: PortfolioService,
-    private readonly schedulerRegistry: SchedulerRegistry
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly testnet: TestnetService
   ) {}
 
   async onInit(algorithm: Algorithm) {
@@ -40,20 +47,30 @@ export class MeanReversionService {
 
   private async cronJob() {
     const coins = await this.portfolio.getPortfolioCoins();
-    this.prices = await this.price.findAll(
-      coins.map(({ id }) => id),
-      PriceRange['30d']
-    );
+    const [prices, todaysCoinPrices] = await Promise.all([
+      this.price.findAll(
+        coins.map(({ id }) => id),
+        PriceRange['30d']
+      ),
+      this.price.findAll(
+        coins.map(({ id }) => id),
+        PriceRange['1d']
+      )
+    ]);
+    this.prices = prices;
     for (const coin of coins) {
       const prices = this.prices.filter(({ coinId }) => coinId === coin.id).map(({ price }) => price);
+      const todayPrices = todaysCoinPrices.filter(({ coinId }) => coinId === coin.id).map(({ price }) => price);
       const mean = this.calculateMean(prices);
       const standardDeviation = this.calculateStandardDeviation(prices, mean);
-      const threshold = mean + standardDeviation;
+      const volatility = this.calculateVolatility(todayPrices, PriceRange['1d']);
+      const threshold = this.getThreshold(volatility);
       const currentPrice = prices[prices.length - 1];
-      if (currentPrice > threshold) {
-        console.log('buy');
-      } else {
-        console.log('sell');
+      if (currentPrice < mean - threshold * standardDeviation) {
+        this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
+      } else if (currentPrice > mean + threshold * standardDeviation) {
+        // TODO: Calculate if can sell
+        this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
       }
     }
   }
@@ -66,5 +83,27 @@ export class MeanReversionService {
     const squareDiffs = prices.map((price) => Math.pow(price - mean, 2));
     const avgSquareDiff = this.calculateMean(squareDiffs);
     return Math.sqrt(avgSquareDiff);
+  }
+
+  private calculateVolatility(prices: number[], range: PriceRange) {
+    const returns = [];
+    for (let i = 1; i < prices.length; i++) {
+      returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+    }
+
+    const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((a, b) => a + Math.pow(b - meanReturn, 2), 0) / returns.length;
+
+    return Math.sqrt(variance) * (PriceSummary[range] / 60000);
+  }
+
+  private getThreshold(volatility: number) {
+    if (volatility < 15) {
+      return this.threshold['LOW'];
+    } else if (volatility < 50) {
+      return this.threshold['MEDIUM'];
+    } else {
+      return this.threshold['HIGH'];
+    }
   }
 }

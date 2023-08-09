@@ -25,11 +25,10 @@ export class TestnetService {
 
   async createOrder(side: OrderSide, order: TestnetDto) {
     const binance = this.user.getDefaultBinance();
-    const ticker = await this.ticker.getTickerByCoin(order.symbol, '0e968a4f-88c3-4dbf-8ff6-4420d248a2e0'); // NOTE: USDT
-    order.symbol = ticker.symbol;
+    const ticker = await this.ticker.getTickerByCoin(order.coinId, '0e968a4f-88c3-4dbf-8ff6-4420d248a2e0'); // NOTE: USDT
 
     const [{ quantity }, algorithm, response] = await Promise.all([
-      this.order.isExchangeValid(order, OrderType.MARKET),
+      this.order.isExchangeValid(order, OrderType.MARKET, ticker.symbol),
       this.algorithm.getAlgorithmById(order.algorithm),
       this.gecko.simplePrice({
         ids: ticker.coin.slug,
@@ -41,17 +40,18 @@ export class TestnetService {
     await binance.orderTest({
       quantity,
       side,
-      symbol: order.symbol,
+      symbol: ticker.symbol,
       type: OrderType.MARKET as any
     });
 
     return (
       await this.testnet.insert({
+        algorithm,
+        coin: ticker.coin,
+        price,
         quantity: Number(quantity),
         side,
-        price,
-        algorithm,
-        coin: ticker.coin
+        symbol: ticker.symbol
       })
     ).generatedMaps[0] as Testnet;
   }

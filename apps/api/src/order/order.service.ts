@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { TestnetDto } from './testnet/dto/testnet.dto';
+import { CoinService } from '../coin/coin.service';
 import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
@@ -14,11 +15,14 @@ import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 export class OrderService {
   constructor(
     @InjectRepository(Order) private readonly order: Repository<Order>,
+    private readonly coin: CoinService,
     private readonly user: UsersService
   ) {}
 
   async createOrder(side: OrderSide_LT, order: OrderDto, user: User) {
-    const { symbol, quantity } = await this.isExchangeValid(order, OrderType.MARKET, user);
+    const coin = await this.coin.getCoinById(order.coinId);
+    const symbol = `${coin.symbol}USDT`.toUpperCase();
+    const { quantity } = await this.isExchangeValid(order, OrderType.MARKET, symbol, user);
     const binance = this.user.getBinance(user);
     const action = await binance.order({
       symbol,
@@ -32,7 +36,7 @@ export class OrderService {
       quantity: Number(order.quantity),
       side: side as OrderSide,
       status: action.status as OrderStatus,
-      symbol: order.symbol,
+      symbol: symbol,
       transactTime: action.transactTime.toString(),
       type: OrderType.MARKET,
       user
@@ -62,9 +66,9 @@ export class OrderService {
     return await binance.exchangeInfo({ symbol });
   }
 
-  async isExchangeValid(order: OrderDto | TestnetDto, orderType: OrderType, user?: User) {
+  async isExchangeValid(order: OrderDto | TestnetDto, orderType: OrderType, symbol: string, user?: User) {
     try {
-      const { symbols } = await this.getExchangeInfo(order.symbol, user);
+      const { symbols } = await this.getExchangeInfo(symbol, user);
       const filters = symbols[0].filters;
       const priceFilter = filters.find((filter) => filter.filterType === 'PRICE_FILTER') as SymbolPriceFilter;
       const lotSizeFilter = filters.find((filter) => filter.filterType === 'LOT_SIZE') as SymbolLotSizeFilter;

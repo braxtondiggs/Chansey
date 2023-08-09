@@ -31,6 +31,9 @@ export class Testnet {
   })
   side: OrderSide;
 
+  @Column()
+  symbol: string;
+
   @Index()
   @CreateDateColumn({ select: false })
   createdAt: Timestamp;
