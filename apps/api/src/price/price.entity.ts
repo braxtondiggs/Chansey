@@ -24,7 +24,7 @@ export class Price {
   geckoLastUpdatedAt: Date;
 
   @Index('price_coinId_index')
-  @ManyToOne(() => Coin, (coin) => coin.prices, { nullable: false })
+  @ManyToOne(() => Coin, (coin) => coin.prices, { nullable: false, onDelete: 'CASCADE' })
   coin: Coin;
 
   @CreateDateColumn()

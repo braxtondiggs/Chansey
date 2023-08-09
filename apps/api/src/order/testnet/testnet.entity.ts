@@ -39,12 +39,12 @@ export class Testnet {
   createdAt: Timestamp;
 
   @Index('testnet_coinId_index')
-  @ManyToOne(() => Coin, { nullable: false })
+  @ManyToOne(() => Coin, { nullable: false, onDelete: 'CASCADE' })
   @JoinTable()
   coin: Coin;
 
   @Index('testnet_algorithmId_index')
-  @ManyToOne(() => Algorithm, { nullable: false })
+  @ManyToOne(() => Algorithm, { nullable: false, onDelete: 'CASCADE' })
   @JoinTable()
   algorithm: Algorithm;
 

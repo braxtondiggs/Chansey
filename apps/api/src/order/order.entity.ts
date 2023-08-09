@@ -78,12 +78,12 @@ export class Order {
   type: OrderType;
 
   @Index('order_userId_index')
-  @ManyToOne(() => User, (user) => user.orders, { nullable: false })
+  @ManyToOne(() => User, (user) => user.orders, { nullable: false, onDelete: 'CASCADE' })
   @JoinTable()
   user: User;
 
   @Index('order_coinId_index')
-  @ManyToOne(() => Coin, { nullable: false })
+  @ManyToOne(() => Coin, { nullable: false, onDelete: 'RESTRICT' })
   @JoinTable()
   coin: Coin;
 

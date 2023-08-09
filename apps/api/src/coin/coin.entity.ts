@@ -125,21 +125,21 @@ export class Coin {
   @UpdateDateColumn({ select: false })
   updatedAt: Timestamp;
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin)
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin, { onDelete: 'CASCADE' })
   @ApiProperty({
     type: Portfolio,
     isArray: true
   })
   portfolios: Portfolio[];
 
-  @OneToMany(() => Price, (price) => price.coin)
+  @OneToMany(() => Price, (price) => price.coin, { onDelete: 'CASCADE' })
   @ApiProperty({
     type: Price,
     isArray: true
   })
   prices: Price[];
 
-  @OneToMany(() => Ticker, (ticker) => ticker.coin)
+  @OneToMany(() => Ticker, (ticker) => ticker.coin, { onDelete: 'CASCADE' })
   @ApiProperty({
     type: Ticker,
     isArray: true
