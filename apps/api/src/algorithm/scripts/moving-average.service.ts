@@ -44,7 +44,7 @@ export class MovingAverageService {
       const term = this.SMAStrategy.shortTerm; // TODO: Add a strategy selector
       const fastMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.fma));
       const slowMA = this.calculateMovingAverage(this.prices[coin.id].slice(term.fma, term.sma));
-      if (!Number.isInteger(fastMA) || !Number.isInteger(slowMA)) continue;
+      if (typeof fastMA !== 'number' || typeof slowMA !== 'number') continue;
       // TODO: Add a threshold
       if (fastMA > slowMA) {
         // TODO: Buy
