@@ -66,11 +66,15 @@ export class MeanReversionService {
       const volatility = this.calculateVolatility(todayPrices, PriceRange['1d']);
       const threshold = this.getThreshold(volatility);
       const currentPrice = prices[prices.length - 1];
-      if (currentPrice < mean - threshold * standardDeviation) {
-        this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
-      } else if (currentPrice > mean + threshold * standardDeviation) {
-        // TODO: Calculate if can sell
-        this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
+      try {
+        if (currentPrice < mean - threshold * standardDeviation) {
+          await this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
+        } else if (currentPrice > mean + threshold * standardDeviation) {
+          // TODO: Calculate if can sell
+          await this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
+        }
+      } catch (e) {
+        console.log(e);
       }
     }
   }
@@ -94,7 +98,7 @@ export class MeanReversionService {
     const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
     const variance = returns.reduce((a, b) => a + Math.pow(b - meanReturn, 2), 0) / returns.length;
 
-    return Math.sqrt(variance) * (PriceSummary[range] / 60000);
+    return (Math.sqrt(variance) * PriceSummary[range]) / 60000;
   }
 
   private getThreshold(volatility: number) {
