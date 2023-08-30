@@ -1,14 +1,34 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { CoinGeckoClient } from 'coingecko-api-v3';
+import * as dayjs from 'dayjs';
+import * as customParseFormat from 'dayjs/plugin/customParseFormat';
 import { Between, In, Repository } from 'typeorm';
 
 import { CreatePriceDto } from './dto/create-price.dto';
 import { Price, PriceSummaryByDay, PriceSummaryByHour } from './price.entity';
+import { Coin } from '../coin/coin.entity';
 import { TestnetSummary as PriceRange, TestnetSummaryDuration as PriceRangeTime } from '../order/testnet/dto';
+import { PortfolioService } from '../portfolio/portfolio.service';
 
 @Injectable()
-export class PriceService {
-  constructor(@InjectRepository(Price) private readonly price: Repository<Price>) {}
+export class PriceService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(PriceService.name);
+  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
+  constructor(
+    @InjectRepository(Price) private readonly price: Repository<Price>,
+    private readonly portfolio: PortfolioService
+  ) {
+    dayjs.extend(customParseFormat);
+  }
+
+  async onApplicationBootstrap() {
+    if (process.env.NODE_ENV !== 'production') return;
+    const coins = await this.portfolio.getPortfolioCoins();
+    for (const coin of coins) {
+      await this.backFillPrices(coin);
+    }
+  }
 
   async create(Price: CreatePriceDto) {
     return (await this.price.insert(Price)).generatedMaps[0];
@@ -87,5 +107,42 @@ export class PriceService {
         acc[price.coin].push(price);
         return acc;
       }, {});
+  }
+
+  async backFillPrices(coin: Coin) {
+    const lastPrice = await this.price.findOne({
+      order: {
+        geckoLastUpdatedAt: 'DESC'
+      },
+      where: {
+        coin: {
+          id: coin.id
+        }
+      }
+    });
+    if (lastPrice && dayjs(lastPrice.geckoLastUpdatedAt).isBefore(dayjs().subtract(1, 'day'))) {
+      const { prices, market_caps, total_volumes } = await this.gecko.coinIdMarketChartRange({
+        id: coin.slug,
+        vs_currency: 'usd',
+        from: dayjs(lastPrice.geckoLastUpdatedAt).unix(),
+        to: dayjs().unix()
+      });
+      for (const [date, price] of prices) {
+        const marketCap = market_caps.find(([d]) => d === date)[1];
+        const totalVolume = total_volumes.find(([d]) => d === date)[1];
+        const geckoLastUpdatedAt = dayjs(date).toDate();
+
+        if (!marketCap || !totalVolume) continue;
+
+        await this.create({
+          price,
+          marketCap,
+          totalVolume,
+          geckoLastUpdatedAt,
+          coin
+        });
+        this.logger.log(`Backfilled price for ${coin.name} on ${dayjs(date).toString()}`);
+      }
+    }
   }
 }

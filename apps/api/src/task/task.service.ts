@@ -83,6 +83,7 @@ export class TaskService {
       const prices = await this.gecko.simplePrice({
         ids,
         vs_currencies: 'usd',
+        include_24hr_vol: true,
         include_market_cap: true,
         include_last_updated_at: true
       });
@@ -90,6 +91,7 @@ export class TaskService {
       const data = Object.keys(coins).map((key) => ({
         price: prices[coins[key].slug].usd,
         marketCap: prices[coins[key].slug].usd_market_cap,
+        totalVolume: prices[coins[key].slug].usd_24h_vol,
         geckoLastUpdatedAt: new Date(prices[coins[key].slug].last_updated_at * 1000),
         coin: coins[key].id,
         coinId: coins[key].id
