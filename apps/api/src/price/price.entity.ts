@@ -19,6 +19,10 @@ export class Price {
   @ApiProperty()
   marketCap: number;
 
+  @Column({ type: 'decimal', default: 0, transformer: new ColumnNumericTransformer() })
+  @ApiProperty()
+  totalVolume: number;
+
   @Column({ type: 'timestamptz' })
   @ApiProperty()
   geckoLastUpdatedAt: Date;

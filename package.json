@@ -65,7 +65,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.13.2",
     "class-validator-password-check": "^1.0.8",
-    "coingecko-api-v3": "^0.0.20",
+    "coingecko-api-v3": "^0.0.29",
     "dayjs": "^1.11.9",
     "nestjs-pino": "^3.1.2",
     "passport": "^0.6.0",

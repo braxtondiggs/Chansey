@@ -11,6 +11,10 @@ export class CreatePriceDto {
   @IsNotEmpty()
   marketCap: number;
 
+  @IsNumber()
+  @IsNotEmpty()
+  totalVolume: number;
+
   @IsDate()
   @IsNotEmpty()
   geckoLastUpdatedAt: Date;
