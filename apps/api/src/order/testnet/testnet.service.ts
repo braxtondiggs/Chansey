@@ -25,7 +25,7 @@ export class TestnetService {
 
   async createOrder(side: OrderSide, order: TestnetDto) {
     const binance = this.user.getDefaultBinance();
-    const ticker = await this.ticker.getTickerByCoin(order.coinId, '0e968a4f-88c3-4dbf-8ff6-4420d248a2e0'); // NOTE: USDT
+    const ticker = await this.ticker.getTickerByCoin(order.coinId);
 
     const [{ quantity }, algorithm, response] = await Promise.all([
       this.order.isExchangeValid(order, OrderType.MARKET, ticker.symbol),
