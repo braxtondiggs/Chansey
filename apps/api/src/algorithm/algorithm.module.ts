@@ -9,6 +9,8 @@ import { AlgorithmService } from './algorithm.service';
 import * as DynamicAlgorithmServices from './scripts';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { Exchange } from '../exchange/exchange.entity';
+import { ExchangeService } from '../exchange/exchange.service';
 import { Ticker } from '../exchange/ticker/ticker.entity';
 import { TickerService } from '../exchange/ticker/ticker.service';
 import { Order } from '../order/order.entity';
@@ -23,12 +25,13 @@ import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Algorithm, Coin, Order, Ticker, Testnet, Portfolio, Price, User])],
+  imports: [TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Ticker, Testnet, Portfolio, Price, User])],
   controllers: [AlgorithmController],
   providers: [
     AlgorithmService,
     CoinService,
     ConfigService,
+    ExchangeService,
     OrderService,
     PortfolioService,
     PriceService,
