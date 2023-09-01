@@ -34,6 +34,19 @@ export class PriceService implements OnApplicationBootstrap {
     return (await this.price.insert(Price)).generatedMaps[0];
   }
 
+  async latest(coin: Coin): Promise<Price> {
+    return await this.price.findOne({
+      where: {
+        coin: {
+          id: coin.id
+        }
+      },
+      order: {
+        geckoLastUpdatedAt: 'DESC'
+      }
+    });
+  }
+
   async findAll(coins: string[] | string, range = PriceRange['all']): Promise<Price[]> {
     const coin = Array.isArray(coins) ? { id: In(coins) } : { id: coins };
     const time = PriceRangeTime[range];
