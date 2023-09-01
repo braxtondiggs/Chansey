@@ -3,6 +3,8 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
 import { PortfolioService } from './../../portfolio/portfolio.service';
+import { OrderSide } from '../../order/order.entity';
+import { TestnetService } from '../../order/testnet/testnet.service';
 import { PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
@@ -17,7 +19,8 @@ export class MovingAverageService {
   constructor(
     private readonly portfolio: PortfolioService,
     private readonly price: PriceService,
-    private readonly schedulerRegistry: SchedulerRegistry
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly testnet: TestnetService
   ) {}
 
   async onInit(algorithm: Algorithm) {
@@ -41,15 +44,20 @@ export class MovingAverageService {
       this.lastFetch = new Date();
     }
     for (const coin of coins) {
-      const term = this.SMAStrategy.shortTerm; // TODO: Add a strategy selector
-      const fastMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.fma));
-      const slowMA = this.calculateMovingAverage(this.prices[coin.id].slice(term.fma, term.sma));
-      if (typeof fastMA !== 'number' || typeof slowMA !== 'number') continue;
-      // TODO: Add a threshold
-      if (fastMA > slowMA) {
-        // TODO: Buy
-      } else {
-        // TODO: Sell
+      const { price: latestPrice } = await this.price.latest(coin);
+      for (const term of Object.values(this.SMAStrategy)) {
+        if (this.prices[coin.id].length < term.sma) continue;
+        const fastMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.fma));
+        const slowMA = this.calculateMovingAverage(this.prices[coin.id].slice(term.fma, term.sma));
+        if (typeof fastMA !== 'number' || typeof slowMA !== 'number') continue;
+
+        const threshold = (fastMA / slowMA) * 100;
+        if (Math.abs(fastMA - slowMA) >= threshold) continue;
+        if (latestPrice < fastMA) {
+          await this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
+        } else if (latestPrice > fastMA) {
+          await this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
+        }
       }
     }
   }
@@ -59,16 +67,17 @@ export class MovingAverageService {
   }
 
   private SMAStrategy = {
+    // NOTE: SMA might be too low
     shortTerm: {
-      fma: 5,
+      fma: 7,
       sma: 20
     },
     mediumTerm: {
-      fma: 50,
+      fma: 30,
       sma: 100
     },
     longTerm: {
-      fma: 100,
+      fma: 90,
       sma: 250
     }
   };
