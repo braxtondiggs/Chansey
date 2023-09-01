@@ -50,7 +50,7 @@ export class MeanReversionService {
     const [prices, todaysCoinPrices] = await Promise.all([
       this.price.findAll(
         coins.map(({ id }) => id),
-        PriceRange['30d']
+        PriceRange['14d']
       ),
       this.price.findAll(
         coins.map(({ id }) => id),
@@ -98,7 +98,7 @@ export class MeanReversionService {
     const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
     const variance = returns.reduce((a, b) => a + Math.pow(b - meanReturn, 2), 0) / returns.length;
 
-    return (Math.sqrt(variance) * PriceSummary[range]) / 60000;
+    return (Math.sqrt(variance) * PriceSummary[range]) / 6000;
   }
 
   private getThreshold(volatility: number) {
