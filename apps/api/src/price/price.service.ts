@@ -40,10 +40,10 @@ export class PriceService implements OnApplicationBootstrap {
     return await this.price.find({
       where: {
         coin,
-        createdAt: Between(new Date(Date.now() - time), new Date())
+        geckoLastUpdatedAt: Between(new Date(Date.now() - time), new Date())
       },
       order: {
-        createdAt: 'ASC'
+        geckoLastUpdatedAt: 'ASC'
       }
     });
   }
@@ -51,7 +51,7 @@ export class PriceService implements OnApplicationBootstrap {
   async findAllByDay(coins: string[] | string, range = PriceRange['all']): Promise<PriceSummaryByDay> {
     const prices = await this.findAll(coins, range);
     const dayPrices = prices.reduce((acc, price) => {
-      const date = price.createdAt.toISOString().split('T')[0];
+      const date = price.geckoLastUpdatedAt.toISOString().split('T')[0];
       const key = `${date}-${price.coinId}`;
       if (!acc[key]) {
         acc[key] = [];
@@ -62,7 +62,7 @@ export class PriceService implements OnApplicationBootstrap {
     return Object.keys(dayPrices)
       .map((key) => {
         const dayPrice = dayPrices[key];
-        const date = dayPrice[0].createdAt;
+        const date = dayPrice[0].geckoLastUpdatedAt;
         const high = Math.max(...dayPrice.map(({ price }) => price));
         const low = Math.min(...dayPrice.map(({ price }) => price));
         const avg = +(dayPrice.reduce((acc, { price }) => acc + price, 0) / dayPrice.length).toFixed(2);
@@ -81,8 +81,8 @@ export class PriceService implements OnApplicationBootstrap {
   async findAllByHour(coins: string[] | string, range = PriceRange['all']): Promise<PriceSummaryByHour> {
     const prices = await this.findAll(coins, range);
     const hourPrices = prices.reduce((acc, price) => {
-      const date = price.createdAt.toISOString().split('T')[0];
-      const hour = price.createdAt.getHours();
+      const date = price.geckoLastUpdatedAt.toISOString().split('T')[0];
+      const hour = price.geckoLastUpdatedAt.getHours();
       const key = `${date}-${hour}-${price.coinId}`;
       if (!acc[key]) {
         acc[key] = [];
@@ -93,7 +93,7 @@ export class PriceService implements OnApplicationBootstrap {
     return Object.keys(hourPrices)
       .map((key) => {
         const hourPrice = hourPrices[key];
-        const date = hourPrice[0].createdAt;
+        const date = hourPrice[0].geckoLastUpdatedAt;
         const high = Math.max(...hourPrice.map(({ price }) => price));
         const low = Math.min(...hourPrice.map(({ price }) => price));
         const avg = +(hourPrice.reduce((acc, { price }) => acc + price, 0) / hourPrice.length).toFixed(2);
