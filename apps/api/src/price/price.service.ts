@@ -82,6 +82,7 @@ export class PriceService implements OnApplicationBootstrap {
         const coin = dayPrice[0].coinId;
         return { avg, date, high, low, coin };
       })
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
       .reduce((acc, price) => {
         if (!acc[price.coin]) {
           acc[price.coin] = [];
@@ -113,6 +114,7 @@ export class PriceService implements OnApplicationBootstrap {
         const coin = hourPrice[0].coinId;
         return { avg, date, high, low, coin };
       })
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
       .reduce((acc, price) => {
         if (!acc[price.coin]) {
           acc[price.coin] = [];
