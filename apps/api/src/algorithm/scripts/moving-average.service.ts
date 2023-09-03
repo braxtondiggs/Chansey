@@ -48,12 +48,14 @@ export class MovingAverageService {
       for (const term of Object.values(this.SMAStrategy)) {
         if (this.prices[coin.id].length < term.sma) continue;
         const fastMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.fma));
-        const slowMA = this.calculateMovingAverage(this.prices[coin.id].slice(term.fma, term.sma));
+        const slowMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.sma));
         if (typeof fastMA !== 'number' || typeof slowMA !== 'number') continue;
 
         const threshold = (fastMA / slowMA) * 100;
         if (Math.abs(fastMA - slowMA) >= threshold) continue;
         if (latestPrice < fastMA) {
+          // TODO: fast & slow average minus actual coin price. You can figure out the quality or quantity of the trade. Bigger difference means bigger trade.
+          // TODO: once more data is considered maybe should only trade best SMAStrategy vs all
           await this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
         } else if (latestPrice > fastMA) {
           await this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
@@ -67,18 +69,17 @@ export class MovingAverageService {
   }
 
   private SMAStrategy = {
-    // NOTE: SMA might be too low
     shortTerm: {
-      fma: 7,
-      sma: 20
+      fma: 5,
+      sma: 40 // NOTE: SMA might be too low due to lack of data
     },
     mediumTerm: {
-      fma: 30,
+      fma: 10,
       sma: 100
     },
     longTerm: {
-      fma: 90,
-      sma: 250
+      fma: 25,
+      sma: 200
     }
   };
 }
