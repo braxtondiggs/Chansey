@@ -27,7 +27,7 @@ export class Testnet {
 
   @Column({
     type: 'enum',
-    enum: [OrderSide.BUY, OrderSide.SELL]
+    enum: OrderSide
   })
   side: OrderSide;
 

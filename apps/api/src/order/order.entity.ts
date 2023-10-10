@@ -16,7 +16,7 @@ export const enum OrderType {
   TRAILING_STOP_MARKET = 'TRAILING_STOP_MARKET'
 }
 
-export const enum OrderSide {
+export enum OrderSide {
   BUY = 'BUY',
   SELL = 'SELL'
 }

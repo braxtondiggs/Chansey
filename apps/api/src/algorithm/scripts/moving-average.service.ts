@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
+import * as dayjs from 'dayjs';
 
 import { PortfolioService } from './../../portfolio/portfolio.service';
 import { OrderSide } from '../../order/order.entity';
@@ -24,6 +26,7 @@ export class MovingAverageService {
   ) {}
 
   async onInit(algorithm: Algorithm) {
+    if (process.env.NODE_ENV !== 'production') return;
     this.logger.log(`${algorithm.name}: Running Successfully!`);
     this.algorithm = algorithm;
     this.addCronJob();
@@ -33,7 +36,13 @@ export class MovingAverageService {
     const job = new CronJob(this.algorithm.cron, this.cronJob.bind(this), null, true, 'America/New_York');
 
     this.schedulerRegistry.addCronJob(`${this.algorithm.name} Service`, job);
-    job.start();
+    setTimeout(
+      () => {
+        job.start();
+        this.cronJob();
+      },
+      process.env.NODE_ENV === 'production' ? 300000 : 0
+    );
   }
 
   private async cronJob() {
@@ -47,8 +56,8 @@ export class MovingAverageService {
       const { price: latestPrice } = await this.price.latest(coin);
       for (const term of Object.values(this.SMAStrategy)) {
         if (this.prices[coin.id].length < term.sma) continue;
-        const fastMA = this.calculateMovingAverage(this.prices[coin.id], term.fma);
-        const slowMA = this.calculateMovingAverage(this.prices[coin.id], term.sma);
+        const fastMA = this.calculateMovingAverage(this.prices[coin.id], term.fma).pop();
+        const slowMA = this.calculateMovingAverage(this.prices[coin.id], term.sma).pop();
         if (typeof fastMA !== 'number' || typeof slowMA !== 'number') continue;
 
         const threshold = (fastMA / slowMA) * 50;
@@ -64,7 +73,7 @@ export class MovingAverageService {
     }
   }
 
-  private calculateMovingAverage(prices: PriceSummary[], interval: number): number {
+  private calculateMovingAverage(prices: PriceSummary[], interval: number): number[] {
     const results = [];
 
     for (let index = interval; index <= prices.length; index++) {
@@ -72,7 +81,7 @@ export class MovingAverageService {
       results.push((sum / interval).toFixed(2));
     }
 
-    return results[0];
+    return results.reverse();
   }
 
   private SMAStrategy = {
@@ -89,4 +98,31 @@ export class MovingAverageService {
       sma: 200
     }
   };
+
+  getChartData(prices: PriceSummary[]): ChartData {
+    const fastMA = [...new Array(5).fill(NaN), ...this.calculateMovingAverage(prices, 5)];
+    const slowMA = [...new Array(40).fill(NaN), ...this.calculateMovingAverage(prices, 40)];
+    const labels = prices.map(({ date }) => dayjs(date).format('MM/DD/YYYY')).reverse();
+    const data = prices.map(({ avg }) => avg).reverse();
+    return {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Prices',
+          data,
+          borderColor: 'rgb(75, 192, 192)'
+        },
+        {
+          label: 'Fast MA',
+          data: fastMA,
+          borderColor: 'rgb(255, 99, 132)'
+        },
+        {
+          label: 'Slow MA',
+          data: slowMA,
+          borderColor: 'rgb(54, 162, 235)'
+        }
+      ]
+    };
+  }
 }
