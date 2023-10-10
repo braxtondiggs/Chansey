@@ -132,13 +132,11 @@ export class AlgorithmController {
     const height = 800; //px
     const prices = await this.price.findAllByDay(coinId, TestnetSummary['90d']);
     const algorithms = await this.algorithm.getAlgorithmsForTesting();
+    const algorithm = algorithms.find(({ id }) => id === algorithmId);
+    const provider = this.moduleRef.get(algorithm.service, { strict: false });
     let data: ChartData;
-    for (const cls of Object.values(DynamicAlgorithmServices)) {
-      const provider = this.moduleRef.get(cls, { strict: false });
-      const algorithm = algorithms.find(({ id }) => id === algorithmId);
-      if (provider && algorithm && typeof provider.getChartData === 'function')
-        data = provider?.getChartData(prices[coinId]);
-    }
+
+    if (provider && algorithm) data = provider?.getChartData?.(prices[coinId]);
 
     const configuration: ChartConfiguration = {
       type: 'line',

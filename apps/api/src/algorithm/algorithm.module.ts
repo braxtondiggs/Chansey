@@ -1,6 +1,6 @@
 import { Module, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ModuleRef } from '@nestjs/core';
+import { ModuleRef, NestFactory } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AlgorithmController } from './algorithm.controller';
@@ -38,7 +38,11 @@ import UsersService from '../users/users.service';
     TestnetService,
     TickerService,
     UsersService,
-    ...Object.values(DynamicAlgorithmServices)
+    ...Object.values(DynamicAlgorithmServices),
+    ...Object.values(DynamicAlgorithmServices).map((cls) => ({
+      provide: cls.name.toString(),
+      useClass: cls
+    }))
   ]
 })
 export class AlgorithmModule implements OnApplicationBootstrap {
@@ -49,7 +53,7 @@ export class AlgorithmModule implements OnApplicationBootstrap {
     for (const cls of Object.values(DynamicAlgorithmServices)) {
       const provider = this.moduleRef.get(cls, { strict: false });
       const algorithm = algorithms.find((algorithm) => algorithm.id === provider.id && algorithm.status);
-      if (provider && algorithm) await provider.onInit(algorithm);
+      if (provider && algorithm) await provider.onInit?.(algorithm);
     }
   }
 }
