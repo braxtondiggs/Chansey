@@ -47,11 +47,11 @@ export class MovingAverageService {
       const { price: latestPrice } = await this.price.latest(coin);
       for (const term of Object.values(this.SMAStrategy)) {
         if (this.prices[coin.id].length < term.sma) continue;
-        const fastMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.fma));
-        const slowMA = this.calculateMovingAverage(this.prices[coin.id].slice(0, term.sma));
+        const fastMA = this.calculateMovingAverage(this.prices[coin.id], term.fma);
+        const slowMA = this.calculateMovingAverage(this.prices[coin.id], term.sma);
         if (typeof fastMA !== 'number' || typeof slowMA !== 'number') continue;
 
-        const threshold = (fastMA / slowMA) * 100;
+        const threshold = (fastMA / slowMA) * 50;
         if (Math.abs(fastMA - slowMA) >= threshold) continue;
         if (latestPrice < fastMA) {
           // TODO: fast & slow average minus actual coin price. You can figure out the quality or quantity of the trade. Bigger difference means bigger trade.
@@ -64,8 +64,15 @@ export class MovingAverageService {
     }
   }
 
-  private calculateMovingAverage(prices: PriceSummary[]): number {
-    return +(prices.reduce((acc, { avg }) => acc + avg, 0) / prices.length).toFixed(2);
+  private calculateMovingAverage(prices: PriceSummary[], interval: number): number {
+    const results = [];
+
+    for (let index = interval; index <= prices.length; index++) {
+      const sum = prices.slice(index - interval, index).reduce((acc, { avg }) => acc + avg, 0);
+      results.push((sum / interval).toFixed(2));
+    }
+
+    return results[0];
   }
 
   private SMAStrategy = {
