@@ -25,6 +25,7 @@ export class Algorithm {
   @ApiProperty()
   name: string;
   slug: string;
+  service: string;
 
   @Column({ nullable: true })
   @ApiProperty()
@@ -63,6 +64,12 @@ export class Algorithm {
       .replace(/\\-\\-+/g, '-')
       .replace(/^-+/, '')
       .replace(/-+$/, '');
+  }
+
+  @AfterLoad()
+  @AfterInsert()
+  async generateServiceName() {
+    this.service = `${this.name.replace(/\s+/g, '')}Service`;
   }
 
   constructor(partial: Partial<Algorithm>) {

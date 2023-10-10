@@ -100,8 +100,9 @@ export class MovingAverageService {
   };
 
   getChartData(prices: PriceSummary[]): ChartData {
-    const fastMA = [...new Array(5).fill(NaN), ...this.calculateMovingAverage(prices, 5)];
-    const slowMA = [...new Array(40).fill(NaN), ...this.calculateMovingAverage(prices, 40)];
+    const { fma, sma } = this.SMAStrategy.shortTerm;
+    const fastMA = [...new Array(fma).fill(NaN), ...this.calculateMovingAverage(prices, fma)];
+    const slowMA = [...new Array(sma).fill(NaN), ...this.calculateMovingAverage(prices, sma)];
     const labels = prices.map(({ date }) => dayjs(date).format('MM/DD/YYYY')).reverse();
     const data = prices.map(({ avg }) => avg).reverse();
     return {
