@@ -32,6 +32,7 @@ export class MeanReversionService {
   ) {}
 
   async onInit(algorithm: Algorithm) {
+    // if (process.env.NODE_ENV !== 'production') return;
     this.logger.log(`${algorithm.name}: Running Successfully!`);
     this.algorithm = algorithm;
     this.addCronJob();
@@ -41,8 +42,13 @@ export class MeanReversionService {
     const job = new CronJob(this.algorithm.cron, this.cronJob.bind(this), null, true, 'America/New_York');
 
     this.schedulerRegistry.addCronJob(`${this.algorithm.name} Service`, job);
-    job.start();
-    this.cronJob();
+    setTimeout(
+      () => {
+        job.start();
+        this.cronJob();
+      },
+      process.env.NODE_ENV === 'production' ? 300000 : 0
+    );
   }
 
   private async cronJob() {
@@ -66,11 +72,19 @@ export class MeanReversionService {
       const volatility = this.calculateVolatility(todayPrices, PriceRange['1d']);
       const threshold = this.getThreshold(volatility);
       const currentPrice = prices[prices.length - 1];
+      continue;
       try {
+        console.log(
+          `currentPrice: ${currentPrice} mean: ${mean} Standard Deviation: ${standardDeviation} Volatility: ${volatility} ${
+            mean - threshold * standardDeviation
+          }`
+        );
         if (currentPrice < mean - threshold * standardDeviation) {
+          console.log(`Buy MRA: ${currentPrice} < ${mean - threshold * standardDeviation}`);
           await this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
         } else if (currentPrice > mean + threshold * standardDeviation) {
           // TODO: Calculate if can sell
+          console.log(`Sell MRA: ${currentPrice} > ${mean + threshold * standardDeviation}`);
           await this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
         }
       } catch (e) {

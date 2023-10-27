@@ -4,7 +4,7 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
-import { PortfolioService } from './../../portfolio/portfolio.service';
+import { PortfolioService } from '../../portfolio/portfolio.service';
 import { OrderSide } from '../../order/order.entity';
 import { TestnetService } from '../../order/testnet/testnet.service';
 import { PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
@@ -12,12 +12,12 @@ import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
 
 @Injectable()
-export class MovingAverageService {
+export class MovingAverageCrossoverService {
   readonly id = '100c1721-7b0b-4d96-a18e-40904c0cc36b';
   private lastFetch: Date;
   private algorithm: Algorithm;
   private prices: PriceSummaryByDay;
-  private readonly logger = new Logger(MovingAverageService.name);
+  private readonly logger = new Logger(MovingAverageCrossoverService.name);
   constructor(
     private readonly portfolio: PortfolioService,
     private readonly price: PriceService,
