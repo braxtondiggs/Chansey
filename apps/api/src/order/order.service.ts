@@ -79,7 +79,7 @@ export class OrderService {
       const minQty = parseFloat(lotSizeFilter.minQty);
       const maxQty = parseFloat(lotSizeFilter.maxQty);
       const stepSize = parseFloat(lotSizeFilter.stepSize);
-      const minNotionalValue = parseFloat(minNotional.minNotional);
+      // const minNotionalValue = parseFloat(minNotional.minNotional);
       if (symbols[0].status !== 'TRADING') throw new BadRequestException('Symbol is not trading');
       if (!symbols[0].permissions.includes('SPOT')) throw new BadRequestException('Invalid trading permissions');
       if (orderType === OrderType.MARKET) {

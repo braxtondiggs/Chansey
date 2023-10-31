@@ -9,6 +9,7 @@ import { CoinService } from '../coin/coin.service';
 import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
 import { TickerService } from '../exchange/ticker/ticker.service';
+import { CoinAlertService } from '../portfolio/coin-alert.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PriceService } from '../price/price.service';
 
@@ -21,6 +22,7 @@ export class TaskService {
   constructor(
     private readonly category: CategoryService,
     private readonly coin: CoinService,
+    private readonly coinAlert: CoinAlertService,
     private readonly exchange: ExchangeService,
     private readonly http: HttpService,
     private readonly portfolio: PortfolioService,
@@ -194,8 +196,16 @@ export class TaskService {
   async coinDetailed() {
     this.logger.log('Detailed Coins Cron');
     const coins = await this.portfolio.getPortfolioCoins();
+    const alerts = await this.coinAlert.get();
+    for (const alert of alerts) {
+      if (coins.find(({ symbol }) => symbol?.toUpperCase() !== alert.currency && alert.note === 'Chansey')) {
+        this.logger.log(`Deleting Alert: ${alert.currency}`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await this.coinAlert.delete(alert.currency?.toUpperCase());
+      }
+    }
 
-    for (const { id, slug } of coins) {
+    for (const { id, slug, symbol } of coins) {
       const coin = await this.gecko.coinId({ id: slug, localization: false, tickers: false });
 
       this.coin.update(id, {
@@ -221,6 +231,11 @@ export class TaskService {
         atlChange: coin.market_data.atl_change_percentage.usd,
         geckoLastUpdatedAt: coin.market_data.last_updated
       });
+
+      if (!alerts.find(({ currency }) => currency === symbol?.toUpperCase())) {
+        this.logger.log(`Creating alert: ${symbol?.toUpperCase()}`);
+        await this.coinAlert.create(symbol?.toUpperCase());
+      }
     }
   }
   catch(e) {

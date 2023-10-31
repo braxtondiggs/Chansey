@@ -4,10 +4,17 @@ import { ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Message } from '@chansey/api-interfaces';
 
 import { AppService } from './app.service';
+import { CoinService } from './coin/coin.service';
+import { OrderSide } from './order/order.entity';
+import { TestnetService } from './order/testnet/testnet.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly testnet: TestnetService,
+    private readonly coin: CoinService
+  ) {}
 
   @Get('hello')
   @ApiExcludeEndpoint()
@@ -16,8 +23,14 @@ export class AppController {
   }
 
   @Post('webhook/cca')
-  async CCAWebhook(@Body() body: any) {
-    console.log(body);
-    return body;
+  async CCAWebhook(@Body() body: { currency: string; percent: string; window: string; exchange: string }) {
+    const action = +body.percent > 0 ? OrderSide.BUY : OrderSide.SELL;
+    const coin = await this.coin.getCoinBySymbol(body.currency);
+    if (!coin && coin.id) throw new Error('Coin not found'); // TODO: Need to create a way to notify on failure
+    return await this.testnet.createOrder(action, {
+      algorithm: 'facb28ad-5ed7-4615-a2fb-f825e53008a2',
+      coinId: coin.id,
+      quantity: '1'
+    });
   }
 }

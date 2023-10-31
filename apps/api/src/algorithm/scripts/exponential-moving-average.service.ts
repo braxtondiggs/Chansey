@@ -59,6 +59,21 @@ export class ExponentialMovingAverageService {
     }
   }
 
+  private SMAStrategy = {
+    shortTerm: {
+      fma: 8,
+      sma: 20
+    },
+    mediumTerm: {
+      fma: 10,
+      sma: 100
+    },
+    longTerm: {
+      fma: 25,
+      sma: 200
+    }
+  };
+
   private calculateEMA(prices: PriceSummary[], period: number): number[] {
     if (prices.length < period) {
       throw new Error('The length of the prices array must be at least as long as the period specified.');

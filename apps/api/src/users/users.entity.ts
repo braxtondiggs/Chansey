@@ -89,10 +89,10 @@ export class User {
     return Buffer.concat([decipher.update(binanceSecret, 'hex'), decipher.final()]).toString();
   }
 
-  @CreateDateColumn({ select: false })
+  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
+  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Timestamp;
 
   @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { onDelete: 'CASCADE' })

@@ -1,6 +1,8 @@
 import { join } from 'path';
 
+import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
@@ -57,13 +59,16 @@ const isProduction = process.env.NODE_ENV === 'production';
     AuthenticationModule,
     CategoryModule,
     CoinModule,
+    ConfigModule,
     ExchangeModule,
     HealthModule,
+    HttpModule,
     OrderModule,
     PortfolioModule,
     PriceModule,
     TaskModule
   ],
+  exports: [ConfigModule, HttpModule],
   controllers: [AppController],
   providers: [
     AppService,

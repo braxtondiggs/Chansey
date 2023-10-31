@@ -1,12 +1,13 @@
-import { Module, OnApplicationBootstrap } from '@nestjs/common';
+import { Module, OnApplicationBootstrap, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ModuleRef, NestFactory } from '@nestjs/core';
+import { ModuleRef } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AlgorithmController } from './algorithm.controller';
 import { Algorithm } from './algorithm.entity';
 import { AlgorithmService } from './algorithm.service';
 import * as DynamicAlgorithmServices from './scripts';
+import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { Exchange } from '../exchange/exchange.entity';
@@ -25,7 +26,10 @@ import { User } from '../users/users.entity';
 import UsersService from '../users/users.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Ticker, Testnet, Portfolio, Price, User])],
+  imports: [
+    forwardRef(() => AppModule),
+    TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Ticker, Testnet, Portfolio, Price, User])
+  ],
   controllers: [AlgorithmController],
   providers: [
     AlgorithmService,

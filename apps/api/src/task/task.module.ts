@@ -1,10 +1,9 @@
-import { HttpModule } from '@nestjs/axios';
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { TaskService } from './task.service';
+import { AppModule } from '../app.module';
 import { Category } from '../category/category.entity';
 import { CategoryService } from '../category/category.service';
 import { Coin } from '../coin/coin.entity';
@@ -13,6 +12,7 @@ import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
 import { Ticker } from '../exchange/ticker/ticker.entity';
 import { TickerService } from '../exchange/ticker/ticker.service';
+import { CoinAlertService } from '../portfolio/coin-alert.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Price } from '../price/price.entity';
@@ -22,14 +22,14 @@ import UsersService from '../users/users.service';
 
 @Module({
   imports: [
-    ConfigModule,
-    HttpModule,
+    forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Category, Coin, Exchange, Price, Portfolio, Ticker, User]),
     ScheduleModule.forRoot()
   ],
   providers: [
     CategoryService,
     CoinService,
+    CoinAlertService,
     ExchangeService,
     PortfolioService,
     PriceService,

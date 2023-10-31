@@ -12,22 +12,41 @@ export class CoinAlertService {
       auth: {
         username: config.get('CCA_API_KEY'),
         password: ''
+      },
+      headers: {
+        'Content-Type': 'application/json'
       }
     };
   }
 
   async get(type: AlertType = 'percent_price') {
-    return await firstValueFrom(this.http.get(this.BASE_URL, { ...this.auth, params: { type } }));
+    const { data } = await firstValueFrom(this.http.get(this.BASE_URL, { ...this.auth, params: { type } }));
+    return data;
   }
 
-  async create(coin: string, type: AlertType = 'percent_price') {
+  async create(currency: string, type: AlertType = 'percent_price') {
     const data = {
-      type,
-      exchange: 'Binance',
       channel: { name: 'webhook' },
-      window: 15
+      cooldown: 30,
+      currency,
+      direction: 'changes',
+      exchange: 'Binance US',
+      note: 'Chansey',
+      percent: '1',
+      type,
+      window: 5
     };
-    return await firstValueFrom(this.http.post(this.BASE_URL, data, { ...this.auth, params: { type } }));
+    const { data: response } = await firstValueFrom(this.http.post(this.BASE_URL, data, { ...this.auth }));
+    return response;
+  }
+
+  async delete(coin: string, type: AlertType = 'percent_price') {
+    const alerts = await this.get(type);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const { id } = alerts.find(({ currency, note }) => coin === currency && note === 'Chansey');
+    if (!id) return;
+    const { data } = await firstValueFrom(this.http.delete(`${this.BASE_URL}/${id}`, this.auth));
+    return data;
   }
 }
 
