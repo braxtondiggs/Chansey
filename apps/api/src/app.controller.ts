@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiExcludeEndpoint } from '@nestjs/swagger';
 
 import { Message } from '@chansey/api-interfaces';
@@ -13,5 +13,11 @@ export class AppController {
   @ApiExcludeEndpoint()
   getData(): Message {
     return this.appService.getData();
+  }
+
+  @Post('webhook/cca')
+  async CCAWebhook(@Body() body: any) {
+    console.log(body);
+    return body;
   }
 }
