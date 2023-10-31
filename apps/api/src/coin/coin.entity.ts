@@ -119,10 +119,10 @@ export class Coin {
   @ApiProperty()
   geckoLastUpdatedAt: Date;
 
-  @CreateDateColumn({ select: false })
+  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
+  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Timestamp;
 
   @OneToMany(() => Portfolio, (portfolio) => portfolio.coin, { onDelete: 'CASCADE' })

@@ -26,10 +26,10 @@ export class Portfolio {
   @ApiProperty()
   type: string;
 
-  @CreateDateColumn({ select: false })
+  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
+  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Timestamp;
 
   @Index('portfolio_coinId_index')

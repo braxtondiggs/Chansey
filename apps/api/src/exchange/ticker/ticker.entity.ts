@@ -48,10 +48,10 @@ export class Ticker {
     this.symbol = `${this.coin.symbol}${this.target.symbol}`.toUpperCase();
   }
 
-  @CreateDateColumn({ select: false })
+  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
+  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Timestamp;
 
   @Index('ticker_exchangeId_index')

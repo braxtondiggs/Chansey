@@ -17,11 +17,11 @@ export class Category {
   @ApiProperty()
   name: string;
 
-  @CreateDateColumn({ select: false })
+  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
+  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   @ApiProperty({ type: 'string', format: 'date-time' })
   updatedAt: Timestamp;
 

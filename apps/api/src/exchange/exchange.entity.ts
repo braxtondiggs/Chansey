@@ -96,10 +96,10 @@ export class Exchange {
   @ApiProperty()
   otherUrl2?: string;
 
-  @CreateDateColumn({ select: false })
+  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Timestamp;
 
-  @UpdateDateColumn({ select: false })
+  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Timestamp;
 
   @OneToMany(() => Ticker, (ticker) => ticker.exchange, { onDelete: 'CASCADE' })
