@@ -23,7 +23,10 @@ export class AppController {
   }
 
   @Post('webhook/cca')
-  async CCAWebhook(@Body() body: { currency: string; percent: string; window: string; exchange: string }) {
+  async CCAWebhook(
+    @Body() body: { currency: string; percent: string; window: string; exchange: string; message: string }
+  ) {
+    if (body.message?.includes('Confirmation')) return { message: 'Confirming the Confirmation ;)' };
     const action = +body.percent > 0 ? OrderSide.BUY : OrderSide.SELL;
     const coin = await this.coin.getCoinBySymbol(body.currency);
     if (!coin && coin.id) throw new Error('Coin not found'); // TODO: Need to create a way to notify on failure
