@@ -56,10 +56,10 @@
       "executor": "@angular-devkit/build-angular:dev-server",
       "configurations": {
         "production": {
-          "browserTarget": "chansey:build:production"
+          "buildTarget": "chansey:build:production"
         },
         "development": {
-          "browserTarget": "chansey:build:development"
+          "buildTarget": "chansey:build:development"
         }
       },
       "defaultConfiguration": "development",
@@ -70,21 +70,17 @@
     "extract-i18n": {
       "executor": "@angular-devkit/build-angular:extract-i18n",
       "options": {
-        "browserTarget": "chansey:build"
+        "buildTarget": "chansey:build"
       }
     },
     "lint": {
-      "executor": "@nx/linter:eslint",
-      "options": {
-        "lintFilePatterns": ["apps/chansey/src/**/*.ts", "apps/chansey/src/**/*.html"]
-      }
+      "executor": "@nx/eslint:lint"
     },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/apps/chansey"],
       "options": {
-        "jestConfig": "apps/chansey/jest.config.ts",
-        "passWithNoTests": true
+        "jestConfig": "apps/chansey/jest.config.ts"
       }
     }
   },
