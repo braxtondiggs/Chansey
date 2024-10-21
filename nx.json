@@ -1,7 +1,5 @@
 {
-  "cli": {
-    "packageManager": "npm"
-  },
+  "cli": { "packageManager": "npm" },
   "generators": {
     "@nx/angular:application": {
       "style": "scss",
@@ -9,43 +7,21 @@
       "unitTestRunner": "jest",
       "e2eTestRunner": "cypress"
     },
-    "@nx/angular:library": {
-      "linter": "eslint",
-      "unitTestRunner": "jest"
-    },
-    "@nx/angular:component": {
-      "style": "scss"
-    }
+    "@nx/angular:library": { "linter": "eslint", "unitTestRunner": "jest" },
+    "@nx/angular:component": { "style": "scss" }
   },
   "defaultProject": "chansey",
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "targetDefaults": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"],
-      "cache": true
-    },
-    "e2e": {
-      "inputs": ["default", "^production"],
-      "cache": true
-    },
+    "build": { "dependsOn": ["^build"], "inputs": ["production", "^production"], "cache": true },
+    "e2e": { "inputs": ["default", "^production"], "cache": true },
     "@nx/jest:jest": {
       "inputs": ["default", "^production", "{workspaceRoot}/jest.preset.js"],
       "cache": true,
-      "options": {
-        "passWithNoTests": true
-      },
-      "configurations": {
-        "ci": {
-          "ci": true,
-          "codeCoverage": true
-        }
-      }
+      "options": { "passWithNoTests": true },
+      "configurations": { "ci": { "ci": true, "codeCoverage": true } }
     },
-    "@nx/eslint:lint": {
-      "inputs": ["default", "{workspaceRoot}/.eslintrc.json"],
-      "cache": true
-    }
+    "@nx/eslint:lint": { "inputs": ["default", "{workspaceRoot}/.eslintrc.json"], "cache": true }
   },
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
@@ -62,5 +38,6 @@
   "nxCloudAccessToken": "N2JkYzExMmItODdiZi00NzZkLWE5OGEtYTE5MGU1M2MyY2NhfHJlYWQtd3JpdGU=",
   "useInferencePlugins": false,
   "defaultBase": "master",
-  "useLegacyCache": true
+  "useLegacyCache": true,
+  "nxCloudId": "67169e854c1cf0f07e274815"
 }
