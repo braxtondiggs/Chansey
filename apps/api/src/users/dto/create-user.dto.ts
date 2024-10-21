@@ -1,14 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength, Validate } from 'class-validator';
-import { PasswordValidation, PasswordValidationRequirement } from 'class-validator-password-check';
+import { IsEmail, IsNotEmpty, IsString, IsStrongPassword, IsStrongPasswordOptions } from 'class-validator';
 
 import { Match } from '../../utils/match.decorator';
 
-const passwordRequirement: PasswordValidationRequirement = {
-  mustContainLowerLetter: true,
-  mustContainNumber: true,
-  mustContainSpecialCharacter: true,
-  mustContainUpperLetter: true
+const passwordRequirement: IsStrongPasswordOptions = {
+  minLength: 8,
+  minLowercase: 1,
+  minUppercase: 1,
+  minNumbers: 1,
+  minSymbols: 1
 };
 
 export class CreateUserDto {
@@ -27,8 +27,7 @@ export class CreateUserDto {
   family_name: string;
 
   @IsString()
-  @MinLength(6)
-  @Validate(PasswordValidation, [passwordRequirement])
+  @IsStrongPassword(passwordRequirement)
   @ApiProperty({ example: 'Password123', description: "User's password" })
   password: string;
 
