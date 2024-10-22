@@ -4,9 +4,9 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { OrderSide } from '../../order/order.entity';
 import { TestnetService } from '../../order/testnet/testnet.service';
+import { PortfolioService } from '../../portfolio/portfolio.service';
 import { PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
