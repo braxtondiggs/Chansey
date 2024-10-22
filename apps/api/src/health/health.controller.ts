@@ -20,7 +20,7 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
-  check() {
+  async check() {
     return this.health.check([
       () => this.http.pingCheck('coingecko', 'https://api.coingecko.com/api/v3/ping'),
       () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
