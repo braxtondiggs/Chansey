@@ -5,66 +5,65 @@ import {
   Get,
   HttpStatus,
   Patch,
-  Req,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserDto, UserResponseDto } from './dto';
 import { User } from './users.entity';
 import UsersService from './users.service';
+import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import RequestWithUser from '../authentication/interface/requestWithUser.interface';
 
 @ApiTags('User')
+@ApiBearerAuth('token')
 @ApiResponse({
   status: HttpStatus.UNAUTHORIZED,
   description: 'Invalid credentials'
 })
-@ApiBearerAuth('token')
 @Controller('user')
+@UseGuards(JwtAuthenticationGuard)
 @UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
   constructor(private readonly user: UsersService) {}
 
   @Patch()
-  @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({
     summary: 'Update user',
-    description: 'This endpoint is used to update the user.'
+    description: "Updates the authenticated user's information."
   })
   @ApiOkResponse({
     description: 'The user has been successfully updated.',
-    type: User,
-    isArray: false
+    type: UserResponseDto
   })
-  async updateUser(@Body() dto: UpdateUserDto, @Req() { user }: RequestWithUser) {
+  async updateUser(@Body() dto: UpdateUserDto, @GetUser() user: User) {
     return this.user.update(dto, user);
   }
 
-  @UseGuards(JwtAuthenticationGuard)
   @Get()
   @ApiOperation({
     summary: 'Get basic user info',
-    description: 'This endpoint is used to get the user.'
+    description: 'Retrieves basic information about the authenticated user.'
   })
   @ApiOkResponse({
-    description: 'The user records',
-    type: User,
-    isArray: false
+    description: 'Basic user information retrieved successfully.',
+    type: UserResponseDto
   })
-  get(@Req() { user }: RequestWithUser) {
+  get(@GetUser() user: User) {
     return user;
   }
 
-  @UseGuards(JwtAuthenticationGuard)
   @Get('info')
   @ApiOperation({
     summary: 'Get detailed user info',
-    description: 'This endpoint is used to get the user.'
+    description: 'Retrieves detailed information about the authenticated user.'
   })
-  info(@Req() { user }: RequestWithUser) {
+  @ApiOkResponse({
+    description: 'Detailed user information retrieved successfully.',
+    type: UserResponseDto
+  })
+  info(@GetUser() user: User) {
     return this.user.getBinanceInfo(user);
   }
 }

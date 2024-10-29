@@ -5,31 +5,28 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Res,
-  UseGuards,
-  UsePipes,
-  ValidationPipe
+  UseGuards
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import { FastifyReply } from 'fastify';
-import { DeleteResult } from 'typeorm';
 
-import { Algorithm } from './algorithm.entity';
 import { AlgorithmService } from './algorithm.service';
-import { CreateAlgorithmDto, UpdateAlgorithmDto } from './dto';
+import { AlgorithmResponseDto, CreateAlgorithmDto, DeleteResponseDto, UpdateAlgorithmDto } from './dto';
 import * as DynamicAlgorithmServices from './scripts';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { TestnetSummary } from '../order/testnet/dto';
 import { PriceService } from '../price/price.service';
-import FindOneParams from '../utils/findOneParams';
 
 @ApiTags('Algorithm')
 @ApiBearerAuth('token')
+@UseGuards(JwtAuthenticationGuard)
 @Controller('algorithm')
 export class AlgorithmController {
   constructor(
@@ -39,93 +36,148 @@ export class AlgorithmController {
   ) {}
 
   @Get()
-  @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({
     summary: 'Get all algorithms',
-    description: 'This endpoint is used to get all algorithms.'
+    description: 'Retrieve a list of all available algorithms.'
   })
-  @ApiResponse({ status: HttpStatus.OK, description: 'The portfolio items records', type: Algorithm, isArray: true })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of algorithms retrieved successfully.',
+    type: AlgorithmResponseDto,
+    isArray: true
+  })
   async getAlgorithms() {
     return this.algorithm.getAlgorithms();
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({
-    summary: 'Get algorithm by id',
-    description: 'This endpoint is used to get a algorithm by id.'
+    summary: 'Get algorithm by ID',
+    description: 'Retrieve a single algorithm by its unique identifier.'
   })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the algorithm item', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'The algorithm record', type: Algorithm, isArray: false })
-  getAlgorithmById(@Param() { id }: FindOneParams) {
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the algorithm',
+    type: String,
+    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Algorithm retrieved successfully.',
+    type: AlgorithmResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Algorithm not found.'
+  })
+  getAlgorithmById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.algorithm.getAlgorithmById(id);
   }
 
   @Post()
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Create algorithm', description: 'This endpoint is used to create a algorithm.' })
+  @ApiOperation({
+    summary: 'Create a new algorithm',
+    description: 'Create a new algorithm with the provided details.'
+  })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'The algorithm record',
-    type: Algorithm,
-    isArray: false
+    description: 'Algorithm created successfully.',
+    type: AlgorithmResponseDto
   })
-  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid input data.'
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'Algorithm with the same name already exists.'
+  })
   async createAlgorithm(@Body() dto: CreateAlgorithmDto) {
     return this.algorithm.create(dto);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Update algorithm by id', description: 'This endpoint is used to update a algorithm.' })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the algorithm item', type: String })
+  @ApiOperation({
+    summary: 'Update an algorithm',
+    description: 'Update the details of an existing algorithm by its ID.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the algorithm to update',
+    type: String,
+    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+  })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The algorithm record',
-    type: Algorithm,
-    isArray: false
+    description: 'Algorithm updated successfully.',
+    type: AlgorithmResponseDto
   })
-  async updateAlgorithm(@Param() { id }: FindOneParams, @Body() dto: UpdateAlgorithmDto) {
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Algorithm not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid input data.'
+  })
+  async updateAlgorithm(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateAlgorithmDto) {
     return this.algorithm.update(id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Remove algorithm by id', description: 'This endpoint is used to remove a algorithm.' })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the algorithm item', type: String })
+  @ApiOperation({
+    summary: 'Delete an algorithm',
+    description: 'Remove an existing algorithm by its ID.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the algorithm to delete',
+    type: String,
+    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+  })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The algorithm record',
-    type: DeleteResult,
-    isArray: false
+    description: 'Algorithm deleted successfully.',
+    type: DeleteResponseDto
   })
-  async removeAlgorithm(@Param() { id }: FindOneParams) {
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Algorithm not found.'
+  })
+  async removeAlgorithm(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.algorithm.remove(id);
   }
 
   @Get('chart/:algorithmId/:coinId')
-  @ApiParam({
-    name: 'coinId',
-    required: false,
-    description: 'The id of the coin',
-    type: String,
-    example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f'
+  @ApiOperation({
+    summary: 'Generate algorithm chart',
+    description: 'Generate a chart image for a specific algorithm and coin.'
   })
   @ApiParam({
     name: 'algorithmId',
     required: true,
-    description: 'The id of the algorithm',
+    description: 'UUID of the algorithm',
     type: String,
     example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+  })
+  @ApiParam({
+    name: 'coinId',
+    required: true,
+    description: 'UUID of the coin',
+    type: String,
+    example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f'
   })
   @ApiProduces('image/png')
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The algorithm chart',
-    schema: {
-      type: 'file',
-      format: 'binary'
-    }
+    description: 'Algorithm chart generated successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Algorithm or Coin not found.'
   })
   async chart(@Param() { algorithmId, coinId = '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f' }, @Res() res: FastifyReply) {
     const width = 800; //px

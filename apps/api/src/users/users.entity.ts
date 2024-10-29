@@ -32,12 +32,28 @@ export class User {
   expires_in: number;
 
   @Exclude()
-  @Column({ nullable: true })
+  @Column({ nullable: true, select: false })
   binance?: string;
 
   @Exclude()
-  @Column({ nullable: true })
+  @Column({ nullable: true, select: false })
   binanceSecret?: string;
+
+  @CreateDateColumn({ select: false, type: 'timestamptz' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ select: false, type: 'timestamptz' })
+  updatedAt: Date;
+
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { cascade: true })
+  portfolios: Portfolio[];
+
+  @OneToMany(() => Order, (order) => order.user, { cascade: true })
+  orders: Order[];
+
+  constructor(partial: Partial<User>) {
+    Object.assign(this, partial);
+  }
 
   @BeforeUpdate()
   async encryptBinance() {
@@ -87,21 +103,5 @@ export class User {
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(binanceSecret, 'hex'), decipher.final()]).toString();
-  }
-
-  @CreateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Timestamp;
-
-  @UpdateDateColumn({ select: false, default: () => 'CURRENT_TIMESTAMP' })
-  updatedAt: Timestamp;
-
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { onDelete: 'CASCADE' })
-  portfolios: Portfolio[];
-
-  @OneToMany(() => Order, (order) => order.user, { onDelete: 'CASCADE' })
-  orders: Order[];
-
-  constructor(partial: Partial<User>) {
-    Object.assign(this, partial);
   }
 }

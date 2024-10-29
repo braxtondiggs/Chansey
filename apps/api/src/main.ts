@@ -10,7 +10,7 @@ import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
@@ -19,65 +19,114 @@ async function bootstrap() {
     })
   );
 
+  await registerMiddlewares(app);
+
   if (process.env.NODE_ENV !== 'production') {
-    const config = new DocumentBuilder()
-      .setTitle('Chansey')
-      .setVersion('1.0')
-      .addServer('/api')
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          name: 'JWT',
-          description: 'Enter JWT token',
-          in: 'header'
-        },
-        'token'
-      )
-      .addApiKey(
-        {
-          type: 'apiKey',
-          name: 'Api-Key',
-          scheme: 'apiKey',
-          description: 'Enter API key',
-          in: 'header'
-        },
-        'api-key'
-      )
-      .build();
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true // this
-      }
-    });
+    setupSwagger(app);
   }
 
+  configureGlobalSettings(app);
+
+  await startServer(app);
+}
+
+async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: [`'self'`],
         styleSrc: [`'self'`, `'unsafe-inline'`],
         imgSrc: [`'self'`, 'data:', 'validator.swagger.io'],
-        scriptSrc: [`'self'`, `https: 'unsafe-inline'`]
+        scriptSrc: [`'self'`, `'unsafe-inline'`, 'https:'],
+        connectSrc: [`'self'`],
+        fontSrc: [`'self'`, 'https:', 'data:'],
+        objectSrc: [`'none'`],
+        upgradeInsecureRequests: []
       }
-    }
+    },
+    hidePoweredBy: true
   });
+
+  await app.register(compression, { global: true });
+
+  await app.register(fastifyCookie, {
+    secret: process.env.COOKIE_SECRET || 'default_secret', // Replace with a secure secret in production
+    hook: 'onRequest',
+    parseOptions: {}
+  });
+
   await app.register(fastifyCsrf);
-  await app.register(compression);
-  await app.register(fastifyCookie);
+
   app.useLogger(app.get(Logger));
+
   app.useGlobalInterceptors(new LoggerErrorInterceptor());
+}
 
+function setupSwagger(app: NestFastifyApplication): void {
+  const config = new DocumentBuilder()
+    .setTitle('Chansey API')
+    .setDescription('API documentation for the Chansey application')
+    .setVersion('1.0')
+    .addServer('/api')
+    .addBearerAuth(
+      {
+        type: 'http',
+        bearerFormat: 'JWT',
+        description: 'Enter JWT token'
+      },
+      'token'
+    )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        description: 'Enter API key'
+      },
+      'api-key'
+    )
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayOperationId: true,
+      filter: true,
+      showRequestDuration: true
+    },
+    jsonDocumentUrl: '/api-json'
+  });
+}
+
+function configureGlobalSettings(app: NestFastifyApplication): void {
+  // Set a global prefix for all routes
   app.setGlobalPrefix('api');
-  app.useGlobalPipes(new ValidationPipe({ transform: true }));
 
-  const port = process.env.PORT || 3000;
-  await app.listen(port, '0.0.0.0', () => {
-    if (process.env.NODE_ENV !== 'production') {
-      app.get(Logger).log(`🚀 Application is running on: http://localhost:${port}/api`);
-    }
+  // Enable global validation pipes with transformation
+  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+}
+
+async function startServer(app: NestFastifyApplication): Promise<void> {
+  const port = parseInt(process.env.PORT, 10) || 3000;
+  const host = process.env.HOST || '0.0.0.0';
+
+  try {
+    await app.listen(port, host);
+    app.get(Logger).log(`🚀 Application is running on: http://${host}:${port}/api`);
+  } catch (error) {
+    app.get(Logger).error('Error starting the server:', error);
+    process.exit(1);
+  }
+
+  process.on('SIGINT', async () => {
+    app.get(Logger).log('Received SIGINT. Shutting down gracefully...');
+    await app.close();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    app.get(Logger).log('Received SIGTERM. Shutting down gracefully...');
+    await app.close();
+    process.exit(0);
   });
 }
 

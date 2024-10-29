@@ -1,14 +1,15 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
 
 import { AuthenticationService } from './authentication.service';
+import { LogInDto, LoginResponseDto, LogoutResponseDto, RegisterResponseDto } from './dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { LogInDto } from './dto/login.dto';
 import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
-import RequestWithUser from './interface/requestWithUser.interface';
+import GetUser from '../authentication/decorator/get-user.decorator';
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { User } from '../users/users.entity';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -16,38 +17,87 @@ export class AuthenticationController {
   constructor(private readonly authentication: AuthenticationService) {}
 
   @Post('register')
-  @ApiOperation({ description: 'Register a new user', summary: 'Register' })
+  @ApiOperation({
+    summary: 'Register a new user',
+    description: 'Registers a new user with the provided details.'
+  })
+  @ApiBody({ type: CreateUserDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'The user has been successfully registered.',
+    type: RegisterResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid input data.'
+  })
   async register(@Body() user: CreateUserDto) {
     return this.authentication.register(user);
   }
 
+  @Post('login')
+  @ApiOperation({
+    summary: 'Login to the application',
+    description: 'Authenticates a user using email and password.'
+  })
+  @ApiBody({ type: LogInDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'User logged in successfully.',
+    type: LoginResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid credentials.'
+  })
+  @ApiBearerAuth('token')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LocalAuthenticationGuard)
-  @Post('login')
-  @ApiOperation({ description: 'Login to the application', summary: 'Login' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'User logged in successfully' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid credentials' })
-  @ApiBody({ type: LogInDto })
-  @ApiBearerAuth('token')
-  async logIn(@Req() { user }: RequestWithUser, @Res() response: FastifyReply) {
+  async logIn(@GetUser() user: User, @Res() response: FastifyReply) {
     const cookie = this.authentication.getCookieWithJwtToken(user.id_token, user.expires_in);
     response.header('Set-Cookie', cookie);
     return response.send(user);
   }
 
-  @UseGuards(JwtAuthenticationGuard)
   @Post('logout')
-  @ApiOperation({ description: 'Logout of the application', summary: 'Logout' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'User logged out successfully' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid credentials' })
+  @ApiOperation({
+    summary: 'Logout of the application',
+    description: 'Logs out the authenticated user by clearing cookies.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'User logged out successfully.',
+    type: LogoutResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid credentials.'
+  })
+  @UseGuards(JwtAuthenticationGuard)
   @ApiBearerAuth('token')
   async logOut(@Res() response: FastifyReply) {
-    response.header('Set-Cookie', this.authentication.getCookieForLogOut());
+    response
+      .header('Set-Cookie', this.authentication.getCookieForLogOut())
+      .clearCookie('Authentication')
+      .clearCookie('Refresh')
+      .status(HttpStatus.OK)
+      .send(new LogoutResponseDto('Logout successful'));
     return { message: 'Logout successful' };
   }
 
   @Post('forgot-password')
-  @ApiOperation({ description: 'Forgot password', summary: 'Forgot password' })
+  @ApiOperation({
+    summary: 'Forgot Password',
+    description: 'Sends a password reset link to the provided email address.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Password reset link sent successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid email address.'
+  })
   async forgotPassword(@Body() { email }: ForgotPasswordDto) {
     return this.authentication.auth.forgotPassword({ email });
   }

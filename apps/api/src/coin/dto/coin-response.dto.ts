@@ -1,42 +1,36 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { Ticker } from '../exchange/ticker/ticker.entity';
-import { Order } from '../order/order.entity';
-import { Portfolio } from '../portfolio/portfolio.entity';
-import { Price } from '../price/price.entity';
+import { CreateCoinDto } from './create-coin.dto';
+import { TickerResponseDto } from '../../exchange/ticker/dto/ticker-response.dto';
+import { OrderResponseDto } from '../../order/dto/order-response.dto';
+import { PortfolioResponseDto } from '../../portfolio/dto/portfolio-response.dto';
+import { CreatePriceDto } from '../../price/dto/create-price.dto';
 
-@Entity()
-export class Coin {
-  @PrimaryGeneratedColumn('uuid')
+export class CoinResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the coin',
     example: '123e4567-e89b-12d3-a456-426614174000'
   })
   id: string;
 
-  @Column({ unique: true })
   @ApiProperty({
     description: 'Unique slug identifier for the coin',
     example: 'bitcoin'
   })
   slug: string;
 
-  @Column({ unique: true })
   @ApiProperty({
     description: 'Name of the coin',
     example: 'Bitcoin'
   })
   name: string;
 
-  @Column()
   @ApiProperty({
     description: 'Symbol of the coin',
     example: 'BTC'
   })
   symbol: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Description of the coin',
     example: 'Bitcoin is a decentralized digital currency...',
@@ -44,7 +38,6 @@ export class Coin {
   })
   description?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: "URL to the coin's image",
     example: 'https://example.com/images/bitcoin.png',
@@ -52,7 +45,6 @@ export class Coin {
   })
   image?: string;
 
-  @Column({ type: 'date', nullable: true })
   @ApiProperty({
     description: 'Genesis date of the coin',
     example: '2009-01-03',
@@ -60,7 +52,6 @@ export class Coin {
   })
   genesis?: Date;
 
-  @Column({ type: 'int', nullable: true })
   @ApiProperty({
     description: 'Market rank of the coin',
     example: 1,
@@ -68,7 +59,6 @@ export class Coin {
   })
   marketRank?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Total supply of the coin',
     example: 21000000.0,
@@ -77,7 +67,6 @@ export class Coin {
   })
   totalSupply?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Circulating supply of the coin',
     example: 18500000.0,
@@ -86,7 +75,6 @@ export class Coin {
   })
   circulatingSupply?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Maximum supply of the coin',
     example: 21000000.0,
@@ -95,7 +83,6 @@ export class Coin {
   })
   maxSupply?: number;
 
-  @Column({ type: 'int', nullable: true })
   @ApiProperty({
     description: 'Coingecko rank of the coin',
     example: 1,
@@ -103,7 +90,6 @@ export class Coin {
   })
   geckoRank?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Developer score of the coin',
     example: 75.5,
@@ -112,7 +98,6 @@ export class Coin {
   })
   developerScore?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Community score of the coin',
     example: 80.0,
@@ -121,7 +106,6 @@ export class Coin {
   })
   communityScore?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Liquidity score of the coin',
     example: 70.0,
@@ -130,7 +114,6 @@ export class Coin {
   })
   liquidityScore?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Public interest score of the coin',
     example: 85.0,
@@ -139,7 +122,6 @@ export class Coin {
   })
   publicInterestScore?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Sentiment up score',
     example: 60.0,
@@ -148,7 +130,6 @@ export class Coin {
   })
   sentimentUp?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Sentiment down score',
     example: 40.0,
@@ -157,7 +138,6 @@ export class Coin {
   })
   sentimentDown?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'All-time high price of the coin',
     example: 60000.0,
@@ -166,7 +146,6 @@ export class Coin {
   })
   ath?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
     description: 'Change from all-time high',
     example: -20.0,
@@ -175,7 +154,6 @@ export class Coin {
   })
   athChange?: number;
 
-  @Column({ type: 'timestamptz', nullable: true, default: null })
   @ApiProperty({
     description: 'Date when ATH was reached',
     example: '2021-04-14T00:00:00Z',
@@ -184,7 +162,6 @@ export class Coin {
   })
   athDate?: Date;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, default: null })
   @ApiProperty({
     description: 'All-time low price of the coin',
     example: 3000.0,
@@ -193,7 +170,6 @@ export class Coin {
   })
   atl?: number;
 
-  @Column({ type: 'decimal', precision: 7, scale: 2, default: null })
   @ApiProperty({
     description: 'Change from all-time low',
     example: 50.0,
@@ -202,7 +178,6 @@ export class Coin {
   })
   atlChange?: number;
 
-  @Column({ type: 'timestamptz', default: null })
   @ApiProperty({
     description: 'Date when ATL was reached',
     example: '2013-12-18T00:00:00Z',
@@ -211,7 +186,6 @@ export class Coin {
   })
   atlDate?: Date;
 
-  @Column({ type: 'timestamptz', nullable: true, default: null })
   @ApiProperty({
     description: 'Date when Coingecko last updated the coin information',
     example: '2023-09-15T12:34:56Z',
@@ -220,7 +194,6 @@ export class Coin {
   })
   geckoLastUpdatedAt?: Date;
 
-  @CreateDateColumn({ type: 'timestamptz', select: false })
   @ApiProperty({
     description: 'Timestamp when the coin was created',
     example: '2022-01-01T00:00:00Z',
@@ -228,7 +201,6 @@ export class Coin {
   })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz', select: false })
   @ApiProperty({
     description: 'Timestamp when the coin was last updated',
     example: '2023-01-01T00:00:00Z',
@@ -236,59 +208,47 @@ export class Coin {
   })
   updatedAt: Date;
 
-  @OneToMany(() => Order, (order) => order.coin, { cascade: true, onDelete: 'CASCADE' })
   @ApiProperty({
     description: 'List of orders for the coin',
-    type: () => Order,
+    type: () => OrderResponseDto,
     isArray: true,
     required: false
   })
-  orders: Order[];
+  orders: OrderResponseDto[];
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin, { cascade: true, onDelete: 'CASCADE' })
   @ApiProperty({
     description: 'List of portfolios associated with the coin',
-    type: () => Portfolio,
+    type: () => PortfolioResponseDto,
     isArray: true,
     required: false
   })
-  portfolios: Portfolio[];
+  portfolios: PortfolioResponseDto[];
 
-  @OneToMany(() => Price, (price) => price.coin, { cascade: true, onDelete: 'CASCADE' })
   @ApiProperty({
     description: 'List of prices for the coin',
-    type: () => Price,
+    type: () => CreatePriceDto,
     isArray: true,
     required: false
   })
-  prices: Price[];
+  prices: CreatePriceDto[];
 
-  @OneToMany(() => Ticker, (ticker) => ticker.coin, { cascade: true, onDelete: 'CASCADE' })
   @ApiProperty({
     description: 'List of tickers for the coin',
-    type: () => Ticker,
+    type: () => TickerResponseDto,
     isArray: true,
     required: false
   })
-  tickers: Ticker[];
+  tickers: TickerResponseDto[];
 
-  @OneToMany(() => Ticker, (ticker) => ticker.target, { cascade: true, onDelete: 'CASCADE' })
   @ApiProperty({
     description: 'List of tickers where the coin is the target',
-    type: () => Ticker,
+    type: () => TickerResponseDto,
     isArray: true,
     required: false
   })
-  tickersAsTarget: Ticker[];
+  tickersAsTarget: TickerResponseDto[];
 
-  constructor(partial: Partial<Coin>) {
-    Object.assign(this, partial);
+  constructor(coin: Partial<CreateCoinDto>) {
+    Object.assign(this, coin);
   }
-}
-
-export enum CoinRelations {
-  PRICES = 'prices',
-  PORTFOLIOS = 'portfolios',
-  TICKERS = 'tickers',
-  ORDERS = 'orders'
 }
