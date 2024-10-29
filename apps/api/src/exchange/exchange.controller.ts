@@ -5,20 +5,16 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
-  UseGuards,
-  UsePipes,
-  ValidationPipe
+  UseGuards
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { DeleteResult } from 'typeorm';
 
-import { CreateExchangeDto, UpdateExchangeDto } from './dto';
-import { Exchange } from './exchange.entity';
+import { CreateExchangeDto, ExchangeResponseDto, UpdateExchangeDto } from './dto';
 import { ExchangeService } from './exchange.service';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import FindOneParams from '../utils/findOneParams';
 
 @ApiTags('Exchange')
 @Controller('exchange')
@@ -28,32 +24,59 @@ export class ExchangeController {
   @Get()
   @ApiOperation({
     summary: 'Get all exchanges',
-    description: 'This endpoint is used to get all exchanges.'
+    description: 'Retrieves a list of all exchanges.'
   })
-  @ApiResponse({ status: HttpStatus.OK, description: 'The exchange items records', type: Exchange, isArray: true })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of exchange items retrieved successfully.',
+    type: [ExchangeResponseDto]
+  })
   async getExchanges() {
     return this.exchange.getExchanges();
   }
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Get exchange item by id',
-    description: 'This endpoint is used to get a exchange item by id.'
+    summary: 'Get exchange by ID',
+    description: 'Retrieves a specific exchange by its unique identifier.'
   })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the exchange item', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'The exchange item record', type: Exchange, isArray: false })
-  getExchangeById(@Param() { id }: FindOneParams) {
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the exchange item',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Exchange item retrieved successfully.',
+    type: ExchangeResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Exchange item not found.'
+  })
+  getExchangeById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.exchange.getExchangeById(id);
   }
 
   @Post()
-  @UsePipes(new ValidationPipe({ transform: true }))
-  @ApiOperation({ summary: 'Create exchange item', description: 'This endpoint is used to create a exchange item.' })
-  @ApiBody({ type: CreateExchangeDto })
+  @ApiOperation({
+    summary: 'Create exchange',
+    description: 'Creates a new exchange.'
+  })
+  @ApiBody({
+    type: CreateExchangeDto,
+    description: 'Data required to create a new exchange.'
+  })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'The exchange item has been successfully created.',
-    type: Exchange
+    description: 'Exchange item created successfully.',
+    type: ExchangeResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid data provided.'
   })
   async createExchangeItem(@Body() dto: CreateExchangeDto) {
     return this.exchange.createExchange(dto);
@@ -61,28 +84,56 @@ export class ExchangeController {
 
   @Patch(':id')
   @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Update exchange item', description: 'This endpoint is used to update a exchange item.' })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the exchange item', type: String })
-  @ApiBody({ type: UpdateExchangeDto })
+  @ApiOperation({
+    summary: 'Update exchange',
+    description: 'Updates an existing exchange by its unique identifier.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the exchange item to update',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
+  @ApiBody({
+    type: UpdateExchangeDto,
+    description: 'Data required to update the exchange.'
+  })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The exchange item has been successfully updated.',
-    type: Exchange
+    description: 'Exchange item updated successfully.',
+    type: ExchangeResponseDto
   })
-  async updateExchangeItem(@Param() { id }: FindOneParams, @Body() dto: UpdateExchangeDto) {
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Exchange item not found.'
+  })
+  async updateExchangeItem(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateExchangeDto) {
     return this.exchange.updateExchange(id, dto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Delete exchange item', description: 'This endpoint is used to delete a exchange item.' })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the exchange item', type: String })
+  @ApiOperation({
+    summary: 'Delete exchange',
+    description: 'Deletes an exchange by its unique identifier.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the exchange item to delete',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The exchange item has been successfully deleted.',
-    type: DeleteResult
+    description: 'Exchange item deleted successfully.'
   })
-  async deleteExchangeItem(@Param() { id }: FindOneParams) {
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Exchange item not found.'
+  })
+  async deleteExchangeItem(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.exchange.deleteExchange(id);
   }
 }

@@ -5,95 +5,146 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
-  Req,
-  UseGuards,
-  UsePipes,
-  ValidationPipe
+  UseGuards
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { DeleteResult } from 'typeorm';
 
-import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
-import { Portfolio } from './portfolio.entity';
+import { CreatePortfolioDto, PortfolioResponseDto, UpdatePortfolioDto } from './dto';
 import { PortfolioService } from './portfolio.service';
+import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import RequestWithUser from '../authentication/interface/requestWithUser.interface';
-import FindOneParams from '../utils/findOneParams';
+import { User } from '../users/users.entity';
 
 @ApiTags('Portfolio')
 @ApiBearerAuth('token')
+@UseGuards(JwtAuthenticationGuard)
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
 @Controller('portfolio')
 export class PortfolioController {
   constructor(private readonly portfolio: PortfolioService) {}
 
   @Get()
-  @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({
     summary: 'Get all portfolio items',
-    description: 'This endpoint is used to get all portfolio items.'
+    description: 'Retrieves all portfolio items belonging to the authenticated user.'
   })
-  @ApiResponse({ status: HttpStatus.OK, description: 'The portfolio items records', type: Portfolio, isArray: true })
-  async getPortfolio(@Req() { user }: RequestWithUser) {
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of portfolio items retrieved successfully.',
+    type: [PortfolioResponseDto]
+  })
+  async getPortfolio(@GetUser() user: User) {
     return this.portfolio.getPortfolioByUser(user);
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({
-    summary: 'Get portfolio item by id',
-    description: 'This endpoint is used to get a portfolio item by id.'
+    summary: 'Get portfolio item by ID',
+    description: 'Retrieves a specific portfolio item by its ID for the authenticated user.'
   })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the portfolio item', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'The portfolio item record', type: Portfolio, isArray: false })
-  getPortfolioById(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the portfolio item',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Portfolio item retrieved successfully.',
+    type: PortfolioResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Portfolio item not found.'
+  })
+  getPortfolioById(@Param('id', new ParseUUIDPipe()) id: string, @GetUser() user: User) {
     return this.portfolio.getPortfolioById(id, user.id);
   }
 
   @Post()
-  @UseGuards(JwtAuthenticationGuard)
-  @UsePipes(new ValidationPipe({ transform: true }))
-  @ApiOperation({ summary: 'Create portfolio item', description: 'This endpoint is used to create a portfolio item.' })
-  @ApiBody({ type: CreatePortfolioDto })
+  @ApiOperation({
+    summary: 'Create portfolio item',
+    description: 'Creates a new portfolio item for the authenticated user.'
+  })
+  @ApiBody({
+    type: CreatePortfolioDto,
+    description: 'Data required to create a new portfolio item.'
+  })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'The portfolio item has been successfully created.',
-    type: Portfolio
+    description: 'Portfolio item created successfully.',
+    type: PortfolioResponseDto
   })
-  async createPortfolioItem(@Body() dto: CreatePortfolioDto, @Req() { user }: RequestWithUser) {
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid data provided.'
+  })
+  async createPortfolioItem(@Body() dto: CreatePortfolioDto, @GetUser() user: User) {
     return this.portfolio.createPortfolioItem(dto, user);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Update portfolio item', description: 'This endpoint is used to update a portfolio item.' })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the portfolio item', type: String })
-  @ApiBody({ type: UpdatePortfolioDto })
+  @ApiOperation({
+    summary: 'Update portfolio item',
+    description: 'Updates an existing portfolio item by its ID for the authenticated user.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the portfolio item to update',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
+  @ApiBody({
+    type: UpdatePortfolioDto,
+    description: 'Data required to update the portfolio item.'
+  })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The portfolio item has been successfully updated.',
-    type: Portfolio
+    description: 'Portfolio item updated successfully.',
+    type: PortfolioResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Portfolio item not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid data provided.'
   })
   async updatePortfolioItem(
-    @Param() { id }: FindOneParams,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdatePortfolioDto,
-    @Req() { user }: RequestWithUser
+    @GetUser() user: User
   ) {
     return this.portfolio.updatePortfolioItem(id, user.id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthenticationGuard)
-  @ApiOperation({ summary: 'Delete portfolio item', description: 'This endpoint is used to delete a portfolio item.' })
-  @ApiParam({ name: 'id', required: true, description: 'The id of the portfolio item', type: String })
+  @ApiOperation({
+    summary: 'Delete portfolio item',
+    description: 'Deletes a portfolio item by its ID for the authenticated user.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the portfolio item to delete',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'The portfolio item has been successfully deleted.',
-    type: DeleteResult
+    description: 'Portfolio item deleted successfully.'
   })
-  async deletePortfolioItem(@Param() { id }: FindOneParams, @Req() { user }: RequestWithUser) {
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Portfolio item not found.'
+  })
+  async deletePortfolioItem(@Param('id', new ParseUUIDPipe()) id: string, @GetUser() user: User) {
     return this.portfolio.deletePortfolioItem(id, user.id);
   }
 }

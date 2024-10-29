@@ -1,180 +1,164 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { Ticker } from './ticker/ticker.entity';
+import { CreateExchangeDto } from './create-exchange.dto';
+import { TickerResponseDto } from '../ticker/dto/ticker-response.dto';
 
-@Entity()
-@Index(['slug'], { unique: true })
-@Index(['name'], { unique: true })
-export class Exchange {
-  @PrimaryGeneratedColumn('uuid')
+export class ExchangeResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the exchange',
     example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
   })
   id: string;
 
-  @Column({ unique: true })
   @ApiProperty({
     description: 'URL-friendly identifier for the exchange',
     example: 'binance'
   })
   slug: string;
 
-  @Column({ unique: true })
   @ApiProperty({
     description: 'Name of the exchange',
     example: 'Binance'
   })
   name: string;
 
-  @Column({ nullable: true, type: 'text' })
   @ApiProperty({
     description: 'Detailed description of the exchange',
-    example: 'Binance is a global cryptocurrency exchange offering a wide range of services.'
+    example: 'Binance is a global cryptocurrency exchange offering a wide range of services.',
+    required: false
   })
   description?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'URL to the exchange’s logo or image',
-    example: 'https://example.com/logo.png'
+    example: 'https://example.com/logo.png',
+    required: false
   })
   image?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Country where the exchange is based',
-    example: 'Cayman Islands'
+    example: 'Cayman Islands',
+    required: false
   })
   country?: string;
 
-  @Column({ nullable: true, type: 'int' })
   @ApiProperty({
     description: 'Year the exchange was established',
-    example: 2017
+    example: 2017,
+    required: false
   })
   yearEstablished?: number;
 
-  @Column({ nullable: true, type: 'float' })
   @ApiProperty({
     description: 'Trust score of the exchange based on various factors',
-    example: 9.5
+    example: 9.5,
+    required: false
   })
   trustScore?: number;
 
-  @Column({ nullable: true, type: 'int' })
   @ApiProperty({
     description: 'Rank of the exchange based on trust score',
-    example: 1
+    example: 1,
+    required: false
   })
   trustScoreRank?: number;
 
-  @Column({
-    type: 'decimal',
-    precision: 20,
-    scale: 2,
-    default: 0
-  })
   @ApiProperty({
     description: '24-hour trade volume in BTC',
     example: 5000000.0
   })
   tradeVolume24HBtc?: number;
 
-  @Column({
-    type: 'decimal',
-    precision: 20,
-    scale: 2,
-    default: 0
-  })
   @ApiProperty({
     description: '24-hour normalized trade volume',
     example: 7500000.0
   })
   tradeVolume24HNormalized?: number;
 
-  @Column({ nullable: true, default: true })
   @ApiProperty({
     description: 'Indicates if the exchange is centralized',
-    example: true
+    example: true,
+    required: false
   })
   centralized?: boolean;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Official website URL of the exchange',
-    example: 'https://www.binance.com'
+    example: 'https://www.binance.com',
+    required: false
   })
   url?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Official Twitter handle of the exchange',
-    example: '@binance'
+    example: '@binance',
+    required: false
   })
   twitter?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Official Facebook page of the exchange',
-    example: 'https://www.facebook.com/binance'
+    example: 'https://www.facebook.com/binance',
+    required: false
   })
   facebook?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Official Reddit community of the exchange',
-    example: 'https://www.reddit.com/r/binance'
+    example: 'https://www.reddit.com/r/binance',
+    required: false
   })
   reddit?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Official Telegram group of the exchange',
-    example: 'https://t.me/binance'
+    example: 'https://t.me/binance',
+    required: false
   })
   telegram?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Official Slack channel of the exchange',
-    example: 'https://binance.slack.com'
+    example: 'https://binance.slack.com',
+    required: false
   })
   slack?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Additional URL related to the exchange',
-    example: 'https://www.binance.com/announcement'
+    example: 'https://www.binance.com/announcement',
+    required: false
   })
   otherUrl1?: string;
 
-  @Column({ nullable: true })
   @ApiProperty({
     description: 'Another additional URL related to the exchange',
-    example: 'https://www.binance.com/blog'
+    example: 'https://www.binance.com/blog',
+    required: false
   })
   otherUrl2?: string;
 
-  @CreateDateColumn({ type: 'timestamptz', select: false })
+  @ApiProperty({
+    description: 'Date when the exchange was created',
+    example: '2023-01-15T10:20:30.000Z'
+  })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz', select: false })
+  @ApiProperty({
+    description: 'Date when the exchange was last updated',
+    example: '2024-04-24T10:15:30.123Z'
+  })
   updatedAt: Date;
 
-  @OneToMany(() => Ticker, (ticker) => ticker.exchange, {
-    cascade: true,
-    onDelete: 'CASCADE',
-    eager: false
-  })
   @ApiProperty({
     description: 'List of tickers associated with the exchange',
-    type: () => [Ticker]
+    type: () => [TickerResponseDto],
+    required: false
   })
-  tickers: Ticker[];
+  tickers?: TickerResponseDto[];
 
-  constructor(partial: Partial<Exchange>) {
-    Object.assign(this, partial);
+  constructor(exchange: Partial<CreateExchangeDto>) {
+    Object.assign(this, exchange);
   }
 }

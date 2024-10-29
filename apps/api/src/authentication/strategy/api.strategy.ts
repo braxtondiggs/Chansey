@@ -10,12 +10,13 @@ export class ApiKeyStrategy extends PassportStrategy(HeaderAPIKeyStrategy, 'api-
     super(
       {
         header: 'Api-Key',
-        prefix: ''
+        prefix: '',
+        passReqToCallback: false
       },
-      true,
+      false,
       async (apiKey: string, done: (error: Error | null, valid?: boolean) => void) => {
         if (this.authentication.validateAPIKey(apiKey)) return done(null, true);
-        return done(new UnauthorizedException(), false);
+        return done(new UnauthorizedException('Invalid API Key'), false);
       }
     );
   }

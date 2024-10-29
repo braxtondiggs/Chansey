@@ -1,12 +1,11 @@
-import { Body, Controller, Delete, Get, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { DeleteResult } from 'typeorm';
 
-import { AlgoIdParams, TestnetDto, TestnetSummaryDto } from './dto';
+import { TestnetDto, TestnetSummaryDto } from './dto';
 import { Testnet } from './testnet.entity';
 import { TestnetService } from './testnet.service';
 import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
-import FindOneParams from '../../utils/findOneParams';
 import { OrderSide } from '../order.entity';
 
 @ApiTags('Order')
@@ -61,7 +60,7 @@ export class TestnetController {
   })
   @ApiParam({ name: 'id', required: true, description: 'The id of the test order', type: String })
   @ApiResponse({ status: HttpStatus.OK, description: 'The test order record', type: Testnet, isArray: false })
-  async getTestOrder(@Param() { id }: FindOneParams) {
+  async getTestOrder(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.testnet.getOrder(id);
   }
 
@@ -86,7 +85,7 @@ export class TestnetController {
     description: 'The test orders have been successfully deleted.',
     type: DeleteResult
   })
-  async deleteTestOrders(@Param() { algoId }: AlgoIdParams) {
+  async deleteTestOrders(@Param('algoId', new ParseUUIDPipe()) algoId: string) {
     return this.testnet.deleteOrders(algoId);
   }
 }

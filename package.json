@@ -23,7 +23,7 @@
     "affected:dep-graph": "nx affected:dep-graph",
     "affected": "nx affected",
     "format": "nx format:write",
-    "format:check": "nx format:check --ignore ./nx.json",
+    "format:check": "nx format:check",
     "update": "nx migrate latest",
     "workspace-generator": "nx workspace-generator",
     "dep-graph": "nx dep-graph"
@@ -53,7 +53,7 @@
     "@nestjs/platform-fastify": "^10.0.4",
     "@nestjs/schedule": "^3.0.1",
     "@nestjs/serve-static": "^4.0.0",
-    "@nestjs/swagger": "7.0.12",
+    "@nestjs/swagger": "8.0.1",
     "@nestjs/terminus": "^10.0.1",
     "@nestjs/typeorm": "^10.0.0",
     "@nx/angular": "20.0.3",
