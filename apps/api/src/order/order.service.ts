@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OrderSide_LT, SymbolLotSizeFilter, SymbolMinNotionalFilter, SymbolPriceFilter } from 'binance-api-node';
 import { Repository } from 'typeorm';
@@ -13,17 +13,22 @@ import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
   constructor(
-    @InjectRepository(Order) private readonly order: Repository<Order>,
+    @InjectRepository(Order)
+    private readonly order: Repository<Order>,
     private readonly coin: CoinService,
     private readonly user: UsersService
   ) {}
 
   async createOrder(side: OrderSide_LT, order: OrderDto, user: User) {
+    this.logger.debug(`Creating order for user: ${user.id}, side: ${side}, coinId: ${order.coinId}`);
+
     const coin = await this.coin.getCoinById(order.coinId);
+    if (!coin) throw new BadRequestException('Invalid coin ID');
     const symbol = `${coin.symbol}USDT`.toUpperCase();
     const { quantity } = await this.isExchangeValid(order, OrderType.MARKET, symbol, user);
-    const binance = this.user.getBinance(user);
+    const binance = this.user.getBinanceClient(user);
     const action = await binance.order({
       symbol,
       side,
@@ -32,6 +37,7 @@ export class OrderService {
     });
     await this.order.insert({
       clientOrderId: action.clientOrderId,
+      coin,
       orderId: action.orderId.toString(),
       quantity: Number(order.quantity),
       side: side as OrderSide,
@@ -45,24 +51,24 @@ export class OrderService {
   }
 
   async getOrders(user: User) {
-    const binance = this.user.getBinance(user);
+    const binance = this.user.getBinanceClient(user);
     return await binance.allOrders({ symbol: 'BTCUSD' });
   }
 
   async getOrder(user: User, orderId: number) {
-    const binance = this.user.getBinance(user);
+    const binance = this.user.getBinanceClient(user);
     const order = await binance.getOrder({ symbol: 'BTCUSD', orderId });
     if (!order) throw new NotFoundCustomException('Order', { id: orderId.toString() });
     return order;
   }
 
   async getOpenOrders(user: User) {
-    const binance = this.user.getBinance(user);
+    const binance = this.user.getBinanceClient(user);
     return await binance.openOrders({ symbol: 'BTCUSD' });
   }
 
   private async getExchangeInfo(symbol: string, user?: User) {
-    const binance = this.user.getBinance(user);
+    const binance = this.user.getBinanceClient(user);
     return await binance.exchangeInfo({ symbol });
   }
 

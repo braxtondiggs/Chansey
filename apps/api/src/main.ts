@@ -2,8 +2,8 @@ import compression from '@fastify/compress';
 import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import helmet from '@fastify/helmet';
-import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
@@ -98,11 +98,16 @@ function setupSwagger(app: NestFastifyApplication): void {
 }
 
 function configureGlobalSettings(app: NestFastifyApplication): void {
+  const reflector = app.get(Reflector);
+
   // Set a global prefix for all routes
   app.setGlobalPrefix('api');
 
   // Enable global validation pipes with transformation
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+
+  // Apply ClassSerializerInterceptor globally to handle serialization based on class-transformer decorators
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector));
 }
 
 async function startServer(app: NestFastifyApplication): Promise<void> {
