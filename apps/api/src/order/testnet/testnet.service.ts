@@ -24,7 +24,7 @@ export class TestnetService {
   ) {}
 
   async createOrder(side: OrderSide, order: TestnetDto) {
-    const binance = this.user.getDefaultBinance();
+    const binance = this.user.getBinanceClient();
     const ticker = await this.ticker.getTickerByCoin(order.coinId);
 
     const [{ quantity }, algorithm, response] = await Promise.all([

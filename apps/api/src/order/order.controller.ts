@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { OrderDto } from './dto/order.dto';
+import { OrderBinanceResponseDto, OrderDto } from './dto';
 import { OrderSide } from './order.entity';
 import { OrderService } from './order.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -64,7 +64,7 @@ export class OrderController {
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'The buy order has been successfully created.',
-    type: OrderDto
+    type: OrderBinanceResponseDto
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
@@ -79,7 +79,7 @@ export class OrderController {
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'The sell order has been successfully created.',
-    type: OrderDto
+    type: OrderBinanceResponseDto
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,

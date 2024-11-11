@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { UpdateUserDto, UserResponseDto } from './dto';
+import { UpdateUserDto, UserBinanceResponseDto, UserResponseDto } from './dto';
 import { User } from './users.entity';
 import UsersService from './users.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -51,19 +51,21 @@ export class UserController {
     type: UserResponseDto
   })
   get(@GetUser() user: User) {
+    delete user.binance;
+    delete user.binanceSecret;
     return user;
   }
 
-  @Get('info')
+  @Get('/binance/info')
   @ApiOperation({
-    summary: 'Get detailed user info',
+    summary: 'Get detailed user info from binance',
     description: 'Retrieves detailed information about the authenticated user.'
   })
   @ApiOkResponse({
     description: 'Detailed user information retrieved successfully.',
-    type: UserResponseDto
+    type: UserBinanceResponseDto
   })
   info(@GetUser() user: User) {
-    return this.user.getBinanceInfo(user);
+    return this.user.getBinanceAccountInfo(user);
   }
 }

@@ -3,13 +3,13 @@ import { promisify } from 'util';
 
 import { Exclude, Expose } from 'class-transformer';
 import {
+  BeforeInsert,
   BeforeUpdate,
   Column,
   CreateDateColumn,
   Entity,
   OneToMany,
   PrimaryColumn,
-  Timestamp,
   UpdateDateColumn
 } from 'typeorm';
 
@@ -32,11 +32,11 @@ export class User {
   expires_in: number;
 
   @Exclude()
-  @Column({ nullable: true, select: false })
+  @Column({ nullable: true })
   binance?: string;
 
   @Exclude()
-  @Column({ nullable: true, select: false })
+  @Column({ nullable: true })
   binanceSecret?: string;
 
   @CreateDateColumn({ select: false, type: 'timestamptz' })
@@ -55,6 +55,7 @@ export class User {
     Object.assign(this, partial);
   }
 
+  @BeforeInsert()
   @BeforeUpdate()
   async encryptBinance() {
     if (!this.binance || this.binance === this.binanceAPIKey) return;
@@ -68,6 +69,7 @@ export class User {
     ]).toString('hex')}`;
   }
 
+  @BeforeInsert()
   @BeforeUpdate()
   async encryptBinanceSecret() {
     if (!this.binanceSecret || this.binanceSecret === this.binanceSecretKey) return;
