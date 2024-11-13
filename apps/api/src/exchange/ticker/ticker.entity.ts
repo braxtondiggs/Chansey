@@ -83,14 +83,14 @@ export class Ticker {
   @Index('ticker_coinId_index')
   @ManyToOne(() => Coin, (coin) => coin.tickers, {
     onDelete: 'CASCADE',
-    eager: true
+    eager: false
   })
   coin: Coin;
 
   @Index('ticker_targetId_index')
   @ManyToOne(() => Coin, (coin) => coin.tickersAsTarget, {
     onDelete: 'CASCADE',
-    eager: true
+    eager: false
   })
   target: Coin;
 

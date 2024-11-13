@@ -1,9 +1,11 @@
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { CoinController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
+import { BinanceService } from '../exchange/binance/binance.service';
 
 describe('CoinController', () => {
   let controller: CoinController;
@@ -22,8 +24,10 @@ describe('CoinController', () => {
             update: jest.fn(() => ({})),
             delete: jest.fn(() => ({}))
           }
-        }
-      ]
+        },
+        BinanceService
+      ],
+      imports: [ConfigModule]
     }).compile();
 
     controller = module.get<CoinController>(CoinController);

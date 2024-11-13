@@ -10,6 +10,7 @@ import * as DynamicAlgorithmServices from './scripts';
 import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { BinanceService } from '../exchange/binance/binance.service';
 import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
 import { Ticker } from '../exchange/ticker/ticker.entity';
@@ -22,17 +23,16 @@ import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
-import { User } from '../users/users.entity';
-import UsersService from '../users/users.service';
 
 @Module({
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Ticker, Testnet, Portfolio, Price, User])
+    TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Ticker, Testnet, Portfolio, Price])
   ],
   controllers: [AlgorithmController],
   providers: [
     AlgorithmService,
+    BinanceService,
     CoinService,
     ConfigService,
     ExchangeService,
@@ -41,7 +41,6 @@ import UsersService from '../users/users.service';
     PriceService,
     TestnetService,
     TickerService,
-    UsersService,
     ...Object.values(DynamicAlgorithmServices),
     ...Object.values(DynamicAlgorithmServices).map((cls) => ({
       provide: cls.name.toString(),

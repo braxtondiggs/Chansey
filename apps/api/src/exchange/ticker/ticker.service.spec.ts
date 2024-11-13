@@ -1,3 +1,4 @@
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -5,6 +6,7 @@ import { Ticker } from './ticker.entity';
 import { TickerService } from './ticker.service';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
+import { BinanceService } from '../binance/binance.service';
 import { Exchange } from '../exchange.entity';
 import { ExchangeService } from '../exchange.service';
 
@@ -14,6 +16,7 @@ describe('TickerService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        BinanceService,
         TickerService,
         {
           provide: getRepositoryToken(Ticker),
@@ -47,7 +50,8 @@ describe('TickerService', () => {
             delete: jest.fn(() => ({}))
           }
         }
-      ]
+      ],
+      imports: [ConfigModule]
     }).compile();
 
     service = module.get<TickerService>(TickerService);

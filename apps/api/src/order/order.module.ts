@@ -13,16 +13,23 @@ import { Testnet } from './testnet/testnet.entity';
 import { TestnetService } from './testnet/testnet.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { BinanceService } from '../exchange/binance/binance.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { Ticker } from '../exchange/ticker/ticker.entity';
 import { TickerService } from '../exchange/ticker/ticker.service';
-import { User } from '../users/users.entity';
-import UsersService from '../users/users.service';
 
 @Module({
   controllers: [OrderController, TestnetController],
   exports: [OrderService, TestnetService],
-  imports: [ConfigModule, TypeOrmModule.forFeature([Algorithm, Coin, Exchange, Order, Testnet, Ticker, User])],
-  providers: [AlgorithmService, CoinService, ExchangeService, OrderService, UsersService, TestnetService, TickerService]
+  imports: [ConfigModule, TypeOrmModule.forFeature([Algorithm, Coin, Exchange, Order, Testnet, Ticker])],
+  providers: [
+    AlgorithmService,
+    BinanceService,
+    CoinService,
+    ExchangeService,
+    OrderService,
+    TestnetService,
+    TickerService
+  ]
 })
 export class OrderModule {}

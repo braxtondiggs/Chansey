@@ -6,8 +6,8 @@ import { Repository } from 'typeorm';
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { CoinService } from '../coin/coin.service';
+import { BinanceService } from '../exchange/binance/binance.service';
 import { User } from '../users/users.entity';
-import UsersService from '../users/users.service';
 import { TestnetDto } from './testnet/dto/testnet.dto';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
@@ -17,8 +17,8 @@ export class OrderService {
   constructor(
     @InjectRepository(Order)
     private readonly order: Repository<Order>,
-    private readonly coin: CoinService,
-    private readonly user: UsersService
+    private readonly binance: BinanceService,
+    private readonly coin: CoinService
   ) {}
 
   async createOrder(side: OrderSide_LT, order: OrderDto, user: User) {
@@ -28,7 +28,7 @@ export class OrderService {
     if (!coin) throw new BadRequestException('Invalid coin ID');
     const symbol = `${coin.symbol}USDT`.toUpperCase();
     const { quantity } = await this.isExchangeValid(order, OrderType.MARKET, symbol, user);
-    const binance = this.user.getBinanceClient(user);
+    const binance = this.binance.getBinanceClient(user);
     const action = await binance.order({
       symbol,
       side,
@@ -51,24 +51,24 @@ export class OrderService {
   }
 
   async getOrders(user: User) {
-    const binance = this.user.getBinanceClient(user);
+    const binance = this.binance.getBinanceClient(user);
     return await binance.allOrders({ symbol: 'BTCUSD' });
   }
 
   async getOrder(user: User, orderId: number) {
-    const binance = this.user.getBinanceClient(user);
+    const binance = this.binance.getBinanceClient(user);
     const order = await binance.getOrder({ symbol: 'BTCUSD', orderId });
     if (!order) throw new NotFoundCustomException('Order', { id: orderId.toString() });
     return order;
   }
 
   async getOpenOrders(user: User) {
-    const binance = this.user.getBinanceClient(user);
+    const binance = this.binance.getBinanceClient(user);
     return await binance.openOrders({ symbol: 'BTCUSD' });
   }
 
   private async getExchangeInfo(symbol: string, user?: User) {
-    const binance = this.user.getBinanceClient(user);
+    const binance = this.binance.getBinanceClient(user);
     return await binance.exchangeInfo({ symbol });
   }
 
