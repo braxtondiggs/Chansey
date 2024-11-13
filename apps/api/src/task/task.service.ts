@@ -30,26 +30,6 @@ export class TaskService {
     private readonly ticker: TickerService
   ) {}
 
-  @Cron('0 0 * * MON', {
-    name: 'scrape coins'
-  }) // every monday at 12:00:00 AM
-  async coins() {
-    try {
-      this.logger.log('New Coins Cron');
-      const [coins, oldCoins] = await Promise.all([
-        this.gecko.coinList({ include_platform: false }),
-        this.coin.getCoins()
-      ]);
-      const newCoins = coins.filter((coin) => !oldCoins.find((oldCoin) => oldCoin.slug === coin.id));
-      await Promise.all(newCoins.map(({ id: slug, symbol, name }) => this.coin.create({ slug, symbol, name })));
-      if (newCoins.length > 0) this.logger.log(`New Coins: ${newCoins.map(({ name }) => name).join(', ')}`);
-    } catch (e) {
-      this.logger.error(e);
-    } finally {
-      this.logger.log('New Coins Cron Complete');
-    }
-  }
-
   @Cron('30 0 * * MON', {
     name: 'scrape categories'
   }) // every monday at 12:30:00 AM

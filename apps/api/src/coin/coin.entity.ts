@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+import { CoinPairs } from './pairs/pairs.entity';
 import { Ticker } from '../exchange/ticker/ticker.entity';
 import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
@@ -22,7 +23,7 @@ export class Coin {
   })
   slug: string;
 
-  @Column({ unique: true })
+  @Column()
   @ApiProperty({
     description: 'Name of the coin',
     example: 'Bitcoin'
@@ -236,7 +237,7 @@ export class Coin {
   })
   updatedAt: Date;
 
-  @OneToMany(() => Order, (order) => order.coin, { cascade: true, onDelete: 'CASCADE' })
+  @OneToMany(() => Order, (order) => order.coin)
   @ApiProperty({
     description: 'List of orders for the coin',
     type: () => Order,
@@ -245,7 +246,7 @@ export class Coin {
   })
   orders: Order[];
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin, { cascade: true, onDelete: 'CASCADE' })
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin)
   @ApiProperty({
     description: 'List of portfolios associated with the coin',
     type: () => Portfolio,
@@ -254,7 +255,7 @@ export class Coin {
   })
   portfolios: Portfolio[];
 
-  @OneToMany(() => Price, (price) => price.coin, { cascade: true, onDelete: 'CASCADE' })
+  @OneToMany(() => Price, (price) => price.coin)
   @ApiProperty({
     description: 'List of prices for the coin',
     type: () => Price,
@@ -263,7 +264,7 @@ export class Coin {
   })
   prices: Price[];
 
-  @OneToMany(() => Ticker, (ticker) => ticker.coin, { cascade: true, onDelete: 'CASCADE' })
+  @OneToMany(() => Ticker, (ticker) => ticker.coin)
   @ApiProperty({
     description: 'List of tickers for the coin',
     type: () => Ticker,
@@ -272,7 +273,7 @@ export class Coin {
   })
   tickers: Ticker[];
 
-  @OneToMany(() => Ticker, (ticker) => ticker.target, { cascade: true, onDelete: 'CASCADE' })
+  @OneToMany(() => Ticker, (ticker) => ticker.target)
   @ApiProperty({
     description: 'List of tickers where the coin is the target',
     type: () => Ticker,
@@ -280,6 +281,24 @@ export class Coin {
     required: false
   })
   tickersAsTarget: Ticker[];
+
+  @OneToMany(() => CoinPairs, (pair) => pair.baseAsset)
+  @ApiProperty({
+    description: 'Trading pairs where this coin is the base asset',
+    type: () => CoinPairs,
+    isArray: true,
+    required: false
+  })
+  baseAssetPairs: CoinPairs[];
+
+  @OneToMany(() => CoinPairs, (pair) => pair.quoteAsset)
+  @ApiProperty({
+    description: 'Trading pairs where this coin is the quote asset',
+    type: () => CoinPairs,
+    isArray: true,
+    required: false
+  })
+  quoteAssetPairs: CoinPairs[];
 
   constructor(partial: Partial<Coin>) {
     Object.assign(this, partial);

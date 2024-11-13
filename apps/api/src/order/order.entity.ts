@@ -125,7 +125,7 @@ export class Order {
 
   @ManyToOne(() => Coin, (coin) => coin.orders, {
     nullable: false,
-    onDelete: 'RESTRICT'
+    onDelete: 'CASCADE'
   })
   @ApiProperty({
     description: 'Coin associated with the order',

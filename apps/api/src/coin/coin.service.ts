@@ -4,11 +4,16 @@ import { ILike, Repository } from 'typeorm';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
+import { BinanceService } from '../exchange/binance/binance.service';
+import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class CoinService {
-  constructor(@InjectRepository(Coin) private readonly coin: Repository<Coin>) {}
+  constructor(
+    @InjectRepository(Coin) private readonly coin: Repository<Coin>,
+    private readonly binance: BinanceService
+  ) {}
 
   async getCoins() {
     const coins = await this.coin.find();
@@ -36,7 +41,7 @@ export class CoinService {
   }
 
   async create(Coin: CreateCoinDto): Promise<Coin> {
-    const coin = await this.coin.findOne({ where: { name: ILike(`%${Coin.name}%`) } });
+    const coin = await this.coin.findOne({ where: { slug: Coin.slug } });
     return coin ?? ((await this.coin.insert(Coin)).generatedMaps[0] as Coin);
   }
 

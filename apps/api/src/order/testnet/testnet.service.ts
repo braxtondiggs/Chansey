@@ -6,8 +6,8 @@ import { Between, Repository } from 'typeorm';
 import { TestnetDto, TestnetSummaryDuration } from './dto';
 import { Testnet } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
+import { BinanceService } from '../../exchange/binance/binance.service';
 import { TickerService } from '../../exchange/ticker/ticker.service';
-import UsersService from '../../users/users.service';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
@@ -17,14 +17,14 @@ export class TestnetService {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   constructor(
     private readonly algorithm: AlgorithmService,
+    private readonly binance: BinanceService,
     private readonly order: OrderService,
     private readonly ticker: TickerService,
-    private readonly user: UsersService,
     @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>
   ) {}
 
   async createOrder(side: OrderSide, order: TestnetDto) {
-    const binance = this.user.getBinanceClient();
+    const binance = this.binance.getBinanceClient();
     const ticker = await this.ticker.getTickerByCoin(order.coinId);
 
     const [{ quantity }, algorithm, response] = await Promise.all([
