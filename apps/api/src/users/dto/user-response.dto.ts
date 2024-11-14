@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { CreateUserDto } from './create-user.dto';
+import { Risk } from '../risk.entity';
 
 export class UserResponseDto {
   @ApiProperty({
@@ -26,6 +27,15 @@ export class UserResponseDto {
     example: 'braxtondiggs@gmail.com'
   })
   email: string;
+
+  @ApiProperty({
+    description: 'Risk profile of the user',
+    example: {
+      name: 'Moderate',
+      level: 3
+    }
+  })
+  risk: Risk;
 
   constructor(user: Partial<CreateUserDto>) {
     Object.assign(this, user);

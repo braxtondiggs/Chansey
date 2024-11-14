@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { Exchange } from './exchange.entity';
@@ -51,5 +51,36 @@ export class ExchangeService {
     const response = await this.exchange.delete(exchangeId);
     if (!response.affected) throw new NotFoundCustomException('Exchange', { id: exchangeId });
     return response;
+  }
+
+  async createMany(exchanges: Exchange[]): Promise<Exchange[]> {
+    const existingExchanges = await this.exchange.find({
+      where: exchanges.map((ex) => ({ slug: ex.slug }))
+    });
+
+    const newExchanges = exchanges.filter((ex) => !existingExchanges.find((existing) => existing.slug === ex.slug));
+
+    if (newExchanges.length === 0) return [];
+
+    return await this.exchange.save(newExchanges);
+  }
+
+  async removeMany(exchangeIds: string[]): Promise<void> {
+    await this.exchange.delete({ id: In(exchangeIds) });
+  }
+
+  async updateMany(exchanges: Exchange[]): Promise<Exchange[]> {
+    const existingExchanges = await this.exchange.find({
+      where: exchanges.map((ex) => ({ slug: ex.slug }))
+    });
+
+    if (existingExchanges.length === 0) return [];
+
+    const updatesWithIds = exchanges.map((ex) => {
+      const existing = existingExchanges.find((e) => e.slug === ex.slug);
+      return { ...ex, id: existing?.id };
+    });
+
+    return await this.exchange.save(updatesWithIds);
   }
 }

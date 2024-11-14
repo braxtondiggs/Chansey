@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 import { BinanceService } from '../exchange/binance/binance.service';
-import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
@@ -45,6 +44,19 @@ export class CoinService {
     return coin ?? ((await this.coin.insert(Coin)).generatedMaps[0] as Coin);
   }
 
+  async createMany(coins: CreateCoinDto[]): Promise<Coin[]> {
+    const existingCoins = await this.coin.find({
+      where: coins.map((coin) => ({ slug: coin.slug }))
+    });
+
+    const newCoins = coins.filter((coin) => !existingCoins.find((existing) => existing.slug === coin.slug));
+
+    if (newCoins.length === 0) return [];
+
+    const result = await this.coin.insert(newCoins);
+    return result.generatedMaps as Coin[];
+  }
+
   async update(coinId: string, coin: UpdateCoinDto) {
     const data = await this.getCoinById(coinId);
     if (!data) new NotFoundCustomException('Coin', { id: coinId });
@@ -55,6 +67,10 @@ export class CoinService {
     const response = await this.coin.delete(coinId);
     if (!response.affected) new NotFoundCustomException('Coin', { id: coinId });
     return response;
+  }
+
+  async removeMany(coinIds: string[]): Promise<void> {
+    await this.coin.delete({ id: In(coinIds) });
   }
 
   async getCoinHistoricalData(coinId: string) {

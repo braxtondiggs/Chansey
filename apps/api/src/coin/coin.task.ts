@@ -19,19 +19,22 @@ export class CoinTask {
         this.coin.getCoins()
       ]);
 
-      const geckoSlugs = new Set(geckoCoins.map((coin) => coin.id));
+      const newCoins = geckoCoins
+        .map(({ id: slug, symbol, name }) => ({ slug, symbol, name }))
+        .filter((coin) => !existingCoins.find((existing) => existing.slug === coin.slug));
 
-      const toDelete = existingCoins.filter((coin) => !geckoSlugs.has(coin.slug));
+      const missingCoins = existingCoins
+        .filter((existing) => !geckoCoins.find((api) => api.id === existing.slug))
+        .map((coin) => coin.id);
 
-      const newCoins = geckoCoins.filter((coin) => !existingCoins.some((existing) => existing.slug === coin.id));
       if (newCoins.length > 0) {
-        await Promise.all(newCoins.map(({ id: slug, symbol, name }) => this.coin.create({ slug, symbol, name })));
+        await this.coin.createMany(newCoins);
         this.logger.log(`Added ${newCoins.length} new coins`);
       }
 
-      if (toDelete.length > 0) {
-        await Promise.all(toDelete.map((coin) => this.coin.remove(coin.id)));
-        this.logger.log(`Removed ${toDelete.length} delisted coins`);
+      if (missingCoins.length > 0) {
+        await this.coin.removeMany(missingCoins);
+        this.logger.log(`Removed ${missingCoins.length} delisted coins`);
       }
     } catch (e) {
       this.logger.error('Coin sync failed:', e);

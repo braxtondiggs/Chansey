@@ -8,11 +8,15 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryColumn,
-  UpdateDateColumn
+  UpdateDateColumn,
+  getRepository
 } from 'typeorm';
 
+import { Risk } from './risk.entity';
 import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
 
@@ -51,6 +55,12 @@ export class User {
   @OneToMany(() => Order, (order) => order.user, { cascade: true })
   orders: Order[];
 
+  @ManyToOne(() => Risk, (risk) => risk.users, {
+    eager: true
+  })
+  @JoinColumn({ name: 'risk_id' })
+  risk: Risk;
+
   constructor(partial: Partial<User>) {
     Object.assign(this, partial);
   }
@@ -81,6 +91,14 @@ export class User {
       cipher.update(this.binanceSecret),
       cipher.final()
     ]).toString('hex')}`;
+  }
+
+  @BeforeInsert()
+  async setDefaultRisk() {
+    if (!this.risk) {
+      const riskRepository = getRepository(Risk);
+      this.risk = await riskRepository.findOne({ where: { name: 'Moderate' } });
+    }
   }
 
   @Expose()
