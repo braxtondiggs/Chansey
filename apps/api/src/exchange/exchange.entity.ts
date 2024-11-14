@@ -157,6 +157,13 @@ export class Exchange {
   })
   otherUrl2?: string;
 
+  @Column({ default: false })
+  @ApiProperty({
+    description: 'Indicates if the exchange is supported by the application',
+    example: true
+  })
+  supported: boolean;
+
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;
 

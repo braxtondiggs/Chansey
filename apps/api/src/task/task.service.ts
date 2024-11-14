@@ -2,11 +2,9 @@ import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CoinGeckoClient } from 'coingecko-api-v3';
-import { firstValueFrom } from 'rxjs';
 
 import { CategoryService } from '../category/category.service';
 import { CoinService } from '../coin/coin.service';
-import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
 import { TickerService } from '../exchange/ticker/ticker.service';
 import { CoinAlertService } from '../portfolio/coin-alert.service';
@@ -29,29 +27,6 @@ export class TaskService {
     private readonly price: PriceService,
     private readonly ticker: TickerService
   ) {}
-
-  @Cron('30 0 * * MON', {
-    name: 'scrape categories'
-  }) // every monday at 12:30:00 AM
-  async categories() {
-    try {
-      this.logger.log('New Category Cron');
-      const [{ data: categories }, oldCategories] = await Promise.all([
-        firstValueFrom(this.http.get('https://api.coingecko.com/api/v3/coins/categories/list')) as Promise<any>,
-        this.category.getCategories()
-      ]);
-      const newCategories = categories
-        .map((c) => ({ slug: c.category_id, symbol: c.symbol, name: c.name }))
-        .filter((category) => !oldCategories.find((oldCategory) => oldCategory.slug === category.slug));
-      await Promise.all(newCategories.map((category) => this.category.create(category)));
-      if (newCategories.length > 0)
-        this.logger.log(`New Categories: ${newCategories.map(({ name }) => name).join(', ')}`);
-    } catch (e) {
-      this.logger.error(e);
-    } finally {
-      this.logger.log('New Category Cron Complete');
-    }
-  }
 
   @Cron(CronExpression.EVERY_5_MINUTES, {
     name: 'scrape coin prices'
@@ -80,42 +55,6 @@ export class TaskService {
       }));
 
       await Promise.all(data.map((price) => this.price.create(price)));
-    } catch (e) {
-      this.logger.error(e);
-    }
-  }
-
-  @Cron('45 0 * * MON', {
-    name: 'scrape coin exchanges'
-  }) // every monday at 12:45:00 AM
-  async exchanges() {
-    try {
-      this.logger.log('Exchange Cron');
-      for (const exchange_slug of this.supported_exchanges) {
-        const data = await this.gecko.exchangeId(exchange_slug);
-        await this.exchange.updateExchange(
-          exchange_slug,
-          new Exchange({
-            name: data.name,
-            slug: exchange_slug,
-            url: data.url,
-            image: data.image,
-            country: data.country,
-            yearEstablished: data.year_established,
-            trustScore: data.trust_score,
-            trustScoreRank: data.trust_score_rank,
-            tradeVolume24HBtc: data.trade_volume_24h_btc,
-            tradeVolume24HNormalized: data.trade_volume_24h_btc_normalized,
-            facebook: data.facebook_url,
-            reddit: data.reddit_url,
-            telegram: data.telegram_url,
-            twitter: data.twitter_handle,
-            otherUrl1: data.other_url_1,
-            otherUrl2: data.other_url_2,
-            centralized: data.centralized
-          })
-        );
-      }
     } catch (e) {
       this.logger.error(e);
     }

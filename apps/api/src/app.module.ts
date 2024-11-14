@@ -45,7 +45,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       entities: [join(__dirname, '/../**/*.entity{.ts,.js}')],
       host: process.env.PGHOST,
       logging: !isProduction,
-      migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
+      migrations: [join(__dirname, './migrations/*.{ts,js}')],
       migrationsTableName: 'migration',
       password: process.env.PGPASSWORD,
       port: parseInt(process.env.PGPORT),

@@ -17,7 +17,7 @@ export class Category {
   })
   slug: string;
 
-  @Column({ unique: true })
+  @Column()
   @ApiProperty({
     description: 'Name of the category',
     example: 'Technology'
