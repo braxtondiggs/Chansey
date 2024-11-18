@@ -1,8 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { CreateExchangeDto } from './create-exchange.dto';
-import { TickerResponseDto } from '../ticker/dto/ticker-response.dto';
-
+import { TickerPairResponseDto } from '../../coin/ticker-pairs/dto';
 export class ExchangeResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the exchange',
@@ -153,10 +152,10 @@ export class ExchangeResponseDto {
 
   @ApiProperty({
     description: 'List of tickers associated with the exchange',
-    type: () => [TickerResponseDto],
+    type: () => [TickerPairResponseDto],
     required: false
   })
-  tickers?: TickerResponseDto[];
+  tickers?: TickerPairResponseDto[];
 
   constructor(exchange: Partial<CreateExchangeDto>) {
     Object.assign(this, exchange);

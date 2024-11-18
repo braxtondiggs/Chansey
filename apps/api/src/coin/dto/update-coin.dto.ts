@@ -23,6 +23,9 @@ export class UpdateCoinDto {
   totalSupply?: number;
 
   @IsNumber()
+  totalVolume?: number;
+
+  @IsNumber()
   circulatingSupply?: number;
 
   @IsNumber()

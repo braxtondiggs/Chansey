@@ -10,8 +10,8 @@ import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 export class ExchangeService {
   constructor(@InjectRepository(Exchange) private readonly exchange: Repository<Exchange>) {}
 
-  async getExchanges(): Promise<Exchange[]> {
-    const exchanges = await this.exchange.find();
+  async getExchanges({ supported = false } = {}): Promise<Exchange[]> {
+    const exchanges = await this.exchange.find({ where: { supported } });
     return exchanges.map((exchange) => {
       Object.keys(exchange).forEach((key) => exchange[key] === null && delete exchange[key]);
       return exchange;

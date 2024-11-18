@@ -13,15 +13,15 @@ import { Testnet } from './testnet/testnet.entity';
 import { TestnetService } from './testnet/testnet.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
+import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceService } from '../exchange/binance/binance.service';
 import { ExchangeService } from '../exchange/exchange.service';
-import { Ticker } from '../exchange/ticker/ticker.entity';
-import { TickerService } from '../exchange/ticker/ticker.service';
 
 @Module({
   controllers: [OrderController, TestnetController],
   exports: [OrderService, TestnetService],
-  imports: [ConfigModule, TypeOrmModule.forFeature([Algorithm, Coin, Exchange, Order, Testnet, Ticker])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([Algorithm, Coin, Exchange, Order, Testnet, TickerPairs])],
   providers: [
     AlgorithmService,
     BinanceService,
@@ -29,7 +29,7 @@ import { TickerService } from '../exchange/ticker/ticker.service';
     ExchangeService,
     OrderService,
     TestnetService,
-    TickerService
+    TickerPairService
   ]
 })
 export class OrderModule {}

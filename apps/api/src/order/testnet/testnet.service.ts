@@ -6,8 +6,8 @@ import { Between, Repository } from 'typeorm';
 import { TestnetDto, TestnetSummaryDuration } from './dto';
 import { Testnet } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
+import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceService } from '../../exchange/binance/binance.service';
-import { TickerService } from '../../exchange/ticker/ticker.service';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
@@ -19,23 +19,23 @@ export class TestnetService {
     private readonly algorithm: AlgorithmService,
     private readonly binance: BinanceService,
     private readonly order: OrderService,
-    private readonly ticker: TickerService,
+    private readonly tickerPair: TickerPairService,
     @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>
   ) {}
 
   async createOrder(side: OrderSide, order: TestnetDto) {
     const binance = this.binance.getBinanceClient();
-    const ticker = await this.ticker.getTickerByCoin(order.coinId);
+    const ticker = await this.tickerPair.getBasePairsById(order.coinId);
 
     const [{ quantity }, algorithm, response] = await Promise.all([
       this.order.isExchangeValid(order, OrderType.MARKET, ticker.symbol),
       this.algorithm.getAlgorithmById(order.algorithm),
       this.gecko.simplePrice({
-        ids: ticker.coin.slug,
+        ids: ticker.baseAsset.slug,
         vs_currencies: 'usd'
       })
     ]);
-    const price = response[ticker.coin.slug]?.usd;
+    const price = response[ticker.baseAsset.slug]?.usd;
 
     await binance.orderTest({
       quantity,
@@ -47,7 +47,7 @@ export class TestnetService {
     return (
       await this.testnet.insert({
         algorithm,
-        coin: ticker.coin,
+        coin: ticker.baseAsset,
         price,
         quantity: Number(quantity),
         side,

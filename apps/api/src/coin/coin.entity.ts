@@ -1,8 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { CoinPairs } from './pairs/pairs.entity';
-import { Ticker } from '../exchange/ticker/ticker.entity';
+import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { Price } from '../price/price.entity';
@@ -69,7 +68,7 @@ export class Coin {
   })
   marketRank?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Total supply of the coin',
     example: 21000000.0,
@@ -78,7 +77,7 @@ export class Coin {
   })
   totalSupply?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Circulating supply of the coin',
     example: 18500000.0,
@@ -87,7 +86,7 @@ export class Coin {
   })
   circulatingSupply?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Maximum supply of the coin',
     example: 21000000.0,
@@ -158,7 +157,7 @@ export class Coin {
   })
   sentimentDown?: number;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'All-time high price of the coin',
     example: 60000.0,
@@ -167,7 +166,7 @@ export class Coin {
   })
   ath?: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, default: null })
   @ApiProperty({
     description: 'Change from all-time high',
     example: -20.0,
@@ -185,7 +184,7 @@ export class Coin {
   })
   athDate?: Date;
 
-  @Column({ type: 'decimal', precision: 20, scale: 8, default: null })
+  @Column({ type: 'decimal', precision: 25, scale: 8, default: null })
   @ApiProperty({
     description: 'All-time low price of the coin',
     example: 3000.0,
@@ -194,7 +193,7 @@ export class Coin {
   })
   atl?: number;
 
-  @Column({ type: 'decimal', precision: 7, scale: 2, default: null })
+  @Column({ type: 'decimal', precision: 15, scale: 6, default: null })
   @ApiProperty({
     description: 'Change from all-time low',
     example: 50.0,
@@ -202,6 +201,15 @@ export class Coin {
     type: Number
   })
   atlChange?: number;
+
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Total volume of the coin',
+    example: 600000000.0,
+    required: false,
+    type: Number
+  })
+  totalVolume?: number;
 
   @Column({ type: 'timestamptz', default: null })
   @ApiProperty({
@@ -264,41 +272,23 @@ export class Coin {
   })
   prices: Price[];
 
-  @OneToMany(() => Ticker, (ticker) => ticker.coin)
-  @ApiProperty({
-    description: 'List of tickers for the coin',
-    type: () => Ticker,
-    isArray: true,
-    required: false
-  })
-  tickers: Ticker[];
-
-  @OneToMany(() => Ticker, (ticker) => ticker.target)
-  @ApiProperty({
-    description: 'List of tickers where the coin is the target',
-    type: () => Ticker,
-    isArray: true,
-    required: false
-  })
-  tickersAsTarget: Ticker[];
-
-  @OneToMany(() => CoinPairs, (pair) => pair.baseAsset)
+  @OneToMany(() => TickerPairs, (pair) => pair.baseAsset)
   @ApiProperty({
     description: 'Trading pairs where this coin is the base asset',
-    type: () => CoinPairs,
+    type: () => TickerPairs,
     isArray: true,
     required: false
   })
-  baseAssetPairs: CoinPairs[];
+  baseAssetPairs: TickerPairs[];
 
-  @OneToMany(() => CoinPairs, (pair) => pair.quoteAsset)
+  @OneToMany(() => TickerPairs, (pair) => pair.quoteAsset)
   @ApiProperty({
     description: 'Trading pairs where this coin is the quote asset',
-    type: () => CoinPairs,
+    type: () => TickerPairs,
     isArray: true,
     required: false
   })
-  quoteAssetPairs: CoinPairs[];
+  quoteAssetPairs: TickerPairs[];
 
   constructor(partial: Partial<Coin>) {
     Object.assign(this, partial);
@@ -308,6 +298,7 @@ export class Coin {
 export enum CoinRelations {
   PRICES = 'prices',
   PORTFOLIOS = 'portfolios',
-  TICKERS = 'tickers',
+  BASE_ASSETS = 'baseAssetPairs',
+  QUOTE_ASSETS = 'quoteAssetPairs',
   ORDERS = 'orders'
 }

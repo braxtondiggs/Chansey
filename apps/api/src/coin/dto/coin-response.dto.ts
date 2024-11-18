@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { CreateCoinDto } from './create-coin.dto';
-import { TickerResponseDto } from '../../exchange/ticker/dto/ticker-response.dto';
 import { OrderResponseDto } from '../../order/dto/order-response.dto';
 import { PortfolioResponseDto } from '../../portfolio/dto/portfolio-response.dto';
 import { CreatePriceDto } from '../../price/dto/create-price.dto';
@@ -66,6 +65,14 @@ export class CoinResponseDto {
     type: Number
   })
   totalSupply?: number;
+
+  @ApiProperty({
+    description: 'Total volume of the coin',
+    example: 1260000000000.0,
+    required: false,
+    type: Number
+  })
+  totalVolume?: number;
 
   @ApiProperty({
     description: 'Circulating supply of the coin',
@@ -231,22 +238,6 @@ export class CoinResponseDto {
     required: false
   })
   prices: CreatePriceDto[];
-
-  @ApiProperty({
-    description: 'List of tickers for the coin',
-    type: () => TickerResponseDto,
-    isArray: true,
-    required: false
-  })
-  tickers: TickerResponseDto[];
-
-  @ApiProperty({
-    description: 'List of tickers where the coin is the target',
-    type: () => TickerResponseDto,
-    isArray: true,
-    required: false
-  })
-  tickersAsTarget: TickerResponseDto[];
 
   constructor(coin: Partial<CreateCoinDto>) {
     Object.assign(this, coin);

@@ -44,7 +44,7 @@ export class CoinController {
     description: 'Coin not found.'
   })
   getCoinById(@Param('id', new ParseUUIDPipe()) id: string): Promise<CoinResponseDto> {
-    return this.coin.getCoinById(id, [CoinRelations.TICKERS]);
+    return this.coin.getCoinById(id, [CoinRelations.BASE_ASSETS]);
   }
 
   @Get('symbol/:symbol')
@@ -66,7 +66,7 @@ export class CoinController {
     description: 'Coin not found.'
   })
   getCoinBySymbol(@Param() { symbol }): Promise<Coin> {
-    return this.coin.getCoinBySymbol(symbol, [CoinRelations.TICKERS]);
+    return this.coin.getCoinBySymbol(symbol, [CoinRelations.BASE_ASSETS]);
   }
 
   @Get(':id/historical')
