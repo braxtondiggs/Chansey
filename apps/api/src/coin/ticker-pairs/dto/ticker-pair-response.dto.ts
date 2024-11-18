@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { CreateTickerDto } from './create-ticker.dto';
-import { CoinResponseDto } from '../../../coin/dto/coin-response.dto';
+import { CreateTickerDto } from './create-ticker-pair.dto';
+import { CoinResponseDto } from '../../dto/coin-response.dto';
 
-export class TickerResponseDto {
+export class TickerPairResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the ticker',
     example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { Ticker } from './ticker/ticker.entity';
+import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 
 @Entity()
 @Index(['slug'], { unique: true })
@@ -170,16 +170,16 @@ export class Exchange {
   @UpdateDateColumn({ type: 'timestamptz', select: false })
   updatedAt: Date;
 
-  @OneToMany(() => Ticker, (ticker) => ticker.exchange, {
+  @OneToMany(() => TickerPairs, (ticker) => ticker.exchange, {
     cascade: true,
     onDelete: 'CASCADE',
     eager: false
   })
   @ApiProperty({
-    description: 'List of tickers associated with the exchange',
-    type: () => [Ticker]
+    description: 'List of ticker pairs associated with the exchange',
+    type: () => [TickerPairs]
   })
-  tickers: Ticker[];
+  ticker: TickerPairs[];
 
   constructor(partial: Partial<Exchange>) {
     Object.assign(this, partial);

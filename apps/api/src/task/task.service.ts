@@ -1,13 +1,8 @@
-import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
-import { CategoryService } from '../category/category.service';
 import { CoinService } from '../coin/coin.service';
-import { ExchangeService } from '../exchange/exchange.service';
-import { TickerService } from '../exchange/ticker/ticker.service';
-import { CoinAlertService } from '../portfolio/coin-alert.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PriceService } from '../price/price.service';
 
@@ -18,14 +13,9 @@ export class TaskService {
   private readonly supported_exchanges = ['binance_us']; //, 'coinbase_pro', 'gemini', 'kraken', 'kucoin'];
 
   constructor(
-    private readonly category: CategoryService,
     private readonly coin: CoinService,
-    private readonly coinAlert: CoinAlertService,
-    private readonly exchange: ExchangeService,
-    private readonly http: HttpService,
     private readonly portfolio: PortfolioService,
-    private readonly price: PriceService,
-    private readonly ticker: TickerService
+    private readonly price: PriceService
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES, {
@@ -58,106 +48,5 @@ export class TaskService {
     } catch (e) {
       this.logger.error(e);
     }
-  }
-
-  @Cron('40 0 * * MON', {
-    name: 'scrape exchange tickers'
-  }) // every monday at 12:40:00 AM
-  async tickers() {
-    try {
-      this.logger.log('Ticker Cron');
-      const coins = await this.coin.getCoins();
-      const exchanges = await this.exchange.getExchanges();
-      for (const exchange_slug of this.supported_exchanges) {
-        let page = 1;
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { tickers } = await this.gecko.exchangeIdTickers({ id: exchange_slug, page });
-          if (tickers.length === 0) break;
-          for (const ticker of tickers) {
-            const base_coin = coins.find((coin) => coin.slug.toLowerCase() === ticker.coin_id.toLowerCase());
-            const target_coin = coins.find(({ slug }) => slug.toLowerCase() === ticker?.target_coin_id?.toLowerCase());
-            const exchange = exchanges.find(
-              ({ slug }) => slug.toLowerCase() === ticker?.market?.identifier?.toLowerCase()
-            );
-            if (!base_coin || !target_coin || !exchange) continue;
-
-            const tickerCoin = await this.ticker.getTickerByCoin(base_coin.id, target_coin.id, exchange.id);
-            /* if (ticker.is_anomaly || ticker.is_stale) {
-              if (tickerCoin?.id) this.ticker.deleteTicker(tickerCoin?.id);
-              continue;
-            }*/
-            await this.ticker.saveTicker({
-              coin: base_coin,
-              exchange,
-              fetchAt: ticker.last_fetch_at,
-              id: tickerCoin?.id,
-              lastTraded: ticker.last_traded_at,
-              spreadPercentage: ticker.bid_ask_spread_percentage,
-              target: target_coin,
-              tradeUrl: ticker.trade_url,
-              volume: ticker.volume
-            });
-          }
-          this.logger.log(`Page ${page} of ${exchange_slug} tickers scraped`);
-          await new Promise((r) => setTimeout(r, 2000));
-          page++;
-        }
-      }
-    } catch (e) {
-      this.logger.error(e);
-    }
-  }
-
-  @Cron('0 23 * * *', {
-    name: 'Update coin detailed'
-  }) // every day at 11:00:00 PM
-  async coinDetailed() {
-    this.logger.log('Detailed Coins Cron');
-    const coins = await this.portfolio.getPortfolioCoins();
-    const alerts = await this.coinAlert.get();
-    for (const alert of alerts) {
-      if (coins.find(({ symbol }) => symbol?.toUpperCase() !== alert.currency && alert.note === 'Chansey')) {
-        this.logger.log(`Deleting Alert: ${alert.currency}`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await this.coinAlert.delete(alert.currency?.toUpperCase());
-      }
-    }
-
-    for (const { id, slug, symbol } of coins) {
-      const coin = await this.gecko.coinId({ id: slug, localization: false, tickers: false });
-
-      this.coin.update(id, {
-        description: coin.description.en,
-        image: coin.image.large || coin.image.small || coin.image.thumb,
-        genesis: coin.genesis_date,
-        totalSupply: coin.market_data.total_supply,
-        circulatingSupply: coin.market_data.circulating_supply,
-        maxSupply: coin.market_data.max_supply,
-        marketRank: coin.market_cap_rank,
-        geckoRank: coin.coingecko_rank,
-        developerScore: coin.developer_score,
-        communityScore: coin.community_score,
-        liquidityScore: coin.liquidity_score,
-        publicInterestScore: coin.public_interest_score,
-        sentimentUp: coin.sentiment_votes_up_percentage,
-        sentimentDown: coin.sentiment_votes_down_percentage,
-        ath: coin.market_data.ath.usd,
-        atl: coin.market_data.atl.usd,
-        athDate: coin.market_data.ath_date.usd,
-        atlDate: coin.market_data.atl_date.usd,
-        athChange: coin.market_data.ath_change_percentage.usd,
-        atlChange: coin.market_data.atl_change_percentage.usd,
-        geckoLastUpdatedAt: coin.market_data.last_updated
-      });
-
-      if (!alerts.find(({ currency }) => currency === symbol?.toUpperCase())) {
-        this.logger.log(`Creating alert: ${symbol?.toUpperCase()}`);
-        await this.coinAlert.create(symbol?.toUpperCase());
-      }
-    }
-  }
-  catch(e) {
-    this.logger.error(e);
   }
 }

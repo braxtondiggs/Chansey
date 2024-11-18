@@ -77,4 +77,8 @@ export class CoinService {
     const _coin = await this.getCoinById(coinId);
     return 'Not Working'; // TODO: Add historical data
   }
+
+  async getCoinBySlug(slug: string) {
+    return this.coin.findOne({ where: { slug } });
+  }
 }

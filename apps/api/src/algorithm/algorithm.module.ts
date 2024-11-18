@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { TickerPairs } from './../coin/ticker-pairs/ticker-pairs.entity';
 import { AlgorithmController } from './algorithm.controller';
 import { Algorithm } from './algorithm.entity';
 import { AlgorithmService } from './algorithm.service';
@@ -10,11 +11,10 @@ import * as DynamicAlgorithmServices from './scripts';
 import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceService } from '../exchange/binance/binance.service';
 import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
-import { Ticker } from '../exchange/ticker/ticker.entity';
-import { TickerService } from '../exchange/ticker/ticker.service';
 import { Order } from '../order/order.entity';
 import { OrderService } from '../order/order.service';
 import { Testnet } from '../order/testnet/testnet.entity';
@@ -27,7 +27,7 @@ import { PriceService } from '../price/price.service';
 @Module({
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Ticker, Testnet, Portfolio, Price])
+    TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Testnet, Portfolio, Price, TickerPairs])
   ],
   controllers: [AlgorithmController],
   providers: [
@@ -40,7 +40,7 @@ import { PriceService } from '../price/price.service';
     PortfolioService,
     PriceService,
     TestnetService,
-    TickerService,
+    TickerPairService,
     ...Object.values(DynamicAlgorithmServices),
     ...Object.values(DynamicAlgorithmServices).map((cls) => ({
       provide: cls.name.toString(),
