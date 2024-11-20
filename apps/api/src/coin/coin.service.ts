@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 import { BinanceService } from '../exchange/binance/binance.service';
+import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
@@ -63,6 +64,10 @@ export class CoinService {
     return await this.coin.save(new Coin({ ...data, ...coin }));
   }
 
+  async clearRank() {
+    await this.coin.update({}, { geckoRank: null });
+  }
+
   async remove(coinId: string) {
     const response = await this.coin.delete(coinId);
     if (!response.affected) new NotFoundCustomException('Coin', { id: coinId });
@@ -80,5 +85,50 @@ export class CoinService {
 
   async getCoinBySlug(slug: string) {
     return this.coin.findOne({ where: { slug } });
+  }
+
+  async getCoinsByRiskLevel({ risk }: User, take = 10) {
+    const { level: riskLevel } = risk;
+
+    if (riskLevel === 1) {
+      return await this.coin.find({
+        where: {
+          totalVolume: Not(IsNull())
+        },
+        order: {
+          totalVolume: 'DESC'
+        },
+        take
+      });
+    }
+
+    if (riskLevel === 5) {
+      return await this.coin.find({
+        where: {
+          geckoRank: Not(IsNull())
+        },
+        order: {
+          geckoRank: 'ASC'
+        },
+        take
+      });
+    }
+
+    // For risk levels 2-4
+    return await this.coin
+      .createQueryBuilder('coin')
+      .where('coin.totalVolume IS NOT NULL')
+      .andWhere('coin.geckoRank IS NOT NULL')
+      .andWhere('coin.marketCap IS NOT NULL')
+      .orderBy(
+        `(
+          COALESCE(LN(coin."totalVolume" + 1), 0) * ${(5 - riskLevel) / 4} +
+          COALESCE(LN(coin."marketCap" + 1), 0) * ${(5 - riskLevel) / 4} -
+          COALESCE(coin."geckoRank", 0) * ${(riskLevel - 1) / 4}
+        )`,
+        'DESC'
+      )
+      .take(take)
+      .getMany();
   }
 }

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { CreateCoinDto } from './create-coin.dto';
-import { OrderResponseDto } from '../../order/dto/order-response.dto';
+import { OrderResponseDto } from '../../order/dto';
 import { PortfolioResponseDto } from '../../portfolio/dto/portfolio-response.dto';
 import { CreatePriceDto } from '../../price/dto/create-price.dto';
 

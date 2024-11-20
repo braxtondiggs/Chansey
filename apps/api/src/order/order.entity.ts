@@ -1,4 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsUUID, Min } from 'class-validator';
 import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
@@ -35,8 +37,11 @@ export enum OrderStatus {
 @Entity()
 @Index('IDX_order_userId', ['user'])
 @Index('IDX_order_coinId', ['coin'])
+@Index('IDX_order_status_type', ['status', 'type'])
+@Index('IDX_order_symbol_side_createdat', ['symbol', 'side', 'createdAt'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
+  @IsUUID()
   @ApiProperty({
     description: 'Unique identifier for the order',
     example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
@@ -50,11 +55,11 @@ export class Order {
   })
   symbol: string;
 
-  @Column({ type: 'bigint' })
+  @Column()
   @ApiProperty({
     description: 'Unique order ID',
     example: '123456789012345678',
-    type: String // bigint is represented as string in JSON
+    type: String
   })
   orderId: string;
 
@@ -65,13 +70,15 @@ export class Order {
   })
   clientOrderId: string;
 
-  @Column({ type: 'bigint' })
+  @Column({ type: 'timestamp' })
+  @IsDate()
+  @Transform(({ value }) => new Date(Number(value)))
   @ApiProperty({
-    description: 'Transaction time in milliseconds since epoch',
-    example: '1622547800000',
-    type: String // bigint is represented as string in JSON
+    description: 'Transaction time',
+    example: '2024-04-23T18:25:43.511Z',
+    type: Date
   })
-  transactTime: string;
+  transactTime: Date;
 
   @Column({ type: 'decimal', precision: 20, scale: 8, transformer: new ColumnNumericTransformer() })
   @ApiProperty({
@@ -80,10 +87,36 @@ export class Order {
   })
   quantity: number;
 
+  @Column({ type: 'decimal', precision: 20, scale: 8, transformer: new ColumnNumericTransformer() })
+  @IsNumber()
+  @Min(0)
+  @ApiProperty({
+    description: 'Price of the order',
+    example: 35000.5
+  })
+  price: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    default: 0
+  })
+  @IsNumber()
+  @Min(0)
+  @ApiProperty({
+    description: 'Executed quantity of the order',
+    example: 0.3
+  })
+  executedQuantity: number;
+
   @Column({
     type: 'enum',
     enum: OrderStatus
   })
+  @IsEnum(OrderStatus)
+  @IsNotEmpty()
   @ApiProperty({
     description: 'Current status of the order',
     enum: OrderStatus,

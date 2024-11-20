@@ -2,7 +2,6 @@ import { Body, Controller, Get, HttpStatus, Param, ParseUUIDPipe, Post, UseGuard
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { OrderBinanceResponseDto, OrderDto } from './dto';
-import { OrderSide } from './order.entity';
 import { OrderService } from './order.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
@@ -71,7 +70,7 @@ export class OrderController {
     description: 'Invalid input data.'
   })
   async createBuyOrder(@Body() dto: OrderDto, @GetUser() user: User) {
-    return this.order.createOrder(OrderSide.BUY, dto, user);
+    return this.order.createBuyOrder(dto, user);
   }
 
   @Post('sell')
@@ -86,6 +85,6 @@ export class OrderController {
     description: 'Invalid input data.'
   })
   async createSellOrder(@Body() dto: OrderDto, @GetUser() user: User) {
-    return this.order.createOrder(OrderSide.SELL, dto, user);
+    return this.order.createSellOrder(dto, user);
   }
 }

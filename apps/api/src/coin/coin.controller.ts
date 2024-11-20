@@ -4,7 +4,9 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
 import { CoinResponseDto } from './dto';
+import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { User } from '../users/users.entity';
 
 @ApiTags('Coin')
 @ApiBearerAuth('token')
@@ -19,9 +21,9 @@ export class CoinController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'List of coins retrieved successfully.',
-    type: [CoinResponseDto]
+    type: [Coin]
   })
-  async getCoins(): Promise<CoinResponseDto[]> {
+  async getCoins(): Promise<Coin[]> {
     return this.coin.getCoins();
   }
 
@@ -43,7 +45,7 @@ export class CoinController {
     status: HttpStatus.NOT_FOUND,
     description: 'Coin not found.'
   })
-  getCoinById(@Param('id', new ParseUUIDPipe()) id: string): Promise<CoinResponseDto> {
+  getCoinById(@Param('id', new ParseUUIDPipe()) id: string): Promise<Coin> {
     return this.coin.getCoinById(id, [CoinRelations.BASE_ASSETS]);
   }
 
@@ -91,5 +93,14 @@ export class CoinController {
   })
   getCoinHistoricalData(@Param('id', new ParseUUIDPipe()) id: string): Promise<any> {
     return this.coin.getCoinHistoricalData(id);
+  }
+
+  @Get('suggested')
+  @ApiOperation({
+    summary: 'Get suggested coins',
+    description: 'Retrieves the suggested coins for the authenticated user.'
+  })
+  suggestedCoins(@GetUser() user: User) {
+    return this.coin.getCoinsByRiskLevel(user);
   }
 }
