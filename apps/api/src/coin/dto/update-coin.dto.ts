@@ -35,6 +35,9 @@ export class UpdateCoinDto {
   marketRank?: number;
 
   @IsNumber()
+  marketCap?: number;
+
+  @IsNumber()
   geckoRank?: number;
 
   @IsDecimal()

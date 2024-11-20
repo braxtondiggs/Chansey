@@ -65,7 +65,7 @@ export class BinanceService {
       const coin = type.toUpperCase();
 
       if (coin !== 'ALL') {
-        return accountInfo.balances.find((b) => b.asset === coin);
+        return accountInfo.balances.filter((b) => b.asset === coin);
       }
       return accountInfo.balances.filter((b) => parseFloat(b.free) > 0);
     } catch (error) {
@@ -76,9 +76,20 @@ export class BinanceService {
   async getFreeBalance(user: User) {
     try {
       const accountInfo = await this.getBinanceAccountInfo(user);
-      return accountInfo.balances.find((b) => (b.asset === 'USD' || b.asset === 'USDT') && parseFloat(b.free) > 0);
+      return accountInfo.balances.filter((b) => (b.asset === 'USD' || b.asset === 'USDT') && parseFloat(b.free) > 0);
     } catch (error) {
       throw new InternalServerErrorException('Failed to fetch Binance free balance');
+    }
+  }
+
+  async getPriceBySymbol(symbol: string, user?: User) {
+    try {
+      const binanceClient = this.getBinanceClient(user);
+      const prices = await binanceClient.prices({ symbol });
+      return parseFloat(prices[symbol]);
+    } catch (error) {
+      this.logger.error(`Failed to fetch price for symbol ${symbol}`, error);
+      throw new InternalServerErrorException(`Failed to fetch price for symbol ${symbol}`);
     }
   }
 }

@@ -2,7 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { CoinResponseDto } from '../../coin/dto/coin-response.dto';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
-import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
+import { OrderSide, OrderStatus, OrderType } from '../order.entity';
+import { OrderDto } from './order.dto';
 
 export class OrderResponseDto {
   @ApiProperty({
@@ -88,19 +89,7 @@ export class OrderResponseDto {
   })
   updatedAt: Date;
 
-  constructor(order: Order) {
-    this.id = order.id;
-    this.symbol = order.symbol;
-    this.orderId = order.orderId;
-    this.clientOrderId = order.clientOrderId;
-    this.transactTime = order.transactTime;
-    this.quantity = order.quantity;
-    this.status = order.status;
-    this.side = order.side;
-    this.type = order.type;
-    this.user = new UserResponseDto(order.user);
-    this.coin = new CoinResponseDto(order.coin);
-    this.createdAt = order.createdAt;
-    this.updatedAt = order.updatedAt;
+  constructor(order: Partial<OrderDto>) {
+    Object.assign(this, order);
   }
 }

@@ -22,6 +22,19 @@ export class TickerPairService {
     });
   }
 
+  async getTickerPairsByExchange(exchangeId: string) {
+    return this.pairs.find({
+      where: { exchange: { id: exchangeId } }
+    });
+  }
+
+  async getTickerPairBySymbol(baseAsset: string, quoteAsset: string) {
+    return this.pairs.findOne({
+      where: { symbol: `${baseAsset.toUpperCase()}${quoteAsset.toUpperCase()}` },
+      relations: ['baseAsset', 'quoteAsset']
+    });
+  }
+
   async getBasePairsBySymbol(symbol: string): Promise<TickerPairs[]> {
     const coin = await this.coin.getCoinBySymbol(symbol);
     if (!coin) throw new NotFoundException(`Coin with symbol ${symbol} not found`);

@@ -211,6 +211,15 @@ export class Coin {
   })
   totalVolume?: number;
 
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Market capitalization of the coin',
+    example: 1200000000000.0,
+    required: false,
+    type: Number
+  })
+  marketCap?: number;
+
   @Column({ type: 'timestamptz', default: null })
   @ApiProperty({
     description: 'Date when ATL was reached',

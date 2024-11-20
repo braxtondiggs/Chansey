@@ -49,6 +49,9 @@ export class CoinTask {
   async getCoinDetail() {
     try {
       this.logger.log('Starting Detailed Coins Update');
+
+      this.coin.clearRank();
+
       const [trendingResponse, portfolioCoins] = await Promise.all([
         this.gecko.trending(),
         this.portfolio.getPortfolioCoins()
@@ -84,6 +87,7 @@ export class CoinTask {
                 circulatingSupply: coin.market_data.circulating_supply,
                 maxSupply: coin.market_data.max_supply,
                 marketRank: coin.market_cap_rank,
+                marketCap: coin.market_data.market_cap.usd,
                 geckoRank: coin.coingecko_rank ?? geckoRank ?? null,
                 developerScore: coin.developer_score,
                 communityScore: coin.community_score,
