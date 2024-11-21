@@ -13,7 +13,7 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiResponse, ApiT
 
 import { BalanceDto, UpdateUserDto, UserBinanceResponseDto, UserResponseDto } from './dto';
 import { User } from './users.entity';
-import UsersService from './users.service';
+import { UsersService } from './users.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { BinanceService } from '../exchange/binance/binance.service';

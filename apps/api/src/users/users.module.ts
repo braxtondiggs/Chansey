@@ -6,7 +6,7 @@ import { BinanceService } from './../exchange/binance/binance.service';
 import { Risk } from './risk.entity';
 import { UserController } from './users.controller';
 import { User } from './users.entity';
-import UsersService from './users.service';
+import { UsersService } from './users.service';
 
 @Module({
   controllers: [UserController],

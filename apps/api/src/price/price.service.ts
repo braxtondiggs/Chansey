@@ -1,5 +1,7 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import * as dayjs from 'dayjs';
 import * as customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -11,12 +13,28 @@ import { Coin } from '../coin/coin.entity';
 import { TestnetSummary as PriceRange, TestnetSummaryDuration as PriceRangeTime } from '../order/testnet/dto';
 import { PortfolioService } from '../portfolio/portfolio.service';
 
+type PriceAggregation = {
+  avg: number;
+  date: Date;
+  high: number;
+  low: number;
+  coin: string;
+};
+
+type PriceMap = { [key: string]: PriceAggregation[] };
+
 @Injectable()
 export class PriceService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PriceService.name);
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
+  private readonly gecko = new CoinGeckoClient({
+    timeout: 10000,
+    autoRetry: true
+  });
+  private readonly CACHE_TTL = 3600; // 1 hour
+
   constructor(
     @InjectRepository(Price) private readonly price: Repository<Price>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private readonly portfolio: PortfolioService
   ) {
     dayjs.extend(customParseFormat);
@@ -34,130 +52,123 @@ export class PriceService implements OnApplicationBootstrap {
     return (await this.price.insert(Price)).generatedMaps[0];
   }
 
-  async latest(coin: Coin): Promise<Price> {
-    return await this.price.findOne({
-      where: {
-        coin: {
-          id: coin.id
-        }
-      },
-      order: {
-        geckoLastUpdatedAt: 'DESC'
-      }
-    });
+  private async getCachedPrices(key: string, fetchFn: () => Promise<Price[]>): Promise<Price[]> {
+    const cached = await this.cacheManager.get<Price[]>(key);
+    if (cached) return cached;
+
+    const prices = await fetchFn();
+    await this.cacheManager.set(key, prices, this.CACHE_TTL);
+    return prices;
   }
 
   async findAll(coins: string[] | string, range = PriceRange['all']): Promise<Price[]> {
-    const coin = Array.isArray(coins) ? { id: In(coins) } : { id: coins };
-    const time = PriceRangeTime[range];
-    return await this.price.find({
-      where: {
-        coin,
-        geckoLastUpdatedAt: Between(new Date(Date.now() - time), new Date())
-      },
-      order: {
-        geckoLastUpdatedAt: 'ASC'
-      }
+    const cacheKey = `prices_${Array.isArray(coins) ? coins.join('_') : coins}_${range}`;
+    return this.getCachedPrices(cacheKey, async () => {
+      const coin = Array.isArray(coins) ? { id: In(coins) } : { id: coins };
+      const time = PriceRangeTime[range];
+      return this.price.find({
+        where: {
+          coin,
+          geckoLastUpdatedAt: Between(new Date(Date.now() - time), new Date())
+        },
+        order: { geckoLastUpdatedAt: 'ASC' }
+      });
     });
+  }
+
+  private aggregatePrices(prices: Price[], groupingFn: (price: Price) => string): PriceMap {
+    const groupedPrices = prices.reduce((acc, price) => {
+      const key = `${groupingFn(price)}-${price.coinId}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(price);
+      return acc;
+    }, {} as Record<string, Price[]>);
+
+    return Object.entries(groupedPrices)
+      .map(([_, prices]) => {
+        const [first] = prices;
+        return {
+          date: first.geckoLastUpdatedAt,
+          high: Math.max(...prices.map((p) => p.price)),
+          low: Math.min(...prices.map((p) => p.price)),
+          avg: +(prices.reduce((sum, p) => sum + p.price, 0) / prices.length).toFixed(2),
+          coin: first.coinId
+        };
+      })
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .reduce((acc, price) => {
+        if (!acc[price.coin]) acc[price.coin] = [];
+        acc[price.coin].push(price);
+        return acc;
+      }, {} as PriceMap);
   }
 
   async findAllByDay(coins: string[] | string, range = PriceRange['all']): Promise<PriceSummaryByDay> {
     const prices = await this.findAll(coins, range);
-    const dayPrices = prices.reduce((acc, price) => {
-      const date = price.geckoLastUpdatedAt.toISOString().split('T')[0];
-      const key = `${date}-${price.coinId}`;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push(price);
-      return acc;
-    }, {});
-    return Object.keys(dayPrices)
-      .map((key) => {
-        const dayPrice = dayPrices[key];
-        const date = dayPrice[0].geckoLastUpdatedAt;
-        const high = Math.max(...dayPrice.map(({ price }) => price));
-        const low = Math.min(...dayPrice.map(({ price }) => price));
-        const avg = +(dayPrice.reduce((acc, { price }) => acc + price, 0) / dayPrice.length).toFixed(2);
-        const coin = dayPrice[0].coinId;
-        return { avg, date, high, low, coin };
-      })
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .reduce((acc, price) => {
-        if (!acc[price.coin]) {
-          acc[price.coin] = [];
-        }
-        acc[price.coin].push(price);
-        return acc;
-      }, {});
+    return this.aggregatePrices(prices, (price) => price.geckoLastUpdatedAt.toISOString().split('T')[0]);
   }
 
   async findAllByHour(coins: string[] | string, range = PriceRange['all']): Promise<PriceSummaryByHour> {
     const prices = await this.findAll(coins, range);
-    const hourPrices = prices.reduce((acc, price) => {
-      const date = price.geckoLastUpdatedAt.toISOString().split('T')[0];
-      const hour = price.geckoLastUpdatedAt.getHours();
-      const key = `${date}-${hour}-${price.coinId}`;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push(price);
-      return acc;
-    }, {});
-    return Object.keys(hourPrices)
-      .map((key) => {
-        const hourPrice = hourPrices[key];
-        const date = hourPrice[0].geckoLastUpdatedAt;
-        const high = Math.max(...hourPrice.map(({ price }) => price));
-        const low = Math.min(...hourPrice.map(({ price }) => price));
-        const avg = +(hourPrice.reduce((acc, { price }) => acc + price, 0) / hourPrice.length).toFixed(2);
-        const coin = hourPrice[0].coinId;
-        return { avg, date, high, low, coin };
-      })
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .reduce((acc, price) => {
-        if (!acc[price.coin]) {
-          acc[price.coin] = [];
-        }
-        acc[price.coin].push(price);
-        return acc;
-      }, {});
+    return this.aggregatePrices(
+      prices,
+      (price) => `${price.geckoLastUpdatedAt.toISOString().split('T')[0]}-${price.geckoLastUpdatedAt.getHours()}`
+    );
   }
 
   async backFillPrices(coin: Coin) {
-    const lastPrice = await this.price.findOne({
-      order: {
-        geckoLastUpdatedAt: 'DESC'
-      },
-      where: {
-        coin: {
-          id: coin.id
-        }
+    try {
+      const lastPrice = await this.price.findOne({
+        where: { coin: { id: coin.id } },
+        order: { geckoLastUpdatedAt: 'DESC' }
+      });
+
+      if (!lastPrice || !dayjs(lastPrice.geckoLastUpdatedAt).isBefore(dayjs().subtract(1, 'day'))) {
+        return;
       }
-    });
-    if (lastPrice && dayjs(lastPrice.geckoLastUpdatedAt).isBefore(dayjs().subtract(1, 'day'))) {
+
       const { prices, market_caps, total_volumes } = await this.gecko.coinIdMarketChartRange({
         id: coin.slug,
         vs_currency: 'usd',
         from: dayjs(lastPrice.geckoLastUpdatedAt).unix(),
         to: dayjs().unix()
       });
-      for (const [date, price] of prices) {
-        const marketCap = market_caps.find(([d]) => d === date)[1];
-        const totalVolume = total_volumes.find(([d]) => d === date)[1];
-        const geckoLastUpdatedAt = dayjs(date).toDate();
 
-        if (!marketCap || !totalVolume) continue;
+      await Promise.all(
+        prices.map(async ([date, price]) => {
+          const marketCap = market_caps.find(([d]) => d === date)?.[1];
+          const totalVolume = total_volumes.find(([d]) => d === date)?.[1];
 
-        await this.create({
-          price,
-          marketCap,
-          totalVolume,
-          geckoLastUpdatedAt,
-          coin
-        });
-        this.logger.log(`Backfilled price for ${coin.name} on ${dayjs(date).toString()}`);
-      }
+          if (!marketCap || !totalVolume) return;
+
+          const geckoLastUpdatedAt = dayjs(date).toDate();
+          await this.create({
+            coin,
+            coinId: coin.id,
+            geckoLastUpdatedAt,
+            marketCap,
+            price,
+            totalVolume
+          });
+          this.logger.log(`Backfilled price for ${coin.name} on ${dayjs(date).toString()}`);
+        })
+      );
+    } catch (error) {
+      this.logger.error(`Failed to backfill prices for ${coin.name}: ${error.message}`);
     }
+  }
+
+  async getLatestPrice(coins: string[] | string): Promise<Price[] | Price> {
+    const coinIds = Array.isArray(coins) ? coins : [coins];
+    const latestPrices = await Promise.all(
+      coinIds.map((coinId) =>
+        this.price.findOne({
+          where: { coinId },
+          order: { geckoLastUpdatedAt: 'DESC' }
+        })
+      )
+    );
+    if (latestPrices.length === 1) return latestPrices[0];
+    return latestPrices.filter((price) => price);
   }
 }

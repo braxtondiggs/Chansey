@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsDate, IsNotEmpty, IsNumber, Min } from 'class-validator';
 import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
@@ -25,6 +26,8 @@ export class Price {
     description: 'Current price of the coin',
     example: 45000.12345678
   })
+  @IsNumber()
+  @Min(0)
   price: number;
 
   @Column({
@@ -39,6 +42,8 @@ export class Price {
     description: 'Market capitalization of the coin',
     example: 850000000000.0
   })
+  @IsNumber()
+  @Min(0)
   marketCap: number;
 
   @Column({
@@ -63,6 +68,8 @@ export class Price {
     description: 'Timestamp when CoinGecko last updated this price',
     example: '2024-04-23T18:25:43.511Z'
   })
+  @IsDate()
+  @IsNotEmpty()
   geckoLastUpdatedAt: Date;
 
   @Index('price_coinId_index')
@@ -86,23 +93,30 @@ export class Price {
   @Column()
   coinId: string;
 
-  constructor(partial: Partial<Price>) {
+  calculatePriceChange(previousPrice: Price): number {
+    return ((this.price - previousPrice.price) / previousPrice.price) * 100;
+  }
+
+  isHigherThan(otherPrice: Price): boolean {
+    return this.price > otherPrice.price;
+  }
+
+  constructor(partial: Partial<Omit<Price, 'id' | 'createdAt'>>) {
     Object.assign(this, partial);
   }
 }
 
 export interface PriceSummary {
-  avg: number;
-  coin: string;
-  date: Date;
-  high: number;
-  low: number;
+  readonly avg: number;
+  readonly coin: string;
+  readonly date: Date;
+  readonly high: number;
+  readonly low: number;
 }
 
-export interface PriceSummaryByDay {
+export type PriceSummaryByPeriod = {
   [key: string]: PriceSummary[];
-}
+};
 
-export interface PriceSummaryByHour {
-  [key: string]: PriceSummary[];
-}
+export type PriceSummaryByDay = PriceSummaryByPeriod;
+export type PriceSummaryByHour = PriceSummaryByPeriod;

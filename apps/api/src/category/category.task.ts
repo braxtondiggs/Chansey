@@ -1,7 +1,8 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
+import { firstValueFrom, retry, timeout } from 'rxjs';
 
 import { CategoryService } from '../category/category.service';
 
@@ -11,14 +12,31 @@ export class CategoryTask {
 
   constructor(private readonly category: CategoryService, private readonly http: HttpService) {}
 
+  private async fetchCategories() {
+    return firstValueFrom(
+      this.http
+        .get('https://api.coingecko.com/api/v3/coins/categories/list', {
+          timeout: 10000
+        })
+        .pipe(timeout(12000), retry({ count: 3, delay: 1000 }))
+    );
+  }
+
   @Cron(CronExpression.EVERY_WEEK)
   async syncCategories() {
     try {
       this.logger.log('Starting Category Sync');
-      const [{ data: apiCategories }, existingCategories] = await Promise.all([
-        firstValueFrom(this.http.get('https://api.coingecko.com/api/v3/coins/categories/list')) as Promise<any>,
+
+      const [apiResponse, existingCategories] = await Promise.all([
+        this.fetchCategories(),
         this.category.getCategories()
       ]);
+
+      if (!apiResponse?.data || !Array.isArray(apiResponse.data)) {
+        throw new Error('Invalid API response format');
+      }
+
+      const apiCategories = apiResponse.data;
 
       const newCategories = apiCategories
         .map((c) => ({ slug: c.category_id, name: c.name }))
@@ -30,7 +48,9 @@ export class CategoryTask {
 
       if (newCategories.length > 0) {
         await this.category.createMany(newCategories);
-        this.logger.log(`Added categories: ${newCategories.map(({ name }) => name).join(', ')}`);
+        this.logger.log(
+          `Added ${newCategories.length} categories: ${newCategories.map(({ name }) => name).join(', ')}`
+        );
       }
 
       if (missingCategories.length > 0) {
@@ -38,7 +58,16 @@ export class CategoryTask {
         this.logger.log(`Removed ${missingCategories.length} obsolete categories`);
       }
     } catch (e) {
-      this.logger.error('Category sync failed:', e);
+      if (e instanceof AxiosError) {
+        this.logger.error(`Category sync failed: ${e.message}`, {
+          status: e.response?.status,
+          statusText: e.response?.statusText,
+          data: e.response?.data
+        });
+      } else {
+        this.logger.error(`Category sync failed: ${e.message}`);
+      }
+      throw e;
     } finally {
       this.logger.log('Category Sync Complete');
     }

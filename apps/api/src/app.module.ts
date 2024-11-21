@@ -1,8 +1,10 @@
 import { join } from 'path';
 
 import { HttpModule } from '@nestjs/axios';
+import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
@@ -18,7 +20,6 @@ import { HealthModule } from './health/health.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
-import { TaskModule } from './task/task.module';
 import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -38,7 +39,9 @@ const isProduction = process.env.NODE_ENV === 'production';
       rootPath: join(__dirname, '..', '../dist/client'),
       exclude: ['/api/(.*)']
     }),
-
+    CacheModule.register({
+      isGlobal: true
+    }),
     TypeOrmModule.forRoot({
       autoLoadEntities: true,
       database: process.env.PGDATABASE,
@@ -55,6 +58,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       username: process.env.PGUSER,
       uuidExtension: 'pgcrypto'
     }),
+    ScheduleModule.forRoot(),
     AlgorithmModule,
     AuthenticationModule,
     CategoryModule,
@@ -65,8 +69,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     HttpModule,
     OrderModule,
     PortfolioModule,
-    PriceModule,
-    TaskModule
+    PriceModule
   ],
   exports: [ConfigModule, HttpModule],
   controllers: [AppController],
