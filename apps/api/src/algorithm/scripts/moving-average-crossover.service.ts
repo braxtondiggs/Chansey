@@ -7,7 +7,7 @@ import * as dayjs from 'dayjs';
 import { OrderSide } from '../../order/order.entity';
 import { TestnetService } from '../../order/testnet/testnet.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
-import { PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
+import { Price, PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
 
@@ -53,7 +53,7 @@ export class MovingAverageCrossoverService {
       this.lastFetch = new Date();
     }
     for (const coin of coins) {
-      const { price: latestPrice } = await this.price.latest(coin);
+      const { price: latestPrice } = (await this.price.getLatestPrice(coin.id)) as Price;
       for (const term of Object.values(this.SMAStrategy)) {
         if (this.prices[coin.id].length < term.sma) continue;
         const fastMA = this.calculateMovingAverage(this.prices[coin.id], term.fma).pop();

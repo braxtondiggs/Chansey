@@ -3,7 +3,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { CreateUserDto } from '../users/dto/create-user.dto';
-import UsersService from '../users/users.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthenticationService {

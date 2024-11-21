@@ -6,7 +6,7 @@ import { UpdateUserDto } from './dto';
 import { User } from './users.entity';
 
 @Injectable()
-export default class UsersService {
+export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
   constructor(
@@ -46,6 +46,15 @@ export default class UsersService {
     } catch (error) {
       this.logger.error(`User not found with ID: ${id}`, error.stack);
       throw new NotFoundException(`User with ID ${id} not found`);
+    }
+  }
+
+  async findAll() {
+    try {
+      return await this.user.find();
+    } catch (error) {
+      this.logger.error(`Failed to retrieve all users`, error.stack);
+      throw new InternalServerErrorException('Failed to retrieve users');
     }
   }
 }

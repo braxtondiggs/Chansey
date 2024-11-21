@@ -53,7 +53,6 @@ export class ExponentialMovingAverageService {
       this.lastFetch = new Date();
     }
     for (const coin of coins) {
-      const { price: latestPrice } = await this.price.latest(coin);
       const ema = this.calculateEMA(this.prices[coin.id], period).pop();
       console.log(ema);
     }
