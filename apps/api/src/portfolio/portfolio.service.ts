@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
-import { Portfolio } from './portfolio.entity';
+import { Portfolio, PortfolioRelations } from './portfolio.entity';
 import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
@@ -32,14 +32,14 @@ export class PortfolioService {
     return portfolio;
   }
 
-  async getPortfolioByUser(user: User): Promise<Portfolio[]> {
+  async getPortfolioByUser(user: User, relations?: PortfolioRelations[]): Promise<Portfolio[]> {
     const portfolio = await this.portfolio.find({
       where: {
         user: {
           id: user.id
         }
       },
-      relations: ['coin']
+      relations
     });
     if (!portfolio) throw new NotFoundCustomException('Portfolio', { user: user.id });
     return portfolio;
