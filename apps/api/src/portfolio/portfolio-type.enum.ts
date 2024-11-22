@@ -1,4 +1,4 @@
 export enum PortfolioType {
-  MANUAL = 'manual',
-  AUTOMATIC = 'automatic'
+  MANUAL = 'MANUAL',
+  AUTOMATIC = 'AUTOMATIC'
 }

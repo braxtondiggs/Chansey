@@ -62,3 +62,8 @@ export class Portfolio {
     Object.assign(this, partial);
   }
 }
+
+export enum PortfolioRelations {
+  COIN = 'coin',
+  USER = 'user'
+}
