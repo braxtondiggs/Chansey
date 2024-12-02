@@ -35,7 +35,7 @@ export class MeanReversionService {
     // if (process.env.NODE_ENV !== 'production') return;
     this.logger.log(`${algorithm.name}: Running Successfully!`);
     this.algorithm = algorithm;
-    this.addCronJob();
+    // this.addCronJob();
   }
 
   private addCronJob() {
