@@ -4,7 +4,7 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
-import { OrderSide } from '../../order/order.entity';
+import { OrderSide, OrderType } from '../../order/order.entity';
 import { TestnetService } from '../../order/testnet/testnet.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Price, PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
@@ -65,9 +65,19 @@ export class MovingAverageCrossoverService {
         if (latestPrice < fastMA) {
           // TODO: fast & slow average minus actual coin price. You can figure out the quality or quantity of the trade. Bigger difference means bigger trade.
           // TODO: once more data is considered maybe should only trade best SMAStrategy vs all
-          await this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
+          await this.testnet.createOrder(OrderSide.BUY, {
+            coinId: coin.id,
+            quantity: '1',
+            algorithm: this.id,
+            type: OrderType.MARKET
+          });
         } else if (latestPrice > fastMA) {
-          await this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
+          await this.testnet.createOrder(OrderSide.SELL, {
+            coinId: coin.id,
+            quantity: '1',
+            algorithm: this.id,
+            type: OrderType.MARKET
+          });
         }
       }
     }

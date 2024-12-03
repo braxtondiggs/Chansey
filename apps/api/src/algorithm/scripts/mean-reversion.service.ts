@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
-import { OrderSide } from '../../order/order.entity';
+import { OrderSide, OrderType } from '../../order/order.entity';
 import {
   TestnetSummary as PriceRange,
   TestnetSummaryDuration as PriceSummary
@@ -81,11 +81,21 @@ export class MeanReversionService {
         );
         if (currentPrice < mean - threshold * standardDeviation) {
           console.log(`Buy MRA: ${currentPrice} < ${mean - threshold * standardDeviation}`);
-          await this.testnet.createOrder(OrderSide.BUY, { coinId: coin.id, quantity: '1', algorithm: this.id });
+          await this.testnet.createOrder(OrderSide.BUY, {
+            coinId: coin.id,
+            quantity: '1',
+            algorithm: this.id,
+            type: OrderType.MARKET
+          });
         } else if (currentPrice > mean + threshold * standardDeviation) {
           // TODO: Calculate if can sell
           console.log(`Sell MRA: ${currentPrice} > ${mean + threshold * standardDeviation}`);
-          await this.testnet.createOrder(OrderSide.SELL, { coinId: coin.id, quantity: '1', algorithm: this.id });
+          await this.testnet.createOrder(OrderSide.SELL, {
+            coinId: coin.id,
+            quantity: '1',
+            algorithm: this.id,
+            type: OrderType.MARKET
+          });
         }
       } catch (e) {
         console.log(e);

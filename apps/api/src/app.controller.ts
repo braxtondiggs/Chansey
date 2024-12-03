@@ -5,7 +5,7 @@ import { Message } from '@chansey/api-interfaces';
 
 import { AppService } from './app.service';
 import { CoinService } from './coin/coin.service';
-import { OrderSide } from './order/order.entity';
+import { OrderSide, OrderType } from './order/order.entity';
 import { TestnetService } from './order/testnet/testnet.service';
 
 @Controller()
@@ -33,7 +33,8 @@ export class AppController {
     return await this.testnet.createOrder(action, {
       algorithm: 'facb28ad-5ed7-4615-a2fb-f825e53008a2',
       coinId: coin.id,
-      quantity: '1'
+      quantity: '1',
+      type: OrderType.MARKET
     });
   }
 }

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsString } from 'class-validator';
 
 export enum TestnetSummary {
   '30m' = '30m',
@@ -34,11 +34,27 @@ export enum TestnetSummaryDuration {
   'all' = new Date().getTime() // NOTE: This is a special case, 1970-01-01
 }
 
+export interface TestnetSummaryResponse {
+  [coin: string]: {
+    profitLoss: number;
+    percentage: number;
+    trades: number;
+  };
+}
+
 export class TestnetSummaryDto {
+  @IsString()
   @Transform(({ value }) => ('' + value).toLowerCase())
   @IsEnum(TestnetSummary, {
-    message: 'Invalid summary option, must me one of the following: ' + Object.values(TestnetSummary).join(', ')
+    message: `Invalid summary duration. Valid options: ${Object.values(TestnetSummary).join(', ')}`
   })
-  @ApiProperty({ example: '1d' })
-  duration: string;
+  @ApiProperty({
+    description: 'Time duration for the summary',
+    example: '1d',
+    enum: TestnetSummary,
+    required: true
+  })
+  duration: TestnetSummary;
+
+  readonly response?: TestnetSummaryResponse;
 }

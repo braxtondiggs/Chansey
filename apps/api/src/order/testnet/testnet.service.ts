@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { Between, Repository } from 'typeorm';
 
 import { TestnetDto, TestnetSummaryDuration } from './dto';
-import { Testnet } from './testnet.entity';
+import { Testnet, TestnetStatus } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceService } from '../../exchange/binance/binance.service';
@@ -14,46 +16,71 @@ import { OrderService } from '../order.service';
 
 @Injectable()
 export class TestnetService {
+  private readonly logger = new Logger(TestnetService.name);
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
+
   constructor(
     private readonly algorithm: AlgorithmService,
     private readonly binance: BinanceService,
     private readonly order: OrderService,
     private readonly tickerPair: TickerPairService,
-    @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>
+    @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async createOrder(side: OrderSide, order: TestnetDto) {
-    const binance = this.binance.getBinanceClient();
-    const ticker = await this.tickerPair.getBasePairsById(order.coinId);
+    try {
+      const binance = this.binance.getBinanceClient();
+      const ticker = await this.tickerPair.getBasePairsById(order.coinId);
 
-    const [{ quantity }, algorithm, response] = await Promise.all([
-      this.order.isExchangeValid(order, OrderType.MARKET, ticker.symbol),
-      this.algorithm.getAlgorithmById(order.algorithm),
-      this.gecko.simplePrice({
-        ids: ticker.baseAsset.slug,
-        vs_currencies: 'usd'
-      })
-    ]);
-    const price = response[ticker.baseAsset.slug]?.usd;
+      const [{ quantity }, algorithm, response] = await Promise.all([
+        this.order.isExchangeValid(order, OrderType.MARKET, ticker.symbol),
+        this.algorithm.getAlgorithmById(order.algorithm),
+        this.gecko.simplePrice({
+          ids: ticker.baseAsset.slug,
+          vs_currencies: 'usd'
+        })
+      ]);
+      const price = response[ticker.baseAsset.slug]?.usd;
 
-    await binance.orderTest({
-      quantity,
-      side,
-      symbol: ticker.symbol,
-      type: OrderType.MARKET as any
+      const testOrder = await binance.orderTest({
+        quantity,
+        side,
+        symbol: ticker.symbol,
+        type: OrderType.MARKET as any
+      });
+
+      return (
+        await this.testnet.insert({
+          algorithm,
+          coin: ticker.baseAsset,
+          price,
+          quantity: Number(quantity),
+          side,
+          symbol: ticker.symbol,
+          orderId: testOrder.orderId?.toString(),
+          status: TestnetStatus.FILLED,
+          fee: 0, // Testnet orders don't have real fees
+          commission: 0,
+          updatedAt: new Date()
+        })
+      ).generatedMaps[0] as Testnet;
+    } catch (error) {
+      this.logger.error(`Failed to create testnet order: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateOrderStatus(orderId: string, status: TestnetStatus) {
+    const order = await this.testnet.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundCustomException('Testnet', { id: orderId });
+
+    await this.testnet.update(orderId, {
+      status,
+      updatedAt: new Date()
     });
 
-    return (
-      await this.testnet.insert({
-        algorithm,
-        coin: ticker.baseAsset,
-        price,
-        quantity: Number(quantity),
-        side,
-        symbol: ticker.symbol
-      })
-    ).generatedMaps[0] as Testnet;
+    return this.getOrder(orderId);
   }
 
   async getOrders() {
@@ -77,52 +104,52 @@ export class TestnetService {
   }
 
   async getOrderSummary(type = '1d') {
-    const time = TestnetSummaryDuration[type];
+    const cacheKey = `testnet_summary_${type}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
 
+    const time = TestnetSummaryDuration[type];
     const orders = await this.testnet.find({
       where: { createdAt: Between(new Date(Date.now() - time), new Date()) },
       order: { createdAt: 'ASC' },
-      relations: ['coin']
+      relations: ['coin'],
+      select: ['quantity', 'side', 'price', 'coin']
     });
 
-    const coins = new Set();
+    const coins = [...new Set(orders.map((order) => order.coin.slug))];
+    const prices = await this.getPrices(coins);
 
-    orders.forEach((order) => {
-      const { coin } = order;
-      coins.add(coin.slug);
-    });
+    const summary = this.calculateSummary(orders, prices);
+    await this.cacheManager.set(cacheKey, summary, 60000); // Cache for 1 minute
+    return summary;
+  }
 
+  private calculateSummary(orders: Testnet[], prices: Record<string, number>) {
+    return orders.reduce((acc, { coin, quantity, side, price, fee, commission }) => {
+      const currentPrice = prices[coin.slug] || price;
+      const profit =
+        side === OrderSide.BUY
+          ? (currentPrice - price) * quantity - (fee + commission)
+          : (price - currentPrice) * quantity - (fee + commission);
+
+      if (!acc[coin.slug]) {
+        acc[coin.slug] = { profitLoss: 0, percentage: 0, trades: 0 };
+      }
+
+      acc[coin.slug].profitLoss += profit;
+      acc[coin.slug].percentage += (profit / (price * quantity)) * 100;
+      acc[coin.slug].trades += 1;
+
+      return acc;
+    }, {} as Record<string, { profitLoss: number; percentage: number; trades: number }>);
+  }
+
+  private async getPrices(coins: string[]): Promise<Record<string, number>> {
     const response = await this.gecko.simplePrice({
-      ids: Array.from(coins).join(','),
+      ids: coins.join(','),
       vs_currencies: 'usd'
     });
 
-    const prices = Object.entries(response).map(([key, { usd }]) => ({ [key]: usd }));
-
-    // calculate profit/loss for each coin
-    const summary = orders.reduce(
-      (acc, order) => {
-        const { coin, quantity, side, price } = order;
-        const { slug } = coin;
-
-        const coinPrice = prices.find((price) => price[slug])?.[slug];
-        const profit = side === OrderSide.BUY ? (coinPrice - price) * quantity : (price - coinPrice) * quantity;
-
-        acc[slug].profitLoss += profit;
-        acc[slug].percentage += (profit / (price * quantity)) * 100;
-
-        return acc;
-      },
-      Object.fromEntries(
-        Array.from(coins).map((coin) => [
-          coin,
-          {
-            profitLoss: 0,
-            percentage: 0
-          }
-        ])
-      )
-    );
-    return summary;
+    return Object.fromEntries(Object.entries(response).map(([key, { usd }]) => [key, usd]));
   }
 }

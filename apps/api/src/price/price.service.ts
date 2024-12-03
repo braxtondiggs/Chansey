@@ -31,6 +31,7 @@ export class PriceService implements OnApplicationBootstrap {
     autoRetry: true
   });
   private readonly CACHE_TTL = 3600; // 1 hour
+  private readonly BATCH_SIZE = 100;
 
   constructor(
     @InjectRepository(Price) private readonly price: Repository<Price>,
@@ -123,36 +124,47 @@ export class PriceService implements OnApplicationBootstrap {
         order: { geckoLastUpdatedAt: 'DESC' }
       });
 
-      if (!lastPrice || !dayjs(lastPrice.geckoLastUpdatedAt).isBefore(dayjs().subtract(1, 'day'))) {
-        return;
-      }
+      const fromDate = lastPrice ? dayjs(lastPrice.geckoLastUpdatedAt) : dayjs().subtract(30, 'days');
 
-      const { prices, market_caps, total_volumes } = await this.gecko.coinIdMarketChartRange({
-        id: coin.slug,
-        vs_currency: 'usd',
-        from: dayjs(lastPrice.geckoLastUpdatedAt).unix(),
-        to: dayjs().unix()
-      });
+      if (!lastPrice?.geckoLastUpdatedAt || dayjs(lastPrice.geckoLastUpdatedAt).isBefore(dayjs().subtract(1, 'day'))) {
+        this.logger.log(`Starting price backfill for ${coin.name} from ${fromDate.format('YYYY-MM-DD')}`);
 
-      await Promise.all(
-        prices.map(async ([date, price]) => {
+        const { prices, market_caps, total_volumes } = await this.gecko.coinIdMarketChartRange({
+          id: coin.slug,
+          vs_currency: 'usd',
+          from: fromDate.unix(),
+          to: dayjs().unix()
+        });
+
+        const priceDataBatches = prices.reduce((batches, [date, price], index) => {
           const marketCap = market_caps.find(([d]) => d === date)?.[1];
           const totalVolume = total_volumes.find(([d]) => d === date)?.[1];
 
-          if (!marketCap || !totalVolume) return;
+          if (!marketCap || !totalVolume) return batches;
 
-          const geckoLastUpdatedAt = dayjs(date).toDate();
-          await this.create({
+          const batchIndex = Math.floor(index / this.BATCH_SIZE);
+          if (!batches[batchIndex]) batches[batchIndex] = [];
+
+          batches[batchIndex].push({
             coin,
             coinId: coin.id,
-            geckoLastUpdatedAt,
+            geckoLastUpdatedAt: dayjs(date).toDate(),
             marketCap,
             price,
             totalVolume
           });
-          this.logger.log(`Backfilled price for ${coin.name} on ${dayjs(date).toString()}`);
-        })
-      );
+
+          return batches;
+        }, [] as CreatePriceDto[][]);
+
+        for (const batch of priceDataBatches) {
+          await this.price.insert(batch);
+          this.logger.log(`Backfilled ${batch.length} prices for ${coin.name}`);
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        this.logger.log(`Completed price backfill for ${coin.name}, total records: ${prices.length}`);
+      }
     } catch (error) {
       this.logger.error(`Failed to backfill prices for ${coin.name}: ${error.message}`);
     }
