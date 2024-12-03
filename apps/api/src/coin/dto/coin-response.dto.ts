@@ -8,7 +8,7 @@ import { CreatePriceDto } from '../../price/dto/create-price.dto';
 export class CoinResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the coin',
-    example: '123e4567-e89b-12d3-a456-426614174000'
+    example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f'
   })
   id: string;
 

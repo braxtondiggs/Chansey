@@ -33,7 +33,7 @@ export class CoinController {
     required: true,
     description: 'The UUID of the coin',
     type: String,
-    example: '123e4567-e89b-12d3-a456-426614174000'
+    example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f'
   })
   @ApiOperation({ summary: 'Get coin by ID', description: 'Retrieve a specific coin by its UUID.' })
   @ApiResponse({
@@ -77,7 +77,7 @@ export class CoinController {
     required: true,
     description: 'The UUID of the coin',
     type: String,
-    example: '123e4567-e89b-12d3-a456-426614174000'
+    example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f'
   })
   @ApiOperation({
     summary: 'Get historical data for coin',
@@ -98,7 +98,12 @@ export class CoinController {
   @Get('suggested')
   @ApiOperation({
     summary: 'Get suggested coins',
-    description: 'Retrieves the suggested coins for the authenticated user.'
+    description: 'Retrieves the suggested coins for the authenticated user based on their risk profile.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of suggested coins retrieved successfully.',
+    type: [Coin]
   })
   suggestedCoins(@GetUser() user: User) {
     return this.coin.getCoinsByRiskLevel(user);

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { CoinGeckoClient } from 'coingecko-api-v3';
 import { In, IsNull, Not, Repository } from 'typeorm';
 
 import { Coin, CoinRelations } from './coin.entity';
@@ -8,8 +9,17 @@ import { BinanceService } from '../exchange/binance/binance.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
+interface HistoricalDataPoint {
+  timestamp: number;
+  price: number;
+  volume: number;
+  marketCap?: number;
+}
+
 @Injectable()
 export class CoinService {
+  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
+
   constructor(
     @InjectRepository(Coin) private readonly coin: Repository<Coin>,
     private readonly binance: BinanceService
@@ -78,9 +88,31 @@ export class CoinService {
     await this.coin.delete({ id: In(coinIds) });
   }
 
-  async getCoinHistoricalData(coinId: string) {
-    const _coin = await this.getCoinById(coinId);
-    return 'Not Working'; // TODO: Add historical data
+  async getCoinHistoricalData(coinId: string): Promise<HistoricalDataPoint[]> {
+    const coin = await this.getCoinById(coinId);
+
+    try {
+      const geckoData = await this.gecko.coinIdMarketChart({
+        id: coin.slug,
+        vs_currency: 'usd',
+        days: 365, // !NOTE: Max value w/o paying money
+        interval: 'daily'
+      });
+
+      if (geckoData?.prices?.length > 0) {
+        return geckoData.prices.map((point: [number, number], index: number) => ({
+          timestamp: point[0],
+          price: point[1],
+          volume: geckoData.total_volumes[index]?.[1] || 0,
+          marketCap: geckoData.market_caps[index]?.[1] || 0
+        }));
+      }
+    } catch (error) {
+      throw new NotFoundCustomException('Historical data', {
+        id: coinId,
+        message: error
+      });
+    }
   }
 
   async getCoinBySlug(slug: string) {
