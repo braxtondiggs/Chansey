@@ -5,12 +5,17 @@ import { AxiosError } from 'axios';
 import { firstValueFrom, retry, timeout } from 'rxjs';
 
 import { CategoryService } from '../category/category.service';
+import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Injectable()
 export class CategoryTask {
   private readonly logger = new Logger(CategoryTask.name);
 
-  constructor(private readonly category: CategoryService, private readonly http: HttpService) {}
+  constructor(
+    private readonly category: CategoryService,
+    private readonly http: HttpService,
+    private readonly healthCheck: HealthCheckHelper
+  ) {}
 
   private async fetchCategories() {
     return firstValueFrom(
@@ -24,8 +29,10 @@ export class CategoryTask {
 
   @Cron(CronExpression.EVERY_WEEK)
   async syncCategories() {
+    const hc_uuid = '550f405f-136a-4a60-9380-a3de5bf70aba';
     try {
       this.logger.log('Starting Category Sync');
+      await this.healthCheck.ping(hc_uuid, 'start');
 
       const [apiResponse, existingCategories] = await Promise.all([
         this.fetchCategories(),
@@ -67,8 +74,10 @@ export class CategoryTask {
       } else {
         this.logger.error(`Category sync failed: ${e.message}`);
       }
+      await this.healthCheck.ping(hc_uuid, 'fail');
       throw e;
     } finally {
+      await this.healthCheck.ping(hc_uuid);
       this.logger.log('Category Sync Complete');
     }
   }

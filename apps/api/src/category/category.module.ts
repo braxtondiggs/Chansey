@@ -6,10 +6,11 @@ import { CategoryController } from './category.controller';
 import { Category } from './category.entity';
 import { CategoryService } from './category.service';
 import { CategoryTask } from './category.task';
+import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Module({
   imports: [forwardRef(() => AppModule), TypeOrmModule.forFeature([Category])],
-  providers: [CategoryService, CategoryTask],
+  providers: [CategoryService, CategoryTask, HealthCheckHelper],
   controllers: [CategoryController],
   exports: [CategoryService]
 })

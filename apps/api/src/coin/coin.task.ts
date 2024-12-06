@@ -4,18 +4,26 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { CoinService } from './coin.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Injectable()
 export class CoinTask {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinTask.name);
 
-  constructor(private readonly coin: CoinService, private readonly portfolio: PortfolioService) {}
+  constructor(
+    private readonly coin: CoinService,
+    private readonly portfolio: PortfolioService,
+    private readonly healthCheck: HealthCheckHelper
+  ) {}
 
   @Cron(CronExpression.EVERY_WEEK)
   async syncCoins() {
+    const hc_uuid = '7fdb893d-9ac7-485a-b843-1eef1df8f105';
     try {
       this.logger.log('Starting Coin Sync');
+      await this.healthCheck.ping(hc_uuid, 'start');
+
       const [geckoCoins, existingCoins] = await Promise.all([
         this.gecko.coinList({ include_platform: false }),
         this.coin.getCoins()
@@ -40,15 +48,19 @@ export class CoinTask {
       }
     } catch (e) {
       this.logger.error('Coin sync failed:', e);
+      await this.healthCheck.ping(hc_uuid, 'fail');
     } finally {
       this.logger.log('Coin Sync Complete');
+      await this.healthCheck.ping(hc_uuid);
     }
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_11PM)
   async getCoinDetail() {
+    const hc_uuid = '09779cf1-5375-4da7-9bb9-be90894d69e3';
     try {
       this.logger.log('Starting Detailed Coins Update');
+      await this.healthCheck.ping(hc_uuid, 'start');
 
       this.coin.clearRank();
 
@@ -115,8 +127,10 @@ export class CoinTask {
         }
       }
       this.logger.log('Detailed Coins Update Complete');
+      await this.healthCheck.ping(hc_uuid);
     } catch (e) {
       this.logger.error('Failed to process coin details:', e);
+      await this.healthCheck.ping(hc_uuid, 'fail');
     }
   }
 }

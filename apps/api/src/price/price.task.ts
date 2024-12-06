@@ -5,6 +5,7 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 import { PriceService } from './price.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { CreatePriceDto } from './dto/create-price.dto';
+import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Injectable()
 export class PriceTaskService {
@@ -12,12 +13,19 @@ export class PriceTaskService {
   private readonly logger = new Logger(PriceTaskService.name);
   private readonly BATCH_SIZE = 50; // CoinGecko has a limit on number of coins per request
 
-  constructor(private readonly portfolio: PortfolioService, private readonly price: PriceService) {}
+  constructor(
+    private readonly portfolio: PortfolioService,
+    private readonly price: PriceService,
+    private readonly healthCheck: HealthCheckHelper
+  ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async getPrices() {
+    const hc_uuid = 'f0cd3029-25c7-4f95-b170-f6e716fd7bd0';
     try {
       this.logger.log('Starting Price Sync');
+      await this.healthCheck.ping(hc_uuid, 'start');
+
       const coins = await this.portfolio.getPortfolioCoins();
 
       // Process coins in batches
@@ -68,8 +76,10 @@ export class PriceTaskService {
       }
     } catch (e) {
       this.logger.error('Price sync failed:', e);
+      await this.healthCheck.ping(hc_uuid, 'fail');
     } finally {
       this.logger.log('Price Sync Complete');
+      await this.healthCheck.ping(hc_uuid);
     }
   }
 }
