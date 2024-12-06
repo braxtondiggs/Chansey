@@ -7,6 +7,7 @@ import { CoinService } from '../coin.service';
 import { TickerPairStatus, TickerPairs } from './ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs.service';
 import { ExchangeService } from '../../exchange/exchange.service';
+import { HealthCheckHelper } from '../../utils/health-check.helper';
 
 @Injectable()
 export class TickerPairTask {
@@ -16,13 +17,16 @@ export class TickerPairTask {
     private readonly binance: BinanceService,
     private readonly coin: CoinService,
     private readonly exchange: ExchangeService,
-    private readonly tickerPair: TickerPairService
+    private readonly tickerPair: TickerPairService,
+    private readonly healthCheck: HealthCheckHelper
   ) {}
 
   @Cron(CronExpression.EVERY_WEEK)
   async getTickerPairs() {
+    const hc_uuid = 'b0b413e0-18ff-464d-8001-344f5fd86b6e';
     try {
       this.logger.log('Starting ticker pairs synchronization');
+      await this.healthCheck.ping(hc_uuid, 'start');
 
       // Get Binance exchange info first
       const binance = this.binance.getBinanceClient();
@@ -141,8 +145,10 @@ export class TickerPairTask {
 
       await this.tickerPair.saveTickerPair(existingPairs);
       this.logger.log('Ticker pairs synchronization completed');
+      await this.healthCheck.ping(hc_uuid);
     } catch (error) {
       this.logger.error('Failed to synchronize ticker pairs:', error);
+      await this.healthCheck.ping(hc_uuid, 'fail');
       throw error;
     }
   }
