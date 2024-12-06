@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AppModule } from '../app.module';
 import { Coin } from './../coin/coin.entity';
 import { CoinService } from './../coin/coin.service';
 import { BinanceService } from './../exchange/binance/binance.service';
@@ -12,11 +12,12 @@ import { UserController } from './users.controller';
 import { User } from './users.entity';
 import { UsersService } from './users.service';
 import { UsersTaskService } from './users.task';
+import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Module({
   controllers: [UserController],
-  imports: [ConfigModule, TypeOrmModule.forFeature([Coin, Risk, Portfolio, User])],
-  providers: [CoinService, BinanceService, PortfolioService, UsersService, UsersTaskService],
+  imports: [forwardRef(() => AppModule), TypeOrmModule.forFeature([Coin, Risk, Portfolio, User])],
+  providers: [CoinService, BinanceService, HealthCheckHelper, PortfolioService, UsersService, UsersTaskService],
   exports: [UsersService]
 })
 export class UsersModule {}
