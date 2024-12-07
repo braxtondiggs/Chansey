@@ -57,7 +57,7 @@ export class CoinTask {
 
   @Cron(CronExpression.EVERY_DAY_AT_11PM)
   async getCoinDetail() {
-    const hc_uuid = '7fdb893d-9ac7-485a-b843-1eef1df8f105';
+    const hc_uuid = '09779cf1-5375-4da7-9bb9-be90894d69e3';
     try {
       this.logger.log('Starting Detailed Coins Update');
       await this.healthCheck.ping(hc_uuid, 'start');
