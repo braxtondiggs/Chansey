@@ -4,9 +4,10 @@ import { Component } from '@angular/core';
 import { Message } from '@chansey/api-interfaces';
 
 @Component({
-  selector: 'chansey-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.scss'],
+    selector: 'chansey-root',
+    templateUrl: './app.component.html',
+    styleUrls: ['./app.component.scss'],
+    standalone: false
 })
 export class AppComponent {
   hello$ = this.http.get<Message>('/api/hello');

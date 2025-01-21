@@ -55,7 +55,7 @@ export class AlgorithmModule implements OnApplicationBootstrap {
     const algorithms = await this.algorithm.getAlgorithmsForTesting();
     for (const cls of Object.values(DynamicAlgorithmServices)) {
       const provider = this.moduleRef.get(cls, { strict: false });
-      const algorithm = algorithms.find((algorithm) => algorithm.id === provider.id && algorithm.status);
+      const algorithm = algorithms.find((algorithm) => algorithm.id === provider?.id && algorithm.status);
       if (provider && algorithm) await provider.onInit?.(algorithm);
     }
   }

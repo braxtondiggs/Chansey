@@ -3,8 +3,8 @@ import { Component, OnInit, ViewEncapsulation } from '@angular/core';
 /* eslint-disable */
 
 @Component({
-  selector: 'chansey-nx-welcome',
-  template: `
+    selector: 'chansey-nx-welcome',
+    template: `
     <!--
      * * * * * * * * * * * * * * * * * * * * * * * * * * * *
      This is a starter component and can be deleted.
@@ -700,7 +700,8 @@ nx affected:e2e</pre>
       </div>
     </div>
   `,
-  encapsulation: ViewEncapsulation.None
+    encapsulation: ViewEncapsulation.None,
+    standalone: false
 })
 export class NxWelcomeComponent implements OnInit {
   constructor() {}

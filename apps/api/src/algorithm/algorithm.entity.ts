@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import {
   AfterInsert,
   AfterLoad,
@@ -23,6 +24,8 @@ export class Algorithm {
   })
   id: string;
 
+  @IsNotEmpty()
+  @IsString()
   @Index()
   @Column({ unique: true })
   @ApiProperty({
@@ -53,6 +56,7 @@ export class Algorithm {
   })
   description?: string;
 
+  @IsBoolean()
   @Index()
   @Column({ default: false })
   @ApiProperty({
@@ -68,6 +72,8 @@ export class Algorithm {
   })
   evaluate: boolean;
 
+  @IsOptional()
+  @IsNumber()
   @Column({
     type: 'decimal',
     transformer: new ColumnNumericTransformer(),
@@ -80,6 +86,8 @@ export class Algorithm {
   })
   weight?: number;
 
+  @IsString()
+  @Matches(/^(\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+)$/)
   @Column({ default: '* * * * *' })
   @ApiProperty({
     description: 'Cron schedule for the algorithm',
