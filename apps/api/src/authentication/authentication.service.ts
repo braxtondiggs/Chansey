@@ -7,12 +7,15 @@ import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthenticationService {
-  constructor(readonly config: ConfigService, private readonly user: UsersService) {}
+  constructor(
+    readonly config: ConfigService,
+    private readonly user: UsersService
+  ) {}
 
   public auth = new Authorizer({
-    authorizerURL: 'https://auth.cymbit.com/',
-    clientID: '36df15e4-a0c6-4881-8ed7-6bbb61f4e5f0',
-    redirectURL: 'https://cymbit.com/auth/callback'
+    authorizerURL: this.config.get<string>('AUTHORIZER_URL'),
+    clientID: this.config.get<string>('AUTHORIZER_CLIENT_ID'),
+    redirectURL: this.config.get<string>('AUTHORIZER_REDIRECT_URL')
   });
 
   public async register(registrationData: CreateUserDto) {

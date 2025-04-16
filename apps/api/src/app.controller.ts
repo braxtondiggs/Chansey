@@ -1,12 +1,11 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiExcludeEndpoint } from '@nestjs/swagger';
 
-import { Message } from '@chansey/api-interfaces';
-
 import { AppService } from './app.service';
 import { CoinService } from './coin/coin.service';
 import { OrderSide, OrderType } from './order/order.entity';
 import { TestnetService } from './order/testnet/testnet.service';
+import { Message } from '@chansey/api-interfaces';
 
 @Controller()
 export class AppController {

@@ -1,16 +1,14 @@
-/* eslint-disable */
 export default {
   displayName: 'chansey',
   preset: '../../jest.preset.js',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   coverageDirectory: '../../coverage/apps/chansey',
   transform: {
-    '^.+.(ts|mjs|js|html)$': [
+    '^.+\\.(ts|mjs|js|html)$': [
       'jest-preset-angular',
       {
-        stringifyContentPathRegex: '\\.(html|svg)$',
-
-        tsconfig: '<rootDir>/tsconfig.spec.json'
+        tsconfig: '<rootDir>/tsconfig.spec.json',
+        stringifyContentPathRegex: '\\.(html|svg)$'
       }
     ]
   },

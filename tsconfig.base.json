@@ -15,6 +15,7 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
+      "@chansey-web/*": ["apps/chansey/src/*"],
       "@chansey/api-interfaces": ["libs/api-interfaces/src/index.ts"]
     }
   },

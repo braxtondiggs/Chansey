@@ -12,9 +12,9 @@ import {
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { CreateExchangeDto, ExchangeResponseDto, UpdateExchangeDto } from './dto';
 import { ExchangeService } from './exchange.service';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 
 @ApiTags('Exchange')
 @Controller('exchange')

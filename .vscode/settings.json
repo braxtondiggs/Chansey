@@ -4,10 +4,23 @@
   "cSpell.words": ["authorizerdev", "chansey", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
   "editor.formatOnPaste": true,
   "prettier.configPath": ".prettierrc",
-  "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
   "editor.codeActionsOnSave": {
     "source.addMissingImports": "explicit"
-  }
+  },
+  "vsicons.presets.angular": true,
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "chat.mcp.enabled": true,
+  "mcp": {
+    "inputs": [],
+    "servers": {
+      "mcp-server-time": {
+        "command": "python",
+        "args": ["-m", "mcp_server_time", "--local-timezone=America/Los_Angeles"],
+        "env": {}
+      }
+    }
+  },
+  "chat.mcp.discovery.enabled": true
 }

@@ -34,17 +34,71 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
+        // Restrict default sources to self
         defaultSrc: [`'self'`],
-        styleSrc: [`'self'`, `'unsafe-inline'`],
-        imgSrc: [`'self'`, 'data:', 'validator.swagger.io'],
-        scriptSrc: [`'self'`, `'unsafe-inline'`, 'https:'],
-        connectSrc: [`'self'`],
-        fontSrc: [`'self'`, 'https:', 'data:'],
+
+        // Allow styles from self and specific CDNs
+        styleSrc: [`'self'`, `'unsafe-inline'`, 'https://fonts.googleapis.com'],
+
+        // Allow scripts from self, external domains, and needed CSP directives
+        scriptSrc: [`'self'`, `'unsafe-inline'`, `'unsafe-eval'`, 'https://www.cymbit.com'],
+
+        // Add script-src-elem to explicitly control script elements
+        scriptSrcElem: [`'self'`, `'unsafe-inline'`, 'https://www.cymbit.com'],
+
+        // Add script-src-attr to allow inline event handlers
+        scriptSrcAttr: [`'unsafe-inline'`],
+
+        // Allow images from self, data URIs, and specific domains
+        imgSrc: [`'self'`, 'data:', 'validator.swagger.io', 'https://fonts.gstatic.com'],
+
+        // Allow connections to self and specific APIs
+        connectSrc: [
+          `'self'`,
+          'https://api.coingecko.com',
+          'https://api.cryptocurrencyalerting.com',
+          'https://www.cymbit.com'
+        ],
+
+        // Allow fonts from self and specific CDNs
+        fontSrc: [`'self'`, 'https://fonts.gstatic.com', 'data:'],
+
+        // Block all object sources (plugins like Flash, Java)
         objectSrc: [`'none'`],
+
+        // Add frame security directive to prevent clickjacking
+        frameAncestors: [`'self'`],
+
+        // Add base URI restriction
+        baseUri: [`'self'`],
+
+        // Add form-action directive for form submissions
+        formAction: [`'self'`],
+
+        // Force HTTPS
         upgradeInsecureRequests: []
       }
     },
-    hidePoweredBy: true
+    // Hide Express/Fastify server information
+    hidePoweredBy: true,
+
+    // Force HSTS with a 1 year max age
+    hsts: {
+      maxAge: 31536000, // 1 year in seconds
+      includeSubDomains: true,
+      preload: true
+    },
+
+    // Enable X-Content-Type-Options: nosniff
+    xContentTypeOptions: true,
+
+    // Enable X-XSS-Protection
+    xssFilter: true,
+
+    // Referrer Policy control
+    referrerPolicy: {
+      policy: 'strict-origin-when-cross-origin'
+    }
   });
 
   await app.register(compression, { global: true });

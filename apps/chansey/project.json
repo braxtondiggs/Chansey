@@ -2,8 +2,9 @@
   "name": "chansey",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
+  "prefix": "app",
   "sourceRoot": "apps/chansey/src",
-  "prefix": "chansey",
+  "tags": [],
   "targets": {
     "build": {
       "executor": "@angular-devkit/build-angular:browser",
@@ -12,20 +13,28 @@
         "outputPath": "dist/client",
         "index": "apps/chansey/src/index.html",
         "main": "apps/chansey/src/main.ts",
-        "polyfills": "apps/chansey/src/polyfills.ts",
+        "polyfills": ["zone.js"],
         "tsConfig": "apps/chansey/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
-        "assets": ["apps/chansey/src/favicon.ico", "apps/chansey/src/assets"],
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/chansey/public",
+            "output": "/public"
+          }
+        ],
         "styles": ["apps/chansey/src/styles.scss"],
-        "scripts": []
+        "scripts": [],
+        "serviceWorker": true,
+        "ngswConfigPath": "apps/chansey/ngsw-config.json"
       },
       "configurations": {
         "production": {
           "budgets": [
             {
               "type": "initial",
-              "maximumWarning": "500kb",
-              "maximumError": "1mb"
+              "maximumWarning": "1mb",
+              "maximumError": "2mb"
             },
             {
               "type": "anyComponentStyle",
@@ -48,6 +57,22 @@
           "extractLicenses": false,
           "sourceMap": true,
           "namedChunks": true
+        },
+        "analyze": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1mb",
+              "maximumError": "2mb"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "2kb",
+              "maximumError": "4kb"
+            }
+          ],
+          "outputHashing": "all",
+          "statsJson": true
         }
       },
       "defaultConfiguration": "production"
@@ -78,11 +103,18 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/apps/chansey"],
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
         "jestConfig": "apps/chansey/jest.config.ts"
       }
+    },
+    "serve-static": {
+      "executor": "@nx/web:file-server",
+      "options": {
+        "buildTarget": "chansey:build",
+        "port": 4200,
+        "spa": true
+      }
     }
-  },
-  "tags": []
+  }
 }

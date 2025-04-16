@@ -1,7 +1,27 @@
 {
-  "singleQuote": true,
-  "trailingComma": "none",
   "printWidth": 120,
+  "semi": true,
+  "bracketSameLine": false,
+  "trailingComma": "none",
   "tabWidth": 2,
-  "bracketSpacing": true
+  "singleQuote": true,
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "organizeImportsSkipDestructiveCodeActions": true,
+  "plugins": [
+    "prettier-plugin-organize-imports",
+    "prettier-plugin-tailwindcss"
+  ],
+  "importOrderPriority": 100,
+  "importOrder": [
+    "^@angular/(.*)$",
+    "^@nestjs/(.*)$",
+    "<THIRD_PARTY_MODULES>",
+    "^@chansey/(.*)$",
+    "^[./]"
+  ],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true,
+  "importOrderGroupNamespaceSpecifiers": true,
+  "importOrderCaseInsensitive": true
 }

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Binance } from 'binance-api-node';
 
 import { BinanceService } from '../../exchange/binance/binance.service';
+import { OrderSide, OrderType } from '../../order/order.entity';
 
 @Injectable()
 export class AddedtoExchangeBinanceService {
@@ -41,8 +43,8 @@ export class AddedtoExchangeBinanceService {
       // Place market buy order
       const order = await this.client.order({
         symbol: symbol,
-        side: 'BUY',
-        type: 'MARKET',
+        side: OrderSide.BUY,
+        type: OrderType.MARKET as any, // Type assertion to fix compatibility with binance-api-node
         quoteOrderQty: this.USDT_AMOUNT.toString()
       });
 

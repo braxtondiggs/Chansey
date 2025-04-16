@@ -2,6 +2,10 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppModule } from '../app.module';
+import { BinanceService } from '../exchange/binance/binance.service';
+import { Portfolio } from '../portfolio/portfolio.entity';
+import { PortfolioService } from '../portfolio/portfolio.service';
+import { HealthCheckHelper } from '../utils/health-check.helper';
 import { Exchange } from './../exchange/exchange.entity';
 import { ExchangeService } from './../exchange/exchange.service';
 import { CoinController } from './coin.controller';
@@ -10,11 +14,7 @@ import { CoinService } from './coin.service';
 import { CoinTask } from './coin.task';
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs/ticker-pairs.service';
-import { BinanceService } from '../exchange/binance/binance.service';
-import { Portfolio } from '../portfolio/portfolio.entity';
-import { PortfolioService } from '../portfolio/portfolio.service';
 import { TickerPairTask } from './ticker-pairs/ticker-pairs.task';
-import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Module({
   controllers: [CoinController],

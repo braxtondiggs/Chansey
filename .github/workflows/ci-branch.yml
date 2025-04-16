@@ -1,0 +1,41 @@
+name: CI Branch
+on:
+  push:
+    branches-ignore:
+      - master
+  pull_request:
+    branches-ignore:
+      - master
+
+# Needed for nx-set-shas
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  branch-workflow:
+    name: Other Branch Workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - uses: nrwl/nx-set-shas@v4
+
+      - name: Lint (Branch)
+        run: npx nx affected -t lint
+
+      - name: Test (Branch)
+        run: npx nx affected -t test
+
+      - name: Build (Branch Development Mode)
+        run: npx nx affected -t build --configuration=development
+
+      - name: E2E Tests (Branch)
+        run: npx nx affected -t e2e-ci

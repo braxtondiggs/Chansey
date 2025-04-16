@@ -1,0 +1,22 @@
+.layout-footer {
+  height: 4rem;
+  padding: 2rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  .footer-logo-container {
+    display: flex;
+    align-items: center;
+
+    img {
+      width: 2.5rem;
+    }
+
+    .footer-app-name {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      margin-left: 0.5rem;
+    }
+  }
+}

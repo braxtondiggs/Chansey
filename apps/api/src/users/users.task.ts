@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
-import { UsersService } from './users.service';
 import { HealthCheckHelper } from '../utils/health-check.helper';
+import { UsersService } from './users.service';
 
 @Injectable()
 export class UsersTaskService {

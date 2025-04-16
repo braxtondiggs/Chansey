@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { PortfolioType } from './portfolio-type.enum';
 import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
+import { PortfolioType } from './portfolio-type.enum';
 
 @Entity()
 @Index(['coin', 'user'], { unique: true })

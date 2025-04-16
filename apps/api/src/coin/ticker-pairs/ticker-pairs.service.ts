@@ -2,9 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { TickerPairs } from './ticker-pairs.entity';
 import { BinanceService } from '../../exchange/binance/binance.service';
 import { CoinService } from '../coin.service';
+import { TickerPairs } from './ticker-pairs.entity';
 import { CreateTickerDto } from './dto';
 
 @Injectable()

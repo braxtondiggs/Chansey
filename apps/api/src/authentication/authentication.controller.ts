@@ -2,14 +2,20 @@ import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards } from '@n
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
 
-import { AuthenticationService } from './authentication.service';
-import { LogInDto, LoginResponseDto, LogoutResponseDto, RegisterResponseDto } from './dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
-import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
+
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '../users/users.entity';
+import { AuthenticationService } from './authentication.service';
+import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
+import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
+import {
+  ForgotPasswordDto,
+  LogInDto,
+  LoginResponseDto,
+  LogoutResponseDto,
+  RegisterResponseDto
+} from '@chansey/api-interfaces';
 
 @ApiTags('Authentication')
 @Controller('auth')
