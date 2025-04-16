@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { Price } from '../price/price.entity';
+import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 
 @Entity()
 export class Coin {

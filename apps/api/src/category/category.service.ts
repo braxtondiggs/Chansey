@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, In, Repository } from 'typeorm';
 
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 import { Category } from './category.entity';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/';
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class CategoryService {

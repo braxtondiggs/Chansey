@@ -1,17 +1,25 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { Authorizer } from '@authorizerdev/authorizer-js';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { UpdateUserDto } from './dto';
-import { Risk } from './risk.entity';
-import { User } from './users.entity';
 import { CoinService } from '../coin/coin.service';
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { UpdateUserDto } from './dto';
+import { Risk } from './risk.entity';
+import { User } from './users.entity';
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+  private auth: Authorizer;
 
   constructor(
     @InjectRepository(User)
@@ -19,8 +27,15 @@ export class UsersService {
     @InjectRepository(Risk)
     private readonly risk: Repository<Risk>,
     private readonly portfolio: PortfolioService,
-    private readonly coin: CoinService
-  ) {}
+    private readonly coin: CoinService,
+    private readonly config: ConfigService
+  ) {
+    this.auth = new Authorizer({
+      authorizerURL: this.config.get<string>('AUTHORIZER_URL'),
+      clientID: this.config.get<string>('AUTHORIZER_CLIENT_ID'),
+      redirectURL: this.config.get<string>('AUTHORIZER_REDIRECT_URL')
+    });
+  }
 
   async create(id: string) {
     try {
@@ -80,11 +95,27 @@ export class UsersService {
     }
   }
 
+  async getWithAuthorizerProfile(user: User) {
+    try {
+      const dbUser = await this.getById(user.id);
+
+      return {
+        ...dbUser,
+        roles: (user as any).allowed_roles
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get user with Authorizer profile: ${user.id}`, error.stack);
+      throw new InternalServerErrorException('Failed to retrieve user with Authorizer profile');
+    }
+  }
+
   async updatePortfolioByUserRisk(user: User) {
     const portfolio = await this.portfolio.getPortfolioByUser(user);
     const dynamicPortfolio = portfolio.filter((p) => p.type === PortfolioType.AUTOMATIC);
 
-    await Promise.all(dynamicPortfolio.map((portfolio) => this.portfolio.deletePortfolioItem(portfolio.id, user.id)));
+    await Promise.all(
+      dynamicPortfolio.map((portfolio) => this.portfolio.deletePortfolioItem(portfolio.id, user.id))
+    );
 
     const newCoins = await this.coin.getCoinsByRiskLevel(user, 5);
     await Promise.all(

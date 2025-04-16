@@ -16,9 +16,9 @@ import {
   getRepository
 } from 'typeorm';
 
-import { Risk } from './risk.entity';
 import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
+import { Risk } from './risk.entity';
 
 @Entity()
 export class User {
@@ -49,7 +49,9 @@ export class User {
   @UpdateDateColumn({ select: false, type: 'timestamptz' })
   updatedAt: Date;
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, { cascade: true })
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, {
+    cascade: true
+  })
   portfolios: Portfolio[];
 
   @OneToMany(() => Order, (order) => order.user, { cascade: true })
@@ -97,7 +99,9 @@ export class User {
   async setDefaultRisk() {
     if (!this.risk) {
       const riskRepository = getRepository(Risk);
-      this.risk = await riskRepository.findOne({ where: { name: 'Moderate' } });
+      this.risk = await riskRepository.findOne({
+        where: { name: 'Moderate' }
+      });
     }
   }
 

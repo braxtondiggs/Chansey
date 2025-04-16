@@ -4,10 +4,10 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { BinanceService } from '../../exchange/binance/binance.service';
 import { CoinService } from '../coin.service';
-import { TickerPairStatus, TickerPairs } from './ticker-pairs.entity';
-import { TickerPairService } from './ticker-pairs.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { HealthCheckHelper } from '../../utils/health-check.helper';
+import { TickerPairStatus, TickerPairs } from './ticker-pairs.entity';
+import { TickerPairService } from './ticker-pairs.service';
 
 @Injectable()
 export class TickerPairTask {

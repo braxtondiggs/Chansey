@@ -7,11 +7,11 @@ import * as dayjs from 'dayjs';
 import * as customParseFormat from 'dayjs/plugin/customParseFormat';
 import { Between, In, Repository } from 'typeorm';
 
-import { CreatePriceDto } from './dto/create-price.dto';
-import { Price, PriceSummaryByDay, PriceSummaryByHour } from './price.entity';
 import { Coin } from '../coin/coin.entity';
 import { TestnetSummary as PriceRange, TestnetSummaryDuration as PriceRangeTime } from '../order/testnet/dto';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { Price, PriceSummaryByDay, PriceSummaryByHour } from './price.entity';
+import { CreatePriceDto } from './dto/create-price.dto';
 
 type PriceAggregation = {
   avg: number;

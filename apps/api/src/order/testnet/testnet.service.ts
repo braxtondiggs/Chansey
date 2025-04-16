@@ -5,14 +5,14 @@ import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { Between, Repository } from 'typeorm';
 
-import { TestnetDto, TestnetSummaryDuration } from './dto';
-import { Testnet, TestnetStatus } from './testnet.entity';
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceService } from '../../exchange/binance/binance.service';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
+import { Testnet, TestnetStatus } from './testnet.entity';
+import { TestnetDto, TestnetSummaryDuration } from './dto';
 
 @Injectable()
 export class TestnetService {

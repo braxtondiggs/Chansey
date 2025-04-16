@@ -1,15 +1,10 @@
-import { HttpClient } from '@angular/common/http';
 import { Component } from '@angular/core';
-
-import { Message } from '@chansey/api-interfaces';
+import { RouterModule } from '@angular/router';
 
 @Component({
-    selector: 'chansey-root',
-    templateUrl: './app.component.html',
-    styleUrls: ['./app.component.scss'],
-    standalone: false
+  selector: 'app-root',
+  template: `<router-outlet></router-outlet>`,
+  imports: [RouterModule],
+  standalone: true
 })
-export class AppComponent {
-  hello$ = this.http.get<Message>('/api/hello');
-  constructor(private http: HttpClient) { }
-}
+export class AppComponent {}

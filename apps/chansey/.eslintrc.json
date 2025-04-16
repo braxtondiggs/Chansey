@@ -10,7 +10,7 @@
           "error",
           {
             "type": "attribute",
-            "prefix": "chansey",
+            "prefix": "app",
             "style": "camelCase"
           }
         ],
@@ -18,11 +18,10 @@
           "error",
           {
             "type": "element",
-            "prefix": "chansey",
+            "prefix": "app",
             "style": "kebab-case"
           }
-        ],
-        "@angular-eslint/prefer-standalone": "off"
+        ]
       }
     },
     {

@@ -3,11 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { In, IsNull, Not, Repository } from 'typeorm';
 
-import { Coin, CoinRelations } from './coin.entity';
-import { CreateCoinDto, UpdateCoinDto } from './dto/';
 import { BinanceService } from '../exchange/binance/binance.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
+import { CreateCoinDto, UpdateCoinDto } from './dto/';
+import { Coin, CoinRelations } from './coin.entity';
 
 interface HistoricalDataPoint {
   timestamp: number;

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { CreateExchangeDto } from './create-exchange.dto';
 import { TickerPairResponseDto } from '../../coin/ticker-pairs/dto';
+import { CreateExchangeDto } from './create-exchange.dto';
 export class ExchangeResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the exchange',

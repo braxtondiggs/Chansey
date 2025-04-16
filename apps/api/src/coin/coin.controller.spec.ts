@@ -2,10 +2,10 @@ import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { BinanceService } from '../exchange/binance/binance.service';
 import { CoinController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
-import { BinanceService } from '../exchange/binance/binance.service';
 
 describe('CoinController', () => {
   let controller: CoinController;
