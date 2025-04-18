@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { ILike, In, Repository } from 'typeorm';
 
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { Exchange } from './exchange.entity';
+
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class ExchangeService {

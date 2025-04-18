@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { CoinResponseDto } from '../../dto/coin-response.dto';
 import { CreateTickerDto } from './create-ticker-pair.dto';
+
+import { CoinResponseDto } from '../../dto/coin-response.dto';
 
 export class TickerPairResponseDto {
   @ApiProperty({

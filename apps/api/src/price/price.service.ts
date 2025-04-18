@@ -1,17 +1,19 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import * as dayjs from 'dayjs';
 import * as customParseFormat from 'dayjs/plugin/customParseFormat';
 import { Between, In, Repository } from 'typeorm';
 
+import { CreatePriceDto } from './dto/create-price.dto';
+import { Price, PriceSummaryByDay, PriceSummaryByHour } from './price.entity';
+
 import { Coin } from '../coin/coin.entity';
 import { TestnetSummary as PriceRange, TestnetSummaryDuration as PriceRangeTime } from '../order/testnet/dto';
 import { PortfolioService } from '../portfolio/portfolio.service';
-import { Price, PriceSummaryByDay, PriceSummaryByHour } from './price.entity';
-import { CreatePriceDto } from './dto/create-price.dto';
 
 type PriceAggregation = {
   avg: number;
@@ -78,12 +80,15 @@ export class PriceService implements OnApplicationBootstrap {
   }
 
   private aggregatePrices(prices: Price[], groupingFn: (price: Price) => string): PriceMap {
-    const groupedPrices = prices.reduce((acc, price) => {
-      const key = `${groupingFn(price)}-${price.coinId}`;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(price);
-      return acc;
-    }, {} as Record<string, Price[]>);
+    const groupedPrices = prices.reduce(
+      (acc, price) => {
+        const key = `${groupingFn(price)}-${price.coinId}`;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(price);
+        return acc;
+      },
+      {} as Record<string, Price[]>
+    );
 
     return Object.entries(groupedPrices)
       .map(([_, prices]) => {

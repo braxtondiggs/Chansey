@@ -10,10 +10,11 @@ import {
   Timestamp
 } from 'typeorm';
 
+import { ColumnNumericTransformer } from './../../utils/transformers';
+
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { Coin } from '../../coin/coin.entity';
 import { OrderSide } from '../order.entity';
-import { ColumnNumericTransformer } from './../../utils/transformers';
 
 export enum TestnetStatus {
   PENDING = 'PENDING',

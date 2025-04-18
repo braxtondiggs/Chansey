@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
 import Binance, { Binance as BinanceClient } from 'binance-api-node';
 
 import { User } from '../../users/users.entity';

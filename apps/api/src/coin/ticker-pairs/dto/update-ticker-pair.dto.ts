@@ -1,4 +1,5 @@
 import { PartialType } from '@nestjs/swagger';
+
 import { IsUUID } from 'class-validator';
 
 import { CreateTickerDto } from './create-ticker-pair.dto';

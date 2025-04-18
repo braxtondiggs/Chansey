@@ -1,4 +1,5 @@
 import { Component, inject } from '@angular/core';
+
 import { LayoutService } from '../services/layout.service';
 
 @Component({

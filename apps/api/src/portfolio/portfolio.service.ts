@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Repository } from 'typeorm';
+
+import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
+import { Portfolio, PortfolioRelations } from './portfolio.entity';
 
 import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
-import { Portfolio, PortfolioRelations } from './portfolio.entity';
-import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 
 @Injectable()
 export class PortfolioService {

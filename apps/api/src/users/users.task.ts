@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
-import { HealthCheckHelper } from '../utils/health-check.helper';
 import { UsersService } from './users.service';
+
+import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Injectable()
 export class UsersTaskService {
   private readonly logger = new Logger(UsersTaskService.name);
-  constructor(private readonly user: UsersService, private readonly healthCheck: HealthCheckHelper) {}
+  constructor(
+    private readonly user: UsersService,
+    private readonly healthCheck: HealthCheckHelper
+  ) {}
 
   @Cron(CronExpression.EVERY_WEEK)
   async updateUserPortfolio() {

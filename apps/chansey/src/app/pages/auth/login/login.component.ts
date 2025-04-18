@@ -2,14 +2,16 @@ import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
 import { PasswordModule } from 'primeng/password';
 
-import { LoginService } from './login.service';
 import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
+
+import { LoginService } from './login.service';
 
 @Component({
   selector: 'app-login',
@@ -54,17 +56,9 @@ export class LoginComponent {
 
       const { email, password, remember } = this.loginForm.value;
 
-      this.loginService.login(email, password).subscribe({
-        next: (response) => {
+      this.loginService.login(email, password, remember).subscribe({
+        next: () => {
           this.isLoading = false;
-
-          // Store the remember me preference
-          if (remember) {
-            localStorage.setItem('rememberUser', 'true');
-          } else {
-            localStorage.removeItem('rememberUser');
-          }
-
           this.router.navigate(['/dashboard']);
         },
         error: (error) => {

@@ -1,14 +1,8 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+
 import { FastifyReply } from 'fastify';
 
-
-import GetUser from '../authentication/decorator/get-user.decorator';
-import { CreateUserDto } from '../users/dto/create-user.dto';
-import { User } from '../users/users.entity';
-import { AuthenticationService } from './authentication.service';
-import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
-import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
 import {
   ForgotPasswordDto,
   LogInDto,
@@ -16,6 +10,14 @@ import {
   LogoutResponseDto,
   RegisterResponseDto
 } from '@chansey/api-interfaces';
+
+import { AuthenticationService } from './authentication.service';
+import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
+import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
+
+import GetUser from '../authentication/decorator/get-user.decorator';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import { User } from '../users/users.entity';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -60,7 +62,8 @@ export class AuthenticationController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(LocalAuthenticationGuard)
   async logIn(@GetUser() user: User, @Res() response: FastifyReply) {
-    const cookie = this.authentication.getCookieWithJwtToken(user.id_token, user.expires_in);
+    const rememberMe = user.rememberMe || false;
+    const cookie = this.authentication.getCookieWithJwtToken(user.id_token, user.expires_in, rememberMe);
     response.header('Set-Cookie', cookie);
     return response.send(user);
   }
@@ -105,6 +108,12 @@ export class AuthenticationController {
     description: 'Invalid email address.'
   })
   async forgotPassword(@Body() { email }: ForgotPasswordDto) {
-    return this.authentication.auth.forgotPassword({ email });
+    const { data } = await this.authentication.auth.forgotPassword({ email });
+    return (
+      data || {
+        message: 'Please check your inbox! We have sent a password reset link.',
+        should_show_mobile_otp_screen: null
+      }
+    );
   }
 }

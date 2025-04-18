@@ -44,13 +44,22 @@
                 [inputStyle]="{ width: '100%' }"
                 [style]="{ width: '100%' }"
                 [toggleMask]="true"
-                [feedback]="false"
                 required
-              />
+              >
+                <ng-template #footer>
+                  <ul class="my-0 ml-2 pl-2 leading-normal">
+                    <li>At least one lowercase</li>
+                    <li>At least one uppercase</li>
+                    <li>At least one numeric</li>
+                    <li>At least one special character</li>
+                    <li>Minimum 8 characters</li>
+                  </ul>
+                </ng-template>
+              </p-password>
               <label for="on_label">Password</label>
             </p-floatlabel>
-            <small *ngIf="formSubmitted && registerForm.get('password')?.invalid" class="text-red-500">
-              Password is required
+            <small *ngIf="registerForm.get('password')?.invalid" class="text-red-500">
+              {{ getPasswordError('password') }}
             </small>
             <p-floatlabel variant="on" class="mt-4">
               <p-password

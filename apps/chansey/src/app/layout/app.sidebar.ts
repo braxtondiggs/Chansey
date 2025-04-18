@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed } from '@angular/core';
 import { RouterModule } from '@angular/router';
-import { LayoutService } from '../services/layout.service';
+
 import { AppMenu } from './app.menu';
 import { AppTopbar } from './app.topbar';
+
+import { LayoutService } from '../services/layout.service';
 
 @Component({
   selector: 'app-sidebar',

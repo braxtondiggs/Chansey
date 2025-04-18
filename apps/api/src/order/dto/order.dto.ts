@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+
 import { IsEnum, IsNotEmpty, IsNumberString, ValidateIf } from 'class-validator';
 
 import { MinStringNumber } from '../../utils/decorators/min-string-number.decorator';

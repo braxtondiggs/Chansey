@@ -1,6 +1,7 @@
-import { Authorizer } from '@authorizerdev/authorizer-js';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
+import { Authorizer } from '@authorizerdev/authorizer-js';
 
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { UsersService } from '../users/users.service';
@@ -20,26 +21,30 @@ export class AuthenticationService {
 
   public async register(registrationData: CreateUserDto) {
     try {
-      const response = await this.auth.signup(registrationData);
-      if (response) await this.user.create(response?.user?.id);
-      return response;
+      const { data, errors } = await this.auth.signup(registrationData);
+      if (errors.length) throw new HttpException(errors, HttpStatus.BAD_REQUEST);
+      if (data) await this.user.create(data?.user?.id);
+      return data;
     } catch (error: unknown) {
       throw new HttpException('Something went wrong', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  public getCookieWithJwtToken(token: string, expires_in: number) {
-    return `Authentication=${token}; HttpOnly; Path=/; Max-Age=${expires_in}`;
+  public getCookieWithJwtToken(token: string, expires_in: number, rememberMe = false) {
+    // If rememberMe is true, set a longer expiration (30 days), otherwise use the provided expires_in
+    const expiration = rememberMe ? 30 * 24 * 60 * 60 : expires_in;
+    return `Authentication=${token}; HttpOnly; Path=/; Max-Age=${expiration}`;
   }
 
   public getCookieForLogOut() {
     return `Authentication=; HttpOnly; Path=/; Max-Age=0`;
   }
 
-  public async getAuthenticatedUser(email: string, password: string) {
+  public async getAuthenticatedUser(email: string, password: string, rememberMe = false) {
     try {
-      const authUser = await this.auth.login({ email, password });
-      if (!authUser) return authUser;
+      const { data: authUser, errors } = await this.auth.login({ email, password });
+      if (!authUser || errors) return authUser;
+
       return await this.user
         .getById(authUser.user.id)
         .then(() => authUser)

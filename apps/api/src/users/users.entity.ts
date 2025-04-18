@@ -1,6 +1,3 @@
-import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'crypto';
-import { promisify } from 'util';
-
 import { Exclude, Expose } from 'class-transformer';
 import {
   BeforeInsert,
@@ -12,13 +9,16 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryColumn,
-  UpdateDateColumn,
-  getRepository
+  UpdateDateColumn
 } from 'typeorm';
+
+import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'crypto';
+import { promisify } from 'util';
+
+import { Risk } from './risk.entity';
 
 import { Order } from '../order/order.entity';
 import { Portfolio } from '../portfolio/portfolio.entity';
-import { Risk } from './risk.entity';
 
 @Entity()
 export class User {
@@ -28,6 +28,7 @@ export class User {
   given_name: string;
   family_name: string;
   email: string;
+  rememberMe: boolean;
 
   @Exclude()
   id_token: string;
@@ -95,15 +96,8 @@ export class User {
     ]).toString('hex')}`;
   }
 
-  @BeforeInsert()
-  async setDefaultRisk() {
-    if (!this.risk) {
-      const riskRepository = getRepository(Risk);
-      this.risk = await riskRepository.findOne({
-        where: { name: 'Moderate' }
-      });
-    }
-  }
+  // We'll no longer try to fetch the Risk directly in the entity
+  // This avoids the ConnectionNotFoundError
 
   @Expose()
   get binanceAPIKey() {

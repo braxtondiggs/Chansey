@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { Exchange } from './exchange.entity';

@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+
 import { CoinGeckoClient } from 'coingecko-api-v3';
+
+import { CreatePriceDto } from './dto/create-price.dto';
+import { PriceService } from './price.service';
 
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { HealthCheckHelper } from '../utils/health-check.helper';
-import { PriceService } from './price.service';
-import { CreatePriceDto } from './dto/create-price.dto';
 
 @Injectable()
 export class PriceTaskService {

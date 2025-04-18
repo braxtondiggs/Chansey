@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+
 import { Expose } from 'class-transformer';
 
 import { IUser, UserDto } from './auth-response.dto';

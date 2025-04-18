@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { ILike, Repository } from 'typeorm';
 
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 import { Algorithm } from './algorithm.entity';
 import { CreateAlgorithmDto, UpdateAlgorithmDto } from './dto/';
+
+import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class AlgorithmService {

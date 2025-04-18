@@ -1,9 +1,13 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { Between, Repository } from 'typeorm';
+
+import { TestnetDto, TestnetSummaryDuration } from './dto';
+import { Testnet, TestnetStatus } from './testnet.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
@@ -11,8 +15,6 @@ import { BinanceService } from '../../exchange/binance/binance.service';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
-import { Testnet, TestnetStatus } from './testnet.entity';
-import { TestnetDto, TestnetSummaryDuration } from './dto';
 
 @Injectable()
 export class TestnetService {
@@ -125,23 +127,26 @@ export class TestnetService {
   }
 
   private calculateSummary(orders: Testnet[], prices: Record<string, number>) {
-    return orders.reduce((acc, { coin, quantity, side, price, fee, commission }) => {
-      const currentPrice = prices[coin.slug] || price;
-      const profit =
-        side === OrderSide.BUY
-          ? (currentPrice - price) * quantity - (fee + commission)
-          : (price - currentPrice) * quantity - (fee + commission);
+    return orders.reduce(
+      (acc, { coin, quantity, side, price, fee, commission }) => {
+        const currentPrice = prices[coin.slug] || price;
+        const profit =
+          side === OrderSide.BUY
+            ? (currentPrice - price) * quantity - (fee + commission)
+            : (price - currentPrice) * quantity - (fee + commission);
 
-      if (!acc[coin.slug]) {
-        acc[coin.slug] = { profitLoss: 0, percentage: 0, trades: 0 };
-      }
+        if (!acc[coin.slug]) {
+          acc[coin.slug] = { profitLoss: 0, percentage: 0, trades: 0 };
+        }
 
-      acc[coin.slug].profitLoss += profit;
-      acc[coin.slug].percentage += (profit / (price * quantity)) * 100;
-      acc[coin.slug].trades += 1;
+        acc[coin.slug].profitLoss += profit;
+        acc[coin.slug].percentage += (profit / (price * quantity)) * 100;
+        acc[coin.slug].trades += 1;
 
-      return acc;
-    }, {} as Record<string, { profitLoss: number; percentage: number; trades: number }>);
+        return acc;
+      },
+      {} as Record<string, { profitLoss: number; percentage: number; trades: number }>
+    );
   }
 
   private async getPrices(coins: string[]): Promise<Record<string, number>> {

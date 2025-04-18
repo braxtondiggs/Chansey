@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+
 import { IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsNumber, IsUrl } from 'class-validator';
 
 import { Exchange } from '../../../exchange/exchange.entity';

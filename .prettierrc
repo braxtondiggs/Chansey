@@ -7,21 +7,19 @@
   "singleQuote": true,
   "bracketSpacing": true,
   "arrowParens": "always",
-  "organizeImportsSkipDestructiveCodeActions": true,
-  "plugins": [
-    "prettier-plugin-organize-imports",
-    "prettier-plugin-tailwindcss"
-  ],
-  "importOrderPriority": 100,
+  "importOrderParserPlugins": ["typescript", "decorators-legacy"],
+  "plugins": ["@trivago/prettier-plugin-sort-imports", "prettier-plugin-tailwindcss"],
   "importOrder": [
     "^@angular/(.*)$",
     "^@nestjs/(.*)$",
     "<THIRD_PARTY_MODULES>",
     "^@chansey/(.*)$",
-    "^[./]"
+    "^@chansey-web/(.*)$",
+    "^\\./(.*)$",
+    "^\\.\\./(.*)$"
   ],
   "importOrderSeparation": true,
-  "importOrderSortSpecifiers": true,
-  "importOrderGroupNamespaceSpecifiers": true,
+  "importOrderSortSpecifiers": false,
+  "importOrderGroupNamespaceSpecifiers": false,
   "importOrderCaseInsensitive": true
 }

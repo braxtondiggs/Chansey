@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+
 import { IsBoolean, IsNotEmpty, IsNumber, IsString, IsUrl } from 'class-validator';
 
 export class CreateExchangeDto {
