@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, inject, model, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterModule } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
@@ -154,7 +155,7 @@ interface NotificationsBars {
             [hideOnOutsideClick]="true"
           >
             <p-avatar styleClass="!w-10 !h-10">
-              <img src="/layout/images/profile.jpg" />
+              <img [src]="userProfileImage()" />
             </p-avatar>
           </a>
           <div
@@ -164,6 +165,7 @@ interface NotificationsBars {
               <li>
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                  routerLink="/app/profile"
                 >
                   <i class="pi pi-user"></i>
                   <span>Profile</span>
@@ -172,6 +174,7 @@ interface NotificationsBars {
               <li>
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                  routerLink="/app/settings"
                 >
                   <i class="pi pi-cog"></i>
                   <span>Settings</span>
@@ -180,23 +183,7 @@ interface NotificationsBars {
               <li>
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                >
-                  <i class="pi pi-calendar"></i>
-                  <span>Calendar</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                >
-                  <i class="pi pi-inbox"></i>
-                  <span>Inbox</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  (click)="AuthService.logout()"
+                  (click)="authService.logout()"
                 >
                   <i class="pi pi-power-off"></i>
                   <span>Log out</span>
@@ -218,8 +205,15 @@ interface NotificationsBars {
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppTopbar {
   layoutService = inject(LayoutService);
-  AuthService = inject(AuthService);
+  authService = inject(AuthService);
   isDarkTheme = computed(() => this.layoutService.isDarkTheme());
+
+  private userSignal = toSignal(this.authService.user$, { initialValue: null });
+
+  userProfileImage = computed(() => {
+    const user = this.userSignal();
+    return user?.['picture'] || `https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user?.['given_name']}`;
+  });
 
   @ViewChild('menubutton') menuButton!: ElementRef;
 

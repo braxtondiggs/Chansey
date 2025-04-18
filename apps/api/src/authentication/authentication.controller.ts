@@ -1,18 +1,18 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards, HttpException } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { FastifyReply } from 'fastify';
 
+import { AuthenticationService } from './authentication.service';
 import {
   ForgotPasswordDto,
   LogInDto,
   LoginResponseDto,
   LogoutResponseDto,
-  RegisterResponseDto
-} from '@chansey/api-interfaces';
-
-import { AuthenticationService } from './authentication.service';
-import JwtAuthenticationGuard from './guard/jwt-authentication.guard';
+  RegisterResponseDto,
+  ResetPasswordDto,
+  ResetPasswordResponseDto
+} from './dto';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -82,7 +82,6 @@ export class AuthenticationController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'Invalid credentials.'
   })
-  @UseGuards(JwtAuthenticationGuard)
   @ApiBearerAuth('token')
   async logOut(@Res() response: FastifyReply) {
     response
@@ -115,5 +114,34 @@ export class AuthenticationController {
         should_show_mobile_otp_screen: null
       }
     );
+  }
+
+  @Post('reset-password')
+  @ApiOperation({
+    summary: 'Reset Password',
+    description: 'Resets user password using the provided token.'
+  })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Password reset successful.',
+    type: ResetPasswordResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid token or password.'
+  })
+  async resetPassword(@Body() resetPasswordData: ResetPasswordDto) {
+    const { data, errors } = await this.authentication.auth.resetPassword({
+      token: resetPasswordData.token,
+      password: resetPasswordData.password,
+      confirm_password: resetPasswordData.confirm_password
+    });
+
+    if (errors && errors.length) {
+      throw new HttpException(errors[0], HttpStatus.BAD_REQUEST);
+    }
+
+    return data || new ResetPasswordResponseDto();
   }
 }

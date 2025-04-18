@@ -85,9 +85,21 @@
               Passwords do not match
             </small>
 
-            <div *ngIf="errorMessage" class="mt-4 rounded bg-red-100 p-3 text-sm text-red-700">
-              {{ errorMessage }}
-            </div>
+            <p-message
+              *ngIf="errorMessage"
+              [text]="errorMessage"
+              icon="pi pi-times-circle"
+              severity="error"
+              styleClass="mt-4"
+            />
+            <p-message
+              *ngIf="successMessage"
+              [text]="successMessage"
+              icon="pi pi-check-circle"
+              severity="success"
+              size="large"
+              styleClass="mt-4"
+            />
             <p-button
               type="submit"
               class="mt-8 block w-full"

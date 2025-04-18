@@ -2,9 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
 
-export interface ILogoutResponse {
-  message: string;
-}
+import { ILogoutResponse } from '@chansey/api-interfaces';
 
 export class LogoutResponseDto implements ILogoutResponse {
   @ApiProperty({
