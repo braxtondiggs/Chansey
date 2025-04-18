@@ -13,11 +13,13 @@ import {
   effect
 } from '@angular/core';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
+
 import { DomHandler } from 'primeng/dom';
 import { RippleModule } from 'primeng/ripple';
 import { TooltipModule } from 'primeng/tooltip';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
+
 import { LayoutService } from '../services/layout.service';
 
 @Component({

@@ -1,5 +1,3 @@
-import { join } from 'path';
-
 import { HttpModule } from '@nestjs/axios';
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
@@ -7,7 +5,10 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { LoggerModule } from 'nestjs-pino';
+
+import { join } from 'path';
 
 import { AlgorithmModule } from './algorithm/algorithm.module';
 import { AppController } from './app.controller';

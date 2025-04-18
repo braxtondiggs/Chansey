@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+
 import { CoinGeckoClient } from 'coingecko-api-v3';
+
+import { CoinService } from './coin.service';
 
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { HealthCheckHelper } from '../utils/health-check.helper';
-import { CoinService } from './coin.service';
 
 @Injectable()
 export class CoinTask {

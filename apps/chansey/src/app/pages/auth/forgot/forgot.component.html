@@ -23,6 +23,9 @@
             <div *ngIf="errorMessage" class="my-4 rounded bg-red-100 p-3 text-sm text-red-700">
               {{ errorMessage }}
             </div>
+            <div *ngIf="successMessage" class="my-4 rounded bg-green-100 p-3 text-sm text-green-700">
+              {{ successMessage }}
+            </div>
             <div class="my-8 flex items-center justify-between gap-4">
               <p-button
                 routerLink="/login"

@@ -1,17 +1,19 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { OrderSide_LT, SymbolLotSizeFilter, SymbolMinNotionalFilter, SymbolPriceFilter } from 'binance-api-node';
 import { Repository } from 'typeorm';
+
+import { Coin } from './../coin/coin.entity';
+import { OrderDto } from './dto/order.dto';
+import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
+import { TestnetDto } from './testnet/dto/testnet.dto';
 
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceService } from '../exchange/binance/binance.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
-import { TestnetDto } from './testnet/dto/testnet.dto';
-import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
-import { OrderDto } from './dto/order.dto';
-import { Coin } from './../coin/coin.entity';
 
 interface SymbolValidationFilters {
   priceFilter: SymbolPriceFilter;

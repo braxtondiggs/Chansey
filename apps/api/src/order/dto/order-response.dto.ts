@@ -1,9 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+import { OrderDto } from './order.dto';
+
 import { CoinResponseDto } from '../../coin/dto/coin-response.dto';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
 import { OrderSide, OrderStatus, OrderType } from '../order.entity';
-import { OrderDto } from './order.dto';
 
 export class OrderResponseDto {
   @ApiProperty({

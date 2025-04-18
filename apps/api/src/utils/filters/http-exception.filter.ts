@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import { MESSAGES } from '@nestjs/core/constants';
+
 import { FastifyReply, FastifyRequest } from 'fastify';
 
 @Catch(HttpException)

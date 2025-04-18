@@ -1,13 +1,17 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class CoinAlertService {
   private BASE_URL = 'https://api.cryptocurrencyalerting.com/v1/alert-conditions';
   private auth = {};
-  constructor(config: ConfigService, private http: HttpService) {
+  constructor(
+    config: ConfigService,
+    private http: HttpService
+  ) {
     this.auth = {
       auth: {
         username: config.get('CCA_API_KEY'),

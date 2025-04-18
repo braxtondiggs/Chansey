@@ -11,13 +11,15 @@ import {
   ValidationPipe
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+
 import { DeleteResult } from 'typeorm';
 
-import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
-import { OrderSide } from '../order.entity';
 import { TestnetDto, TestnetSummaryDto } from './dto';
 import { Testnet } from './testnet.entity';
 import { TestnetService } from './testnet.service';
+
+import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
+import { OrderSide } from '../order.entity';
 
 @ApiTags('Order')
 @UseGuards(APIAuthenticationGuard)

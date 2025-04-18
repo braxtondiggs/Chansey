@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+
 import { IsEnum, IsNotEmpty, IsString, IsUUID } from 'class-validator';
 
 import { Coin } from '../../coin/coin.entity';

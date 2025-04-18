@@ -1,9 +1,9 @@
-import { User as AuthorizerUser } from '@authorizerdev/authorizer-js';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
+
+import { User as AuthorizerUser } from '@authorizerdev/authorizer-js';
+import { ExtractJwt, Strategy } from 'passport-jwt';
 
 import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';

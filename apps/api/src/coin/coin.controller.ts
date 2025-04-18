@@ -1,12 +1,13 @@
 import { Controller, Get, HttpStatus, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import GetUser from '../authentication/decorator/get-user.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import { User } from '../users/users.entity';
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
 import { CoinResponseDto } from './dto';
+
+import GetUser from '../authentication/decorator/get-user.decorator';
+import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { User } from '../users/users.entity';
 
 @ApiTags('Coin')
 @ApiBearerAuth('token')

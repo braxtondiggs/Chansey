@@ -12,29 +12,19 @@ import {
   UseGuards
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiParam,
-  ApiProduces,
-  ApiResponse,
-  ApiTags
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
+
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import { FastifyReply } from 'fastify';
 
+import { AlgorithmService } from './algorithm.service';
+import { AlgorithmResponseDto, CreateAlgorithmDto, DeleteResponseDto, UpdateAlgorithmDto } from './dto';
+import * as DynamicAlgorithmServices from './scripts';
+
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { TestnetSummary } from '../order/testnet/dto';
 import { PriceService } from '../price/price.service';
-import { AlgorithmService } from './algorithm.service';
-import {
-  AlgorithmResponseDto,
-  CreateAlgorithmDto,
-  DeleteResponseDto,
-  UpdateAlgorithmDto
-} from './dto';
-import * as DynamicAlgorithmServices from './scripts';
 
 @ApiTags('Algorithm')
 @ApiBearerAuth('token')
@@ -134,10 +124,7 @@ export class AlgorithmController {
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid input data.'
   })
-  async updateAlgorithm(
-    @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() dto: UpdateAlgorithmDto
-  ) {
+  async updateAlgorithm(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateAlgorithmDto) {
     return this.algorithm.update(id, dto);
   }
 
@@ -194,10 +181,7 @@ export class AlgorithmController {
     status: HttpStatus.NOT_FOUND,
     description: 'Algorithm or Coin not found.'
   })
-  async chart(
-    @Param() { algorithmId, coinId = '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f' },
-    @Res() res: FastifyReply
-  ) {
+  async chart(@Param() { algorithmId, coinId = '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f' }, @Res() res: FastifyReply) {
     const width = 800; //px
     const height = 800; //px
     const prices = await this.price.findAllByDay(coinId, TestnetSummary['90d']);

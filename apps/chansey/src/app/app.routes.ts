@@ -8,13 +8,13 @@ import { AuthLayout } from './layout/auth.layout';
 export const appRoutes: Route[] = [
   {
     path: '',
+    loadComponent: () => import('./pages/auth/login').then((c) => c.LoginComponent)
+  },
+  {
+    path: '',
     component: AuthLayout,
     canActivate: [ReverseAuthGuard],
     children: [
-      {
-        path: '',
-        loadComponent: () => import('./pages/auth/login').then((c) => c.LoginComponent)
-      },
       {
         path: 'login',
         loadComponent: () => import('./pages/auth/login').then((c) => c.LoginComponent)

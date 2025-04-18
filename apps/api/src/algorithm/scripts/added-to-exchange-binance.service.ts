@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+
 import { Binance } from 'binance-api-node';
 
 import { BinanceService } from '../../exchange/binance/binance.service';

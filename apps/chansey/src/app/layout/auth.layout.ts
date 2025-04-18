@@ -2,8 +2,9 @@ import { NgClass } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
-import { LayoutService } from '../services/layout.service';
 import { AppConfigurator } from './app.configurator';
+
+import { LayoutService } from '../services/layout.service';
 
 @Component({
   selector: 'app-auth-layout',

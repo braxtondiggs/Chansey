@@ -1,20 +1,17 @@
-import { Authorizer } from '@authorizerdev/authorizer-js';
-import {
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-  NotFoundException
-} from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+
+import { Authorizer } from '@authorizerdev/authorizer-js';
 import { Repository } from 'typeorm';
+
+import { UpdateUserDto } from './dto';
+import { Risk } from './risk.entity';
+import { User } from './users.entity';
 
 import { CoinService } from '../coin/coin.service';
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
-import { UpdateUserDto } from './dto';
-import { Risk } from './risk.entity';
-import { User } from './users.entity';
 
 @Injectable()
 export class UsersService {
@@ -40,6 +37,20 @@ export class UsersService {
   async create(id: string) {
     try {
       const newUser = this.user.create({ id });
+
+      // Set default risk level (moderate) if not already assigned
+      if (!newUser.risk) {
+        const defaultRisk = await this.risk.findOne({
+          where: { name: 'Moderate' }
+        });
+
+        if (defaultRisk) {
+          newUser.risk = defaultRisk;
+        } else {
+          this.logger.warn('Default "Moderate" risk level not found');
+        }
+      }
+
       await this.user.save(newUser);
       this.logger.debug(`User created with ID: ${id}`);
       return newUser;
@@ -113,9 +124,7 @@ export class UsersService {
     const portfolio = await this.portfolio.getPortfolioByUser(user);
     const dynamicPortfolio = portfolio.filter((p) => p.type === PortfolioType.AUTOMATIC);
 
-    await Promise.all(
-      dynamicPortfolio.map((portfolio) => this.portfolio.deletePortfolioItem(portfolio.id, user.id))
-    );
+    await Promise.all(dynamicPortfolio.map((portfolio) => this.portfolio.deletePortfolioItem(portfolio.id, user.id)));
 
     const newCoins = await this.coin.getCoinsByRiskLevel(user, 5);
     await Promise.all(

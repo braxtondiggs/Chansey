@@ -9,21 +9,15 @@ import {
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOkResponse,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+
+import { BalanceDto, UpdateUserDto, UserBinanceResponseDto, UserResponseDto } from './dto';
+import { User } from './users.entity';
+import { UsersService } from './users.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { BinanceService } from '../exchange/binance/binance.service';
-import { BalanceDto, UpdateUserDto, UserBinanceResponseDto, UserResponseDto } from './dto';
-import { User } from './users.entity';
-import { UsersService } from './users.service';
 
 @ApiTags('User')
 @ApiBearerAuth('token')
@@ -56,8 +50,7 @@ export class UserController {
   @Get()
   @ApiOperation({
     summary: 'Get user info with Authorizer profile',
-    description:
-      'Retrieves information about the authenticated user, including Authorizer profile information.'
+    description: 'Retrieves information about the authenticated user, including Authorizer profile information.'
   })
   @ApiOkResponse({
     description: 'User information retrieved successfully.',
@@ -97,8 +90,7 @@ export class UserController {
   @Get('/balance')
   @ApiOperation({
     summary: 'Get user balance',
-    description:
-      'Retrieves the balance of the authenticated user. Use type=all to get all non-zero balances.'
+    description: 'Retrieves the balance of the authenticated user. Use type=all to get all non-zero balances.'
   })
   @ApiOkResponse({
     description: 'User balance retrieved successfully.',

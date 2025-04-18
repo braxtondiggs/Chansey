@@ -5,7 +5,8 @@
   "editor.formatOnPaste": true,
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
-    "source.addMissingImports": "explicit"
+    "source.addMissingImports": "explicit",
+    "source.fixAll.eslint": "explicit"
   },
   "vsicons.presets.angular": true,
   "[css]": {

@@ -1,58 +1,61 @@
 {
-    "root": true,
-    "ignorePatterns": ["**/*"],
-    "plugins": ["@nx", "import"],
-    "overrides": [
-        {
-            "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
-            "rules": {
-                "sort-imports": [
-                    "error",
-                    {
-                        "ignoreCase": false,
-                        "ignoreDeclarationSort": true,
-                        "ignoreMemberSort": false,
-                        "memberSyntaxSortOrder": [
-                            "none",
-                            "all",
-                            "multiple",
-                            "single"
-                        ],
-                        "allowSeparatedGroups": true
-                    }
-                ],
-                "import/order": ["error"]
-            },
-            "parserOptions": {
-                "project": ["./tsconfig.base.json"]
-            }
-        },
-        {
-            "files": ["*.ts", "*.tsx"],
-            "extends": [
-                "plugin:@nx/typescript",
-                "plugin:import/recommended",
-                "plugin:import/typescript"
+  "root": true,
+  "ignorePatterns": ["**/*"],
+  "plugins": ["@nx", "import"],
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
+      "rules": {
+        "import/order": [
+          "error",
+          {
+            "groups": ["external", "builtin", "internal", "sibling", "parent", "index", "unknown"],
+            "pathGroups": [
+              {
+                "pattern": "@angular/**",
+                "group": "external",
+                "position": "before"
+              },
+              {
+                "pattern": "@nestjs/**",
+                "group": "external",
+                "position": "before"
+              },
+              {
+                "pattern": "@chansey/**",
+                "group": "internal",
+                "position": "after"
+              }
             ],
-            "rules": {
-                "@typescript-eslint/no-extra-semi": "error",
-                "no-extra-semi": "off"
+            "pathGroupsExcludedImportTypes": ["builtin"],
+            "newlines-between": "always",
+            "alphabetize": {
+              "order": "asc",
+              "caseInsensitive": true
             }
-        },
-        {
-            "files": ["*.js", "*.jsx"],
-            "extends": ["plugin:@nx/javascript"],
-            "rules": {
-                "@typescript-eslint/no-extra-semi": "error",
-                "no-extra-semi": "off"
-            }
-        }
-    ],
-    "settings": {
-        "import/resolver": {
-            "typescript": {
-                "project": "./tsconfig.base.json"
-            }
-        }
+          }
+        ]
+      },
+      "parserOptions": {
+        "project": ["./tsconfig.base.json"]
+      }
+    },
+    {
+      "files": ["*.ts", "*.tsx"],
+      "extends": ["plugin:@nx/typescript", "plugin:import/recommended", "plugin:import/typescript", "prettier"],
+      "rules": {}
+    },
+    {
+      "files": ["*.js", "*.jsx"],
+      "extends": ["plugin:@nx/javascript", "prettier"],
+      "rules": {}
     }
+  ],
+  "settings": {
+    "import/resolver": {
+      "typescript": {
+        "project": "./tsconfig.base.json"
+      }
+    }
+  }
 }

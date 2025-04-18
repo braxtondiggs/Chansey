@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+
 import { CronJob } from 'cron';
+
+import { TestnetService } from './../../order/testnet/testnet.service';
 
 import { OrderSide, OrderType } from '../../order/order.entity';
 import {
@@ -11,7 +14,6 @@ import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Price } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
-import { TestnetService } from './../../order/testnet/testnet.service';
 
 @Injectable()
 export class MeanReversionService {

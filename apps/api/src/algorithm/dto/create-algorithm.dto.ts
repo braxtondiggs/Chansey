@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+
 import { IsBoolean, IsString, Validate } from 'class-validator';
 
 export class CreateAlgorithmDto {

@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
 import { Router, UrlTree } from '@angular/router';
+
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { AuthService } from '../pages/auth/auth.service';
+import { AuthService } from '../services/auth.service';
 
 @Injectable({
   providedIn: 'root'

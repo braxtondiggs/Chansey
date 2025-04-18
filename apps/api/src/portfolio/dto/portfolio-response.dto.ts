@@ -1,9 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { PortfolioType } from '../portfolio-type.enum';
+import { CreatePortfolioDto } from './create-portfolio.dto';
+
 import { CoinResponseDto } from '../../coin/dto/coin-response.dto';
 import { UserResponseDto } from '../../users/dto';
-import { CreatePortfolioDto } from './create-portfolio.dto';
+import { PortfolioType } from '../portfolio-type.enum';
 
 export class PortfolioResponseDto {
   @ApiProperty({
