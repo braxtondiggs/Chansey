@@ -7,6 +7,7 @@ import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
+import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 
 import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
@@ -23,6 +24,7 @@ import { LoginService } from './login.service';
     FloatLabelModule,
     InputTextModule,
     LazyImageComponent,
+    MessageModule,
     PasswordModule,
     ReactiveFormsModule,
     RouterLink

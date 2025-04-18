@@ -9,12 +9,13 @@ import {
   ValidatorFn,
   Validators
 } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
+import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 
 import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
@@ -45,7 +46,8 @@ function createPasswordStrengthValidator(): ValidatorFn {
     const hasUpperCase = /[A-Z]/.test(value);
     const hasLowerCase = /[a-z]/.test(value);
     const hasNumeric = /[0-9]/.test(value);
-    const hasSpecialChar = /[!@#$%^&*()_+\-=[]{};':"\\|,.<>\/?]/.test(value);
+    // eslint-disable-next-line no-useless-escape
+    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/.test(value);
     const hasMinLength = value.length >= 8;
 
     const passwordValid = hasUpperCase && hasLowerCase && hasNumeric && hasSpecialChar && hasMinLength;
@@ -74,6 +76,7 @@ function createPasswordStrengthValidator(): ValidatorFn {
     FloatLabelModule,
     InputTextModule,
     LazyImageComponent,
+    MessageModule,
     PasswordModule,
     ReactiveFormsModule,
     RouterLink
@@ -84,12 +87,12 @@ export class RegisterComponent {
   registerForm: FormGroup;
   isLoading = false;
   errorMessage = '';
+  successMessage = '';
   formSubmitted = false;
 
   constructor(
     private fb: FormBuilder,
-    private registerService: RegisterService,
-    private router: Router
+    private registerService: RegisterService
   ) {
     this.registerForm = this.fb.group(
       {
@@ -105,14 +108,13 @@ export class RegisterComponent {
     );
   }
 
-  getPasswordError(controlName: string): string {
+  getPasswordError(controlName: string): string | void {
     const control = this.registerForm.get(controlName);
     if (!control || !control.errors) return '';
 
-    if (control.errors['required']) {
+    if (control.errors['required'] && this.formSubmitted) {
       return 'Password is required';
     }
-
     if (control.errors['passwordStrength']) {
       const errors = control.errors['passwordStrength'];
       if (!errors.hasMinLength) return 'Password must be at least 8 characters';
@@ -121,8 +123,6 @@ export class RegisterComponent {
       if (!errors.hasNumeric) return 'Password must contain at least one number';
       if (!errors.hasSpecialChar) return 'Password must contain at least one special character';
     }
-
-    return 'Invalid password';
   }
 
   onSubmit() {
@@ -131,14 +131,15 @@ export class RegisterComponent {
     if (this.registerForm.valid) {
       this.isLoading = true;
       this.errorMessage = '';
+      this.successMessage = '';
 
       const { email, password, confirmPassword, given_name, family_name } = this.registerForm.value;
 
       this.registerService.register(email, password, confirmPassword, given_name, family_name).subscribe({
         next: (response) => {
           this.isLoading = false;
-
-          this.router.navigate(['/dashboard']);
+          this.successMessage = response.message;
+          this.registerForm.reset();
         },
         error: (error) => {
           this.isLoading = false;
