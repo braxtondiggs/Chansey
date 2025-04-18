@@ -2,22 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
 
-import { IUser, UserDto } from './auth-response.dto';
+import { ILoginResponse } from '@chansey/api-interfaces';
 
-export interface ILoginResponse {
-  message: string;
-  access_token: string;
-  expires_in: number;
-  refresh_token: string | null;
-  id_token: string;
-  should_show_email_otp_screen: boolean | null;
-  should_show_mobile_otp_screen: boolean | null;
-  should_show_totp_screen: boolean | null;
-  authenticator_scanner_image: string | null;
-  authenticator_secret: string | null;
-  authenticator_recovery_codes: string[] | null;
-  user: IUser;
-}
+import { UserDto } from './user.dto';
 
 export class LoginResponseDto implements ILoginResponse {
   @ApiProperty({

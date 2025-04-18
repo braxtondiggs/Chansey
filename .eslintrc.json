@@ -25,6 +25,11 @@
                 "pattern": "@chansey/**",
                 "group": "internal",
                 "position": "after"
+              },
+              {
+                "pattern": "@chansey-web/**",
+                "group": "internal",
+                "position": "after"
               }
             ],
             "pathGroupsExcludedImportTypes": ["builtin"],

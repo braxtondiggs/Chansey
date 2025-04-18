@@ -25,7 +25,9 @@ export class AuthenticationService {
       if (errors.length) throw new HttpException(errors, HttpStatus.BAD_REQUEST);
       if (data) await this.user.create(data?.user?.id);
       return data;
-    } catch (error: unknown) {
+    } catch (error: any) {
+      if (error?.response[0]?.message === 'signup is disabled for this instance')
+        throw new HttpException('Signup has been temporarily disabled', HttpStatus.BAD_REQUEST);
       throw new HttpException('Something went wrong', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }

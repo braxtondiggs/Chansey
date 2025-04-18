@@ -2,10 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
 
-export interface IForgotPasswordResponse {
-  message: string;
-  should_show_mobile_otp_screen: boolean | null;
-}
+import { IForgotPasswordResponse } from '@chansey/api-interfaces';
 
 export class ForgotPasswordResponseDto implements IForgotPasswordResponse {
   @ApiProperty({

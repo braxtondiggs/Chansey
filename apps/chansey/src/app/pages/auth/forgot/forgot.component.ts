@@ -6,6 +6,7 @@ import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
+import { MessageModule } from 'primeng/message';
 
 import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
 
@@ -20,6 +21,7 @@ import { ForgotService } from './forgot.service';
     FloatLabelModule,
     InputTextModule,
     LazyImageComponent,
+    MessageModule,
     ReactiveFormsModule,
     RouterLink
   ],

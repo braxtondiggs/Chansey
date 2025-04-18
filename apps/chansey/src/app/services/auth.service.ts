@@ -4,20 +4,13 @@ import { Router } from '@angular/router';
 
 import { BehaviorSubject, Observable, catchError, of, tap } from 'rxjs';
 
-import { ILogoutResponse } from '@chansey/api-interfaces';
-
-interface User {
-  id: string;
-  email: string;
-  name?: string;
-  [key: string]: string | number | boolean | null | undefined; // More specific type than 'any'
-}
+import { IUser, ILogoutResponse } from '@chansey/api-interfaces';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private userSubject = new BehaviorSubject<User | null>(null);
+  private userSubject = new BehaviorSubject<IUser | null>(null);
   user$ = this.userSubject.asObservable();
 
   constructor(
@@ -29,6 +22,11 @@ export class AuthService {
     if (savedUser) {
       this.userSubject.next(JSON.parse(savedUser));
     }
+  }
+
+  // Method to update user state directly from other services
+  updateUserState(user: IUser | null): void {
+    this.userSubject.next(user);
   }
 
   logout(): Observable<null> | void {
@@ -86,13 +84,13 @@ export class AuthService {
     return localStorage.getItem('token');
   }
 
-  getUserInfo(): Observable<User | null> {
+  getUserInfo(): Observable<IUser | null> {
     const token = this.getToken();
 
     if (!token) return of(null);
 
     return this.http
-      .get<User>('/api/user', {
+      .get<IUser>('/api/user', {
         headers: {
           Authorization: `Bearer ${token}`
         }

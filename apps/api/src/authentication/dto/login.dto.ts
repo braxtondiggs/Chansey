@@ -1,10 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export interface ILogin {
-  email: string;
-  password: string;
-  remember?: boolean;
-}
+import { ILogin } from '@chansey/api-interfaces';
 
 export class LogInDto implements ILogin {
   @ApiProperty({ example: 'braxtondiggs@gmail.com', description: "User's email address", required: true })

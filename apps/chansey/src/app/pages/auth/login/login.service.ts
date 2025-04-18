@@ -1,10 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Router } from '@angular/router';
 
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 
 import { ILoginResponse } from '@chansey/api-interfaces';
+
+import { AuthService } from '@chansey-web/app/services';
 
 @Injectable({
   providedIn: 'root'
@@ -15,14 +16,8 @@ export class LoginService {
 
   constructor(
     private http: HttpClient,
-    private router: Router
-  ) {
-    // Check if user is already logged in
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      this.userSubject.next(JSON.parse(savedUser));
-    }
-  }
+    private authService: AuthService
+  ) {}
 
   login(email: string, password: string, remember = false): Observable<ILoginResponse> {
     return this.http
@@ -33,9 +28,15 @@ export class LoginService {
       })
       .pipe(
         tap((response) => {
+          // Store data in localStorage
           localStorage.setItem('user', JSON.stringify(response.user));
           localStorage.setItem('token', response.access_token);
+
+          // Update local service state
           this.userSubject.next(response.user);
+
+          // Also update the AuthService state to ensure it's available immediately
+          this.authService.updateUserState(response.user);
         })
       );
   }

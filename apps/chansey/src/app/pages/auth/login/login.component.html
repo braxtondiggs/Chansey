@@ -43,9 +43,13 @@
               <a routerLink="/forgot-password" class="body-small text-primary-500 hover:underline">Forgot password?</a>
             </div>
 
-            <div *ngIf="errorMessage" class="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
-              {{ errorMessage }}
-            </div>
+            <p-message
+              *ngIf="errorMessage"
+              [text]="errorMessage"
+              icon="pi pi-times-circle"
+              severity="error"
+              styleClass="my-4"
+            />
             <p-button
               type="submit"
               class="block w-full"

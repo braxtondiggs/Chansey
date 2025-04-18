@@ -22,7 +22,7 @@ export class ReverseAuthGuard {
         if (!isAuth) return true;
 
         // If authenticated, redirect to dashboard
-        return this.router.createUrlTree(['/dashboard']);
+        return this.router.createUrlTree(['/app/dashboard']);
       })
     );
   }

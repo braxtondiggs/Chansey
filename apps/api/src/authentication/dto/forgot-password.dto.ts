@@ -2,9 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { IsEmail } from 'class-validator';
 
-export interface IForgotPassword {
-  email: string;
-}
+import { IForgotPassword } from '@chansey/api-interfaces';
 
 export class ForgotPasswordDto implements IForgotPassword {
   @ApiProperty({

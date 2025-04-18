@@ -26,17 +26,29 @@ export const appRoutes: Route[] = [
       {
         path: 'forgot-password',
         loadComponent: () => import('./pages/auth/forgot').then((c) => c.ForgotComponent)
+      },
+      {
+        path: 'auth/callback',
+        loadComponent: () => import('./pages/auth/new-password').then((c) => c.NewPasswordComponent)
       }
     ]
   },
   {
-    path: 'dashboard',
+    path: 'app',
     component: AppLayout,
     canActivate: [AuthGuard],
     children: [
       {
-        path: '',
+        path: 'dashboard',
         loadComponent: () => import('./pages/dashboard').then((c) => c.DashboardComponent)
+      },
+      {
+        path: 'profile',
+        loadComponent: () => import('./pages/user/profile').then((c) => c.ProfileComponent)
+      },
+      {
+        path: 'settings',
+        loadComponent: () => import('./pages/user/settings').then((c) => c.SettingsComponent)
       }
       // Additional authenticated routes can be added here
     ]
