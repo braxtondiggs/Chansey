@@ -1,10 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
 import { FloatLabelModule } from 'primeng/floatlabel';
+import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
@@ -21,6 +22,7 @@ import { NewPasswordService } from './new-password.service';
     CommonModule,
     ButtonModule,
     FloatLabelModule,
+    FluidModule,
     InputTextModule,
     LazyImageComponent,
     MessageModule,
@@ -33,8 +35,7 @@ import { NewPasswordService } from './new-password.service';
 export class NewPasswordComponent implements OnInit {
   newPasswordForm: FormGroup;
   isLoading = false;
-  errorMessage = '';
-  successMessage = '';
+  messages = signal<any[]>([]);
   formSubmitted = false;
   token: string | null = null;
 
@@ -60,7 +61,13 @@ export class NewPasswordComponent implements OnInit {
       this.token = params['token'];
 
       if (!this.token) {
-        this.errorMessage = 'Invalid or missing reset token. Please try again.';
+        this.messages.set([
+          {
+            content: 'Invalid or missing reset token. Please try again.',
+            severity: 'error',
+            icon: 'pi-exclamation-circle'
+          }
+        ]);
         setTimeout(() => {
           this.router.navigate(['/login']);
         }, 3000);
@@ -77,23 +84,32 @@ export class NewPasswordComponent implements OnInit {
 
     if (this.newPasswordForm.valid && this.token) {
       this.isLoading = true;
-      this.errorMessage = '';
-      this.successMessage = '';
 
       const { password, confirmPassword } = this.newPasswordForm.value;
 
       this.newPasswordService.submit(this.token, password, confirmPassword).subscribe({
         next: (response) => {
           this.isLoading = false;
-          this.successMessage = response.message || 'Password successfully reset!';
-          // Redirect to login after successful password reset
+          this.messages.set([
+            {
+              content: response.message || 'Password successfully reset!',
+              severity: 'success',
+              icon: 'pi-check-circle'
+            }
+          ]);
           setTimeout(() => {
             this.router.navigate(['/login']);
           }, 2000);
         },
         error: (error) => {
           this.isLoading = false;
-          this.errorMessage = error.error?.message || 'An error occurred. Please try again later.';
+          this.messages.set([
+            {
+              content: error.error?.message || 'An error occurred. Please try again later.',
+              severity: 'error',
+              icon: 'pi-exclamation-circle'
+            }
+          ]);
           console.error('Password reset error:', error);
         }
       });

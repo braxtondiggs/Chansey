@@ -11,14 +11,41 @@
         <div class="mx-auto w-full max-w-md">
           <h5 class="title-h5 text-center lg:text-left">Register</h5>
           <p class="body-small mt-4 text-center lg:text-left">Let's get started! Create your account.</p>
+          <div class="flex flex-col">
+            @for (message of messages(); track message; let first = $first) {
+              <p-message
+                [severity]="message.severity"
+                [text]="message.content"
+                icon="pi {{ message.icon }}"
+                size="large"
+                styleClass="my-4"
+              />
+            }
+          </div>
           <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="mt-8">
             <div class="flex gap-4">
               <p-floatlabel variant="on" class="mt-4 w-1/2">
-                <input type="text" formControlName="given_name" pInputText class="w-full" pSize="large" required />
+                <input
+                  type="text"
+                  formControlName="given_name"
+                  pInputText
+                  class="w-full"
+                  pSize="large"
+                  required
+                  autocomplete="given-name"
+                />
                 <label for="given_name">First Name</label>
               </p-floatlabel>
               <p-floatlabel variant="on" class="mt-4 w-1/2">
-                <input type="text" formControlName="family_name" pInputText class="w-full" pSize="large" required />
+                <input
+                  type="text"
+                  formControlName="family_name"
+                  pInputText
+                  class="w-full"
+                  pSize="large"
+                  required
+                  autocomplete="family-name"
+                />
                 <label for="family_name">Last Name</label>
               </p-floatlabel>
             </div>
@@ -31,7 +58,15 @@
               </small>
             </div>
             <p-floatlabel variant="on" class="mt-4">
-              <input type="text" formControlName="email" pInputText class="w-full" pSize="large" required />
+              <input
+                type="text"
+                formControlName="email"
+                pInputText
+                class="w-full"
+                pSize="large"
+                required
+                autocomplete="email"
+              />
               <label for="on_label">Email</label>
             </p-floatlabel>
             <small *ngIf="formSubmitted && registerForm.get('email')?.invalid" class="text-red-500">
@@ -45,6 +80,7 @@
                 [style]="{ width: '100%' }"
                 [toggleMask]="true"
                 required
+                autocomplete="new-password"
               >
                 <ng-template #footer>
                   <ul class="my-0 ml-2 pl-2 leading-normal">
@@ -70,6 +106,7 @@
                 [toggleMask]="true"
                 [feedback]="false"
                 required
+                autocomplete="new-password"
               />
               <label for="on_label">Confirm Password</label>
             </p-floatlabel>
@@ -84,22 +121,6 @@
             >
               Passwords do not match
             </small>
-
-            <p-message
-              *ngIf="errorMessage"
-              [text]="errorMessage"
-              icon="pi pi-times-circle"
-              severity="error"
-              styleClass="mt-4"
-            />
-            <p-message
-              *ngIf="successMessage"
-              [text]="successMessage"
-              icon="pi pi-check-circle"
-              severity="success"
-              size="large"
-              styleClass="mt-4"
-            />
             <p-button
               type="submit"
               class="mt-8 block w-full"

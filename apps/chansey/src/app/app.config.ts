@@ -28,7 +28,6 @@ const MyPreset = definePreset(Aura, {
   }
 });
 
-// Create the providers array without service worker initially
 const providers = [
   provideRouter(
     appRoutes,
@@ -48,7 +47,6 @@ const providers = [
   })
 ];
 
-// Only add service worker provider in production
 if (environment.production) {
   providers.push(
     provideServiceWorker('ngsw-worker.js', {

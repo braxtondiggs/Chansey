@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 
 import { BehaviorSubject, Observable, catchError, of, tap } from 'rxjs';
 
-import { IUser, ILogoutResponse } from '@chansey/api-interfaces';
+import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
 
 @Injectable({
   providedIn: 'root'
@@ -35,11 +35,16 @@ export class AuthService {
     if (!token) return of(null);
 
     this.http
-      .post<ILogoutResponse>('api/auth/logout', {
-        headers: {
-          Authorization: `Bearer ${token}`
+      .post<ILogoutResponse>(
+        'api/auth/logout',
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          withCredentials: true
         }
-      })
+      )
       .pipe(
         catchError((error) => {
           console.error('Logout error:', error);

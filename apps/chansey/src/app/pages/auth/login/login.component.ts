@@ -1,11 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
+import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
@@ -27,14 +28,15 @@ import { LoginService } from './login.service';
     MessageModule,
     PasswordModule,
     ReactiveFormsModule,
-    RouterLink
+    RouterLink,
+    FluidModule
   ],
   templateUrl: './login.component.html'
 })
 export class LoginComponent {
   loginForm: FormGroup;
   isLoading = false;
-  errorMessage = '';
+  messages = signal<any[]>([]);
   formSubmitted = false;
 
   constructor(
@@ -51,21 +53,43 @@ export class LoginComponent {
 
   onSubmit() {
     this.formSubmitted = true;
-
     if (this.loginForm.valid) {
       this.isLoading = true;
-      this.errorMessage = '';
 
       const { email, password, remember } = this.loginForm.value;
 
       this.loginService.login(email, password, remember).subscribe({
-        next: () => {
+        next: (response) => {
           this.isLoading = false;
-          this.router.navigate(['/app/dashboard']);
+          if (response.should_show_email_otp_screen) {
+            this.messages.set([
+              {
+                content: 'Two-factor authentication is required. Please enter your verification code.',
+                severity: 'info',
+                icon: 'pi-info-circle'
+              }
+            ]);
+          } else if (response.user) {
+            this.router.navigate(['/app/dashboard']);
+          } else {
+            this.messages.set([
+              {
+                content: response.message || 'Login failed. Please check your credentials.',
+                severity: 'warn',
+                icon: 'pi-exclamation-circle'
+              }
+            ]);
+          }
         },
         error: (error) => {
           this.isLoading = false;
-          this.errorMessage = error.error?.message || 'Login failed. Please check your credentials.';
+          this.messages.set([
+            {
+              content: error.error?.message || 'Login failed. Please check your credentials.',
+              severity: 'error',
+              icon: 'pi-exclamation-circle'
+            }
+          ]);
           console.error('Login error:', error);
         }
       });

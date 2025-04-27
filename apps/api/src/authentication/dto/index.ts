@@ -7,3 +7,5 @@ export * from './forgot-password-response.dto';
 export * from './reset-password.dto';
 export * from './reset-password-response.dto';
 export * from './user.dto';
+export * from './verify-otp.dto';
+export * from './change-password.dto';

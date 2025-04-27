@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -30,8 +30,7 @@ import { ForgotService } from './forgot.service';
 export class ForgotComponent {
   forgotForm: FormGroup;
   isLoading = false;
-  errorMessage = '';
-  successMessage = '';
+  messages = signal<any[]>([]);
   formSubmitted = false;
 
   constructor(
@@ -48,19 +47,29 @@ export class ForgotComponent {
 
     if (this.forgotForm.valid) {
       this.isLoading = true;
-      this.errorMessage = '';
-      this.successMessage = '';
 
       const { email } = this.forgotForm.value;
 
       this.forgotService.forgot(email).subscribe({
         next: (response) => {
           this.isLoading = false;
-          this.successMessage = response.message;
+          this.messages.set([
+            {
+              content: response.message,
+              severity: 'success',
+              icon: 'pi-check-circle'
+            }
+          ]);
         },
         error: (error) => {
           this.isLoading = false;
-          this.errorMessage = error.error?.message || 'An error occurred. Please try again later.';
+          this.messages.set([
+            {
+              content: error.error?.message || 'An error occurred. Please try again later.',
+              severity: 'error',
+              icon: 'pi-exclamation-circle'
+            }
+          ]);
           console.error('Login error:', error);
         }
       });

@@ -168,80 +168,80 @@ declare type SurfacesType = {
             <div class="flex flex-col flex-wrap gap-3">
               <div class="flex">
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="static"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('static')"
                     inputId="static"
-                  ></p-radio-button>
+                  />
                   <label for="static">Static</label>
                 </div>
 
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="overlay"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('overlay')"
                     inputId="overlay"
-                  ></p-radio-button>
+                  />
                   <label for="overlay">Overlay</label>
                 </div>
               </div>
               <div class="flex">
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="slim"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('slim')"
                     inputId="slim"
-                  ></p-radio-button>
+                  />
                   <label for="slim">Slim</label>
                 </div>
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="compact"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('compact')"
                     inputId="compact"
-                  ></p-radio-button>
+                  />
                   <label for="compact">Compact</label>
                 </div>
               </div>
               <div class="flex">
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="reveal"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('reveal')"
                     inputId="reveal"
-                  ></p-radio-button>
+                  />
                   <label for="reveal">Reveal</label>
                 </div>
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="drawer"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('drawer')"
                     inputId="drawer"
-                  ></p-radio-button>
+                  />
                   <label for="drawer">Drawer</label>
                 </div>
               </div>
               <div class="flex">
                 <div class="flex w-6/12 items-center gap-2">
-                  <p-radio-button
+                  <p-radiobutton
                     name="menuMode"
                     value="horizontal"
                     [(ngModel)]="menuMode"
                     (ngModelChange)="setMenuMode('horizontal')"
                     inputId="horizontal"
-                  ></p-radio-button>
+                  />
                   <label for="horizontal">Horizontal</label>
                 </div>
               </div>

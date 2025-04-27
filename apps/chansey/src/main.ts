@@ -9,10 +9,8 @@ if (environment.production) {
   enableProdMode();
 }
 
-// Conditionally modify appConfig based on environment
 const finalAppConfig = { ...appConfig };
 
-// In development mode, we disable service worker registration
 if (!environment.production) {
   // Check if there's an existing service worker and unregister it
   if ('serviceWorker' in navigator) {

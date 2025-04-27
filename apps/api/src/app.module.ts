@@ -21,6 +21,7 @@ import { HealthModule } from './health/health.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
+import { RiskModule } from './risk/risk.module';
 import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -70,7 +71,8 @@ const isProduction = process.env.NODE_ENV === 'production';
     HttpModule,
     OrderModule,
     PortfolioModule,
-    PriceModule
+    PriceModule,
+    RiskModule
   ],
   exports: [ConfigModule, HttpModule],
   controllers: [AppController],

@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { CreateUserDto } from './create-user.dto';
 
-import { Risk } from '../risk.entity';
+import { Risk } from '../../risk/risk.entity';
 
 export class UserResponseDto {
   @ApiProperty({

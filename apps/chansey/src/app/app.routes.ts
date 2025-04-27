@@ -8,7 +8,8 @@ import { AuthLayout } from './layout/auth.layout';
 export const appRoutes: Route[] = [
   {
     path: '',
-    loadComponent: () => import('./pages/auth/login').then((c) => c.LoginComponent)
+    redirectTo: 'login',
+    pathMatch: 'full'
   },
   {
     path: '',
@@ -30,6 +31,10 @@ export const appRoutes: Route[] = [
       {
         path: 'auth/callback',
         loadComponent: () => import('./pages/auth/new-password').then((c) => c.NewPasswordComponent)
+      },
+      {
+        path: 'auth/otp',
+        loadComponent: () => import('./pages/auth/otp').then((c) => c.OtpComponent)
       }
     ]
   },
@@ -39,16 +44,24 @@ export const appRoutes: Route[] = [
     canActivate: [AuthGuard],
     children: [
       {
+        path: '',
+        redirectTo: 'dashboard',
+        pathMatch: 'full'
+      },
+      {
         path: 'dashboard',
-        loadComponent: () => import('./pages/dashboard').then((c) => c.DashboardComponent)
+        loadComponent: () => import('./pages/dashboard').then((c) => c.DashboardComponent),
+        data: { breadcrumb: 'Dashboard' }
       },
       {
         path: 'profile',
-        loadComponent: () => import('./pages/user/profile').then((c) => c.ProfileComponent)
+        loadComponent: () => import('./pages/user/profile').then((c) => c.ProfileComponent),
+        data: { breadcrumb: 'Profile' }
       },
       {
         path: 'settings',
-        loadComponent: () => import('./pages/user/settings').then((c) => c.SettingsComponent)
+        loadComponent: () => import('./pages/user/settings').then((c) => c.SettingsComponent),
+        data: { breadcrumb: 'Settings' }
       }
       // Additional authenticated routes can be added here
     ]
