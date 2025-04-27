@@ -6,12 +6,12 @@ import { Authorizer } from '@authorizerdev/authorizer-js';
 import { Repository } from 'typeorm';
 
 import { UpdateUserDto } from './dto';
-import { Risk } from './risk.entity';
 import { User } from './users.entity';
 
 import { CoinService } from '../coin/coin.service';
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { Risk } from '../risk/risk.entity';
 
 @Injectable()
 export class UsersService {
@@ -34,42 +34,56 @@ export class UsersService {
     });
   }
 
-  async create(id: string) {
+  async create(user: Partial<User>) {
     try {
-      const newUser = this.user.create({ id });
+      if (!user.id) throw new InternalServerErrorException('User ID is required');
 
-      // Set default risk level (moderate) if not already assigned
-      if (!newUser.risk) {
-        const defaultRisk = await this.risk.findOne({
-          where: { name: 'Moderate' }
-        });
+      const newUser = this.user.create(user);
 
-        if (defaultRisk) {
-          newUser.risk = defaultRisk;
-        } else {
-          this.logger.warn('Default "Moderate" risk level not found');
-        }
+      // Set default risk level
+      const defaultRisk = await this.risk.findOne({
+        where: { level: 3 }
+      });
+
+      if (defaultRisk) {
+        newUser.risk = defaultRisk;
+      } else {
+        this.logger.warn('Default "Moderate" risk level not found');
       }
 
       await this.user.save(newUser);
-      this.logger.debug(`User created with ID: ${id}`);
-      return newUser;
+
+      const savedUser = await this.getById(user.id);
+
+      this.logger.debug(`User created with ID: ${user.id}`);
+      return savedUser;
     } catch (error) {
-      this.logger.error(`Failed to create user with ID: ${id}`, error.stack);
+      this.logger.error(`Failed to create user with ID: ${user?.id}`, error.stack);
       throw new InternalServerErrorException('Failed to create user');
     }
   }
 
-  async update(updateUserDto: UpdateUserDto, user: User) {
+  async update(updateUserDto: UpdateUserDto, user: User, updateAuthorizer = true) {
     try {
-      // Create partial update object with correct types
-      const updateData: Partial<User> = {
-        binance: updateUserDto.binance,
-        binanceSecret: updateUserDto.binanceSecret
-      };
+      const updatedUser = await this.updateLocalProfile(updateUserDto, user);
 
-      // First merge the basic properties
-      const updatedUser = this.user.merge(user, updateData);
+      if (updateAuthorizer) await this.updateAuthorizerProfile(updateUserDto, user.token);
+
+      return this.getWithAuthorizerProfile(updatedUser);
+    } catch (error) {
+      this.logger.error(`Failed to update user with ID: ${user.id}`, error.stack);
+      throw new InternalServerErrorException('Failed to update user');
+    }
+  }
+
+  async updateLocalProfile(updateUserDto: UpdateUserDto, user: User): Promise<User> {
+    try {
+      const { risk, ...rest } = updateUserDto;
+      const updatedUser = this.user.merge(user, rest);
+
+      if (risk && user.risk?.id !== risk) {
+        updatedUser.risk = await this.getRiskLevel(risk);
+      }
 
       // Handle risk update separately
       if (updateUserDto.risk && user.risk?.id !== updateUserDto.risk) {
@@ -78,11 +92,42 @@ export class UsersService {
       }
 
       await this.user.save(updatedUser);
-      this.logger.debug(`User updated with ID: ${user.id}`);
+      this.logger.debug(`Local profile updated for user ID: ${user.id}`);
+
       return updatedUser;
     } catch (error) {
-      this.logger.error(`Failed to update user with ID: ${user.id}`, error.stack);
-      throw new InternalServerErrorException('Failed to update user');
+      this.logger.error(`Failed to update local profile for user ID: ${user.id}`, error.stack);
+      throw new InternalServerErrorException('Failed to update local profile');
+    }
+  }
+
+  async updateAuthorizerProfile(updateUserDto: UpdateUserDto, authorizationToken: string): Promise<void> {
+    const authorizerData = {
+      email: updateUserDto.email,
+      given_name: updateUserDto.given_name,
+      family_name: updateUserDto.family_name,
+      middle_name: updateUserDto.middle_name,
+      nickname: updateUserDto.nickname,
+      birthdate: updateUserDto.birthdate
+    };
+
+    try {
+      const filteredData = Object.fromEntries(Object.entries(authorizerData).filter(([_, v]) => v !== undefined));
+
+      if (Object.keys(filteredData).length > 0) {
+        const Authorization = authorizationToken;
+        const { errors } = await this.auth.updateProfile(filteredData, { Authorization });
+
+        if (errors.length > 0) {
+          this.logger.error(`Failed to update Authorizer profile`, errors);
+          throw new InternalServerErrorException('Failed to update Authorizer profile');
+        }
+
+        this.logger.debug(`Authorizer profile updated successfully`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to update Authorizer profile`, error.stack);
+      throw new InternalServerErrorException('Failed to update Authorizer profile');
     }
   }
 
@@ -109,8 +154,11 @@ export class UsersService {
   async getWithAuthorizerProfile(user: User) {
     try {
       const dbUser = await this.getById(user.id);
+      const Authorization = user.token;
+      const { data } = await this.auth.getProfile({ Authorization });
 
       return {
+        ...data,
         ...dbUser,
         roles: (user as any).allowed_roles
       };

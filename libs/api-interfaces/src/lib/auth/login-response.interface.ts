@@ -1,4 +1,4 @@
-import { IUser } from './user.interface';
+import { IUser } from '../user';
 
 export interface ILoginResponse {
   message: string;
@@ -13,4 +13,5 @@ export interface ILoginResponse {
   authenticator_secret: string | null;
   authenticator_recovery_codes: string[] | null;
   user: IUser;
+  requiresOtp?: boolean; // Added this field to indicate when OTP verification is required
 }

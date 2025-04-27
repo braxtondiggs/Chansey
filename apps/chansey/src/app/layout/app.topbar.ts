@@ -62,11 +62,6 @@ interface NotificationsBars {
             <i class="pi pi-search"></i>
           </a>
         </li>
-        <li class="right-sidebar-item">
-          <button class="app-config-button" (click)="onConfigButtonClick()">
-            <i class="pi pi-cog"></i>
-          </button>
-        </li>
         <li class="right-sidebar-item static sm:relative">
           <a
             class="right-sidebar-button relative z-50"
@@ -312,10 +307,6 @@ export class AppTopbar {
 
   showRightMenu() {
     this.layoutService.toggleRightMenu();
-  }
-
-  onConfigButtonClick() {
-    this.layoutService.showConfigSidebar();
   }
 
   toggleSearchBar() {

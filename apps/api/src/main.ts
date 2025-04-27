@@ -7,6 +7,7 @@ import compression from '@fastify/compress';
 import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import helmet from '@fastify/helmet';
+import fastifyMultipart from '@fastify/multipart';
 import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
@@ -51,7 +52,14 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
         scriptSrcAttr: [`'unsafe-inline'`],
 
         // Allow images from self, data URIs, and specific domains
-        imgSrc: [`'self'`, 'data:', 'validator.swagger.io', 'https://fonts.gstatic.com'],
+        imgSrc: [
+          `'self'`,
+          'data:',
+          'validator.swagger.io',
+          'https://fonts.gstatic.com',
+          'https://images.pexels.com',
+          'https://api.dicebear.com'
+        ],
 
         // Allow connections to self and specific APIs
         connectSrc: [
@@ -111,6 +119,8 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
   });
 
   await app.register(fastifyCsrf);
+
+  await app.register(fastifyMultipart);
 
   app.useLogger(app.get(Logger));
 

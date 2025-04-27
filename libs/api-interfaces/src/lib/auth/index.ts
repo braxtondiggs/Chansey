@@ -6,4 +6,4 @@ export * from './register-response.interface';
 export * from './forgot-password-response.interface';
 export * from './reset-password.interface';
 export * from './reset-password-response.interface';
-export * from './user.interface';
+export * from './otp.interface';

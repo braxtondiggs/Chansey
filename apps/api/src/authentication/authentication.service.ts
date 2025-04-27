@@ -1,9 +1,13 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { Authorizer } from '@authorizerdev/authorizer-js';
+import { Authorizer, User as AuthorizerUser } from '@authorizerdev/authorizer-js';
+
+import { VerifyOtpDto } from './dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
@@ -21,14 +25,40 @@ export class AuthenticationService {
 
   public async register(registrationData: CreateUserDto) {
     try {
-      const { data, errors } = await this.auth.signup(registrationData);
-      if (errors.length) throw new HttpException(errors, HttpStatus.BAD_REQUEST);
-      if (data) await this.user.create(data?.user?.id);
+      const { data, errors } = await this.auth.signup({ ...registrationData, redirect_uri: 'https://cymbit.com' });
+      if (errors && errors.length > 0) throw new HttpException(errors, HttpStatus.BAD_REQUEST);
+      if (!data || !data.user) {
+        throw new HttpException('Registration failed: Something went wrong', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+      if (data) {
+        await this.user.create({
+          id: data.user.id,
+          email: data.user.email,
+          given_name: data.user.given_name,
+          family_name: data.user.family_name,
+          middle_name: data.user.middle_name,
+          nickname: data.user.nickname,
+          birthdate: data.user.birthdate,
+          gender: data.user.gender,
+          phone_number: data.user.phone_number,
+          picture: data.user.picture
+        });
+      }
       return data;
     } catch (error: any) {
       if (error?.response[0]?.message === 'signup is disabled for this instance')
         throw new HttpException('Signup has been temporarily disabled', HttpStatus.BAD_REQUEST);
-      throw new HttpException('Something went wrong', HttpStatus.INTERNAL_SERVER_ERROR);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      console.error('Registration error:', error);
+
+      throw new HttpException(
+        'Registration failed: ' + (error?.message || 'Unknown error occurred'),
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -45,13 +75,39 @@ export class AuthenticationService {
   public async getAuthenticatedUser(email: string, password: string, rememberMe = false) {
     try {
       const { data: authUser, errors } = await this.auth.login({ email, password });
-      if (!authUser || errors) return authUser;
+      if (!authUser || errors.length) return authUser;
 
-      return await this.user
-        .getById(authUser.user.id)
-        .then(() => authUser)
-        .catch(async () => await this.user.create(authUser.user.id))
-        .finally(() => authUser);
+      let userData: User;
+      try {
+        userData = await this.user.getById(authUser.user.id);
+      } catch (error) {
+        userData = await this.user.create({
+          id: authUser.user.id,
+          email: authUser.user.email,
+          given_name: authUser.user.given_name,
+          family_name: authUser.user.family_name,
+          middle_name: authUser.user.middle_name,
+          nickname: authUser.user.nickname,
+          birthdate: authUser.user.birthdate,
+          gender: authUser.user.gender,
+          phone_number: authUser.user.phone_number,
+          picture: authUser.user.picture
+        });
+      }
+
+      userData.token = authUser.access_token;
+      userData.rememberMe = rememberMe;
+      userData.id_token = authUser.id_token;
+      userData.expires_in = authUser.expires_in;
+
+      const combinedUserData = {
+        ...authUser,
+        user: {
+          ...authUser.user,
+          ...userData
+        }
+      };
+      return combinedUserData;
     } catch (error) {
       throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
     }
@@ -60,5 +116,57 @@ export class AuthenticationService {
   public validateAPIKey(key: string) {
     const APIKey = this.config.get('CHANSEY_API_KEY');
     if (key === APIKey) return true;
+  }
+
+  public async verifyOtp(verifyOtp: VerifyOtpDto) {
+    const { data, errors } = await this.auth.verifyOtp(verifyOtp);
+
+    if (errors.length) {
+      throw new HttpException(errors[0], HttpStatus.BAD_REQUEST);
+    }
+
+    return data;
+  }
+
+  public async resendOtp(email: string) {
+    const { data, errors } = await this.auth.resendOtp({ email });
+    if (errors.length) {
+      throw new HttpException(errors[0], HttpStatus.BAD_REQUEST);
+    }
+    return data;
+  }
+
+  public async changePassword(user: User, changePasswordData: ChangePasswordDto) {
+    try {
+      const { old_password, new_password, confirm_new_password } = changePasswordData;
+
+      if (new_password !== confirm_new_password) {
+        throw new HttpException('New password and confirmation do not match', HttpStatus.BAD_REQUEST);
+      }
+
+      const Authorization = user.token;
+      const { data, errors } = await this.auth.updateProfile(
+        {
+          old_password,
+          new_password,
+          confirm_new_password
+        },
+        { Authorization }
+      );
+
+      if (errors && errors.length) {
+        throw new HttpException(errors[0], HttpStatus.BAD_REQUEST);
+      }
+
+      return data || { message: 'Password changed successfully' };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Failed to change password: ' + (error?.message || 'Unknown error occurred'),
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
   }
 }

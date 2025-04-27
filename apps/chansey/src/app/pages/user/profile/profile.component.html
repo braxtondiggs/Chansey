@@ -1,0 +1,194 @@
+<p-card header="Profile" styleClass="max-w-4xl mx-auto p-4">
+  <p class="text-600 mb-4 md:mb-5">Manage your personal information and preferences</p>
+  <p-fluid>
+    <div class="flex-column my-8 flex flex-col items-center gap-8 md:flex-row md:gap-4">
+      <div class="flex w-full flex-col items-center gap-3 md:w-1/2">
+        <p-avatar [image]="userProfileImage()" shape="circle" class="mb-8"></p-avatar>
+        <p-fileUpload
+          mode="basic"
+          chooseIcon="pi pi-upload"
+          chooseLabel="Upload Profile Image"
+          class="profile-upload-button"
+          accept="image/*"
+          [auto]="true"
+          (onUpload)="onUpload($event)"
+          [maxFileSize]="1000000"
+        ></p-fileUpload>
+      </div>
+
+      <form [formGroup]="profileForm" (ngSubmit)="onSubmit()" class="flex w-full max-w-full flex-col gap-4 md:w-1/2">
+        <div class="flex flex-col">
+          @for (message of messages(); track message; let first = $first) {
+            <p-message
+              [severity]="message.severity"
+              [text]="message.content"
+              icon="pi {{ message.icon }}"
+              size="large"
+              styleClass="my-4"
+            />
+          }
+        </div>
+        <div class="flex flex-col gap-4 md:flex-row">
+          <div class="flex w-full flex-col gap-4 md:flex-row">
+            <p-floatlabel variant="on" class="flex w-full flex-wrap">
+              <input
+                id="given_name"
+                type="text"
+                pInputText
+                formControlName="given_name"
+                pSize="large"
+                autocomplete="given-name"
+              />
+              <label for="given_name">First Name</label>
+            </p-floatlabel>
+            <p-floatlabel variant="on" class="flex w-full flex-wrap">
+              <input
+                id="family_name"
+                type="text"
+                pInputText
+                formControlName="family_name"
+                pSize="large"
+                autocomplete="family-name"
+              />
+              <label for="family_name">Last Name</label>
+            </p-floatlabel>
+          </div>
+        </div>
+        <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
+          <input id="email" type="email" pInputText formControlName="email" pSize="large" autocomplete="email" />
+          <label for="email">Email</label>
+        </p-floatlabel>
+
+        <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
+          <p-select
+            id="risk"
+            formControlName="risk"
+            [options]="risks()"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="Select Risk Profile"
+            styleClass="w-full"
+            size="large"
+          />
+          <label for="risk">Risk Profile</label>
+        </p-floatlabel>
+
+        <div class="mt-8 flex flex-wrap justify-end">
+          <p-button
+            type="submit"
+            label="Save Changes"
+            icon="pi pi-check"
+            size="large"
+            [loading]="profileLoading"
+            [disabled]="!profileForm.valid || (!profileForm.dirty && !uploadedFile)"
+          ></p-button>
+        </div>
+      </form>
+    </div>
+  </p-fluid>
+</p-card>
+
+<!-- Password Change Section -->
+
+<p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4">
+  <p class="text-600 mb-4 md:mb-5">Update your account password</p>
+  <p-fluid>
+    <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()" class="mx-auto flex flex-col gap-4">
+      <p-floatlabel variant="on" class="flex w-full flex-wrap">
+        <p-password
+          formControlName="currentPassword"
+          size="large"
+          [toggleMask]="true"
+          [feedback]="false"
+          required
+          autocomplete="current-password"
+        />
+        <label for="currentPassword">Current Password</label>
+      </p-floatlabel>
+      <small *ngIf="passwordFormSubmitted && passwordForm.get('currentPassword')?.invalid" class="text-red-500">
+        Current password is required
+      </small>
+
+      <div class="flex w-full flex-col gap-4 md:flex-row">
+        <div class="flex w-full flex-col">
+          <p-floatlabel variant="on" class="flex w-full flex-wrap">
+            <p-password
+              formControlName="newPassword"
+              size="large"
+              [toggleMask]="true"
+              autocomplete="new-password"
+              required
+            >
+              <ng-template #footer>
+                <ul class="my-0 ml-2 pl-2 leading-normal">
+                  <li>At least one lowercase</li>
+                  <li>At least one uppercase</li>
+                  <li>At least one numeric</li>
+                  <li>At least one special character</li>
+                  <li>Minimum 8 characters</li>
+                </ul>
+              </ng-template>
+            </p-password>
+            <label for="newPassword">New Password</label>
+          </p-floatlabel>
+          <small *ngIf="passwordFormSubmitted && passwordForm.get('newPassword')?.invalid" class="text-red-500">
+            {{ getPasswordError('newPassword') }}
+          </small>
+        </div>
+
+        <div class="flex w-full flex-col">
+          <p-floatlabel variant="on" class="flex w-full flex-wrap">
+            <p-password
+              formControlName="confirmPassword"
+              size="large"
+              [toggleMask]="true"
+              [feedback]="false"
+              autocomplete="new-password"
+              required
+            />
+            <label for="confirmPassword">Confirm Password</label>
+          </p-floatlabel>
+          <small *ngIf="passwordFormSubmitted && passwordForm.get('confirmPassword')?.invalid" class="text-red-500">
+            Password confirmation is required
+          </small>
+          <small
+            *ngIf="
+              passwordFormSubmitted &&
+              passwordForm.get('confirmPassword')?.valid &&
+              passwordForm.hasError('passwordMismatch')
+            "
+            class="text-red-500"
+          >
+            Passwords do not match
+          </small>
+        </div>
+      </div>
+
+      <div class="mt-4 flex justify-end">
+        <p-button
+          type="submit"
+          label="Change Password"
+          icon="pi pi-key"
+          size="large"
+          [loading]="passwordLoading"
+          [disabled]="!passwordForm.valid"
+        ></p-button>
+      </div>
+    </form>
+  </p-fluid>
+</p-card>
+
+<p-toast position="bottom-right"></p-toast>
+<p-confirmDialog [style]="{ width: '450px' }"></p-confirmDialog>
+
+<style>
+  .p-avatar {
+    width: 20rem;
+    height: fit-content;
+  }
+  @media (max-width: 639px) {
+    .p-avatar {
+      width: 100%;
+    }
+  }
+</style>

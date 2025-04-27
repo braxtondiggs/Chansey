@@ -25,9 +25,9 @@ export class PwaService {
       this.swUpdate.versionUpdates
         .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
         .subscribe(() => {
-          if (confirm('A new version of the application is available. Load it now?')) {
+          this.swUpdate.activateUpdate().then(() => {
             window.location.reload();
-          }
+          });
         });
 
       // Check for updates every 6 hours

@@ -1,0 +1,232 @@
+<p-card class="tabs">
+  <p-tabs value="0" scrollable>
+    <p-tablist>
+      <p-tab value="0"><i class="pi pi-palette mr-2"></i>Appearance</p-tab>
+      <p-tab value="1"><i class="pi pi-bell mr-2"></i>Notification</p-tab>
+      <p-tab value="2"><i class="pi pi-shield mr-2"></i> Privacy & Security</p-tab>
+    </p-tablist>
+    <p-tabpanels>
+      <p-tabpanel value="0">
+        <p-panel header="Color Scheme" [toggleable]="true" styleClass="mt-3">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-row items-center justify-between py-3">
+              <span class="text-lg font-semibold">Dark Mode</span>
+              <p-toggleswitch class="mt-2 block" [(ngModel)]="darkMode" (ngModelChange)="toggleDarkMode()" />
+            </div>
+
+            <div class="flex flex-row items-center justify-between py-3">
+              <span class="text-lg font-semibold">App Theme</span>
+              <p-selectbutton
+                class="mt-2 block"
+                [options]="presets"
+                [(ngModel)]="selectedPreset"
+                (ngModelChange)="onPresetChange($event)"
+                [allowEmpty]="false"
+              />
+            </div>
+
+            <div class="flex flex-row items-center justify-between py-3">
+              <span class="text-lg font-semibold">Card Style</span>
+              <p-selectbutton
+                class="mt-2 block md:mt-0"
+                [(ngModel)]="cardStyle"
+                (ngModelChange)="onCardStyleChange($event)"
+                [options]="cardStyleOptions"
+                optionLabel="name"
+                optionValue="value"
+                [allowEmpty]="false"
+              />
+            </div>
+
+            <div class="mb-4 flex flex-col items-start py-3">
+              <span class="mb-2 text-lg font-semibold">Theme Color:</span>
+              <div class="flex max-w-full flex-wrap gap-2 pr-0 pt-2 md:max-w-lg md:pr-48">
+                <button
+                  *ngFor="let primaryColor of primaryColors; trackBy: trackByName"
+                  type="button"
+                  [title]="primaryColor.name"
+                  (click)="updateColors($event, 'primary', primaryColor)"
+                  class="flex h-6 w-6 cursor-pointer items-center justify-center rounded duration-150 hover:shadow-lg"
+                  [style]="{
+                    'background-color':
+                      primaryColor?.name === 'noir' ? 'var(--text-color)' : primaryColor?.palette?.['500']
+                  }"
+                >
+                  <i *ngIf="primaryColor.name === selectedPrimaryColor" class="pi pi-check text-white"></i>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <span class="mb-2 text-lg font-semibold">Surface Color:</span>
+              <div class="flex max-w-full flex-wrap gap-2 pr-0 pt-2 md:max-w-lg md:pr-48">
+                <button
+                  *ngFor="let surface of surfaces; trackBy: trackByName"
+                  type="button"
+                  [title]="surface.name"
+                  (click)="updateColors($event, 'surface', surface)"
+                  class="flex h-6 w-6 cursor-pointer items-center justify-center rounded duration-150 hover:shadow-lg"
+                  [style]="{
+                    'background-color': surface?.palette?.['500']
+                  }"
+                >
+                  <i
+                    *ngIf="
+                      selectedSurfaceColor
+                        ? selectedSurfaceColor === surface.name
+                        : darkMode
+                          ? surface.name === 'zinc'
+                          : surface.name === 'slate'
+                    "
+                    class="pi pi-check text-white"
+                  ></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </p-panel>
+
+        <p-panel header="Menu Settings" [toggleable]="true" styleClass="mt-3">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-row items-center justify-between py-3">
+              <span class="text-lg font-semibold">Menu Theme</span>
+              <p-selectbutton
+                class="mt-2 block md:mt-0"
+                [(ngModel)]="menuTheme"
+                (ngModelChange)="onMenuThemeChange($event)"
+                [options]="menuThemeOptions"
+                optionLabel="name"
+                optionValue="value"
+                [allowEmpty]="false"
+              />
+            </div>
+
+            <div class="flex flex-col justify-between py-3 md:flex-row md:items-center">
+              <span class="text-lg font-semibold">Menu Type</span>
+              <div class="flex w-64 flex-col flex-wrap gap-3 pt-2">
+                <div class="flex">
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="static"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('static')"
+                      inputId="static"
+                    />
+                    <label for="static">Static</label>
+                  </div>
+
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="overlay"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('overlay')"
+                      inputId="overlay"
+                    />
+                    <label for="overlay">Overlay</label>
+                  </div>
+                </div>
+                <div class="flex">
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="slim"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('slim')"
+                      inputId="slim"
+                    />
+                    <label for="slim">Slim</label>
+                  </div>
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="compact"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('compact')"
+                      inputId="compact"
+                    />
+                    <label for="compact">Compact</label>
+                  </div>
+                </div>
+                <div class="flex">
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="reveal"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('reveal')"
+                      inputId="reveal"
+                    />
+                    <label for="reveal">Reveal</label>
+                  </div>
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="drawer"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('drawer')"
+                      inputId="drawer"
+                    />
+                    <label for="drawer">Drawer</label>
+                  </div>
+                </div>
+                <div class="flex">
+                  <div class="flex w-6/12 items-center gap-2">
+                    <p-radiobutton
+                      name="menuMode"
+                      value="horizontal"
+                      [(ngModel)]="menuMode"
+                      (ngModelChange)="setMenuMode('horizontal')"
+                      inputId="horizontal"
+                    />
+                    <label for="horizontal">Horizontal</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </p-panel>
+      </p-tabpanel>
+    </p-tabpanels>
+
+    <p-tabpanels>
+      <p-tabpanel value="1">
+        <p-panel header="General" [toggleable]="true">
+          <form [formGroup]="notificationForm">
+            <h3 class="text-md mb-3 mr-1 text-right font-semibold">Push</h3>
+            <div class="flex flex-row justify-between py-3">
+              <div class="mb-2 md:mb-0">
+                <div class="text-900 mb-1 text-lg font-semibold">Account Updates</div>
+                <div class="text-600 text-sm">Receive notifications for account-related activities</div>
+              </div>
+              <p-toggleswitch formControlName="pushNotifications" styleClass="mt-2 md:mt-0"></p-toggleswitch>
+            </div>
+          </form>
+        </p-panel>
+      </p-tabpanel>
+    </p-tabpanels>
+
+    <p-tabpanels>
+      <p-tabpanel value="2">
+        <p-panel header="Security Settings" [toggleable]="false">
+          <div class="flex flex-row justify-between py-3">
+            <div class="mb-2 md:mb-0">
+              <div class="text-900 mb-1 text-lg font-semibold">Two-Factor Authentication</div>
+              <div class="text-600 text-sm">Add an extra layer of security to your account</div>
+            </div>
+            <p-toggleswitch
+              [disabled]="true"
+              [(ngModel)]="twoFactorAuth"
+              (onChange)="toggleTwoFactorAuth($event)"
+              styleClass="mt-2 md:mt-0"
+            />
+          </div>
+        </p-panel>
+      </p-tabpanel>
+    </p-tabpanels>
+  </p-tabs>
+</p-card>
+
+<p-toast position="bottom-right"></p-toast>
+<p-confirmDialog [style]="{ width: '450px' }"></p-confirmDialog>

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -35,8 +35,7 @@ import { RegisterService } from './register.service';
 export class RegisterComponent {
   registerForm: FormGroup;
   isLoading = false;
-  errorMessage = '';
-  successMessage = '';
+  messages = signal<any[]>([]);
   formSubmitted = false;
 
   constructor(
@@ -66,8 +65,6 @@ export class RegisterComponent {
 
     if (this.registerForm.valid) {
       this.isLoading = true;
-      this.errorMessage = '';
-      this.successMessage = '';
 
       const { email, password, confirmPassword, given_name, family_name } = this.registerForm.value;
 
@@ -75,12 +72,24 @@ export class RegisterComponent {
         next: () => {
           this.isLoading = false;
           this.formSubmitted = false;
-          this.successMessage = 'Registration successful! Please check your email for verification.';
+          this.messages.set([
+            {
+              content: 'Registration successful! Please check your email for verification.',
+              severity: 'success',
+              icon: 'pi-check-circle'
+            }
+          ]);
           this.registerForm.reset();
         },
         error: (error) => {
           this.isLoading = false;
-          this.errorMessage = error.error?.message || 'Registration failed. Please check your credentials.';
+          this.messages.set([
+            {
+              content: error.error?.message || 'Registration failed. Please check your credentials.',
+              severity: 'error',
+              icon: 'pi-exclamation-circle'
+            }
+          ]);
           console.error('Register error:', error);
         }
       });

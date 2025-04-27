@@ -156,6 +156,12 @@ export class LayoutService {
         if (config.darkTheme) {
           document.documentElement.classList.add('app-dark');
         }
+      } else {
+        const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        this.layoutConfig.update((state) => ({
+          ...state,
+          darkTheme: isDarkMode
+        }));
       }
     } catch (error) {
       console.error('Error loading saved configuration', error);
