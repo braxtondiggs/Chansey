@@ -48,11 +48,7 @@ interface NotificationsBars {
       <img class="horizontal-logo" src="/layout/images/logo-white.svg" alt="diamond-layout" />
       <span class="topbar-separator"></span>
       <app-breadcrumb></app-breadcrumb>
-      <img
-        class="mobile-logo"
-        src="/layout/images/logo-{{ isDarkTheme() ? 'white' : 'dark' }}.svg"
-        alt="diamond-layout"
-      />
+      <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
     </div>
 
     <div class="topbar-right">
@@ -201,13 +197,12 @@ interface NotificationsBars {
 export class AppTopbar {
   layoutService = inject(LayoutService);
   authService = inject(AuthService);
-  isDarkTheme = computed(() => this.layoutService.isDarkTheme());
 
   private userSignal = toSignal(this.authService.user$, { initialValue: null });
 
   userProfileImage = computed(() => {
     const user = this.userSignal();
-    return user?.['picture'] || `https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user?.['given_name']}`;
+    return user?.['picture'] || `https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user?.['id']}`;
   });
 
   @ViewChild('menubutton') menuButton!: ElementRef;

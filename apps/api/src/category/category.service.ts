@@ -13,7 +13,9 @@ export class CategoryService {
   constructor(@InjectRepository(Category) private readonly category: Repository<Category>) {}
 
   async getCategories(): Promise<Category[]> {
-    return await this.category.find();
+    return await this.category.find({
+      order: { name: 'ASC' }
+    });
   }
 
   async getCategoryById(categoryId: string): Promise<Category> {

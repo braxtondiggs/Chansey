@@ -65,17 +65,26 @@ export class AuthenticationService {
   public getCookieWithJwtToken(token: string, expires_in: number, rememberMe = false) {
     // If rememberMe is true, set a longer expiration (30 days), otherwise use the provided expires_in
     const expiration = rememberMe ? 30 * 24 * 60 * 60 : expires_in;
-    return `Authentication=${token}; HttpOnly; Path=/; Max-Age=${expiration}`;
+    return `chansey_auth=${token}; Max-Age=${expiration}; Path=/; HttpOnly; Secure; SameSite=Strict`;
   }
 
   public getCookieForLogOut() {
-    return `Authentication=; HttpOnly; Path=/; Max-Age=0`;
+    return `chansey_auth=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Strict`;
   }
 
   public async getAuthenticatedUser(email: string, password: string, rememberMe = false) {
     try {
       const { data: authUser, errors } = await this.auth.login({ email, password });
-      if (!authUser || errors.length) return authUser;
+      if (errors && errors.length > 0) {
+        throw new HttpException(errors[0].message || 'Authentication failed', HttpStatus.BAD_REQUEST);
+      }
+      if (
+        (authUser && authUser.should_show_email_otp_screen) ||
+        authUser.should_show_totp_screen ||
+        authUser.should_show_mobile_otp_screen
+      ) {
+        return authUser;
+      }
 
       let userData: User;
       try {
@@ -109,7 +118,16 @@ export class AuthenticationService {
       };
       return combinedUserData;
     } catch (error) {
-      throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
+      if (error?.message === 'bad user credentials' || error?.message === 'user not found') {
+        throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
+      } else {
+        // Log the unexpected error and throw a generic message
+        console.error('Authentication error:', error);
+        throw new HttpException(
+          'Authentication failed: ' + (error?.message || 'Unknown error occurred'),
+          HttpStatus.INTERNAL_SERVER_ERROR
+        );
+      }
     }
   }
 

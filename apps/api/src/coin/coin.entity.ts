@@ -248,7 +248,7 @@ export class Coin {
   })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz', select: false })
+  @UpdateDateColumn({ type: 'timestamptz' })
   @ApiProperty({
     description: 'Timestamp when the coin was last updated',
     example: '2023-01-01T00:00:00Z',

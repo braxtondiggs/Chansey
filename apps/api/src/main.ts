@@ -66,7 +66,8 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
           `'self'`,
           'https://api.coingecko.com',
           'https://api.cryptocurrencyalerting.com',
-          'https://www.cymbit.com'
+          'https://www.cymbit.com',
+          'https://api.dicebear.com'
         ],
 
         // Allow fonts from self and specific CDNs

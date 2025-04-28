@@ -1,0 +1,158 @@
+<p-toast></p-toast>
+<p-confirmDialog></p-confirmDialog>
+
+<p-card styleClass="p-0 md:p-4">
+  <p-table
+    #dt
+    [value]="coins"
+    [rows]="10"
+    [paginator]="true"
+    [loading]="isLoading"
+    [rowHover]="true"
+    dataKey="id"
+    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+    [showCurrentPageReport]="true"
+    [(selection)]="selectedCoins"
+    [globalFilterFields]="['name', 'symbol']"
+    size="small"
+    stripedRows
+    [responsiveLayout]="'stack'"
+    styleClass="p-datatable-sm p-datatable-responsive max-w-full sm:w-auto"
+    breakpoint="768px"
+  >
+    <ng-template pTemplate="caption">
+      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+        <div class="flex gap-4">
+          <p-button label="New" [raised]="true" icon="pi pi-plus" severity="success" (click)="openNewCoinDialog()" />
+          <p-button
+            severity="danger"
+            label="Delete"
+            icon="pi pi-trash"
+            outlined
+            (onClick)="deleteSelectedCoins()"
+            [disabled]="!selectedCoins || !selectedCoins.length"
+            class="hidden md:inline-flex"
+          />
+        </div>
+        <p-iconfield>
+          <p-inputicon styleClass="pi pi-search" />
+          <input
+            pInputText
+            type="text"
+            (input)="applyGlobalFilter($event)"
+            placeholder="Search..."
+            class="w-full md:w-auto"
+          />
+        </p-iconfield>
+      </div>
+    </ng-template>
+    <ng-template pTemplate="header">
+      <tr>
+        <th style="width: 3rem" class="coin-checkbox-cell">
+          <p-tableHeaderCheckbox />
+        </th>
+        <th pSortableColumn="name">Name <p-sortIcon field="name" /></th>
+        <th pSortableColumn="symbol">Symbol <p-sortIcon field="symbol" /></th>
+        <th>Updated At</th>
+        <th style="width: 10rem">Actions</th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-coin>
+      <tr>
+        <td style="width: 3rem" class="coin-checkbox-cell">
+          <p-tableCheckbox [value]="coin" />
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Name</span>
+          {{ coin.name }}
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Symbol</span>
+          {{ coin.symbol }}
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Updated At</span>
+          {{ coin.updatedAt | date: 'short' }}
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Actions</span>
+          <div class="flex gap-2">
+            <p-button
+              icon="pi pi-pencil"
+              severity="secondary"
+              class="mr-2"
+              [rounded]="true"
+              [outlined]="true"
+              (click)="openEditCoinDialog(coin)"
+            />
+            <p-button
+              icon="pi pi-trash"
+              severity="danger"
+              [rounded]="true"
+              [outlined]="true"
+              (click)="confirmDeleteCoin(coin)"
+            />
+          </div>
+        </td>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td colspan="8" class="p-4 text-center">No coins found</td>
+      </tr>
+    </ng-template>
+  </p-table>
+</p-card>
+
+<p-dialog
+  [(visible)]="coinDialog"
+  [style]="{ width: '450px' }"
+  header="{{ isNew ? 'New Coin' : 'Edit Coin' }}"
+  [modal]="true"
+  styleClass="p-fluid"
+  [closable]="!isLoading"
+  [closeOnEscape]="!isLoading"
+>
+  <form [formGroup]="coinForm" class="my-4">
+    <p-fluid>
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
+        <input
+          id="name"
+          type="text"
+          pInputText
+          formControlName="name"
+          pSize="large"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted && coinForm.controls['name'].invalid }"
+        />
+        <label for="name">Name</label>
+        <small class="p-error" *ngIf="submitted && coinForm.controls['name'].invalid">Name is required.</small>
+      </p-floatlabel>
+
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
+        <input
+          id="symbol"
+          type="text"
+          pInputText
+          formControlName="symbol"
+          pSize="large"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted && coinForm.controls['symbol'].invalid }"
+        />
+        <label for="symbol">Symbol</label>
+        <small class="p-error" *ngIf="submitted && coinForm.controls['symbol'].invalid">Symbol is required.</small>
+      </p-floatlabel>
+    </p-fluid>
+  </form>
+
+  <ng-template pTemplate="footer">
+    <p-button severity="secondary" label="Cancel" icon="pi pi-times" (click)="hideDialog()" [disabled]="isLoading" />
+    <p-button label="Save" icon="pi pi-check" (click)="saveCoin()" [loading]="isLoading" />
+  </ng-template>
+</p-dialog>
+
+<style>
+  @media screen and (max-width: 768px) {
+    .coin-checkbox-cell {
+      display: none !important;
+    }
+  }
+</style>

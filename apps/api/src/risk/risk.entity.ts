@@ -1,5 +1,6 @@
-import { Exclude } from 'class-transformer';
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { ApiProperty } from '@nestjs/swagger';
+
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 import { User } from '../users/users.entity';
 
@@ -12,11 +13,34 @@ export class Risk {
   name: string;
 
   @Column()
-  @Exclude()
   description: string;
 
   @Column()
   level: number;
+
+  @CreateDateColumn({
+    type: 'timestamptz',
+    default: () => 'CURRENT_TIMESTAMP'
+  })
+  @ApiProperty({
+    description: 'Timestamp when the risk level was created',
+    example: '2024-04-23T18:25:43.511Z',
+    type: 'string',
+    format: 'date-time'
+  })
+  createdAt: Date;
+
+  @UpdateDateColumn({
+    type: 'timestamptz',
+    default: () => 'CURRENT_TIMESTAMP'
+  })
+  @ApiProperty({
+    description: 'Timestamp when the risk level was last updated',
+    example: '2024-04-23T18:25:43.511Z',
+    type: 'string',
+    format: 'date-time'
+  })
+  updatedAt: Date;
 
   @OneToMany(() => User, (user) => user.risk)
   users: User[];
