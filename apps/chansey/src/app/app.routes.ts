@@ -1,5 +1,6 @@
 import { Route } from '@angular/router';
 
+import { AdminGuard } from './guard/admin.guard';
 import { AuthGuard } from './guard/auth.guard';
 import { ReverseAuthGuard } from './guard/reverse-auth.guard';
 import { AppLayout } from './layout/app.layout';
@@ -64,6 +65,39 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Settings' }
       }
       // Additional authenticated routes can be added here
+    ]
+  },
+  {
+    path: 'admin',
+    component: AppLayout,
+    canActivate: [AuthGuard, AdminGuard],
+    data: { breadcrumb: 'Admin' },
+    children: [
+      {
+        path: '',
+        redirectTo: '/app/dashboard',
+        pathMatch: 'full'
+      },
+      {
+        path: 'categories',
+        loadComponent: () => import('./pages/admin/categories').then((c) => c.CategoriesComponent),
+        data: { breadcrumb: 'Categories' }
+      },
+      {
+        path: 'coins',
+        loadComponent: () => import('./pages/admin/coins').then((c) => c.CoinsComponent),
+        data: { breadcrumb: 'Coins' }
+      },
+      {
+        path: 'exchanges',
+        loadComponent: () => import('./pages/admin/exchanges').then((c) => c.ExchangesComponent),
+        data: { breadcrumb: 'Exchanges' }
+      },
+      {
+        path: 'risks',
+        loadComponent: () => import('./pages/admin/risks').then((c) => c.RisksComponent),
+        data: { breadcrumb: 'Risk Levels' }
+      }
     ]
   },
   { path: '**', redirectTo: 'login' } // Redirect all unknown routes to login

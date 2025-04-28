@@ -1,0 +1,180 @@
+<p-toast></p-toast>
+<p-confirmDialog></p-confirmDialog>
+
+<p-card>
+  <p-table
+    #dt
+    [loading]="isLoading"
+    [paginator]="true"
+    [rowHover]="true"
+    [rows]="15"
+    [showCurrentPageReport]="true"
+    [(selection)]="selectedRisks"
+    [value]="risks"
+    [globalFilterFields]="['name', 'description']"
+    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+    dataKey="id"
+    size="small"
+    stripedRows
+    [responsiveLayout]="'stack'"
+    styleClass="p-datatable-sm p-datatable-responsive max-w-full sm:w-auto"
+    breakpoint="768px"
+  >
+    <ng-template #caption>
+      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+        <div class="flex gap-4">
+          <p-button label="New" [raised]="true" icon="pi pi-plus" severity="success" (click)="openNewRiskDialog()" />
+          <p-button
+            severity="danger"
+            label="Delete"
+            icon="pi pi-trash"
+            outlined
+            (onClick)="deleteSelectedRisks()"
+            [disabled]="!selectedRisks || !selectedRisks.length"
+            class="hidden md:inline-flex"
+          />
+        </div>
+        <p-iconfield>
+          <p-inputicon styleClass="pi pi-search" />
+          <input
+            pInputText
+            type="text"
+            (input)="applyGlobalFilter($event)"
+            placeholder="Search..."
+            class="w-full md:w-auto"
+          />
+        </p-iconfield>
+      </div>
+    </ng-template>
+    <ng-template #header>
+      <tr>
+        <th style="width: 3rem" class="risk-checkbox-cell">
+          <p-tableHeaderCheckbox />
+        </th>
+        <th pSortableColumn="name">Name <p-sortIcon field="name" /></th>
+        <th pSortableColumn="description">Description <p-sortIcon field="description" /></th>
+        <th pSortableColumn="level">Level <p-sortIcon field="level" /></th>
+        <th>Updated At</th>
+        <th style="width: 10rem">Actions</th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-risk>
+      <tr>
+        <td style="width: 3rem" class="risk-checkbox-cell">
+          <p-tableCheckbox [value]="risk" />
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Name</span>
+          {{ risk.name }}
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Description</span>
+          {{ risk.description }}
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Level</span>
+          <span [ngStyle]="{ 'font-weight': 'bold' }">{{ getRiskLevelLabel(risk.level) }}</span>
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Updated At</span>
+          {{ risk.updatedAt | date: 'short' }}
+        </td>
+        <td>
+          <span class="block p-column-title md:hidden">Actions</span>
+          <div class="flex gap-2">
+            <p-button
+              icon="pi pi-pencil"
+              severity="secondary"
+              class="mr-2"
+              [rounded]="true"
+              [outlined]="true"
+              (click)="openEditRiskDialog(risk)"
+            />
+            <p-button
+              icon="pi pi-trash"
+              severity="danger"
+              [rounded]="true"
+              [outlined]="true"
+              (click)="confirmDeleteRisk(risk)"
+            />
+          </div>
+        </td>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td colspan="7" class="p-4 text-center">No risk levels found</td>
+      </tr>
+    </ng-template>
+  </p-table>
+</p-card>
+
+<p-dialog
+  [(visible)]="riskDialog"
+  [style]="{ width: '450px' }"
+  header="{{ isNew ? 'New Risk Level' : 'Edit Risk Level' }}"
+  [modal]="true"
+  [closable]="!isLoading"
+  [closeOnEscape]="!isLoading"
+>
+  <form [formGroup]="riskForm" class="my-4">
+    <p-fluid>
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
+        <input
+          id="name"
+          type="text"
+          pInputText
+          formControlName="name"
+          pSize="large"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted && riskForm.controls['name'].invalid }"
+        />
+        <label for="name">Name</label>
+        <small class="p-error" *ngIf="submitted && riskForm.controls['name'].invalid">Name is required.</small>
+      </p-floatlabel>
+
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
+        <textarea
+          id="description"
+          pTextarea
+          formControlName="description"
+          [rows]="3"
+          size="large"
+          fluid="true"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted && riskForm.controls['description'].invalid }"
+        ></textarea>
+        <label for="description">Description</label>
+        <small class="p-error" *ngIf="submitted && riskForm.controls['description'].invalid"
+          >Description is required.</small
+        >
+      </p-floatlabel>
+
+      <div class="mb-4 field">
+        <label for="level" class="block mb-2 font-medium">Risk Level (1-5)</label>
+        <p-inputNumber
+          id="level"
+          formControlName="level"
+          [min]="1"
+          [max]="5"
+          [showButtons]="true"
+          styleClass="w-full"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted && riskForm.controls['level'].invalid }"
+        ></p-inputNumber>
+        <small class="p-error" *ngIf="submitted && riskForm.controls['level'].invalid"
+          >Level must be between 1 and 5.</small
+        >
+      </div>
+    </p-fluid>
+  </form>
+
+  <ng-template #footer>
+    <p-button severity="secondary" label="Cancel" icon="pi pi-times" (click)="hideDialog()" [disabled]="isLoading" />
+    <p-button label="Save" icon="pi pi-check" (click)="saveRisk()" [loading]="isLoading" />
+  </ng-template>
+</p-dialog>
+<style>
+  @media screen and (max-width: 768px) {
+    .risk-checkbox-cell {
+      display: none !important;
+    }
+  }
+</style>

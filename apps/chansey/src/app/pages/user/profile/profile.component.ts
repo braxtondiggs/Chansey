@@ -86,7 +86,7 @@ export class ProfileComponent {
 
   userProfileImage = () => {
     const user = this.userSignal();
-    return user?.['picture'] || `https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user?.['given_name']}`;
+    return user?.['picture'] || `https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user?.['id']}`;
   };
 
   userName = () => {

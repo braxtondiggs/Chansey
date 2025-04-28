@@ -17,7 +17,7 @@
     }
   }
   .title-h1 {
-    @apply text-surface-900 dark:text-surface-0 text-center text-7xl font-semibold leading-tight;
+    @apply font-semibold leading-tight text-center text-surface-900 dark:text-surface-0 text-7xl;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -31,12 +31,12 @@
       'cv11' on;
   }
   .title-h2 {
-    @apply text-surface-950 dark:text-surface-0 text-center font-semibold leading-none;
+    @apply font-semibold leading-none text-center text-surface-950 dark:text-surface-0;
     font-size: 4rem;
     font-family: 'InterDisplay', sans-serif;
   }
   .title-h3 {
-    @apply text-surface-900 dark:text-surface-0 text-center font-semibold leading-tight;
+    @apply font-semibold leading-tight text-center text-surface-900 dark:text-surface-0;
     font-size: 3.5rem;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
@@ -51,7 +51,7 @@
       'cv11' on;
   }
   .title-h4 {
-    @apply text-surface-900 dark:text-surface-0 text-center font-semibold leading-tight;
+    @apply font-semibold leading-tight text-center text-surface-900 dark:text-surface-0;
     font-size: 2.85rem;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
@@ -66,7 +66,7 @@
       'cv11' on;
   }
   .title-h5 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-4xl font-medium leading-snug;
+    @apply text-4xl font-medium leading-snug text-center text-surface-950 dark:text-surface-0;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -80,7 +80,7 @@
       'cv11' on;
   }
   .title-h6 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-3xl font-medium;
+    @apply text-3xl font-medium text-center text-surface-950 dark:text-surface-0;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -94,7 +94,7 @@
       'cv11' on;
   }
   .title-h7 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-2xl font-medium;
+    @apply text-2xl font-medium text-center text-surface-950 dark:text-surface-0;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -106,7 +106,7 @@
       'calt' off;
   }
   .body-large {
-    @apply text-surface-500 text-center text-xl;
+    @apply text-xl text-center text-surface-500;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -119,7 +119,7 @@
   }
 
   .body-medium {
-    @apply text-surface-500 text-center text-lg;
+    @apply text-lg text-center text-surface-500;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -132,7 +132,7 @@
   }
 
   .body-small {
-    @apply text-surface-500 text-center text-base;
+    @apply text-base text-center text-surface-500;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -144,7 +144,7 @@
       'calt' off;
   }
   .body-xsmall {
-    @apply text-surface-500 text-center text-sm;
+    @apply text-sm text-center text-surface-500;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -156,7 +156,7 @@
       'calt' off;
   }
   .label-large {
-    @apply text-surface-950 dark:text-surface-0 text-xl font-medium;
+    @apply text-xl font-medium text-surface-950 dark:text-surface-0;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -170,7 +170,7 @@
       'cv11' on;
   }
   .label-medium {
-    @apply text-surface-950 dark:text-surface-0 text-lg font-medium;
+    @apply text-lg font-medium text-surface-950 dark:text-surface-0;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv11' on,
@@ -184,7 +184,7 @@
       'cv01' on;
   }
   .label-small {
-    @apply text-surface-500 text-center text-base font-medium;
+    @apply text-base font-medium text-center text-surface-500;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv11' on,
@@ -198,7 +198,7 @@
       'cv01' on;
   }
   .label-xsmall {
-    @apply text-surface-500 text-center text-sm font-medium;
+    @apply text-sm font-medium text-center text-surface-500;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -212,7 +212,7 @@
       'cv05' on;
   }
   .paragraph-xsmall {
-    @apply text-center text-sm;
+    @apply text-sm text-center;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'ss11' on,
@@ -239,11 +239,11 @@
   }
 
   .landing-container {
-    @apply bg-primary-50/75 dark:bg-primary-900/40 backdrop-blur-sm transition-all;
+    @apply transition-all bg-primary-50/75 dark:bg-primary-900/40 backdrop-blur-sm;
   }
 
   .button-button {
-    @apply border-surface-200 dark:border-surface-800 hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-200 flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-center font-medium leading-normal transition-all;
+    @apply flex items-center justify-center w-full gap-2 py-2 font-medium leading-normal text-center transition-all border rounded-lg border-surface-200 dark:border-surface-800 hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-200;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv08' on,
@@ -261,6 +261,47 @@
   @media (max-width: 639px) {
     :root p-card.tabs {
       --p-card-body-padding: 0 !important;
+    }
+
+    /* Remove padding only from p-card components in the categories component */
+    app-categories p-card .p-card,
+    app-exchanges p-card .p-card,
+    app-coins p-card .p-card,
+    app-risks p-card .p-card,
+    app-categories .p-card,
+    app-categories .p-card,
+    app-exchanges .p-card,
+    app-coins .p-card,
+    app-risks .p-card {
+      padding: 0 !important;
+    }
+
+    app-categories p-card .p-card-body,
+    app-exchanges p-card .p-card-body,
+    app-coins p-card .p-card-body,
+    app-risks p-card .p-card-body,
+    app-categories .p-card-body,
+    app-exchanges .p-card-body,
+    app-coins .p-card-body,
+    app-risks .p-card-body {
+      padding: 0 !important;
+    }
+
+    app-categories p-card .p-card-content,
+    app-exchanges p-card .p-card-content,
+    app-coins p-card .p-card-content,
+    app-risks p-card .p-card-content,
+    app-categories .p-card-content,
+    app-exchanges .p-card-content,
+    app-coins .p-card-content,
+    app-risks .p-card-content {
+      padding: 0 !important;
+    }
+
+    .p-paginator-current {
+      margin: 8px 0;
+      text-align: center;
+      width: 100%;
     }
   }
 }

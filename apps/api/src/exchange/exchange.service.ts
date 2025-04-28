@@ -13,7 +13,7 @@ export class ExchangeService {
   constructor(@InjectRepository(Exchange) private readonly exchange: Repository<Exchange>) {}
 
   async getExchanges({ supported = false } = {}): Promise<Exchange[]> {
-    const exchanges = await this.exchange.find({ where: { supported } });
+    const exchanges = await this.exchange.find({ where: { supported }, order: { name: 'ASC' } });
     return exchanges.map((exchange) => {
       Object.keys(exchange).forEach((key) => exchange[key] === null && delete exchange[key]);
       return exchange;
@@ -44,7 +44,7 @@ export class ExchangeService {
   }
 
   async updateExchange(exchangeSlug: string, dto: UpdateExchangeDto): Promise<Exchange> {
-    const data = await this.getExchangeBySlug(exchangeSlug);
+    const data = await this.getExchangeById(exchangeSlug);
     if (!data) throw new NotFoundCustomException('Exchange', { slug: exchangeSlug });
     return await this.exchange.save(new Exchange({ ...data, ...dto }));
   }

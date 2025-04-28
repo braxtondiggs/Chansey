@@ -28,7 +28,7 @@ export class CoinService {
   ) {}
 
   async getCoins() {
-    const coins = await this.coin.find();
+    const coins = await this.coin.find({ order: { name: 'ASC' } });
     return coins.map((coin) => {
       Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
       return coin;

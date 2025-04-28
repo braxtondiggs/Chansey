@@ -168,7 +168,7 @@ export class Exchange {
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz', select: false })
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
   @OneToMany(() => TickerPairs, (ticker) => ticker.exchange, {
