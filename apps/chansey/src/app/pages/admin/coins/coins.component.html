@@ -21,7 +21,7 @@
     breakpoint="768px"
   >
     <ng-template pTemplate="caption">
-      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+      <div class="m-4 flex flex-col gap-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
         <div class="flex gap-4">
           <p-button label="New" [raised]="true" icon="pi pi-plus" severity="success" (click)="openNewCoinDialog()" />
           <p-button
@@ -32,6 +32,14 @@
             (onClick)="deleteSelectedCoins()"
             [disabled]="!selectedCoins || !selectedCoins.length"
             class="hidden md:inline-flex"
+          />
+          <p-splitButton
+            [label]="syncLabel"
+            [icon]="syncIcon"
+            [model]="syncItems"
+            severity="info"
+            [disabled]="isSyncingCoins || isSyncingDetails"
+            (onClick)="syncCoins()"
           />
         </div>
         <p-iconfield>
@@ -63,19 +71,19 @@
           <p-tableCheckbox [value]="coin" />
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Name</span>
+          <span class="p-column-title block md:hidden">Name</span>
           {{ coin.name }}
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Symbol</span>
+          <span class="p-column-title block md:hidden">Symbol</span>
           {{ coin.symbol }}
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Updated At</span>
+          <span class="p-column-title block md:hidden">Updated At</span>
           {{ coin.updatedAt | date: 'short' }}
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Actions</span>
+          <span class="p-column-title block md:hidden">Actions</span>
           <div class="flex gap-2">
             <p-button
               icon="pi pi-pencil"
@@ -115,7 +123,7 @@
 >
   <form [formGroup]="coinForm" class="my-4">
     <p-fluid>
-      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
+      <p-floatlabel variant="on" class="mb-4 flex w-full flex-wrap">
         <input
           id="name"
           type="text"
@@ -128,7 +136,7 @@
         <small class="p-error" *ngIf="submitted && coinForm.controls['name'].invalid">Name is required.</small>
       </p-floatlabel>
 
-      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
+      <p-floatlabel variant="on" class="mb-4 flex w-full flex-wrap">
         <input
           id="symbol"
           type="text"

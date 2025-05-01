@@ -1,24 +1,33 @@
 import { Component, inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 
-import { ButtonModule } from 'primeng/button';
-import { DividerModule } from 'primeng/divider';
 import { DrawerModule } from 'primeng/drawer';
-import { InputTextModule } from 'primeng/inputtext';
-import { SelectModule } from 'primeng/select';
 
 import { LayoutService } from '../services/layout.service';
 
 @Component({
   selector: 'app-rightmenu',
   standalone: true,
-  imports: [DrawerModule, DividerModule, SelectModule, InputTextModule, FormsModule, ButtonModule],
+  imports: [DrawerModule],
   template: ` <p-drawer
     header="Menu"
     [(visible)]="rightMenuVisible"
     position="right"
     styleClass="layout-rightmenu !w-full sm:!w-[36rem]"
   >
+    <div class="flex flex-col items-center justify-center p-8 text-center">
+      <span
+        class="border-surface flex h-20 w-20 items-center justify-center rounded-xl border shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)]"
+      >
+        <i class="pi pi-cog text-surface-400 !text-4xl"></i>
+      </span>
+      <h2 class="title-h6 mt-6">No Configuration Available</h2>
+      <p class="body-small text-surface-600 dark:text-surface-400 mt-2 max-w-md">
+        This menu will be populated with your activity feed and configuration options in the future.
+      </p>
+      <button pButton label="Close Menu" severity="secondary" class="mt-6" (click)="rightMenuVisible = false"></button>
+    </div>
+
+    <!-- Original content commented out for future reference
     <div>
       <h2 class="title-h7 text-left">Activity</h2>
       <div class="mt-7 flex flex-col">
@@ -116,6 +125,7 @@ import { LayoutService } from '../services/layout.service';
         alt="diamond-vue"
       />
     </div>
+    -->
   </p-drawer>`
 })
 

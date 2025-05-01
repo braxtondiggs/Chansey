@@ -1,8 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { Exchange } from './../exchange/exchange.entity';
-import { ExchangeService } from './../exchange/exchange.service';
 import { CoinController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
@@ -12,7 +10,8 @@ import { TickerPairService } from './ticker-pairs/ticker-pairs.service';
 import { TickerPairTask } from './ticker-pairs/ticker-pairs.task';
 
 import { AppModule } from '../app.module';
-import { BinanceService } from '../exchange/binance/binance.service';
+import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
+import { ExchangeModule } from '../exchange/exchange.module';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { HealthCheckHelper } from '../utils/health-check.helper';
@@ -20,16 +19,12 @@ import { HealthCheckHelper } from '../utils/health-check.helper';
 @Module({
   controllers: [CoinController],
   exports: [CoinService, TickerPairService, TickerPairTask],
-  imports: [forwardRef(() => AppModule), TypeOrmModule.forFeature([Coin, Exchange, Portfolio, TickerPairs])],
-  providers: [
-    BinanceService,
-    CoinService,
-    CoinTask,
-    ExchangeService,
-    HealthCheckHelper,
-    PortfolioService,
-    TickerPairService,
-    TickerPairTask
-  ]
+  imports: [
+    forwardRef(() => AppModule),
+    TypeOrmModule.forFeature([Coin, Portfolio, TickerPairs]),
+    forwardRef(() => ExchangeModule),
+    forwardRef(() => ExchangeKeyModule)
+  ],
+  providers: [CoinService, CoinTask, HealthCheckHelper, PortfolioService, TickerPairService, TickerPairTask]
 })
 export class CoinModule {}

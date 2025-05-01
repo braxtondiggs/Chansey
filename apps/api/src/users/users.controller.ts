@@ -62,10 +62,6 @@ export class UserController {
       // Get user with full Authorizer profile
       const userWithProfile = await this.user.getWithAuthorizerProfile(user);
 
-      // Remove sensitive data
-      delete userWithProfile.binance;
-      delete userWithProfile.binanceSecret;
-
       return userWithProfile;
     } catch (error) {
       console.error('Error fetching complete user profile:', error);

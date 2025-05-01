@@ -49,6 +49,7 @@ export class CategoriesComponent implements OnInit {
   deleteDialog: boolean = false;
   categoryForm: FormGroup;
   isLoading: boolean = false;
+  isSyncing: boolean = false;
   submitted: boolean = false;
   isNew: boolean = true;
 
@@ -259,6 +260,30 @@ export class CategoriesComponent implements OnInit {
             }
           });
         });
+      }
+    });
+  }
+
+  syncCategories(): void {
+    this.isSyncing = true;
+    this.categoriesService.syncCategories().subscribe({
+      next: (response) => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: response.message || 'Categories synced successfully'
+        });
+        this.loadCategories();
+        this.isSyncing = false;
+      },
+      error: (error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to sync categories'
+        });
+        console.error('Error syncing categories:', error);
+        this.isSyncing = false;
       }
     });
   }

@@ -14,7 +14,7 @@ import { LayoutService } from '../services/layout.service';
   template: `<div class="layout-sidebar" (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
     <div class="sidebar-header">
       <a class="logo" [routerLink]="['/app/dashboard']">
-        <img class="logo-image" src="/public/icon.png" alt="Cymbit Trading Logo" />
+        <img class="logo-image" src="/public/icons/icon-72x72.png" alt="Cymbit Trading Logo" />
         <span class="app-name title-h7">Cymbit Trading</span>
       </a>
       <button class="layout-sidebar-anchor z-2" type="button" (click)="anchor()"></button>

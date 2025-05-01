@@ -1,0 +1,30 @@
+export interface Coin {
+  id: string;
+  slug: string;
+  name: string;
+  symbol: string;
+  description?: string;
+  image?: string;
+  genesis?: Date;
+  marketRank?: number;
+  totalSupply?: number;
+  totalVolume?: number;
+  circulatingSupply?: number;
+  maxSupply?: number;
+  geckoRank?: number;
+  developerScore?: number;
+  communityScore?: number;
+  liquidityScore?: number;
+  publicInterestScore?: number;
+  sentimentUp?: number;
+  sentimentDown?: number;
+  ath?: number;
+  athChange?: number;
+  athDate?: Date;
+  atl?: number;
+  atlChange?: number;
+  atlDate?: Date;
+  geckoLastUpdatedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}

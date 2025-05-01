@@ -15,7 +15,7 @@
       "installMode": "lazy",
       "updateMode": "prefetch",
       "resources": {
-        "files": ["/assets/**", "/*.(svg|cur|jpg|jpeg|png|webp|gif|otf|ttf|woff|woff2)"]
+        "files": ["/assets/**", "/public/**", "/*.(svg|cur|jpg|jpeg|png|webp|gif|otf|ttf|woff|woff2)"]
       }
     }
   ],

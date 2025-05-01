@@ -80,4 +80,8 @@ export class CreateExchangeDto {
   @IsUrl()
   @ApiProperty()
   otherUrl2?: string;
+
+  @IsBoolean()
+  @ApiProperty()
+  supported?: boolean;
 }

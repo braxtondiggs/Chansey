@@ -21,11 +21,24 @@ export class AuthService {
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
       this.userSubject.next(JSON.parse(savedUser));
+    } else {
+      this.getUserInfo().subscribe({
+        next: (user) => {
+          if (user) {
+            localStorage.setItem('user', JSON.stringify(user));
+            this.userSubject.next(user);
+          }
+        },
+        error: () => {
+          this.userSubject.next(null);
+        }
+      });
     }
   }
 
   // Method to update user state directly from other services
   updateUserState(user: IUser | null): void {
+    if (user) localStorage.setItem('user', JSON.stringify(user));
     this.userSubject.next(user);
   }
 
@@ -108,7 +121,7 @@ export class AuthService {
         }),
         catchError((error) => {
           console.error('Error fetching user info:', error);
-          this.logout();
+          // this.logout();
           return of(null);
         })
       );

@@ -51,6 +51,7 @@ export class ExchangesComponent implements OnInit {
   exchangeDialog: boolean = false;
   exchangeForm: FormGroup;
   isLoading: boolean = false;
+  isSyncing: boolean = false;
   submitted: boolean = false;
   isNew: boolean = true;
   selectedExchanges: Exchange[] = [];
@@ -64,7 +65,7 @@ export class ExchangesComponent implements OnInit {
     this.exchangeForm = this.fb.group({
       name: ['', [Validators.required]],
       url: ['', [Validators.required, Validators.pattern(/^(http|https):\/\/[^ "]+$/)]],
-      isActive: [true]
+      supported: [true]
     });
   }
 
@@ -96,7 +97,7 @@ export class ExchangesComponent implements OnInit {
     this.isNew = true;
     this.submitted = false;
     this.exchangeForm.reset({
-      isActive: true
+      supported: true
     });
     this.exchangeDialog = true;
   }
@@ -108,7 +109,7 @@ export class ExchangesComponent implements OnInit {
     this.exchangeForm.patchValue({
       name: exchange.name,
       url: exchange.url,
-      isActive: exchange.isActive
+      supported: exchange.supported
     });
     this.exchangeDialog = true;
   }
@@ -263,6 +264,30 @@ export class ExchangesComponent implements OnInit {
             console.error('Error deleting exchanges:', error);
             this.isLoading = false;
           });
+      }
+    });
+  }
+
+  syncExchanges(): void {
+    this.isSyncing = true;
+    this.exchangesService.syncExchanges().subscribe({
+      next: (response) => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: response.message || 'Exchanges synced successfully'
+        });
+        this.loadExchanges();
+        this.isSyncing = false;
+      },
+      error: (error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to sync exchanges'
+        });
+        console.error('Error syncing exchanges:', error);
+        this.isSyncing = false;
       }
     });
   }

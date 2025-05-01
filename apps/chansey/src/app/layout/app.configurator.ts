@@ -1,4 +1,4 @@
-import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { CommonModule, DOCUMENT, isPlatformBrowser } from '@angular/common';
 import {
   Component,
   Input,
@@ -585,12 +585,29 @@ export class AppConfigurator implements OnInit {
     }
   }
 
+  private document = inject(DOCUMENT);
+
   updateColors(event: any, type: string, color: any) {
     if (type === 'primary') {
       this.layoutService.layoutConfig.update((state) => ({
         ...state,
         primary: color.name
       }));
+
+      // Update theme-color meta tag
+      if (isPlatformBrowser(this.platformId)) {
+        const metaThemeColor = this.document.querySelector('meta[name="theme-color"]');
+        if (metaThemeColor) {
+          // Set the theme-color to match the primary color
+          const colorValue =
+            color.name === 'noir'
+              ? this.darkTheme()
+                ? '#ffffff'
+                : '#0f172a' // Use appropriate noir color based on theme
+              : color.palette?.['500']; // Use the 500 shade for other colors
+          metaThemeColor.setAttribute('content', colorValue);
+        }
+      }
     } else if (type === 'surface') {
       this.layoutService.layoutConfig.update((state) => ({
         ...state,

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -15,22 +15,18 @@ import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceService } from '../exchange/binance/binance.service';
-import { Exchange } from '../exchange/exchange.entity';
-import { ExchangeService } from '../exchange/exchange.service';
+import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
+import { ExchangeModule } from '../exchange/exchange.module';
 
 @Module({
   controllers: [OrderController, TestnetController],
   exports: [OrderService, TestnetService],
-  imports: [ConfigModule, TypeOrmModule.forFeature([Algorithm, Coin, Exchange, Order, Testnet, TickerPairs])],
-  providers: [
-    AlgorithmService,
-    BinanceService,
-    CoinService,
-    ExchangeService,
-    OrderService,
-    TestnetService,
-    TickerPairService
-  ]
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, TickerPairs]),
+    forwardRef(() => ExchangeModule),
+    forwardRef(() => ExchangeKeyModule)
+  ],
+  providers: [AlgorithmService, CoinService, OrderService, TestnetService, TickerPairService]
 })
 export class OrderModule {}

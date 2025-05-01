@@ -2,13 +2,14 @@ import { Injectable, InternalServerErrorException, Logger, NotFoundException } f
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Authorizer } from '@authorizerdev/authorizer-js';
+import { Authorizer, User as AuthUser } from '@authorizerdev/authorizer-js';
 import { Repository } from 'typeorm';
 
 import { UpdateUserDto } from './dto';
 import { User } from './users.entity';
 
 import { CoinService } from '../coin/coin.service';
+import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Risk } from '../risk/risk.entity';
@@ -25,7 +26,8 @@ export class UsersService {
     private readonly risk: Repository<Risk>,
     private readonly portfolio: PortfolioService,
     private readonly coin: CoinService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly exchangeKeyService: ExchangeKeyService
   ) {
     this.auth = new Authorizer({
       authorizerURL: this.config.get<string>('AUTHORIZER_URL'),
@@ -134,8 +136,13 @@ export class UsersService {
   async getById(id: string) {
     try {
       const user = await this.user.findOneOrFail({ where: { id } });
+      const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+
       this.logger.debug(`User retrieved with ID: ${id}`);
-      return user;
+      return {
+        ...user,
+        exchanges
+      };
     } catch (error) {
       this.logger.error(`User not found with ID: ${id}`, error.stack);
       throw new NotFoundException(`User with ID ${id} not found`);
@@ -157,10 +164,14 @@ export class UsersService {
       const Authorization = user.token;
       const { data } = await this.auth.getProfile({ Authorization });
 
+      // Get supported exchange keys information
+      const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+
       return {
         ...data,
         ...dbUser,
-        roles: (user as any).allowed_roles
+        roles: (user as any).allowed_roles,
+        exchanges
       };
     } catch (error) {
       this.logger.error(`Failed to get user with Authorizer profile: ${user.id}`, error.stack);

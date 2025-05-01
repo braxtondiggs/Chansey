@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { Authorizer, User as AuthorizerUser } from '@authorizerdev/authorizer-js';
+import { Authorizer } from '@authorizerdev/authorizer-js';
 
 import { VerifyOtpDto } from './dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -65,11 +65,11 @@ export class AuthenticationService {
   public getCookieWithJwtToken(token: string, expires_in: number, rememberMe = false) {
     // If rememberMe is true, set a longer expiration (30 days), otherwise use the provided expires_in
     const expiration = rememberMe ? 30 * 24 * 60 * 60 : expires_in;
-    return `chansey_auth=${token}; Max-Age=${expiration}; Path=/; HttpOnly; Secure; SameSite=Strict`;
+    return `chansey_auth=${token}; Max-Age=${expiration}; Path=/; HttpOnly; Secure; Domain=.cymbit.com;`;
   }
 
   public getCookieForLogOut() {
-    return `chansey_auth=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Strict`;
+    return `chansey_auth=; Max-Age=0; Path=/; HttpOnly; Secure; Domain=.cymbit.com;`;
   }
 
   public async getAuthenticatedUser(email: string, password: string, rememberMe = false) {

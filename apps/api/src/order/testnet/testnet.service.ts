@@ -32,7 +32,7 @@ export class TestnetService {
 
   async createOrder(side: OrderSide, order: TestnetDto) {
     try {
-      const binance = this.binance.getBinanceClient();
+      const binance = await this.binance.getBinanceClient();
       const ticker = await this.tickerPair.getBasePairsById(order.coinId);
 
       const [{ quantity }, algorithm, response] = await Promise.all([
