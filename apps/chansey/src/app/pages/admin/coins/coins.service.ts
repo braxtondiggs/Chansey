@@ -68,4 +68,12 @@ export class CoinsService {
   deleteCoin(id: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`, this.authHeaders);
   }
+
+  syncCoins(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/sync`, {}, this.authHeaders);
+  }
+
+  syncCoinDetails(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/sync-detail`, {}, this.authHeaders);
+  }
 }

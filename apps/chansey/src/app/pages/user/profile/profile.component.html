@@ -1,6 +1,14 @@
 <p-card header="Profile" styleClass="max-w-4xl mx-auto p-4">
   <p class="text-600 mb-4 md:mb-5">Manage your personal information and preferences</p>
-  <p-fluid>
+
+  <!-- Loading state -->
+  <div *ngIf="!userState && !userSignal()" class="flex flex-col items-center py-8">
+    <p-progressSpinner styleClass="w-8rem h-8rem" strokeWidth="4" />
+    <p class="text-600 mt-4 text-lg">Loading your profile information...</p>
+  </div>
+
+  <!-- Content state - only show when user data is loaded -->
+  <p-fluid *ngIf="userState || userSignal()">
     <div class="flex-column my-8 flex flex-col items-center gap-8 md:flex-row md:gap-4">
       <div class="flex w-full flex-col items-center gap-3 md:w-1/2">
         <p-avatar [image]="userProfileImage()" shape="circle" class="mb-8"></p-avatar>
@@ -89,8 +97,7 @@
 </p-card>
 
 <!-- Password Change Section -->
-
-<p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4">
+<p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="userState || userSignal()">
   <p class="text-600 mb-4 md:mb-5">Update your account password</p>
   <p-fluid>
     <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()" class="mx-auto flex flex-col gap-4">
@@ -176,6 +183,269 @@
       </div>
     </form>
   </p-fluid>
+</p-card>
+
+<!-- Exchange Integrations Section -->
+<p-card header="Exchange Integrations" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="userState || userSignal()">
+  <p class="text-600 mb-4 md:mb-5">Connect your trading exchange accounts</p>
+
+  <p-message class="mb-8 p-4" severity="warn">
+    <div class="flex items-start gap-2">
+      <i class="pi pi-info-circle mt-1 text-2xl text-yellow-500"></i>
+      <div>
+        <h4 class="m-0 text-base font-medium">Security Information</h4>
+        <p class="mb-0 mt-1 text-sm">
+          Your API keys are encrypted and stored securely. For the platform to function correctly, please use API keys
+          with trading permissions. Read-only permissions will not allow the platform to execute trades on your behalf.
+        </p>
+      </div>
+    </div>
+  </p-message>
+
+  <!-- Use TabView if there are multiple exchanges -->
+  @if (supportedExchanges().length > 1) {
+    <p-tabView>
+      @for (exchange of supportedExchanges(); track exchange) {
+        <p-tabPanel [header]="exchange.name">
+          <p-fluid>
+            @if (exchangeForms[exchange.slug]) {
+              <form
+                [formGroup]="exchangeForms[exchange.slug].form"
+                (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
+                class="mx-auto flex flex-col gap-4"
+              >
+                <p-message
+                  *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
+                  [severity]="isExchangeActive(exchange.id) ? 'success' : 'error'"
+                  [text]="
+                    isExchangeActive(exchange.id)
+                      ? 'Account connected'
+                      : 'There was an issue connecting your account, please check your API keys'
+                  "
+                  styleClass="my-4"
+                  [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
+                />
+                <div class="flex w-full flex-col gap-4">
+                  <div class="flex w-full flex-col">
+                    <p-floatlabel variant="on" class="flex w-full flex-wrap">
+                      <input
+                        [id]="exchange.slug + 'ApiKey'"
+                        type="text"
+                        pInputText
+                        formControlName="apiKey"
+                        pSize="large"
+                        autocomplete="off"
+                      />
+                      <label [for]="exchange.slug + 'ApiKey'">API Key</label>
+                    </p-floatlabel>
+                    <small
+                      *ngIf="
+                        exchangeForms[exchange.slug].submitted &&
+                        exchangeForms[exchange.slug].form.get('apiKey')?.invalid
+                      "
+                      class="text-red-500"
+                    >
+                      API Key is required
+                    </small>
+                  </div>
+
+                  <div class="flex w-full flex-col">
+                    <p-floatlabel variant="on" class="flex w-full flex-wrap">
+                      <input
+                        formControlName="secretKey"
+                        pSize="large"
+                        type="text"
+                        pInputText
+                        autocomplete="off"
+                        required
+                      />
+                      <label for="secretKey">Secret Key</label>
+                    </p-floatlabel>
+                    <small
+                      *ngIf="
+                        exchangeForms[exchange.slug].submitted &&
+                        exchangeForms[exchange.slug].form.get('secretKey')?.invalid
+                      "
+                      class="text-red-500"
+                    >
+                      Secret Key is required
+                    </small>
+                  </div>
+                </div>
+
+                <div class="mt-4 flex justify-end gap-2">
+                  <p-button
+                    *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
+                    type="button"
+                    label="Edit Keys"
+                    icon="pi pi-pencil"
+                    size="large"
+                    severity="success"
+                    (click)="toggleEditExchangeKeys(exchange.slug)"
+                  ></p-button>
+
+                  <p-button
+                    *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
+                    type="button"
+                    label="Remove Keys"
+                    icon="pi pi-trash"
+                    size="large"
+                    severity="danger"
+                    (click)="removeExchangeKeys(exchange.slug)"
+                  ></p-button>
+
+                  <p-button
+                    *ngIf="exchangeForms[exchange.slug].editMode"
+                    type="button"
+                    label="Cancel"
+                    icon="pi pi-times"
+                    size="large"
+                    severity="secondary"
+                    (click)="cancelEditExchangeKeys(exchange.slug)"
+                  ></p-button>
+
+                  <p-button
+                    *ngIf="!exchangeForms[exchange.slug].connected || exchangeForms[exchange.slug].editMode"
+                    type="submit"
+                    label="Save Keys"
+                    icon="pi pi-key"
+                    size="large"
+                    [loading]="exchangeForms[exchange.slug].loading"
+                    [disabled]="!exchangeForms[exchange.slug].form.valid"
+                  />
+                </div>
+              </form>
+            } @else {
+              <div class="py-4 text-center">
+                <p class="text-gray-500">Loading exchange details...</p>
+              </div>
+            }
+          </p-fluid>
+        </p-tabPanel>
+      }
+    </p-tabView>
+  }
+  <!-- If only one exchange is supported, don't use tabs -->
+  @else if (supportedExchanges().length === 1) {
+    @let exchange = supportedExchanges()[0];
+    <p-fieldset [legend]="exchange.name">
+      <p-fluid>
+        @if (exchangeForms[exchange.slug]) {
+          <form
+            [formGroup]="exchangeForms[exchange.slug].form"
+            (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
+            class="mx-auto mt-8 flex flex-col gap-4"
+          >
+            <p-message
+              *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
+              [severity]="isExchangeActive(exchange.id) ? 'success' : 'error'"
+              [text]="
+                isExchangeActive(exchange.id)
+                  ? 'Account connected'
+                  : 'There was an issue connecting your account, please check your API keys'
+              "
+              styleClass="my-4"
+              [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
+            />
+            <div class="flex w-full flex-col gap-4">
+              <div class="flex w-full flex-col">
+                <p-floatlabel variant="on" class="flex w-full flex-wrap">
+                  <input
+                    [id]="exchange.slug + 'ApiKey'"
+                    type="text"
+                    pInputText
+                    formControlName="apiKey"
+                    pSize="large"
+                    autocomplete="off"
+                  />
+                  <label [for]="exchange.slug + 'ApiKey'">API Key</label>
+                </p-floatlabel>
+                <small
+                  *ngIf="
+                    exchangeForms[exchange.slug].submitted && exchangeForms[exchange.slug].form.get('apiKey')?.invalid
+                  "
+                  class="text-red-500"
+                >
+                  API Key is required
+                </small>
+              </div>
+
+              <div class="flex w-full flex-col">
+                <p-floatlabel variant="on" class="flex w-full flex-wrap">
+                  <p-password
+                    formControlName="secretKey"
+                    size="large"
+                    [toggleMask]="true"
+                    [feedback]="false"
+                    autocomplete="off"
+                    required
+                  />
+                  <label for="secretKey">Secret Key</label>
+                </p-floatlabel>
+                <small
+                  *ngIf="
+                    exchangeForms[exchange.slug].submitted &&
+                    exchangeForms[exchange.slug].form.get('secretKey')?.invalid
+                  "
+                  class="text-red-500"
+                >
+                  Secret Key is required
+                </small>
+              </div>
+            </div>
+
+            <div class="mt-4 flex justify-end gap-2">
+              <p-button
+                *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
+                type="button"
+                label="Edit Keys"
+                icon="pi pi-pencil"
+                size="large"
+                severity="success"
+                (click)="toggleEditExchangeKeys(exchange.slug)"
+              />
+
+              <p-button
+                *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
+                type="button"
+                label="Remove Keys"
+                icon="pi pi-trash"
+                size="large"
+                severity="danger"
+                (click)="removeExchangeKeys(exchange.slug)"
+              />
+
+              <p-button
+                *ngIf="exchangeForms[exchange.slug].editMode"
+                type="button"
+                label="Cancel"
+                icon="pi pi-times"
+                size="large"
+                severity="secondary"
+                (click)="cancelEditExchangeKeys(exchange.slug)"
+              />
+
+              <p-button
+                *ngIf="!exchangeForms[exchange.slug].connected || exchangeForms[exchange.slug].editMode"
+                type="submit"
+                label="Save Keys"
+                icon="pi pi-key"
+                size="large"
+                [loading]="exchangeForms[exchange.slug].loading"
+                [disabled]="!exchangeForms[exchange.slug].form.valid"
+              />
+            </div>
+          </form>
+        } @else {
+          <div class="py-4 text-center">
+            <p class="text-gray-500">Loading exchange details...</p>
+          </div>
+        }
+      </p-fluid>
+    </p-fieldset>
+  } @else {
+    <p class="text-center italic text-gray-500">No exchange integrations are currently available.</p>
+  }
 </p-card>
 
 <p-toast position="bottom-right"></p-toast>

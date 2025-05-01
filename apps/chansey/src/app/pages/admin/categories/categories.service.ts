@@ -62,4 +62,8 @@ export class CategoriesService {
   deleteCategory(id: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`, this.authHeaders);
   }
+
+  syncCategories(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/sync`, {}, this.authHeaders);
+  }
 }

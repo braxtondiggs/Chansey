@@ -21,7 +21,7 @@
     breakpoint="768px"
   >
     <ng-template #caption>
-      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+      <div class="m-4 flex flex-col gap-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
         <div class="flex gap-4">
           <p-button
             label="New"
@@ -38,6 +38,13 @@
             (onClick)="deleteSelectedCategories()"
             [disabled]="!selectedCategories || !selectedCategories.length"
             class="hidden md:inline-flex"
+          />
+          <p-button
+            label="Sync"
+            icon="pi pi-refresh"
+            severity="info"
+            [loading]="isSyncing"
+            (click)="syncCategories()"
           />
         </div>
         <p-iconfield>
@@ -68,15 +75,15 @@
           <p-tableCheckbox [value]="category" />
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Name</span>
+          <span class="p-column-title block md:hidden">Name</span>
           {{ category.name }}
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Updated At</span>
+          <span class="p-column-title block md:hidden">Updated At</span>
           {{ category.updatedAt | date: 'short' }}
         </td>
         <td>
-          <span class="block p-column-title md:hidden">Actions</span>
+          <span class="p-column-title block md:hidden">Actions</span>
           <div class="flex gap-2">
             <p-button
               icon="pi pi-pencil"
@@ -115,7 +122,7 @@
 >
   <form [formGroup]="categoryForm" class="my-4">
     <p-fluid>
-      <p-floatlabel variant="on" class="flex flex-wrap w-full">
+      <p-floatlabel variant="on" class="flex w-full flex-wrap">
         <input
           id="name"
           type="text"

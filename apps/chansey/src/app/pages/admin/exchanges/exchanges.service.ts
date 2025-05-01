@@ -11,7 +11,7 @@ export interface Exchange {
   slug: string;
   url: string;
   logo: string;
-  isActive: boolean;
+  supported: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,7 +21,7 @@ export interface CreateExchangeDto {
   slug: string;
   url: string;
   logo?: string;
-  isActive?: boolean;
+  supported?: boolean;
 }
 
 export interface UpdateExchangeDto {
@@ -29,7 +29,7 @@ export interface UpdateExchangeDto {
   slug?: string;
   url?: string;
   logo?: string;
-  isActive?: boolean;
+  supported?: boolean;
 }
 
 @Injectable({
@@ -70,5 +70,9 @@ export class ExchangesService {
 
   deleteExchange(id: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`, this.authHeaders);
+  }
+
+  syncExchanges(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/sync`, {}, this.authHeaders);
   }
 }

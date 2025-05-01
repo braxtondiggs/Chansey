@@ -13,9 +13,8 @@ import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceService } from '../exchange/binance/binance.service';
-import { Exchange } from '../exchange/exchange.entity';
-import { ExchangeService } from '../exchange/exchange.service';
+import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
+import { ExchangeModule } from '../exchange/exchange.module';
 import { Order } from '../order/order.entity';
 import { OrderService } from '../order/order.service';
 import { Testnet } from '../order/testnet/testnet.entity';
@@ -28,15 +27,15 @@ import { PriceService } from '../price/price.service';
 @Module({
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Algorithm, Exchange, Coin, Order, Testnet, Portfolio, Price, TickerPairs])
+    TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, Portfolio, Price, TickerPairs]),
+    forwardRef(() => ExchangeModule),
+    forwardRef(() => ExchangeKeyModule)
   ],
   controllers: [AlgorithmController],
   providers: [
     AlgorithmService,
-    BinanceService,
     CoinService,
     ConfigService,
-    ExchangeService,
     OrderService,
     PortfolioService,
     PriceService,

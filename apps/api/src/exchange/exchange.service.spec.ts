@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
 
@@ -19,6 +20,17 @@ describe('ExchangeService', () => {
             save: jest.fn(() => ({})),
             update: jest.fn(() => ({})),
             delete: jest.fn(() => ({}))
+          }
+        },
+        {
+          provide: ExchangeKeyService,
+          useValue: {
+            findAll: jest.fn(() => []),
+            findOne: jest.fn(() => ({})),
+            findByExchange: jest.fn(() => []),
+            create: jest.fn(() => ({})),
+            update: jest.fn(() => ({})),
+            remove: jest.fn(() => ({}))
           }
         }
       ]

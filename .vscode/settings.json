@@ -1,7 +1,7 @@
 {
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
-  "cSpell.words": ["authorizerdev", "chansey", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
+  "cSpell.words": ["authorizerdev", "chansey", "cymbit", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
   "editor.formatOnPaste": true,
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
@@ -11,6 +11,9 @@
   "vsicons.presets.angular": true,
   "[css]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "shellcheck.ignorePatterns": {
+    "**/.env.example": true
   },
   "chat.mcp.enabled": true,
   "mcp": {

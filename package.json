@@ -42,6 +42,8 @@
     "@angular/router": "19.0.7",
     "@angular/service-worker": "19.0.7",
     "@authorizerdev/authorizer-js": "^2.0.3",
+    "@dicebear/collection": "^9.2.2",
+    "@dicebear/core": "^9.2.2",
     "@fastify/compress": "^6.1.1",
     "@fastify/cookie": "^8.3.0",
     "@fastify/csrf-protection": "^6.0.0",

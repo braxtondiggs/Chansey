@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
+import { ExchangeTask } from './exchange.task';
 
 describe('ExchangeController', () => {
   let controller: ExchangeController;
@@ -22,7 +24,19 @@ describe('ExchangeController', () => {
             update: jest.fn(() => ({})),
             delete: jest.fn(() => ({}))
           }
-        }
+        },
+        {
+          provide: ExchangeKeyService,
+          useValue: {
+            findAll: jest.fn(() => []),
+            findOne: jest.fn(() => ({})),
+            findByExchange: jest.fn(() => []),
+            create: jest.fn(() => ({})),
+            update: jest.fn(() => ({})),
+            remove: jest.fn(() => ({}))
+          }
+        },
+        ExchangeTask
       ]
     }).compile();
 

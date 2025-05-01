@@ -1,19 +1,37 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { ILike, In, Repository } from 'typeorm';
 
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
+import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
 
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class ExchangeService {
-  constructor(@InjectRepository(Exchange) private readonly exchange: Repository<Exchange>) {}
+  constructor(
+    @InjectRepository(Exchange) private readonly exchange: Repository<Exchange>,
+    @Inject(forwardRef(() => ExchangeKeyService))
+    private readonly exchangeKeyService: ExchangeKeyService
+  ) {}
 
-  async getExchanges({ supported = false } = {}): Promise<Exchange[]> {
-    const exchanges = await this.exchange.find({ where: { supported }, order: { name: 'ASC' } });
+  async findOne(id: string): Promise<Exchange> {
+    const exchange = await this.exchange.findOne({ where: { id } });
+    if (!exchange) throw new NotFoundCustomException('Exchange', { id });
+    return exchange;
+  }
+
+  async findBySlug(slug: string): Promise<Exchange> {
+    const exchange = await this.exchange.findOne({ where: { slug } });
+    if (!exchange) throw new NotFoundCustomException('Exchange', { slug });
+    return exchange;
+  }
+
+  async getExchanges({ supported }: { supported?: boolean } = {}): Promise<Exchange[]> {
+    const where = supported !== undefined ? { supported } : {};
+    const exchanges = await this.exchange.find({ where, order: { name: 'ASC' } });
     return exchanges.map((exchange) => {
       Object.keys(exchange).forEach((key) => exchange[key] === null && delete exchange[key]);
       return exchange;
@@ -29,12 +47,6 @@ export class ExchangeService {
   async getExchangeByName(name: string): Promise<Exchange> {
     const exchange = await this.exchange.findOne({ where: { name: ILike(`%${name}%`) } });
     if (!exchange) throw new NotFoundCustomException('Exchange', { name });
-    return exchange;
-  }
-
-  async getExchangeBySlug(slug: string): Promise<Exchange> {
-    const exchange = await this.exchange.findOne({ where: { slug } });
-    if (!exchange) throw new NotFoundCustomException('Exchange', { slug });
     return exchange;
   }
 

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
-import { ConfirmationService, MessageService } from 'primeng/api';
+import { ConfirmationService, MessageService, MenuItem } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -13,6 +13,7 @@ import { IconFieldModule } from 'primeng/iconfield';
 import { ImageModule } from 'primeng/image';
 import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
+import { SplitButtonModule } from 'primeng/splitbutton';
 import { TableModule, Table } from 'primeng/table';
 import { ToastModule } from 'primeng/toast';
 
@@ -35,6 +36,7 @@ import { Coin, CoinsService, CreateCoinDto, UpdateCoinDto } from './coins.servic
     InputIconModule,
     InputTextModule,
     ReactiveFormsModule,
+    SplitButtonModule,
     TableModule,
     ToastModule
   ],
@@ -49,9 +51,32 @@ export class CoinsComponent implements OnInit {
   coinDialog: boolean = false;
   coinForm: FormGroup;
   isLoading: boolean = false;
+  isSyncingCoins: boolean = false;
+  isSyncingDetails: boolean = false;
   submitted: boolean = false;
   isNew: boolean = true;
   selectedCoins: Coin[] = [];
+
+  get syncLabel(): string {
+    return this.isSyncingCoins ? 'Syncing...' : 'Sync';
+  }
+
+  get syncIcon(): string {
+    return this.isSyncingCoins ? 'pi pi-spin pi-spinner' : 'pi pi-refresh';
+  }
+
+  get syncItems(): MenuItem[] {
+    return [
+      {
+        label: this.isSyncingDetails ? 'Syncing Details...' : 'Sync Detailed Info',
+        icon: this.isSyncingDetails ? 'pi pi-spin pi-spinner' : 'pi pi-list',
+        disabled: this.isSyncingCoins || this.isSyncingDetails,
+        command: () => {
+          this.syncCoinDetails();
+        }
+      }
+    ];
+  }
 
   constructor(
     private coinsService: CoinsService,
@@ -255,6 +280,54 @@ export class CoinsComponent implements OnInit {
             console.error('Error deleting coins:', error);
             this.isLoading = false;
           });
+      }
+    });
+  }
+
+  syncCoins(): void {
+    this.isSyncingCoins = true;
+    this.coinsService.syncCoins().subscribe({
+      next: (response) => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: response.message || 'Coins synced successfully'
+        });
+        this.loadCoins();
+        this.isSyncingCoins = false;
+      },
+      error: (error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to sync coins'
+        });
+        console.error('Error syncing coins:', error);
+        this.isSyncingCoins = false;
+      }
+    });
+  }
+
+  syncCoinDetails(): void {
+    this.isSyncingDetails = true;
+    this.coinsService.syncCoinDetails().subscribe({
+      next: (response) => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: response.message || 'Coin details synced successfully'
+        });
+        this.loadCoins();
+        this.isSyncingDetails = false;
+      },
+      error: (error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to sync coin details'
+        });
+        console.error('Error syncing coin details:', error);
+        this.isSyncingDetails = false;
       }
     });
   }

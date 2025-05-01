@@ -43,10 +43,10 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
         styleSrc: [`'self'`, `'unsafe-inline'`, 'https://fonts.googleapis.com'],
 
         // Allow scripts from self, external domains, and needed CSP directives
-        scriptSrc: [`'self'`, `'unsafe-inline'`, `'unsafe-eval'`, 'https://www.cymbit.com'],
+        scriptSrc: [`'self'`, `'unsafe-inline'`, `'unsafe-eval'`, 'https://www.cymbit.com', 'https://cymbit.com'],
 
         // Add script-src-elem to explicitly control script elements
-        scriptSrcElem: [`'self'`, `'unsafe-inline'`, 'https://www.cymbit.com'],
+        scriptSrcElem: [`'self'`, `'unsafe-inline'`, 'https://www.cymbit.com', 'https://cymbit.com'],
 
         // Add script-src-attr to allow inline event handlers
         scriptSrcAttr: [`'unsafe-inline'`],
@@ -58,7 +58,8 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
           'validator.swagger.io',
           'https://fonts.gstatic.com',
           'https://images.pexels.com',
-          'https://api.dicebear.com'
+          'https://www.cymbit.com',
+          'https://cymbit.com'
         ],
 
         // Allow connections to self and specific APIs
@@ -67,7 +68,7 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
           'https://api.coingecko.com',
           'https://api.cryptocurrencyalerting.com',
           'https://www.cymbit.com',
-          'https://api.dicebear.com'
+          'https://cymbit.com'
         ],
 
         // Allow fonts from self and specific CDNs
@@ -84,6 +85,12 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
 
         // Add form-action directive for form submissions
         formAction: [`'self'`],
+
+        // Allow manifest.json files for PWA
+        manifestSrc: [`'self'`, 'https://cymbit.com', 'https://www.cymbit.com'],
+
+        // Allow worker sources for service workers
+        workerSrc: [`'self'`, 'blob:'],
 
         // Force HTTPS
         upgradeInsecureRequests: []

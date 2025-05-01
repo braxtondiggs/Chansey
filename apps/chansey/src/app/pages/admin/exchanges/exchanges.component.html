@@ -39,6 +39,7 @@
             [disabled]="!selectedExchanges || !selectedExchanges.length"
             class="hidden md:inline-flex"
           />
+          <p-button label="Sync" icon="pi pi-refresh" severity="info" [loading]="isSyncing" (click)="syncExchanges()" />
         </div>
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />
@@ -59,7 +60,7 @@
         </th>
         <th pSortableColumn="name">Name <p-sortIcon field="name" /></th>
         <th>URL</th>
-        <th pSortableColumn="isActive">Status <p-sortIcon field="isActive" /></th>
+        <th pSortableColumn="supported">Status <p-sortIcon field="supported" /></th>
         <th>Updated At</th>
         <th style="width: 10rem">Actions</th>
       </tr>
@@ -80,10 +81,10 @@
         <td>
           <span class="block p-column-title md:hidden">Status</span>
           <span
-            [ngClass]="exchange.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+            [ngClass]="exchange.supported ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
             class="px-2 py-1 text-xs font-medium rounded-md"
           >
-            {{ exchange.isActive ? 'Active' : 'Inactive' }}
+            {{ exchange.supported ? 'Active' : 'Inactive' }}
           </span>
         </td>
         <td>
@@ -162,8 +163,8 @@
       </p-floatlabel>
       <div class="mb-4 field">
         <div class="flex align-items-center">
-          <p-checkbox formControlName="isActive" [binary]="true" inputId="isActive"></p-checkbox>
-          <label for="isActive" class="ml-2 font-medium">Active</label>
+          <p-checkbox formControlName="supported" [binary]="true" inputId="supported"></p-checkbox>
+          <label for="supported" class="ml-2 font-medium">Active</label>
         </div>
       </div>
     </p-fluid>

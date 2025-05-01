@@ -8,8 +8,8 @@ import { LayoutService } from '../services/layout.service';
   template: `
     <div class="layout-footer">
       <div class="footer-logo-container">
-        <img src="/public/icon.png" alt="Cymbit Trading Logo" />
-        <span class="footer-app-name">Cybmit Trading</span>
+        <img src="/public/icons/icon-72x72.png" alt="Cymbit Trading Logo" />
+        <span class="footer-app-name">Cymbit Trading</span>
       </div>
     </div>
   `

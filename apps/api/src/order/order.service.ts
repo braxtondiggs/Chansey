@@ -201,19 +201,19 @@ export class OrderService {
   }
 
   async getOrders(user: User) {
-    const binance = this.binance.getBinanceClient(user);
+    const binance = await this.binance.getBinanceClient(user);
     return await binance.allOrders({ symbol: 'BTCUSD' });
   }
 
   async getOrder(user: User, orderId: number) {
-    const binance = this.binance.getBinanceClient(user);
+    const binance = await this.binance.getBinanceClient(user);
     const order = await binance.getOrder({ symbol: 'BTCUSD', orderId });
     if (!order) throw new NotFoundCustomException('Order', { id: orderId.toString() });
     return order;
   }
 
   async getOpenOrders(user: User) {
-    const binance = this.binance.getBinanceClient(user);
+    const binance = await this.binance.getBinanceClient(user);
     return await binance.openOrders({ symbol: 'BTCUSD' });
   }
 
@@ -226,7 +226,7 @@ export class OrderService {
     user: User
   ) {
     try {
-      const binance = this.binance.getBinanceClient(user);
+      const binance = await this.binance.getBinanceClient(user);
       const action = await binance.order({
         symbol,
         side,
@@ -257,7 +257,7 @@ export class OrderService {
   }
 
   private async getExchangeInfo(symbol: string, user?: User) {
-    const binance = this.binance.getBinanceClient(user);
+    const binance = await this.binance.getBinanceClient(user);
     return await binance.exchangeInfo({ symbol });
   }
 

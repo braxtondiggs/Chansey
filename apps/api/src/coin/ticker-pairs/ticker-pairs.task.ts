@@ -31,7 +31,7 @@ export class TickerPairTask {
       await this.healthCheck.ping(hc_uuid, 'start');
 
       // Get Binance exchange info first
-      const binance = this.binance.getBinanceClient();
+      const binance = await this.binance.getBinanceClient();
       const { symbols } = await binance.exchangeInfo();
 
       // Create a map for quick lookup of Binance pair data

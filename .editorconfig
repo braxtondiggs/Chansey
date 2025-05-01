@@ -5,9 +5,47 @@ root = true
 charset = utf-8
 indent_style = space
 indent_size = 2
+end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
+max_line_length = 120
 
 [*.md]
 max_line_length = off
 trim_trailing_whitespace = false
+
+# TypeScript/JavaScript files
+[*.{ts,js,tsx,jsx}]
+quote_type = single
+curly_bracket_next_line = false
+spaces_around_operators = true
+spaces_around_brackets = inside
+
+# HTML files
+[*.{html,component.html}]
+indent_size = 2
+
+# CSS/SCSS files
+[*.{css,scss}]
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_size = 2
+insert_final_newline = false
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# Configuration files
+[*.{xml,config}]
+indent_size = 2
+
+# Shell scripts
+[*.sh]
+end_of_line = lf
+
+# Windows-specific files
+[*.{cmd,bat}]
+end_of_line = crlf

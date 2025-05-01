@@ -1,13 +1,17 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 
 import { CategoryService } from './category.service';
+import { CategoryTask } from './category.task';
 import { CategoryResponseDto } from './dto/category-response.dto';
 
 @ApiTags('Category')
 @Controller('category')
 export class CategoryController {
-  constructor(private readonly category: CategoryService) {}
+  constructor(
+    private readonly category: CategoryService,
+    private readonly categoryTask: CategoryTask
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -45,5 +49,23 @@ export class CategoryController {
   })
   getCategoryById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.category.getCategoryById(id);
+  }
+
+  @Post('sync')
+  @ApiOperation({
+    summary: 'Sync Categories',
+    description: 'Manually trigger the synchronization of categories from the external API.'
+  })
+  @ApiOkResponse({
+    description: 'Categories synced successfully.',
+    schema: {
+      properties: {
+        message: { type: 'string', example: 'Categories synced successfully' }
+      }
+    }
+  })
+  async syncCategories() {
+    await this.categoryTask.syncCategories();
+    return { message: 'Categories synced successfully' };
   }
 }

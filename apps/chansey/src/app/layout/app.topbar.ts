@@ -1,16 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, inject, model, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterModule } from '@angular/router';
 
+import { funEmoji } from '@dicebear/collection';
+import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
-import { BadgeModule } from 'primeng/badge';
-import { ButtonModule } from 'primeng/button';
-import { IconFieldModule } from 'primeng/iconfield';
-import { InputIconModule } from 'primeng/inputicon';
-import { InputTextModule } from 'primeng/inputtext';
-import { OverlayBadgeModule } from 'primeng/overlaybadge';
-import { RippleModule } from 'primeng/ripple';
 import { StyleClassModule } from 'primeng/styleclass';
 
 import { AppBreadcrumb } from './app.breadcrumb';
@@ -26,20 +20,7 @@ interface NotificationsBars {
 @Component({
   selector: 'app-topbar',
   standalone: true,
-  imports: [
-    RouterModule,
-    CommonModule,
-    StyleClassModule,
-    AppBreadcrumb,
-    InputTextModule,
-    ButtonModule,
-    IconFieldModule,
-    InputIconModule,
-    RippleModule,
-    BadgeModule,
-    OverlayBadgeModule,
-    AvatarModule
-  ],
+  imports: [AvatarModule, AppBreadcrumb, RouterModule, StyleClassModule],
   template: `<div class="layout-topbar">
     <div class="topbar-left">
       <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
@@ -48,7 +29,7 @@ interface NotificationsBars {
       <img class="horizontal-logo" src="/layout/images/logo-white.svg" alt="diamond-layout" />
       <span class="topbar-separator"></span>
       <app-breadcrumb></app-breadcrumb>
-      <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
+      <img class="mobile-logo" src="/public/icons/icon-72x72.png" alt="cymbit trading icon" />
     </div>
 
     <div class="topbar-right">
@@ -68,7 +49,7 @@ interface NotificationsBars {
             leaveToClass="hidden"
             [hideOnOutsideClick]="true"
           >
-            <span class="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-red-500"></span>
+            <!--<span class="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-red-500"></span>-->
             <i class="pi pi-bell"></i>
           </a>
           <div
@@ -77,13 +58,23 @@ interface NotificationsBars {
           >
             <div class="border-surface flex items-center justify-between border-b p-4">
               <span class="label-small text-surface-950 dark:text-surface-0">Notifications</span>
-              <button
+              <!--<button
                 pRipple
                 class="text-surface-950 dark:text-surface-0 label-x-small hover:bg-emphasis border-surface rounded-lg border px-2 py-1 shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)] transition-all"
               >
                 Mark all as read
-              </button>
+              </button>-->
             </div>
+            <!-- Empty state for notifications -->
+            <div class="flex flex-col items-center justify-center p-8 text-center">
+              <i class="pi pi-bell-slash text-surface-400 mb-3 text-4xl"></i>
+              <span class="label-medium text-surface-700 dark:text-surface-300">No notifications yet</span>
+              <span class="label-small text-surface-500 dark:text-surface-400 mt-1"
+                >We'll notify you when something important happens</span
+              >
+            </div>
+            <!-- Hiding the navigation tabs and notification list since they're not needed for empty state -->
+            <!--
             <div class="border-surface flex items-center border-b">
               @for (item of notificationsBars(); track item.id; let i = $index) {
                 <button
@@ -133,6 +124,7 @@ interface NotificationsBars {
                 </li>
               }
             </ul>
+            -->
           </div>
         </li>
         <li class="profile-item static sm:relative">
@@ -157,6 +149,7 @@ interface NotificationsBars {
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
                   routerLink="/app/profile"
+                  (click)="closeProfileMenu()"
                 >
                   <i class="pi pi-user"></i>
                   <span>Profile</span>
@@ -166,6 +159,7 @@ interface NotificationsBars {
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
                   routerLink="/app/settings"
+                  (click)="closeProfileMenu()"
                 >
                   <i class="pi pi-cog"></i>
                   <span>Settings</span>
@@ -174,7 +168,7 @@ interface NotificationsBars {
               <li>
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  (click)="authService.logout()"
+                  (click)="authService.logout(); closeProfileMenu()"
                 >
                   <i class="pi pi-power-off"></i>
                   <span>Log out</span>
@@ -202,13 +196,18 @@ export class AppTopbar {
 
   userProfileImage = computed(() => {
     const user = this.userSignal();
-    return user?.['picture'] || `https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user?.['id']}`;
+    const avatar = createAvatar(funEmoji, {
+      seed: user?.['id']
+    });
+    return user?.['picture'] || avatar.toDataUri();
   });
 
   @ViewChild('menubutton') menuButton!: ElementRef;
+  //@ViewChild('profileMenu') profileMenu: ElementRef;
+  // @ViewChild('profileButton') profileButton: ElementRef;
 
   notificationsBars = signal<NotificationsBars[]>([
-    {
+    /*{
       id: 'inbox',
       label: 'Inbox',
       badge: '2'
@@ -220,11 +219,11 @@ export class AppTopbar {
     {
       id: 'archived',
       label: 'Archived'
-    }
+    }*/
   ]);
 
   notifications = signal<any[]>([
-    {
+    /*{
       id: 'inbox',
       data: [
         {
@@ -287,10 +286,10 @@ export class AppTopbar {
           new: false
         }
       ]
-    }
+    }*/
   ]);
 
-  selectedNotificationBar = model(this.notificationsBars()[0].id ?? 'inbox');
+  selectedNotificationBar = model(this.notificationsBars()[0]?.id ?? 'inbox');
 
   selectedNotificationsBarData = computed(
     () => this.notifications().find((f) => f.id === this.selectedNotificationBar()).data
@@ -309,5 +308,16 @@ export class AppTopbar {
       ...value,
       searchBarActive: !value.searchBarActive
     }));
+  }
+
+  /**
+   * Closes the profile dropdown menu
+   */
+  closeProfileMenu() {
+    // Find and remove the active class from the profile menu
+    const profileMenuElement = document.querySelector('.profile-item div:not(.hidden)');
+    if (profileMenuElement) {
+      profileMenuElement.classList.add('hidden');
+    }
   }
 }
