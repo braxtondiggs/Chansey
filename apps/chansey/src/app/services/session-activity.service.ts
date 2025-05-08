@@ -1,4 +1,4 @@
-import { ApplicationRef, ComponentRef, Injectable, OnDestroy, createComponent } from '@angular/core';
+import { ApplicationRef, ComponentRef, Injectable, OnDestroy, createComponent, inject } from '@angular/core';
 
 import { Observable, Subject, Subscription, fromEvent, interval, merge, timer } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
@@ -14,6 +14,8 @@ export class SessionActivityService implements OnDestroy {
   private readonly DEFAULT_IDLE_TIME = 30 * 60 * 1000; // 30 minutes by default
   private readonly WARNING_BEFORE_TIMEOUT = 60 * 1000; // Show warning 60 seconds before timeout
   private readonly WARNING_COUNTDOWN_INTERVAL = 1000; // Update warning countdown every second
+  private readonly authService = inject(AuthService);
+  private readonly appRef = inject(ApplicationRef);
 
   private timeout = this.DEFAULT_IDLE_TIME;
   private idleTimer: Subscription | null = null;
@@ -26,10 +28,7 @@ export class SessionActivityService implements OnDestroy {
   private warningComponentRef: ComponentRef<TimeoutWarningComponent> | null = null;
   private remainingSeconds = 60;
 
-  constructor(
-    private authService: AuthService,
-    private appRef: ApplicationRef
-  ) {}
+  logoutMutation = this.authService.useLogoutMutation();
 
   /**
    * Initialize the session activity monitoring
@@ -139,7 +138,7 @@ export class SessionActivityService implements OnDestroy {
       .subscribe(() => {
         console.log('Session expired due to inactivity');
         this.hideWarning();
-        this.authService.logout();
+        this.logoutMutation.mutate();
       });
   }
 
@@ -170,7 +169,7 @@ export class SessionActivityService implements OnDestroy {
     });
 
     warningComponentRef.instance.logout.subscribe(() => {
-      this.authService.logout();
+      this.logoutMutation.mutate();
     });
 
     // Start countdown timer

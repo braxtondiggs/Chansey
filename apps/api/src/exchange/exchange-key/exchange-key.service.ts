@@ -138,9 +138,9 @@ export class ExchangeKeyService {
     return this.exchangeKeyRepository.save(exchangeKey);
   }
 
-  async remove(id: string, userId: string): Promise<void> {
+  async remove(id: string, userId: string): Promise<ExchangeKey> {
     const exchangeKey = await this.findOne(id, userId);
-    await this.exchangeKeyRepository.remove(exchangeKey);
+    return await this.exchangeKeyRepository.remove(exchangeKey);
   }
 
   /**

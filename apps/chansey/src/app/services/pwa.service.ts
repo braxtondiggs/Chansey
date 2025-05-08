@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 
 import { BehaviorSubject, Observable, filter } from 'rxjs';
@@ -7,10 +7,11 @@ import { BehaviorSubject, Observable, filter } from 'rxjs';
   providedIn: 'root'
 })
 export class PwaService {
+  private readonly swUpdate = inject(SwUpdate);
   private installPromptEvent: any;
   private _installable$ = new BehaviorSubject<boolean>(false);
 
-  constructor(private swUpdate: SwUpdate) {
+  constructor() {
     this.handleAppUpdates();
     this.handleInstallPrompt();
   }

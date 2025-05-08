@@ -4,13 +4,14 @@
 <p-card>
   <p-table
     #dt
-    [loading]="isLoading"
+    [loading]="isLoading()"
     [paginator]="true"
     [rowHover]="true"
     [rows]="15"
     [showCurrentPageReport]="true"
-    [(selection)]="selectedExchanges"
-    [value]="exchanges"
+    [selection]="selectedExchanges()"
+    (selectionChange)="selectedExchanges.set($event)"
+    [value]="exchanges()"
     [globalFilterFields]="['name']"
     currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
     dataKey="id"
@@ -36,10 +37,16 @@
             icon="pi pi-trash"
             outlined
             (onClick)="deleteSelectedExchanges()"
-            [disabled]="!selectedExchanges || !selectedExchanges.length"
+            [disabled]="!selectedExchanges() || !selectedExchanges().length"
             class="hidden md:inline-flex"
           />
-          <p-button label="Sync" icon="pi pi-refresh" severity="info" [loading]="isSyncing" (click)="syncExchanges()" />
+          <p-button
+            label="Sync"
+            icon="pi pi-refresh"
+            severity="info"
+            [loading]="isSyncing()"
+            (click)="syncExchanges()"
+          />
         </div>
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />
@@ -107,6 +114,7 @@
               severity="danger"
               [rounded]="true"
               [outlined]="true"
+              [loading]="isDeletePending()"
               (click)="confirmDeleteExchange(exchange)"
             />
           </div>
@@ -115,19 +123,23 @@
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="8" class="p-4 text-center">No exchanges found</td>
+        <td colspan="8" class="p-4 text-center">
+          <div *ngIf="exchangesError()" class="text-red-500">Error loading exchanges: {{ exchangesError() }}</div>
+          <div *ngIf="!exchangesError()">No exchanges found</div>
+        </td>
       </tr>
     </ng-template>
   </p-table>
 </p-card>
 
 <p-dialog
-  [(visible)]="exchangeDialog"
+  [visible]="exchangeDialog()"
+  (onHide)="exchangeDialog.set(false)"
   [style]="{ width: '450px' }"
-  header="{{ isNew ? 'New Exchange' : 'Edit Exchange' }}"
+  [header]="isNew() ? 'New Exchange' : 'Edit Exchange'"
   [modal]="true"
-  [closable]="!isLoading"
-  [closeOnEscape]="!isLoading"
+  [closable]="!isCreatePending() && !isUpdatePending()"
+  [closeOnEscape]="!isCreatePending() && !isUpdatePending()"
 >
   <form [formGroup]="exchangeForm" class="my-4">
     <p-fluid>
@@ -138,10 +150,10 @@
           pInputText
           formControlName="name"
           pSize="large"
-          [ngClass]="{ 'ng-invalid ng-dirty': submitted && exchangeForm.controls['name'].invalid }"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted() && exchangeForm.controls['name'].invalid }"
         />
         <label for="name">Name</label>
-        <small class="p-error" *ngIf="submitted && exchangeForm.controls['name'].invalid">Name is required.</small>
+        <small class="p-error" *ngIf="submitted() && exchangeForm.controls['name'].invalid">Name is required.</small>
       </p-floatlabel>
 
       <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
@@ -151,13 +163,13 @@
           pInputText
           formControlName="url"
           pSize="large"
-          [ngClass]="{ 'ng-invalid ng-dirty': submitted && exchangeForm.controls['url'].invalid }"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted() && exchangeForm.controls['url'].invalid }"
         />
         <label for="url">URL</label>
-        <small class="p-error" *ngIf="submitted && exchangeForm.controls['url'].errors?.['required']">
+        <small class="p-error" *ngIf="submitted() && exchangeForm.controls['url'].errors?.['required']">
           URL is required.
         </small>
-        <small class="p-error" *ngIf="submitted && exchangeForm.controls['url'].errors?.['pattern']">
+        <small class="p-error" *ngIf="submitted() && exchangeForm.controls['url'].errors?.['pattern']">
           Enter a valid URL (e.g., https://example.com).
         </small>
       </p-floatlabel>
@@ -171,8 +183,19 @@
   </form>
 
   <ng-template #footer>
-    <p-button severity="secondary" label="Cancel" icon="pi pi-times" (click)="hideDialog()" [disabled]="isLoading" />
-    <p-button label="Save" icon="pi pi-check" (click)="saveExchange()" [loading]="isLoading" />
+    <p-button
+      severity="secondary"
+      label="Cancel"
+      icon="pi pi-times"
+      (click)="hideDialog()"
+      [disabled]="isCreatePending() || isUpdatePending()"
+    />
+    <p-button
+      label="Save"
+      icon="pi pi-check"
+      (click)="saveExchange()"
+      [loading]="isCreatePending() || isUpdatePending()"
+    />
   </ng-template>
 </p-dialog>
 <style>

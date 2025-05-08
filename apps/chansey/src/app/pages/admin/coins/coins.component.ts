@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService, MenuItem } from 'primeng/api';
@@ -17,7 +17,7 @@ import { SplitButtonModule } from 'primeng/splitbutton';
 import { TableModule, Table } from 'primeng/table';
 import { ToastModule } from 'primeng/toast';
 
-import { Coin, CoinsService, CreateCoinDto, UpdateCoinDto } from './coins.service';
+import { Coin, CoinsService } from './coins.service';
 
 @Component({
   selector: 'app-coins',
@@ -43,115 +43,117 @@ import { Coin, CoinsService, CreateCoinDto, UpdateCoinDto } from './coins.servic
   providers: [MessageService, ConfirmationService],
   templateUrl: './coins.component.html'
 })
-export class CoinsComponent implements OnInit {
+export class CoinsComponent {
   @ViewChild('dt') dt: Table | undefined;
 
-  coins: Coin[] = [];
-  coin: Coin | null = null;
-  coinDialog: boolean = false;
-  coinForm: FormGroup;
-  isLoading: boolean = false;
-  isSyncingCoins: boolean = false;
-  isSyncingDetails: boolean = false;
-  submitted: boolean = false;
-  isNew: boolean = true;
-  selectedCoins: Coin[] = [];
+  // Services
+  private readonly coinsService = inject(CoinsService);
+  private readonly messageService = inject(MessageService);
+  private readonly confirmationService = inject(ConfirmationService);
+  private readonly fb = inject(FormBuilder).nonNullable;
 
-  get syncLabel(): string {
-    return this.isSyncingCoins ? 'Syncing...' : 'Sync';
-  }
+  // State signals
+  coins = signal<Coin[]>([]);
+  coinDialog = signal<boolean>(false);
+  submitted = signal<boolean>(false);
+  isNew = signal<boolean>(true);
+  selectedCoins = signal<Coin[]>([]);
 
-  get syncIcon(): string {
-    return this.isSyncingCoins ? 'pi pi-spin pi-spinner' : 'pi pi-refresh';
-  }
+  // Form
+  coinForm: FormGroup = this.fb.group({
+    name: ['', [Validators.required]],
+    symbol: ['', [Validators.required]],
+    slug: ['']
+  });
 
-  get syncItems(): MenuItem[] {
+  // TanStack Query hooks
+  coinsQuery = this.coinsService.useCoins();
+  syncCoinsMutation = this.coinsService.useSyncCoins();
+  syncCoinDetailsMutation = this.coinsService.useSyncCoinDetails();
+  createCoinMutation = this.coinsService.useCreateCoin();
+  updateCoinMutation = this.coinsService.useUpdateCoin();
+  deleteCoinMutation = this.coinsService.useDeleteCoin();
+
+  // Computed states
+  isLoading = computed(() => this.coinsQuery?.isPending() || this.coinsQuery?.isFetching());
+  isSyncingCoins = computed(() => this.syncCoinsMutation?.isPending());
+  isSyncingDetails = computed(() => this.syncCoinDetailsMutation?.isPending());
+  coinsData = computed(() => this.coinsQuery?.data() || []);
+  coinsError = computed(() => this.coinsQuery?.error);
+  isDeletePending = computed(() => this.deleteCoinMutation?.isPending());
+  isCreatePending = computed(() => this.createCoinMutation?.isPending());
+  isUpdatePending = computed(() => this.updateCoinMutation?.isPending());
+  hasChanges = computed(() => this.coinForm?.dirty || false);
+
+  // Computed menu properties
+  syncLabel = computed(() => (this.isSyncingCoins() ? 'Syncing...' : 'Sync'));
+  syncIcon = computed(() => (this.isSyncingCoins() ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'));
+  syncItems = computed(() => {
     return [
       {
-        label: this.isSyncingDetails ? 'Syncing Details...' : 'Sync Detailed Info',
-        icon: this.isSyncingDetails ? 'pi pi-spin pi-spinner' : 'pi pi-list',
-        disabled: this.isSyncingCoins || this.isSyncingDetails,
+        label: this.isSyncingDetails() ? 'Syncing Details...' : 'Sync Detailed Info',
+        icon: this.isSyncingDetails() ? 'pi pi-spin pi-spinner' : 'pi pi-list',
+        disabled: this.isSyncingCoins() || this.isSyncingDetails(),
         command: () => {
           this.syncCoinDetails();
         }
       }
     ];
+  });
+
+  constructor() {
+    this.initializeQueries();
   }
 
-  constructor(
-    private coinsService: CoinsService,
-    private messageService: MessageService,
-    private confirmationService: ConfirmationService,
-    private fb: FormBuilder
-  ) {
-    this.coinForm = this.fb.group({
-      name: ['', [Validators.required]],
-      symbol: ['', [Validators.required]]
-    });
-  }
-
-  ngOnInit(): void {
-    this.loadCoins();
-  }
-
-  loadCoins(): void {
-    this.isLoading = true;
-    this.coinsService.getCoins().subscribe({
-      next: (data) => {
-        this.coins = data;
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to load coins'
-        });
-        console.error('Error loading coins:', error);
-        this.isLoading = false;
+  private initializeQueries(): void {
+    // Set up an effect to update the coins signal when query data changes
+    effect(() => {
+      const data = this.coinsData();
+      if (data && Array.isArray(data)) {
+        this.coins.set(data);
       }
     });
   }
 
   openNewCoinDialog(): void {
-    this.coin = null;
-    this.isNew = true;
-    this.submitted = false;
+    this.isNew.set(true);
+    this.submitted.set(false);
     this.coinForm.reset();
-    this.coinDialog = true;
+    this.coinDialog.set(true);
   }
 
   openEditCoinDialog(coin: Coin): void {
-    this.coin = { ...coin };
-    this.isNew = false;
-    this.submitted = false;
+    this.isNew.set(false);
+    this.submitted.set(false);
     this.coinForm.patchValue({
       name: coin.name,
-      symbol: coin.symbol
+      symbol: coin.symbol,
+      slug: coin.slug
     });
-    this.coinDialog = true;
+    this.coinDialog.set(true);
   }
 
   confirmDeleteCoin(coin: Coin): void {
-    this.coin = coin;
     this.confirmationService.confirm({
       message: `Are you sure you want to delete the coin "${coin.name}"?`,
-      header: 'Confirm',
+      header: 'Confirm Delete',
       icon: 'pi pi-exclamation-triangle',
+      acceptButtonStyleClass: 'p-button-danger',
+      rejectButtonStyleClass: 'p-button-secondary',
       accept: () => {
-        this.deleteCoin();
+        this.deleteCoin(coin.id);
       }
     });
   }
 
   hideDialog(): void {
-    this.coinDialog = false;
-    this.submitted = false;
+    this.coinDialog.set(false);
+    this.submitted.set(false);
     this.coinForm.reset();
   }
 
   saveCoin(): void {
-    this.submitted = true;
+    this.submitted.set(true);
 
     if (this.coinForm.invalid) {
       return;
@@ -159,176 +161,136 @@ export class CoinsComponent implements OnInit {
 
     const coinData = this.coinForm.value;
 
-    if (this.isNew) {
-      this.createCoin(coinData);
-    } else if (this.coin) {
-      this.updateCoin(this.coin.id, coinData);
+    if (this.isNew()) {
+      // Generate slug if not provided
+      const slug = coinData.slug || this.generateSlug(coinData.name);
+      const createData = {
+        ...coinData,
+        slug
+      };
+
+      this.createCoinMutation.mutate(createData, {
+        onSuccess: () => {
+          this.showSuccessMessage('Coin created successfully');
+          this.hideDialog();
+        },
+        onError: (error) => {
+          this.showErrorMessage(error.message || 'Failed to create coin');
+        }
+      });
+    } else {
+      // Find the coin we're currently editing to get its ID
+      const coins = this.coins();
+      const matchingCoin = coins.find((c) => c.name === coinData.name || c.symbol === coinData.symbol);
+
+      if (!matchingCoin) {
+        this.showErrorMessage('Could not find the coin to update');
+        return;
+      }
+
+      // Include the ID in the update data
+      const updateData = {
+        ...coinData,
+        id: matchingCoin.id
+      };
+
+      this.updateCoinMutation.mutate(updateData, {
+        onSuccess: () => {
+          this.showSuccessMessage('Coin updated successfully');
+          this.hideDialog();
+        },
+        onError: (error) => {
+          this.showErrorMessage(error.message || 'Failed to update coin');
+        }
+      });
     }
   }
 
-  createCoin(coinData: CreateCoinDto): void {
-    this.isLoading = true;
-    this.coinsService.createCoin(coinData).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Coin created successfully'
-        });
-        this.loadCoins();
-        this.hideDialog();
-        this.isLoading = false;
+  deleteCoin(id: string): void {
+    this.deleteCoinMutation.mutate(id, {
+      onSuccess: () => {
+        this.showSuccessMessage('Coin deleted successfully');
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to create coin'
-        });
-        console.error('Error creating coin:', error);
-        this.isLoading = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to delete coin');
       }
     });
   }
 
-  updateCoin(id: string, coinData: UpdateCoinDto): void {
-    this.isLoading = true;
-    this.coinsService.updateCoin(id, coinData).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Coin updated successfully'
-        });
-        this.loadCoins();
-        this.hideDialog();
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to update coin'
-        });
-        console.error('Error updating coin:', error);
-        this.isLoading = false;
-      }
-    });
-  }
-
-  deleteCoin(): void {
-    if (!this.coin) return;
-
-    this.isLoading = true;
-    this.coinsService.deleteCoin(this.coin.id).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Coin deleted successfully'
-        });
-        this.loadCoins();
-        this.coin = null;
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to delete coin'
-        });
-        console.error('Error deleting coin:', error);
-        this.isLoading = false;
-      }
-    });
+  // Generate slug from name
+  private generateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^\w-]+/g, '')
+      .replace(/--+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;
-    if (this.dt) {
-      this.dt.filterGlobal(filterValue, 'contains');
-    }
+    this.dt?.filterGlobal(filterValue, 'contains');
   }
 
   deleteSelectedCoins(): void {
     this.confirmationService.confirm({
-      message: `Are you sure you want to delete the selected coins?`,
-      header: 'Confirm',
+      message: 'Are you sure you want to delete the selected coins?',
+      header: 'Confirm Multiple Delete',
       icon: 'pi pi-exclamation-triangle',
+      acceptButtonStyleClass: 'p-button-danger',
+      rejectButtonStyleClass: 'p-button-secondary',
       accept: () => {
-        this.isLoading = true;
-        const deleteObservables = this.selectedCoins.map((coin) => this.coinsService.deleteCoin(coin.id));
+        const selected = this.selectedCoins();
+        if (!selected.length) return;
 
-        // Using Promise.all to handle multiple observables
-        Promise.all(deleteObservables.map((obs) => obs.toPromise()))
+        Promise.all(selected.map((coin) => this.deleteCoinMutation.mutateAsync(coin.id)))
           .then(() => {
-            this.messageService.add({
-              severity: 'success',
-              summary: 'Success',
-              detail: 'Coins deleted successfully'
-            });
-            this.selectedCoins = [];
-            this.loadCoins();
-            this.isLoading = false;
+            this.showSuccessMessage('Selected coins deleted successfully');
+            this.selectedCoins.set([]);
           })
           .catch((error) => {
-            this.messageService.add({
-              severity: 'error',
-              summary: 'Error',
-              detail: 'Failed to delete some coins'
-            });
-            console.error('Error deleting coins:', error);
-            this.isLoading = false;
+            this.showErrorMessage('Failed to delete some coins');
+            console.error('Error deleting selected coins:', error);
           });
       }
     });
   }
 
   syncCoins(): void {
-    this.isSyncingCoins = true;
-    this.coinsService.syncCoins().subscribe({
-      next: (response) => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: response.message || 'Coins synced successfully'
-        });
-        this.loadCoins();
-        this.isSyncingCoins = false;
+    this.syncCoinsMutation.mutate(undefined, {
+      onSuccess: (response) => {
+        this.showSuccessMessage(response.message || 'Coins synced successfully');
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to sync coins'
-        });
-        console.error('Error syncing coins:', error);
-        this.isSyncingCoins = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to sync coins');
       }
     });
   }
 
   syncCoinDetails(): void {
-    this.isSyncingDetails = true;
-    this.coinsService.syncCoinDetails().subscribe({
-      next: (response) => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: response.message || 'Coin details synced successfully'
-        });
-        this.loadCoins();
-        this.isSyncingDetails = false;
+    this.syncCoinDetailsMutation.mutate(undefined, {
+      onSuccess: (response) => {
+        this.showSuccessMessage(response.message || 'Coin details synced successfully');
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to sync coin details'
-        });
-        console.error('Error syncing coin details:', error);
-        this.isSyncingDetails = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to sync coin details');
       }
+    });
+  }
+
+  private showSuccessMessage(detail: string): void {
+    this.messageService.add({
+      severity: 'success',
+      summary: 'Success',
+      detail
+    });
+  }
+
+  private showErrorMessage(detail: string): void {
+    this.messageService.add({
+      severity: 'error',
+      summary: 'Error',
+      detail
     });
   }
 }

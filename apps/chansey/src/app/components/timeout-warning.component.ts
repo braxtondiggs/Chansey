@@ -27,8 +27,8 @@ import { DialogModule } from 'primeng/dialog';
       </div>
       <ng-template pTemplate="footer">
         <div class="justify-content-end flex gap-2">
-          <p-button label="Logout" styleClass="p-button-outlined p-button-danger" (click)="onLogout()"></p-button>
-          <p-button label="Continue Session" styleClass="p-button-primary" (click)="onContinue()"></p-button>
+          <p-button label="Logout" severity="danger" variant="outlined" (click)="onLogout()"></p-button>
+          <p-button label="Continue Session" severity="secondary" (click)="onContinue()"></p-button>
         </div>
       </ng-template>
     </p-dialog>

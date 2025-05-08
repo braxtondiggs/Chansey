@@ -1,28 +1,14 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { IForgotPasswordResponse, IForgotPassword } from '@chansey/api-interfaces';
 
-import { IForgotPasswordResponse } from '@chansey/api-interfaces';
+import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ForgotService {
-  private userSubject = new BehaviorSubject<any>(null);
-  user$ = this.userSubject.asObservable();
-
-  constructor(private http: HttpClient) {}
-
-  forgot(email: string): Observable<IForgotPasswordResponse> {
-    return this.http
-      .post<IForgotPasswordResponse>('api/auth/forgot-password', {
-        email
-      })
-      .pipe(
-        tap((response) => {
-          this.userSubject.next(response);
-        })
-      );
+  useForgotPasswordMutation() {
+    return useAuthMutation<IForgotPasswordResponse, IForgotPassword>('/api/auth/forgot-password', 'POST');
   }
 }

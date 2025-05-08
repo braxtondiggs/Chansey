@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, inject, Input, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
   selector: 'app-lazy-image',
@@ -24,11 +24,10 @@ export class LazyImageComponent implements OnInit, OnDestroy {
   @Input() alt = '';
   @Input() className = '';
 
+  private readonly el = inject(ElementRef);
   isIntersecting = false;
   isLoaded = false;
   imageElement: HTMLElement | undefined;
-
-  constructor(private el: ElementRef) {}
 
   ngOnInit() {
     this.imageElement = this.el.nativeElement.querySelector('img');

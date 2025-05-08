@@ -1,5 +1,5 @@
+import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, inject, model, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterModule } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
@@ -20,7 +20,7 @@ interface NotificationsBars {
 @Component({
   selector: 'app-topbar',
   standalone: true,
-  imports: [AvatarModule, AppBreadcrumb, RouterModule, StyleClassModule],
+  imports: [AvatarModule, AppBreadcrumb, RouterModule, StyleClassModule, CommonModule],
   template: `<div class="layout-topbar">
     <div class="topbar-left">
       <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
@@ -137,7 +137,7 @@ interface NotificationsBars {
             leaveToClass="hidden"
             [hideOnOutsideClick]="true"
           >
-            <p-avatar styleClass="!w-10 !h-10">
+            <p-avatar styleClass="!w-10 !h-10" *ngIf="!userLoading()">
               <img [src]="userProfileImage()" />
             </p-avatar>
           </a>
@@ -168,7 +168,7 @@ interface NotificationsBars {
               <li>
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  (click)="authService.logout(); closeProfileMenu()"
+                  (click)="logout()"
                 >
                   <i class="pi pi-power-off"></i>
                   <span>Log out</span>
@@ -188,14 +188,15 @@ interface NotificationsBars {
 })
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
-export class AppTopbar {
+export class AppTopBar {
   layoutService = inject(LayoutService);
   authService = inject(AuthService);
 
-  private userSignal = toSignal(this.authService.user$, { initialValue: null });
-
+  user = this.authService.useUser();
+  logoutMutation = this.authService.useLogoutMutation();
+  userLoading = computed(() => this.user.isPending() || this.user.isFetching());
   userProfileImage = computed(() => {
-    const user = this.userSignal();
+    const user = this.user.data();
     const avatar = createAvatar(funEmoji, {
       seed: user?.['id']
     });
@@ -205,6 +206,14 @@ export class AppTopbar {
   @ViewChild('menubutton') menuButton!: ElementRef;
   //@ViewChild('profileMenu') profileMenu: ElementRef;
   // @ViewChild('profileButton') profileButton: ElementRef;
+
+  logout() {
+    this.logoutMutation.mutate(undefined, {
+      onSuccess: () => {
+        this.closeProfileMenu();
+      }
+    });
+  }
 
   notificationsBars = signal<NotificationsBars[]>([
     /*{

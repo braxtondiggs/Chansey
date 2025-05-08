@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { Risk } from '@chansey/api-interfaces';
+
 import { CreateRiskDto, UpdateRiskDto } from './dto';
-import { Risk } from './risk.entity';
+import { Risk as RiskEntity } from './risk.entity';
 import { RiskService } from './risk.service';
 
 import { Roles } from '../authentication/decorator/roles.decorator';
@@ -21,7 +23,7 @@ export class RiskController {
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Create a new risk profile' })
-  @ApiResponse({ status: 201, description: 'The risk has been successfully created.', type: Risk })
+  @ApiResponse({ status: 201, description: 'The risk has been successfully created.', type: RiskEntity })
   @ApiResponse({ status: 400, description: 'Bad Request.' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied. Admin role required.' })
   create(@Body() createRiskDto: CreateRiskDto): Promise<Risk> {
@@ -30,7 +32,7 @@ export class RiskController {
 
   @Get()
   @ApiOperation({ summary: 'Get all risk profiles' })
-  @ApiResponse({ status: 200, description: 'Return all risks.', type: [Risk] })
+  @ApiResponse({ status: 200, description: 'Return all risks.', type: [RiskEntity] })
   findAll(): Promise<Risk[]> {
     return this.riskService.findAll();
   }
@@ -38,7 +40,7 @@ export class RiskController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a risk profile by id' })
   @ApiParam({ name: 'id', description: 'Risk ID' })
-  @ApiResponse({ status: 200, description: 'Return the risk.', type: Risk })
+  @ApiResponse({ status: 200, description: 'Return the risk.', type: RiskEntity })
   @ApiResponse({ status: 404, description: 'Risk not found.' })
   findOne(@Param('id') id: string): Promise<Risk> {
     return this.riskService.findOne(id);
@@ -49,7 +51,7 @@ export class RiskController {
   @Roles('admin')
   @ApiOperation({ summary: 'Update a risk profile' })
   @ApiParam({ name: 'id', description: 'Risk ID' })
-  @ApiResponse({ status: 200, description: 'The risk has been successfully updated.', type: Risk })
+  @ApiResponse({ status: 200, description: 'The risk has been successfully updated.', type: RiskEntity })
   @ApiResponse({ status: 404, description: 'Risk not found.' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied. Admin role required.' })
   update(@Param('id') id: string, @Body() updateRiskDto: UpdateRiskDto): Promise<Risk> {
@@ -64,7 +66,7 @@ export class RiskController {
   @ApiResponse({ status: 200, description: 'The risk has been successfully deleted.' })
   @ApiResponse({ status: 404, description: 'Risk not found.' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied. Admin role required.' })
-  remove(@Param('id') id: string): Promise<void> {
+  remove(@Param('id') id: string): Promise<{ message: string }> {
     return this.riskService.remove(id);
   }
 }

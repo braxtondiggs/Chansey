@@ -1,35 +1,33 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
-import { Observable } from 'rxjs';
-
-import { AuthService } from '@chansey-web/app/services';
+import { exchangeKeys } from '@chansey-web/app/core/query/query.keys';
+import { useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
 
 export interface Exchange {
   id: string;
   name: string;
-  slug: string;
   url: string;
-  logo: string;
   supported: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateExchangeDto {
   name: string;
-  slug: string;
   url: string;
-  logo?: string;
-  supported?: boolean;
+  supported: boolean;
+  slug: string;
 }
 
 export interface UpdateExchangeDto {
+  id: string;
   name?: string;
-  slug?: string;
   url?: string;
-  logo?: string;
   supported?: boolean;
+}
+
+export interface SyncResponse {
+  message: string;
 }
 
 @Injectable({
@@ -38,41 +36,38 @@ export interface UpdateExchangeDto {
 export class ExchangesService {
   private apiUrl = '/api/exchange';
 
-  constructor(
-    private http: HttpClient,
-    private authService: AuthService
-  ) {}
-
-  private get authHeaders() {
-    const token = this.authService.getToken();
-    return {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    };
+  useExchanges() {
+    return useAuthQuery<Exchange[]>(exchangeKeys.lists.all, this.apiUrl);
   }
 
-  getExchanges(): Observable<Exchange[]> {
-    return this.http.get<Exchange[]>(this.apiUrl, this.authHeaders);
+  useExchange() {
+    return useAuthQuery<Exchange, string>(
+      (id: string) => exchangeKeys.detail(id),
+      (id: string) => `${this.apiUrl}/${id}`
+    );
   }
 
-  getExchange(id: string): Observable<Exchange> {
-    return this.http.get<Exchange>(`${this.apiUrl}/${id}`, this.authHeaders);
+  useCreateExchange() {
+    return useAuthMutation<Exchange, CreateExchangeDto>(this.apiUrl, 'POST', {
+      invalidateQueries: [exchangeKeys.lists.all]
+    });
   }
 
-  createExchange(exchange: CreateExchangeDto): Observable<Exchange> {
-    return this.http.post<Exchange>(this.apiUrl, exchange, this.authHeaders);
+  useUpdateExchange() {
+    return useAuthMutation<Exchange, UpdateExchangeDto>((variables) => `${this.apiUrl}/${variables.id}`, 'PATCH', {
+      invalidateQueries: [exchangeKeys.lists.all]
+    });
   }
 
-  updateExchange(id: string, exchange: UpdateExchangeDto): Observable<Exchange> {
-    return this.http.patch<Exchange>(`${this.apiUrl}/${id}`, exchange, this.authHeaders);
+  useDeleteExchange() {
+    return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
+      invalidateQueries: [exchangeKeys.lists.all]
+    });
   }
 
-  deleteExchange(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/${id}`, this.authHeaders);
-  }
-
-  syncExchanges(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/sync`, {}, this.authHeaders);
+  useSyncExchanges() {
+    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync`, 'POST', {
+      invalidateQueries: [exchangeKeys.lists.all]
+    });
   }
 }

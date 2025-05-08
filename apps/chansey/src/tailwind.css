@@ -13,11 +13,11 @@
   }
   @screen xl {
     .landing-container {
-      @apply max-w-[85rem];
+      @apply w-[85rem];
     }
   }
   .title-h1 {
-    @apply font-semibold leading-tight text-center text-surface-900 dark:text-surface-0 text-7xl;
+    @apply text-surface-900 dark:text-surface-0 text-center text-7xl font-semibold leading-tight;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -31,12 +31,12 @@
       'cv11' on;
   }
   .title-h2 {
-    @apply font-semibold leading-none text-center text-surface-950 dark:text-surface-0;
+    @apply text-surface-950 dark:text-surface-0 text-center font-semibold leading-none;
     font-size: 4rem;
     font-family: 'InterDisplay', sans-serif;
   }
   .title-h3 {
-    @apply font-semibold leading-tight text-center text-surface-900 dark:text-surface-0;
+    @apply text-surface-900 dark:text-surface-0 text-center font-semibold leading-tight;
     font-size: 3.5rem;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
@@ -51,7 +51,7 @@
       'cv11' on;
   }
   .title-h4 {
-    @apply font-semibold leading-tight text-center text-surface-900 dark:text-surface-0;
+    @apply text-surface-900 dark:text-surface-0 text-center font-semibold leading-tight;
     font-size: 2.85rem;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
@@ -66,7 +66,7 @@
       'cv11' on;
   }
   .title-h5 {
-    @apply text-4xl font-medium leading-snug text-center text-surface-950 dark:text-surface-0;
+    @apply text-surface-950 dark:text-surface-0 text-center text-4xl font-medium leading-snug;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -80,7 +80,7 @@
       'cv11' on;
   }
   .title-h6 {
-    @apply text-3xl font-medium text-center text-surface-950 dark:text-surface-0;
+    @apply text-surface-950 dark:text-surface-0 text-center text-3xl font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -94,7 +94,7 @@
       'cv11' on;
   }
   .title-h7 {
-    @apply text-2xl font-medium text-center text-surface-950 dark:text-surface-0;
+    @apply text-surface-950 dark:text-surface-0 text-center text-2xl font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -106,7 +106,7 @@
       'calt' off;
   }
   .body-large {
-    @apply text-xl text-center text-surface-500;
+    @apply text-surface-500 text-center text-xl;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -119,7 +119,7 @@
   }
 
   .body-medium {
-    @apply text-lg text-center text-surface-500;
+    @apply text-surface-500 text-center text-lg;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -132,7 +132,7 @@
   }
 
   .body-small {
-    @apply text-base text-center text-surface-500;
+    @apply text-surface-500 text-center text-base;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -144,7 +144,7 @@
       'calt' off;
   }
   .body-xsmall {
-    @apply text-sm text-center text-surface-500;
+    @apply text-surface-500 text-center text-sm;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv09' on,
@@ -156,7 +156,7 @@
       'calt' off;
   }
   .label-large {
-    @apply text-xl font-medium text-surface-950 dark:text-surface-0;
+    @apply text-surface-950 dark:text-surface-0 text-xl font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -170,7 +170,7 @@
       'cv11' on;
   }
   .label-medium {
-    @apply text-lg font-medium text-surface-950 dark:text-surface-0;
+    @apply text-surface-950 dark:text-surface-0 text-lg font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv11' on,
@@ -184,7 +184,7 @@
       'cv01' on;
   }
   .label-small {
-    @apply text-base font-medium text-center text-surface-500;
+    @apply text-surface-500 text-center text-base font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv11' on,
@@ -198,7 +198,7 @@
       'cv01' on;
   }
   .label-xsmall {
-    @apply text-sm font-medium text-center text-surface-500;
+    @apply text-surface-500 text-center text-sm font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -212,7 +212,7 @@
       'cv05' on;
   }
   .paragraph-xsmall {
-    @apply text-sm text-center;
+    @apply text-center text-sm;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'ss11' on,
@@ -221,10 +221,10 @@
       'calt' off;
   }
   .badge {
-    @apply body-small text-surface-950 dark:text-surface-0 border-surface-200 dark:border-surface-800 mx-auto w-fit rounded-full border px-3.5 py-1 leading-normal;
+    @apply body-small border-surface-200 text-surface-950 dark:border-surface-800 dark:text-surface-0 mx-auto w-fit rounded-full border px-3.5 py-1 leading-normal;
   }
   .body-button {
-    @apply bg-primary-600 hover:bg-primary-500 text-surface-0 rounded-lg px-3.5 py-2 text-center font-normal transition-all;
+    @apply bg-primary-600 text-surface-0 hover:bg-primary-500 rounded-lg px-3.5 py-2 text-center font-normal transition-all;
     width: 8.5rem;
     font-feature-settings:
       'cv11' on,
@@ -239,11 +239,11 @@
   }
 
   .landing-container {
-    @apply transition-all bg-primary-50/75 dark:bg-primary-900/40 backdrop-blur-sm;
+    @apply bg-primary-50/75 dark:bg-primary-900/40 backdrop-blur-sm transition-all;
   }
 
   .button-button {
-    @apply flex items-center justify-center w-full gap-2 py-2 font-medium leading-normal text-center transition-all border rounded-lg border-surface-200 dark:border-surface-800 hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-200;
+    @apply border-surface-200 text-surface-700 hover:bg-surface-100 dark:border-surface-800 dark:text-surface-200 dark:hover:bg-surface-800 flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-center font-medium leading-normal transition-all;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv08' on,

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsBoolean, IsNotEmpty, IsNumber, IsString, IsUrl } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class CreateExchangeDto {
   @IsString()
@@ -8,80 +8,96 @@ export class CreateExchangeDto {
   @ApiProperty()
   name: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  @ApiProperty()
-  slug: string;
+  @ApiProperty({ required: false })
+  slug?: string;
 
+  @IsOptional()
   @IsString()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   description?: string;
 
+  @IsOptional()
   @IsString()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   image?: string;
 
+  @IsOptional()
   @IsString()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   country?: string;
 
+  @IsOptional()
   @IsNumber()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   yearEstablished?: number;
 
+  @IsOptional()
   @IsNumber()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   trustScore?: number;
 
+  @IsOptional()
   @IsNumber()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   trustScoreRank?: number;
 
+  @IsOptional()
   @IsNumber()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   tradeVolume24HBtc?: number;
 
+  @IsOptional()
   @IsNumber()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   tradeVolume24HNormalized?: number;
 
+  @IsOptional()
   @IsBoolean()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   centralized?: boolean;
 
   @IsUrl()
   @ApiProperty()
-  url?: string;
+  url: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   twitter?: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   facebook?: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   reddit?: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   telegram?: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   slack?: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   otherUrl1?: string;
 
+  @IsOptional()
   @IsUrl()
-  @ApiProperty()
+  @ApiProperty({ required: false })
   otherUrl2?: string;
 
   @IsBoolean()
   @ApiProperty()
-  supported?: boolean;
+  supported: boolean;
 }

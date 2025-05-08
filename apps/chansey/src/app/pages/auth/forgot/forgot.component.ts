@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -28,51 +28,46 @@ import { ForgotService } from './forgot.service';
   templateUrl: './forgot.component.html'
 })
 export class ForgotComponent {
-  forgotForm: FormGroup;
-  isLoading = false;
+  private readonly fb = inject(FormBuilder);
+  private readonly forgotService = inject(ForgotService);
+  readonly forgotMutation = this.forgotService.useForgotPasswordMutation();
+
+  forgotForm: FormGroup = this.fb.group({
+    email: ['', [Validators.required, Validators.email]]
+  });
   messages = signal<any[]>([]);
   formSubmitted = false;
-
-  constructor(
-    private fb: FormBuilder,
-    private forgotService: ForgotService
-  ) {
-    this.forgotForm = this.fb.group({
-      email: ['', [Validators.required, Validators.email]]
-    });
-  }
 
   onSubmit() {
     this.formSubmitted = true;
 
     if (this.forgotForm.valid) {
-      this.isLoading = true;
-
       const { email } = this.forgotForm.value;
 
-      this.forgotService.forgot(email).subscribe({
-        next: (response) => {
-          this.isLoading = false;
-          this.messages.set([
-            {
-              content: response.message,
-              severity: 'success',
-              icon: 'pi-check-circle'
-            }
-          ]);
-        },
-        error: (error) => {
-          this.isLoading = false;
-          this.messages.set([
-            {
-              content: error.error?.message || 'An error occurred. Please try again later.',
-              severity: 'error',
-              icon: 'pi-exclamation-circle'
-            }
-          ]);
-          console.error('Login error:', error);
+      this.forgotMutation.mutate(
+        { email },
+        {
+          onSuccess: (response) => {
+            this.messages.set([
+              {
+                content: response.message,
+                severity: 'success',
+                icon: 'pi-check-circle'
+              }
+            ]);
+          },
+          onError: (error) => {
+            this.messages.set([
+              {
+                content: error?.message || 'An error occurred. Please try again later.',
+                severity: 'error',
+                icon: 'pi-exclamation-circle'
+              }
+            ]);
+            console.error('Forgot password error:', error);
+          }
         }
-      });
+      );
     }
   }
 }

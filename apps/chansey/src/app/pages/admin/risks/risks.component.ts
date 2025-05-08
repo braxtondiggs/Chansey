@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, ViewChild } from '@angular/core';
-import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -17,7 +17,9 @@ import { TableModule, Table } from 'primeng/table';
 import { TextareaModule } from 'primeng/textarea';
 import { ToastModule } from 'primeng/toast';
 
-import { Risk, RisksService, CreateRiskDto, UpdateRiskDto } from './risks.service';
+import { CreateRisk, Risk, UpdateRisk } from '@chansey/api-interfaces';
+
+import { RisksService } from './risks.service';
 
 @Component({
   selector: 'app-risks',
@@ -43,96 +45,98 @@ import { Risk, RisksService, CreateRiskDto, UpdateRiskDto } from './risks.servic
   providers: [MessageService, ConfirmationService],
   templateUrl: './risks.component.html'
 })
-export class RisksComponent implements OnInit {
+export class RisksComponent {
   @ViewChild('dt') dt: Table | undefined;
 
-  risks: Risk[] = [];
-  risk: Risk | null = null;
-  riskDialog: boolean = false;
-  riskForm: FormGroup;
-  isLoading: boolean = false;
-  submitted: boolean = false;
-  isNew: boolean = true;
-  selectedRisks: Risk[] = [];
+  // State signals
+  risks = signal<Risk[]>([]);
+  riskDialog = signal<boolean>(false);
+  submitted = signal<boolean>(false);
+  isNew = signal<boolean>(true);
+  selectedRisks = signal<Risk[]>([]);
+  currentRiskId = signal<string | null>(null);
 
-  constructor(
-    private risksService: RisksService,
-    private messageService: MessageService,
-    private confirmationService: ConfirmationService,
-    private fb: FormBuilder
-  ) {
-    this.riskForm = this.fb.group({
-      name: ['', [Validators.required]],
-      description: ['', [Validators.required]],
-      level: [1, [Validators.required, Validators.min(1), Validators.max(5)]]
-    });
-  }
+  // Services via inject
+  private risksService = inject(RisksService);
+  private messageService = inject(MessageService);
+  private confirmationService = inject(ConfirmationService);
+  private fb = inject(FormBuilder).nonNullable;
 
-  ngOnInit(): void {
-    this.loadRisks();
-  }
+  // Form
+  riskForm = this.fb.group({
+    name: ['', [Validators.required]],
+    description: ['', [Validators.required]],
+    level: [1, Validators.compose([Validators.required, Validators.min(1), Validators.max(5)])]
+  });
 
-  loadRisks(): void {
-    this.isLoading = true;
-    this.risksService.getRisks().subscribe({
-      next: (data) => {
-        this.risks = data;
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to load risk levels'
-        });
-        console.error('Error loading risk levels:', error);
-        this.isLoading = false;
+  // TanStack Query hooks
+  risksQuery = this.risksService.useRisks();
+  createRiskMutation = this.risksService.useCreateRisk();
+  updateRiskMutation = this.risksService.useUpdateRisk();
+  deleteRiskMutation = this.risksService.useDeleteRisk();
+
+  // Computed state
+  isLoading = computed(() => this.risksQuery.isPending() || this.risksQuery.isFetching());
+  risksData = computed(() => this.risksQuery.data() || []);
+  risksError = computed(() => this.risksQuery.error);
+  isDeletePending = computed(() => this.deleteRiskMutation.isPending());
+  isCreatePending = computed(() => this.createRiskMutation.isPending());
+  isUpdatePending = computed(() => this.updateRiskMutation.isPending());
+  hasChanges = computed(() => this.riskForm?.dirty || false);
+
+  constructor() {
+    // Set up an effect to update the risks signal when query data changes
+    effect(() => {
+      const data = this.risksData();
+      if (data && Array.isArray(data)) {
+        this.risks.set(data);
       }
     });
   }
 
   openNewRiskDialog(): void {
-    this.risk = null;
-    this.isNew = true;
-    this.submitted = false;
+    this.isNew.set(true);
+    this.submitted.set(false);
     this.riskForm.reset({
       level: 1
     });
-    this.riskDialog = true;
+    this.riskDialog.set(true);
   }
 
   openEditRiskDialog(risk: Risk): void {
-    this.risk = { ...risk };
-    this.isNew = false;
-    this.submitted = false;
+    this.isNew.set(false);
+    this.submitted.set(false);
+    this.currentRiskId.set(risk.id);
     this.riskForm.patchValue({
       name: risk.name,
       description: risk.description,
       level: risk.level
     });
-    this.riskDialog = true;
+    this.riskDialog.set(true);
   }
 
   confirmDeleteRisk(risk: Risk): void {
-    this.risk = risk;
     this.confirmationService.confirm({
       message: `Are you sure you want to delete the risk level "${risk.name}"?`,
       header: 'Confirm',
       icon: 'pi pi-exclamation-triangle',
+      acceptButtonStyleClass: 'p-button-danger',
+      rejectButtonStyleClass: 'p-button-secondary',
       accept: () => {
-        this.deleteRisk();
+        this.deleteRisk(risk.id);
       }
     });
   }
 
   hideDialog(): void {
-    this.riskDialog = false;
-    this.submitted = false;
+    this.riskDialog.set(false);
+    this.submitted.set(false);
     this.riskForm.reset();
+    this.currentRiskId.set(null);
   }
 
   saveRisk(): void {
-    this.submitted = true;
+    this.submitted.set(true);
 
     if (this.riskForm.invalid) {
       return;
@@ -140,86 +144,55 @@ export class RisksComponent implements OnInit {
 
     const riskData = this.riskForm.value;
 
-    if (this.isNew) {
-      this.createRisk(riskData);
-    } else if (this.risk) {
-      this.updateRisk(this.risk.id, riskData);
+    if (this.isNew()) {
+      this.createRisk(riskData as CreateRisk);
+    } else {
+      this.updateRisk(riskData as UpdateRisk);
     }
   }
 
-  createRisk(riskData: CreateRiskDto): void {
-    this.isLoading = true;
-    this.risksService.createRisk(riskData).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Risk level created successfully'
-        });
-        this.loadRisks();
+  createRisk(riskData: CreateRisk): void {
+    this.createRiskMutation.mutate(riskData, {
+      onSuccess: () => {
+        this.showSuccessMessage('Risk level created successfully');
         this.hideDialog();
-        this.isLoading = false;
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to create risk level'
-        });
-        console.error('Error creating risk level:', error);
-        this.isLoading = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to create risk level');
       }
     });
   }
 
-  updateRisk(id: string, riskData: UpdateRiskDto): void {
-    this.isLoading = true;
-    this.risksService.updateRisk(id, riskData).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Risk level updated successfully'
-        });
-        this.loadRisks();
+  updateRisk(riskData: UpdateRisk): void {
+    const riskId = this.currentRiskId();
+    if (!riskId) {
+      this.showErrorMessage('Could not find the risk level to update');
+      return;
+    }
+
+    const updateData = {
+      ...riskData,
+      id: riskId
+    };
+
+    this.updateRiskMutation.mutate(updateData, {
+      onSuccess: () => {
+        this.showSuccessMessage('Risk level updated successfully');
         this.hideDialog();
-        this.isLoading = false;
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to update risk level'
-        });
-        console.error('Error updating risk level:', error);
-        this.isLoading = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to update risk level');
       }
     });
   }
 
-  deleteRisk(): void {
-    if (!this.risk) return;
-
-    this.isLoading = true;
-    this.risksService.deleteRisk(this.risk.id).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Risk level deleted successfully'
-        });
-        this.loadRisks();
-        this.risk = null;
-        this.isLoading = false;
+  deleteRisk(id: string): void {
+    this.deleteRiskMutation.mutate(id, {
+      onSuccess: () => {
+        this.showSuccessMessage('Risk level deleted successfully');
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to delete risk level'
-        });
-        console.error('Error deleting risk level:', error);
-        this.isLoading = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to delete risk level');
       }
     });
   }
@@ -254,31 +227,35 @@ export class RisksComponent implements OnInit {
       header: 'Confirm',
       icon: 'pi pi-exclamation-triangle',
       accept: () => {
-        this.isLoading = true;
-        const deleteObservables = this.selectedRisks.map((risk) => this.risksService.deleteRisk(risk.id));
+        const selected = this.selectedRisks();
+        if (!selected.length) return;
 
-        // Using Promise.all to handle multiple observables
-        Promise.all(deleteObservables.map((obs) => obs.toPromise()))
+        Promise.all(selected.map((risk) => this.deleteRiskMutation.mutateAsync(risk.id)))
           .then(() => {
-            this.messageService.add({
-              severity: 'success',
-              summary: 'Success',
-              detail: 'Risk levels deleted successfully'
-            });
-            this.selectedRisks = [];
-            this.loadRisks();
-            this.isLoading = false;
+            this.showSuccessMessage('Selected risk levels deleted successfully');
+            this.selectedRisks.set([]);
           })
           .catch((error) => {
-            this.messageService.add({
-              severity: 'error',
-              summary: 'Error',
-              detail: 'Failed to delete some risk levels'
-            });
+            this.showErrorMessage('Failed to delete some risk levels');
             console.error('Error deleting risk levels:', error);
-            this.isLoading = false;
           });
       }
+    });
+  }
+
+  private showSuccessMessage(detail: string): void {
+    this.messageService.add({
+      severity: 'success',
+      summary: 'Success',
+      detail
+    });
+  }
+
+  private showErrorMessage(detail: string): void {
+    this.messageService.add({
+      severity: 'error',
+      summary: 'Error',
+      detail
     });
   }
 }

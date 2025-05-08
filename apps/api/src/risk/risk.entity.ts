@@ -2,10 +2,12 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
+import { Risk as RiskInterface } from '@chansey/api-interfaces';
+
 import { User } from '../users/users.entity';
 
 @Entity()
-export class Risk {
+export class Risk implements RiskInterface {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

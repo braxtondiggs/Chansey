@@ -104,7 +104,6 @@ export class ExchangeKey {
     ]).toString('hex')}`;
   }
 
-  @Expose()
   get decryptedApiKey() {
     if (!this.apiKey || !this.apiKey.includes(':')) return;
     const [ivs, salts, apiKey] = this.apiKey.split(':');
@@ -116,7 +115,6 @@ export class ExchangeKey {
     return Buffer.concat([decipher.update(apiKey, 'hex'), decipher.final()]).toString();
   }
 
-  @Expose()
   get decryptedSecretKey() {
     if (!this.secretKey || !this.secretKey.includes(':')) return;
     const [ivs, salts, secretKey] = this.secretKey.split(':');

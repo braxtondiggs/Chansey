@@ -1,3 +1,5 @@
+import { ExchangeKey } from '../exchange/exchange.interface';
+
 export interface IUser {
   id: string;
   email: string;
@@ -18,4 +20,5 @@ export interface IUser {
   updated_at: number;
   is_multi_factor_auth_enabled: boolean | null;
   app_data: Record<string, any>;
+  exchanges?: ExchangeKey[];
 }

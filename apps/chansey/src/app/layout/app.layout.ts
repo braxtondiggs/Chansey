@@ -10,7 +10,7 @@ import { AppFooter } from './app.footer';
 import { AppRightMenu } from './app.rightmenu';
 import { AppSearch } from './app.search';
 import { AppSidebar } from './app.sidebar';
-import { AppTopbar } from './app.topbar';
+import { AppTopBar } from './app.topbar';
 
 import { LayoutService } from '../services/layout.service';
 
@@ -19,7 +19,7 @@ import { LayoutService } from '../services/layout.service';
   standalone: true,
   imports: [
     CommonModule,
-    AppTopbar,
+    AppTopBar,
     AppSidebar,
     RouterModule,
     AppConfigurator,
@@ -57,7 +57,7 @@ export class AppLayout implements OnDestroy {
 
   @ViewChild(AppSidebar) appSidebar!: AppSidebar;
 
-  @ViewChild(AppTopbar) appTopBar!: AppTopbar;
+  @ViewChild(AppTopBar) appTopBar!: AppTopBar;
 
   constructor(
     public layoutService: LayoutService,

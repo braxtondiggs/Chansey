@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
@@ -34,65 +34,65 @@ import { LoginService } from './login.service';
   templateUrl: './login.component.html'
 })
 export class LoginComponent {
-  loginForm: FormGroup;
-  isLoading = false;
+  private readonly fb = inject(FormBuilder).nonNullable;
+  private readonly loginService = inject(LoginService);
+  private readonly router = inject(Router);
+  readonly loginMutation = this.loginService.useLogin();
+
   messages = signal<any[]>([]);
   formSubmitted = false;
-
-  constructor(
-    private fb: FormBuilder,
-    private loginService: LoginService,
-    private router: Router
-  ) {
-    this.loginForm = this.fb.group({
-      email: ['', [Validators.required, Validators.email]],
-      password: ['', Validators.required],
-      remember: [false]
-    });
-  }
+  loginForm = this.fb.group({
+    email: ['', Validators.compose([Validators.required, Validators.email])],
+    password: ['', Validators.required],
+    remember: [false]
+  });
 
   onSubmit() {
     this.formSubmitted = true;
     if (this.loginForm.valid) {
-      this.isLoading = true;
-
       const { email, password, remember } = this.loginForm.value;
+      if (!email || !password) return;
 
-      this.loginService.login(email, password, remember).subscribe({
-        next: (response) => {
-          this.isLoading = false;
-          if (response.should_show_email_otp_screen) {
+      this.loginMutation.mutate(
+        {
+          email,
+          password,
+          remember
+        },
+        {
+          onSuccess: (response) => {
+            if (response.should_show_email_otp_screen) {
+              this.messages.set([
+                {
+                  content: 'Two-factor authentication is required. Please enter your verification code.',
+                  severity: 'info',
+                  icon: 'pi-info-circle'
+                }
+              ]);
+            } else if (response.user) {
+              this.router.navigate(['/app/dashboard']);
+            } else {
+              this.messages.set([
+                {
+                  content: response.message || 'Login failed. Please check your credentials.',
+                  severity: 'warn',
+                  icon: 'pi-exclamation-circle'
+                }
+              ]);
+            }
+          },
+          onError: (error) => {
             this.messages.set([
               {
-                content: 'Two-factor authentication is required. Please enter your verification code.',
-                severity: 'info',
-                icon: 'pi-info-circle'
-              }
-            ]);
-          } else if (response.user) {
-            this.router.navigate(['/app/dashboard']);
-          } else {
-            this.messages.set([
-              {
-                content: response.message || 'Login failed. Please check your credentials.',
-                severity: 'warn',
+                content: error?.message || 'Login failed. Please check your credentials.',
+                severity: 'error',
                 icon: 'pi-exclamation-circle'
               }
             ]);
+            console.error('Login error:', error);
           }
-        },
-        error: (error) => {
-          this.isLoading = false;
-          this.messages.set([
-            {
-              content: error.error?.message || 'Login failed. Please check your credentials.',
-              severity: 'error',
-              icon: 'pi-exclamation-circle'
-            }
-          ]);
-          console.error('Login error:', error);
         }
-      });
+      );
     }
   }
 }
