@@ -1,9 +1,7 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
-import { Observable } from 'rxjs';
-
-import { AuthService } from '@chansey-web/app/services';
+import { categoryKeys } from '@chansey-web/app/core/query/query.keys';
+import { useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
 
 export interface Category {
   id: string;
@@ -19,8 +17,13 @@ export interface CreateCategoryDto {
 }
 
 export interface UpdateCategoryDto {
+  id: string;
   name?: string;
   slug?: string;
+}
+
+export interface SyncResponse {
+  message: string;
 }
 
 @Injectable({
@@ -29,41 +32,38 @@ export interface UpdateCategoryDto {
 export class CategoriesService {
   private apiUrl = '/api/category';
 
-  constructor(
-    private http: HttpClient,
-    private authService: AuthService
-  ) {}
-
-  private get authHeaders() {
-    const token = this.authService.getToken();
-    return {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    };
+  useCategories() {
+    return useAuthQuery<Category[]>(categoryKeys.lists.all, this.apiUrl);
   }
 
-  getCategories(): Observable<Category[]> {
-    return this.http.get<Category[]>(this.apiUrl, this.authHeaders);
+  useCategory() {
+    return useAuthQuery<Category, string>(
+      (id: string) => categoryKeys.detail(id),
+      (id: string) => `${this.apiUrl}/${id}`
+    );
   }
 
-  getCategory(id: string): Observable<Category> {
-    return this.http.get<Category>(`${this.apiUrl}/${id}`, this.authHeaders);
+  useCreateCategory() {
+    return useAuthMutation<Category, CreateCategoryDto>(this.apiUrl, 'POST', {
+      invalidateQueries: [categoryKeys.lists.all]
+    });
   }
 
-  createCategory(category: CreateCategoryDto): Observable<Category> {
-    return this.http.post<Category>(this.apiUrl, category, this.authHeaders);
+  useUpdateCategory() {
+    return useAuthMutation<Category, UpdateCategoryDto>((variables) => `${this.apiUrl}/${variables.id}`, 'PATCH', {
+      invalidateQueries: [categoryKeys.lists.all]
+    });
   }
 
-  updateCategory(id: string, category: UpdateCategoryDto): Observable<Category> {
-    return this.http.patch<Category>(`${this.apiUrl}/${id}`, category, this.authHeaders);
+  useDeleteCategory() {
+    return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
+      invalidateQueries: [categoryKeys.lists.all]
+    });
   }
 
-  deleteCategory(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/${id}`, this.authHeaders);
-  }
-
-  syncCategories(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/sync`, {}, this.authHeaders);
+  useSyncCategories() {
+    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync`, 'POST', {
+      invalidateQueries: [categoryKeys.lists.all]
+    });
   }
 }

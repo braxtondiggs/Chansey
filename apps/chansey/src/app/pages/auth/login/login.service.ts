@@ -1,54 +1,33 @@
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { QueryClient } from '@tanstack/query-core';
 
-import { ILoginResponse } from '@chansey/api-interfaces';
+import { ILogin, ILoginResponse } from '@chansey/api-interfaces';
 
-import { AuthService } from '@chansey-web/app/services';
+import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
+import { authKeys } from '@chansey-web/app/services';
 
 @Injectable({
   providedIn: 'root'
 })
 export class LoginService {
-  private userSubject = new BehaviorSubject<any>(null);
-  user$ = this.userSubject.asObservable();
+  private readonly queryClient = inject(QueryClient);
+  private readonly router = inject(Router);
 
-  constructor(
-    private http: HttpClient,
-    private authService: AuthService,
-    private router: Router
-  ) {}
+  useLogin() {
+    return useAuthMutation<ILoginResponse, ILogin>('/api/auth/login', 'POST', {
+      onSuccess: (response) => {
+        if (response.should_show_email_otp_screen) {
+          sessionStorage.setItem('otpEmail', response.user.email);
+          this.router.navigate(['/auth/otp']);
+          return;
+        }
 
-  login(email: string, password: string, remember = false): Observable<ILoginResponse> {
-    return this.http
-      .post<ILoginResponse>(
-        '/api/auth/login',
-        {
-          email,
-          password,
-          remember
-        },
-        { withCredentials: true }
-      )
-      .pipe(
-        tap((response) => {
-          if (response.should_show_email_otp_screen) {
-            sessionStorage.setItem('otpEmail', email);
-            this.router.navigate(['/auth/otp']);
-          }
-
-          // Store data in localStorage
-          localStorage.setItem('user', JSON.stringify(response.user));
-          localStorage.setItem('token', response.access_token);
-
-          // Update local service state
-          this.userSubject.next(response.user);
-
-          // Also update the AuthService state to ensure it's available immediately
-          this.authService.updateUserState(response.user);
-        })
-      );
+        localStorage.setItem('token', response.access_token);
+        this.queryClient.setQueryData(authKeys.user, response.user);
+      },
+      invalidateQueries: [authKeys.user]
+    });
   }
 }

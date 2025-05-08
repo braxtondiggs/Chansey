@@ -1,6 +1,8 @@
 import { IsNotEmpty, IsNumber, IsString, Max, Min } from 'class-validator';
 
-export class CreateRiskDto {
+import { CreateRisk } from '@chansey/api-interfaces';
+
+export class CreateRiskDto implements CreateRisk {
   @IsString()
   @IsNotEmpty()
   name: string;

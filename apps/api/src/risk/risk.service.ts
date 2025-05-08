@@ -44,10 +44,11 @@ export class RiskService {
     return this.riskRepository.save(risk);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string) {
     const result = await this.riskRepository.delete(id);
     if (result.affected === 0) {
       throw new NotFoundException(`Risk with ID "${id}" not found`);
     }
+    return { message: `Risk with ID "${id}" deleted successfully` };
   }
 }

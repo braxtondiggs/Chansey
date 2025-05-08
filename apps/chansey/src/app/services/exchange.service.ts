@@ -1,35 +1,15 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-
-import { Observable, catchError, throwError } from 'rxjs';
 
 import { Exchange } from '@chansey/api-interfaces';
 
-import { AuthService } from './auth.service';
+import { exchangeKeys } from '@chansey-web/app/core/query/query.keys';
+import { useAuthQuery } from '@chansey-web/app/core/query/query.utils';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ExchangeService {
-  constructor(
-    private authService: AuthService,
-    private http: HttpClient
-  ) {}
-
-  getSupportedExchanges(): Observable<Exchange[]> {
-    const token = this.authService.getToken();
-    return this.http
-      .get<Exchange[]>('/api/exchange', {
-        params: new HttpParams().set('supported', 'true'),
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
-      .pipe(
-        catchError((error) => {
-          console.error('Error fetching supported exchanges:', error);
-          return throwError(() => error);
-        })
-      );
+  useSupportedExchanges() {
+    return useAuthQuery<Exchange[]>(exchangeKeys.lists.supported, '/api/exchange?supported=true');
   }
 }

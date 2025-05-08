@@ -1,129 +1,45 @@
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { BehaviorSubject, Observable, catchError, of, tap } from 'rxjs';
-
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
+
+import { useAuthMutation, useAuthQuery, createQueryKeys } from '@chansey-web/app/core/query/query.utils';
+
+// Define auth query keys
+export const authKeys = createQueryKeys<{
+  all: string[];
+  user: string[];
+  token: string[];
+}>('auth');
+
+authKeys.user = [...authKeys.all, 'user'];
+authKeys.token = [...authKeys.all, 'token'];
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private userSubject = new BehaviorSubject<IUser | null>(null);
-  user$ = this.userSubject.asObservable();
+  private readonly router = inject(Router);
 
-  constructor(
-    private http: HttpClient,
-    private router: Router
-  ) {
-    // Check if user is already logged in
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      this.userSubject.next(JSON.parse(savedUser));
-    } else {
-      this.getUserInfo().subscribe({
-        next: (user) => {
-          if (user) {
-            localStorage.setItem('user', JSON.stringify(user));
-            this.userSubject.next(user);
-          }
-        },
-        error: () => {
-          this.userSubject.next(null);
-        }
-      });
-    }
+  useUser() {
+    return useAuthQuery<IUser>(authKeys.user, '/api/user');
   }
 
-  // Method to update user state directly from other services
-  updateUserState(user: IUser | null): void {
-    if (user) localStorage.setItem('user', JSON.stringify(user));
-    this.userSubject.next(user);
+  useLogoutMutation() {
+    return useAuthMutation<ILogoutResponse, void>('/api/auth/logout', 'POST', {
+      onSuccess: () => {
+        localStorage.removeItem('token');
+        this.router.navigate(['/login']);
+      },
+      invalidateQueries: []
+    });
   }
 
-  logout(): Observable<null> | void {
-    const token = this.getToken();
-
-    if (!token) return of(null);
-
-    this.http
-      .post<ILogoutResponse>(
-        'api/auth/logout',
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          withCredentials: true
-        }
-      )
-      .pipe(
-        catchError((error) => {
-          console.error('Logout error:', error);
-          return of({ success: false });
-        })
-      )
-      .subscribe({
-        complete: () => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          this.userSubject.next(null);
-          this.router.navigate(['/login']);
-        }
-      });
-  }
-
-  isAuthenticated(): Observable<boolean> {
-    const token = localStorage.getItem('token');
-
-    if (!token) {
-      return of(false);
-    }
-
-    // Check if token is expired
-    try {
-      const tokenPayload = JSON.parse(atob(token.split('.')[1]));
-      const isTokenValid = tokenPayload.exp * 1000 > Date.now();
-
-      if (!isTokenValid) {
-        this.logout();
-        return of(false);
-      }
-
-      return of(true);
-    } catch (error) {
-      this.logout();
-      return of(false);
-    }
+  isAuthenticated(): Promise<boolean> {
+    return Promise.resolve(Boolean(this.getToken()));
   }
 
   getToken(): string | null {
     return localStorage.getItem('token');
-  }
-
-  getUserInfo(): Observable<IUser | null> {
-    const token = this.getToken();
-
-    if (!token) return of(null);
-
-    return this.http
-      .get<IUser>('/api/user', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
-      .pipe(
-        tap((user) => {
-          // Store user data
-          localStorage.setItem('user', JSON.stringify(user));
-          this.userSubject.next(user);
-        }),
-        catchError((error) => {
-          console.error('Error fetching user info:', error);
-          // this.logout();
-          return of(null);
-        })
-      );
   }
 }

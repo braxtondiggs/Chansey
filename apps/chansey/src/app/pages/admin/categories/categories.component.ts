@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -14,9 +14,8 @@ import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
 import { Table, TableModule } from 'primeng/table';
 import { ToastModule } from 'primeng/toast';
-import { Observable } from 'rxjs';
 
-import { Category, CategoriesService, CreateCategoryDto, UpdateCategoryDto } from './categories.service';
+import { Category, CategoriesService } from './categories.service';
 
 @Component({
   selector: 'app-categories',
@@ -40,92 +39,96 @@ import { Category, CategoriesService, CreateCategoryDto, UpdateCategoryDto } fro
   providers: [MessageService, ConfirmationService],
   templateUrl: './categories.component.html'
 })
-export class CategoriesComponent implements OnInit {
+export class CategoriesComponent {
   @ViewChild('dt') dt!: Table;
-  categories: Category[] = [];
-  category!: Category | null;
-  selectedCategories!: Category[] | null;
-  categoryDialog: boolean = false;
-  deleteDialog: boolean = false;
-  categoryForm: FormGroup;
-  isLoading: boolean = false;
-  isSyncing: boolean = false;
-  submitted: boolean = false;
-  isNew: boolean = true;
 
-  constructor(
-    private categoriesService: CategoriesService,
-    private messageService: MessageService,
-    private confirmationService: ConfirmationService,
-    private fb: FormBuilder
-  ) {
-    this.categoryForm = this.fb.group({
-      name: ['', [Validators.required]]
-    });
+  // State signals
+  categories = signal<Category[]>([]);
+  categoryDialog = signal<boolean>(false);
+  submitted = signal<boolean>(false);
+  isNew = signal<boolean>(true);
+  selectedCategories = signal<Category[]>([]);
+
+  // Dependencies
+  private categoriesService = inject(CategoriesService);
+  private messageService = inject(MessageService);
+  private confirmationService = inject(ConfirmationService);
+  private fb = inject(FormBuilder);
+
+  // Form
+  categoryForm: FormGroup = this.fb.group({
+    name: ['', [Validators.required]]
+  });
+
+  // TanStack Query hooks
+  categoriesQuery = this.categoriesService.useCategories();
+  syncCategoryMutation = this.categoriesService.useSyncCategories();
+  createCategoryMutation = this.categoriesService.useCreateCategory();
+  updateCategoryMutation = this.categoriesService.useUpdateCategory();
+  deleteCategoryMutation = this.categoriesService.useDeleteCategory();
+
+  // Computed states
+  isLoading = computed(() => this.categoriesQuery.isPending() || this.categoriesQuery.isFetching());
+  isSyncing = computed(() => this.syncCategoryMutation.isPending());
+  categoriesData = computed(() => this.categoriesQuery.data() || []);
+  categoriesError = computed(() => this.categoriesQuery.error);
+  isDeletePending = computed(() => this.deleteCategoryMutation.isPending());
+  isCreatePending = computed(() => this.createCategoryMutation.isPending());
+  isUpdatePending = computed(() => this.updateCategoryMutation.isPending());
+  hasChanges = computed(() => this.categoryForm?.dirty || false);
+
+  constructor() {
+    this.initializeQueries();
   }
 
-  ngOnInit(): void {
-    this.loadCategories();
-  }
-
-  loadCategories(): void {
-    this.isLoading = true;
-    this.categoriesService.getCategories().subscribe({
-      next: (data) => {
-        this.categories = data;
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to load categories'
-        });
-        console.error('Error loading categories:', error);
-        this.isLoading = false;
+  private initializeQueries(): void {
+    // Set up an effect to update the categories signal when query data changes
+    effect(() => {
+      const data = this.categoriesData();
+      if (data && Array.isArray(data)) {
+        this.categories.set(data);
       }
     });
   }
 
   openNewCategoryDialog(): void {
-    this.category = null;
-    this.isNew = true;
-    this.submitted = false;
+    this.isNew.set(true);
+    this.submitted.set(false);
     this.categoryForm.reset();
-    this.categoryDialog = true;
+    this.categoryDialog.set(true);
   }
 
   openEditCategoryDialog(category: Category): void {
-    this.category = { ...category };
-    this.isNew = false;
-    this.submitted = false;
+    this.isNew.set(false);
+    this.submitted.set(false);
     this.categoryForm.patchValue({
-      name: category.name,
-      slug: category.slug
+      name: category.name
     });
-    this.categoryDialog = true;
+
+    this.categoryDialog.set(true);
   }
 
   confirmDeleteCategory(category: Category): void {
-    this.category = category;
     this.confirmationService.confirm({
-      message: `Are you sure you want to delete the category "${category.name}"?`,
-      header: 'Confirm',
+      message: `Are you sure you want to delete ${category.name}?`,
+      header: 'Confirm Delete',
       icon: 'pi pi-exclamation-triangle',
+      acceptButtonStyleClass: 'p-button-danger',
+      rejectButtonStyleClass: 'p-button-secondary',
       accept: () => {
-        this.deleteCategory();
+        this.deleteCategory(category.id);
       }
     });
   }
 
   hideDialog(): void {
-    this.categoryDialog = false;
-    this.submitted = false;
+    this.categoryDialog.set(false);
+    this.submitted.set(false);
     this.categoryForm.reset();
   }
 
   saveCategory(): void {
-    this.submitted = true;
+    this.submitted.set(true);
 
     if (this.categoryForm.invalid) {
       return;
@@ -133,158 +136,126 @@ export class CategoriesComponent implements OnInit {
 
     const categoryData = this.categoryForm.value;
 
-    if (this.isNew) {
-      this.createCategory(categoryData);
-    } else if (this.category) {
-      this.updateCategory(this.category.id, categoryData);
+    if (this.isNew()) {
+      // Generate slug on create only
+      const slug = this.generateSlug(categoryData.name);
+      const createData = {
+        ...categoryData,
+        slug
+      };
+
+      this.createCategoryMutation.mutate(createData, {
+        onSuccess: () => {
+          this.showSuccessMessage('Category created successfully');
+          this.hideDialog();
+        },
+        onError: (error) => {
+          this.showErrorMessage(error.message || 'Failed to create category');
+        }
+      });
+    } else {
+      // Find the category we're currently editing to get its ID
+      const categories = this.categories();
+      const matchingCategory = categories.find((c) => c.name === categoryData.name);
+
+      if (!matchingCategory) {
+        this.showErrorMessage('Could not find the category to update');
+        return;
+      }
+
+      // Include the ID in the update data
+      const updateData = {
+        ...categoryData,
+        id: matchingCategory.id
+      };
+
+      this.updateCategoryMutation.mutate(updateData, {
+        onSuccess: () => {
+          this.showSuccessMessage('Category updated successfully');
+          this.hideDialog();
+        },
+        onError: (error) => {
+          this.showErrorMessage(error.message || 'Failed to update category');
+        }
+      });
     }
   }
 
-  createCategory(categoryData: CreateCategoryDto): void {
-    this.isLoading = true;
-    this.categoriesService.createCategory(categoryData).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Category created successfully'
-        });
-        this.loadCategories();
-        this.hideDialog();
-        this.isLoading = false;
+  deleteCategory(id: string): void {
+    console.log('Deleting category with ID:', id);
+    this.deleteCategoryMutation.mutate(id, {
+      onSuccess: () => {
+        this.showSuccessMessage('Category deleted successfully');
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to create category'
-        });
-        console.error('Error creating category:', error);
-        this.isLoading = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to delete category');
       }
     });
   }
 
-  updateCategory(id: string, categoryData: UpdateCategoryDto): void {
-    this.isLoading = true;
-    this.categoriesService.updateCategory(id, categoryData).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Category updated successfully'
-        });
-        this.loadCategories();
-        this.hideDialog();
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to update category'
-        });
-        console.error('Error updating category:', error);
-        this.isLoading = false;
-      }
-    });
-  }
-
-  deleteCategory(): void {
-    if (!this.category) return;
-
-    this.isLoading = true;
-    this.categoriesService.deleteCategory(this.category.id).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Category deleted successfully'
-        });
-        this.loadCategories();
-        this.category = null;
-        this.isLoading = false;
-      },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to delete category'
-        });
-        console.error('Error deleting category:', error);
-        this.isLoading = false;
-      }
-    });
+  // Generate slug from name
+  private generateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^\w-]+/g, '')
+      .replace(/--+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;
-    this.dt.filterGlobal(filterValue, 'contains');
+    this.dt?.filterGlobal(filterValue, 'contains');
   }
 
   deleteSelectedCategories(): void {
     this.confirmationService.confirm({
-      message: `Are you sure you want to delete the selected categories?`,
-      header: 'Confirm',
+      message: 'Are you sure you want to delete the selected categories?',
+      header: 'Confirm Multiple Delete',
       icon: 'pi pi-exclamation-triangle',
+      acceptButtonStyleClass: 'p-button-danger',
+      rejectButtonStyleClass: 'p-button-secondary',
       accept: () => {
-        this.isLoading = true;
-        const deletionPromises: Observable<void>[] = [];
+        const selected = this.selectedCategories();
+        if (!selected.length) return;
 
-        this.selectedCategories?.forEach((category) => {
-          deletionPromises.push(this.categoriesService.deleteCategory(category.id));
-        });
-
-        // Use forkJoin to wait for all deletion operations to complete
-        import('rxjs').then(({ forkJoin }) => {
-          forkJoin(deletionPromises).subscribe({
-            next: () => {
-              this.messageService.add({
-                severity: 'success',
-                summary: 'Success',
-                detail: 'Categories deleted successfully'
-              });
-              this.selectedCategories = null;
-              this.loadCategories();
-              this.isLoading = false;
-            },
-            error: (error) => {
-              this.messageService.add({
-                severity: 'error',
-                summary: 'Error',
-                detail: 'Failed to delete one or more categories'
-              });
-              console.error('Error deleting categories:', error);
-              this.loadCategories();
-              this.isLoading = false;
-            }
+        Promise.all(selected.map((category) => this.deleteCategoryMutation.mutateAsync(category.id)))
+          .then(() => {
+            this.showSuccessMessage('Selected categories deleted successfully');
+            this.selectedCategories.set([]);
+          })
+          .catch((error) => {
+            this.showErrorMessage('Failed to delete some categories');
+            console.error('Error deleting selected categories:', error);
           });
-        });
       }
     });
   }
 
   syncCategories(): void {
-    this.isSyncing = true;
-    this.categoriesService.syncCategories().subscribe({
-      next: (response) => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: response.message || 'Categories synced successfully'
-        });
-        this.loadCategories();
-        this.isSyncing = false;
+    this.syncCategoryMutation.mutate(undefined, {
+      onSuccess: () => {
+        this.showSuccessMessage('Categories synced successfully');
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to sync categories'
-        });
-        console.error('Error syncing categories:', error);
-        this.isSyncing = false;
+      onError: (error) => {
+        this.showErrorMessage(error.message || 'Failed to sync categories');
       }
+    });
+  }
+
+  private showSuccessMessage(detail: string): void {
+    this.messageService.add({
+      severity: 'success',
+      summary: 'Success',
+      detail
+    });
+  }
+
+  private showErrorMessage(detail: string): void {
+    this.messageService.add({
+      severity: 'error',
+      summary: 'Error',
+      detail
     });
   }
 }

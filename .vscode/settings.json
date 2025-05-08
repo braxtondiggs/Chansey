@@ -2,7 +2,7 @@
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
   "cSpell.words": ["authorizerdev", "chansey", "cymbit", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
-  "editor.formatOnPaste": true,
+  "editor.formatOnPaste": false,
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
     "source.addMissingImports": "explicit",
@@ -11,6 +11,11 @@
   "vsicons.presets.angular": true,
   "[css]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "tailwindCSS.experimental.classRegex": [["className=\"([^\"\\\\]*)\"", "\"([^\"]*)\""]],
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
   },
   "shellcheck.ignorePatterns": {
     "**/.env.example": true

@@ -24,6 +24,7 @@
     "affected": "nx affected",
     "format": "nx format:write --exclude ./node_modules,*.json",
     "format:check": "nx format:check  --exclude ./node_modules",
+    "format:tailwind": "prettier --write \"apps/chansey/src/**/*.html\" --config .prettierrc",
     "update": "nx migrate latest",
     "workspace-generator": "nx workspace-generator",
     "dep-graph": "nx dep-graph",
@@ -66,6 +67,8 @@
     "@nx/angular": "20.3.2",
     "@primeng/themes": "^19.0.10",
     "@tailwindcss/postcss": "^4.1.4",
+    "@tanstack/angular-query-experimental": "^5.75.0",
+    "@tanstack/query-core": "^5.75.0",
     "axios": "1.7.7",
     "bcrypt": "^5.1.0",
     "binance-api-node": "^0.12.3",
@@ -153,8 +156,13 @@
     "webpack-bundle-analyzer": "^4.10.2"
   },
   "lint-staged": {
-    "*.{ts,js,html,scss,css}": [
+    "*.{ts,js,scss,css}": [
       "nx affected:lint --uncommitted --fix --parallel",
+      "nx format:write --uncommitted"
+    ],
+    "*.html": [
+      "nx affected:lint --uncommitted --fix --parallel",
+      "prettier --write --config .prettierrc",
       "nx format:write --uncommitted"
     ]
   }

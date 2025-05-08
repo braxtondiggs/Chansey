@@ -1,9 +1,7 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
-import { Observable } from 'rxjs';
-
-import { AuthService } from '@chansey-web/app/services';
+import { coinKeys } from '@chansey-web/app/core/query/query.keys';
+import { useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
 
 export interface Coin {
   id: string;
@@ -29,51 +27,58 @@ export interface UpdateCoinDto {
   logo?: string;
 }
 
+export interface SyncResponse {
+  message: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class CoinsService {
   private apiUrl = '/api/coin';
 
-  constructor(
-    private http: HttpClient,
-    private authService: AuthService
-  ) {}
+  useCoins() {
+    return useAuthQuery<Coin[]>(coinKeys.lists.all, this.apiUrl);
+  }
 
-  private get authHeaders() {
-    const token = this.authService.getToken();
-    return {
-      headers: {
-        Authorization: `Bearer ${token}`
+  useCoin() {
+    return useAuthQuery<Coin, string>(
+      (id: string) => coinKeys.detail(id),
+      (id: string) => `${this.apiUrl}/${id}`
+    );
+  }
+
+  useCreateCoin() {
+    return useAuthMutation<Coin, CreateCoinDto>(this.apiUrl, 'POST', {
+      invalidateQueries: [coinKeys.lists.all]
+    });
+  }
+
+  useUpdateCoin() {
+    return useAuthMutation<Coin, { id: string } & UpdateCoinDto>(
+      (variables) => `${this.apiUrl}/${variables.id}`,
+      'PATCH',
+      {
+        invalidateQueries: [coinKeys.lists.all]
       }
-    };
+    );
   }
 
-  getCoins(): Observable<Coin[]> {
-    return this.http.get<Coin[]>(this.apiUrl, this.authHeaders);
+  useDeleteCoin() {
+    return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
+      invalidateQueries: [coinKeys.lists.all]
+    });
   }
 
-  getCoin(id: string): Observable<Coin> {
-    return this.http.get<Coin>(`${this.apiUrl}/${id}`, this.authHeaders);
+  useSyncCoins() {
+    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync`, 'POST', {
+      invalidateQueries: [coinKeys.lists.all]
+    });
   }
 
-  createCoin(coin: CreateCoinDto): Observable<Coin> {
-    return this.http.post<Coin>(this.apiUrl, coin, this.authHeaders);
-  }
-
-  updateCoin(id: string, coin: UpdateCoinDto): Observable<Coin> {
-    return this.http.patch<Coin>(`${this.apiUrl}/${id}`, coin, this.authHeaders);
-  }
-
-  deleteCoin(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/${id}`, this.authHeaders);
-  }
-
-  syncCoins(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/sync`, {}, this.authHeaders);
-  }
-
-  syncCoinDetails(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/sync-detail`, {}, this.authHeaders);
+  useSyncCoinDetails() {
+    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync-detail`, 'POST', {
+      invalidateQueries: [coinKeys.lists.all]
+    });
   }
 }

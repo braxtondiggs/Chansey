@@ -1,16 +1,16 @@
 <p-card header="Profile" styleClass="max-w-4xl mx-auto p-4">
-  <p class="text-600 mb-4 md:mb-5">Manage your personal information and preferences</p>
+  <p class="mb-4 text-600 md:mb-5">Manage your personal information and preferences</p>
 
   <!-- Loading state -->
-  <div *ngIf="!userState && !userSignal()" class="flex flex-col items-center py-8">
+  <div *ngIf="isLoading()" class="flex flex-col items-center py-8">
     <p-progressSpinner styleClass="w-8rem h-8rem" strokeWidth="4" />
-    <p class="text-600 mt-4 text-lg">Loading your profile information...</p>
+    <p class="mt-4 text-lg text-600">Loading your profile information...</p>
   </div>
 
   <!-- Content state - only show when user data is loaded -->
-  <p-fluid *ngIf="userState || userSignal()">
-    <div class="flex-column my-8 flex flex-col items-center gap-8 md:flex-row md:gap-4">
-      <div class="flex w-full flex-col items-center gap-3 md:w-1/2">
+  <p-fluid *ngIf="user()">
+    <div class="flex flex-col items-center gap-8 my-8 flex-column md:flex-row md:gap-4">
+      <div class="flex flex-col items-center w-full gap-3 md:w-1/2">
         <p-avatar [image]="userProfileImage()" shape="circle" class="mb-8"></p-avatar>
         <p-fileUpload
           mode="basic"
@@ -24,7 +24,7 @@
         ></p-fileUpload>
       </div>
 
-      <form [formGroup]="profileForm" (ngSubmit)="onSubmit()" class="flex w-full max-w-full flex-col gap-4 md:w-1/2">
+      <form [formGroup]="profileForm" (ngSubmit)="onSubmit()" class="flex flex-col w-full max-w-full gap-4 md:w-1/2">
         <div class="flex flex-col">
           @for (message of messages(); track message; let first = $first) {
             <p-message
@@ -37,8 +37,8 @@
           }
         </div>
         <div class="flex flex-col gap-4 md:flex-row">
-          <div class="flex w-full flex-col gap-4 md:flex-row">
-            <p-floatlabel variant="on" class="flex w-full flex-wrap">
+          <div class="flex flex-col w-full gap-4 md:flex-row">
+            <p-floatlabel variant="on" class="flex flex-wrap w-full">
               <input
                 id="given_name"
                 type="text"
@@ -49,7 +49,7 @@
               />
               <label for="given_name">First Name</label>
             </p-floatlabel>
-            <p-floatlabel variant="on" class="flex w-full flex-wrap">
+            <p-floatlabel variant="on" class="flex flex-wrap w-full">
               <input
                 id="family_name"
                 type="text"
@@ -62,16 +62,17 @@
             </p-floatlabel>
           </div>
         </div>
-        <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
+        <p-floatlabel variant="on" class="flex flex-wrap mt-4">
           <input id="email" type="email" pInputText formControlName="email" pSize="large" autocomplete="email" />
           <label for="email">Email</label>
         </p-floatlabel>
 
-        <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
+        <p-floatlabel variant="on" class="flex flex-wrap mt-4">
           <p-select
             id="risk"
             formControlName="risk"
-            [options]="risks()"
+            [options]="risksQuery.data()"
+            [loading]="risksQuery.isLoading() || risksQuery.isPending()"
             optionLabel="name"
             optionValue="id"
             placeholder="Select Risk Profile"
@@ -81,13 +82,13 @@
           <label for="risk">Risk Profile</label>
         </p-floatlabel>
 
-        <div class="mt-8 flex flex-wrap justify-end">
+        <div class="flex flex-wrap justify-end mt-8">
           <p-button
             type="submit"
             label="Save Changes"
             icon="pi pi-check"
             size="large"
-            [loading]="profileLoading"
+            [loading]="updateProfileMutation.isPending()"
             [disabled]="!profileForm.valid || (!profileForm.dirty && !uploadedFile)"
           ></p-button>
         </div>
@@ -97,11 +98,11 @@
 </p-card>
 
 <!-- Password Change Section -->
-<p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="userState || userSignal()">
-  <p class="text-600 mb-4 md:mb-5">Update your account password</p>
+<p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="user()">
+  <p class="mb-4 text-600 md:mb-5">Update your account password</p>
   <p-fluid>
-    <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()" class="mx-auto flex flex-col gap-4">
-      <p-floatlabel variant="on" class="flex w-full flex-wrap">
+    <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()" class="flex flex-col gap-4 mx-auto">
+      <p-floatlabel variant="on" class="flex flex-wrap w-full">
         <p-password
           formControlName="currentPassword"
           size="large"
@@ -116,9 +117,9 @@
         Current password is required
       </small>
 
-      <div class="flex w-full flex-col gap-4 md:flex-row">
-        <div class="flex w-full flex-col">
-          <p-floatlabel variant="on" class="flex w-full flex-wrap">
+      <div class="flex flex-col w-full gap-4 md:flex-row">
+        <div class="flex flex-col w-full">
+          <p-floatlabel variant="on" class="flex flex-wrap w-full">
             <p-password
               formControlName="newPassword"
               size="large"
@@ -127,7 +128,7 @@
               required
             >
               <ng-template #footer>
-                <ul class="my-0 ml-2 pl-2 leading-normal">
+                <ul class="pl-2 my-0 ml-2 leading-normal">
                   <li>At least one lowercase</li>
                   <li>At least one uppercase</li>
                   <li>At least one numeric</li>
@@ -143,8 +144,8 @@
           </small>
         </div>
 
-        <div class="flex w-full flex-col">
-          <p-floatlabel variant="on" class="flex w-full flex-wrap">
+        <div class="flex flex-col w-full">
+          <p-floatlabel variant="on" class="flex flex-wrap w-full">
             <p-password
               formControlName="confirmPassword"
               size="large"
@@ -171,13 +172,13 @@
         </div>
       </div>
 
-      <div class="mt-4 flex justify-end">
+      <div class="flex justify-end mt-4">
         <p-button
           type="submit"
           label="Change Password"
           icon="pi pi-key"
           size="large"
-          [loading]="passwordLoading"
+          [loading]="changePasswordMutation.isPending()"
           [disabled]="!passwordForm.valid"
         ></p-button>
       </div>
@@ -186,15 +187,15 @@
 </p-card>
 
 <!-- Exchange Integrations Section -->
-<p-card header="Exchange Integrations" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="userState || userSignal()">
-  <p class="text-600 mb-4 md:mb-5">Connect your trading exchange accounts</p>
+<p-card header="Exchange Integrations" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="user()">
+  <p class="mb-4 text-600 md:mb-5">Connect your trading exchange accounts</p>
 
-  <p-message class="mb-8 p-4" severity="warn">
+  <p-message class="p-4 mb-8" severity="warn">
     <div class="flex items-start gap-2">
-      <i class="pi pi-info-circle mt-1 text-2xl text-yellow-500"></i>
+      <i class="mt-1 text-2xl text-yellow-500 pi pi-info-circle"></i>
       <div>
         <h4 class="m-0 text-base font-medium">Security Information</h4>
-        <p class="mb-0 mt-1 text-sm">
+        <p class="mt-1 mb-0 text-sm">
           Your API keys are encrypted and stored securely. For the platform to function correctly, please use API keys
           with trading permissions. Read-only permissions will not allow the platform to execute trades on your behalf.
         </p>
@@ -202,17 +203,17 @@
     </div>
   </p-message>
 
-  <!-- Use TabView if there are multiple exchanges -->
-  @if (supportedExchanges().length > 1) {
+  @let exchanges = supportedExchangesQuery.data() || [];
+  @if (exchanges.length > 1) {
     <p-tabView>
-      @for (exchange of supportedExchanges(); track exchange) {
+      @for (exchange of exchanges; track exchange) {
         <p-tabPanel [header]="exchange.name">
           <p-fluid>
             @if (exchangeForms[exchange.slug]) {
               <form
                 [formGroup]="exchangeForms[exchange.slug].form"
                 (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
-                class="mx-auto flex flex-col gap-4"
+                class="flex flex-col gap-4 mx-auto"
               >
                 <p-message
                   *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
@@ -225,9 +226,9 @@
                   styleClass="my-4"
                   [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
                 />
-                <div class="flex w-full flex-col gap-4">
-                  <div class="flex w-full flex-col">
-                    <p-floatlabel variant="on" class="flex w-full flex-wrap">
+                <div class="flex flex-col w-full gap-4">
+                  <div class="flex flex-col w-full">
+                    <p-floatlabel variant="on" class="flex flex-wrap w-full">
                       <input
                         [id]="exchange.slug + 'ApiKey'"
                         type="text"
@@ -249,8 +250,8 @@
                     </small>
                   </div>
 
-                  <div class="flex w-full flex-col">
-                    <p-floatlabel variant="on" class="flex w-full flex-wrap">
+                  <div class="flex flex-col w-full">
+                    <p-floatlabel variant="on" class="flex flex-wrap w-full">
                       <input
                         formControlName="secretKey"
                         pSize="large"
@@ -273,7 +274,7 @@
                   </div>
                 </div>
 
-                <div class="mt-4 flex justify-end gap-2">
+                <div class="flex justify-end gap-2 mt-4">
                   <p-button
                     *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
                     type="button"
@@ -324,17 +325,15 @@
         </p-tabPanel>
       }
     </p-tabView>
-  }
-  <!-- If only one exchange is supported, don't use tabs -->
-  @else if (supportedExchanges().length === 1) {
-    @let exchange = supportedExchanges()[0];
+  } @else if (exchanges.length === 1) {
+    @let exchange = exchanges[0];
     <p-fieldset [legend]="exchange.name">
       <p-fluid>
         @if (exchangeForms[exchange.slug]) {
           <form
             [formGroup]="exchangeForms[exchange.slug].form"
             (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
-            class="mx-auto mt-8 flex flex-col gap-4"
+            class="flex flex-col gap-4 mx-auto mt-8"
           >
             <p-message
               *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
@@ -347,9 +346,9 @@
               styleClass="my-4"
               [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
             />
-            <div class="flex w-full flex-col gap-4">
-              <div class="flex w-full flex-col">
-                <p-floatlabel variant="on" class="flex w-full flex-wrap">
+            <div class="flex flex-col w-full gap-4">
+              <div class="flex flex-col w-full">
+                <p-floatlabel variant="on" class="flex flex-wrap w-full">
                   <input
                     [id]="exchange.slug + 'ApiKey'"
                     type="text"
@@ -370,8 +369,8 @@
                 </small>
               </div>
 
-              <div class="flex w-full flex-col">
-                <p-floatlabel variant="on" class="flex w-full flex-wrap">
+              <div class="flex flex-col w-full">
+                <p-floatlabel variant="on" class="flex flex-wrap w-full">
                   <p-password
                     formControlName="secretKey"
                     size="large"
@@ -394,7 +393,7 @@
               </div>
             </div>
 
-            <div class="mt-4 flex justify-end gap-2">
+            <div class="flex justify-end gap-2 mt-4">
               <p-button
                 *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
                 type="button"
@@ -443,8 +442,13 @@
         }
       </p-fluid>
     </p-fieldset>
+  } @else if (supportedExchangesQuery.isLoading() || supportedExchangesQuery.isPending()) {
+    <div class="py-8 text-center">
+      <p-progressSpinner styleClass="w-4rem h-4rem" strokeWidth="4" />
+      <p class="mt-4 text-gray-500">Loading exchange integrations...</p>
+    </div>
   } @else {
-    <p class="text-center italic text-gray-500">No exchange integrations are currently available.</p>
+    <p class="italic text-center text-gray-500">No exchange integrations are currently available.</p>
   }
 </p-card>
 

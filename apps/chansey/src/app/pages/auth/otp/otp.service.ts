@@ -1,31 +1,24 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
-import { Observable } from 'rxjs';
+import { ILoginResponse, IOtpResponse, IVerifyOtpRequest } from '@chansey/api-interfaces';
 
-import { IOtpResponse, IVerifyOtpRequest } from '@chansey/api-interfaces';
+import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
 
 @Injectable({
   providedIn: 'root'
 })
 export class OtpService {
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Verify the OTP code
-   * @param code The OTP code entered by the user
-   * @returns An observable with the verification response
-   */
-  verifyOtp(otp: string, email: string): Observable<IOtpResponse> {
-    const request: IVerifyOtpRequest = { otp, email };
-    return this.http.post<IOtpResponse>('/api/auth/verify-otp', request, { withCredentials: true });
+  useVerifyOtpMutation() {
+    return useAuthMutation<ILoginResponse, IVerifyOtpRequest>('/api/auth/otp/verify', 'POST', {
+      onSuccess: (response) => {
+        if (response.access_token) {
+          localStorage.setItem('token', response.access_token);
+        }
+      }
+    });
   }
 
-  /**
-   * Resend the OTP code to the user
-   * @returns An observable with the response
-   */
-  resendOtp(): Observable<IOtpResponse> {
-    return this.http.post<IOtpResponse>('/api/auth/resend-otp', {}, { withCredentials: true });
+  useResendOtpMutation() {
+    return useAuthMutation<IOtpResponse, { email: string }>('/api/auth/otp/resend', 'POST');
   }
 }

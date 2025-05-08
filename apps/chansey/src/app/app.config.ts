@@ -6,6 +6,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 
 import { definePreset } from '@primeng/themes';
 import Aura from '@primeng/themes/aura';
+import { QueryClient, provideTanStackQuery, withDevtools } from '@tanstack/angular-query-experimental';
 import { providePrimeNG } from 'primeng/config';
 
 import { appRoutes } from './app.routes';
@@ -44,7 +45,21 @@ const providers = [
       preset: MyPreset,
       options: { darkModeSelector: '.app-dark' }
     }
-  })
+  }),
+  // Provide TanStack Query
+  provideTanStackQuery(
+    new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 1000 * 60 * 5, // 5 minutes
+          gcTime: 1000 * 60 * 10, // 10 minutes
+          refetchOnWindowFocus: false,
+          retry: false
+        }
+      }
+    }),
+    withDevtools(() => ({ loadDevtools: !environment.production, buttonPosition: 'bottom-left' }))
+  )
 ];
 
 if (environment.production) {

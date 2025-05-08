@@ -5,3 +5,4 @@ export * from './lib/exchange/exchange.interface';
 export * from './lib/coin/coin.interface';
 export * from './lib/coin/ticker-pair.interface';
 export * from './lib/coin/ticker-pair-status.enum';
+export * from './lib/risk';

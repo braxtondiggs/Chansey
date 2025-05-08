@@ -1,16 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed } from '@angular/core';
+import { Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { AppMenu } from './app.menu';
-import { AppTopbar } from './app.topbar';
+import { AppTopBar } from './app.topbar';
 
 import { LayoutService } from '../services/layout.service';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, AppMenu, RouterModule, AppTopbar],
+  imports: [CommonModule, AppMenu, RouterModule, AppTopBar],
   template: `<div class="layout-sidebar" (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
     <div class="sidebar-header">
       <a class="logo" [routerLink]="['/app/dashboard']">
@@ -29,15 +29,12 @@ import { LayoutService } from '../services/layout.service';
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppSidebar {
-  timeout: any = null;
+  private readonly layoutService = inject(LayoutService);
+  private readonly el = inject(ElementRef);
   isHorizontal = computed(() => this.layoutService.isHorizontal());
+  timeout: ReturnType<typeof setTimeout> | null = null;
 
   @ViewChild('menuContainer') menuContainer!: ElementRef;
-
-  constructor(
-    public layoutService: LayoutService,
-    public el: ElementRef
-  ) {}
 
   onMouseEnter() {
     if (!this.layoutService.layoutState().anchored) {

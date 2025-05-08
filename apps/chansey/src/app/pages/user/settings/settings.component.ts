@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { $t, updatePreset, updateSurfacePalette } from '@primeng/themes';
@@ -66,7 +66,12 @@ declare type SurfacesType = {
   templateUrl: './settings.component.html'
 })
 export class SettingsComponent implements OnInit {
-  darkMode: boolean;
+  private layoutService = inject(LayoutService);
+  private messageService = inject(MessageService);
+  private confirmationService = inject(ConfirmationService);
+  private fb = inject(FormBuilder);
+
+  darkMode = this.layoutService.isDarkTheme();
   compactMode = false;
   emailNotifications = true;
   twoFactorAuth = false;
@@ -74,7 +79,9 @@ export class SettingsComponent implements OnInit {
   activeTab = 0;
 
   // Form groups
-  notificationForm: FormGroup;
+  notificationForm: FormGroup = this.fb.group({
+    pushNotifications: new FormControl(false)
+  });
 
   // Theme related properties
   presets = Object.keys(presets);
@@ -235,23 +242,8 @@ export class SettingsComponent implements OnInit {
   // Primary color options
   primaryColors: SurfacesType[] = [];
 
-  constructor(
-    private layoutService: LayoutService,
-    private messageService: MessageService,
-    private confirmationService: ConfirmationService,
-    private fb: FormBuilder
-  ) {
-    // Initialize dark mode based on current theme
-    this.darkMode = this.layoutService.isDarkTheme();
-
-    this.notificationForm = this.fb.group({
-      pushNotifications: new FormControl(false)
-    });
-
-    this.checkNotificationPermission();
-  }
-
   ngOnInit(): void {
+    this.checkNotificationPermission();
     this.notificationForm.get('pushNotifications')?.valueChanges.subscribe(() => {
       this.requestPushNotificationPermission();
     });

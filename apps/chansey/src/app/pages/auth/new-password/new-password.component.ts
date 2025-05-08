@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
@@ -33,28 +33,24 @@ import { NewPasswordService } from './new-password.service';
   templateUrl: './new-password.component.html'
 })
 export class NewPasswordComponent implements OnInit {
-  newPasswordForm: FormGroup;
-  isLoading = false;
+  private fb = inject(FormBuilder);
+  private newPasswordService = inject(NewPasswordService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  readonly newPasswordMutation = this.newPasswordService.useResetPasswordMutation();
+
+  newPasswordForm: FormGroup = this.fb.group(
+    {
+      password: ['', [Validators.required, PasswordStrengthValidator()]],
+      confirmPassword: ['', Validators.required]
+    },
+    {
+      validators: PasswordMatchValidator
+    }
+  );
   messages = signal<any[]>([]);
   formSubmitted = false;
   token: string | null = null;
-
-  constructor(
-    private fb: FormBuilder,
-    private newPasswordService: NewPasswordService,
-    private route: ActivatedRoute,
-    private router: Router
-  ) {
-    this.newPasswordForm = this.fb.group(
-      {
-        password: ['', [Validators.required, PasswordStrengthValidator()]],
-        confirmPassword: ['', Validators.required]
-      },
-      {
-        validators: PasswordMatchValidator
-      }
-    );
-  }
 
   ngOnInit() {
     this.route.queryParams.subscribe((params) => {
@@ -83,36 +79,35 @@ export class NewPasswordComponent implements OnInit {
     this.formSubmitted = true;
 
     if (this.newPasswordForm.valid && this.token) {
-      this.isLoading = true;
-
       const { password, confirmPassword } = this.newPasswordForm.value;
 
-      this.newPasswordService.submit(this.token, password, confirmPassword).subscribe({
-        next: (response) => {
-          this.isLoading = false;
-          this.messages.set([
-            {
-              content: response.message || 'Password successfully reset!',
-              severity: 'success',
-              icon: 'pi-check-circle'
-            }
-          ]);
-          setTimeout(() => {
-            this.router.navigate(['/login']);
-          }, 2000);
-        },
-        error: (error) => {
-          this.isLoading = false;
-          this.messages.set([
-            {
-              content: error.error?.message || 'An error occurred. Please try again later.',
-              severity: 'error',
-              icon: 'pi-exclamation-circle'
-            }
-          ]);
-          console.error('Password reset error:', error);
+      this.newPasswordMutation.mutate(
+        { token: this.token, password, confirm_password: confirmPassword },
+        {
+          onSuccess: (response) => {
+            this.messages.set([
+              {
+                content: response.message || 'Password successfully reset!',
+                severity: 'success',
+                icon: 'pi-check-circle'
+              }
+            ]);
+            setTimeout(() => {
+              this.router.navigate(['/login']);
+            }, 2000);
+          },
+          onError: (error) => {
+            this.messages.set([
+              {
+                content: error?.message || 'An error occurred. Please try again later.',
+                severity: 'error',
+                icon: 'pi-exclamation-circle'
+              }
+            ]);
+            console.error('Password reset error:', error);
+          }
         }
-      });
+      );
     }
   }
 }

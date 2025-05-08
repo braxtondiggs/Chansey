@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { AppMenuitem } from './app.menuitem';
@@ -11,7 +11,7 @@ import { AuthService } from '../services/auth.service';
   standalone: true,
   imports: [CommonModule, AppMenuitem, RouterModule],
   template: `<ul class="layout-menu">
-    <ng-container *ngFor="let item of model; let i = index">
+    <ng-container *ngFor="let item of model(); let i = index">
       <li chansey-menuitem *ngIf="!item.separator" [item]="item" [index]="i" [root]="true"></li>
       <li *ngIf="item.separator" class="menu-separator"></li>
     </ng-container>
@@ -19,23 +19,26 @@ import { AuthService } from '../services/auth.service';
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppMenu implements OnInit {
-  model: any[] = [];
-  isAdmin = false;
+  private readonly authService = inject(AuthService);
+  user = this.authService.useUser();
+  isAdmin = computed(() => this.user.data()?.roles?.includes('admin'));
+  model = signal<any[]>([]);
 
-  constructor(private authService: AuthService) {}
-
-  ngOnInit() {
-    this.authService.user$.subscribe((user) => {
-      this.isAdmin = user?.roles?.includes('admin') || false;
+  constructor() {
+    effect(() => {
       this.updateMenu();
     });
   }
 
-  private updateMenu() {
-    this.model = [];
+  ngOnInit() {
+    this.updateMenu();
+  }
 
-    if (this.isAdmin) {
-      this.model.push({
+  private updateMenu(): void {
+    const menuItems = [];
+
+    if (this.isAdmin()) {
+      menuItems.push({
         label: 'Admin',
         icon: 'pi pi-cog',
         items: [
@@ -62,5 +65,7 @@ export class AppMenu implements OnInit {
         ]
       });
     }
+
+    this.model.set(menuItems);
   }
 }

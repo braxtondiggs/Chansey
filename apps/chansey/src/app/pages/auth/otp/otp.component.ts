@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
@@ -8,9 +8,17 @@ import { ButtonModule } from 'primeng/button';
 import { InputOtpModule } from 'primeng/inputotp';
 import { MessageModule } from 'primeng/message';
 
+import { ILoginResponse, IOtpResponse } from '@chansey/api-interfaces';
+
 import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
 
 import { OtpService } from './otp.service';
+
+interface Message {
+  content: string;
+  severity: 'success' | 'info' | 'warn' | 'error';
+  icon: string;
+}
 
 @Component({
   selector: 'app-otp',
@@ -21,7 +29,6 @@ import { OtpService } from './otp.service';
     InputOtpModule,
     LazyImageComponent,
     MessageModule,
-    MessageModule,
     ReactiveFormsModule,
     RouterLink
   ],
@@ -29,23 +36,22 @@ import { OtpService } from './otp.service';
   templateUrl: './otp.component.html'
 })
 export class OtpComponent implements OnInit {
-  otpForm: FormGroup;
-  isLoading = false;
-  isResending = false;
-  messages = signal<any[]>([]);
+  // Use inject instead of constructor
+  private fb = inject(FormBuilder);
+  private otpService = inject(OtpService);
+  private router = inject(Router);
+
+  // TanStack Query mutations
+  readonly verifyOtpMutation = this.otpService.useVerifyOtpMutation();
+  readonly resendOtpMutation = this.otpService.useResendOtpMutation();
+
+  otpForm: FormGroup = this.fb.group({
+    code: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(6)]]
+  });
+  messages = signal<Message[]>([]);
   formSubmitted = false;
   emailCensored: string | null = null;
   email: string | null = null;
-
-  constructor(
-    private fb: FormBuilder,
-    private otpService: OtpService,
-    private router: Router
-  ) {
-    this.otpForm = this.fb.group({
-      code: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(6)]]
-    });
-  }
 
   ngOnInit(): void {
     this.email = sessionStorage.getItem('otpEmail');
@@ -59,67 +65,69 @@ export class OtpComponent implements OnInit {
   onSubmit() {
     this.formSubmitted = true;
     if (this.otpForm.valid && this.email) {
-      this.isLoading = true;
       const { code } = this.otpForm.value;
 
-      this.otpService.verifyOtp(code, this.email).subscribe({
-        next: (response) => {
-          this.isLoading = false;
-          if (response.success) {
-            // Clear the OTP email from session storage
-            sessionStorage.removeItem('otpEmail');
+      this.verifyOtpMutation.mutate(
+        { otp: code, email: this.email },
+        {
+          onSuccess: (response: ILoginResponse) => {
+            if (response.access_token) {
+              // Clear the OTP email from session storage
+              sessionStorage.removeItem('otpEmail');
 
-            // Navigate to dashboard
-            this.router.navigate(['/app/dashboard']);
-          } else {
+              // Navigate to dashboard
+              this.router.navigate(['/app/dashboard']);
+            } else {
+              this.messages.set([
+                {
+                  content: response.message || 'Invalid verification code. Please try again.',
+                  severity: 'warn',
+                  icon: 'pi-exclamation-circle'
+                }
+              ]);
+            }
+          },
+          onError: (error) => {
             this.messages.set([
               {
-                content: response.message || 'Invalid verification code. Please try again.',
-                severity: 'warn',
+                content: error.message || 'Failed to verify code. Please try again.',
+                severity: 'error',
                 icon: 'pi-exclamation-circle'
               }
             ]);
+            console.error('OTP verification error:', error);
           }
-        },
-        error: (error) => {
-          this.isLoading = false;
-          this.messages.set([
-            {
-              content: error.error?.message || 'Failed to verify code. Please try again.',
-              severity: 'error',
-              icon: 'pi-exclamation-circle'
-            }
-          ]);
-          console.error('OTP verification error:', error);
         }
-      });
+      );
     }
   }
 
   resendOtp() {
-    this.isResending = true;
-    this.otpService.resendOtp().subscribe({
-      next: (response) => {
-        this.isResending = false;
-        this.messages.set([
-          {
-            content: response.message || 'Verification code resent successfully.',
-            severity: 'success',
-            icon: 'pi-check-circle'
-          }
-        ]);
-      },
-      error: (error) => {
-        this.isResending = false;
-        this.messages.set([
-          {
-            content: error.error?.message || 'Failed to resend verification code.',
-            severity: 'error',
-            icon: 'pi-exclamation-circle'
-          }
-        ]);
-        console.error('Resend OTP error:', error);
+    if (!this.email) return;
+
+    this.resendOtpMutation.mutate(
+      { email: this.email },
+      {
+        onSuccess: (response: IOtpResponse) => {
+          this.messages.set([
+            {
+              content: response.message || 'Verification code resent successfully.',
+              severity: 'success',
+              icon: 'pi-check-circle'
+            }
+          ]);
+        },
+        onError: (error) => {
+          this.messages.set([
+            {
+              content: error.message || 'Failed to resend verification code.',
+              severity: 'error',
+              icon: 'pi-exclamation-circle'
+            }
+          ]);
+          console.error('Resend OTP error:', error);
+        }
       }
-    });
+    );
   }
 }

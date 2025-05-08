@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { Component, computed, signal, effect, inject } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { funEmoji } from '@dicebear/collection';
@@ -23,12 +22,13 @@ import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
 
-import { Exchange, ExchangeKey } from '@chansey/api-interfaces';
+import { Exchange, ExchangeKey, Risk } from '@chansey/api-interfaces';
 
+import { RisksService } from '@chansey-web/app/pages/admin/risks/risks.service';
 import { AuthService, ExchangeService } from '@chansey-web/app/services';
 import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
 
-import { ProfileService, Risk } from './profile.service';
+import { ProfileService } from './profile.service';
 
 @Component({
   selector: 'app-profile',
@@ -57,18 +57,33 @@ import { ProfileService, Risk } from './profile.service';
   templateUrl: './profile.component.html'
 })
 export class ProfileComponent {
-  userSignal: any;
+  // Inject dependencies
+  private fb = inject(FormBuilder);
+  private authService = inject(AuthService);
+  private riskService = inject(RisksService);
+  private exchangeService = inject(ExchangeService);
+  private profileService = inject(ProfileService);
+  private messageService = inject(MessageService);
+  private confirmationService = inject(ConfirmationService);
+
   messages = signal<any[]>([]);
-  profileForm: FormGroup;
-  passwordForm: FormGroup;
+  profileForm: FormGroup = this.fb.group({
+    given_name: ['', Validators.required],
+    family_name: ['', Validators.required],
+    email: ['', Validators.compose([Validators.required, Validators.email])],
+    risk: ['', Validators.required]
+  });
+  passwordForm: FormGroup = this.fb.group(
+    {
+      currentPassword: ['', Validators.required],
+      newPassword: ['', Validators.compose([Validators.required, PasswordStrengthValidator()])],
+      confirmPassword: ['', [Validators.required]]
+    },
+    { validators: PasswordMatchValidator }
+  );
   uploadedFile: any = null;
   formSubmitted = false;
   passwordFormSubmitted = false;
-  profileLoading = false;
-  passwordLoading = false;
-  risks = signal<Risk[]>([]);
-  supportedExchanges = signal<Exchange[]>([]);
-  userState: any = null;
   exchangeForms: Record<
     string,
     {
@@ -81,110 +96,38 @@ export class ProfileComponent {
     }
   > = {};
 
-  constructor(
-    private fb: FormBuilder,
-    private authService: AuthService,
-    private exchangeService: ExchangeService,
-    private profileService: ProfileService,
-    private messageService: MessageService,
-    private confirmationService: ConfirmationService
-  ) {
-    this.userSignal = toSignal(this.authService.user$, { initialValue: null });
+  // TanStack Query hooks
+  private readonly userQuery = this.authService.useUser();
+  private readonly logoutMutation = this.authService.useLogoutMutation();
+  readonly risksQuery = this.riskService.useRisks();
+  readonly supportedExchangesQuery = this.exchangeService.useSupportedExchanges();
+  readonly updateProfileMutation = this.profileService.useUpdateProfileMutation();
+  readonly changePasswordMutation = this.profileService.useChangePasswordMutation();
+  readonly saveExchangeKeysMutation = this.profileService.useSaveExchangeKeysMutation();
+  readonly deleteExchangeKeyMutation = this.profileService.useDeleteExchangeKeyMutation();
 
-    // Initialize userState from the current user value
-    this.authService.user$.subscribe((user) => {
-      if (user) {
-        this.userState = { ...user };
+  // Computed signals for user data
+  user = computed(() => this.userQuery.data());
+  isLoading = computed(() => this.userQuery.isLoading());
 
-        this.loadExchanges();
-        this.updateForms(this.userState);
+  constructor() {
+    // Setup effects to update forms when user data changes
+    effect(() => {
+      const userData = this.user();
+      if (userData) {
+        this.updateForms(userData);
       }
     });
 
-    this.passwordForm = this.fb.group(
-      {
-        currentPassword: ['', Validators.required],
-        newPassword: ['', [Validators.required, PasswordStrengthValidator()]],
-        confirmPassword: ['', [Validators.required]]
-      },
-      { validators: PasswordMatchValidator }
-    );
-
-    this.profileForm = this.fb.group({
-      given_name: ['', Validators.required],
-      family_name: ['', Validators.required],
-      email: ['', [Validators.required, Validators.email]],
-      risk: ['', Validators.required]
-    });
-
-    this.initFormData();
-    this.loadRisks();
-  }
-
-  userProfileImage = () => {
-    const user = this.userSignal();
-    const avatar = createAvatar(funEmoji, {
-      seed: user?.['id']
-    });
-    return user?.['picture'] || avatar.toDataUri();
-  };
-
-  userName = () => {
-    const user = this.userSignal();
-    if (!user) return '';
-    return `${user['given_name'] || ''} ${user['family_name'] || ''}`.trim();
-  };
-
-  userEmail = () => {
-    const user = this.userSignal();
-    return user?.['email'] || '';
-  };
-
-  isExchangeActive(exchangeId: string): boolean {
-    const user = this.userSignal();
-    return !!user?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeId)?.isActive;
-  }
-
-  private initFormData(): void {
-    const user = this.userSignal();
-    if (user) {
-      this.profileForm.patchValue({
-        given_name: user['given_name'] || '',
-        family_name: user['family_name'] || '',
-        email: user['email'] || '',
-        risk: user.risk.id || ''
-      });
-    }
-  }
-
-  private loadRisks(): void {
-    this.profileService.getRisks().subscribe({
-      next: (risks) => {
-        this.risks.set(risks);
-      },
-      error: (error) => {
-        console.error('Error loading risks:', error);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Failed to Load Risks',
-          detail: 'Could not load risk profiles. Please try again later.'
-        });
-      }
-    });
-  }
-
-  private loadExchanges(): void {
-    this.exchangeService.getSupportedExchanges().subscribe({
-      next: (exchanges) => {
-        // Store full Exchange objects in supportedExchanges
-        this.supportedExchanges.set(exchanges);
-
+    effect(() => {
+      const exchanges = this.supportedExchangesQuery.data();
+      if (exchanges) {
         // Create dynamic forms for each supported exchange
-        const user = this.userSignal();
-        if (user) {
+        const userData = this.user();
+        if (userData) {
           exchanges.forEach((exchange) => {
             const exchangeKey = exchange.slug;
-            const isConnected = !!user.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchange.id);
+            const isConnected = !!userData.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchange.id);
 
             // Create a form for this exchange with masked placeholders if connected
             this.exchangeForms[exchangeKey] = {
@@ -212,16 +155,34 @@ export class ProfileComponent {
             };
           });
         }
-      },
-      error: (error) => {
-        console.error('Error loading exchanges:', error);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Failed to Load Exchanges',
-          detail: 'Could not load supported exchanges. Please try again later.'
-        });
       }
     });
+  }
+
+  userProfileImage = computed(() => {
+    const user = this.user();
+    if (!user) return '';
+
+    const avatar = createAvatar(funEmoji, {
+      seed: user.id
+    });
+    return user.picture || avatar.toDataUri();
+  });
+
+  userName = computed(() => {
+    const user = this.user();
+    if (!user) return '';
+    return `${user.given_name || ''} ${user.family_name || ''}`.trim();
+  });
+
+  userEmail = computed(() => {
+    const user = this.user();
+    return user?.email || '';
+  });
+
+  isExchangeActive(exchangeId: string): boolean {
+    const user = this.user();
+    return !!user?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeId)?.isActive;
   }
 
   getPasswordError(controlName: string): string {
@@ -233,12 +194,16 @@ export class ProfileComponent {
     if (this.profileForm.valid) {
       // Prepare JSON data for API submission
       const profileData = this.profileForm.getRawValue();
-      const initialUser = this.userSignal();
+      const currentUser = this.user();
       const updatedFields: any = {};
-      const isEmailChanged = profileData.email !== initialUser['email'];
+      const isEmailChanged = profileData.email !== currentUser?.email;
 
       Object.keys(profileData).forEach((key) => {
-        if (profileData[key] !== null && profileData[key] !== undefined && profileData[key] !== initialUser[key]) {
+        if (
+          profileData[key] !== null &&
+          profileData[key] !== undefined &&
+          profileData[key] !== (currentUser as Record<string, any>)[key]
+        ) {
           updatedFields[key] = profileData[key];
         }
       });
@@ -263,15 +228,15 @@ export class ProfileComponent {
   onChangePassword(): void {
     this.passwordFormSubmitted = true;
     if (this.passwordForm.valid) {
-      this.passwordLoading = true;
       const passwordData = {
         old_password: this.passwordForm.get('currentPassword')?.value,
         new_password: this.passwordForm.get('newPassword')?.value,
         confirm_new_password: this.passwordForm.get('confirmPassword')?.value
       };
 
-      this.profileService.changePassword(passwordData).subscribe({
-        next: () => {
+      // Use the TanStack mutation
+      this.changePasswordMutation.mutate(passwordData, {
+        onSuccess: () => {
           this.messageService.add({
             severity: 'success',
             summary: 'Password Changed',
@@ -279,9 +244,8 @@ export class ProfileComponent {
           });
           this.passwordForm.reset();
           this.passwordFormSubmitted = false;
-          this.passwordLoading = false;
         },
-        error: (error) => {
+        onError: (error: any) => {
           let errorMessage = 'Failed to update password. Please try again.';
 
           if (error.status === 400) {
@@ -293,21 +257,19 @@ export class ProfileComponent {
             summary: 'Password Change Failed',
             detail: errorMessage
           });
-          this.passwordLoading = false;
         }
       });
     }
   }
 
   private processProfileUpdate(updatedFields: any, isEmailChanged: boolean): void {
-    this.profileLoading = true;
-
     if (this.uploadedFile) {
       updatedFields.profileImage = this.uploadedFile.base64;
     }
 
-    this.profileService.updateProfile(updatedFields).subscribe({
-      next: (response) => {
+    // Use TanStack mutation
+    this.updateProfileMutation.mutate(updatedFields, {
+      onSuccess: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Profile Updated',
@@ -316,7 +278,6 @@ export class ProfileComponent {
 
         this.profileForm.markAsPristine();
         this.uploadedFile = null;
-        this.profileLoading = false;
 
         if (isEmailChanged) {
           this.messages.set([
@@ -328,17 +289,16 @@ export class ProfileComponent {
           ]);
 
           setTimeout(() => {
-            this.authService.logout();
+            this.logoutMutation.mutate();
           }, 5000);
         }
       },
-      error: (error) => {
+      onError: (error: any) => {
         this.messageService.add({
           severity: 'error',
           summary: 'Update Failed',
-          detail: error.error.message || 'Failed to update profile. Please try again.'
+          detail: error.error?.message || 'Failed to update profile. Please try again.'
         });
-        this.profileLoading = false;
       }
     });
   }
@@ -376,7 +336,7 @@ export class ProfileComponent {
       const formData = exchange.form.getRawValue();
 
       // Find the exchange object
-      const exchangeObj = this.supportedExchanges().find((ex) => ex.slug === exchangeKey);
+      const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
       if (!exchangeObj) {
         this.messageService.add({
           severity: 'error',
@@ -390,8 +350,8 @@ export class ProfileComponent {
       // If we're in edit mode, first remove the existing key then add the new one
       if (exchange.editMode) {
         // Find the existing exchange key ID
-        const user = this.userSignal();
-        const existingKey = user?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj.id);
+        const userData = this.user();
+        const existingKey = userData?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj.id);
 
         if (!existingKey || !existingKey.id) {
           this.messageService.add({
@@ -403,13 +363,13 @@ export class ProfileComponent {
           return;
         }
 
-        // Step 1: Remove the existing key
-        this.profileService.deleteExchangeKey(existingKey.id).subscribe({
-          next: () => {
+        // Step 1: Remove the existing key using TanStack mutation
+        this.deleteExchangeKeyMutation.mutate(existingKey.id, {
+          onSuccess: () => {
             // Step 2: Add the new key
             this.addNewExchangeKey(exchange, exchangeObj, formData);
           },
-          error: (error) => {
+          onError: (error: any) => {
             exchange.loading = false;
             this.messageService.add({
               severity: 'error',
@@ -426,7 +386,7 @@ export class ProfileComponent {
     }
   }
 
-  // Helper method to add a new exchange key
+  // Helper method to add a new exchange key using TanStack Query
   private addNewExchangeKey(exchange: any, exchangeObj: any, formData: any): void {
     const exchangeKeyDto = {
       exchangeId: exchangeObj.id,
@@ -435,8 +395,8 @@ export class ProfileComponent {
       isActive: true
     };
 
-    this.profileService.saveExchangeKeys(exchangeKeyDto).subscribe({
-      next: ({ isActive }) => {
+    this.saveExchangeKeysMutation.mutate(exchangeKeyDto, {
+      onSuccess: ({ isActive }) => {
         exchange.connected = true;
         exchange.loading = false;
         exchange.editMode = false; // Exit edit mode after successful save
@@ -449,7 +409,7 @@ export class ProfileComponent {
             : `Failed to connect to ${exchangeObj.name}. Please check your API keys and try again.`
         });
       },
-      error: (error) => {
+      onError: (error: any) => {
         exchange.loading = false;
 
         // Handle the specific conflict error when a key already exists
@@ -479,7 +439,7 @@ export class ProfileComponent {
     exchange.editMode = true;
 
     // Get the exchange object
-    const exchangeObj = this.supportedExchanges().find((ex) => ex.slug === exchangeKey);
+    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
     if (!exchangeObj) return;
 
     // Enable the form controls and clear the values
@@ -506,10 +466,10 @@ export class ProfileComponent {
     exchange.submitted = false;
 
     // Reset the form values to placeholder values and disable controls
-    const user = this.userSignal();
-    if (user) {
-      console.log('exchangeKey', exchangeKey);
-      const isConnected = !!user.exchanges.find((key: ExchangeKey) => key.slug === exchangeKey);
+    const userData = this.user();
+    if (userData) {
+      const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
+      const isConnected = !!userData?.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchangeObj?.id);
 
       const apiKeyControl = exchange.form.get('apiKey');
       const secretKeyControl = exchange.form.get('secretKey');
@@ -531,7 +491,7 @@ export class ProfileComponent {
     if (!exchange) return;
 
     // Get the exchange name for display in confirmation dialog
-    const exchangeObj = this.supportedExchanges().find((ex) => ex.slug === exchangeKey);
+    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
     const exchangeName = exchangeObj?.name || exchangeKey;
 
     this.confirmationService.confirm({
@@ -544,10 +504,10 @@ export class ProfileComponent {
         exchange.loading = true;
 
         // Find the exchange key ID for the exchange we want to delete
-        const user = this.userSignal();
-        const exchangeKeyData = user?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj?.id);
+        const userData = this.user();
+        const exchangeKeyData = userData?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj?.id);
 
-        if (!exchangeKeyData || !exchangeKeyData.exchangeId) {
+        if (!exchangeKeyData || !exchangeKeyData.id) {
           this.messageService.add({
             severity: 'error',
             summary: 'Disconnection Failed',
@@ -557,9 +517,9 @@ export class ProfileComponent {
           return;
         }
 
-        // Use the new deleteExchangeKey method to properly remove the exchange key
-        this.profileService.deleteExchangeKey(exchangeKeyData.id).subscribe({
-          next: () => {
+        // Use the TanStack mutation for deleting exchange key
+        this.deleteExchangeKeyMutation.mutate(exchangeKeyData.id, {
+          onSuccess: () => {
             exchange.connected = false;
             exchange.loading = false;
 
@@ -583,7 +543,7 @@ export class ProfileComponent {
               detail: `Your ${exchangeName} account has been disconnected successfully`
             });
           },
-          error: (error) => {
+          onError: (error: any) => {
             exchange.loading = false;
             this.messageService.add({
               severity: 'error',
@@ -596,21 +556,22 @@ export class ProfileComponent {
     });
   }
 
-  // Add the updateForms method to immediately update form data
+  // Update forms with user data
   private updateForms(user: any): void {
     if (!user) return;
 
     // Update profile form
     this.profileForm?.patchValue({
-      given_name: user['given_name'] || '',
-      family_name: user['family_name'] || '',
-      email: user['email'] || '',
+      given_name: user.given_name || '',
+      family_name: user.family_name || '',
+      email: user.email || '',
       risk: user.risk?.id || ''
     });
 
     // Update exchange forms if they exist
     if (user.exchanges && this.exchangeForms) {
-      this.supportedExchanges().forEach((exchange) => {
+      const exchanges = this.supportedExchangesQuery.data() || [];
+      exchanges.forEach((exchange) => {
         const exchangeKey = exchange.slug;
         const exchangeForm = this.exchangeForms[exchangeKey];
         if (exchangeForm) {

@@ -4,15 +4,16 @@
 <p-card styleClass="p-0 md:p-4">
   <p-table
     #dt
-    [value]="coins"
+    [value]="coins()"
     [rows]="10"
     [paginator]="true"
-    [loading]="isLoading"
+    [loading]="isLoading()"
     [rowHover]="true"
     dataKey="id"
     currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
     [showCurrentPageReport]="true"
-    [(selection)]="selectedCoins"
+    [selection]="selectedCoins()"
+    selectionChange="selectedCoins.set($event)"
     [globalFilterFields]="['name', 'symbol']"
     size="small"
     stripedRows
@@ -21,7 +22,7 @@
     breakpoint="768px"
   >
     <ng-template pTemplate="caption">
-      <div class="m-4 flex flex-col gap-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
         <div class="flex gap-4">
           <p-button label="New" [raised]="true" icon="pi pi-plus" severity="success" (click)="openNewCoinDialog()" />
           <p-button
@@ -30,15 +31,15 @@
             icon="pi pi-trash"
             outlined
             (onClick)="deleteSelectedCoins()"
-            [disabled]="!selectedCoins || !selectedCoins.length"
+            [disabled]="!selectedCoins() || !selectedCoins().length"
             class="hidden md:inline-flex"
           />
           <p-splitButton
-            [label]="syncLabel"
-            [icon]="syncIcon"
-            [model]="syncItems"
+            [label]="syncLabel()"
+            [icon]="syncIcon()"
+            [model]="syncItems()"
             severity="info"
-            [disabled]="isSyncingCoins || isSyncingDetails"
+            [disabled]="isSyncingCoins() || isSyncingDetails()"
             (onClick)="syncCoins()"
           />
         </div>
@@ -61,7 +62,7 @@
         </th>
         <th pSortableColumn="name">Name <p-sortIcon field="name" /></th>
         <th pSortableColumn="symbol">Symbol <p-sortIcon field="symbol" /></th>
-        <th>Updated At</th>
+        <th pSortableColumn="updatedAt">Updated At <p-sortIcon field="updatedAt" /></th>
         <th style="width: 10rem">Actions</th>
       </tr>
     </ng-template>
@@ -71,19 +72,19 @@
           <p-tableCheckbox [value]="coin" />
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Name</span>
+          <span class="block p-column-title md:hidden">Name</span>
           {{ coin.name }}
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Symbol</span>
+          <span class="block p-column-title md:hidden">Symbol</span>
           {{ coin.symbol }}
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Updated At</span>
+          <span class="block p-column-title md:hidden">Updated At</span>
           {{ coin.updatedAt | date: 'short' }}
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Actions</span>
+          <span class="block p-column-title md:hidden">Actions</span>
           <div class="flex gap-2">
             <p-button
               icon="pi pi-pencil"
@@ -106,54 +107,62 @@
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="8" class="p-4 text-center">No coins found</td>
+        <td colspan="8" class="p-4 text-center">
+          <div *ngIf="isLoading()">Loading coins data...</div>
+          <div *ngIf="!isLoading() && coinsError()">
+            <p class="text-red-500">Failed to load coins data</p>
+            <p class="text-sm">{{ coinsError() }}</p>
+          </div>
+          <div *ngIf="!isLoading() && !coinsError()">No coins found</div>
+        </td>
       </tr>
     </ng-template>
   </p-table>
 </p-card>
 
 <p-dialog
-  [(visible)]="coinDialog"
+  [visible]="coinDialog()"
+  (visibleChange)="coinDialog.set($event)"
   [style]="{ width: '450px' }"
-  header="{{ isNew ? 'New Coin' : 'Edit Coin' }}"
+  header="{{ isNew() ? 'New Coin' : 'Edit Coin' }}"
   [modal]="true"
   styleClass="p-fluid"
-  [closable]="!isLoading"
-  [closeOnEscape]="!isLoading"
+  [closable]="!isLoading()"
+  [closeOnEscape]="!isLoading()"
 >
   <form [formGroup]="coinForm" class="my-4">
     <p-fluid>
-      <p-floatlabel variant="on" class="mb-4 flex w-full flex-wrap">
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
         <input
           id="name"
           type="text"
           pInputText
           formControlName="name"
           pSize="large"
-          [ngClass]="{ 'ng-invalid ng-dirty': submitted && coinForm.controls['name'].invalid }"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted() && coinForm.controls['name'].invalid }"
         />
         <label for="name">Name</label>
-        <small class="p-error" *ngIf="submitted && coinForm.controls['name'].invalid">Name is required.</small>
+        <small class="p-error" *ngIf="submitted() && coinForm.controls['name'].invalid">Name is required.</small>
       </p-floatlabel>
 
-      <p-floatlabel variant="on" class="mb-4 flex w-full flex-wrap">
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
         <input
           id="symbol"
           type="text"
           pInputText
           formControlName="symbol"
           pSize="large"
-          [ngClass]="{ 'ng-invalid ng-dirty': submitted && coinForm.controls['symbol'].invalid }"
+          [ngClass]="{ 'ng-invalid ng-dirty': submitted() && coinForm.controls['symbol'].invalid }"
         />
         <label for="symbol">Symbol</label>
-        <small class="p-error" *ngIf="submitted && coinForm.controls['symbol'].invalid">Symbol is required.</small>
+        <small class="p-error" *ngIf="submitted() && coinForm.controls['symbol'].invalid">Symbol is required.</small>
       </p-floatlabel>
     </p-fluid>
   </form>
 
   <ng-template pTemplate="footer">
-    <p-button severity="secondary" label="Cancel" icon="pi pi-times" (click)="hideDialog()" [disabled]="isLoading" />
-    <p-button label="Save" icon="pi pi-check" (click)="saveCoin()" [loading]="isLoading" />
+    <p-button severity="secondary" label="Cancel" icon="pi pi-times" (click)="hideDialog()" [disabled]="isLoading()" />
+    <p-button label="Save" icon="pi pi-check" (click)="saveCoin()" [loading]="isCreatePending() || isUpdatePending()" />
   </ng-template>
 </p-dialog>
 
