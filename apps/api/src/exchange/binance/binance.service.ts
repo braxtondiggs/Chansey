@@ -11,7 +11,7 @@ import { ExchangeService } from '../exchange.service';
 export class BinanceService {
   private readonly logger = new Logger(BinanceService.name);
   private binanceClients: Map<string, BinanceClient> = new Map();
-  private binanceSlug = 'binance';
+  private binanceSlug = 'binance_us';
 
   constructor(
     private readonly config: ConfigService,
@@ -88,6 +88,7 @@ export class BinanceService {
 
   async getBalance(user: User, type = 'ALL') {
     try {
+      console.log(user);
       const accountInfo = await this.getBinanceAccountInfo(user);
       const coin = type.toUpperCase();
 

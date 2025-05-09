@@ -1,0 +1,64 @@
+<p-card [header]="exchange.name + ' Balance'" styleClass="mb-4">
+  <ng-container *ngIf="balanceQuery.isFetching() || balanceQuery.isPending(); else balanceContent">
+    <div class="flex p-3 justify-content-center align-items-center">
+      <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
+    </div>
+  </ng-container>
+
+  <ng-template #balanceContent>
+    <div *ngIf="balanceQuery.isError()" class="p-3 text-center">
+      <p class="text-red-500">{{ balanceQuery.error() }}</p>
+      <button class="p-button p-button-sm p-button-outlined" (click)="balanceQuery.refetch()">
+        <i class="mr-2 pi pi-refresh"></i>
+        Retry
+      </button>
+    </div>
+    @let userBalance = balanceQuery.data();
+    <!--<div *ngIf="!balanceQuery.isError() && userBalance?.length > 0" class="balance-container">
+      <table class="w-full">
+        <thead>
+          <tr>
+            <th class="p-2 text-left">Asset</th>
+            <th class="p-2 text-right">Free</th>
+            <th class="p-2 text-right">Locked</th>
+            <th class="p-2 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let balance of userBalance" class="border-bottom-1 border-300">
+            <td class="p-2 text-left">
+              <p-tag
+                [value]="balance.asset"
+                [severity]="balance.asset === 'BTC' ? 'warn' : balance.asset === 'ETH' ? 'info' : 'success'"
+              ></p-tag>
+            </td>
+            <td class="p-2 text-right">{{ formatBalance(balance.free, balance.asset) }}</td>
+            <td class="p-2 text-right">{{ formatBalance(balance.locked, balance.asset) }}</td>
+            <td class="p-2 font-bold text-right">{{ formatBalance(balance.total, balance.asset) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="mt-3 text-sm text-right text-500" *ngIf="lastUpdated()">
+        Last updated: {{ lastUpdated() | date: 'medium' }}
+        <button class="p-button p-button-text p-button-rounded p-button-sm" (click)="fetchBalances()">
+          <i class="pi pi-refresh"></i>
+        </button>
+      </div>
+    </div>
+
+    <div *ngIf="!balanceQuery.isError() && balances().length === 0" class="p-3 text-center">
+      <p class="mb-3 text-500">No balance data available</p>
+      <button class="p-button p-button-sm p-button-outlined" (click)="fetchBalances()">
+        <i class="mr-2 pi pi-refresh"></i>
+        Refresh
+      </button>
+    </div>-->
+  </ng-template>
+</p-card>
+
+<style>
+  .balance-container {
+    overflow-x: auto;
+  }
+</style>

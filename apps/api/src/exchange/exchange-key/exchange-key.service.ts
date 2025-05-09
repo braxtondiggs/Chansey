@@ -42,7 +42,7 @@ export class ExchangeKeyService {
    * @param userId - The ID of the user to check
    * @returns An object containing a boolean flag and the list of supported exchanges with active keys
    */
-  async hasSupportedExchangeKeys(userId: string): Promise<ExchangeKey[]> {
+  async hasSupportedExchangeKeys(userId: string, top_level = false): Promise<ExchangeKey[]> {
     const keys = await this.exchangeKeyRepository.find({
       where: {
         userId
@@ -57,13 +57,32 @@ export class ExchangeKeyService {
 
     supportedExchangeKeys.forEach((key) => {
       if (key.exchange) {
-        exchangeMap.set(key.exchange.id, {
+        interface ExchangeKeyData {
+          id: string;
+          exchangeId: string;
+          isActive: boolean;
+          name: string;
+          slug: string;
+          decryptedApiKey?: string;
+          decryptedSecretKey?: string;
+        }
+
+        const keyData: ExchangeKeyData = {
           id: key.id,
           exchangeId: key.exchange.id,
           isActive: key.isActive,
           name: key.exchange.name,
           slug: key.exchange.slug
-        });
+        };
+
+        // Include decrypted API keys when top_level is true
+        // This will make them available for internal services without exposing them externally
+        if (top_level) {
+          keyData.decryptedApiKey = key.decryptedApiKey;
+          keyData.decryptedSecretKey = key.decryptedSecretKey;
+        }
+
+        exchangeMap.set(key.exchange.id, keyData);
       }
     });
 
