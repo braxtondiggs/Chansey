@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
 
-import { IUser } from '@chansey/api-interfaces';
+import { ExchangeKey, IUser } from '@chansey/api-interfaces';
 
 export class UserDto implements IUser {
   @ApiProperty({
@@ -150,6 +150,14 @@ export class UserDto implements IUser {
   })
   @Expose()
   app_data: Record<string, any> = {};
+
+  @ApiProperty({
+    description: 'Exchanges associated with the user',
+    example: [],
+    type: Array
+  })
+  @Expose()
+  exchanges: ExchangeKey[] = [];
 
   constructor(partial: Partial<UserDto>) {
     Object.assign(this, partial);

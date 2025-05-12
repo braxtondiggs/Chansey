@@ -29,13 +29,13 @@ jobs:
       - uses: nrwl/nx-set-shas@v4
 
       - name: Lint (Branch)
-        run: npx nx affected -t lint
+        run: npx nx affected -t lint --base=$NX_BASE --head=$NX_HEAD --parallel
 
       - name: Test (Branch)
-        run: npx nx affected -t test
+        run: npx nx affected -t test --base=$NX_BASE --head=$NX_HEAD --parallel
 
       - name: Build (Branch Development Mode)
-        run: npx nx affected -t build --configuration=development
+        run: npx nx affected -t build --configuration=development --base=$NX_BASE --head=$NX_HEAD --parallel
 
       - name: E2E Tests (Branch)
-        run: npx nx affected -t e2e-ci
+        run: npx nx affected -t e2e-ci --base=$NX_BASE --head=$NX_HEAD --parallel

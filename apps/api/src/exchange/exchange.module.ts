@@ -3,7 +3,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { BinanceService } from './binance/binance.service';
+import { BinanceUSService } from './binance/binance-us.service';
 import { CoinbaseService } from './coinbase/coinbase.service';
 import { ExchangeKeyModule } from './exchange-key/exchange-key.module';
 import { ExchangeController } from './exchange.controller';
@@ -17,7 +17,7 @@ import { CoinService } from '../coin/coin.service';
 @Module({
   controllers: [ExchangeController],
   imports: [ConfigModule, HttpModule, TypeOrmModule.forFeature([Coin, Exchange]), forwardRef(() => ExchangeKeyModule)],
-  providers: [BinanceService, CoinbaseService, CoinService, ExchangeService, ExchangeTask],
-  exports: [ExchangeService, BinanceService, CoinbaseService]
+  providers: [BinanceUSService, CoinbaseService, CoinService, ExchangeService, ExchangeTask],
+  exports: [ExchangeService, BinanceUSService, CoinbaseService]
 })
 export class ExchangeModule {}

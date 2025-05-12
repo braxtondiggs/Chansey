@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { OrderSide_LT, SymbolLotSizeFilter, SymbolMinNotionalFilter, SymbolPriceFilter } from 'binance-api-node';
+import * as ccxt from 'ccxt';
 import { Repository } from 'typeorm';
 
 import { Coin } from './../coin/coin.entity';
@@ -11,9 +11,32 @@ import { TestnetDto } from './testnet/dto/testnet.dto';
 
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceService } from '../exchange/binance/binance.service';
+import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
+
+// Define our own types to replace the Binance-specific ones
+interface SymbolPriceFilter {
+  filterType: string;
+  minPrice: string;
+  maxPrice: string;
+  tickSize: string;
+}
+
+interface SymbolLotSizeFilter {
+  filterType: string;
+  minQty: string;
+  maxQty: string;
+  stepSize: string;
+}
+
+interface SymbolMinNotionalFilter {
+  filterType: string;
+  minNotional: string;
+}
+
+// Replace OrderSide_LT with string type
+type OrderSide_LT = 'BUY' | 'SELL';
 
 interface SymbolValidationFilters {
   priceFilter: SymbolPriceFilter;
@@ -27,7 +50,7 @@ export class OrderService {
   constructor(
     @InjectRepository(Order)
     private readonly order: Repository<Order>,
-    private readonly binance: BinanceService,
+    private readonly binance: BinanceUSService,
     private readonly coin: CoinService,
     private readonly tickerPairs: TickerPairService
   ) {}
@@ -36,7 +59,7 @@ export class OrderService {
     this.logger.debug(`Creating buy order for user: ${user.id}, coinId: ${order.coinId}`);
 
     const coin = await this.coin.getCoinById(order.coinId); // TODO: Get price using price service
-    // const price = await this.binance.getPriceBySymbol(`${coin.symbol.toUpperCase()}USDT`, user);
+    // const price = await this.binance.getPriceBySymbol(`${coin.symbol.toUpperCase()}/USDT`, user);
 
     if (!coin) throw new BadRequestException('Invalid coin ID');
 
@@ -167,7 +190,7 @@ export class OrderService {
     }
 
     const orders = [];
-    const symbol = `${coin.symbol.toUpperCase()}USDT`;
+    const symbol = `${coin.symbol.toUpperCase()}/USDT`;
 
     try {
       const validatedOrder = await this.isExchangeValid(
@@ -202,19 +225,26 @@ export class OrderService {
 
   async getOrders(user: User) {
     const binance = await this.binance.getBinanceClient(user);
-    return await binance.allOrders({ symbol: 'BTCUSD' });
+    return await binance.fetchOrders('BTC/USD');
   }
 
-  async getOrder(user: User, orderId: number) {
+  async getOrder(user: User, orderId: string) {
     const binance = await this.binance.getBinanceClient(user);
-    const order = await binance.getOrder({ symbol: 'BTCUSD', orderId });
-    if (!order) throw new NotFoundCustomException('Order', { id: orderId.toString() });
-    return order;
+    // CCXT requires symbol for fetchOrder
+    // We need to try common symbols if the order ID is known but symbol isn't
+    try {
+      const order = await binance.fetchOrder(orderId, 'BTC/USD');
+      if (!order) throw new NotFoundCustomException('Order', { id: orderId });
+      return order;
+    } catch (error) {
+      this.logger.error(`Failed to fetch order ${orderId}`, error);
+      throw new NotFoundCustomException('Order', { id: orderId.toString() });
+    }
   }
 
   async getOpenOrders(user: User) {
     const binance = await this.binance.getBinanceClient(user);
-    return await binance.openOrders({ symbol: 'BTCUSD' });
+    return await binance.fetchOpenOrders('BTC/USD');
   }
 
   private async createOrder(
@@ -227,25 +257,28 @@ export class OrderService {
   ) {
     try {
       const binance = await this.binance.getBinanceClient(user);
-      const action = await binance.order({
-        symbol,
-        side,
-        quantity,
-        type: OrderType.MARKET as any
-      });
+
+      // CCXT uses different method names for order creation
+      const action = await binance.createOrder(
+        symbol, // symbol
+        'market', // type (lowercase in CCXT)
+        side.toLowerCase(), // side (lowercase in CCXT)
+        parseFloat(quantity), // amount
+        undefined // price (not needed for market orders)
+      );
 
       await this.order.insert({
-        clientOrderId: action.clientOrderId,
+        clientOrderId: action.clientOrderId || action.id,
         coin,
-        executedQuantity: parseFloat(action.executedQty),
-        orderId: action.orderId.toString(),
-        price: parseFloat(action.fills[0].price),
+        executedQuantity: action.filled || parseFloat(quantity),
+        orderId: action.id.toString(),
+        price: action.price || (action.trades && action.trades.length > 0 ? action.trades[0].price : 0),
         quantity: Number(order.quantity),
         side: side as OrderSide,
-        status: action.status as OrderStatus,
+        status: this.mapCcxtStatusToOrderStatus(action.status),
         // stopPrice: order.stopPrice ? parseFloat(order.stopPrice) : null,
         symbol: symbol,
-        transactTime: action.transactTime.toString(),
+        transactTime: action.timestamp ? action.timestamp.toString() : Date.now().toString(),
         type: OrderType.MARKET,
         user
       });
@@ -256,20 +289,108 @@ export class OrderService {
     }
   }
 
-  private async getExchangeInfo(symbol: string, user?: User) {
-    const binance = await this.binance.getBinanceClient(user);
-    return await binance.exchangeInfo({ symbol });
+  // Helper method to map CCXT order statuses to our OrderStatus enum
+  private mapCcxtStatusToOrderStatus(ccxtStatus: string): OrderStatus {
+    const statusMap: Record<string, OrderStatus> = {
+      open: OrderStatus.NEW,
+      closed: OrderStatus.FILLED,
+      canceled: OrderStatus.CANCELED,
+      expired: OrderStatus.EXPIRED,
+      rejected: OrderStatus.REJECTED
+    };
+
+    return statusMap[ccxtStatus] || OrderStatus.NEW;
   }
 
-  private getSymbolFilters(filters: any[]): SymbolValidationFilters {
+  private async getExchangeInfo(symbol: string, user?: User) {
+    const binance = await this.binance.getBinanceClient(user);
+    // CCXT uses fetchMarkets instead of exchangeInfo
+    const markets = await binance.fetchMarkets();
+
+    // Find the specific market that matches our symbol
+    const market = markets.find((m) => m.id === symbol);
+    if (!market) {
+      throw new BadRequestException(`Symbol ${symbol} not found`);
+    }
+
+    // Transform to match original binance-api-node structure
     return {
-      priceFilter: filters.find((f) => f.filterType === 'PRICE_FILTER') as SymbolPriceFilter,
-      lotSizeFilter: filters.find((f) => f.filterType === 'LOT_SIZE') as SymbolLotSizeFilter,
-      minNotionalFilter: filters.find((f) => f.filterType === 'MIN_NOTIONAL') as SymbolMinNotionalFilter
+      symbols: [this.transformMarketToSymbolInfo(market)]
     };
   }
 
-  private validateSymbolStatus(symbol: any): void {
+  private transformMarketToSymbolInfo(market: ccxt.Market) {
+    // Transform CCXT market info into format similar to Binance API
+    return {
+      symbol: market.id,
+      status: market.active ? 'TRADING' : 'BREAK',
+      permissions: market.active ? ['SPOT'] : [],
+      quotePrecision: market.precision.price,
+      filters: [
+        {
+          filterType: 'PRICE_FILTER',
+          minPrice: market.limits.price?.min?.toString() || '0',
+          maxPrice: market.limits.price?.max?.toString() || '1000000',
+          tickSize: market.precision.price?.toString() || '0.00000001'
+        },
+        {
+          filterType: 'LOT_SIZE',
+          minQty: market.limits.amount?.min?.toString() || '0.00000100',
+          maxQty: market.limits.amount?.max?.toString() || '9000000',
+          stepSize: market.precision.amount?.toString() || '0.00000001'
+        },
+        {
+          filterType: 'MIN_NOTIONAL',
+          minNotional: market.limits.cost?.min?.toString() || '10'
+        }
+      ]
+    };
+  }
+
+  private getSymbolFilters(
+    filters: { filterType: string; [key: string]: string | number | boolean }[]
+  ): SymbolValidationFilters {
+    const priceFilterObj = filters.find((f) => f.filterType === 'PRICE_FILTER') as {
+      filterType: string;
+      [key: string]: string | number | boolean;
+    };
+    const lotSizeFilterObj = filters.find((f) => f.filterType === 'LOT_SIZE') as {
+      filterType: string;
+      [key: string]: string | number | boolean;
+    };
+    const minNotionalFilterObj = filters.find((f) => f.filterType === 'MIN_NOTIONAL') as {
+      filterType: string;
+      [key: string]: string | number | boolean;
+    };
+
+    // Create properly typed filter objects
+    const priceFilter: SymbolPriceFilter = {
+      filterType: 'PRICE_FILTER',
+      minPrice: priceFilterObj?.minPrice?.toString() || '0',
+      maxPrice: priceFilterObj?.maxPrice?.toString() || '1000000',
+      tickSize: priceFilterObj?.tickSize?.toString() || '0.00000001'
+    };
+
+    const lotSizeFilter: SymbolLotSizeFilter = {
+      filterType: 'LOT_SIZE',
+      minQty: lotSizeFilterObj?.minQty?.toString() || '0.00000100',
+      maxQty: lotSizeFilterObj?.maxQty?.toString() || '9000000',
+      stepSize: lotSizeFilterObj?.stepSize?.toString() || '0.00000001'
+    };
+
+    const minNotionalFilter: SymbolMinNotionalFilter = {
+      filterType: 'MIN_NOTIONAL',
+      minNotional: minNotionalFilterObj?.minNotional?.toString() || '10'
+    };
+
+    return {
+      priceFilter,
+      lotSizeFilter,
+      minNotionalFilter
+    };
+  }
+
+  private validateSymbolStatus(symbol: { status: string; permissions?: string[] }): void {
     if (symbol.status !== 'TRADING') {
       throw new BadRequestException('Trading is currently suspended for this symbol');
     }
@@ -355,14 +476,20 @@ export class OrderService {
         const price = parseFloat(order.price);
         this.validatePrice(price, filters);
 
-        const minNotional = parseFloat((filters.minNotionalFilter as any).minNotional);
+        const minNotional = parseFloat(filters.minNotionalFilter.minNotional);
         const notionalValue = quantity * price;
         if (notionalValue < minNotional) {
           throw new BadRequestException(`Order value ${notionalValue} is below minimum allowed ${minNotional}`);
         }
       }
 
-      order.quantity = this.validateAndAdjustQuantity(quantity, filters, symbolInfo.quotePrecision);
+      // Use number for precision to avoid 'any' type issues
+      const quotePrecision =
+        typeof symbolInfo.quotePrecision === 'number'
+          ? symbolInfo.quotePrecision
+          : parseInt(symbolInfo.quotePrecision as unknown as string, 10);
+
+      order.quantity = this.validateAndAdjustQuantity(quantity, filters, quotePrecision);
       return order;
     } catch (error) {
       if (error instanceof BadRequestException) {

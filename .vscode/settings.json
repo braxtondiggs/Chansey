@@ -25,11 +25,12 @@
     "inputs": [],
     "servers": {
       "mcp-server-time": {
-        "command": "python",
-        "args": ["-m", "mcp_server_time", "--local-timezone=America/Los_Angeles"],
+        "command": "uvx",
+        "args": ["mcp-server-time", "--local-timezone=America/New_York"],
         "env": {}
       }
     }
   },
-  "chat.mcp.discovery.enabled": true
+  "chat.mcp.discovery.enabled": true,
+  "nxConsole.generateAiAgentRules": true
 }

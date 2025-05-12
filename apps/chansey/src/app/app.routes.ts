@@ -52,7 +52,7 @@ export const appRoutes: Route[] = [
       {
         path: 'dashboard',
         loadComponent: () => import('./pages/dashboard').then((c) => c.DashboardComponent),
-        data: { breadcrumb: 'Dashboard' }
+        data: { breadcrumb: 'Portfolio' }
       },
       {
         path: 'profile',

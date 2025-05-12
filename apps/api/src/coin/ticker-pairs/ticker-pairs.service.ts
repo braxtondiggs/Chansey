@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import { CreateTickerDto } from './dto';
 import { TickerPairs } from './ticker-pairs.entity';
 
-import { BinanceService } from '../../exchange/binance/binance.service';
+import { BinanceUSService } from '../../exchange/binance/binance-us.service';
 import { CoinService } from '../coin.service';
 
 @Injectable()
@@ -14,7 +14,7 @@ export class TickerPairService {
   constructor(
     @InjectRepository(TickerPairs)
     private readonly pairs: Repository<TickerPairs>,
-    private readonly binance: BinanceService,
+    private readonly binance: BinanceUSService,
     private readonly coin: CoinService
   ) {}
 

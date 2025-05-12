@@ -97,4 +97,30 @@ export class ExchangeService {
 
     return await this.exchange.save(updatesWithIds);
   }
+
+  /**
+   * Find all exchanges that the user has active API keys for
+   * @param userId The user ID to find exchanges for
+   * @returns An array of exchanges with active API keys
+   */
+  async findAllWithUserKeys(userId: string): Promise<Exchange[]> {
+    // Get all supported exchanges
+    const exchanges = await this.getExchanges({ supported: true });
+
+    // Filter to ones where the user has API keys
+    const exchangesWithKeys: Exchange[] = [];
+
+    for (const exchange of exchanges) {
+      try {
+        const keys = await this.exchangeKeyService.findByExchange(exchange.id, userId);
+        if (keys && keys.length > 0 && keys.some((key) => key.isActive)) {
+          exchangesWithKeys.push(exchange);
+        }
+      } catch (error) {
+        // Continue if there's an error finding keys for this exchange
+      }
+    }
+
+    return exchangesWithKeys;
+  }
 }

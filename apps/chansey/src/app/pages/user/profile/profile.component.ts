@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, signal, effect, inject } from '@angular/core';
+import { Component, computed, signal, effect, inject, ViewChild, ElementRef } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { funEmoji } from '@dicebear/collection';
@@ -9,8 +9,10 @@ import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
+import { DialogModule } from 'primeng/dialog';
+import { DividerModule } from 'primeng/divider';
 import { FieldsetModule } from 'primeng/fieldset';
-import { FileUploadModule } from 'primeng/fileupload';
+import { FileSelectEvent, FileUpload, FileUploadModule, UploadEvent } from 'primeng/fileupload';
 import { FloatLabel } from 'primeng/floatlabel';
 import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
@@ -18,12 +20,14 @@ import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
-import { TabViewModule } from 'primeng/tabview';
+import { TabsModule } from 'primeng/tabs';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
+import { TooltipModule } from 'primeng/tooltip';
 
-import { Exchange, ExchangeKey, Risk } from '@chansey/api-interfaces';
+import { ExchangeKey } from '@chansey/api-interfaces';
 
+import { ImageCropComponent } from '@chansey-web/app/components/image-crop/image-crop.component';
 import { RisksService } from '@chansey-web/app/pages/admin/risks/risks.service';
 import { AuthService, ExchangeService } from '@chansey-web/app/services';
 import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
@@ -39,19 +43,23 @@ import { ProfileService } from './profile.service';
     CardModule,
     CommonModule,
     ConfirmDialogModule,
+    DialogModule,
+    DividerModule,
     FieldsetModule,
     FileUploadModule,
     FloatLabel,
     FluidModule,
+    ImageCropComponent,
     InputTextModule,
     MessageModule,
     PasswordModule,
-    ReactiveFormsModule,
     ProgressSpinnerModule,
+    ReactiveFormsModule,
     SelectModule,
-    TabViewModule,
+    TabsModule,
     TagModule,
-    ToastModule
+    ToastModule,
+    TooltipModule
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './profile.component.html'
@@ -66,7 +74,13 @@ export class ProfileComponent {
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
 
+  @ViewChild('fileUpload') fileUpload!: FileUpload;
+
   messages = signal<any[]>([]);
+  showBinanceHelp = signal<boolean>(false);
+  showCoinbaseHelp = signal<boolean>(false);
+  showImageCropper = signal<boolean>(false);
+  selectedImageFile: File | null = null;
   profileForm: FormGroup = this.fb.group({
     given_name: ['', Validators.required],
     family_name: ['', Validators.required],
@@ -84,6 +98,8 @@ export class ProfileComponent {
   uploadedFile: any = null;
   formSubmitted = false;
   passwordFormSubmitted = false;
+  croppedImageBlob: Blob | null = null;
+
   exchangeForms: Record<
     string,
     {
@@ -102,6 +118,7 @@ export class ProfileComponent {
   readonly risksQuery = this.riskService.useRisks();
   readonly supportedExchangesQuery = this.exchangeService.useSupportedExchanges();
   readonly updateProfileMutation = this.profileService.useUpdateProfileMutation();
+  readonly uploadProfileImageMutation = this.profileService.useUploadProfileImageMutation();
   readonly changePasswordMutation = this.profileService.useChangePasswordMutation();
   readonly saveExchangeKeysMutation = this.profileService.useSaveExchangeKeysMutation();
   readonly deleteExchangeKeyMutation = this.profileService.useDeleteExchangeKeyMutation();
@@ -208,7 +225,7 @@ export class ProfileComponent {
         }
       });
 
-      if (Object.keys(updatedFields).length === 0 && !this.uploadedFile) return;
+      if (Object.keys(updatedFields).length === 0) return;
 
       if (isEmailChanged) {
         this.confirmationService.confirm({
@@ -263,9 +280,7 @@ export class ProfileComponent {
   }
 
   private processProfileUpdate(updatedFields: any, isEmailChanged: boolean): void {
-    if (this.uploadedFile) {
-      updatedFields.profileImage = this.uploadedFile.base64;
-    }
+    // No need to handle profile image here, it's uploaded separately
 
     // Use TanStack mutation
     this.updateProfileMutation.mutate(updatedFields, {
@@ -277,7 +292,6 @@ export class ProfileComponent {
         });
 
         this.profileForm.markAsPristine();
-        this.uploadedFile = null;
 
         if (isEmailChanged) {
           this.messages.set([
@@ -297,33 +311,62 @@ export class ProfileComponent {
         this.messageService.add({
           severity: 'error',
           summary: 'Update Failed',
-          detail: error.error?.message || 'Failed to update profile. Please try again.'
+          detail: error?.message || 'Failed to update profile. Please try again.'
         });
       }
     });
   }
 
-  onUpload(event: any): void {
-    if (event.files && event.files.length > 0) {
-      const file = event.files[0];
+  onUpload(event: FileSelectEvent): void {
+    if (event.currentFiles && event.currentFiles.length > 0) {
+      // Instead of uploading directly, open the cropper
+      this.selectedImageFile = event.currentFiles[0];
+      this.showImageCropper.set(true);
 
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        this.uploadedFile = {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          base64: reader.result as string
-        };
-
-        this.messageService.add({
-          severity: 'info',
-          summary: 'File Uploaded',
-          detail: 'Profile picture update will be applied when you save your profile'
-        });
-      };
+      // Clear the file upload component
+      if (this.fileUpload) {
+        this.fileUpload.clear();
+      }
     }
+  }
+
+  handleCroppedImage(croppedImage: Blob): void {
+    // Create FormData object to send the cropped blob
+    const formData = new FormData();
+    const fileName = this.selectedImageFile?.name || 'profile-image.png';
+    const croppedFile = new File([croppedImage], fileName, {
+      type: croppedImage.type || 'image/png'
+    });
+
+    formData.append('file', croppedFile);
+
+    // Upload the cropped image using the file upload endpoint
+    this.uploadProfileImageMutation.mutate(formData, {
+      onSuccess: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Profile Image Updated',
+          detail: 'Your profile picture has been updated successfully'
+        });
+
+        // Reset state
+        this.selectedImageFile = null;
+        this.showImageCropper.set(false);
+      },
+      onError: (error: Error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Upload Failed',
+          detail: error?.message || 'Failed to upload profile image. Please try again.'
+        });
+      }
+    });
+  }
+
+  cancelCropping(): void {
+    // Reset state when user cancels cropping
+    this.selectedImageFile = null;
+    this.showImageCropper.set(false);
   }
 
   onSaveExchangeKeys(exchangeKey: string): void {
@@ -599,6 +642,30 @@ export class ProfileComponent {
           }
         }
       });
+    }
+  }
+
+  isBinanceUs(exchangeName: string): boolean {
+    // Check if the exchange is Binance US
+    return exchangeName?.toLowerCase().includes('binance us');
+  }
+
+  isCoinbase(exchangeName: string): boolean {
+    // Check if the exchange is Coinbase
+    return exchangeName?.toLowerCase().includes('coinbase');
+  }
+
+  toggleBinanceHelp(): void {
+    this.showBinanceHelp.update((value) => !value);
+  }
+
+  toggleCoinbaseHelp(): void {
+    this.showCoinbaseHelp.update((value) => !value);
+  }
+
+  openFileUpload(): void {
+    if (this.fileUpload) {
+      this.fileUpload.basicFileInput?.nativeElement.click();
     }
   }
 }

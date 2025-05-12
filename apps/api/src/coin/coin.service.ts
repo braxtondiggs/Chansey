@@ -7,7 +7,7 @@ import { In, IsNull, Not, Repository } from 'typeorm';
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
-import { BinanceService } from '../exchange/binance/binance.service';
+import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
@@ -24,7 +24,7 @@ export class CoinService {
 
   constructor(
     @InjectRepository(Coin) private readonly coin: Repository<Coin>,
-    private readonly binance: BinanceService
+    private readonly binance: BinanceUSService
   ) {}
 
   async getCoins() {

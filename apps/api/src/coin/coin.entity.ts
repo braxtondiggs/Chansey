@@ -54,10 +54,10 @@ export class Coin {
   })
   image?: string;
 
-  @Column({ type: 'date', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   @ApiProperty({
     description: 'Genesis date of the coin',
-    example: '2009-01-03',
+    example: '2009-01-03T00:00:00.000Z',
     required: false
   })
   genesis?: Date;

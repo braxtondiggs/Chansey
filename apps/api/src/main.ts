@@ -133,7 +133,14 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
 
   await app.register(fastifyCsrf);
 
-  await app.register(fastifyMultipart);
+  await app.register(fastifyMultipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 2 MB
+      files: 1,
+      headerPairs: 2000,
+      parts: 1000
+    }
+  });
 
   app.useLogger(app.get(Logger));
 
