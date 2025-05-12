@@ -45,7 +45,7 @@ export class OrderController {
     description: 'Order not found.'
   })
   getOrder(@Param('id', new ParseUUIDPipe()) id: string, @GetUser() user: User) {
-    return this.order.getOrder(user, +id);
+    return this.order.getOrder(user, id);
   }
 
   @Get('open')

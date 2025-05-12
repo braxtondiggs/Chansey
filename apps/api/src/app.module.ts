@@ -14,6 +14,7 @@ import { AlgorithmModule } from './algorithm/algorithm.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthenticationModule } from './authentication/authentication.module';
+import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
 import { ExchangeModule } from './exchange/exchange.module';
@@ -63,6 +64,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     ScheduleModule.forRoot(),
     AlgorithmModule,
     AuthenticationModule,
+    BalanceModule,
     CategoryModule,
     CoinModule,
     ConfigModule,

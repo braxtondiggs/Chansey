@@ -11,7 +11,7 @@ import { Testnet, TestnetStatus } from './testnet.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceService } from '../../exchange/binance/binance.service';
+import { BinanceUSService } from '../../exchange/binance/binance-us.service';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 import { OrderSide, OrderType } from '../order.entity';
 import { OrderService } from '../order.service';
@@ -23,7 +23,7 @@ export class TestnetService {
 
   constructor(
     private readonly algorithm: AlgorithmService,
-    private readonly binance: BinanceService,
+    private readonly binance: BinanceUSService,
     private readonly order: OrderService,
     private readonly tickerPair: TickerPairService,
     @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>,
@@ -45,7 +45,7 @@ export class TestnetService {
       ]);
       const price = response[ticker.baseAsset.slug]?.usd;
 
-      const testOrder = await binance.orderTest({
+      /*const testOrder = await binance.orderTest({
         quantity,
         side,
         symbol: ticker.symbol,
@@ -66,7 +66,8 @@ export class TestnetService {
           commission: 0,
           updatedAt: new Date()
         })
-      ).generatedMaps[0] as Testnet;
+      ).generatedMaps[0] as Testnet;*/
+      return; // TODO: Remove this line when the test order is implemented
     } catch (error) {
       this.logger.error(`Failed to create testnet order: ${error.message}`);
       throw error;

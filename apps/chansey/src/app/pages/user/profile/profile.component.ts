@@ -22,7 +22,7 @@ import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
 
-import { Exchange, ExchangeKey, Risk } from '@chansey/api-interfaces';
+import { ExchangeKey } from '@chansey/api-interfaces';
 
 import { RisksService } from '@chansey-web/app/pages/admin/risks/risks.service';
 import { AuthService, ExchangeService } from '@chansey-web/app/services';

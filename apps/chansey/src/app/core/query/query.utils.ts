@@ -10,10 +10,10 @@ import {
 } from '@tanstack/angular-query-experimental';
 
 /**
- * Custom fetch function that adds JWT authentication token
+ * Custom fetch function that adds JWT authentication token and handles auth errors
  */
 export async function authenticatedFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('token') || ''; // authService.getToken();
+  const token = localStorage.getItem('token') || '';
 
   const response = await fetch(url, {
     ...options,
@@ -23,10 +23,19 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
       'Content-Type': 'application/json'
     }
   });
+
   if (!response.ok) {
+    // Check for 401 Unauthorized and log out the user
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+      throw new Error('Your session has expired. Please log in again.');
+    }
+
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
   }
+
   return await response.json();
 }
 
@@ -60,12 +69,9 @@ export function useAuthQuery<TData, TParam = void>(
             ? // Use a placeholder key that will be replaced in queryFn
               [...typeof queryKey(undefined as unknown as TParam), 'placeholder']
             : queryKey,
-        queryFn: ({ queryKey }) => {
+        queryFn: ({ queryKey }: { queryKey: QueryKey }) => {
           // The last parameter in the actual call will be the parameter value
           const param = queryKey[queryKey.length - 1] as TParam;
-
-          // Resolve the actual queryKey if it's a function
-          const actualQueryKey = typeof queryKey === 'function' ? param : queryKey;
 
           // Resolve the URL if it's a function
           const resolvedUrl = typeof url === 'function' ? url(param) : url;

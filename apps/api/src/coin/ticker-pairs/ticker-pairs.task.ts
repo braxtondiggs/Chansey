@@ -6,7 +6,7 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 import { TickerPairStatus, TickerPairs } from './ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs.service';
 
-import { BinanceService } from '../../exchange/binance/binance.service';
+import { BinanceUSService } from '../../exchange/binance/binance-us.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { HealthCheckHelper } from '../../utils/health-check.helper';
 import { CoinService } from '../coin.service';
@@ -16,7 +16,7 @@ export class TickerPairTask {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(TickerPairTask.name);
   constructor(
-    private readonly binance: BinanceService,
+    private readonly binance: BinanceUSService,
     private readonly coin: CoinService,
     private readonly exchange: ExchangeService,
     private readonly tickerPair: TickerPairService,
@@ -32,7 +32,16 @@ export class TickerPairTask {
 
       // Get Binance exchange info first
       const binance = await this.binance.getBinanceClient();
-      const { symbols } = await binance.exchangeInfo();
+      const markets = await binance.fetchMarkets();
+
+      // Transform CCXT markets to match the structure we need
+      const symbols = markets.map((market) => ({
+        baseAsset: market.base,
+        quoteAsset: market.quote,
+        status: market.active ? 'TRADING' : 'BREAK',
+        isSpotTradingAllowed: market.spot,
+        isMarginTradingAllowed: market.margin || false
+      }));
 
       // Create a map for quick lookup of Binance pair data
       const binancePairMap = new Map(

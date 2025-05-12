@@ -8,7 +8,7 @@ import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 import { CoinTask } from './coin.task';
 
-import { BinanceService } from '../exchange/binance/binance.service';
+import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
@@ -43,7 +43,7 @@ describe('CoinController', () => {
             delete: jest.fn(() => ({}))
           }
         },
-        BinanceService,
+        BinanceUSService,
         {
           provide: ExchangeKeyService,
           useValue: {
