@@ -13,6 +13,7 @@ import { AlgorithmModule } from './algorithm/algorithm.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthenticationModule } from './authentication/authentication.module';
+import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
 import { ExchangeModule } from './exchange/exchange.module';
@@ -21,6 +22,7 @@ import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
 import { RiskModule } from './risk/risk.module';
+import { StorageModule } from './storage/storage.module';
 import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -31,6 +33,7 @@ const isProduction = process.env.NODE_ENV === 'production';
         transport: {
           target: 'pino-pretty',
           options: {
+            colorize: true,
             singleLine: true
           }
         }
@@ -39,6 +42,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     CacheModule.register({
       isGlobal: true
     }),
+    StorageModule,
     TypeOrmModule.forRoot({
       autoLoadEntities: true,
       database: process.env.PGDATABASE,
@@ -58,6 +62,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     ScheduleModule.forRoot(),
     AlgorithmModule,
     AuthenticationModule,
+    BalanceModule,
     CategoryModule,
     CoinModule,
     ConfigModule,

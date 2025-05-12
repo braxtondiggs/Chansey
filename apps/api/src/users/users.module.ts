@@ -14,6 +14,7 @@ import { AppModule } from '../app.module';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { Risk } from '../risk/risk.entity';
+import { StorageModule } from '../storage/storage.module';
 import { HealthCheckHelper } from '../utils/health-check.helper';
 
 @Module({
@@ -22,7 +23,8 @@ import { HealthCheckHelper } from '../utils/health-check.helper';
     forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Risk, Portfolio, User]),
     forwardRef(() => ExchangeModule),
-    forwardRef(() => ExchangeKeyModule)
+    forwardRef(() => ExchangeKeyModule),
+    StorageModule
   ],
   providers: [CoinService, HealthCheckHelper, PortfolioService, UsersService, UsersTaskService],
   exports: [UsersService]

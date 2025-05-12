@@ -137,9 +137,7 @@ interface NotificationsBars {
             leaveToClass="hidden"
             [hideOnOutsideClick]="true"
           >
-            <p-avatar styleClass="!w-10 !h-10" *ngIf="!userLoading()">
-              <img [src]="userProfileImage()" />
-            </p-avatar>
+            <p-avatar shape="square" [image]="userProfileImage()" [ariaLabel]="usersName()" />
           </a>
           <div
             class="border-surface bg-surface-0 dark:bg-surface-900 absolute right-0 top-auto z-[999] m-0 mt-2 hidden w-52 origin-top list-none overflow-hidden rounded-2xl border p-2 shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)]"
@@ -197,10 +195,24 @@ export class AppTopBar {
   userLoading = computed(() => this.user.isPending() || this.user.isFetching());
   userProfileImage = computed(() => {
     const user = this.user.data();
+    if (!user) return '';
+
+    // If the user has a picture and it's a valid URL, use it
+    if (user['picture'] && typeof user['picture'] === 'string' && user['picture'].trim() !== '') {
+      // Force image refresh by adding a cache-busting parameter if needed
+      return user['picture'] + (user['picture'].includes('?') ? '&' : '?') + 'v=' + new Date().getTime();
+    }
+
+    // Otherwise create a fallback avatar
     const avatar = createAvatar(funEmoji, {
-      seed: user?.['id']
+      seed: user['id'] || 'default'
     });
-    return user?.['picture'] || avatar.toDataUri();
+
+    return avatar.toDataUri();
+  });
+  usersName = computed(() => {
+    const user = this.user.data();
+    return `${user?.['given_name'] || ''} ${user?.['family_name'] || ''}`.trim();
   });
 
   @ViewChild('menubutton') menuButton!: ElementRef;

@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { Exclude, Expose } from 'class-transformer';
 import {
   BeforeInsert,
   BeforeUpdate,
@@ -48,11 +47,9 @@ export class ExchangeKey {
   @Column({ nullable: true })
   exchangeId: string;
 
-  @Exclude()
   @Column({ nullable: true })
   apiKey?: string;
 
-  @Exclude()
   @Column({ nullable: true })
   secretKey?: string;
 

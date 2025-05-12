@@ -45,3 +45,5 @@ Thumbs.db
 .nx/cache
 .nx/workspace-data
 docs/
+
+.cursor/rules/nx-rules.mdc

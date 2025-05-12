@@ -5,19 +5,24 @@ import {
   Get,
   HttpStatus,
   Patch,
-  Query,
+  Post,
+  Req,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { BalanceDto, UpdateUserDto, UserBinanceResponseDto, UserResponseDto } from './dto';
+import { MultipartFile } from '@fastify/multipart';
+import { FastifyRequest } from 'fastify';
+
+import { UpdateUserDto, UserResponseDto } from './dto';
 import { User } from './users.entity';
 import { UsersService } from './users.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import { BinanceService } from '../exchange/binance/binance.service';
+import { BinanceUSService } from '../exchange/binance/binance-us.service';
+import { StorageService } from '../storage/storage.service';
 
 @ApiTags('User')
 @ApiBearerAuth('token')
@@ -30,8 +35,9 @@ import { BinanceService } from '../exchange/binance/binance.service';
 @UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
   constructor(
-    private readonly binance: BinanceService,
-    private readonly user: UsersService
+    private readonly binance: BinanceUSService,
+    private readonly user: UsersService,
+    private readonly storage: StorageService
   ) {}
 
   @Patch()
@@ -45,6 +51,49 @@ export class UserController {
   })
   async updateUser(@Body() dto: UpdateUserDto, @GetUser() user: User) {
     return this.user.update(dto, user);
+  }
+
+  @Post('profile-image')
+  @ApiOperation({
+    summary: 'Upload profile image',
+    description: 'Uploads a profile image for the authenticated user.'
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiOkResponse({
+    description: 'The image has been successfully uploaded.',
+    type: UserResponseDto
+  })
+  async uploadProfileImage(@Req() req: FastifyRequest, @GetUser() user: User) {
+    try {
+      // Process the multipart file with Fastify's multipart parser
+      const data = await req.file();
+      if (!data) {
+        throw new Error('No file uploaded');
+      }
+
+      const buffer = await data.toBuffer();
+      const fileName = data.filename;
+      const contentType = data.mimetype;
+
+      // Upload to MinIO
+      const fileUrl = await this.storage.uploadFile(buffer, contentType, fileName);
+
+      // Delete old profile image if it exists and uses MinIO
+      if (user.picture && user.picture.includes(this.storage.getMinioEndpoint())) {
+        try {
+          await this.storage.deleteFile(user.picture);
+        } catch (error) {
+          // Log but continue even if deletion fails
+          console.error('Error deleting old profile image:', error);
+        }
+      }
+
+      // Update user profile with the new image URL
+      return this.user.update({ picture: fileUrl }, user, true);
+    } catch (error) {
+      console.error('Error processing file upload:', error);
+      throw error;
+    }
   }
 
   @Get()
@@ -68,37 +117,5 @@ export class UserController {
       // Fall back to the basic user data if Authorizer fetch fails
       return user;
     }
-  }
-
-  @Get('/binance/info')
-  @ApiOperation({
-    summary: 'Get detailed user info from binance',
-    description: 'Retrieves detailed information about the authenticated user.'
-  })
-  @ApiOkResponse({
-    description: 'Detailed user information retrieved successfully.',
-    type: UserBinanceResponseDto
-  })
-  info(@GetUser() user: User) {
-    return this.binance.getBinanceAccountInfo(user);
-  }
-
-  @Get('/balance')
-  @ApiOperation({
-    summary: 'Get user balance',
-    description: 'Retrieves the balance of the authenticated user. Use type=all to get all non-zero balances.'
-  })
-  @ApiOkResponse({
-    description: 'User balance retrieved successfully.',
-    type: BalanceDto
-  })
-  @ApiQuery({
-    name: 'type',
-    description: 'The type of balance to retrieve.',
-    enum: ['BTC', 'ALL'],
-    required: false
-  })
-  balance(@GetUser() user: User, @Query('type') type = 'ALL') {
-    return this.binance.getBalance(user, type);
   }
 }

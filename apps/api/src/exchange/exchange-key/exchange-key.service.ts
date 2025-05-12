@@ -13,7 +13,7 @@ import { Repository } from 'typeorm';
 import { CreateExchangeKeyDto, UpdateExchangeKeyDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 
-import { BinanceService } from '../binance/binance.service';
+import { BinanceUSService } from '../binance/binance-us.service';
 import { CoinbaseService } from '../coinbase/coinbase.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -24,8 +24,8 @@ export class ExchangeKeyService {
     private exchangeKeyRepository: Repository<ExchangeKey>,
     @Inject(forwardRef(() => ExchangeService))
     private exchangeService: ExchangeService,
-    @Inject(forwardRef(() => BinanceService))
-    private binanceService: BinanceService,
+    @Inject(forwardRef(() => BinanceUSService))
+    private binanceService: BinanceUSService,
     @Inject(forwardRef(() => CoinbaseService))
     private coinbaseService: CoinbaseService
   ) {}
@@ -42,7 +42,7 @@ export class ExchangeKeyService {
    * @param userId - The ID of the user to check
    * @returns An object containing a boolean flag and the list of supported exchanges with active keys
    */
-  async hasSupportedExchangeKeys(userId: string): Promise<ExchangeKey[]> {
+  async hasSupportedExchangeKeys(userId: string, top_level = false): Promise<ExchangeKey[]> {
     const keys = await this.exchangeKeyRepository.find({
       where: {
         userId
@@ -57,13 +57,32 @@ export class ExchangeKeyService {
 
     supportedExchangeKeys.forEach((key) => {
       if (key.exchange) {
-        exchangeMap.set(key.exchange.id, {
+        interface ExchangeKeyData {
+          id: string;
+          exchangeId: string;
+          isActive: boolean;
+          name: string;
+          slug: string;
+          decryptedApiKey?: string;
+          decryptedSecretKey?: string;
+        }
+
+        const keyData: ExchangeKeyData = {
           id: key.id,
           exchangeId: key.exchange.id,
           isActive: key.isActive,
           name: key.exchange.name,
           slug: key.exchange.slug
-        });
+        };
+
+        // Include decrypted API keys when top_level is true
+        // This will make them available for internal services without exposing them externally
+        if (top_level) {
+          keyData.decryptedApiKey = key.decryptedApiKey;
+          keyData.decryptedSecretKey = key.decryptedSecretKey;
+        }
+
+        exchangeMap.set(key.exchange.id, keyData);
       }
     });
 
@@ -182,8 +201,8 @@ export class ExchangeKeyService {
       // Create a temporary client with the provided keys
       const binanceClient = await this.binanceService.getTemporaryClient(apiKey, secretKey);
 
-      // Try to fetch account info - this will throw an error if the keys are invalid
-      await binanceClient.accountInfo();
+      // Try to fetch balance - this will throw an error if the keys are invalid
+      await binanceClient.fetchBalance();
     } catch (error) {
       throw new UnauthorizedException('Invalid Binance API keys');
     }
