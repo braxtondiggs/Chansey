@@ -37,16 +37,29 @@ export interface HistoricalBalanceDto extends ExchangeBalanceDto {
   period: string;
 }
 
+export interface AccountValueDataPoint {
+  datetime: string;
+  value: number;
+}
+
+export interface AccountValueHistoryDto {
+  history: AccountValueDataPoint[];
+  currentValue: number;
+  changePercentage: number;
+}
+
 // Create query keys for balance related queries
 export const balanceKeys = createQueryKeys<{
   all: QueryKey;
   exchange: (exchangeId: string) => QueryKey;
   withHistory: (period: string) => QueryKey;
+  history: (days: string) => QueryKey;
 }>('balances');
 
 // Define specific query keys
 balanceKeys.exchange = (exchangeId) => [...balanceKeys.all, 'exchange', exchangeId];
 balanceKeys.withHistory = (period) => [...balanceKeys.all, 'history', period];
+balanceKeys.history = (days) => [...balanceKeys.all, 'accountHistory', days];
 
 @Injectable({
   providedIn: 'root'
@@ -74,5 +87,16 @@ export class ExchangeBalanceService {
     const url = `api/balance?includeHistorical=true&period=${period}${exchangeId ? `&exchangeId=${exchangeId}` : ''}`;
 
     return useAuthQuery<BalanceResponseDto>(balanceKeys.withHistory(period), url);
+  }
+
+  /**
+   * Get account value history data across all exchanges
+   * @param days Number of days to look back (defaults to 30 if not specified)
+   * @returns Query result with account value history data
+   */
+  useBalanceHistory(days?: number) {
+    const url = `api/balance/history${days ? `?days=${days}` : ''}`;
+
+    return useAuthQuery<AccountValueHistoryDto>(balanceKeys.history(days?.toString() || '30'), url);
   }
 }

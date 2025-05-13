@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
+import { UsersService } from './../users/users.service';
 import {
   AssetBalanceDto,
   ExchangeBalanceDto,
@@ -16,7 +17,6 @@ import { HistoricalBalance } from './historical-balance.entity';
 import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { CoinbaseService } from '../exchange/coinbase/coinbase.service';
 import { Exchange } from '../exchange/exchange.entity';
-import { ExchangeService } from '../exchange/exchange.service';
 import { User } from '../users/users.entity';
 
 @Injectable()
@@ -26,7 +26,7 @@ export class BalanceService {
   constructor(
     private readonly binanceService: BinanceUSService,
     private readonly coinbaseService: CoinbaseService,
-    private readonly exchangeService: ExchangeService,
+    private readonly userService: UsersService,
     @InjectRepository(HistoricalBalance)
     private readonly historicalBalanceRepository: Repository<HistoricalBalance>
   ) {}
@@ -72,13 +72,9 @@ export class BalanceService {
    * @returns Balance information from all connected exchanges
    */
   private async getCurrentBalances(user: User): Promise<ExchangeBalanceDto[]> {
-    // Find all exchanges for which the user has active API keys
-    // We need to load exchanges eagerly with the user to make key retrieval more efficient
-    const exchanges = await this.exchangeService.findAllWithUserKeys(user.id);
     const exchangeBalances: ExchangeBalanceDto[] = [];
-
     // Get balances from each exchange
-    for (const exchange of exchanges) {
+    for (const exchange of user.exchanges) {
       try {
         let balances: AssetBalanceDto[] = [];
         let totalUsdValue = 0;
@@ -425,14 +421,31 @@ export class BalanceService {
     // For example, you might query the database directly or use a user service
 
     // For testing purposes, we'll return a test user if one is available
-    const users = await this.historicalBalanceRepository.manager
+    const userIds = await this.historicalBalanceRepository.manager
       .createQueryBuilder()
       .select('DISTINCT "userId"')
       .from('exchange_key', 'ek')
       .where('ek."isActive" = :isActive', { isActive: true })
       .getRawMany();
 
-    return users.map((row) => ({ id: row.userId }) as User);
+    if (userIds.length === 0) {
+      this.logger.warn('No users found with active exchange keys');
+      return [];
+    }
+
+    // Fetch full user details for each userId
+    const users: User[] = [];
+    for (const userRow of userIds) {
+      try {
+        const user = await this.userService.getById(userRow.userId, true);
+        user.exchanges = user.exchanges.map((exchange) => ({ ...exchange, id: exchange.exchangeId })) as any[]; //!NOTE: This is a terrible hack to trick the typeorm
+        users.push(user);
+      } catch (error) {
+        this.logger.warn(`Failed to get user details for ID ${userRow.userId}: ${error.message}`);
+      }
+    }
+
+    return users;
   }
 
   /**

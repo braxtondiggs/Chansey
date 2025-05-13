@@ -33,6 +33,6 @@ export class HistoricalBalance {
   @Column('float')
   totalUsdValue: number;
 
-  @Column()
+  @Column({ type: 'timestamptz' })
   timestamp: Date;
 }

@@ -9,6 +9,8 @@ import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
+import { DialogModule } from 'primeng/dialog';
+import { DividerModule } from 'primeng/divider';
 import { FieldsetModule } from 'primeng/fieldset';
 import { FileUploadModule } from 'primeng/fileupload';
 import { FloatLabel } from 'primeng/floatlabel';
@@ -18,9 +20,10 @@ import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
-import { TabViewModule } from 'primeng/tabview';
+import { TabsModule } from 'primeng/tabs';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
+import { TooltipModule } from 'primeng/tooltip';
 
 import { ExchangeKey } from '@chansey/api-interfaces';
 
@@ -39,6 +42,8 @@ import { ProfileService } from './profile.service';
     CardModule,
     CommonModule,
     ConfirmDialogModule,
+    DialogModule,
+    DividerModule,
     FieldsetModule,
     FileUploadModule,
     FloatLabel,
@@ -46,12 +51,13 @@ import { ProfileService } from './profile.service';
     InputTextModule,
     MessageModule,
     PasswordModule,
-    ReactiveFormsModule,
     ProgressSpinnerModule,
+    ReactiveFormsModule,
     SelectModule,
-    TabViewModule,
+    TabsModule,
     TagModule,
-    ToastModule
+    ToastModule,
+    TooltipModule
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './profile.component.html'
@@ -67,6 +73,8 @@ export class ProfileComponent {
   private confirmationService = inject(ConfirmationService);
 
   messages = signal<any[]>([]);
+  showBinanceHelp = signal<boolean>(false);
+  showCoinbaseHelp = signal<boolean>(false);
   profileForm: FormGroup = this.fb.group({
     given_name: ['', Validators.required],
     family_name: ['', Validators.required],
@@ -600,5 +608,23 @@ export class ProfileComponent {
         }
       });
     }
+  }
+
+  isBinanceUs(exchangeName: string): boolean {
+    // Check if the exchange is Binance US
+    return exchangeName?.toLowerCase().includes('binance us');
+  }
+
+  isCoinbase(exchangeName: string): boolean {
+    // Check if the exchange is Coinbase
+    return exchangeName?.toLowerCase().includes('coinbase');
+  }
+
+  toggleBinanceHelp(): void {
+    this.showBinanceHelp.update((value) => !value);
+  }
+
+  toggleCoinbaseHelp(): void {
+    this.showCoinbaseHelp.update((value) => !value);
   }
 }
