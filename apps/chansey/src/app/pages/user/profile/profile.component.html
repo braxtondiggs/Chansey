@@ -11,16 +11,23 @@
   <p-fluid *ngIf="user()">
     <div class="flex flex-col items-center gap-8 my-8 flex-column md:flex-row md:gap-4">
       <div class="flex flex-col items-center w-full gap-3 md:w-1/2">
-        <p-avatar [image]="userProfileImage()" shape="circle" class="mb-8"></p-avatar>
+        <p-avatar
+          [size]="'xlarge'"
+          [image]="userProfileImage()"
+          shape="circle"
+          class="mb-8 cursor-pointer"
+          (click)="openFileUpload()"
+        ></p-avatar>
         <p-fileUpload
+          #fileUpload
           mode="basic"
           chooseIcon="pi pi-upload"
           chooseLabel="Upload Profile Image"
           class="profile-upload-button"
           accept="image/*"
           [auto]="true"
-          (onUpload)="onUpload($event)"
-          [maxFileSize]="1000000"
+          (onSelect)="onUpload($event)"
+          [maxFileSize]="2097152"
         ></p-fileUpload>
       </div>
 
@@ -515,6 +522,15 @@
 
 <p-toast position="bottom-right"></p-toast>
 <p-confirmDialog [style]="{ width: '450px' }"></p-confirmDialog>
+
+<!-- Add Image Cropper component -->
+<app-image-crop
+  [visible]="showImageCropper()"
+  (visibleChange)="showImageCropper.set($event)"
+  [imageFile]="selectedImageFile"
+  (croppedImageChange)="handleCroppedImage($event)"
+  (cancel)="cancelCropping()"
+></app-image-crop>
 
 <!-- Binance US Help Dialog -->
 <p-dialog

@@ -71,7 +71,7 @@ export class Order {
   })
   clientOrderId: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   @IsDate()
   @Transform(({ value }) => new Date(Number(value)))
   @ApiProperty({
@@ -167,7 +167,7 @@ export class Order {
   })
   coin: Coin;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({
     description: 'Timestamp when the order was created',
     example: '2024-04-23T18:25:43.511Z'

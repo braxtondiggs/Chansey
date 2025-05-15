@@ -5,10 +5,15 @@ import {
   Get,
   HttpStatus,
   Patch,
+  Post,
+  Req,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+
+import { MultipartFile } from '@fastify/multipart';
+import { FastifyRequest } from 'fastify';
 
 import { UpdateUserDto, UserResponseDto } from './dto';
 import { User } from './users.entity';
@@ -17,6 +22,7 @@ import { UsersService } from './users.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { BinanceUSService } from '../exchange/binance/binance-us.service';
+import { StorageService } from '../storage/storage.service';
 
 @ApiTags('User')
 @ApiBearerAuth('token')
@@ -30,7 +36,8 @@ import { BinanceUSService } from '../exchange/binance/binance-us.service';
 export class UserController {
   constructor(
     private readonly binance: BinanceUSService,
-    private readonly user: UsersService
+    private readonly user: UsersService,
+    private readonly storage: StorageService
   ) {}
 
   @Patch()
@@ -44,6 +51,49 @@ export class UserController {
   })
   async updateUser(@Body() dto: UpdateUserDto, @GetUser() user: User) {
     return this.user.update(dto, user);
+  }
+
+  @Post('profile-image')
+  @ApiOperation({
+    summary: 'Upload profile image',
+    description: 'Uploads a profile image for the authenticated user.'
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiOkResponse({
+    description: 'The image has been successfully uploaded.',
+    type: UserResponseDto
+  })
+  async uploadProfileImage(@Req() req: FastifyRequest, @GetUser() user: User) {
+    try {
+      // Process the multipart file with Fastify's multipart parser
+      const data = await req.file();
+      if (!data) {
+        throw new Error('No file uploaded');
+      }
+
+      const buffer = await data.toBuffer();
+      const fileName = data.filename;
+      const contentType = data.mimetype;
+
+      // Upload to MinIO
+      const fileUrl = await this.storage.uploadFile(buffer, contentType, fileName);
+
+      // Delete old profile image if it exists and uses MinIO
+      if (user.picture && user.picture.includes(this.storage.getMinioEndpoint())) {
+        try {
+          await this.storage.deleteFile(user.picture);
+        } catch (error) {
+          // Log but continue even if deletion fails
+          console.error('Error deleting old profile image:', error);
+        }
+      }
+
+      // Update user profile with the new image URL
+      return this.user.update({ picture: fileUrl }, user, true);
+    } catch (error) {
+      console.error('Error processing file upload:', error);
+      throw error;
+    }
   }
 
   @Get()

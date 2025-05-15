@@ -55,4 +55,10 @@ export class ProfileService {
       invalidateQueries: [authKeys.user]
     });
   }
+
+  useUploadProfileImageMutation() {
+    return useAuthMutation<IUser, FormData>('/api/user/profile-image', 'POST', {
+      invalidateQueries: [authKeys.user]
+    });
+  }
 }

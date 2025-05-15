@@ -110,7 +110,8 @@ export class UsersService {
       family_name: updateUserDto.family_name,
       middle_name: updateUserDto.middle_name,
       nickname: updateUserDto.nickname,
-      birthdate: updateUserDto.birthdate
+      birthdate: updateUserDto.birthdate,
+      picture: updateUserDto.picture
     };
 
     try {

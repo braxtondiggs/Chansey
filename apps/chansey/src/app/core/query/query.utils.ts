@@ -15,13 +15,23 @@ import {
 export async function authenticatedFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('token') || '';
 
+  // Check if body is FormData and avoid setting Content-Type to let the browser set it correctly
+  const isFormData = options.body instanceof FormData;
+
+  // Create headers object
+  const headers = { ...((options.headers as Record<string, string>) || {}) };
+
+  // Set authorization header
+  headers['Authorization'] = `Bearer ${token}`;
+
+  // Only set Content-Type for JSON requests, not for FormData
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
+    headers
   });
 
   if (!response.ok) {
@@ -42,10 +52,10 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
 /**
  * Creates a query key factory for a specific domain
  */
-export const createQueryKeys = <T extends Record<string, any>>(prefix: string) => {
+export const createQueryKeys = <T extends Record<string, unknown>>(prefix: string) => {
   const keys: T & {
     all: QueryKey;
-  } = {} as any;
+  } = {} as T & { all: QueryKey };
 
   keys.all = [prefix];
 
@@ -108,11 +118,30 @@ export function useAuthMutation<TData, TVariables>(
       // Handle dynamic URL if a function is provided
       const resolvedUrl = typeof url === 'function' ? url(variables) : url;
       const isEmpty = typeof variables === 'undefined';
-      if (!isEmpty) delete (variables as any).id;
+
+      // Remove id from variables (for non-FormData objects)
+      if (
+        !isEmpty &&
+        typeof variables === 'object' &&
+        variables !== null &&
+        !(variables instanceof FormData) &&
+        'id' in variables
+      ) {
+        const variablesObj = variables as Record<string, unknown>;
+        delete variablesObj['id'];
+      }
+
+      // Handle FormData objects differently than regular JSON data
+      const isFormData = variables instanceof FormData;
 
       return authenticatedFetch<TData>(resolvedUrl, {
         method,
-        body: method !== 'DELETE' && !isEmpty ? JSON.stringify(variables) : JSON.stringify({})
+        body:
+          method !== 'DELETE' && !isEmpty
+            ? isFormData
+              ? (variables as FormData)
+              : JSON.stringify(variables)
+            : JSON.stringify({})
       });
     },
     onSuccess: (data, variables, context) => {
