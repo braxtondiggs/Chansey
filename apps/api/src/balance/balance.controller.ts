@@ -2,7 +2,7 @@ import { Controller, Get, UseGuards, Query, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { BalanceService } from './balance.service';
-import { BalanceResponseDto, AccountValueHistoryDto } from './dto';
+import { BalanceResponseDto, AccountValueHistoryDto, AssetDetailsDto } from './dto';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
@@ -66,5 +66,19 @@ export class BalanceController {
   })
   async getAccountValueHistory(@GetUser() user: User, @Query('days') days?: number): Promise<AccountValueHistoryDto> {
     return this.balanceService.getAccountValueHistory(user, days || 30);
+  }
+
+  @Get('assets')
+  @ApiOperation({
+    summary: 'Get detailed assets with current prices and values',
+    description: 'Returns a list of assets the user has with their current prices and values'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Successfully retrieved asset details',
+    type: [AssetDetailsDto]
+  })
+  async getUserAssets(@GetUser() user: User): Promise<AssetDetailsDto[]> {
+    return this.balanceService.getUserAssetDetails(user);
   }
 }

@@ -5,13 +5,15 @@ import { RouterModule } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 
-import { ExchangeBalanceComponent } from '@chansey-web/app/components/exchange-balance/exchange-balance.component';
 import { AuthService } from '@chansey-web/app/services';
+
+import { ExchangeBalanceComponent } from '../../components/exchange-balance/exchange-balance.component';
+import { UserAssetsComponent } from '../../components/user-assets/user-assets.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterModule, ButtonModule, CardModule, ExchangeBalanceComponent],
+  imports: [CommonModule, RouterModule, ButtonModule, CardModule, ExchangeBalanceComponent, UserAssetsComponent],
   templateUrl: './dashboard.component.html'
 })
 export class DashboardComponent {

@@ -48,6 +48,47 @@ export class CoinTask {
         await this.coin.removeMany(missingCoins);
         this.logger.log(`Removed ${missingCoins.length} delisted coins`);
       }
+
+      // Update coins with missing images
+      const coinsWithoutImages = existingCoins.filter((coin) => !coin.image);
+      if (coinsWithoutImages.length > 0) {
+        this.logger.log(`Found ${coinsWithoutImages.length} coins missing images, updating from CoinGecko`);
+
+        const batchSize = 10; // Process in smaller batches to avoid rate limits
+        for (let i = 0; i < coinsWithoutImages.length; i += batchSize) {
+          const batch = coinsWithoutImages.slice(i, i + batchSize);
+          await Promise.all(
+            batch.map(async ({ id, slug, symbol }) => {
+              try {
+                this.logger.debug(`Fetching image for ${symbol} (${slug})`);
+                const coinData = await this.gecko.coinId({
+                  id: slug,
+                  localization: false,
+                  tickers: false
+                });
+
+                if (coinData.image) {
+                  const imageUrl = coinData.image.large || coinData.image.small || coinData.image.thumb;
+                  if (imageUrl) {
+                    await this.coin.update(id, {
+                      image: imageUrl
+                    });
+                    this.logger.debug(`Updated image for ${symbol}: ${imageUrl}`);
+                  }
+                }
+              } catch (error) {
+                this.logger.error(`Failed to update image for ${symbol}: ${error.message}`);
+              }
+            })
+          );
+
+          // Add a small delay between batches to avoid rate limiting
+          if (i + batchSize < coinsWithoutImages.length) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+        this.logger.log('Image update complete');
+      }
     } catch (e) {
       this.logger.error('Coin sync failed:', e);
       await this.healthCheck.ping(hc_uuid, 'fail');

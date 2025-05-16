@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
 import { QueryKey } from '@tanstack/angular-query-experimental';
 
@@ -73,7 +73,12 @@ export class ExchangeBalanceService {
   useExchangeBalance(exchangeId?: string) {
     return useAuthQuery<BalanceResponseDto>(
       exchangeId ? balanceKeys.exchange(exchangeId) : balanceKeys.all,
-      exchangeId ? `api/balance?exchangeId=${exchangeId}` : 'api/balance'
+      exchangeId ? `api/balance?exchangeId=${exchangeId}` : 'api/balance',
+      {
+        refetchOnWindowFocus: true,
+        refetchInterval: 60000,
+        staleTime: 0
+      }
     );
   }
 
@@ -85,18 +90,19 @@ export class ExchangeBalanceService {
    */
   useBalanceWithHistory(period: '24h' | '7d' | '30d', exchangeId?: string) {
     const url = `api/balance?includeHistorical=true&period=${period}${exchangeId ? `&exchangeId=${exchangeId}` : ''}`;
-
     return useAuthQuery<BalanceResponseDto>(balanceKeys.withHistory(period), url);
   }
 
   /**
    * Get account value history data across all exchanges
-   * @param days Number of days to look back (defaults to 30 if not specified)
+   * @param days Signal<number> to look back (defaults to 30 if not specified)
    * @returns Query result with account value history data
    */
-  useBalanceHistory(days?: number) {
-    const url = `api/balance/history${days ? `?days=${days}` : ''}`;
-
-    return useAuthQuery<AccountValueHistoryDto>(balanceKeys.history(days?.toString() || '30'), url);
+  useBalanceHistory(days: Signal<number>) {
+    console.log('Fetching balance history for', days().toString(), 'days');
+    return useAuthQuery<AccountValueHistoryDto>(
+      balanceKeys.history(days().toString()),
+      () => `api/balance/history?days=${days().toString()}`
+    );
   }
 }

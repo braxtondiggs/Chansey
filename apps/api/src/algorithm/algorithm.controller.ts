@@ -15,7 +15,7 @@ import { ModuleRef } from '@nestjs/core';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { ChartConfiguration, ChartData } from 'chart.js';
-import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
+// import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import { FastifyReply } from 'fastify';
 
 import { AlgorithmService } from './algorithm.service';
@@ -153,7 +153,7 @@ export class AlgorithmController {
     return this.algorithm.remove(id);
   }
 
-  @Get('chart/:algorithmId/:coinId')
+  /*@Get('chart/:algorithmId/:coinId')
   @ApiOperation({
     summary: 'Generate algorithm chart',
     description: 'Generate a chart image for a specific algorithm and coin.'
@@ -207,5 +207,5 @@ export class AlgorithmController {
     const image = await chartJSNodeCanvas.renderToBuffer(configuration);
     res.header('Content-Type', 'image/png');
     res.send(image);
-  }
+  }*/
 }

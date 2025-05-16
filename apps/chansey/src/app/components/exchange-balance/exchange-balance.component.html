@@ -1,78 +1,107 @@
 <p-card styleClass="mb-4">
-  <ng-container *ngIf="balanceQuery.isFetching() || balanceQuery.isPending(); else balanceContent">
-    <div class="flex justify-center self-center p-8">
-      <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
+  <ng-container *ngIf="balanceHistoryQuery.isPending(); else balanceContent">
+    <div class="p-2">
+      <div class="flex justify-end mb-3">
+        <div style="width: 190px; height: 32px">
+          <p-skeleton width="100%" height="32px" styleClass="mb-2"></p-skeleton>
+        </div>
+      </div>
+      <div class="inline-flex flex-col gap-1 mb-4 -mt-6 sm:-mt-8 sm:mb-6 sm:gap-2 md:-mt-12">
+        <p-skeleton width="120px" height="40px" styleClass="mb-1 sm:mb-2 sm:w-[150px] sm:h-[60px]"></p-skeleton>
+        <p-skeleton width="80px" height="24px" styleClass="sm:w-[100px] sm:h-[32px]"></p-skeleton>
+      </div>
+      <div class="relative">
+        <p-skeleton height="18rem" styleClass="w-full sm:h-[20rem] md:h-[25rem] lg:h-[30rem]"></p-skeleton>
+      </div>
     </div>
   </ng-container>
 
   <ng-template #balanceContent>
-    <div *ngIf="balanceQuery.isError()" class="p-3 text-center">
-      <p class="mb-4 text-lg text-red-500">{{ balanceQuery.error() }}</p>
-      <p-button severity="info" (click)="balanceQuery.refetch()" label="Retry" icon="pi pi-refresh" />
+    <div *ngIf="balanceHistoryQuery.isError()" class="p-3 text-center">
+      <p class="mb-4 text-lg text-red-500">{{ balanceHistoryQuery.error() }}</p>
+      <p-button
+        severity="info"
+        (click)="balanceHistoryQuery.refetch()"
+        label="Retry"
+        icon="pi pi-refresh"
+        [loading]="balanceHistoryQuery.isFetching()"
+        variant="outlined"
+      />
     </div>
 
-    @let accountData = balanceQuery.data();
-    <div *ngIf="!balanceQuery.isError() && accountData" class="balance-chart-container">
-      <!-- Time period selector -->
-      <div class="mb-3 flex justify-end">
+    @let accountData = balanceHistoryQuery.data();
+    <div *ngIf="!balanceHistoryQuery.isError() && accountData">
+      <!-- Time period selector - always visible -->
+      <div class="flex justify-center mb-3 md:justify-end">
         <form [formGroup]="timePeriodForm">
-          <p-selectButton
-            formControlName="value"
-            [options]="timePeriods()"
-            optionLabel="label"
-            optionValue="value"
-            (onChange)="onPeriodChange($event.value)"
-          />
+          <p-selectButton formControlName="value" [options]="timePeriods()" optionLabel="label" optionValue="value" />
         </form>
       </div>
 
-      <!-- Chart container -->
-      <div class="chart-wrapper">
-        <canvas #balanceChart height="300"></canvas>
-      </div>
-
-      <!-- Value change information -->
-      <div class="justify-content-between align-items-center mt-3 flex">
-        <div>
-          <span class="font-medium">Current Value: </span>
-          <span class="font-bold">${{ formatNumber(accountData.currentValue) }}</span>
+      <div *ngIf="accountData.history.length > 0">
+        <div class="inline-flex flex-col gap-2 mb-6 md:-mt-12">
+          <div class="text-6xl balance-value rolling-number">
+            <span [appCounter]="totalUsdValue()"></span>
+          </div>
+          <div [ngClass]="accountData.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'" class="text-2xl">
+            <span
+              class="pi"
+              [ngClass]="
+                accountData.changePercentage >= 0
+                  ? 'pi-angle-double-up text-green-500'
+                  : 'pi-angle-double-down text-red-500'
+              "
+            ></span
+            >&nbsp;{{ accountData.changePercentage >= 0 ? '+' : ''
+            }}{{ accountData.changePercentage | number: '1.0-2' }}%
+          </div>
         </div>
 
-        <div>
-          <span class="font-medium">Change: </span>
-          <span [ngClass]="accountData.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'" class="font-bold">
-            {{ accountData.changePercentage >= 0 ? '+' : '' }}{{ accountData.changePercentage.toFixed(2) }}%
-          </span>
+        <!-- Chart container with relative positioning for overlay -->
+        <div class="relative">
+          <!-- Loading overlay when refetching -->
+          <div
+            *ngIf="balanceHistoryQuery.isFetching()"
+            class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded bg-white/20 backdrop-blur-sm dark:bg-black/20"
+          >
+            <div class="text-center">
+              <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
+            </div>
+          </div>
+
+          <p-chart
+            [data]="chartData"
+            [options]="chartOptions"
+            [plugins]="chartPlugins"
+            type="line"
+            class="h-[18rem] sm:h-[20rem] md:h-[25rem] lg:h-[30rem]"
+          />
         </div>
 
-        <div class="text-500 text-sm" *ngIf="lastUpdated()">
-          Last updated: {{ lastUpdated() | date: 'medium' }}
-          <button class="p-button p-button-text p-button-rounded p-button-sm" (click)="balanceQuery.refetch()">
-            <i class="pi pi-refresh"></i>
-          </button>
+        <div class="text-sm text-right text-500" *ngIf="lastUpdated()">
+          Last updated: {{ lastUpdated() | date: 'MMM d, y h:mm a' }}
+          <p-button
+            (click)="balanceHistoryQuery.refetch()"
+            icon="pi pi-refresh"
+            [loading]="balanceHistoryQuery.isFetching()"
+            [rounded]="true"
+            [text]="true"
+          />
         </div>
       </div>
 
       <!-- Show this when no data available -->
-      <div *ngIf="accountData.history.length === 0" class="p-3 text-center">
-        <p class="text-500 mb-3">No balance history data available for this time period</p>
-        <button class="p-button p-button-sm p-button-outlined" (click)="balanceQuery.refetch()">
-          <i class="pi pi-refresh mr-2"></i>
-          Refresh
-        </button>
+      <div *ngIf="accountData.history.length === 0" class="p-2 mt-4 text-center sm:mt-6 sm:p-3">
+        <p class="mb-3 text-base sm:mb-4 sm:text-lg">No balance history data available for this time period</p>
+        <p-button
+          severity="info"
+          (click)="balanceHistoryQuery.refetch()"
+          label="Refresh"
+          icon="pi pi-refresh"
+          [loading]="balanceHistoryQuery.isFetching()"
+          variant="outlined"
+        />
       </div>
     </div>
   </ng-template>
 </p-card>
-
-<style>
-  .balance-chart-container {
-    width: 100%;
-  }
-
-  .chart-wrapper {
-    position: relative;
-    height: 300px;
-    width: 100%;
-  }
-</style>
