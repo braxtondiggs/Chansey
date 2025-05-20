@@ -123,7 +123,12 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
   await app.register(fastifyCookie, {
     secret: process.env.COOKIE_SECRET || 'default_secret', // Replace with a secure secret in production
     hook: 'onRequest',
-    parseOptions: {}
+    parseOptions: { domain: '.cymbit.com' }
+  });
+
+  app.enableCors({
+    origin: ['https://www.cymbit.com'],
+    credentials: true
   });
 
   await app.register(fastifyCsrf);
