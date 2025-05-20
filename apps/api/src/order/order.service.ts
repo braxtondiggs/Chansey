@@ -12,7 +12,9 @@ import { TestnetDto } from './testnet/dto/testnet.dto';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceUSService } from '../exchange/binance/binance-us.service';
+import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { User } from '../users/users.entity';
+import { UsersService } from '../users/users.service';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 // Define our own types to replace the Binance-specific ones
@@ -35,6 +37,9 @@ interface SymbolMinNotionalFilter {
   minNotional: string;
 }
 
+// Define type for CCXT order objects
+// We're using ccxt.Order instead of a custom interface
+
 // Replace OrderSide_LT with string type
 type OrderSide_LT = 'BUY' | 'SELL';
 
@@ -52,7 +57,9 @@ export class OrderService {
     private readonly order: Repository<Order>,
     private readonly binance: BinanceUSService,
     private readonly coin: CoinService,
-    private readonly tickerPairs: TickerPairService
+    private readonly tickerPairs: TickerPairService,
+    private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly usersService: UsersService
   ) {}
 
   async createBuyOrder(order: OrderDto, user: User) {
@@ -224,18 +231,76 @@ export class OrderService {
   }
 
   async getOrders(user: User) {
-    const binance = await this.binance.getBinanceClient(user);
-    return await binance.fetchOrders('BTC/USD');
+    try {
+      // Query database for orders with coin relationship loaded
+      const orders = await this.order.find({
+        where: { user: { id: user.id } },
+        relations: ['coin'],
+        order: { transactTime: 'DESC' }
+      });
+
+      // Transform to match frontend expectations
+      return orders.map((order) => ({
+        id: order.id,
+        symbol: order.symbol,
+        orderId: order.orderId,
+        clientOrderId: order.clientOrderId,
+        transactTime: order.transactTime,
+        quantity: order.quantity,
+        price: order.price,
+        executedQuantity: order.executedQuantity,
+        status: order.status,
+        side: order.side,
+        type: order.type,
+        coin: {
+          id: order.coin.id,
+          name: order.coin.name,
+          symbol: order.coin.symbol,
+          slug: order.coin.slug || '',
+          logo: order.coin.image || '' // Map image to logo for frontend compatibility
+        },
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch orders: ${error.message}`, error.stack);
+      return []; // Return empty array instead of throwing to avoid breaking the frontend
+    }
   }
 
   async getOrder(user: User, orderId: string) {
-    const binance = await this.binance.getBinanceClient(user);
-    // CCXT requires symbol for fetchOrder
-    // We need to try common symbols if the order ID is known but symbol isn't
     try {
-      const order = await binance.fetchOrder(orderId, 'BTC/USD');
+      // Query order from database with coin relationship
+      const order = await this.order.findOne({
+        where: { id: orderId, user: { id: user.id } },
+        relations: ['coin']
+      });
+
       if (!order) throw new NotFoundCustomException('Order', { id: orderId });
-      return order;
+
+      // Transform to match frontend expectations
+      return {
+        id: order.id,
+        symbol: order.symbol,
+        orderId: order.orderId,
+        clientOrderId: order.clientOrderId,
+        transactTime: order.transactTime,
+        quantity: order.quantity,
+        price: order.price,
+        executedQuantity: order.executedQuantity,
+        status: order.status,
+        side: order.side,
+        type: order.type,
+        coin: {
+          id: order.coin.id,
+          name: order.coin.name,
+          symbol: order.coin.symbol,
+          slug: order.coin.slug || '',
+          logo: order.coin.image || ''
+        },
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+      };
     } catch (error) {
       this.logger.error(`Failed to fetch order ${orderId}`, error);
       throw new NotFoundCustomException('Order', { id: orderId.toString() });
@@ -243,8 +308,44 @@ export class OrderService {
   }
 
   async getOpenOrders(user: User) {
-    const binance = await this.binance.getBinanceClient(user);
-    return await binance.fetchOpenOrders('BTC/USD');
+    try {
+      // Query database for open orders with coin relationship
+      const openOrders = await this.order.find({
+        where: {
+          user: { id: user.id },
+          status: OrderStatus.NEW // Only fetch orders with "NEW" status
+        },
+        relations: ['coin'],
+        order: { transactTime: 'DESC' }
+      });
+
+      // Transform to match frontend expectations
+      return openOrders.map((order) => ({
+        id: order.id,
+        symbol: order.symbol,
+        orderId: order.orderId,
+        clientOrderId: order.clientOrderId,
+        transactTime: order.transactTime,
+        quantity: order.quantity,
+        price: order.price,
+        executedQuantity: order.executedQuantity,
+        status: order.status,
+        side: order.side,
+        type: order.type,
+        coin: {
+          id: order.coin.id,
+          name: order.coin.name,
+          symbol: order.coin.symbol,
+          slug: order.coin.slug || '',
+          logo: order.coin.image || '' // Map image to logo for frontend compatibility
+        },
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch open orders: ${error.message}`, error.stack);
+      return []; // Return empty array instead of throwing to avoid breaking the frontend
+    }
   }
 
   private async createOrder(
@@ -496,6 +597,363 @@ export class OrderService {
         throw error;
       }
       throw new BadRequestException(`Exchange validation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Synchronizes orders from exchange for a specific user
+   * @param user The user to sync orders for
+   * @returns The number of new orders synced
+   */
+  async syncOrdersForUser(user: User): Promise<number> {
+    try {
+      this.logger.log(`Syncing orders for user: ${user.id}`);
+
+      // Get exchange keys for the user
+      const exchangeKeys = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+      if (!exchangeKeys || exchangeKeys.length === 0) {
+        this.logger.debug(`No active exchange keys found for user: ${user.id}`);
+        return 0;
+      }
+
+      let totalNewOrders = 0;
+
+      // For Binance exchange
+      try {
+        const binanceClient = await this.binance.getBinanceClient(user);
+        if (!binanceClient) {
+          this.logger.debug(`No valid Binance client for user: ${user.id}`);
+          return 0;
+        }
+
+        // Get the most recent order from DB for this user
+        const mostRecentOrder = await this.order.findOne({
+          where: { user: { id: user.id } },
+          order: { transactTime: 'DESC' }
+        });
+
+        // Use the exchange API to fetch historical orders
+        const newOrders = await this.fetchHistoricalOrders(binanceClient, user, mostRecentOrder?.transactTime);
+
+        if (newOrders.length > 0) {
+          totalNewOrders += await this.saveExchangeOrders(newOrders, user);
+          this.logger.log(`Synced ${newOrders.length} orders for user: ${user.id}`);
+        }
+      } catch (error) {
+        this.logger.error(`Error syncing Binance orders for user ${user.id}: ${error.message}`, error.stack);
+      }
+
+      return totalNewOrders;
+    } catch (error) {
+      this.logger.error(`Failed to sync orders for user ${user.id}: ${error.message}`, error.stack);
+      return 0;
+    }
+  }
+
+  /**
+   * Synchronize orders for all users with active exchange keys
+   * @returns The number of orders synced
+   */
+  async syncOrdersForAllUsers(): Promise<number> {
+    try {
+      // This requires the Users service - add it to the constructor if not already injected
+      const users = await this.usersService.getUsersWithActiveExchangeKeys();
+      let totalSynced = 0;
+
+      for (const user of users) {
+        try {
+          const syncCount = await this.syncOrdersForUser(user);
+          totalSynced += syncCount;
+        } catch (error) {
+          this.logger.error(`Failed to sync orders for user ${user.id}: ${error.message}`, error.stack);
+          // Continue with next user even if one fails
+        }
+      }
+
+      return totalSynced;
+    } catch (error) {
+      this.logger.error(`Failed to sync orders for all users: ${error.message}`, error.stack);
+      return 0;
+    }
+  }
+
+  /**
+   * Fetch recent orders from exchange
+   * @param client CCXT exchange client
+   * @returns Array of recent orders
+   */
+  private async getRecentExchangeOrders(client: ccxt.Exchange): Promise<ccxt.Order[]> {
+    try {
+      // Fetch the recent orders (past day)
+      const since = Date.now() - 24 * 60 * 60 * 1000; // 24 hours ago
+
+      // Get all market symbols since Binance US requires a symbol parameter
+      const markets = await client.loadMarkets();
+      let allOrders: ccxt.Order[] = [];
+
+      // Try to fetch orders for each symbol
+      for (const symbol of Object.keys(markets)) {
+        try {
+          const symbolOrders = await client.fetchOrders(symbol, since);
+          allOrders = [...allOrders, ...symbolOrders];
+        } catch (innerError: unknown) {
+          // Skip symbols that fail and continue
+          if (innerError instanceof Error) {
+            this.logger.debug(`Failed to fetch orders for ${symbol}: ${innerError.message}`);
+          } else {
+            this.logger.debug(`Failed to fetch orders for ${symbol}: Unknown error`);
+          }
+        }
+      }
+
+      return allOrders;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.logger.error(`Failed to fetch recent orders: ${error.message}`, error.stack);
+      } else {
+        this.logger.error(`Failed to fetch recent orders: Unknown error`);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Fetch historical orders from the exchange
+   * @param client CCXT exchange client
+   * @param user The user to fetch orders for
+   * @param lastSyncTime The timestamp of the most recent order in DB
+   * @returns Array of new orders from exchange
+   */
+  private async fetchHistoricalOrders(client: ccxt.Exchange, user: User, lastSyncTime?: Date): Promise<ccxt.Order[]> {
+    try {
+      // If we have a last sync time, use it as the starting point
+      const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
+
+      // Get all market symbols
+      const markets = await client.loadMarkets();
+      let allOrders: ccxt.Order[] = [];
+
+      // Directly use per-symbol approach since Binance US requires a symbol parameter
+      this.logger.debug('Fetching orders per symbol');
+
+      // Fetch orders for each symbol
+      for (const symbol of Object.keys(markets)) {
+        try {
+          const symbolOrders = await client.fetchOrders(symbol, since);
+          allOrders = [...allOrders, ...symbolOrders];
+        } catch (innerError: unknown) {
+          // Skip symbols that fail and continue
+          if (innerError instanceof Error) {
+            this.logger.debug(`Failed to fetch orders for ${symbol}: ${innerError.message}`);
+          } else {
+            this.logger.debug(`Failed to fetch orders for ${symbol}: Unknown error`);
+          }
+        }
+      }
+
+      // Remove duplicates based on order ID
+      const uniqueOrders: ccxt.Order[] = [];
+      const seenOrderIds = new Set<string | number>();
+
+      for (const order of allOrders) {
+        if (!seenOrderIds.has(order.id)) {
+          seenOrderIds.add(order.id);
+          uniqueOrders.push(order);
+        }
+      }
+
+      return uniqueOrders;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.logger.error(`Failed to fetch historical orders: ${error.message}`, error.stack);
+      } else {
+        this.logger.error(`Failed to fetch historical orders: Unknown error`);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Save exchange orders to the database
+   * @param exchangeOrders Array of orders from exchange
+   * @param user The user who owns the orders
+   * @returns Number of new orders saved
+   */
+  private async saveExchangeOrders(exchangeOrders: ccxt.Order[], user: User): Promise<number> {
+    try {
+      let savedCount = 0;
+
+      for (const exchangeOrder of exchangeOrders) {
+        try {
+          // Skip orders we already have
+          const existingOrder = await this.order.findOne({
+            where: {
+              orderId: exchangeOrder.id.toString(),
+              user: { id: user.id }
+            }
+          });
+
+          if (existingOrder) {
+            // Update the status if it has changed
+            if (existingOrder.status !== this.mapCcxtStatusToOrderStatus(exchangeOrder.status)) {
+              await this.order.update(existingOrder.id, {
+                status: this.mapCcxtStatusToOrderStatus(exchangeOrder.status),
+                executedQuantity: exchangeOrder.filled || exchangeOrder.amount || 0
+              });
+            }
+            continue;
+          }
+
+          // Get the coin for this order
+          const coinSymbol = this.extractBaseCoinSymbol(exchangeOrder.symbol);
+          const coin = await this.coin.getCoinBySymbol(coinSymbol);
+
+          if (!coin) {
+            this.logger.debug(`Could not find coin for symbol ${coinSymbol}, skipping order ${exchangeOrder.id}`);
+            continue;
+          }
+
+          // Create new order
+          const newOrder = this.order.create({
+            clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id,
+            coin,
+            executedQuantity: exchangeOrder.filled || 0,
+            orderId: exchangeOrder.id.toString(),
+            price:
+              exchangeOrder.price ||
+              (exchangeOrder.trades && exchangeOrder.trades.length > 0 ? exchangeOrder.trades[0].price : 0),
+            quantity: exchangeOrder.amount,
+            side: exchangeOrder.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+            status: this.mapCcxtStatusToOrderStatus(exchangeOrder.status),
+            symbol: exchangeOrder.symbol,
+            transactTime: new Date(exchangeOrder.timestamp),
+            type: this.mapCcxtOrderTypeToOrderType(exchangeOrder.type),
+            user
+          });
+
+          await this.order.save(newOrder);
+          savedCount++;
+        } catch (error) {
+          this.logger.error(`Failed to save order ${exchangeOrder.id}: ${error.message}`, error.stack);
+          // Continue with next order
+        }
+      }
+
+      return savedCount;
+    } catch (error) {
+      this.logger.error(`Failed to save exchange orders: ${error.message}`, error.stack);
+      return 0;
+    }
+  }
+
+  /**
+   * Extract the base coin symbol from a CCXT market symbol
+   * @param marketSymbol Market symbol (e.g., "BTC/USDT")
+   * @returns Base coin symbol (e.g., "BTC")
+   */
+  private extractBaseCoinSymbol(marketSymbol: string): string {
+    try {
+      // CCXT typically uses format like "BTC/USDT"
+      if (marketSymbol.includes('/')) {
+        return marketSymbol.split('/')[0];
+      }
+
+      // Some exchanges use format like "BTCUSDT"
+      const match = marketSymbol.match(/^([A-Z0-9]{3,})([A-Z0-9]{3,})$/);
+      if (match) {
+        return match[1];
+      }
+
+      return marketSymbol;
+    } catch (error) {
+      this.logger.error(`Failed to extract base coin symbol from ${marketSymbol}: ${error.message}`);
+      return marketSymbol;
+    }
+  }
+
+  /**
+   * Map CCXT order type to our OrderType enum
+   * @param ccxtType CCXT order type
+   * @returns OrderType enum value
+   */
+  private mapCcxtOrderTypeToOrderType(ccxtType: string): OrderType {
+    const typeMap: Record<string, OrderType> = {
+      limit: OrderType.LIMIT,
+      market: OrderType.MARKET,
+      stop: OrderType.STOP,
+      stop_loss: OrderType.STOP,
+      stop_loss_limit: OrderType.STOP_LOSS_LIMIT,
+      take_profit: OrderType.TAKE_PROFIT_LIMIT,
+      take_profit_limit: OrderType.TAKE_PROFIT_LIMIT
+    };
+
+    return typeMap[ccxtType?.toLowerCase()] || OrderType.MARKET;
+  }
+
+  /**
+   * Remove stale orders that are no longer needed
+   * @returns Number of orders removed
+   */
+  async cleanupStaleOrders(): Promise<number> {
+    try {
+      // Define criteria for stale orders (e.g., canceled orders older than 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const result = await this.order.delete({
+        status: OrderStatus.CANCELED,
+        updatedAt: thirtyDaysAgo
+      });
+
+      return result.affected || 0;
+    } catch (error) {
+      this.logger.error(`Failed to clean up stale orders: ${error.message}`, error.stack);
+      return 0;
+    }
+  }
+
+  /**
+   * Get synchronization status for a user
+   * @param user User to check sync status for
+   * @returns Sync status information
+   */
+  async getSyncStatus(user: User) {
+    try {
+      // Get total orders in the database for this user
+      const totalOrders = await this.order.count({
+        where: { user: { id: user.id } }
+      });
+
+      // Get count of orders by status
+      const ordersByStatus = await this.order
+        .createQueryBuilder('order')
+        .select('order.status', 'status')
+        .addSelect('COUNT(order.id)', 'count')
+        .where('order.user = :userId', { userId: user.id })
+        .groupBy('order.status')
+        .getRawMany();
+
+      // Get latest sync time by looking at the most recent order
+      const latestOrder = await this.order.findOne({
+        where: { user: { id: user.id } },
+        order: { transactTime: 'DESC' }
+      });
+
+      // Check if user has active exchange keys
+      const hasActiveKeys = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+
+      return {
+        totalOrders,
+        ordersByStatus: ordersByStatus.reduce((acc, curr) => {
+          acc[curr.status] = parseInt(curr.count);
+          return acc;
+        }, {}),
+        lastSyncTime: latestOrder?.updatedAt || null,
+        hasActiveExchangeKeys: hasActiveKeys.length > 0
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get sync status for user ${user.id}: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to get sync status: ${error.message}`);
     }
   }
 }

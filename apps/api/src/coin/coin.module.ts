@@ -23,7 +23,8 @@ import { HealthCheckHelper } from '../utils/health-check.helper';
     forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Portfolio, TickerPairs]),
     forwardRef(() => ExchangeModule),
-    forwardRef(() => ExchangeKeyModule)
+    forwardRef(() => ExchangeKeyModule),
+    forwardRef(() => import('../price/price.module').then((m) => m.PriceModule))
   ],
   providers: [CoinService, CoinTask, HealthCheckHelper, PortfolioService, TickerPairService, TickerPairTask]
 })

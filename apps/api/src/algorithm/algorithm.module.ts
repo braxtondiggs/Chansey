@@ -23,13 +23,15 @@ import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
     forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, Portfolio, Price, TickerPairs]),
     forwardRef(() => ExchangeModule),
-    forwardRef(() => ExchangeKeyModule)
+    forwardRef(() => ExchangeKeyModule),
+    forwardRef(() => UsersModule)
   ],
   controllers: [AlgorithmController],
   providers: [

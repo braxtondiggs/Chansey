@@ -10,7 +10,8 @@ import {
   ExchangeBalanceDto,
   HistoricalBalanceDto,
   BalanceResponseDto,
-  AccountValueHistoryDto
+  AccountValueHistoryDto,
+  AssetDetailsDto
 } from './dto';
 import { HistoricalBalance } from './historical-balance.entity';
 
@@ -73,39 +74,109 @@ export class BalanceService {
    */
   private async getCurrentBalances(user: User): Promise<ExchangeBalanceDto[]> {
     const exchangeBalances: ExchangeBalanceDto[] = [];
+    const timeout = 15000;
+
     // Get balances from each exchange
     for (const exchange of user.exchanges) {
       try {
         let balances: AssetBalanceDto[] = [];
         let totalUsdValue = 0;
 
-        switch (exchange.slug) {
-          case 'binance_us':
-            balances = await this.getBinanceBalances(user);
-            break;
-          case 'gdax':
-            balances = await this.getCoinbaseBalances(user);
-            break;
-          // Add cases for other exchanges as they're added
-          default:
-            this.logger.warn(`No handler for exchange: ${exchange.slug}`);
-            continue;
+        // Create a promise that will resolve with the balances or reject after timeout
+        const balancePromise = new Promise<AssetBalanceDto[]>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            reject(new Error(`Timeout getting balances from ${exchange.name} after ${timeout}ms`));
+          }, timeout);
+
+          // Create a separate function to handle the async balance fetching
+          const fetchBalances = async () => {
+            try {
+              let result: AssetBalanceDto[] = [];
+
+              switch (exchange.slug) {
+                case 'binance_us':
+                  result = await this.getBinanceBalances(user);
+                  break;
+                case 'gdax':
+                  result = await this.getCoinbaseBalances(user);
+                  break;
+                default:
+                  this.logger.warn(`No handler for exchange: ${exchange.slug}`);
+                  resolve([]);
+                  return;
+              }
+
+              clearTimeout(timer);
+              resolve(result);
+            } catch (err) {
+              clearTimeout(timer);
+              reject(err);
+            }
+          };
+
+          // Start the async operation
+          fetchBalances();
+        });
+
+        // Wait for the balance fetch with timeout
+        try {
+          balances = await balancePromise;
+        } catch (timeoutError) {
+          this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${timeoutError.message}`);
+          // Add empty balance array for this exchange so we at least have an entry
+          exchangeBalances.push({
+            id: exchange.id,
+            slug: exchange.slug,
+            name: exchange.name,
+            balances: [],
+            totalUsdValue: 0,
+            timestamp: new Date()
+          });
+          continue; // Skip to next exchange
         }
 
-        // Calculate USD value for each asset and the total
-        balances = await this.calculateUsdValues(balances, exchange.slug, user);
-        totalUsdValue = balances.reduce((sum, asset) => sum + (asset.usdValue || 0), 0);
+        // Skip exchanges with empty balances
+        if (balances.length === 0) {
+          this.logger.warn(`No balances retrieved for exchange ${exchange.name}`);
+          // Still add an entry with empty balances to maintain exchange record
+          exchangeBalances.push({
+            id: exchange.id,
+            slug: exchange.slug,
+            name: exchange.name,
+            balances: [],
+            totalUsdValue: 0,
+            timestamp: new Date()
+          });
+          continue;
+        }
 
-        exchangeBalances.push({
-          id: exchange.id,
-          slug: exchange.slug,
-          name: exchange.name,
-          balances,
-          totalUsdValue,
-          timestamp: new Date()
-        });
+        // Calculate USD value for each asset and the total with timeout protection
+        try {
+          balances = await this.calculateUsdValues(balances, exchange.slug, user);
+          totalUsdValue = balances.reduce((sum, asset) => sum + (asset.usdValue || 0), 0);
+
+          exchangeBalances.push({
+            id: exchange.id,
+            slug: exchange.slug,
+            name: exchange.name,
+            balances,
+            totalUsdValue,
+            timestamp: new Date()
+          });
+        } catch (calcError) {
+          this.logger.error(`Error calculating USD values for ${exchange.name}: ${calcError.message}`);
+          // Add the exchange with balances but zero USD value
+          exchangeBalances.push({
+            id: exchange.id,
+            slug: exchange.slug,
+            name: exchange.name,
+            balances,
+            totalUsdValue: 0,
+            timestamp: new Date()
+          });
+        }
       } catch (error) {
-        this.logger.error(`Error getting balances from ${exchange.name}`, error.stack);
+        this.logger.error(`Error getting balances from ${exchange.name}: ${error.message}`, error.stack);
         // Continue with other exchanges instead of failing completely
       }
     }
@@ -347,6 +418,60 @@ export class BalanceService {
   }
 
   /**
+   * Get the appropriate grouping interval based on the requested time period
+   * @param days Number of days to look back
+   * @returns The appropriate grouping interval (hourly, daily, weekly, or monthly)
+   */
+  private getGroupingIntervalForDays(days: number): 'hourly' | 'daily' | 'weekly' | 'monthly' {
+    if (days <= 2) return 'hourly'; // For 1-2 days: hourly data points
+    if (days <= 14) return 'daily'; // For 3-14 days: daily data points
+    if (days <= 90) return 'weekly'; // For 15-90 days: weekly data points
+    return 'monthly'; // For 91+ days: monthly data points
+  }
+
+  /**
+   * Format a date according to the specified interval
+   * @param date The date to format
+   * @param interval The interval to format for (hourly, daily, weekly, or monthly)
+   * @returns A formatted date string
+   */
+  private formatDateByInterval(date: Date, interval: 'hourly' | 'daily' | 'weekly' | 'monthly'): string {
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    const day = date.getUTCDate();
+    const hour = date.getUTCHours();
+
+    switch (interval) {
+      case 'hourly': {
+        // Format as YYYY-MM-DDTHH:00:00Z for hourly grouping
+        return new Date(Date.UTC(year, month, day, hour)).toISOString();
+      }
+
+      case 'daily': {
+        // Format as YYYY-MM-DDT00:00:00Z for daily grouping
+        return new Date(Date.UTC(year, month, day)).toISOString();
+      }
+
+      case 'weekly': {
+        // Get the date of the Sunday of the week
+        const dayOfWeek = date.getUTCDay();
+        const diff = dayOfWeek === 0 ? 0 : dayOfWeek;
+        const sunday = new Date(Date.UTC(year, month, day - diff));
+        return sunday.toISOString();
+      }
+
+      case 'monthly': {
+        // Format as YYYY-MM-01T00:00:00Z for monthly grouping
+        return new Date(Date.UTC(year, month, 1)).toISOString();
+      }
+
+      default: {
+        return new Date(Date.UTC(year, month, day, hour)).toISOString();
+      }
+    }
+  }
+
+  /**
    * Store all user balances every hour for historical tracking
    * This runs automatically as a scheduled task
    */
@@ -381,11 +506,53 @@ export class BalanceService {
    */
   async storeUserBalances(user: User) {
     try {
-      // Get current balances for the user
-      const exchangeBalances = await this.getCurrentBalances(user);
+      // Get current balances for the user with retry mechanism
+      let exchangeBalances: ExchangeBalanceDto[] = [];
+      let retryCount = 0;
+      const maxRetries = 3;
+      const retryDelay = 5000; // 5 seconds between retries
+
+      while (retryCount < maxRetries) {
+        try {
+          exchangeBalances = await this.getCurrentBalances(user);
+          // If we got balances successfully, break the retry loop
+          if (exchangeBalances.length > 0) {
+            break;
+          }
+          this.logger.warn(
+            `Retrieved empty exchange balances for user ${user.id}, retrying (${retryCount + 1}/${maxRetries})...`
+          );
+        } catch (balanceError) {
+          this.logger.warn(
+            `Error getting balances on attempt ${retryCount + 1}/${maxRetries}: ${balanceError.message}`
+          );
+          // Only throw on the last attempt
+          if (retryCount === maxRetries - 1) {
+            throw balanceError;
+          }
+        }
+
+        retryCount++;
+        if (retryCount < maxRetries) {
+          // Wait before next retry
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        }
+      }
+
+      // Only proceed with storage if we have valid balances
+      if (exchangeBalances.length === 0) {
+        this.logger.warn(`No exchange balances retrieved for user ${user.id} after ${maxRetries} attempts`);
+        return;
+      }
 
       // Store each exchange's balances separately
       for (const exchangeBalance of exchangeBalances) {
+        // Only store balances if we have actual data
+        if (exchangeBalance.balances.length === 0) {
+          this.logger.warn(`Skipping storage for exchange ${exchangeBalance.name} - no balance data available`);
+          continue;
+        }
+
         const historicalBalance = new HistoricalBalance();
         historicalBalance.user = user;
         historicalBalance.userId = user.id;
@@ -406,7 +573,7 @@ export class BalanceService {
       this.logger.debug(`Stored historical balances for user ${user.id}`);
     } catch (error) {
       this.logger.error(`Error storing balances for user ${user.id}: ${error.message}`, error.stack);
-      throw error;
+      // Don't rethrow the error to prevent the cron job from failing entirely
     }
   }
 
@@ -465,40 +632,60 @@ export class BalanceService {
         `Getting account value history for user: ${user.id}, from ${startDate.toISOString()} to ${endDate.toISOString()}`
       );
 
-      // Query historical balances within the date range
+      // Use a direct query to get data with proper exchange information
       const historicalBalances = await this.historicalBalanceRepository
         .createQueryBuilder('hb')
+        .leftJoinAndSelect('hb.exchange', 'exchange') // Join with exchange to get exchange details
         .where('hb.userId = :userId', { userId: user.id })
         .andWhere('hb.timestamp >= :startDate', { startDate })
         .andWhere('hb.timestamp <= :endDate', { endDate })
         .orderBy('hb.timestamp', 'ASC')
         .getMany();
 
-      // Group balances by hour
-      const hourlyBalances: Record<string, HistoricalBalance[]> = {};
+      this.logger.debug(`Found ${historicalBalances.length} historical balance records for user ${user.id}`);
 
-      for (const balance of historicalBalances) {
-        // Format date and hour as YYYY-MM-DDTHH:00:00Z for hourly grouping
-        const timestamp = balance.timestamp;
-        const hourlyKey = new Date(
-          Date.UTC(timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate(), timestamp.getUTCHours())
-        ).toISOString();
-
-        if (!hourlyBalances[hourlyKey]) {
-          hourlyBalances[hourlyKey] = [];
-        }
-
-        hourlyBalances[hourlyKey].push(balance);
+      if (historicalBalances.length === 0) {
+        return {
+          history: [],
+          currentValue: 0,
+          changePercentage: 0
+        };
       }
 
-      // For each hour, calculate the total value across all exchanges
-      const history = Object.entries(hourlyBalances).map(([datetime, balances]) => {
-        // Calculate total value across all exchanges for this hour
-        const hourlyValue = balances.reduce((sum, balance) => sum + balance.totalUsdValue, 0);
+      // Determine the appropriate grouping interval based on the requested time period
+      const groupingInterval = this.getGroupingIntervalForDays(days);
+      this.logger.debug(`Using ${groupingInterval} grouping interval for ${days} days period`);
+
+      // Group balances by the appropriate interval using exchange-aware grouping
+      const groupedBalancesByExchange: Record<string, Record<string, HistoricalBalance>> = {};
+
+      for (const balance of historicalBalances) {
+        // Format date according to the chosen grouping interval
+        const timestamp = balance.timestamp;
+        const groupKey = this.formatDateByInterval(timestamp, groupingInterval);
+
+        // Initialize objects if they don't exist
+        if (!groupedBalancesByExchange[groupKey]) {
+          groupedBalancesByExchange[groupKey] = {};
+        }
+
+        // For each exchange in each time group, keep the latest balance
+        if (
+          !groupedBalancesByExchange[groupKey][balance.exchangeId] ||
+          groupedBalancesByExchange[groupKey][balance.exchangeId].timestamp < balance.timestamp
+        ) {
+          groupedBalancesByExchange[groupKey][balance.exchangeId] = balance;
+        }
+      }
+
+      // For each interval, calculate the total value across all exchanges
+      const history = Object.entries(groupedBalancesByExchange).map(([datetime, exchangeBalances]) => {
+        // Calculate total value across all exchanges for this interval
+        const intervalValue = Object.values(exchangeBalances).reduce((sum, balance) => sum + balance.totalUsdValue, 0);
 
         return {
           datetime,
-          value: hourlyValue
+          value: Math.round(intervalValue * 100) / 100 // Round to 2 decimal places
         };
       });
 
@@ -530,13 +717,130 @@ export class BalanceService {
       // Sort the history data points by datetime to ensure chronological order
       history.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
 
+      // Apply data smoothing if needed for larger time ranges
+      const sampledHistory = this.sampleHistoryPoints(history, days);
+
       return {
-        history,
+        history: sampledHistory,
         currentValue: Math.round(currentValue * 100) / 100, // Round to 2 decimal places
         changePercentage
       };
     } catch (error) {
       this.logger.error(`Error getting account value history for user: ${user.id}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Sample history points based on the time period to avoid returning too many data points
+   * @param history Full history data points
+   * @param days Number of days in the requested period
+   * @returns Sampled history data points
+   */
+  private sampleHistoryPoints(
+    history: { datetime: string; value: number }[],
+    days: number
+  ): { datetime: string; value: number }[] {
+    if (history.length <= 1) return history;
+
+    // For short periods, return full data
+    if (days <= 7) return history;
+
+    // Determine the target number of data points based on days
+    let targetPoints = 0;
+    if (days <= 30)
+      targetPoints = 60; // 2 points per day for month view
+    else if (days <= 90)
+      targetPoints = 90; // 1 point per day for 3-month view
+    else if (days <= 365)
+      targetPoints = 52; // Weekly points for year view
+    else targetPoints = 48; // Monthly points for multi-year view
+
+    // If we have fewer points than target, return all points
+    if (history.length <= targetPoints) return history;
+
+    const result: { datetime: string; value: number }[] = [];
+    // Always include first and last data point
+    const first = history[0];
+    const last = history[history.length - 1];
+
+    // Use LTTB (Largest-Triangle-Three-Buckets) algorithm for important data points
+    // For simplicity, we'll use a basic downsampling here, but LTTB would be better
+    // for visual representation
+
+    if (targetPoints >= 3) {
+      result.push(first);
+
+      // Calculate sampling interval
+      const interval = Math.ceil(history.length / (targetPoints - 2));
+
+      for (let i = interval; i < history.length - interval; i += interval) {
+        // For simplicity, we're using direct sampling
+        // In a real implementation, you'd want to use the LTTB algorithm
+        result.push(history[i]);
+      }
+
+      result.push(last);
+    } else {
+      result.push(first);
+      result.push(last);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get detailed asset information with current prices and values
+   * @param user The user to get asset details for
+   * @returns Array of asset details with prices and quantities
+   */
+  async getUserAssetDetails(user: User): Promise<AssetDetailsDto[]> {
+    try {
+      // Get current balances from all exchanges
+      const currentBalances = await this.getCurrentBalances(user);
+
+      // Create a map to aggregate assets across exchanges
+      const assetMap = new Map<string, AssetDetailsDto>();
+
+      // Process all exchanges and their assets
+      for (const exchange of currentBalances) {
+        for (const balance of exchange.balances) {
+          // Skip assets with zero balance
+          const quantity = parseFloat(balance.free) + parseFloat(balance.locked);
+          if (quantity <= 0) continue;
+
+          const symbol = balance.asset;
+          const name = balance.asset; // Placeholder for asset name
+          const usdValue = balance.usdValue || 0;
+          const price = quantity > 0 ? usdValue / quantity : 0;
+
+          // If asset already exists in map, update quantities
+          if (assetMap.has(symbol)) {
+            const existingAsset = assetMap.get(symbol);
+            existingAsset.quantity += quantity;
+            existingAsset.usdValue += usdValue;
+            // Recalculate average price
+            existingAsset.price = existingAsset.quantity > 0 ? existingAsset.usdValue / existingAsset.quantity : 0;
+          } else {
+            // Create new asset entry
+            assetMap.set(symbol, {
+              symbol,
+              name,
+              price,
+              quantity,
+              usdValue,
+              image: ''
+            });
+          }
+        }
+      }
+
+      // Convert map to array and sort by USD value (highest first)
+      const assets = Array.from(assetMap.values()).sort((a, b) => b.usdValue - a.usdValue);
+
+      return assets;
+    } catch (error) {
+      this.logger.error(`Error getting asset details for user: ${user.id}`, error.stack);
       throw error;
     }
   }

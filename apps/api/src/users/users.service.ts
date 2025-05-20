@@ -209,4 +209,22 @@ export class UsersService {
       throw new NotFoundException(`Risk level with ID ${riskId} not found`);
     }
   }
+
+  async getUsersWithActiveExchangeKeys(): Promise<User[]> {
+    try {
+      this.logger.debug('Fetching users with active exchange keys');
+
+      const users = await this.user
+        .createQueryBuilder('user')
+        .innerJoin('exchange_key', 'key', 'key.userId = user.id')
+        .where('key.isActive = :isActive', { isActive: true })
+        .getMany();
+
+      this.logger.debug(`Found ${users.length} users with active exchange keys`);
+      return users;
+    } catch (error) {
+      this.logger.error(`Failed to fetch users with active exchange keys: ${error.message}`, error.stack);
+      return [];
+    }
+  }
 }

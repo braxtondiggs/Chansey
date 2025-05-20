@@ -13,6 +13,7 @@ import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.servic
 import { ExchangeService } from '../exchange/exchange.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { PriceService } from '../price/price.service';
 import { HealthCheckHelper } from '../utils/health-check.helper';
 
 describe('CoinController', () => {
@@ -68,7 +69,17 @@ describe('CoinController', () => {
         },
         PortfolioService,
         HealthCheckHelper,
-        CoinTask
+        CoinTask,
+        {
+          provide: PriceService,
+          useValue: {
+            getPrices: jest.fn(() => []),
+            getPrice: jest.fn(() => ({})),
+            getPriceBySymbol: jest.fn(() => ({})),
+            createPrice: jest.fn(() => ({})),
+            getSummary: jest.fn(() => [])
+          }
+        }
       ],
       imports: [ConfigModule, HttpModule]
     }).compile();

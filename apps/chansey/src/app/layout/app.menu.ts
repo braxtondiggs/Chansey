@@ -35,7 +35,32 @@ export class AppMenu implements OnInit {
   }
 
   private updateMenu(): void {
-    const menuItems = [];
+    const menuItems = [
+      {
+        label: 'Portfolio Hub',
+        icon: 'pi pi-fw pi-briefcase',
+        items: [
+          {
+            label: 'Dashboard',
+            icon: 'pi pi-fw pi-home',
+            routerLink: ['/app/dashboard']
+          },
+          {
+            label: 'Transactions',
+            icon: 'pi pi-fw pi-arrow-right-arrow-left',
+            routerLink: ['/app/transactions']
+          },
+          {
+            label: 'Prices',
+            icon: 'pi pi-fw pi-money-bill',
+            routerLink: ['/app/prices']
+          }
+        ]
+      },
+      {
+        separator: true
+      }
+    ];
 
     if (this.isAdmin()) {
       menuItems.push({

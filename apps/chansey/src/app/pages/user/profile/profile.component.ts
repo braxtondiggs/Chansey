@@ -20,6 +20,7 @@ import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
+import { SkeletonModule } from 'primeng/skeleton';
 import { TabsModule } from 'primeng/tabs';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
@@ -56,6 +57,7 @@ import { ProfileService } from './profile.service';
     ProgressSpinnerModule,
     ReactiveFormsModule,
     SelectModule,
+    SkeletonModule,
     TabsModule,
     TagModule,
     ToastModule,
