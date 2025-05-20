@@ -52,6 +52,7 @@ export const coinKeys = createQueryKeys<{
   lists: {
     all: QueryKey;
     byCategory: (categoryId: string) => QueryKey;
+    watchlist: QueryKey;
   };
   detail: (id: string) => QueryKey;
 }>('coins');
@@ -59,7 +60,8 @@ export const coinKeys = createQueryKeys<{
 // Define list queries
 coinKeys.lists = {
   all: [...coinKeys.all, 'list'],
-  byCategory: (categoryId) => [...coinKeys.all, 'list', 'category', categoryId]
+  byCategory: (categoryId) => [...coinKeys.all, 'list', 'category', categoryId],
+  watchlist: [...coinKeys.all, 'list', 'watchlist']
 };
 
 // Define detail query

@@ -1,0 +1,204 @@
+<p-card>
+  <div class="mb-4 flex justify-end">
+    <p-button
+      icon="pi pi-refresh"
+      class="p-button-outlined"
+      [loading]="isLoading()"
+      (click)="refreshData()"
+      label="Refresh"
+      [style.visibility]="transactionsQuery.isPending() ? 'hidden' : 'visible'"
+    />
+  </div>
+
+  <form
+    [formGroup]="filterForm"
+    class="mb-4 grid gap-3"
+    style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
+  >
+    <div>
+      <div class="p-inputgroup w-full">
+        <p-iconfield iconPosition="left" class="ml-auto">
+          <p-inputicon>
+            <i class="pi pi-search"></i>
+          </p-inputicon>
+          <input
+            #searchInput
+            pInputText
+            type="text"
+            (input)="applyGlobalFilter($event)"
+            placeholder="Search Transactions..."
+            fluid
+          />
+          <p-inputicon *ngIf="searchText().length > 0">
+            <i class="pi pi-times" (click)="clearSearchFilter(); searchInput.value = ''"></i>
+          </p-inputicon>
+        </p-iconfield>
+      </div>
+    </div>
+    <div>
+      <p-multiSelect
+        [options]="statusOptions"
+        placeholder="Filter by status"
+        formControlName="statuses"
+        optionLabel="label"
+        selectedItemsLabel="{0} statuses selected"
+        (onChange)="applyFilters()"
+        [showClear]="true"
+        display="chip"
+        filter="false"
+        [showToggleAll]="false"
+        fluid
+      />
+    </div>
+    <div>
+      <p-multiSelect
+        [options]="sideOptions"
+        placeholder="Filter by side"
+        formControlName="sides"
+        optionLabel="label"
+        selectedItemsLabel="{0} sides selected"
+        (onChange)="applyFilters()"
+        [showClear]="true"
+        display="chip"
+        filter="false"
+        [showToggleAll]="false"
+        fluid
+      />
+    </div>
+    <div>
+      <p-multiSelect
+        [options]="typeOptions"
+        placeholder="Filter by type"
+        formControlName="types"
+        optionLabel="label"
+        selectedItemsLabel="{0} types selected"
+        (onChange)="applyFilters()"
+        [showClear]="true"
+        display="chip"
+        filter="false"
+        [showToggleAll]="false"
+        fluid
+      />
+    </div>
+  </form>
+
+  <!-- PrimeNG Skeleton loader for the table -->
+  <div *ngIf="isLoading()" class="mb-4">
+    <!-- Skeleton for table header -->
+    <div class="flex border-b border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+      <p-skeleton width="160px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="150px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="130px" height="1.25rem"></p-skeleton>
+    </div>
+
+    <!-- Skeleton for table rows -->
+    <div *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8]" class="flex border-b border-gray-200 p-3 dark:border-gray-700">
+      <p-skeleton width="160px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <div class="mr-6 flex items-center">
+        <p-skeleton shape="circle" size="2rem" styleClass="mr-2"></p-skeleton>
+        <p-skeleton width="120px" height="1.25rem"></p-skeleton>
+      </div>
+      <p-skeleton width="100px" height="2rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="150px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="130px" height="2rem"></p-skeleton>
+    </div>
+
+    <!-- Skeleton for pagination -->
+    <div class="flex justify-between p-3">
+      <p-skeleton width="150px" height="1.25rem"></p-skeleton>
+      <div class="flex">
+        <p-skeleton width="2rem" height="2rem" styleClass="mr-1"></p-skeleton>
+        <p-skeleton width="2rem" height="2rem" styleClass="mr-1"></p-skeleton>
+        <p-skeleton width="2rem" height="2rem" styleClass="mr-1"></p-skeleton>
+        <p-skeleton width="2rem" height="2rem"></p-skeleton>
+      </div>
+    </div>
+  </div>
+
+  <p-table
+    #dt
+    [value]="transactions()"
+    [paginator]="true"
+    [rows]="10"
+    [rowHover]="true"
+    [loading]="isLoading()"
+    [rowsPerPageOptions]="[5, 10, 25, 50]"
+    [showCurrentPageReport]="true"
+    [filterDelay]="0"
+    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+    [globalFilterFields]="['symbol', 'coin.name', 'coin.symbol', 'orderId', 'clientOrderId']"
+    [scrollable]="true"
+    scrollHeight="400px"
+    styleClass="p-datatable-sm"
+    [sortField]="'transactTime'"
+    [sortOrder]="-1"
+    responsiveLayout="scroll"
+    [hidden]="isLoading()"
+  >
+    <ng-template pTemplate="header">
+      <tr>
+        <th pSortableColumn="coin.name" style="min-width: 120px">Coin <p-sortIcon field="coin.name"></p-sortIcon></th>
+        <th pSortableColumn="side" style="min-width: 100px">Side <p-sortIcon field="side"></p-sortIcon></th>
+        <th pSortableColumn="type" style="min-width: 150px">Type <p-sortIcon field="type"></p-sortIcon></th>
+        <th pSortableColumn="price" style="min-width: 120px">Price <p-sortIcon field="price"></p-sortIcon></th>
+        <th pSortableColumn="quantity" style="min-width: 120px">Quantity <p-sortIcon field="quantity"></p-sortIcon></th>
+        <th pSortableColumn="executedQuantity" style="min-width: 120px">
+          Executed <p-sortIcon field="executedQuantity"></p-sortIcon>
+        </th>
+        <th style="min-width: 120px">Total Value</th>
+        <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status"></p-sortIcon></th>
+        <th pSortableColumn="transactTime" style="min-width: 160px">
+          Date <p-sortIcon field="transactTime"></p-sortIcon>
+        </th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-transaction>
+      <tr>
+        <td>
+          <div class="align-items-center flex">
+            <p-avatar [image]="getImage(transaction.coin.symbol)" shape="circle" size="large" class="mr-2" />
+            <span>{{ transaction.coin.name }} ({{ transaction.coin.symbol }})</span>
+          </div>
+        </td>
+        <td>
+          <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+        </td>
+        <td>{{ transaction.type.replace('_', ' ') }}</td>
+        <td>${{ formatPrice(transaction.price) }}</td>
+        <td>{{ formatQuantity(transaction.quantity) }}</td>
+        <td>{{ formatQuantity(transaction.executedQuantity) }}</td>
+        <td>${{ formatPrice(calculateTotalValue(transaction.price, transaction.quantity)) }}</td>
+        <td>
+          <p-tag [value]="transaction.status" [severity]="getStatusSeverity(transaction.status)"></p-tag>
+        </td>
+        <td class="flex flex-col">
+          <span class="text-lg">{{ transaction.transactTime | date: 'mediumDate' }}</span>
+          <span class="text-sm text-neutral-400">{{ transaction.transactTime | date: 'shortTime' }}</span>
+        </td>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td colspan="9" class="p-4 text-center">
+          <div *ngIf="!isLoading()">
+            <i class="pi pi-inbox mb-3 text-5xl text-gray-400"></i>
+            <p class="text-gray-500">No transactions found</p>
+          </div>
+        </td>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="paginatorleft">
+      <div class="text-gray-500">Total Records: {{ transactions().length }}</div>
+    </ng-template>
+  </p-table>
+</p-card>

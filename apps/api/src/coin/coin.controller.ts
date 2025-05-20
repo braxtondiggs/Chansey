@@ -1,5 +1,5 @@
-import { Controller, Get, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
@@ -10,6 +10,7 @@ import GetUser from '../authentication/decorator/get-user.decorator';
 import { Roles } from '../authentication/decorator/roles.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
+import { PriceService } from '../price/price.service';
 import { User } from '../users/users.entity';
 
 @ApiTags('Coin')
@@ -20,7 +21,8 @@ import { User } from '../users/users.entity';
 export class CoinController {
   constructor(
     private readonly coin: CoinService,
-    private readonly coinTask: CoinTask
+    private readonly coinTask: CoinTask,
+    private readonly priceService: PriceService
   ) {}
 
   @Get()

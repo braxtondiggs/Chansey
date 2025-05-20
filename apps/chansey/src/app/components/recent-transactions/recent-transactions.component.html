@@ -1,0 +1,82 @@
+<p-card class="recent-transactions-container">
+  <ng-template pTemplate="header">
+    <div class="flex items-center justify-between p-3">
+      <h2 class="m-0 text-xl font-semibold">Recent Transactions</h2>
+      <p-button
+        *ngIf="showViewMore"
+        icon="pi pi-arrow-right"
+        label="View All"
+        styleClass="p-button-text"
+        (click)="viewAllTransactions()"
+      ></p-button>
+    </div>
+  </ng-template>
+
+  <!-- Loading skeleton -->
+  <div *ngIf="isLoading()" class="mb-4">
+    <!-- Skeleton for table header -->
+    <div class="flex border-b border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+      <p-skeleton width="160px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem"></p-skeleton>
+    </div>
+
+    <!-- Skeleton for table rows -->
+    <div *ngFor="let i of [1, 2, 3, 4, 5]" class="flex border-b border-gray-200 p-3 dark:border-gray-700">
+      <div class="mr-6 flex items-center">
+        <p-skeleton shape="circle" size="2rem" styleClass="mr-2"></p-skeleton>
+        <p-skeleton width="120px" height="1.25rem"></p-skeleton>
+      </div>
+      <p-skeleton width="100px" height="2rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem"></p-skeleton>
+    </div>
+  </div>
+
+  <!-- Transactions table -->
+  <p-table
+    [value]="transactions()"
+    [scrollable]="true"
+    [loading]="isLoading()"
+    styleClass="p-datatable-sm"
+    [hidden]="isLoading()"
+  >
+    <ng-template pTemplate="header">
+      <tr>
+        <th style="min-width: 120px">Coin</th>
+        <th style="min-width: 100px">Side</th>
+        <th style="min-width: 120px">Price</th>
+        <th style="min-width: 160px">Date</th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-transaction>
+      <tr>
+        <td>
+          <div class="align-items-center flex">
+            <p-avatar [image]="getImage(transaction.coin.symbol)" shape="circle" size="large" class="mr-2" />
+            <span>{{ transaction.coin.symbol }}</span>
+          </div>
+        </td>
+        <td>
+          <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+        </td>
+        <td>${{ formatPrice(transaction.price) }}</td>
+        <td class="transaction-date">
+          <span class="date">{{ transaction.transactTime | date: 'mediumDate' }}</span>
+          <span class="time">{{ transaction.transactTime | date: 'shortTime' }}</span>
+        </td>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td colspan="4" class="p-4 text-center">
+          <div *ngIf="!isLoading()">
+            <i class="pi pi-inbox mb-3 text-5xl text-gray-400"></i>
+            <p class="text-gray-500">No transactions found</p>
+          </div>
+        </td>
+      </tr>
+    </ng-template>
+  </p-table>
+</p-card>

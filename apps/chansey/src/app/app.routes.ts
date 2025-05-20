@@ -63,6 +63,16 @@ export const appRoutes: Route[] = [
         path: 'settings',
         loadComponent: () => import('./pages/user/settings').then((c) => c.SettingsComponent),
         data: { breadcrumb: 'Settings' }
+      },
+      {
+        path: 'transactions',
+        loadComponent: () => import('./pages/transactions').then((c) => c.TransactionsComponent),
+        data: { breadcrumb: 'Transactions' }
+      },
+      {
+        path: 'prices',
+        loadComponent: () => import('./pages/prices').then((c) => c.PricesComponent),
+        data: { breadcrumb: 'Prices' }
       }
       // Additional authenticated routes can be added here
     ]

@@ -77,5 +77,5 @@ export class UpdateCoinDto {
   atlChange?: number;
 
   @IsDate()
-  geckoLastUpdatedAt: Date;
+  geckoLastUpdatedAt?: Date;
 }
