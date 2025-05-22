@@ -18,17 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       affected: ${{ steps.affected.outputs.projects }}
+      has_affected_projects: ${{ steps.affected.outputs.has_affected_projects }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0
       - uses: actions/setup-node@v3
         with:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: package-lock.json
-      - run: npm ci
-      - uses: nrwl/nx-set-shas@v4
+      - name: Cache or restore node_modules
+        id: cache-node-modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies if cache miss
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Set SHAs for Nx Affected Commands
+        uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'master'
+
       - id: affected
         run: |
           AFFECTED_PROJECTS=$(npx nx show projects --affected --base=$NX_BASE --head=$NX_HEAD --plain)
@@ -46,14 +60,23 @@ jobs:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      - name: Restore node_modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
       - uses: nrwl/nx-set-shas@v4
+      # Debug project dependencies
+      - name: Show project graph
+        run: npx nx graph --file=project-graph.json
+
       # Run affected tests and linting first
       - name: Run affected lint and test
         run: npx nx affected -t lint test --parallel
   deploy-frontend:
     needs: [setup, test-build]
-    if: contains(fromJson(needs.setup.outputs.affected), 'chansey') && github.ref == 'refs/heads/master'
+    # Check if chansey is in the affected list AND this is the master branch
+    if: ${{ contains(fromJson(needs.setup.outputs.affected), 'chansey') && github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
     env:
@@ -66,7 +89,8 @@ jobs:
       - run: railway up --service=${{ env.SVC_ID }} --detach
   deploy-api:
     needs: [setup, test-build]
-    if: contains(fromJson(needs.setup.outputs.affected), 'api') && github.ref == 'refs/heads/master'
+    # Check if api is in the affected list AND this is the master branch
+    if: ${{ contains(fromJson(needs.setup.outputs.affected), 'api') && github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
     env:

@@ -107,6 +107,11 @@ export const appRoutes: Route[] = [
         path: 'risks',
         loadComponent: () => import('./pages/admin/risks').then((c) => c.RisksComponent),
         data: { breadcrumb: 'Risk Levels' }
+      },
+      {
+        path: 'bull-board',
+        loadComponent: () => import('./pages/admin/bull-board').then((c) => c.BullBoardComponent),
+        data: { breadcrumb: 'Bull Board' }
       }
     ]
   },

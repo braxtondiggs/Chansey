@@ -26,7 +26,6 @@ import {
 })
 export class RecentTransactionsComponent implements OnInit {
   @Input() limit = 10;
-  @Input() showViewMore = true;
 
   // Services
   private readonly transactionsService = inject(TransactionsService);
@@ -86,22 +85,6 @@ export class RecentTransactionsComponent implements OnInit {
   // Helper method to get appropriate severity for order side
   getSideSeverity(side: OrderSide): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | 'info' {
     return side === OrderSide.BUY ? 'success' : 'danger';
-  }
-
-  // Format price with appropriate decimal places
-  formatPrice(price: number): string {
-    return price.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 8
-    });
-  }
-
-  // Format quantity with appropriate decimal places
-  formatQuantity(quantity: number): string {
-    return quantity.toLocaleString('en-US', {
-      minimumFractionDigits: 6,
-      maximumFractionDigits: 8
-    });
   }
 
   // Calculate total value (price * quantity)

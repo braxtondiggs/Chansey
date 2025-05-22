@@ -17,7 +17,7 @@
           <tbody>
             <tr *ngFor="let i of [1, 2, 3, 4, 5]" class="py-3">
               <td class="py-3">
-                <div class="align-items-center flex gap-2">
+                <div class="flex gap-2 align-items-center">
                   <p-skeleton width="30px" height="24px" styleClass="mr-2"></p-skeleton>
                   <p-skeleton width="100px" height="24px"></p-skeleton>
                 </div>
@@ -51,8 +51,14 @@
 
       <!-- Data table - Constrained width container with horizontal scroll -->
       <div class="relative w-full">
-        <p-table [value]="assets" [paginator]="assets.length > 10" [rows]="10" [scrollable]="true">
-          <ng-template pTemplate="header">
+        <p-table
+          [value]="assets"
+          [paginator]="assets.length > 10"
+          [rows]="10"
+          [scrollable]="true"
+          tableStyleClass="no-bottom-border"
+        >
+          <ng-template pTemplate="header" *ngIf="assets.length > 0">
             <tr>
               <th>Name</th>
               <th>Price</th>
@@ -63,7 +69,7 @@
           <ng-template pTemplate="body" let-asset>
             <tr>
               <td>
-                <div class="align-items-center flex gap-2">
+                <div class="flex gap-2 align-items-center">
                   <p-avatar [image]="getImage(asset.symbol)" shape="circle" size="large" class="mr-2" />
                   <div class="flex flex-col">
                     <span class="text-lg font-semibold">{{ asset.name }}</span>
@@ -83,8 +89,14 @@
           </ng-template>
           <ng-template pTemplate="emptymessage">
             <tr>
-              <td colspan="4" class="p-4 text-center">
-                <p>No assets found</p>
+              <td colspan="4" class="p-0">
+                <div class="flex flex-col items-center justify-center py-12">
+                  <i class="text-primary pi pi-wallet mb-4 !text-4xl"></i>
+                  <h3 class="mb-2 text-2xl font-medium">No assets in your portfolio</h3>
+                  <p class="mb-6 text-center text-gray-500">
+                    You don't have any assets yet.<br />Add funds or start trading to build your portfolio.
+                  </p>
+                </div>
               </td>
             </tr>
           </ng-template>
@@ -93,3 +105,8 @@
     </div>
   </ng-template>
 </p-card>
+<style>
+  :host ::ng-deep .no-bottom-border tr:last-child > td {
+    border-bottom: none !important;
+  }
+</style>

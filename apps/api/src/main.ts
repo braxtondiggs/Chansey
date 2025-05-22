@@ -203,7 +203,9 @@ async function startServer(app: NestFastifyApplication): Promise<void> {
     await app.listen(port, host);
     app.get(Logger).log(`🚀 Application is running on: http://${host}:${port}/api`);
   } catch (error) {
-    app.get(Logger).error('Error starting the server:', error);
+    // Improved error logging for better diagnostics
+    const errorDetails = error?.stack || error?.message || JSON.stringify(error);
+    app.get(Logger).error('Error starting the server:', errorDetails);
     process.exit(1);
   }
 

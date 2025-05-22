@@ -62,14 +62,12 @@ export class CategoriesComponent {
 
   // TanStack Query hooks
   categoriesQuery = this.categoriesService.useCategories();
-  syncCategoryMutation = this.categoriesService.useSyncCategories();
   createCategoryMutation = this.categoriesService.useCreateCategory();
   updateCategoryMutation = this.categoriesService.useUpdateCategory();
   deleteCategoryMutation = this.categoriesService.useDeleteCategory();
 
   // Computed states
   isLoading = computed(() => this.categoriesQuery.isPending() || this.categoriesQuery.isFetching());
-  isSyncing = computed(() => this.syncCategoryMutation.isPending());
   categoriesData = computed(() => this.categoriesQuery.data() || []);
   categoriesError = computed(() => this.categoriesQuery.error);
   isDeletePending = computed(() => this.deleteCategoryMutation.isPending());
@@ -228,17 +226,6 @@ export class CategoriesComponent {
             this.showErrorMessage('Failed to delete some categories');
             console.error('Error deleting selected categories:', error);
           });
-      }
-    });
-  }
-
-  syncCategories(): void {
-    this.syncCategoryMutation.mutate(undefined, {
-      onSuccess: () => {
-        this.showSuccessMessage('Categories synced successfully');
-      },
-      onError: (error) => {
-        this.showErrorMessage(error.message || 'Failed to sync categories');
       }
     });
   }

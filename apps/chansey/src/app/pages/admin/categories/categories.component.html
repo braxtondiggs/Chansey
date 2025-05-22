@@ -39,13 +39,6 @@
             [disabled]="!selectedCategories() || !selectedCategories().length"
             class="hidden md:inline-flex"
           />
-          <p-button
-            label="Sync"
-            icon="pi pi-refresh"
-            severity="info"
-            [loading]="isSyncing()"
-            (onClick)="syncCategories()"
-          />
         </div>
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />

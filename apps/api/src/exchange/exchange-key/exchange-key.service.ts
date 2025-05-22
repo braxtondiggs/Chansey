@@ -1,3 +1,4 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import {
   forwardRef,
   Inject,
@@ -8,9 +9,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 
-import { CreateExchangeKeyDto, UpdateExchangeKeyDto } from './dto';
+import { CreateExchangeKeyDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 
 import { BinanceUSService } from '../binance/binance-us.service';
@@ -27,7 +29,8 @@ export class ExchangeKeyService {
     @Inject(forwardRef(() => BinanceUSService))
     private binanceService: BinanceUSService,
     @Inject(forwardRef(() => CoinbaseService))
-    private coinbaseService: CoinbaseService
+    private coinbaseService: CoinbaseService,
+    @InjectQueue('order-queue') private readonly orderQueue: Queue
   ) {}
 
   async findAll(userId: string): Promise<ExchangeKey[]> {
@@ -147,7 +150,8 @@ export class ExchangeKeyService {
     const isValid = await this.validateExchangeKeys(
       exchange.slug,
       createExchangeKeyDto.apiKey,
-      createExchangeKeyDto.secretKey
+      createExchangeKeyDto.secretKey,
+      userId
     );
 
     // Set isActive based on validation result
@@ -167,11 +171,17 @@ export class ExchangeKeyService {
    * @param exchangeSlug - The slug of the exchange (e.g., 'binance', 'coinbase')
    * @param apiKey - The API key to validate
    * @param secretKey - The secret key to validate
+   * @param userId - The ID of the user who owns the key (optional)
    * @throws UnauthorizedException if the keys are invalid
    * @throws BadRequestException if the exchange is not supported for validation
    * @returns true if validation is successful, false otherwise
    */
-  async validateExchangeKeys(exchangeSlug: string, apiKey: string, secretKey: string): Promise<boolean> {
+  async validateExchangeKeys(
+    exchangeSlug: string,
+    apiKey: string,
+    secretKey: string,
+    userId?: string
+  ): Promise<boolean> {
     try {
       switch (exchangeSlug.toLowerCase()) {
         case 'binance_us':
@@ -184,7 +194,30 @@ export class ExchangeKeyService {
           // For unsupported exchanges, we'll allow the keys without validation
           return true;
       }
+
       // If we get here, validation was successful
+
+      // If userId is provided, add a job to the order queue to sync orders for this specific user
+      if (userId) {
+        await this.orderQueue.add(
+          'sync-orders',
+          {
+            userId,
+            timestamp: new Date().toISOString(),
+            description: `Sync orders for user ${userId} after successful exchange key validation`
+          },
+          {
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 5000
+            },
+            removeOnComplete: 100,
+            removeOnFail: 50
+          }
+        );
+      }
+
       return true;
     } catch (error) {
       // Validation failed, return false instead of throwing an exception

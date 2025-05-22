@@ -22,10 +22,6 @@ export interface UpdateCategoryDto {
   slug?: string;
 }
 
-export interface SyncResponse {
-  message: string;
-}
-
 @Injectable({
   providedIn: 'root'
 })
@@ -57,12 +53,6 @@ export class CategoriesService {
 
   useDeleteCategory() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [categoryKeys.lists.all]
-    });
-  }
-
-  useSyncCategories() {
-    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync`, 'POST', {
       invalidateQueries: [categoryKeys.lists.all]
     });
   }

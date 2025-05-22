@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
@@ -472,12 +471,12 @@ export class BalanceService {
   }
 
   /**
-   * Store all user balances every hour for historical tracking
-   * This runs automatically as a scheduled task
+   * Store all user balances for historical tracking
+   * NOTE: The scheduled task functionality has been moved to the worker service.
+   * This method remains for manual invocation if needed.
    */
-  @Cron(CronExpression.EVERY_HOUR)
   async storeHistoricalBalances() {
-    this.logger.log('Starting scheduled historical balance storage');
+    this.logger.log('Starting manual historical balance storage');
 
     try {
       // Get all users with active exchange keys

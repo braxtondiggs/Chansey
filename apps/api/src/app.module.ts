@@ -1,10 +1,14 @@
 import { HttpModule } from '@nestjs/axios';
+import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { FastifyAdapter } from '@bull-board/fastify';
+import { BullBoardModule } from '@bull-board/nestjs';
 import { LoggerModule } from 'nestjs-pino';
 
 import { join } from 'path';
@@ -59,6 +63,35 @@ const isProduction = process.env.NODE_ENV === 'production';
       username: process.env.PGUSER,
       uuidExtension: 'pgcrypto'
     }),
+    BullModule.forRoot({
+      connection: {
+        family: 0,
+        host: process.env.REDIS_HOST,
+        port: parseInt(process.env.REDIS_PORT),
+        username: process.env.REDIS_USER,
+        password: process.env.REDIS_PASSWORD,
+        tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+        retryStrategy: (times) => {
+          // Exponential backoff with a max of 3 seconds
+          return Math.min(Math.exp(times), 3000);
+        }
+      }
+    }),
+    BullBoardModule.forRoot({
+      route: '/bull-board',
+      adapter: FastifyAdapter
+    }),
+    BullBoardModule.forFeature(
+      { name: 'category-queue', adapter: BullMQAdapter },
+      { name: 'coin-queue', adapter: BullMQAdapter },
+      { name: 'exchange-queue', adapter: BullMQAdapter },
+      { name: 'order-queue', adapter: BullMQAdapter },
+      { name: 'price-queue', adapter: BullMQAdapter },
+      { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
+      { name: 'user-queue', adapter: BullMQAdapter }
+    ),
     ScheduleModule.forRoot(),
     AlgorithmModule,
     AuthenticationModule,

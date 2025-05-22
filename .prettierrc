@@ -16,6 +16,7 @@
     "<THIRD_PARTY_MODULES>",
     "^(crypto|fs|path|util|events|http|stream|buffer)$",
     "^@chansey/(.*)$",
+    "^@chansey-api/(.*)$",
     "^@chansey-web/(.*)$",
     "^\\./(.*)$",
     "^\\.\\./(.*)$"

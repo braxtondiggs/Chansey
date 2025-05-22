@@ -26,10 +26,6 @@ export interface UpdateExchangeDto {
   supported?: boolean;
 }
 
-export interface SyncResponse {
-  message: string;
-}
-
 @Injectable({
   providedIn: 'root'
 })
@@ -61,12 +57,6 @@ export class ExchangesService {
 
   useDeleteExchange() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [exchangeKeys.lists.all]
-    });
-  }
-
-  useSyncExchanges() {
-    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync`, 'POST', {
       invalidateQueries: [exchangeKeys.lists.all]
     });
   }

@@ -73,7 +73,7 @@ export class User {
   @ManyToOne(() => Risk, (risk) => risk.users, {
     eager: true
   })
-  @JoinColumn({ name: 'riskd' })
+  @JoinColumn({ name: 'risk' })
   risk: Risk;
 
   exchanges: ExchangeKey[];

@@ -6,7 +6,6 @@ import { Repository } from 'typeorm';
 import { CreateTickerDto } from './dto';
 import { TickerPairs } from './ticker-pairs.entity';
 
-import { BinanceUSService } from '../../exchange/binance/binance-us.service';
 import { CoinService } from '../coin.service';
 
 @Injectable()
@@ -14,7 +13,6 @@ export class TickerPairService {
   constructor(
     @InjectRepository(TickerPairs)
     private readonly pairs: Repository<TickerPairs>,
-    private readonly binance: BinanceUSService,
     private readonly coin: CoinService
   ) {}
 
@@ -65,7 +63,7 @@ export class TickerPairService {
   }
 
   async createTickerPair(data: CreateTickerDto): Promise<TickerPairs> {
-    return await this.pairs.create(data);
+    return this.pairs.create(data);
   }
 
   async removeTickerPair(data: TickerPairs | TickerPairs[]): Promise<void> {

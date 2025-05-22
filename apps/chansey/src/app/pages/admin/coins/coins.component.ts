@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
-import { ConfirmationService, MessageService, MenuItem } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -13,7 +13,6 @@ import { IconFieldModule } from 'primeng/iconfield';
 import { ImageModule } from 'primeng/image';
 import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
-import { SplitButtonModule } from 'primeng/splitbutton';
 import { TableModule, Table } from 'primeng/table';
 import { ToastModule } from 'primeng/toast';
 
@@ -36,7 +35,6 @@ import { Coin, CoinsService } from './coins.service';
     InputIconModule,
     InputTextModule,
     ReactiveFormsModule,
-    SplitButtonModule,
     TableModule,
     ToastModule
   ],
@@ -68,38 +66,18 @@ export class CoinsComponent {
 
   // TanStack Query hooks
   coinsQuery = this.coinsService.useCoins();
-  syncCoinsMutation = this.coinsService.useSyncCoins();
-  syncCoinDetailsMutation = this.coinsService.useSyncCoinDetails();
   createCoinMutation = this.coinsService.useCreateCoin();
   updateCoinMutation = this.coinsService.useUpdateCoin();
   deleteCoinMutation = this.coinsService.useDeleteCoin();
 
   // Computed states
   isLoading = computed(() => this.coinsQuery?.isPending() || this.coinsQuery?.isFetching());
-  isSyncingCoins = computed(() => this.syncCoinsMutation?.isPending());
-  isSyncingDetails = computed(() => this.syncCoinDetailsMutation?.isPending());
   coinsData = computed(() => this.coinsQuery?.data() || []);
   coinsError = computed(() => this.coinsQuery?.error);
   isDeletePending = computed(() => this.deleteCoinMutation?.isPending());
   isCreatePending = computed(() => this.createCoinMutation?.isPending());
   isUpdatePending = computed(() => this.updateCoinMutation?.isPending());
   hasChanges = computed(() => this.coinForm?.dirty || false);
-
-  // Computed menu properties
-  syncLabel = computed(() => (this.isSyncingCoins() ? 'Syncing...' : 'Sync'));
-  syncIcon = computed(() => (this.isSyncingCoins() ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'));
-  syncItems = computed(() => {
-    return [
-      {
-        label: this.isSyncingDetails() ? 'Syncing Details...' : 'Sync Detailed Info',
-        icon: this.isSyncingDetails() ? 'pi pi-spin pi-spinner' : 'pi pi-list',
-        disabled: this.isSyncingCoins() || this.isSyncingDetails(),
-        command: () => {
-          this.syncCoinDetails();
-        }
-      }
-    ];
-  });
 
   constructor() {
     this.initializeQueries();
@@ -252,28 +230,6 @@ export class CoinsComponent {
             this.showErrorMessage('Failed to delete some coins');
             console.error('Error deleting selected coins:', error);
           });
-      }
-    });
-  }
-
-  syncCoins(): void {
-    this.syncCoinsMutation.mutate(undefined, {
-      onSuccess: (response) => {
-        this.showSuccessMessage(response.message || 'Coins synced successfully');
-      },
-      onError: (error) => {
-        this.showErrorMessage(error.message || 'Failed to sync coins');
-      }
-    });
-  }
-
-  syncCoinDetails(): void {
-    this.syncCoinDetailsMutation.mutate(undefined, {
-      onSuccess: (response) => {
-        this.showSuccessMessage(response.message || 'Coin details synced successfully');
-      },
-      onError: (error) => {
-        this.showErrorMessage(error.message || 'Failed to sync coin details');
       }
     });
   }

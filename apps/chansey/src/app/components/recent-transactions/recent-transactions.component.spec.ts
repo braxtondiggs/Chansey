@@ -52,20 +52,4 @@ describe('RecentTransactionsComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
-
-  it('should show view more button when showViewMore is true', () => {
-    component.showViewMore = true;
-    fixture.detectChanges();
-
-    const viewMoreButton = fixture.nativeElement.querySelector('p-button[label="View All"]');
-    expect(viewMoreButton).toBeTruthy();
-  });
-
-  it('should hide view more button when showViewMore is false', () => {
-    component.showViewMore = false;
-    fixture.detectChanges();
-
-    const viewMoreButton = fixture.nativeElement.querySelector('p-button[label="View All"]');
-    expect(viewMoreButton).toBeFalsy();
-  });
 });
