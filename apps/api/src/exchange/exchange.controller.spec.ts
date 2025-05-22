@@ -5,7 +5,6 @@ import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
-import { ExchangeTask } from './exchange.task';
 
 describe('ExchangeController', () => {
   let controller: ExchangeController;
@@ -36,7 +35,14 @@ describe('ExchangeController', () => {
             remove: jest.fn(() => ({}))
           }
         },
-        ExchangeTask
+        {
+          provide: 'BullQueue_exchange-queue',
+          useValue: {
+            add: jest.fn(),
+            getRepeatableJobs: jest.fn()
+            // Add other methods as needed for your tests
+          }
+        }
       ]
     }).compile();
 

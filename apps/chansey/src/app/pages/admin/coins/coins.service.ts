@@ -27,10 +27,6 @@ export interface UpdateCoinDto {
   logo?: string;
 }
 
-export interface SyncResponse {
-  message: string;
-}
-
 @Injectable({
   providedIn: 'root'
 })
@@ -66,18 +62,6 @@ export class CoinsService {
 
   useDeleteCoin() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [coinKeys.lists.all]
-    });
-  }
-
-  useSyncCoins() {
-    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync`, 'POST', {
-      invalidateQueries: [coinKeys.lists.all]
-    });
-  }
-
-  useSyncCoinDetails() {
-    return useAuthMutation<SyncResponse, void>(`${this.apiUrl}/sync-detail`, 'POST', {
       invalidateQueries: [coinKeys.lists.all]
     });
   }

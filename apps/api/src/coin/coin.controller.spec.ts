@@ -6,15 +6,11 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { CoinController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
-import { CoinTask } from './coin.task';
 
-import { BinanceUSService } from '../exchange/binance/binance-us.service';
-import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PriceService } from '../price/price.service';
-import { HealthCheckHelper } from '../utils/health-check.helper';
 
 describe('CoinController', () => {
   let controller: CoinController;
@@ -44,18 +40,6 @@ describe('CoinController', () => {
             delete: jest.fn(() => ({}))
           }
         },
-        BinanceUSService,
-        {
-          provide: ExchangeKeyService,
-          useValue: {
-            findAll: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            findByExchange: jest.fn(() => []),
-            create: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            remove: jest.fn(() => ({}))
-          }
-        },
         {
           provide: ExchangeService,
           useValue: {
@@ -68,8 +52,6 @@ describe('CoinController', () => {
           }
         },
         PortfolioService,
-        HealthCheckHelper,
-        CoinTask,
         {
           provide: PriceService,
           useValue: {
@@ -78,6 +60,22 @@ describe('CoinController', () => {
             getPriceBySymbol: jest.fn(() => ({})),
             createPrice: jest.fn(() => ({})),
             getSummary: jest.fn(() => [])
+          }
+        },
+        {
+          provide: 'BullQueue_coin-queue',
+          useValue: {
+            add: jest.fn(),
+            getRepeatableJobs: jest.fn()
+            // Add other methods as needed for your tests
+          }
+        },
+        {
+          provide: 'BullQueue_ticker-pairs-queue',
+          useValue: {
+            add: jest.fn(),
+            getRepeatableJobs: jest.fn()
+            // Add other methods as needed for your tests
           }
         }
       ],

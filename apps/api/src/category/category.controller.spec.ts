@@ -1,13 +1,9 @@
-import { HttpModule } from '@nestjs/axios';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { CategoryController } from './category.controller';
 import { Category } from './category.entity';
 import { CategoryService } from './category.service';
-import { CategoryTask } from './category.task';
-
-import { HealthCheckHelper } from '../utils/health-check.helper';
 
 describe('CategoryController', () => {
   let controller: CategoryController;
@@ -27,10 +23,15 @@ describe('CategoryController', () => {
             remove: jest.fn().mockResolvedValue({})
           }
         },
-        HealthCheckHelper,
-        CategoryTask
-      ],
-      imports: [HttpModule]
+        {
+          provide: 'BullQueue_category-queue',
+          useValue: {
+            add: jest.fn(),
+            getRepeatableJobs: jest.fn()
+            // Add other methods as needed for your tests
+          }
+        }
+      ]
     }).compile();
 
     controller = module.get<CategoryController>(CategoryController);

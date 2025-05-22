@@ -40,13 +40,6 @@
             [disabled]="!selectedExchanges() || !selectedExchanges().length"
             class="hidden md:inline-flex"
           />
-          <p-button
-            label="Sync"
-            icon="pi pi-refresh"
-            severity="info"
-            [loading]="isSyncing()"
-            (click)="syncExchanges()"
-          />
         </div>
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />

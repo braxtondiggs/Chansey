@@ -27,6 +27,11 @@
                 "position": "after"
               },
               {
+                "pattern": "@chansey-api/**",
+                "group": "internal",
+                "position": "after"
+              },
+              {
                 "pattern": "@chansey-web/**",
                 "group": "internal",
                 "position": "after"

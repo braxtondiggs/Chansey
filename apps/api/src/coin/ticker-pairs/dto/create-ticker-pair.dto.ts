@@ -2,7 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsNumber, IsUrl } from 'class-validator';
 
-import { Exchange } from '../../../exchange/exchange.entity';
+import { Exchange } from '@chansey-api/exchange/exchange.entity';
+
 import { Coin } from '../../coin.entity';
 import { TickerPairStatus } from '../ticker-pairs.entity';
 

@@ -15,7 +15,6 @@ import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from 
 
 import { CreateExchangeDto, ExchangeResponseDto, UpdateExchangeDto } from './dto';
 import { ExchangeService } from './exchange.service';
-import { ExchangeTask } from './exchange.task';
 
 import { Roles } from '../authentication/decorator/roles.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
@@ -24,10 +23,7 @@ import { RolesGuard } from '../authentication/guard/roles.guard';
 @ApiTags('Exchange')
 @Controller('exchange')
 export class ExchangeController {
-  constructor(
-    private readonly exchange: ExchangeService,
-    private readonly exchangeTask: ExchangeTask
-  ) {}
+  constructor(private readonly exchange: ExchangeService) {}
 
   @Get()
   @ApiOperation({
@@ -166,25 +162,5 @@ export class ExchangeController {
   })
   async deleteExchangeItem(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.exchange.deleteExchange(id);
-  }
-
-  @Post('sync')
-  @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
-  @ApiOperation({
-    summary: 'Sync exchanges',
-    description: 'Manually triggers the exchange sync process that fetches latest exchange data from CoinGecko.'
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Exchange sync process initiated successfully.'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'Access denied. Admin role required.'
-  })
-  async syncExchanges() {
-    await this.exchangeTask.syncExchanges();
-    return { message: 'Exchange sync process completed successfully' };
   }
 }

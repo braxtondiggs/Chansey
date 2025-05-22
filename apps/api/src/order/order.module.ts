@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -5,7 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
-import { OrderTask } from './order.task';
+import { OrderSyncTask } from './tasks/order-sync.task';
 import { TestnetController } from './testnet/testnet.controller';
 import { Testnet } from './testnet/testnet.entity';
 import { TestnetService } from './testnet/testnet.service';
@@ -22,14 +23,15 @@ import { UsersModule } from '../users/users.module';
 
 @Module({
   controllers: [OrderController, TestnetController],
-  exports: [OrderService, OrderTask, TestnetService],
+  exports: [OrderService, OrderSyncTask, TestnetService],
   imports: [
     ConfigModule,
     TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, TickerPairs]),
+    BullModule.registerQueue({ name: 'order-queue' }),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => UsersModule)
   ],
-  providers: [AlgorithmService, CoinService, OrderService, OrderTask, TestnetService, TickerPairService]
+  providers: [AlgorithmService, CoinService, OrderService, OrderSyncTask, TestnetService, TickerPairService]
 })
 export class OrderModule {}

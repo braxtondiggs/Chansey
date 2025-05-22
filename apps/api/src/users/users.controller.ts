@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { MultipartFile } from '@fastify/multipart';
 import { FastifyRequest } from 'fastify';
 
 import { UpdateUserDto, UserResponseDto } from './dto';
@@ -21,7 +20,6 @@ import { UsersService } from './users.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { StorageService } from '../storage/storage.service';
 
 @ApiTags('User')
@@ -35,7 +33,6 @@ import { StorageService } from '../storage/storage.service';
 @UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
   constructor(
-    private readonly binance: BinanceUSService,
     private readonly user: UsersService,
     private readonly storage: StorageService
   ) {}

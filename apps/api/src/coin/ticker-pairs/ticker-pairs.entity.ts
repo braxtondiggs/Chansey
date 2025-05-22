@@ -24,7 +24,7 @@ export enum TickerPairStatus {
 }
 
 @Entity()
-@Unique(['baseAsset', 'quoteAsset', 'exchange'])
+@Unique(['symbol', 'exchange'])
 @Index(['symbol', 'exchange'])
 export class TickerPairs {
   @PrimaryGeneratedColumn('uuid')
@@ -34,6 +34,7 @@ export class TickerPairs {
   })
   id: string;
 
+  @Index('ticker_pair_baseAssetId_index')
   @ManyToOne(() => Coin, (coin) => coin.baseAssetPairs, {
     cascade: true,
     eager: false,
@@ -69,11 +70,11 @@ export class TickerPairs {
   })
   symbol: string;
 
-  @Column({ type: 'decimal', precision: 20, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 30, scale: 8, default: 0 })
   @IsNumber()
   @Min(0)
   @ApiProperty({
-    description: 'Trading volume',
+    description: 'Trading volume in the base asset',
     example: 1500000.5,
     minimum: 0
   })

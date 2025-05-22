@@ -86,6 +86,11 @@ export class AppMenu implements OnInit {
             label: 'Risk Levels',
             icon: 'pi pi-fw pi-exclamation-triangle',
             routerLink: ['/admin/risks']
+          },
+          {
+            label: 'Bull Board',
+            icon: 'pi pi-fw pi-server',
+            routerLink: ['/admin/bull-board']
           }
         ]
       });

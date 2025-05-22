@@ -1,23 +1,80 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { CronExpression } from '@nestjs/schedule';
 
+import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient, ExchangeId as GeckoExchange } from 'coingecko-api-v3';
 
-import { Exchange } from './exchange.entity';
-import { ExchangeService } from './exchange.service';
+import { Exchange } from '../exchange.entity';
+import { ExchangeService } from '../exchange.service';
 
+@Processor('exchange-queue')
 @Injectable()
-export class ExchangeTask {
+export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
-  private readonly logger = new Logger(ExchangeTask.name);
+  private readonly logger = new Logger(ExchangeSyncTask.name);
+  private jobScheduled = false;
 
-  constructor(private readonly exchange: ExchangeService) {}
+  constructor(
+    @InjectQueue('exchange-queue') private readonly exchangeQueue: Queue,
+    private readonly exchange: ExchangeService
+  ) {
+    super();
+  }
 
-  @Cron(CronExpression.EVERY_WEEK)
-  async syncExchanges() {
+  async onModuleInit() {
+    if (!this.jobScheduled) {
+      await this.scheduleCronJob();
+      this.jobScheduled = true;
+    }
+  }
+
+  private async scheduleCronJob() {
+    const repeatedJobs = await this.exchangeQueue.getRepeatableJobs();
+    const existingJob = repeatedJobs.find((job) => job.name === 'exchange-sync');
+    if (existingJob) {
+      this.logger.log(`Exchange sync job already scheduled with pattern: ${existingJob.pattern}`);
+      return;
+    }
+    await this.exchangeQueue.add(
+      'exchange-sync',
+      {
+        timestamp: new Date().toISOString(),
+        description: 'Scheduled exchange sync job'
+      },
+      {
+        repeat: { pattern: CronExpression.EVERY_WEEK },
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000
+        },
+        removeOnComplete: 100,
+        removeOnFail: 50
+      }
+    );
+    this.logger.log('Exchange sync job scheduled with weekly cron pattern');
+  }
+
+  // BullMQ: log job start, completion, and errors inside process/handler
+  async process(job: Job) {
+    this.logger.log(`Processing job ${job.id} of type ${job.name}`);
+    try {
+      if (job.name === 'exchange-sync') {
+        const result = await this.syncExchanges(job);
+        this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
+        return result;
+      }
+    } catch (error) {
+      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async syncExchanges(job: Job) {
     try {
       this.logger.log('Starting Exchange Sync');
-
+      await job.updateProgress(10);
       const existingExchanges = await this.exchange.getExchanges();
       let allApiExchanges = [];
       let page = 1;
@@ -34,6 +91,7 @@ export class ExchangeTask {
         allApiExchanges = [...allApiExchanges, ...apiExchanges];
         page++;
       }
+      await job.updateProgress(30);
 
       // Step 1: Detect and handle duplicate names by making them unique
       const seenNames = new Map();
@@ -79,6 +137,7 @@ export class ExchangeTask {
         });
 
       this.logger.log(`Processing ${allApiExchanges.length} exchanges after deduplication`);
+      await job.updateProgress(50);
 
       const mapExchange = (ex: GeckoExchange, existing?: Exchange) =>
         new Exchange({
@@ -121,6 +180,7 @@ export class ExchangeTask {
       const missingExchanges = existingExchanges
         .filter((existing) => !allApiExchanges.find((api) => api.id === existing.slug))
         .map((ex) => ex.id);
+      await job.updateProgress(70);
 
       if (newExchanges.length > 0) {
         try {
@@ -130,10 +190,8 @@ export class ExchangeTask {
           );
         } catch (err) {
           this.logger.error(`Error inserting new exchanges: ${err.message}`);
-          // Continue with updates even if inserts fail
         }
       }
-
       if (updatedExchanges.length > 0) {
         try {
           await this.exchange.updateMany(updatedExchanges);
@@ -142,7 +200,6 @@ export class ExchangeTask {
           this.logger.error(`Error updating exchanges: ${err.message}`);
         }
       }
-
       if (missingExchanges.length > 0) {
         try {
           await this.exchange.removeMany(missingExchanges);
@@ -151,8 +208,17 @@ export class ExchangeTask {
           this.logger.error(`Error removing exchanges: ${err.message}`);
         }
       }
+      await job.updateProgress(100);
+      return {
+        added: newExchanges.length,
+        updated: updatedExchanges.length,
+        removed: missingExchanges.length,
+        total: allApiExchanges.length
+      };
     } catch (e) {
       this.logger.error('Exchange sync failed:', e);
+      // BullMQ handles failed jobs automatically
+      throw e;
     } finally {
       this.logger.log('Exchange Sync Complete');
     }

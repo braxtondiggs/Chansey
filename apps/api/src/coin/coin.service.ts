@@ -7,7 +7,6 @@ import { In, IsNull, Not, Repository } from 'typeorm';
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
-import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
@@ -22,10 +21,7 @@ interface HistoricalDataPoint {
 export class CoinService {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
 
-  constructor(
-    @InjectRepository(Coin) private readonly coin: Repository<Coin>,
-    private readonly binance: BinanceUSService
-  ) {}
+  constructor(@InjectRepository(Coin) private readonly coin: Repository<Coin>) {}
 
   async getCoins() {
     const coins = await this.coin.find({ order: { name: 'ASC' } });
@@ -77,7 +73,7 @@ export class CoinService {
   }
 
   async clearRank() {
-    await this.coin.update({}, { geckoRank: null });
+    await this.coin.createQueryBuilder().update().set({ geckoRank: null }).execute();
   }
 
   async remove(coinId: string) {

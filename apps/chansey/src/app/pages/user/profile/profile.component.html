@@ -34,9 +34,9 @@
           [size]="'xlarge'"
           [image]="userProfileImage()"
           shape="circle"
-          class="mb-8 cursor-pointer"
+          class="mb-8 cursor-pointer profile"
           (click)="openFileUpload()"
-        ></p-avatar>
+        />
         <p-fileUpload
           #fileUpload
           mode="basic"
@@ -235,6 +235,7 @@
       <p-tablist>
         @for (exchange of exchanges; track exchange) {
           <p-tab [value]="exchange.slug">
+            <p-avatar [image]="exchange.image" shape="circle" class="mr-2" />
             {{ exchange.name }}
           </p-tab>
         }
@@ -388,7 +389,13 @@
     </p-tabs>
   } @else if (exchanges.length === 1) {
     @let exchange = exchanges[0];
-    <p-fieldset [legend]="exchange.name">
+    <p-fieldset>
+      <ng-template #header>
+        <div class="flex items-center gap-2 px-2">
+          <p-avatar [image]="exchange.image" shape="circle" class="mr-2" />
+          {{ exchange.name }}
+        </div>
+      </ng-template>
       <p-fluid>
         @if (exchangeForms[exchange.slug]) {
           <form
@@ -691,12 +698,12 @@
 </p-dialog>
 
 <style>
-  .p-avatar {
+  .p-avatar.profile {
     width: 20rem;
     height: fit-content;
   }
   @media (max-width: 639px) {
-    .p-avatar {
+    .p-avatar.profile {
       width: 100%;
     }
   }

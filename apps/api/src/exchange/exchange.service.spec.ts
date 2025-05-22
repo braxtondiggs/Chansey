@@ -32,6 +32,14 @@ describe('ExchangeService', () => {
             update: jest.fn(() => ({})),
             remove: jest.fn(() => ({}))
           }
+        },
+        {
+          provide: 'BullQueue_exchange-queue',
+          useValue: {
+            add: jest.fn(),
+            getRepeatableJobs: jest.fn()
+            // Add other methods as needed for your tests
+          }
         }
       ]
     }).compile();

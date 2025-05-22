@@ -67,14 +67,12 @@ export class ExchangesComponent {
   });
 
   exchangesQuery = this.exchangesService.useExchanges();
-  syncExchangeMutation = this.exchangesService.useSyncExchanges();
   createExchangeMutation = this.exchangesService.useCreateExchange();
   updateExchangeMutation = this.exchangesService.useUpdateExchange();
   deleteExchangeMutation = this.exchangesService.useDeleteExchange();
 
   // Computed states
   isLoading = computed(() => this.exchangesQuery?.isPending() || this.exchangesQuery?.isFetching());
-  isSyncing = computed(() => this.syncExchangeMutation?.isPending());
   exchangesData = computed(() => this.exchangesQuery?.data() || []);
   exchangesError = computed(() => this.exchangesQuery?.error);
   isDeletePending = computed(() => this.deleteExchangeMutation?.isPending());
@@ -239,17 +237,6 @@ export class ExchangesComponent {
             this.showErrorMessage('Failed to delete some exchanges');
             console.error('Error deleting selected exchanges:', error);
           });
-      }
-    });
-  }
-
-  syncExchanges(): void {
-    this.syncExchangeMutation.mutate(undefined, {
-      onSuccess: () => {
-        this.showSuccessMessage('Exchanges synced successfully');
-      },
-      onError: (error) => {
-        this.showErrorMessage(error.message || 'Failed to sync exchanges');
       }
     });
   }

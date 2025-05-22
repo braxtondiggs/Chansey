@@ -34,14 +34,6 @@
             [disabled]="!selectedCoins() || !selectedCoins().length"
             class="hidden md:inline-flex"
           />
-          <p-splitButton
-            [label]="syncLabel()"
-            [icon]="syncIcon()"
-            [model]="syncItems()"
-            severity="info"
-            [disabled]="isSyncingCoins() || isSyncingDetails()"
-            (onClick)="syncCoins()"
-          />
         </div>
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />

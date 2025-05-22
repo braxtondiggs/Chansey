@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal, effect } from '@angular/core';
 
 import { shapes } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
