@@ -9,26 +9,12 @@ import { TableModule } from 'primeng/table';
 import { TabsModule } from 'primeng/tabs';
 import { TooltipModule } from 'primeng/tooltip';
 
-import { Coin } from '@chansey/api-interfaces';
-
-import { FormatCurrencyPipe } from '../../components/format-currency.pipe';
-import { FormatPercentPipe } from '../../components/format-percent.pipe';
 import { CoinService } from '../../services';
 
 @Component({
   selector: 'app-prices',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterModule,
-    ButtonModule,
-    CardModule,
-    TabsModule,
-    TableModule,
-    TooltipModule,
-    FormatCurrencyPipe,
-    FormatPercentPipe
-  ],
+  imports: [CommonModule, RouterModule, ButtonModule, CardModule, TabsModule, TableModule, TooltipModule],
   templateUrl: './prices.component.html'
 })
 export class PricesComponent implements OnInit {

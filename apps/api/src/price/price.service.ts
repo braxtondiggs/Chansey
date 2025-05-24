@@ -1,8 +1,6 @@
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import * as dayjs from 'dayjs';
 import * as customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -32,12 +30,10 @@ export class PriceService implements OnApplicationBootstrap {
     timeout: 10000,
     autoRetry: true
   });
-  private readonly CACHE_TTL = 3600; // 1 hour
   private readonly BATCH_SIZE = 100;
 
   constructor(
     @InjectRepository(Price) private readonly price: Repository<Price>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private readonly portfolio: PortfolioService
   ) {
     dayjs.extend(customParseFormat);
@@ -56,11 +52,7 @@ export class PriceService implements OnApplicationBootstrap {
   }
 
   private async getCachedPrices(key: string, fetchFn: () => Promise<Price[]>): Promise<Price[]> {
-    const cached = await this.cacheManager.get<Price[]>(key);
-    if (cached) return cached;
-
     const prices = await fetchFn();
-    await this.cacheManager.set(key, prices, this.CACHE_TTL);
     return prices;
   }
 

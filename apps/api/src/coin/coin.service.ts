@@ -48,6 +48,41 @@ export class CoinService {
     return coin;
   }
 
+  /**
+   * Get multiple coins by their symbols
+   * @param symbols Array of coin symbols to retrieve
+   * @param relations Optional coin relations to include
+   * @returns Array of coin entities that were found matching the provided symbols.
+   * If some symbols don't exist, they're silently ignored (with a warning log).
+   */
+  async getMultipleCoinsBySymbol(symbols: string[], relations?: CoinRelations[]): Promise<Coin[]> {
+    // Convert all symbols to lowercase for case-insensitive comparison
+    const lowercaseSymbols = symbols.map((symbol) => symbol.toLowerCase());
+
+    const coins = await this.coin.find({
+      where: {
+        symbol: In(lowercaseSymbols)
+      },
+      relations,
+      order: { name: 'ASC' }
+    });
+
+    // No need to throw error for missing symbols, just return what we found
+    // For logging purposes, we can still detect missing symbols
+    const foundSymbols = coins.map((coin) => coin.symbol.toLowerCase());
+    const missingSymbols = lowercaseSymbols.filter((symbol) => !foundSymbols.includes(symbol));
+
+    if (missingSymbols.length > 0) {
+      console.log(`Warning: Some requested coin symbols were not found: ${missingSymbols.join(', ')}`);
+    }
+
+    // Clean null values from all coins
+    return coins.map((coin) => {
+      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+      return coin;
+    });
+  }
+
   async create(Coin: CreateCoinDto): Promise<Coin> {
     const coin = await this.coin.findOne({ where: { slug: Coin.slug } });
     return coin ?? ((await this.coin.insert(Coin)).generatedMaps[0] as Coin);

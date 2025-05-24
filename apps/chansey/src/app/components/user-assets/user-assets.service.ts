@@ -29,9 +29,7 @@ export class UserAssetsService {
    */
   useUserAssets() {
     return useAuthQuery<UserAsset[]>(assetKeys.all, 'api/balance/assets', {
-      refetchOnWindowFocus: true,
-      refetchInterval: 60000, // Refresh every minute
-      staleTime: 30000 // Consider data stale after 30 seconds
+      refetchOnWindowFocus: true
     });
   }
 }

@@ -1,6 +1,5 @@
 import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bullmq';
-import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -43,9 +42,6 @@ const isProduction = process.env.NODE_ENV === 'production';
         }
       }
     }),
-    CacheModule.register({
-      isGlobal: true
-    }),
     StorageModule,
     TypeOrmModule.forRoot({
       autoLoadEntities: true,
@@ -66,6 +62,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     BullModule.forRoot({
       connection: {
         family: 0,
+        db: 3,
         host: process.env.REDIS_HOST,
         port: parseInt(process.env.REDIS_PORT),
         username: process.env.REDIS_USER,

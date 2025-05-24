@@ -72,6 +72,29 @@ export class CoinController {
     return this.coin.getCoinBySymbol(symbol, [CoinRelations.BASE_ASSETS]);
   }
 
+  @Get('symbols/:symbols')
+  @ApiParam({
+    name: 'symbols',
+    required: true,
+    description: 'Comma-separated list of coin symbols',
+    type: String,
+    example: 'BTC,ETH,LTC'
+  })
+  @ApiOperation({ summary: 'Get multiple coins by symbols', description: 'Retrieve multiple coins by their symbols.' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Coins retrieved successfully.',
+    type: [CoinResponseDto]
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'One or more coins not found.'
+  })
+  getMultipleCoinsBySymbols(@Param('symbols') symbolsParam: string): Promise<Coin[]> {
+    const symbols = symbolsParam.split(',').filter(Boolean);
+    return this.coin.getMultipleCoinsBySymbol(symbols, [CoinRelations.BASE_ASSETS]);
+  }
+
   @Get(':id/historical')
   @ApiParam({
     name: 'id',

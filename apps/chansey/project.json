@@ -89,7 +89,8 @@
       },
       "defaultConfiguration": "development",
       "options": {
-        "proxyConfig": "apps/chansey/proxy.conf.json"
+        "proxyConfig": "apps/chansey/proxy.conf.json",
+        "hmr": true
       }
     },
     "extract-i18n": {

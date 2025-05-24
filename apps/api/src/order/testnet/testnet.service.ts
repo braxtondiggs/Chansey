@@ -1,8 +1,6 @@
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { Between, Repository } from 'typeorm';
 
@@ -26,8 +24,7 @@ export class TestnetService {
     private readonly binance: BinanceUSService,
     private readonly order: OrderService,
     private readonly tickerPair: TickerPairService,
-    @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache
+    @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>
   ) {}
 
   async createOrder(side: OrderSide, order: TestnetDto) {
@@ -107,10 +104,6 @@ export class TestnetService {
   }
 
   async getOrderSummary(type = '1d') {
-    const cacheKey = `testnet_summary_${type}`;
-    const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached;
-
     const time = TestnetSummaryDuration[type];
     const orders = await this.testnet.find({
       where: { createdAt: Between(new Date(Date.now() - time), new Date()) },
@@ -123,7 +116,6 @@ export class TestnetService {
     const prices = await this.getPrices(coins);
 
     const summary = this.calculateSummary(orders, prices);
-    await this.cacheManager.set(cacheKey, summary, 60000); // Cache for 1 minute
     return summary;
   }
 
