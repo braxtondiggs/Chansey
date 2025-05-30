@@ -59,7 +59,8 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
           'https://fonts.gstatic.com',
           'https://images.pexels.com',
           'https://www.cymbit.com',
-          'https://cymbit.com'
+          'https://cymbit.com',
+          'https://coin-images.coingecko.com'
         ],
 
         // Allow connections to self and specific APIs

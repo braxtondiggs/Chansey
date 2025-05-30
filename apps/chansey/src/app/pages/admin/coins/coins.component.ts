@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -43,6 +43,7 @@ import { Coin, CoinsService } from './coins.service';
 })
 export class CoinsComponent {
   @ViewChild('dt') dt: Table | undefined;
+  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
 
   // Services
   private readonly coinsService = inject(CoinsService);
@@ -56,6 +57,7 @@ export class CoinsComponent {
   submitted = signal<boolean>(false);
   isNew = signal<boolean>(true);
   selectedCoins = signal<Coin[]>([]);
+  searchFilter = signal<string>('');
 
   // Form
   coinForm: FormGroup = this.fb.group({
@@ -73,7 +75,6 @@ export class CoinsComponent {
   // Computed states
   isLoading = computed(() => this.coinsQuery?.isPending() || this.coinsQuery?.isFetching());
   coinsData = computed(() => this.coinsQuery?.data() || []);
-  coinsError = computed(() => this.coinsQuery?.error);
   isDeletePending = computed(() => this.deleteCoinMutation?.isPending());
   isCreatePending = computed(() => this.createCoinMutation?.isPending());
   isUpdatePending = computed(() => this.updateCoinMutation?.isPending());
@@ -89,6 +90,8 @@ export class CoinsComponent {
       const data = this.coinsData();
       if (data && Array.isArray(data)) {
         this.coins.set(data);
+      } else {
+        this.coins.set([]);
       }
     });
   }
@@ -206,8 +209,17 @@ export class CoinsComponent {
   }
 
   applyGlobalFilter(event: Event): void {
-    const filterValue = (event.target as HTMLInputElement).value;
+    const filterValue = (event.target as HTMLInputElement).value?.trim() || '';
+    this.searchFilter.set(filterValue);
     this.dt?.filterGlobal(filterValue, 'contains');
+  }
+
+  clearSearch(): void {
+    this.searchFilter.set('');
+    if (this.searchInput?.nativeElement) {
+      this.searchInput.nativeElement.value = '';
+    }
+    this.dt?.filterGlobal('', 'contains');
   }
 
   deleteSelectedCoins(): void {

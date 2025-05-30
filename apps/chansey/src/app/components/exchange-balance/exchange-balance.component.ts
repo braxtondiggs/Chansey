@@ -15,24 +15,24 @@ import { TagModule } from 'primeng/tag';
 import { ExchangeKey } from '@chansey/api-interfaces';
 
 import { LayoutService } from '@chansey-web/app/services';
+import { CounterDirective } from '@chansey-web/app/shared/directives/counter.directive';
 
-import { CounterDirective } from './counter.directive';
 import { ExchangeBalanceService, AccountValueDataPoint } from './exchange-balance.service';
 
 @Component({
   selector: 'app-exchange-balance',
   standalone: true,
   imports: [
-    CommonModule,
-    ChartModule,
     ButtonModule,
-    ReactiveFormsModule,
     CardModule,
+    ChartModule,
+    CommonModule,
+    CounterDirective,
     ProgressSpinnerModule,
-    SkeletonModule,
-    TagModule,
+    ReactiveFormsModule,
     SelectButtonModule,
-    CounterDirective
+    SkeletonModule,
+    TagModule
   ],
   templateUrl: './exchange-balance.component.html',
   styleUrls: ['./exchange-balance.component.css']
@@ -98,7 +98,6 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit() {
     this.timePeriodForm.get('value')?.valueChanges.subscribe((value: number) => {
       this.currentDays.set(value);
-      this.balanceHistoryQuery.refetch();
     });
   }
 

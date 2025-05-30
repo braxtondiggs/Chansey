@@ -191,8 +191,7 @@ export class UsersService {
       newCoins.map((coin) =>
         this.portfolio.createPortfolioItem(
           {
-            coin,
-            user,
+            coinId: coin.id,
             type: PortfolioType.AUTOMATIC
           },
           user

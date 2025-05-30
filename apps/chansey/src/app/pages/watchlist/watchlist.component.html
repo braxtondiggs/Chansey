@@ -1,0 +1,9 @@
+<p-toast></p-toast>
+
+<app-crypto-table
+  [coins]="watchlistCoins()"
+  [isLoading]="isLoading()"
+  [config]="tableConfig"
+  [processingCoinId]="processingCoinId()"
+  (removeCoin)="onRemoveCoin($event)"
+></app-crypto-table>

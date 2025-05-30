@@ -45,6 +45,7 @@ export class HealthController {
       () =>
         this.microservice.pingCheck<TcpClientOptions>('minio', {
           transport: Transport.TCP,
+          timeout: 15000,
           options: {
             host: this.config.get('MINIO_HOST'),
             port: parseInt(this.config.get('MINIO_PORT'))

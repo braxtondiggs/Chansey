@@ -222,6 +222,105 @@ export class Coin {
   })
   marketCap?: number;
 
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change in 24 hours',
+    example: -132.19,
+    required: false,
+    type: Number
+  })
+  priceChange24h?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 24 hours',
+    example: -4.97413,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage24h?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 7 days',
+    example: 0.74613,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage7d?: number;
+
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Current price of the coin in USD',
+    example: 45000.12345678,
+    required: false,
+    type: Number
+  })
+  currentPrice?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 14 days',
+    example: 8.36958,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage14d?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 30 days',
+    example: 41.03672,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage30d?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 60 days',
+    example: 20.9407,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage60d?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 200 days',
+    example: 5.1652,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage200d?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Price change percentage in 1 year',
+    example: -33.698,
+    required: false,
+    type: Number
+  })
+  priceChangePercentage1y?: number;
+
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Market cap change in 24 hours',
+    example: -16184990966.68,
+    required: false,
+    type: Number
+  })
+  marketCapChange24h?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @ApiProperty({
+    description: 'Market cap change percentage in 24 hours',
+    example: -5.04176,
+    required: false,
+    type: Number
+  })
+  marketCapChangePercentage24h?: number;
+
   @Column({ type: 'timestamptz', default: null })
   @ApiProperty({
     description: 'Date when ATL was reached',

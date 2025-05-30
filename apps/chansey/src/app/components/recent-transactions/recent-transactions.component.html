@@ -1,10 +1,14 @@
 <p-card class="recent-transactions-container">
   <ng-template pTemplate="header">
-    <div class="flex items-center justify-between p-3">
-      <h2 class="m-0 text-xl font-semibold">Recent Transactions</h2>
+    <div class="flex items-center justify-between p-4 border-b border-gray-100 dark:border-neutral-700">
+      <div class="flex items-center gap-4">
+        <i class="pi pi-history text-primary"></i>
+        <h2 class="m-0 text-xl font-semibold">Recent Transactions</h2>
+      </div>
       <p-button
         *ngIf="transactions().length > 0"
         icon="pi pi-arrow-right"
+        iconPos="right"
         label="View All"
         styleClass="p-button-text"
         (click)="viewAllTransactions()"
@@ -13,19 +17,19 @@
   </ng-template>
 
   <!-- Loading skeleton -->
-  <div *ngIf="isLoading()" class="mb-4">
+  <div *ngIf="transactionsQuery.isPending()" class="mb-3">
     <!-- Skeleton for table header -->
-    <div class="flex p-3 border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-      <p-skeleton width="160px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+    <div class="flex p-3 mb-2 border-b border-gray-100 rounded-t dark:border-neutral-700">
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
       <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
       <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
       <p-skeleton width="120px" height="1.25rem"></p-skeleton>
     </div>
 
     <!-- Skeleton for table rows -->
-    <div *ngFor="let i of [1, 2, 3, 4, 5]" class="flex p-3 border-b border-gray-200 dark:border-gray-700">
+    <div *ngFor="let i of [1, 2, 3, 4]" class="flex p-3 mb-2 border-b border-gray-50 dark:border-neutral-700">
       <div class="flex items-center mr-6">
-        <p-skeleton shape="circle" size="2rem" styleClass="mr-2"></p-skeleton>
+        <p-skeleton shape="circle" size="2.5rem" styleClass="mr-2"></p-skeleton>
         <p-skeleton width="120px" height="1.25rem"></p-skeleton>
       </div>
       <p-skeleton width="100px" height="2rem" styleClass="mr-6"></p-skeleton>
@@ -35,48 +39,65 @@
   </div>
 
   <!-- Empty state -->
-  <div *ngIf="!isLoading() && transactions().length === 0" class="flex flex-col items-center justify-center py-12">
-    <i class="text-primary pi pi-wallet mb-4 !text-4xl"></i>
+  <div
+    *ngIf="!transactionsQuery.isPending() && transactions().length === 0"
+    class="flex flex-col items-center justify-center px-4 py-12 m-3 rounded-lg bg-gray-50/30 dark:bg-gray-800/20"
+  >
+    <div class="p-4 mb-4 rounded-full bg-primary/10">
+      <i class="text-primary pi pi-wallet !text-4xl"></i>
+    </div>
     <h3 class="mb-2 text-2xl font-medium">No transactions yet</h3>
-    <p class="mb-6 text-center">You haven't made any transactions.<br />Start trading to see your activity here.</p>
+    <p class="max-w-md mb-6 text-center">
+      You haven't made any transactions yet.<br />Start trading to see your activity here.
+    </p>
   </div>
 
   <!-- Transactions table -->
-  <p-table
-    *ngIf="!isLoading() && transactions().length > 0"
-    [value]="transactions()"
-    [scrollable]="true"
-    tableStyleClass="no-bottom-border"
-  >
-    <ng-template pTemplate="header">
-      <tr>
-        <th style="min-width: 120px">Coin</th>
-        <th style="min-width: 100px">Side</th>
-        <th style="min-width: 120px">Price</th>
-        <th style="min-width: 160px">Date</th>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="body" let-transaction>
-      <tr>
-        <td>
-          <div class="flex align-items-center">
-            <p-avatar [image]="getImage(transaction.coin.symbol)" shape="circle" size="large" class="mr-2" />
-            <span>{{ transaction.coin.symbol }}</span>
-          </div>
-        </td>
-        <td>
-          <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
-        </td>
-        <td>${{ transaction.price | number: '1.2-2' }}</td>
-        <td>
-          <div class="flex flex-col">
-            <span>{{ transaction.transactTime | date: 'mediumDate' }}</span>
-            <span class="text-sm text-neutral-400">{{ transaction.transactTime | date: 'shortTime' }}</span>
-          </div>
-        </td>
-      </tr>
-    </ng-template>
-  </p-table>
+  <div *ngIf="!transactionsQuery.isPending() && transactions().length > 0">
+    <p-table [value]="transactions()" [scrollable]="true" tableStyleClass="no-bottom-border transactions-table">
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="min-width: 100px">Coin</th>
+          <th style="min-width: 80px">Side</th>
+          <th style="min-width: 100px">Amount</th>
+          <th style="min-width: 100px">Value</th>
+          <th style="min-width: 120px">Date</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-transaction>
+        <tr>
+          <td>
+            <div class="flex items-center gap-1">
+              <p-avatar [image]="transaction.coin.logo" shape="circle" size="large" class="mr-2 shadow-sm" />
+              <div class="flex flex-col">
+                <span class="font-medium">{{ transaction.symbol }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ transaction.coin.name }}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+          </td>
+          <td>
+            <span class="font-medium">{{ transaction.quantity | number: '1.2-8' }}</span>
+          </td>
+          <td>
+            <div class="flex flex-col">
+              <span class="font-medium">${{ transaction.cost | number: '1.2-2' }} total</span>
+            </div>
+          </td>
+          <td>
+            <div class="flex flex-col">
+              <span>{{ transaction.transactTime | date: 'mediumDate' }}</span>
+              <span class="text-sm text-gray-500 dark:text-gray-400">{{
+                transaction.transactTime | date: 'shortTime'
+              }}</span>
+            </div>
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
 </p-card>
 <style>
   :host ::ng-deep .no-bottom-border tr:last-child > td {

@@ -1,109 +1,116 @@
-<p-card styleClass="mb-4 max-w-screen">
-  <ng-container *ngIf="assetsQuery.isPending(); else assetsContent">
-    <div class="p-2">
-      <h2 class="mb-3"><p-skeleton width="20%" height="24px"></p-skeleton></h2>
-      <div class="relative w-full">
-        <table class="w-full">
-          <!-- Table Header -->
-          <thead>
-            <tr>
-              <th><p-skeleton width="80px" height="24px"></p-skeleton></th>
-              <th><p-skeleton width="60px" height="24px"></p-skeleton></th>
-              <th><p-skeleton width="70px" height="24px"></p-skeleton></th>
-              <th><p-skeleton width="60px" height="24px"></p-skeleton></th>
-            </tr>
-          </thead>
-          <!-- Table Body -->
-          <tbody>
-            <tr *ngFor="let i of [1, 2, 3, 4, 5]" class="py-3">
-              <td class="py-3">
-                <div class="flex gap-2 align-items-center">
-                  <p-skeleton width="30px" height="24px" styleClass="mr-2"></p-skeleton>
-                  <p-skeleton width="100px" height="24px"></p-skeleton>
-                </div>
-              </td>
-              <td class="py-3"><p-skeleton width="70px" height="24px"></p-skeleton></td>
-              <td class="py-3"><p-skeleton width="80px" height="24px"></p-skeleton></td>
-              <td class="py-3"><p-skeleton width="80px" height="24px"></p-skeleton></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </ng-container>
-
-  <ng-template #assetsContent>
-    <div *ngIf="assetsQuery.isError()" class="p-3 text-center">
-      <p class="mb-4 text-lg text-red-500">{{ assetsQuery.error() }}</p>
-      <p-button
-        severity="info"
-        (click)="assetsQuery.refetch()"
-        label="Retry"
-        icon="pi pi-refresh"
-        [loading]="assetsQuery.isFetching()"
-        variant="outlined"
-      />
-    </div>
-
-    @let assets = assetsQuery.data();
-    <div *ngIf="!assetsQuery.isError() && assets">
-      <h2 class="mb-3 text-xl font-bold">Your Assets</h2>
-
-      <!-- Data table - Constrained width container with horizontal scroll -->
-      <div class="relative w-full">
-        <p-table
-          [value]="assets"
-          [paginator]="assets.length > 10"
-          [rows]="10"
-          [scrollable]="true"
-          tableStyleClass="no-bottom-border"
-        >
-          <ng-template pTemplate="header" *ngIf="assets.length > 0">
-            <tr>
-              <th>Name</th>
-              <th>Price</th>
-              <th>Holdings</th>
-              <th>All time unrealized returns</th>
-            </tr>
-          </ng-template>
-          <ng-template pTemplate="body" let-asset>
-            <tr>
-              <td>
-                <div class="flex gap-2 align-items-center">
-                  <p-avatar [image]="getImage(asset.symbol)" shape="circle" size="large" class="mr-2" />
-                  <div class="flex flex-col">
-                    <span class="text-lg font-semibold">{{ asset.name }}</span>
-                    <span class="text-sm text-neutral-400">{{ asset.symbol }}</span>
-                  </div>
-                </div>
-              </td>
-              <td class="text-lg font-semibold">${{ asset.price | number: '1.2-2' }}</td>
-              <td class="flex flex-col">
-                <span class="text-lg font-semibold"> ${{ asset.usdValue | number: '1.2-2' }}</span>
-                <span class="text-sm font-semibold text-neutral-400"
-                  >{{ asset.quantity | number: '1.2-8' }} {{ asset.symbol }}</span
-                >
-              </td>
-              <td></td>
-            </tr>
-          </ng-template>
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td colspan="4" class="p-0">
-                <div class="flex flex-col items-center justify-center py-12">
-                  <i class="text-primary pi pi-wallet mb-4 !text-4xl"></i>
-                  <h3 class="mb-2 text-2xl font-medium">No assets in your portfolio</h3>
-                  <p class="mb-6 text-center text-gray-500">
-                    You don't have any assets yet.<br />Add funds or start trading to build your portfolio.
-                  </p>
-                </div>
-              </td>
-            </tr>
-          </ng-template>
-        </p-table>
+<p-card class="user-assets-container">
+  <ng-template pTemplate="header">
+    <div class="flex items-center justify-between px-4 py-5 border-b border-gray-100 dark:border-neutral-700">
+      <div class="flex items-center gap-4">
+        <i class="pi pi-wallet text-primary"></i>
+        <h2 class="m-0 text-xl font-semibold">Your Assets</h2>
       </div>
     </div>
   </ng-template>
+
+  <!-- Loading skeleton -->
+  <div *ngIf="assetsQuery.isPending()" class="mb-3">
+    <!-- Skeleton for table header -->
+    <div class="flex p-3 mb-2 border-b border-gray-100 rounded-t dark:border-neutral-700">
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="120px" height="1.25rem"></p-skeleton>
+    </div>
+
+    <!-- Skeleton for table rows -->
+    <div *ngFor="let i of [1, 2, 3, 4]" class="flex p-3 mb-2 border-b border-gray-50 dark:border-neutral-700">
+      <div class="flex items-center mr-6">
+        <p-skeleton shape="circle" size="2.5rem" styleClass="mr-2"></p-skeleton>
+        <p-skeleton width="120px" height="1.25rem"></p-skeleton>
+      </div>
+      <p-skeleton width="100px" height="2rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+      <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div
+    *ngIf="!assetsQuery.isPending() && assets().length === 0"
+    class="flex flex-col items-center justify-center px-4 py-12 m-3 rounded-lg bg-gray-50/30 dark:bg-gray-800/20"
+  >
+    <div class="p-4 mb-4 rounded-full bg-primary/10">
+      <i class="text-primary pi pi-dollar !text-4xl"></i>
+    </div>
+    <h3 class="mb-2 text-2xl font-medium">No assets yet</h3>
+    <p class="max-w-md mb-6 text-center">
+      You haven't purchased any assets yet.<br />Start trading to build your portfolio.
+    </p>
+  </div>
+
+  <!-- Error state -->
+  <div *ngIf="!assetsQuery.isPending() && assetsQuery.isError()" class="p-3 text-center">
+    <p class="mb-4 text-lg text-red-500">{{ assetsQuery.error() }}</p>
+    <p-button
+      severity="info"
+      (click)="assetsQuery.refetch()"
+      label="Retry"
+      icon="pi pi-refresh"
+      [loading]="assetsQuery.isFetching()"
+      variant="outlined"
+    />
+  </div>
+
+  <!-- Assets table -->
+  <div *ngIf="!assetsQuery.isPending() && assets().length > 0">
+    <p-table
+      [value]="assets()"
+      [scrollable]="true"
+      [paginator]="assets().length > limit"
+      [rows]="limit"
+      tableStyleClass="no-bottom-border assets-table"
+    >
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="min-width: 100px">Name</th>
+          <th style="min-width: 80px">Price</th>
+          <th style="min-width: 100px">Holdings</th>
+          <th style="min-width: 100px">Change</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-asset>
+        <tr>
+          <td>
+            <div class="flex items-center gap-1">
+              <p-avatar [image]="asset.image" shape="circle" size="large" class="mr-2 shadow-sm" />
+              <div class="flex flex-col">
+                <span class="font-medium">{{ asset.name }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ asset.symbol }}</span>
+              </div>
+            </div>
+          </td>
+          <td class="font-medium">${{ asset.price | number: '1.2-2' }}</td>
+          <td>
+            <div class="flex flex-col">
+              <span class="font-medium">${{ asset.usdValue | number: '1.2-2' }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ asset.quantity | number: '1.2-8' }} {{ asset.symbol }}
+              </span>
+            </div>
+          </td>
+          <td>
+            <div class="flex flex-col">
+              <span [class]="getChangeColor(asset.priceChangePercentage24h)" class="font-medium">
+                {{ formatPercentage(asset.priceChangePercentage24h) }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400" *ngIf="asset.priceChangePercentage24h">24h</span>
+            </div>
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="emptymessage">
+        <tr>
+          <td colspan="4" class="p-4 text-center">No assets found</td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
 </p-card>
 <style>
   :host ::ng-deep .no-bottom-border tr:last-child > td {

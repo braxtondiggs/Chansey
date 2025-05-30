@@ -21,8 +21,20 @@ The synchronization works by:
 
 1. Checking for active exchange keys for users
 2. Using the CCXT library to fetch historical orders from exchanges
-3. Comparing exchange orders with the database to identify new or updated orders
-4. Storing new orders in the database and updating existing ones
+3. Processing each supported exchange in parallel for better performance
+4. Comparing exchange orders with the database to identify new or updated orders
+5. Storing new orders in the database and updating existing ones with proper exchange identification
+
+### Architecture
+
+The order synchronization uses a modular approach:
+
+- `syncOrdersForUser()`: Main entry point that orchestrates sync for all exchanges
+- `syncOrdersForExchange()`: Handles sync for a specific exchange
+- `saveExchangeOrders()`: Saves orders with proper exchange identification
+- `fetchHistoricalOrders()`: Retrieves orders from exchange APIs
+
+This design eliminates code duplication and makes it easy to add new exchanges.
 
 ## Configuration
 
@@ -44,6 +56,10 @@ async cleanupStaleOrders() {
 
 Currently supports:
 
-- Binance US
+- **Binance US**: Full order synchronization with fee tracking and market order handling
+- **Coinbase**: Complete order sync with commission tracking and price calculation
 
-Additional exchanges can be added by implementing similar methods for other supported CCXT exchanges.
+Additional exchanges can be added by:
+1. Adding the exchange service to the `exchangeConfigs` array in `syncOrdersForUser`
+2. Implementing the exchange client method
+3. Adding exchange identification logic in `saveExchangeOrders`

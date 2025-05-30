@@ -1,71 +1,122 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
-import { MenuItem } from 'primeng/api';
-import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
-import { TableModule } from 'primeng/table';
-import { TabsModule } from 'primeng/tabs';
-import { TooltipModule } from 'primeng/tooltip';
+import { MessageService } from 'primeng/api';
+import { ToastModule } from 'primeng/toast';
 
 import { Coin } from '@chansey/api-interfaces';
 
-import { FormatCurrencyPipe } from '../../components/format-currency.pipe';
-import { FormatPercentPipe } from '../../components/format-percent.pipe';
-import { CoinService } from '../../services';
+import { CryptoTableComponent, CryptoTableConfig } from '@chansey-web/app/components';
+
+import { PriceService } from './prices.service';
 
 @Component({
   selector: 'app-prices',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterModule,
-    ButtonModule,
-    CardModule,
-    TabsModule,
-    TableModule,
-    TooltipModule,
-    FormatCurrencyPipe,
-    FormatPercentPipe
-  ],
+  imports: [CommonModule, CryptoTableComponent, RouterModule, ToastModule],
+  providers: [MessageService],
   templateUrl: './prices.component.html'
 })
-export class PricesComponent implements OnInit {
-  activeTabIndex: number = 0;
-  tabs: MenuItem[] = [];
-  coinService = inject(CoinService);
+export class PricesComponent {
+  processingCoinId = signal<string | null>(null);
+  priceService = inject(PriceService);
+  messageService = inject(MessageService);
 
-  // Coin data
-  coinsQuery = this.coinService.useCoins();
-  watchlistQuery = this.coinService.useWatchlist();
+  // Coin data and watchlist
+  coinsQuery = this.priceService.useCoins();
+  watchlistQuery = this.priceService.useWatchlist();
+  addToWatchlistMutation = this.priceService.useAddToWatchlist();
+  removeFromWatchlistMutation = this.priceService.useRemoveFromWatchlist();
 
-  ngOnInit(): void {
-    this.tabs = [
-      { label: 'All Coins', icon: 'pi pi-fw pi-money-bill' },
-      { label: 'Watchlist', icon: 'pi pi-fw pi-star' }
-    ];
+  isLoading = computed(() => this.coinsQuery.isPending());
+  coins = computed(() => this.coinsQuery.data() || []);
+
+  // Create a set of watchlist coin IDs for quick lookup
+  watchlistCoinIds = computed(() => {
+    const watchlistItems = this.watchlistQuery.data() || [];
+    return new Set(watchlistItems.map((item) => item.coin.id));
+  });
+
+  // Configuration for the crypto table
+  tableConfig: CryptoTableConfig = {
+    showWatchlistToggle: true,
+    showRemoveAction: false,
+    searchPlaceholder: 'Search coins...',
+    emptyMessage: 'No coins available',
+    cardTitle: 'Cryptocurrency Prices'
+  };
+
+  onToggleWatchlist(coin: Coin): void {
+    const isInWatchlist = this.watchlistCoinIds().has(coin.id);
+    if (isInWatchlist) {
+      this.removeFromWatchlist(coin);
+    } else {
+      this.addToWatchlist(coin);
+    }
   }
 
-  getTabContent() {
-    return this.activeTabIndex === 0 ? this.coinsQuery.data() : this.watchlistQuery.data();
+  private addToWatchlist(coin: Coin): void {
+    this.processingCoinId.set(coin.id);
+    this.addToWatchlistMutation.mutate(
+      {
+        coinId: coin.id,
+        type: 'MANUAL'
+      },
+      {
+        onSuccess: () => {
+          this.processingCoinId.set(null);
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Added to Watchlist',
+            detail: `${coin.name} has been added to your watchlist`
+          });
+        },
+        onError: (error) => {
+          this.processingCoinId.set(null);
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error.message || 'Failed to add coin to watchlist'
+          });
+        }
+      }
+    );
   }
 
-  isLoading() {
-    return this.activeTabIndex === 0 ? this.coinsQuery.isPending() : this.watchlistQuery.isPending();
-  }
+  private removeFromWatchlist(coin: Coin): void {
+    // Find the portfolio item to get its ID for deletion
+    const watchlistItems = this.watchlistQuery.data() || [];
+    const portfolioItem = watchlistItems.find((item) => item.coin.id === coin.id);
 
-  onTabChange(event: any) {
-    this.activeTabIndex = event.index;
-  }
+    if (!portfolioItem) {
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Coin not found in watchlist'
+      });
+      return;
+    }
 
-  getChangeColorClass(change: number | undefined): string {
-    if (change === undefined) return '';
-    return change >= 0 ? 'text-green-500' : 'text-red-500';
-  }
+    this.processingCoinId.set(coin.id);
 
-  getChangeIcon(change: number | undefined): string {
-    if (change === undefined) return '';
-    return change >= 0 ? 'pi pi-arrow-up' : 'pi pi-arrow-down';
+    this.removeFromWatchlistMutation.mutate(portfolioItem.id, {
+      onSuccess: () => {
+        this.processingCoinId.set(null);
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Removed from Watchlist',
+          detail: `${coin.name} has been removed from your watchlist`
+        });
+      },
+      onError: (error) => {
+        this.processingCoinId.set(null);
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: error.message || 'Failed to remove coin from watchlist'
+        });
+      }
+    });
   }
 }

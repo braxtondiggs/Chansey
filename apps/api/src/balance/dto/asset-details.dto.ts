@@ -5,6 +5,12 @@ import { ApiProperty } from '@nestjs/swagger';
  */
 export class AssetDetailsDto {
   @ApiProperty({
+    description: 'Unique identifier of the asset',
+    example: '123e4567-e89b-12d3-a456-426614174000'
+  })
+  id?: string;
+
+  @ApiProperty({
     description: 'Symbol of the asset',
     example: 'BTC'
   })
@@ -40,4 +46,10 @@ export class AssetDetailsDto {
     required: false
   })
   image?: string;
+
+  @ApiProperty({
+    description: 'Percentage change in price over the last 24 hours',
+    example: 2.5
+  })
+  priceChangePercentage24h: number;
 }

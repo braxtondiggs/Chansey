@@ -39,6 +39,28 @@ export class CoinService {
   }
 
   async getCoinBySymbol(symbol: string, relations?: CoinRelations[]): Promise<Coin> {
+    // Handle USD as a special case
+    if (symbol.toLowerCase() === 'usd') {
+      // Create a virtual USD coin
+      const usdCoin = new Coin({
+        id: 'USD-virtual',
+        slug: 'usd',
+        name: 'US Dollar',
+        symbol: 'USD',
+        image: 'https://flagcdn.com/w80/us.png', // American flag as requested
+        description:
+          'The United States dollar is the official currency of the United States and several other countries.',
+        totalSupply: null,
+        circulatingSupply: null,
+        maxSupply: null,
+        marketCap: null,
+        priceChangePercentage24h: null
+        // Add other properties as needed
+      });
+      return usdCoin;
+    }
+
+    // Handle other coins normally
     const coin = await this.coin.findOne({
       where: { symbol: symbol.toLowerCase() },
       relations
@@ -46,6 +68,73 @@ export class CoinService {
     if (!coin) throw new NotFoundCustomException('Coin', { symbol });
     Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
+  }
+
+  /**
+   * Get multiple coins by their symbols
+   * @param symbols Array of coin symbols to retrieve
+   * @param relations Optional coin relations to include
+   * @returns Array of coin entities that were found matching the provided symbols.
+   * If some symbols don't exist, they're silently ignored (with a warning log).
+   */
+  async getMultipleCoinsBySymbol(symbols: string[], relations?: CoinRelations[]): Promise<Coin[]> {
+    // Convert all symbols to lowercase for case-insensitive comparison
+    const lowercaseSymbols = symbols.map((symbol) => symbol.toLowerCase());
+
+    // Check if USD is requested
+    const usdIndex = lowercaseSymbols.indexOf('usd');
+    const needsUsd = usdIndex !== -1;
+
+    // Remove USD from the search if it's included as it's a special case
+    const symbolsToSearch = needsUsd ? lowercaseSymbols.filter((symbol) => symbol !== 'usd') : lowercaseSymbols;
+
+    // Only query the database if we have actual coin symbols to search for
+    const coins =
+      symbolsToSearch.length > 0
+        ? await this.coin.find({
+            where: {
+              symbol: In(symbolsToSearch)
+            },
+            relations,
+            order: { name: 'ASC' }
+          })
+        : [];
+
+    // Create a virtual USD coin when requested
+    if (needsUsd) {
+      const usdCoin = new Coin({
+        id: 'USD-virtual',
+        slug: 'usd',
+        name: 'US Dollar',
+        symbol: 'USD',
+        image: 'https://flagcdn.com/w80/us.png', // American flag as requested
+        description:
+          'The United States dollar is the official currency of the United States and several other countries.',
+        totalSupply: null,
+        circulatingSupply: null,
+        maxSupply: null,
+        marketCap: null
+        // Add other properties as needed
+      });
+      coins.push(usdCoin);
+    }
+
+    // No need to throw error for missing symbols, just return what we found
+    // For logging purposes, we can still detect missing symbols
+    const foundSymbols = coins.map((coin) => coin.symbol.toLowerCase());
+    const missingSymbols = lowercaseSymbols.filter(
+      (symbol) => !foundSymbols.includes(symbol) && symbol !== 'usd' // Don't log USD as missing since we handle it specially
+    );
+
+    if (missingSymbols.length > 0) {
+      console.log(`Warning: Some requested coin symbols were not found: ${missingSymbols.join(', ')}`);
+    }
+
+    // Clean null values from all coins
+    return coins.map((coin) => {
+      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+      return coin;
+    });
   }
 
   async create(Coin: CreateCoinDto): Promise<Coin> {
@@ -70,6 +159,10 @@ export class CoinService {
     const data = await this.getCoinById(coinId);
     if (!data) new NotFoundCustomException('Coin', { id: coinId });
     return await this.coin.save(new Coin({ ...data, ...coin }));
+  }
+
+  async updateCurrentPrice(coinId: string, price: number): Promise<void> {
+    await this.coin.update(coinId, { currentPrice: price });
   }
 
   async clearRank() {
@@ -111,6 +204,13 @@ export class CoinService {
         message: error
       });
     }
+  }
+
+  async getCoinsWithCurrentPrices() {
+    return this.coin.find({
+      select: ['id', 'slug', 'name', 'symbol', 'image', 'currentPrice'],
+      order: { name: 'ASC' }
+    });
   }
 
   async getCoinBySlug(slug: string) {

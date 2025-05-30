@@ -1,0 +1,241 @@
+<p-toast></p-toast>
+<p-card>
+  <!-- Loading skeleton -->
+  <div *ngIf="isLoading" class="mb-4">
+    <!-- Skeleton for search input -->
+    <div class="flex justify-end mb-4">
+      <div class="w-full max-w-xs">
+        <p-skeleton width="100%" height="2.75rem" styleClass="rounded-md"></p-skeleton>
+      </div>
+    </div>
+
+    <!-- Skeleton for table header -->
+    <div class="flex w-full p-3 border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+      <div class="w-10 mr-4" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+      <div class="flex-1 mr-6 min-w-48">
+        <p-skeleton width="80%" height="1.25rem"></p-skeleton>
+      </div>
+      <div class="mr-6 w-28">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+      <div class="w-32 mr-6">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+      <div class="w-32 mr-6">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+      <div class="mr-6 w-44">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+      <div class="w-24">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+    </div>
+
+    <!-- Skeleton for table rows -->
+    <div
+      *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
+      class="flex p-3 border-b border-gray-200 dark:border-gray-700"
+    >
+      <!-- Action button skeleton -->
+      <p-skeleton
+        *ngIf="config.showWatchlistToggle || config.showRemoveAction"
+        width="40px"
+        height="2.5rem"
+        styleClass="mr-4 rounded-full"
+      >
+      </p-skeleton>
+
+      <!-- Coin name and image skeleton -->
+      <div class="flex items-center flex-1 mr-6 min-w-48">
+        <p-skeleton shape="circle" size="2.5rem" styleClass="mr-3"></p-skeleton>
+        <div class="flex flex-col">
+          <p-skeleton width="120px" height="1.25rem" styleClass="mb-1"></p-skeleton>
+          <p-skeleton width="60px" height="1rem"></p-skeleton>
+        </div>
+      </div>
+
+      <!-- Price skeleton -->
+      <div class="mr-6 w-28">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+
+      <!-- Market cap skeleton -->
+      <div class="w-32 mr-6">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+
+      <!-- Volume skeleton -->
+      <div class="w-32 mr-6">
+        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+      </div>
+
+      <!-- Circulating supply skeleton -->
+      <div class="mr-6 w-44">
+        <p-skeleton width="100%" height="1rem" styleClass="mb-1"></p-skeleton>
+        <p-skeleton width="80%" height="0.5rem"></p-skeleton>
+      </div>
+
+      <!-- 24h change skeleton -->
+      <div class="w-24">
+        <p-skeleton width="100%" height="2rem" styleClass="rounded-full"></p-skeleton>
+      </div>
+    </div>
+
+    <!-- Skeleton for pagination -->
+    <div class="flex items-center justify-between p-3 mt-4">
+      <p-skeleton width="200px" height="1.25rem"></p-skeleton>
+      <div class="flex gap-2">
+        <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
+        <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
+        <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
+        <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actual table content -->
+  <p-table
+    *ngIf="!isLoading"
+    #dt
+    [paginator]="true"
+    [rowHover]="true"
+    [rows]="25"
+    [showCurrentPageReport]="true"
+    [value]="coins"
+    [globalFilterFields]="['name']"
+    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+    dataKey="id"
+    size="large"
+    stripedRows
+    [responsiveLayout]="'stack'"
+    styleClass="p-datatable-sm p-datatable-responsive max-w-full sm:w-auto"
+    breakpoint="768px"
+  >
+    <ng-template #caption>
+      <div class="flex flex-col items-end">
+        <p-iconfield>
+          <p-inputicon styleClass="pi pi-search" />
+          <input
+            pInputText
+            #searchInput
+            type="text"
+            (input)="applyGlobalFilter($event)"
+            [placeholder]="config.searchPlaceholder"
+            class="w-full md:w-auto"
+          />
+        </p-iconfield>
+      </div>
+    </ng-template>
+
+    <ng-template pTemplate="header">
+      <tr>
+        <th *ngIf="config.showWatchlistToggle || config.showRemoveAction"></th>
+        <th pSortableColumn="name" class="min-w-48">Coin <p-sortIcon field="name" /></th>
+        <th pSortableColumn="currentPrice" class="text-right min-w-28">Price <p-sortIcon field="latestPrice" /></th>
+        <th pSortableColumn="marketCap" class="text-right min-w-32">Market Cap <p-sortIcon field="marketCap" /></th>
+        <th pSortableColumn="totalVolume" class="text-right min-w-32">24h Vol <p-sortIcon field="totalVolume" /></th>
+        <th pSortableColumn="circulatingSupply" class="text-center min-w-44">
+          Circulating Supply <p-sortIcon field="circulatingSupply" />
+        </th>
+        <th pSortableColumn="priceChangePercentage24h" class="text-center min-w-24">
+          24h % <p-sortIcon field="priceChangePercentage24h" />
+        </th>
+      </tr>
+    </ng-template>
+
+    <ng-template pTemplate="body" let-coin>
+      <tr>
+        <td class="!p-0 !pl-2" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
+          <!-- Watchlist toggle button -->
+          <p-button
+            *ngIf="config.showWatchlistToggle"
+            [loading]="isCoinProcessing(coin.id)"
+            [icon]="isInWatchlist(coin.id) ? 'pi pi-star-fill' : 'pi pi-star'"
+            [rounded]="true"
+            [text]="true"
+            size="large"
+            severity="warn"
+            (click)="onToggleWatchlist(coin)"
+            [disabled]="isCoinProcessing(coin.id)"
+            pTooltip="{{ isInWatchlist(coin.id) ? 'Remove from watchlist' : 'Add to watchlist' }}"
+            tooltipPosition="top"
+          />
+
+          <!-- Remove button -->
+          <p-button
+            *ngIf="config.showRemoveAction"
+            [loading]="isCoinProcessing(coin.id)"
+            icon="pi pi-trash"
+            [rounded]="true"
+            [text]="true"
+            size="large"
+            severity="danger"
+            (click)="onRemoveCoin(coin)"
+            [disabled]="isCoinProcessing(coin.id)"
+            pTooltip="Remove from watchlist"
+            tooltipPosition="top"
+          />
+        </td>
+        <td class="min-w-48" [class.!pl-0]="config.showWatchlistToggle || config.showRemoveAction">
+          <div class="flex items-center gap-3">
+            <p-avatar [image]="coin.image" shape="circle" size="large" class="shadow-sm" />
+            <div class="flex flex-col">
+              <span class="text-lg font-medium">{{ coin.name }}</span>
+              <span class="text-sm text-gray-500 dark:text-gray-400">{{ coin.symbol }}</span>
+            </div>
+          </div>
+        </td>
+        <td class="font-medium text-right min-w-28">
+          <span [appCounter]="+coin.currentPrice || 0"></span>
+        </td>
+        <td class="text-right min-w-32">{{ coin.marketCap | formatLargeNumber }}</td>
+        <td class="text-right min-w-32">{{ coin.totalVolume | formatLargeNumber }}</td>
+        <td class="text-center min-w-44">
+          <div *ngIf="coin.maxSupply; else noMaxSupply" class="space-y-1">
+            <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+              <span>{{ coin.circulatingSupply | number: '1.0-0' }}</span>
+              <span>{{ coin.maxSupply | number: '1.0-0' }}</span>
+            </div>
+            <p-progressBar
+              [value]="(coin.circulatingSupply / coin.maxSupply) * 100"
+              [showValue]="false"
+              styleClass="!h-2"
+            />
+          </div>
+          <ng-template #noMaxSupply>
+            <span>{{ coin.circulatingSupply | number: '1.0-0' }}</span>
+          </ng-template>
+        </td>
+        <td class="text-center min-w-24">
+          <p-tag [severity]="getTag(coin.priceChangePercentage24h)" [value]="coin.priceChangePercentage24h" />
+        </td>
+      </tr>
+    </ng-template>
+
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td [attr.colspan]="config.showWatchlistToggle || config.showRemoveAction ? 7 : 6" class="p-4 text-center">
+          <div class="text-gray-500">
+            <ng-container *ngIf="searchFilter(); else noCoins">
+              <i class="mr-2 pi pi-search"></i>
+              No coins found matching "{{ searchFilter() }}"
+              <div class="mt-2 text-sm">
+                Try adjusting your search terms or
+                <button type="button" class="underline text-primary-500 hover:text-primary-600" (click)="clearSearch()">
+                  clear the search
+                </button>
+              </div>
+            </ng-container>
+            <ng-template #noCoins>
+              <i class="mr-2 pi pi-info-circle"></i>
+              {{ config.emptyMessage }}
+            </ng-template>
+          </div>
+        </td>
+      </tr>
+    </ng-template>
+  </p-table>
+</p-card>

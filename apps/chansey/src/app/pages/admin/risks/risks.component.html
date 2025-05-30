@@ -22,7 +22,7 @@
     breakpoint="768px"
   >
     <ng-template #caption>
-      <div class="m-4 flex flex-col gap-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
         <div class="flex gap-4">
           <p-button label="New" [raised]="true" icon="pi pi-plus" severity="success" (click)="openNewRiskDialog()" />
           <p-button
@@ -38,6 +38,7 @@
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />
           <input
+            #searchInput
             pInputText
             type="text"
             (input)="applyGlobalFilter($event)"
@@ -65,23 +66,23 @@
           <p-tableCheckbox [value]="risk" />
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Name</span>
+          <span class="block p-column-title md:hidden">Name</span>
           {{ risk.name }}
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Description</span>
+          <span class="block p-column-title md:hidden">Description</span>
           {{ risk.description }}
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Level</span>
+          <span class="block p-column-title md:hidden">Level</span>
           <span [ngStyle]="{ 'font-weight': 'bold' }">{{ getRiskLevelLabel(risk.level) }}</span>
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Updated At</span>
+          <span class="block p-column-title md:hidden">Updated At</span>
           {{ risk.updatedAt | date: 'short' }}
         </td>
         <td>
-          <span class="p-column-title block md:hidden">Actions</span>
+          <span class="block p-column-title md:hidden">Actions</span>
           <div class="flex gap-2">
             <p-button
               icon="pi pi-pencil"
@@ -105,9 +106,27 @@
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="7" class="p-4 text-center">
-          <div *ngIf="risksError()" class="text-red-500">Error loading risks: {{ risksError() }}</div>
-          <div *ngIf="!risksError()">No risk levels found</div>
+        <td colspan="6" class="p-4 text-center">
+          <div *ngIf="risksQuery.error()" class="text-red-500">
+            <i class="mr-2 pi pi-exclamation-triangle"></i>
+            Error loading risks: {{ risksQuery.error()?.message || 'Unknown error' }}
+          </div>
+          <div *ngIf="!risksQuery.error() && !isLoading()" class="text-gray-500">
+            <ng-container *ngIf="searchFilter(); else noRisks">
+              <i class="mr-2 pi pi-search"></i>
+              No risks found matching "{{ searchFilter() }}"
+              <div class="mt-2 text-sm">
+                Try adjusting your search terms or
+                <button type="button" class="underline text-primary-500 hover:text-primary-600" (click)="clearSearch()">
+                  clear the search
+                </button>
+              </div>
+            </ng-container>
+            <ng-template #noRisks>
+              <i class="mr-2 pi pi-info-circle"></i>
+              No risks available
+            </ng-template>
+          </div>
         </td>
       </tr>
     </ng-template>
@@ -125,7 +144,7 @@
 >
   <form [formGroup]="riskForm" class="my-4">
     <p-fluid>
-      <p-floatlabel variant="on" class="mb-4 flex w-full flex-wrap">
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
         <input
           id="name"
           type="text"
@@ -138,7 +157,7 @@
         <small class="p-error" *ngIf="submitted() && riskForm.controls['name'].invalid">Name is required.</small>
       </p-floatlabel>
 
-      <p-floatlabel variant="on" class="mb-4 flex w-full flex-wrap">
+      <p-floatlabel variant="on" class="flex flex-wrap w-full mb-4">
         <textarea
           id="description"
           pTextarea
@@ -154,8 +173,8 @@
         >
       </p-floatlabel>
 
-      <div class="field mb-4">
-        <label for="level" class="mb-2 block font-medium">Risk Level (1-5)</label>
+      <div class="mb-4 field">
+        <label for="level" class="block mb-2 font-medium">Risk Level (1-5)</label>
         <p-inputNumber
           id="level"
           formControlName="level"

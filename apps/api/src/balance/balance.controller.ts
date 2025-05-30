@@ -1,4 +1,5 @@
-import { Controller, Get, UseGuards, Query, HttpStatus } from '@nestjs/common';
+import { CacheTTL } from '@nestjs/cache-manager';
+import { Controller, Get, UseGuards, Query, HttpStatus, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { BalanceService } from './balance.service';
@@ -7,6 +8,8 @@ import { BalanceResponseDto, AccountValueHistoryDto, AssetDetailsDto } from './d
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { User } from '../users/users.entity';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Balance')
 @ApiBearerAuth('token')
@@ -21,6 +24,17 @@ export class BalanceController {
     summary: 'Get user balances from all connected exchanges',
     description: 'Returns balance information from all exchanges the user has connected'
   })
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => {
+    const request = ctx.switchToHttp().getRequest();
+    const user = request.user;
+    // Include query parameters in cache key to properly handle different parameter combinations
+    const includeHistorical = request.query.includeHistorical === 'true';
+    const period = request.query.period || [];
+    const periods = Array.isArray(period) ? period.join('-') : period;
+    return `user-balance:${user.id}:${includeHistorical}:${periods}`;
+  })
+  @CacheTTL(60)
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Successfully retrieved balances',
@@ -44,11 +58,20 @@ export class BalanceController {
     @Query('includeHistorical') includeHistorical?: boolean,
     @Query('period') period?: string | string[]
   ): Promise<BalanceResponseDto> {
+    console.log(`getBalances called for user: ${user.id}, includeHistorical: ${includeHistorical}, period: ${period}`);
     const periods = period ? (Array.isArray(period) ? period : [period]) : [];
     return this.balanceService.getUserBalances(user, includeHistorical, periods);
   }
 
   @Get('history')
+  @UseCacheKey((ctx) => {
+    const request = ctx.switchToHttp().getRequest();
+    const user = request.user;
+    const days = request.query.days || 30;
+    return `account-value-history:${user.id}:${days}`;
+  })
+  @CacheTTL(900) // 15 minutes in seconds
+  @UseInterceptors(CustomCacheInterceptor)
   @ApiOperation({
     summary: 'Get account value history',
     description: 'Returns the total account value over time across all exchanges with hourly data points'
@@ -69,6 +92,13 @@ export class BalanceController {
   }
 
   @Get('assets')
+  @UseCacheKey((ctx) => {
+    const request = ctx.switchToHttp().getRequest();
+    const user = request.user;
+    return `user-assets:${user.id}`;
+  })
+  @CacheTTL(900) // 15 minutes in seconds
+  @UseInterceptors(CustomCacheInterceptor)
   @ApiOperation({
     summary: 'Get detailed assets with current prices and values',
     description: 'Returns a list of assets the user has with their current prices and values'

@@ -6,6 +6,14 @@ import { AppMenuitem } from './app.menuitem';
 
 import { AuthService } from '../services/auth.service';
 
+interface MenuItem {
+  label?: string;
+  icon?: string;
+  routerLink?: string[];
+  items?: MenuItem[];
+  separator?: boolean;
+}
+
 @Component({
   selector: 'app-menu',
   standalone: true,
@@ -22,7 +30,7 @@ export class AppMenu implements OnInit {
   private readonly authService = inject(AuthService);
   user = this.authService.useUser();
   isAdmin = computed(() => this.user.data()?.roles?.includes('admin'));
-  model = signal<any[]>([]);
+  model = signal<MenuItem[]>([]);
 
   constructor() {
     effect(() => {
@@ -54,6 +62,11 @@ export class AppMenu implements OnInit {
             label: 'Prices',
             icon: 'pi pi-fw pi-money-bill',
             routerLink: ['/app/prices']
+          },
+          {
+            label: 'Watchlist',
+            icon: 'pi pi-fw pi-star',
+            routerLink: ['/app/watchlist']
           }
         ]
       },

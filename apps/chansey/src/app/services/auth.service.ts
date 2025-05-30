@@ -1,6 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { QueryClient } from '@tanstack/angular-query-experimental';
+
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
 
 import { useAuthMutation, useAuthQuery, createQueryKeys } from '@chansey-web/app/core/query/query.utils';
@@ -20,6 +22,7 @@ authKeys.token = [...authKeys.all, 'token'];
 })
 export class AuthService {
   private readonly router = inject(Router);
+  private readonly queryClient = inject(QueryClient);
 
   useUser() {
     return useAuthQuery<IUser>(authKeys.user, '/api/user');
@@ -28,7 +31,13 @@ export class AuthService {
   useLogoutMutation() {
     return useAuthMutation<ILogoutResponse, void>('/api/auth/logout', 'POST', {
       onSuccess: () => {
+        // Clear the authentication token
         localStorage.removeItem('token');
+
+        // Clear all TanStack Query cache to ensure no stale data
+        this.queryClient.clear();
+
+        // Navigate to login page
         this.router.navigate(['/login']);
       },
       invalidateQueries: []

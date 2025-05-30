@@ -44,6 +44,7 @@
         <p-iconfield>
           <p-inputicon styleClass="pi pi-search" />
           <input
+            #searchInput
             pInputText
             type="text"
             (input)="applyGlobalFilter($event)"
@@ -116,9 +117,27 @@
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="8" class="p-4 text-center">
-          <div *ngIf="exchangesError()" class="text-red-500">Error loading exchanges: {{ exchangesError() }}</div>
-          <div *ngIf="!exchangesError()">No exchanges found</div>
+        <td colspan="6" class="p-4 text-center">
+          <div *ngIf="exchangesQuery.error()" class="text-red-500">
+            <i class="mr-2 pi pi-exclamation-triangle"></i>
+            Error loading exchanges: {{ exchangesQuery.error()?.message || 'Unknown error' }}
+          </div>
+          <div *ngIf="!exchangesQuery.error() && !isLoading()" class="text-gray-500">
+            <ng-container *ngIf="searchFilter(); else noExchanges">
+              <i class="mr-2 pi pi-search"></i>
+              No exchanges found matching "{{ searchFilter() }}"
+              <div class="mt-2 text-sm">
+                Try adjusting your search terms or
+                <button type="button" class="underline text-primary-500 hover:text-primary-600" (click)="clearSearch()">
+                  clear the search
+                </button>
+              </div>
+            </ng-container>
+            <ng-template #noExchanges>
+              <i class="mr-2 pi pi-info-circle"></i>
+              No exchanges available
+            </ng-template>
+          </div>
         </td>
       </tr>
     </ng-template>

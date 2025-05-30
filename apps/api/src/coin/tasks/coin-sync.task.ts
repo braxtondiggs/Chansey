@@ -14,6 +14,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinSyncTask.name);
   private jobScheduled = false;
+  private readonly API_RATE_LIMIT_DELAY = 1000; // 1 second delay between API calls
 
   constructor(
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
@@ -126,9 +127,81 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
+   * Helper method to get all coin slugs that are used in ticker pairs on supported exchanges
+   * @param supportedExchanges List of supported exchanges to check
+   * @returns Set of coin slugs that are used in ticker pairs
+   */
+  private async getUsedCoinSlugs(supportedExchanges: { slug: string; name: string }[]): Promise<Set<string>> {
+    this.logger.log('Checking CoinGecko for coins used in ticker pairs');
+    const usedCoinSlugs = new Set<string>();
+
+    // Get supported exchanges from our database
+    for (const exchange of supportedExchanges) {
+      try {
+        this.logger.log(`Checking exchange: ${exchange.name} (${exchange.slug}) for ticker pairs`);
+
+        let page = 1;
+        let totalProcessedTickers = 0;
+
+        // Paginate through all tickers for this exchange
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          let tickers = [];
+
+          try {
+            // Get tickers from CoinGecko for this exchange
+            const response = await this.gecko.exchangeIdTickers({
+              id: exchange.slug,
+              page
+            });
+
+            tickers = response.tickers || [];
+
+            if (tickers.length === 0) {
+              this.logger.log(
+                `Completed loading ticker data for ${exchange.name}, total processed: ${totalProcessedTickers}`
+              );
+              break;
+            }
+
+            totalProcessedTickers += tickers.length;
+
+            // Collect coin IDs used in ticker pairs
+            for (const ticker of tickers) {
+              const baseId = ticker.coin_id?.toLowerCase();
+              const quoteId = ticker.target_coin_id?.toLowerCase();
+
+              if (baseId) usedCoinSlugs.add(baseId);
+              if (quoteId) usedCoinSlugs.add(quoteId);
+            }
+
+            // Apply standard rate limiting to avoid CoinGecko API issues
+            await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
+            page++;
+          } catch (tickerError) {
+            this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${tickerError.message}`);
+            // If we're on the first page and encounter an error, break out completely
+            if (page === 1) break;
+
+            // Otherwise try to move to the next page and continue
+            page++;
+            continue;
+          }
+        }
+      } catch (error) {
+        this.logger.error(`Error getting tickers for exchange ${exchange.name}: ${error.message}`);
+        continue; // Continue with next exchange
+      }
+    }
+
+    return usedCoinSlugs;
+  }
+
+  /**
    * Handler for coin synchronization job
    * Gets coins from CoinGecko and syncs them to DB
-   * All available coins are synced from CoinGecko without filtering
+   * Only coins that are used in ticker pairs (supported on exchanges) are added
+   * Removes coins that are either no longer in CoinGecko or not used in any ticker pairs
    */
   async handleSyncCoins(job: Job) {
     try {
@@ -150,8 +223,12 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       await job.updateProgress(20); // Preprocessing complete
 
       // Find new coins to add (in CoinGecko but not in our DB)
+      // Only add coins that are actually used in ticker pairs
+      const usedCoinSlugs = await this.getUsedCoinSlugs(supportedExchanges);
+      this.logger.log(`Found ${usedCoinSlugs.size} coins used in any ticker pairs`);
+
       const newCoins = geckoCoins
-        .filter((coin) => !existingCoinsMap.has(coin.id))
+        .filter((coin) => !existingCoinsMap.has(coin.id) && usedCoinSlugs.has(coin.id))
         .map(({ id: slug, symbol, name }) => ({
           slug,
           symbol: symbol.toLowerCase(),
@@ -186,40 +263,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       // First, check existing coins that are still in CoinGecko
       const existingCoinsInGecko = existingCoins.filter((coin) => geckoCoinsSet.has(coin.slug));
 
-      // Use CoinGecko to check which coins are used in ticker pairs
-      this.logger.log('Checking CoinGecko for coins used in ticker pairs');
-      const usedCoinSlugs = new Set<string>();
-
-      // Get supported exchanges from our database
-      for (const exchange of supportedExchanges) {
-        try {
-          this.logger.log(`Checking exchange: ${exchange.name} (${exchange.slug}) for ticker pairs`);
-
-          // Get tickers from CoinGecko for this exchange
-          const response = await this.gecko.exchangeIdTickers({
-            id: exchange.slug,
-            page: 1
-          });
-
-          const tickers = response.tickers || [];
-          if (tickers.length === 0) {
-            this.logger.debug(`No tickers found for exchange ${exchange.name}`);
-            continue;
-          }
-
-          // Collect coin IDs used in ticker pairs
-          for (const ticker of tickers) {
-            const baseId = ticker.coin_id?.toLowerCase();
-            const quoteId = ticker.target_coin_id?.toLowerCase();
-
-            if (baseId) usedCoinSlugs.add(baseId);
-            if (quoteId) usedCoinSlugs.add(quoteId);
-          }
-        } catch (error) {
-          this.logger.error(`Error getting tickers for exchange ${exchange.name}: ${error.message}`);
-          continue; // Continue with next exchange
-        }
-      }
+      // We've already fetched the used coin slugs earlier
 
       // Find existing coins that are not used in any ticker pairs
       const unsupportedCoins = existingCoinsInGecko.filter((coin) => !usedCoinSlugs.has(coin.slug));
@@ -358,6 +402,16 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                 atlDate: coin.market_data.atl_date.usd,
                 athChange: coin.market_data.ath_change_percentage.usd,
                 atlChange: coin.market_data.atl_change_percentage.usd,
+                priceChange24h: coin.market_data.price_change_24h,
+                priceChangePercentage24h: coin.market_data.price_change_percentage_24h,
+                priceChangePercentage7d: coin.market_data.price_change_percentage_7d,
+                priceChangePercentage14d: coin.market_data.price_change_percentage_14d,
+                priceChangePercentage30d: coin.market_data.price_change_percentage_30d,
+                priceChangePercentage60d: coin.market_data.price_change_percentage_60d,
+                priceChangePercentage200d: coin.market_data.price_change_percentage_200d,
+                priceChangePercentage1y: coin.market_data.price_change_percentage_1y,
+                marketCapChange24h: coin.market_data.market_cap_change_24h,
+                marketCapChangePercentage24h: coin.market_data.market_cap_change_percentage_24h,
                 geckoLastUpdatedAt: coin.market_data.last_updated
               });
               this.logger.debug(`Successfully updated ${symbol}`);
@@ -378,7 +432,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
         // Add a small delay between batches to avoid rate limiting
         if (i + batchSize < allCoins.length) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, this.API_RATE_LIMIT_DELAY));
         }
       }
 

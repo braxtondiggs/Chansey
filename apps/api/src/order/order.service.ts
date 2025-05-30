@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as ccxt from 'ccxt';
 import { Repository } from 'typeorm';
 
+import { Exchange } from '@chansey/api-interfaces';
+
 import { Coin } from './../coin/coin.entity';
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
@@ -12,7 +14,9 @@ import { TestnetDto } from './testnet/dto/testnet.dto';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceUSService } from '../exchange/binance/binance-us.service';
+import { CoinbaseService } from '../exchange/coinbase/coinbase.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
+import { ExchangeService } from '../exchange/exchange.service';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
@@ -53,12 +57,13 @@ interface SymbolValidationFilters {
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
   constructor(
-    @InjectRepository(Order)
-    private readonly order: Repository<Order>,
+    @InjectRepository(Order) private readonly order: Repository<Order>,
     private readonly binance: BinanceUSService,
+    private readonly coinbase: CoinbaseService,
     private readonly coin: CoinService,
-    private readonly tickerPairs: TickerPairService,
     private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly exchangeService: ExchangeService,
+    private readonly tickerPairs: TickerPairService,
     private readonly usersService: UsersService
   ) {}
 
@@ -232,10 +237,10 @@ export class OrderService {
 
   async getOrders(user: User) {
     try {
-      // Query database for orders with coin relationship loaded
+      // Query database for orders with coin and exchange relationships loaded
       const orders = await this.order.find({
         where: { user: { id: user.id } },
-        relations: ['coin'],
+        relations: ['coin', 'exchange'],
         order: { transactTime: 'DESC' }
       });
 
@@ -252,6 +257,20 @@ export class OrderService {
         status: order.status,
         side: order.side,
         type: order.type,
+        // Add new fields
+        cost: order.cost,
+        fee: order.fee,
+        commission: order.commission,
+        feeCurrency: order.feeCurrency,
+        gainLoss: order.gainLoss,
+        averagePrice: order.averagePrice,
+        exchange: order.exchange
+          ? {
+              id: order.exchange.id,
+              name: order.exchange.name,
+              slug: order.exchange.slug
+            }
+          : null,
         coin: {
           id: order.coin.id,
           name: order.coin.name,
@@ -270,10 +289,10 @@ export class OrderService {
 
   async getOrder(user: User, orderId: string) {
     try {
-      // Query order from database with coin relationship
+      // Query order from database with coin and exchange relationships
       const order = await this.order.findOne({
         where: { id: orderId, user: { id: user.id } },
-        relations: ['coin']
+        relations: ['coin', 'exchange']
       });
 
       if (!order) throw new NotFoundCustomException('Order', { id: orderId });
@@ -291,6 +310,20 @@ export class OrderService {
         status: order.status,
         side: order.side,
         type: order.type,
+        // Add new fields
+        cost: order.cost,
+        fee: order.fee,
+        commission: order.commission,
+        feeCurrency: order.feeCurrency,
+        gainLoss: order.gainLoss,
+        averagePrice: order.averagePrice,
+        exchange: order.exchange
+          ? {
+              id: order.exchange.id,
+              name: order.exchange.name,
+              slug: order.exchange.slug
+            }
+          : null,
         coin: {
           id: order.coin.id,
           name: order.coin.name,
@@ -309,13 +342,13 @@ export class OrderService {
 
   async getOpenOrders(user: User) {
     try {
-      // Query database for open orders with coin relationship
+      // Query database for open orders with coin and exchange relationships
       const openOrders = await this.order.find({
         where: {
           user: { id: user.id },
           status: OrderStatus.NEW // Only fetch orders with "NEW" status
         },
-        relations: ['coin'],
+        relations: ['coin', 'exchange'],
         order: { transactTime: 'DESC' }
       });
 
@@ -332,6 +365,20 @@ export class OrderService {
         status: order.status,
         side: order.side,
         type: order.type,
+        // Add new fields
+        cost: order.cost,
+        fee: order.fee,
+        commission: order.commission,
+        feeCurrency: order.feeCurrency,
+        gainLoss: order.gainLoss,
+        averagePrice: order.averagePrice,
+        exchange: order.exchange
+          ? {
+              id: order.exchange.id,
+              name: order.exchange.name,
+              slug: order.exchange.slug
+            }
+          : null,
         coin: {
           id: order.coin.id,
           name: order.coin.name,
@@ -360,13 +407,7 @@ export class OrderService {
       const binance = await this.binance.getBinanceClient(user);
 
       // CCXT uses different method names for order creation
-      const action = await binance.createOrder(
-        symbol, // symbol
-        'market', // type (lowercase in CCXT)
-        side.toLowerCase(), // side (lowercase in CCXT)
-        parseFloat(quantity), // amount
-        undefined // price (not needed for market orders)
-      );
+      const action = await binance.createOrder(symbol, 'market', side.toLowerCase(), parseFloat(quantity), undefined);
 
       await this.order.insert({
         clientOrderId: action.clientOrderId || action.id,
@@ -618,29 +659,36 @@ export class OrderService {
 
       let totalNewOrders = 0;
 
-      // For Binance exchange
-      try {
-        const binanceClient = await this.binance.getBinanceClient(user);
-        if (!binanceClient) {
-          this.logger.debug(`No valid Binance client for user: ${user.id}`);
-          return 0;
+      // Define exchange configurations
+      const exchangeConfigs = [
+        {
+          name: 'Binance',
+          client: await this.binance.getBinanceClient(user),
+          service: this.binance
+        },
+        {
+          name: 'Coinbase',
+          client: await this.coinbase.getCoinbaseClient(user),
+          service: this.coinbase
         }
+      ];
 
-        // Get the most recent order from DB for this user
-        const mostRecentOrder = await this.order.findOne({
-          where: { user: { id: user.id } },
-          order: { transactTime: 'DESC' }
-        });
-
-        // Use the exchange API to fetch historical orders
-        const newOrders = await this.fetchHistoricalOrders(binanceClient, user, mostRecentOrder?.transactTime);
-
-        if (newOrders.length > 0) {
-          totalNewOrders += await this.saveExchangeOrders(newOrders, user);
-          this.logger.log(`Synced ${newOrders.length} orders for user: ${user.id}`);
+      // Process each exchange
+      for (const config of exchangeConfigs) {
+        try {
+          if (config.client) {
+            const syncCount = await this.syncOrdersForExchange(user, config.name, config.client);
+            totalNewOrders += syncCount;
+            
+            if (syncCount > 0) {
+              this.logger.log(`Synced ${syncCount} ${config.name} orders for user: ${user.id}`);
+            }
+          } else {
+            this.logger.debug(`No valid ${config.name} client for user: ${user.id}`);
+          }
+        } catch (error) {
+          this.logger.error(`Error syncing ${config.name} orders for user ${user.id}: ${error.message}`, error.stack);
         }
-      } catch (error) {
-        this.logger.error(`Error syncing Binance orders for user ${user.id}: ${error.message}`, error.stack);
       }
 
       return totalNewOrders;
@@ -648,6 +696,33 @@ export class OrderService {
       this.logger.error(`Failed to sync orders for user ${user.id}: ${error.message}`, error.stack);
       return 0;
     }
+  }
+
+  /**
+   * Synchronizes orders from a specific exchange for a user
+   * @param user The user to sync orders for
+   * @param exchangeName The name of the exchange
+   * @param client The exchange client
+   * @returns The number of new orders synced
+   */
+  private async syncOrdersForExchange(user: User, exchangeName: string, client: ccxt.Exchange): Promise<number> {
+    // Get the most recent order from DB for this user and exchange
+    const mostRecentOrder = await this.order.findOne({
+      where: { 
+        user: { id: user.id },
+        exchange: { name: exchangeName }
+      },
+      order: { transactTime: 'DESC' }
+    });
+
+    // Use the exchange API to fetch historical orders
+    const newOrders = await this.fetchHistoricalOrders(client, mostRecentOrder?.transactTime);
+
+    if (newOrders.length > 0) {
+      return await this.saveExchangeOrders(newOrders, user, exchangeName);
+    }
+
+    return 0;
   }
 
   /**
@@ -724,7 +799,7 @@ export class OrderService {
    * @param lastSyncTime The timestamp of the most recent order in DB
    * @returns Array of new orders from exchange
    */
-  private async fetchHistoricalOrders(client: ccxt.Exchange, user: User, lastSyncTime?: Date): Promise<ccxt.Order[]> {
+  private async fetchHistoricalOrders(client: ccxt.Exchange, lastSyncTime?: Date): Promise<ccxt.Order[]> {
     try {
       // If we have a last sync time, use it as the starting point
       const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
@@ -777,13 +852,14 @@ export class OrderService {
    * Save exchange orders to the database
    * @param exchangeOrders Array of orders from exchange
    * @param user The user who owns the orders
+   * @param exchangeName The name of the exchange (for better identification)
    * @returns Number of new orders saved
    */
-  private async saveExchangeOrders(exchangeOrders: ccxt.Order[], user: User): Promise<number> {
+  private async saveExchangeOrders(exchangeOrders: ccxt.Order[], user: User, exchangeName?: string): Promise<number> {
     try {
       let savedCount = 0;
 
-      for (const exchangeOrder of exchangeOrders) {
+      for (let exchangeOrder of exchangeOrders) {
         try {
           // Skip orders we already have
           const existingOrder = await this.order.findOne({
@@ -794,12 +870,57 @@ export class OrderService {
           });
 
           if (existingOrder) {
-            // Update the status if it has changed
-            if (existingOrder.status !== this.mapCcxtStatusToOrderStatus(exchangeOrder.status)) {
-              await this.order.update(existingOrder.id, {
-                status: this.mapCcxtStatusToOrderStatus(exchangeOrder.status),
-                executedQuantity: exchangeOrder.filled || exchangeOrder.amount || 0
-              });
+            // Update the status and other fields if they have changed
+            const newStatus = this.mapCcxtStatusToOrderStatus(exchangeOrder.status);
+            const newExecutedQuantity = exchangeOrder.filled || exchangeOrder.amount || 0;
+            const feeData = this.extractFeeData(exchangeOrder);
+            const newPrice = this.calculateOrderPrice(exchangeOrder);
+            const newCost = this.calculateOrderCost(exchangeOrder);
+            const newAveragePrice = exchangeOrder.average || null;
+
+            const updateData: Partial<Order> = {};
+            let hasChanges = false;
+
+            if (existingOrder.status !== newStatus) {
+              updateData.status = newStatus;
+              hasChanges = true;
+            }
+
+            if (existingOrder.executedQuantity !== newExecutedQuantity) {
+              updateData.executedQuantity = newExecutedQuantity;
+              hasChanges = true;
+            }
+
+            if (Math.abs(existingOrder.price - newPrice) > 0.00000001) {
+              updateData.price = newPrice;
+              hasChanges = true;
+            }
+
+            if (feeData.fee > 0 && existingOrder.fee !== feeData.fee) {
+              updateData.fee = feeData.fee;
+              updateData.commission = feeData.commission;
+              if (feeData.feeCurrency) {
+                updateData.feeCurrency = feeData.feeCurrency;
+              }
+              hasChanges = true;
+            }
+
+            if (newCost > 0 && (!existingOrder.cost || Math.abs(existingOrder.cost - newCost) > 0.00000001)) {
+              updateData.cost = newCost;
+              hasChanges = true;
+            }
+
+            if (
+              newAveragePrice &&
+              (!existingOrder.averagePrice || Math.abs(existingOrder.averagePrice - newAveragePrice) > 0.00000001)
+            ) {
+              updateData.averagePrice = newAveragePrice;
+              hasChanges = true;
+            }
+
+            if (hasChanges) {
+              await this.order.update(existingOrder.id, updateData);
+              this.logger.debug(`Updated existing order ${exchangeOrder.id} with new data`);
             }
             continue;
           }
@@ -813,26 +934,74 @@ export class OrderService {
             continue;
           }
 
-          // Create new order
+          // Pre-process the order for special cases
+          exchangeOrder = this.processBinanceMarketOrder(exchangeOrder);
+
+          // Extract all the data using helper methods
+          const price = this.calculateOrderPrice(exchangeOrder);
+          const feeData = this.extractFeeData(exchangeOrder);
+          const cost = this.calculateOrderCost(exchangeOrder);
+          const gainLoss = this.calculateGainLoss(exchangeOrder, feeData);
+
+          // Try to identify the exchange based on the provided exchange name or order data
+          let exchange: Exchange | null = null;
+          try {
+            // First, try to use the provided exchange name
+            if (exchangeName) {
+              exchange = await this.exchangeService.getExchangeByName(exchangeName);
+            } else {
+              // Fallback: identify exchange based on the order source or exchange info
+              if (exchangeOrder.info && exchangeOrder.info.exchange) {
+                // If the order has exchange info, use it
+                const exchangeNameFromOrder = exchangeOrder.info.exchange.toLowerCase();
+                if (exchangeNameFromOrder.includes('binance')) {
+                  exchange = await this.exchangeService.getExchangeByName('Binance US');
+                } else if (exchangeNameFromOrder.includes('coinbase') || exchangeNameFromOrder.includes('gdax')) {
+                  exchange = await this.exchangeService.getExchangeByName('Coinbase');
+                }
+              }
+            }
+
+            // Log the exchange response for debugging
+            if (exchange) {
+              this.logger.debug(`Found exchange: ${exchange.name} (${exchange.id})`);
+            } else if (!exchangeName) {
+              this.logger.debug(`Could not identify exchange for order ${exchangeOrder.id}`);
+            }
+          } catch (error) {
+            this.logger.error(`Error identifying exchange for order ${exchangeOrder.id}: ${error.message}`);
+          }
+
+          // Create new order with all the extracted data
           const newOrder = this.order.create({
-            clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id,
+            clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id.toString(),
             coin,
             executedQuantity: exchangeOrder.filled || 0,
             orderId: exchangeOrder.id.toString(),
-            price:
-              exchangeOrder.price ||
-              (exchangeOrder.trades && exchangeOrder.trades.length > 0 ? exchangeOrder.trades[0].price : 0),
-            quantity: exchangeOrder.amount,
+            price: price || 0,
+            quantity: exchangeOrder.amount || 0,
             side: exchangeOrder.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
             status: this.mapCcxtStatusToOrderStatus(exchangeOrder.status),
             symbol: exchangeOrder.symbol,
             transactTime: new Date(exchangeOrder.timestamp),
             type: this.mapCcxtOrderTypeToOrderType(exchangeOrder.type),
-            user
+            user,
+            // Add the new fields
+            cost: cost > 0 ? cost : null,
+            fee: feeData.fee || 0,
+            commission: feeData.commission || 0,
+            feeCurrency: feeData.feeCurrency,
+            gainLoss: gainLoss,
+            averagePrice: exchangeOrder.average || null,
+            exchange: exchange
           });
 
-          await this.order.save(newOrder);
+          // Save the order
+          const savedOrder = await this.order.save(newOrder);
           savedCount++;
+
+          // Verify the saved data
+          this.logger.debug(`Successfully saved order ${savedOrder.id} (exchange order ID: ${exchangeOrder.id})`);
         } catch (error) {
           this.logger.error(`Failed to save order ${exchangeOrder.id}: ${error.message}`, error.stack);
           // Continue with next order
@@ -955,5 +1124,263 @@ export class OrderService {
       this.logger.error(`Failed to get sync status for user ${user.id}: ${error.message}`, error.stack);
       throw new BadRequestException(`Failed to get sync status: ${error.message}`);
     }
+  }
+
+  /**
+   * Calculate a better price from CCXT order data
+   * @param exchangeOrder CCXT order object
+   * @returns Best available price
+   */
+  private calculateOrderPrice(exchangeOrder: ccxt.Order): number {
+    if (exchangeOrder.average && exchangeOrder.average > 0) {
+      return exchangeOrder.average;
+    }
+
+    if (exchangeOrder.price && exchangeOrder.price > 0) {
+      return exchangeOrder.price;
+    }
+
+    if (exchangeOrder.cost && exchangeOrder.amount && exchangeOrder.amount > 0) {
+      return exchangeOrder.cost / exchangeOrder.amount;
+    }
+
+    if (exchangeOrder.info && exchangeOrder.info.price && parseFloat(exchangeOrder.info.price) > 0) {
+      return parseFloat(exchangeOrder.info.price);
+    }
+
+    if (exchangeOrder.trades && exchangeOrder.trades.length > 0) {
+      // Calculate weighted average price from trades
+      let totalValue = 0;
+      let totalAmount = 0;
+
+      for (const trade of exchangeOrder.trades) {
+        if (trade.price && trade.amount) {
+          totalValue += trade.price * trade.amount;
+          totalAmount += trade.amount;
+        }
+      }
+
+      if (totalAmount > 0) {
+        return totalValue / totalAmount;
+      }
+
+      // Fallback to first trade price
+      return exchangeOrder.trades[0].price || 0;
+    }
+
+    // Special case for Binance market orders
+    if (exchangeOrder.type === 'market' && exchangeOrder.info) {
+      // For market orders, when no price is available, try to calculate from cumulative quote quantity
+      if (
+        exchangeOrder.info.cummulativeQuoteQty &&
+        exchangeOrder.info.executedQty &&
+        parseFloat(exchangeOrder.info.executedQty) > 0
+      ) {
+        const quoteQty = parseFloat(exchangeOrder.info.cummulativeQuoteQty);
+        const execQty = parseFloat(exchangeOrder.info.executedQty);
+        if (quoteQty > 0 && execQty > 0) {
+          this.logger.debug(`Calculated price for market order ${exchangeOrder.id}: ${quoteQty / execQty}`);
+          return quoteQty / execQty;
+        }
+      }
+    }
+
+    // Last resort - log and return 0
+    this.logger.debug(`Could not determine price for order ${exchangeOrder.id}, defaulting to 0`);
+    return 0;
+  }
+
+  /**
+   * Extract fee information from CCXT order
+   * @param exchangeOrder CCXT order object
+   * @returns Fee data object
+   */
+  private extractFeeData(exchangeOrder: ccxt.Order): { fee: number; commission: number; feeCurrency?: string } {
+    let fee = 0;
+    let commission = 0;
+    let feeCurrency: string | undefined;
+
+    // Extract fee from the fee object
+    if (exchangeOrder.fee) {
+      fee = exchangeOrder.fee.cost || 0;
+      feeCurrency = exchangeOrder.fee.currency;
+    }
+
+    // Check for fees in the raw exchange data (info object)
+    if (exchangeOrder.info) {
+      // Check for commission info in Binance format
+      if (exchangeOrder.info.fills && Array.isArray(exchangeOrder.info.fills)) {
+        let totalCommission = 0;
+        for (const fill of exchangeOrder.info.fills) {
+          if (fill.commission && !isNaN(parseFloat(fill.commission))) {
+            totalCommission += parseFloat(fill.commission);
+            if (!feeCurrency && fill.commissionAsset) {
+              feeCurrency = fill.commissionAsset;
+            }
+          }
+        }
+        if (totalCommission > 0) {
+          fee = Math.max(fee, totalCommission);
+        }
+      }
+
+      // If the order has direct commission data in the info object
+      if (exchangeOrder.info.commission && !isNaN(parseFloat(exchangeOrder.info.commission))) {
+        commission = parseFloat(exchangeOrder.info.commission);
+        if (!feeCurrency && exchangeOrder.info.commissionAsset) {
+          feeCurrency = exchangeOrder.info.commissionAsset;
+        }
+      }
+    }
+
+    // Extract fee/commission from trades if available
+    if (exchangeOrder.trades && exchangeOrder.trades.length > 0) {
+      let totalFees = 0;
+      for (const trade of exchangeOrder.trades) {
+        if (trade.fee && trade.fee.cost) {
+          totalFees += trade.fee.cost;
+          if (!feeCurrency && trade.fee.currency) {
+            feeCurrency = trade.fee.currency;
+          }
+        }
+      }
+      if (totalFees > 0) {
+        fee = Math.max(fee, totalFees);
+      }
+    }
+
+    // Use fee as commission if no specific commission field and commission is still 0
+    if (commission === 0) {
+      commission = fee;
+    }
+
+    return { fee, commission, feeCurrency };
+  }
+
+  /**
+   * Calculate cost from CCXT order data
+   * @param exchangeOrder CCXT order object
+   * @returns Total cost of the order
+   */
+  private calculateOrderCost(exchangeOrder: ccxt.Order): number {
+    // Priority for cost calculation:
+    // 1. Cost from order object
+    // 2. Calculate from filled amount and average price
+    // 3. Calculate from amount and price
+    // 4. Check cumulative quote quantity in info object (Binance specific)
+    // 5. Sum from trades
+
+    if (exchangeOrder.cost && exchangeOrder.cost > 0) {
+      return exchangeOrder.cost;
+    }
+
+    if (exchangeOrder.filled && exchangeOrder.average && exchangeOrder.filled > 0 && exchangeOrder.average > 0) {
+      return exchangeOrder.filled * exchangeOrder.average;
+    }
+
+    if (exchangeOrder.amount && exchangeOrder.price && exchangeOrder.amount > 0 && exchangeOrder.price > 0) {
+      return exchangeOrder.amount * exchangeOrder.price;
+    }
+
+    // Check for cumulative quote quantity in Binance format
+    if (exchangeOrder.info && exchangeOrder.info.cummulativeQuoteQty) {
+      const quoteQty = parseFloat(exchangeOrder.info.cummulativeQuoteQty);
+      if (!isNaN(quoteQty) && quoteQty > 0) {
+        return quoteQty;
+      }
+    }
+
+    if (exchangeOrder.trades && exchangeOrder.trades.length > 0) {
+      let totalCost = 0;
+      for (const trade of exchangeOrder.trades) {
+        if (trade.amount && trade.price) {
+          totalCost += trade.amount * trade.price;
+        }
+      }
+      return totalCost;
+    }
+
+    // Last resort - calculate from available data
+    const price = this.calculateOrderPrice(exchangeOrder);
+    const amount = exchangeOrder.filled || exchangeOrder.amount || 0;
+
+    if (price > 0 && amount > 0) {
+      return price * amount;
+    }
+
+    // Log and return 0 if we couldn't calculate cost
+    this.logger.debug(`Could not determine cost for order ${exchangeOrder.id}, defaulting to 0`);
+    return 0;
+  }
+
+  /**
+   * Calculate gain/loss for an order (basic implementation)
+   * @param exchangeOrder CCXT order object
+   * @param feeData Fee information
+   * @returns Calculated gain/loss or null
+   */
+  private calculateGainLoss(exchangeOrder: ccxt.Order, feeData: { fee: number; commission: number }): number | null {
+    // Basic gain/loss calculation for market orders
+    // This is a simplified version - actual P&L would require position tracking
+
+    // First check if we have cost data
+    const cost = this.calculateOrderCost(exchangeOrder);
+    const fees = feeData.fee + feeData.commission;
+
+    if (cost <= 0) {
+      // If we can't determine cost, just return negative fees
+      return fees > 0 ? -fees : null;
+    }
+
+    // For sell orders, consider the cost as profit minus fees
+    if (exchangeOrder.side === 'sell') {
+      return cost - fees;
+    }
+    // For buy orders, just report the fees as loss
+    else {
+      return -fees;
+    }
+  }
+
+  /**
+   * Handle special cases for Binance market orders based on the sample provided
+   * @param exchangeOrder CCXT order object
+   * @returns Processed order with correct price data
+   */
+  private processBinanceMarketOrder(exchangeOrder: ccxt.Order): ccxt.Order {
+    try {
+      // Handle the specific case from the example
+      if (
+        exchangeOrder.type === 'market' &&
+        exchangeOrder.symbol.includes('BTC') &&
+        exchangeOrder.info &&
+        exchangeOrder.info.cummulativeQuoteQty &&
+        exchangeOrder.info.executedQty
+      ) {
+        // Get the values from the order info
+        const quoteQty = parseFloat(exchangeOrder.info.cummulativeQuoteQty);
+        const execQty = parseFloat(exchangeOrder.info.executedQty);
+
+        if (quoteQty > 0 && execQty > 0) {
+          // Calculate the actual price
+          const calculatedPrice = quoteQty / execQty;
+
+          // Override the price fields if they're missing
+          if (!exchangeOrder.price || exchangeOrder.price <= 0) {
+            exchangeOrder.price = calculatedPrice;
+          }
+
+          if (!exchangeOrder.average || exchangeOrder.average <= 0) {
+            exchangeOrder.average = calculatedPrice;
+          }
+
+          this.logger.debug(`Processed Binance market order: calculated price = ${calculatedPrice}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error processing Binance market order: ${error.message}`);
+    }
+
+    return exchangeOrder;
   }
 }

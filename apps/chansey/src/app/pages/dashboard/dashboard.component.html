@@ -1,24 +1,30 @@
 <div class="dashboard-container">
   @let user = userQuery.data();
-  <div class="grid grid-cols-12 gap-x-6 gap-y-6">
+  <div class="grid grid-cols-12 gap-x-6 gap-y-4" *ngIf="(user?.exchanges ?? []).length > 0; else noExchanges">
     <div class="col-span-12">
       <app-exchange-balance />
     </div>
 
     <div class="col-span-12 md:col-span-6">
-      <app-user-assets />
+      <app-user-assets [limit]="10" />
     </div>
 
     <div class="col-span-12 md:col-span-6">
-      <app-recent-transactions [limit]="5" />
+      <app-recent-transactions [limit]="10" />
     </div>
   </div>
-  <div class="grid grid-cols-1" *ngIf="user?.exchanges?.length === 0">
-    <p-card styleClass="mb-4">
+  <ng-template #noExchanges>
+    <p-card styleClass="mb-4 min-h-96 flex flex-col items-center justify-center" *ngIf="!userQuery.isPending()">
       <div class="p-3 text-center">
-        <p class="text-600 mb-8">Connect your exchanges in the profile section to see your balances here.</p>
-        <p-button routerLink="/app/profile" severity="help" icon="pi pi-wallet" label="Connect a Wallet" size="large" />
+        <p class="mb-8 text-600">Connect your exchanges in the profile section to see your balances here.</p>
+        <p-button
+          icon="pi pi-wallet"
+          label="Connect a Wallet"
+          fragment="exchange-integrations"
+          routerLink="/app/profile"
+          size="large"
+        />
       </div>
     </p-card>
-  </div>
+  </ng-template>
 </div>

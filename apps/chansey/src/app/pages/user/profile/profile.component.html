@@ -213,7 +213,12 @@
 </p-card>
 
 <!-- Exchange Integrations Section -->
-<p-card header="Exchange Integrations" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="user()">
+<p-card
+  header="Exchange Integrations"
+  styleClass="mt-8 max-w-4xl mx-auto p-4"
+  *ngIf="user()"
+  id="exchange-integrations"
+>
   <p class="mb-4 text-600 md:mb-5">Connect your trading exchange accounts</p>
 
   <p-message class="p-4 mb-8" severity="warn">
@@ -574,7 +579,7 @@
 <!-- Binance US Help Dialog -->
 <p-dialog
   [visible]="showBinanceHelp()"
-  (onHide)="showBinanceHelp.set(false)"
+  (visibleChange)="showBinanceHelp.set($event)"
   [modal]="true"
   header="Binance US API Key Setup Guide"
   [style]="{ width: '90%', maxWidth: '600px' }"
@@ -637,7 +642,7 @@
 <!-- Coinbase Help Dialog -->
 <p-dialog
   [visible]="showCoinbaseHelp()"
-  (onHide)="showCoinbaseHelp.set(false)"
+  (visibleChange)="showCoinbaseHelp.set($event)"
   [modal]="true"
   header="Coinbase API Key Setup Guide"
   [style]="{ width: '90%', maxWidth: '600px' }"

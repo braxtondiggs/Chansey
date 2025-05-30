@@ -1,6 +1,7 @@
-import { CommonModule } from '@angular/common';
-import { Component, computed, signal, effect, inject, ViewChild, ElementRef } from '@angular/core';
+import { CommonModule, Location } from '@angular/common';
+import { AfterViewInit, Component, computed, signal, effect, inject, ViewChild, ElementRef } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
@@ -66,7 +67,7 @@ import { ProfileService } from './profile.service';
   providers: [MessageService, ConfirmationService],
   templateUrl: './profile.component.html'
 })
-export class ProfileComponent {
+export class ProfileComponent implements AfterViewInit {
   // Inject dependencies
   private fb = inject(FormBuilder);
   private authService = inject(AuthService);
@@ -75,6 +76,9 @@ export class ProfileComponent {
   private profileService = inject(ProfileService);
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private location = inject(Location);
 
   @ViewChild('fileUpload') fileUpload!: FileUpload;
 
@@ -198,6 +202,20 @@ export class ProfileComponent {
     const user = this.user();
     return user?.email || '';
   });
+
+  ngAfterViewInit(): void {
+    setTimeout(() => {
+      const fragment = this.route.snapshot.fragment;
+      if (fragment) {
+        const element = document.getElementById(fragment);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        this.location.replaceState(this.router.url.split('#')[0]);
+      }
+    }, 100);
+  }
 
   isExchangeActive(exchangeId: string): boolean {
     const user = this.user();
@@ -658,11 +676,11 @@ export class ProfileComponent {
   }
 
   toggleBinanceHelp(): void {
-    this.showBinanceHelp.update((value) => !value);
+    this.showBinanceHelp.set(!this.showBinanceHelp());
   }
 
   toggleCoinbaseHelp(): void {
-    this.showCoinbaseHelp.update((value) => !value);
+    this.showCoinbaseHelp.set(!this.showCoinbaseHelp());
   }
 
   openFileUpload(): void {

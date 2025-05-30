@@ -47,19 +47,31 @@ export class PortfolioService {
     return portfolio;
   }
 
-  async createPortfolioItem(Portfolio: CreatePortfolioDto, user: User): Promise<Portfolio> {
-    const portfolio = await this.portfolio.findOne({
-      // NOTE: For some stupid ass reason if the coin id is incorrect (Must be UUID) then typeorm will just omit the where statement for the coin. Resulting in just the users profile to return. Need ta fix for this would be very confusing down the road. Can lookup coin to see if valid first but this omits the whole purpose
+  async createPortfolioItem(portfolioDto: CreatePortfolioDto, user: User): Promise<Portfolio> {
+    // Check if portfolio item already exists for this user and coin
+    const existingPortfolio = await this.portfolio.findOne({
       where: {
         coin: {
-          id: Portfolio.coin.id
+          id: portfolioDto.coinId
         },
         user: {
           id: user.id
         }
       }
     });
-    return portfolio ?? ((await this.portfolio.insert({ ...Portfolio, user })).generatedMaps[0] as Portfolio);
+
+    if (existingPortfolio) {
+      return existingPortfolio;
+    }
+
+    // Create new portfolio item
+    const newPortfolio = this.portfolio.create({
+      coin: { id: portfolioDto.coinId },
+      user,
+      type: portfolioDto.type
+    });
+
+    return await this.portfolio.save(newPortfolio);
   }
 
   async updatePortfolioItem(portfolioId: string, userId: string, dto: UpdatePortfolioDto): Promise<Portfolio> {

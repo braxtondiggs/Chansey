@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
-import { CoinResponseDto } from './dto';
+import { CoinResponseDto, CoinWithPriceDto } from './dto';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
@@ -26,6 +26,21 @@ export class CoinController {
   })
   async getCoins(): Promise<Coin[]> {
     return this.coin.getCoins();
+  }
+
+  @Get('with-prices')
+  @ApiOperation({
+    summary: 'Get all coins with current prices',
+    description:
+      'Retrieve a lightweight list of all coins with their current prices. Optimized for frequent updates with 300+ coins.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of coins with current prices retrieved successfully.',
+    type: [CoinWithPriceDto]
+  })
+  async getCoinsWithCurrentPrices(): Promise<CoinWithPriceDto[]> {
+    return this.coin.getCoinsWithCurrentPrices();
   }
 
   @Get(':id')
@@ -70,6 +85,29 @@ export class CoinController {
   })
   getCoinBySymbol(@Param() { symbol }): Promise<Coin> {
     return this.coin.getCoinBySymbol(symbol, [CoinRelations.BASE_ASSETS]);
+  }
+
+  @Get('symbols/:symbols')
+  @ApiParam({
+    name: 'symbols',
+    required: true,
+    description: 'Comma-separated list of coin symbols',
+    type: String,
+    example: 'BTC,ETH,LTC'
+  })
+  @ApiOperation({ summary: 'Get multiple coins by symbols', description: 'Retrieve multiple coins by their symbols.' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Coins retrieved successfully.',
+    type: [CoinResponseDto]
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'One or more coins not found.'
+  })
+  getMultipleCoinsBySymbols(@Param('symbols') symbolsParam: string): Promise<Coin[]> {
+    const symbols = symbolsParam.split(',').filter(Boolean);
+    return this.coin.getMultipleCoinsBySymbol(symbols, [CoinRelations.BASE_ASSETS]);
   }
 
   @Get(':id/historical')
