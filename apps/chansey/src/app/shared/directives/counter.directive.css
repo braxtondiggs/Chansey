@@ -1,0 +1,35 @@
+/* Flash animations for counter directive value changes */
+@keyframes value-increase-animation {
+  0%,
+  100% {
+    color: inherit;
+  }
+  30% {
+    color: #22c55e; /* Green color for increase */
+  }
+}
+
+@keyframes value-decrease-animation {
+  0%,
+  100% {
+    color: inherit;
+  }
+  30% {
+    color: #ef4444; /* Red color for decrease */
+  }
+}
+
+.value-increase {
+  animation: value-increase-animation 1s ease-out;
+}
+
+.value-decrease {
+  animation: value-decrease-animation 1s ease-out;
+}
+
+/* Add some perspective for the rolling number effect */
+.rolling-number {
+  display: inline-block;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}

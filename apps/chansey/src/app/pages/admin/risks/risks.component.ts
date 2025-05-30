@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -47,6 +47,7 @@ import { RisksService } from './risks.service';
 })
 export class RisksComponent {
   @ViewChild('dt') dt: Table | undefined;
+  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
 
   // State signals
   risks = signal<Risk[]>([]);
@@ -55,6 +56,7 @@ export class RisksComponent {
   isNew = signal<boolean>(true);
   selectedRisks = signal<Risk[]>([]);
   currentRiskId = signal<string | null>(null);
+  searchFilter = signal<string>('');
 
   // Services via inject
   private risksService = inject(RisksService);
@@ -78,7 +80,6 @@ export class RisksComponent {
   // Computed state
   isLoading = computed(() => this.risksQuery.isPending() || this.risksQuery.isFetching());
   risksData = computed(() => this.risksQuery.data() || []);
-  risksError = computed(() => this.risksQuery.error);
   isDeletePending = computed(() => this.deleteRiskMutation.isPending());
   isCreatePending = computed(() => this.createRiskMutation.isPending());
   isUpdatePending = computed(() => this.updateRiskMutation.isPending());
@@ -90,6 +91,8 @@ export class RisksComponent {
       const data = this.risksData();
       if (data && Array.isArray(data)) {
         this.risks.set(data);
+      } else {
+        this.risks.set([]);
       }
     });
   }
@@ -215,10 +218,17 @@ export class RisksComponent {
   }
 
   applyGlobalFilter(event: Event): void {
-    const filterValue = (event.target as HTMLInputElement).value;
-    if (this.dt) {
-      this.dt.filterGlobal(filterValue, 'contains');
+    const filterValue = (event.target as HTMLInputElement).value?.trim() || '';
+    this.searchFilter.set(filterValue);
+    this.dt?.filterGlobal(filterValue, 'contains');
+  }
+
+  clearSearch(): void {
+    this.searchFilter.set('');
+    if (this.searchInput?.nativeElement) {
+      this.searchInput.nativeElement.value = '';
     }
+    this.dt?.filterGlobal('', 'contains');
   }
 
   deleteSelectedRisks(): void {

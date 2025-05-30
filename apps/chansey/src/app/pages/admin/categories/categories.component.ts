@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -41,6 +41,7 @@ import { Category, CategoriesService } from './categories.service';
 })
 export class CategoriesComponent {
   @ViewChild('dt') dt!: Table;
+  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
 
   // State signals
   categories = signal<Category[]>([]);
@@ -48,6 +49,7 @@ export class CategoriesComponent {
   submitted = signal<boolean>(false);
   isNew = signal<boolean>(true);
   selectedCategories = signal<Category[]>([]);
+  searchFilter = signal<string>('');
 
   // Dependencies
   private categoriesService = inject(CategoriesService);
@@ -69,7 +71,6 @@ export class CategoriesComponent {
   // Computed states
   isLoading = computed(() => this.categoriesQuery.isPending() || this.categoriesQuery.isFetching());
   categoriesData = computed(() => this.categoriesQuery.data() || []);
-  categoriesError = computed(() => this.categoriesQuery.error);
   isDeletePending = computed(() => this.deleteCategoryMutation.isPending());
   isCreatePending = computed(() => this.createCategoryMutation.isPending());
   isUpdatePending = computed(() => this.updateCategoryMutation.isPending());
@@ -203,7 +204,19 @@ export class CategoriesComponent {
 
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;
-    this.dt?.filterGlobal(filterValue, 'contains');
+    // Handle empty search better by using empty string instead of null/undefined
+    const safeFilterValue = filterValue?.trim() ?? '';
+    this.searchFilter.set(safeFilterValue);
+    this.dt?.filterGlobal(safeFilterValue, 'contains');
+  }
+
+  clearSearch(): void {
+    this.searchFilter.set('');
+    this.dt?.filterGlobal('', 'contains');
+    // Also clear the input field
+    if (this.searchInput?.nativeElement) {
+      this.searchInput.nativeElement.value = '';
+    }
   }
 
   deleteSelectedCategories(): void {

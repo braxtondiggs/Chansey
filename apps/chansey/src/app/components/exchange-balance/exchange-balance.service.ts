@@ -1,8 +1,8 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { QueryKey } from '@tanstack/angular-query-experimental';
+import { QueryKey, injectQuery } from '@tanstack/angular-query-experimental';
 
-import { createQueryKeys, useAuthQuery } from '@chansey-web/app/core/query/query.utils';
+import { createQueryKeys, useAuthQuery, authenticatedFetch } from '@chansey-web/app/core/query/query.utils';
 
 export interface ExchangeBalance {
   asset: string;
@@ -99,10 +99,14 @@ export class ExchangeBalanceService {
    * @returns Query result with account value history data
    */
   useBalanceHistory(days: Signal<number>) {
-    console.log('Fetching balance history for', days().toString(), 'days');
-    return useAuthQuery<AccountValueHistoryDto>(
-      balanceKeys.history(days().toString()),
-      () => `api/balance/history?days=${days().toString()}`
-    );
+    return injectQuery(() => {
+      const daysValue = days(); // Read the signal value
+      return {
+        queryKey: balanceKeys.history(daysValue.toString()),
+        queryFn: () => authenticatedFetch<AccountValueHistoryDto>(`api/balance/history?days=${daysValue}`),
+        refetchOnWindowFocus: true,
+        staleTime: 5 * 60 * 1000 // 5 minutes
+      };
+    });
   }
 }

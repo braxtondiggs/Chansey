@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -45,6 +45,7 @@ import { Exchange, ExchangesService } from './exchanges.service';
 })
 export class ExchangesComponent {
   @ViewChild('dt') dt: Table | undefined;
+  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
 
   // Services
   private readonly exchangesService = inject(ExchangesService);
@@ -58,6 +59,7 @@ export class ExchangesComponent {
   submitted = signal<boolean>(false);
   isNew = signal<boolean>(true);
   selectedExchanges = signal<Exchange[]>([]);
+  searchFilter = signal<string>('');
 
   // Form
   exchangeForm: FormGroup = this.fb.group({
@@ -74,7 +76,6 @@ export class ExchangesComponent {
   // Computed states
   isLoading = computed(() => this.exchangesQuery?.isPending() || this.exchangesQuery?.isFetching());
   exchangesData = computed(() => this.exchangesQuery?.data() || []);
-  exchangesError = computed(() => this.exchangesQuery?.error);
   isDeletePending = computed(() => this.deleteExchangeMutation?.isPending());
   isCreatePending = computed(() => this.createExchangeMutation?.isPending());
   isUpdatePending = computed(() => this.updateExchangeMutation?.isPending());
@@ -90,6 +91,8 @@ export class ExchangesComponent {
       const data = this.exchangesData();
       if (data && Array.isArray(data)) {
         this.exchanges.set(data);
+      } else {
+        this.exchanges.set([]);
       }
     });
   }
@@ -214,7 +217,19 @@ export class ExchangesComponent {
 
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;
-    this.dt?.filterGlobal(filterValue, 'contains');
+    // Handle empty search better by using empty string instead of null/undefined
+    const safeFilterValue = filterValue?.trim() ?? '';
+    this.searchFilter.set(safeFilterValue);
+    this.dt?.filterGlobal(safeFilterValue, 'contains');
+  }
+
+  clearSearch(): void {
+    this.searchFilter.set('');
+    this.dt?.filterGlobal('', 'contains');
+    // Also clear the input field
+    if (this.searchInput?.nativeElement) {
+      this.searchInput.nativeElement.value = '';
+    }
   }
 
   deleteSelectedExchanges(): void {

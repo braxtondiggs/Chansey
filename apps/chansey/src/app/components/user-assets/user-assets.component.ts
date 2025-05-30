@@ -1,8 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, computed, Input } from '@angular/core';
 
-import { shapes } from '@dicebear/collection';
-import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -11,7 +9,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { UserAsset, UserAssetsService } from './user-assets.service';
+import { UserAssetsService } from './user-assets.service';
 
 @Component({
   selector: 'app-user-assets',
@@ -30,30 +28,34 @@ import { UserAsset, UserAssetsService } from './user-assets.service';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class UserAssetsComponent {
+  @Input() limit = 10;
+
   // Service injection
-  private assetsService = inject(UserAssetsService);
+  private readonly assetsService = inject(UserAssetsService);
 
   // Assets data query
   assetsQuery = this.assetsService.useUserAssets();
 
-  // Data signals
-  assets = signal<UserAsset[]>([]);
+  // Computed states
+  assets = computed(() => this.assetsQuery.data() || []);
 
-  constructor() {
-    // Use effect to update assets when query data changes
-    effect(() => {
-      const data = this.assetsQuery.data();
-      if (data && Array.isArray(data)) {
-        this.assets.set(data);
-      }
-    });
+  // Calculate total value (price * quantity)
+  calculateTotalValue(price: number, quantity: number): number {
+    return price * quantity;
   }
 
-  getImage(slug: string): string {
-    return createAvatar(shapes, {
-      seed: slug,
-      size: 64,
-      radius: 64
-    }).toDataUri();
+  // Get appropriate color for percentage change
+  getChangeColor(change: number): string {
+    if (change === null || change === undefined) return 'text-gray-500';
+    return change >= 0 ? 'text-green-500' : 'text-red-500';
+  }
+
+  // Format percentage with plus/minus sign
+  formatPercentage(value: number | string | null): string {
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (numValue === null || numValue === undefined || isNaN(numValue)) return '--';
+
+    const sign = numValue >= 0 ? '+' : '';
+    return `${sign}${numValue.toFixed(2)}%`;
   }
 }

@@ -10,7 +10,9 @@ import { OrderService } from './order.service';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceUSService } from '../exchange/binance/binance-us.service';
+import { CoinbaseService } from '../exchange/coinbase/coinbase.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
+import { ExchangeService } from '../exchange/exchange.service';
 import { UsersService } from '../users/users.service';
 
 describe('OrderService', () => {
@@ -54,9 +56,11 @@ describe('OrderService', () => {
 
   // Mock services
   const mockBinanceUSService = {};
+  const mockCoinbaseService = {};
   const mockCoinService = {};
   const mockTickerPairService = {};
   const mockExchangeKeyService = {};
+  const mockExchangeService = {};
   const mockUsersService = {};
 
   beforeEach(async () => {
@@ -72,6 +76,10 @@ describe('OrderService', () => {
           useValue: mockBinanceUSService
         },
         {
+          provide: CoinbaseService,
+          useValue: mockCoinbaseService
+        },
+        {
           provide: CoinService,
           useValue: mockCoinService
         },
@@ -82,6 +90,10 @@ describe('OrderService', () => {
         {
           provide: ExchangeKeyService,
           useValue: mockExchangeKeyService
+        },
+        {
+          provide: ExchangeService,
+          useValue: mockExchangeService
         },
         {
           provide: UsersService,
@@ -142,7 +154,7 @@ describe('OrderService', () => {
           user: { id: mockUser.id },
           status: OrderStatus.NEW
         },
-        relations: ['coin'],
+        relations: ['coin', 'exchange'],
         order: { transactTime: 'DESC' }
       });
 

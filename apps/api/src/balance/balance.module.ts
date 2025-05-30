@@ -6,12 +6,15 @@ import { BalanceController } from './balance.controller';
 import { BalanceService } from './balance.service';
 import { HistoricalBalance } from './historical-balance.entity';
 
+import { CoinModule } from '../coin/coin.module';
+import { SharedCacheModule } from '../shared-cache.module';
 import { UsersModule } from '../users/users.module';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @Module({
   controllers: [BalanceController],
-  imports: [ExchangeModule, UsersModule, TypeOrmModule.forFeature([HistoricalBalance])],
-  providers: [BalanceService],
+  imports: [CoinModule, ExchangeModule, UsersModule, SharedCacheModule, TypeOrmModule.forFeature([HistoricalBalance])],
+  providers: [BalanceService, CustomCacheInterceptor],
   exports: [BalanceService]
 })
 export class BalanceModule {}

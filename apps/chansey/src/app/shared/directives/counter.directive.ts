@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Directive, ElementRef, Input, NgZone, OnChanges, SimpleChanges } from '@angular/core';
 
 @Directive({
@@ -8,8 +7,22 @@ import { Directive, ElementRef, Input, NgZone, OnChanges, SimpleChanges } from '
 export class CounterDirective implements OnChanges {
   @Input() appCounter: number | undefined = 0;
   @Input() duration = 1000; // animation duration in milliseconds
-  @Input() formatter: (value: number) => string = (value) =>
-    `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  @Input() formatter: (value: number) => string = (value) => {
+    // Round the value to avoid floating point precision issues during animation
+    const roundedValue = Math.round(value * 100) / 100;
+
+    // For values >= 1, show 2 decimal places
+    // For values < 1, show up to 6 decimal places but remove trailing zeros
+    if (roundedValue >= 1) {
+      return `$${roundedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } else if (roundedValue > 0) {
+      // For small values, show more precision but clean up trailing zeros
+      const formatted = roundedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+      return `$${formatted.replace(/\.?0+$/, '')}`;
+    } else {
+      return '$0.00';
+    }
+  };
 
   private previousValue: number = 0;
   private animationFrameId: number | null = null;
@@ -17,7 +30,10 @@ export class CounterDirective implements OnChanges {
   constructor(
     private el: ElementRef<HTMLElement>,
     private zone: NgZone
-  ) {}
+  ) {
+    // Add the rolling-number class for 3D perspective effect
+    this.el.nativeElement.classList.add('rolling-number');
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['appCounter'] && !changes['appCounter'].firstChange) {

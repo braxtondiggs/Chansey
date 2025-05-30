@@ -66,9 +66,6 @@ jobs:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
       - uses: nrwl/nx-set-shas@v4
-      # Debug project dependencies
-      - name: Show project graph
-        run: npx nx graph --file=project-graph.json
 
       # Run affected tests and linting first
       - name: Run affected lint and test

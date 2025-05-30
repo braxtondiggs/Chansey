@@ -5,6 +5,7 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
+import { CoinService } from '../../coin/coin.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { CreatePriceDto } from '../dto/create-price.dto';
 import { PriceService } from '../price.service';
@@ -20,7 +21,8 @@ export class PriceSyncTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('price-queue') private readonly priceQueue: Queue,
     private readonly portfolio: PortfolioService,
-    private readonly price: PriceService
+    private readonly price: PriceService,
+    private readonly coin: CoinService
   ) {
     super();
   }
@@ -138,7 +140,12 @@ export class PriceSyncTask extends WorkerHost implements OnModuleInit {
           const results = await Promise.all(
             updates.map(async (update) => {
               try {
+                // Create price record
                 await this.price.create(update);
+
+                // Update coin's current price
+                await this.coin.updateCurrentPrice(update.coinId, update.price);
+
                 return { success: true, coinId: update.coinId };
               } catch (error) {
                 this.logger.error(`Failed to update price for coin ${update.coinId}:`, error);

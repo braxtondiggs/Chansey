@@ -1,10 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { Transform } from 'class-transformer';
-import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsUUID, Min } from 'class-validator';
+import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
+import { Exchange } from '../exchange/exchange.entity';
 import { User } from '../users/users.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
 
@@ -113,6 +114,104 @@ export class Order {
   executedQuantity: number;
 
   @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true,
+    default: null
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Total cost of the order (price * quantity)',
+    example: 17500.25,
+    required: false
+  })
+  cost?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 18,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    default: 0,
+    nullable: false
+  })
+  @IsNumber()
+  @Min(0)
+  @ApiProperty({
+    description: 'Fee paid for the order',
+    example: 0.001
+  })
+  fee: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 18,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    default: 0,
+    nullable: false
+  })
+  @IsNumber()
+  @Min(0)
+  @ApiProperty({
+    description: 'Commission paid for the order',
+    example: 0.0015
+  })
+  commission: number;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    nullable: true
+  })
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Currency of the fee',
+    example: 'BNB',
+    required: false
+  })
+  feeCurrency?: string;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true,
+    default: null
+  })
+  @IsNumber()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Calculated gain or loss for this order',
+    example: 125.5,
+    required: false
+  })
+  gainLoss?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true,
+    default: null
+  })
+  @IsNumber()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Average execution price for partially filled orders',
+    example: 35125.75,
+    required: false
+  })
+  averagePrice?: number;
+
+  @Column({
     type: 'enum',
     enum: OrderStatus
   })
@@ -166,6 +265,14 @@ export class Order {
     type: () => Coin
   })
   coin: Coin;
+
+  @ManyToOne(() => Exchange, { nullable: true, onDelete: 'SET NULL' })
+  @ApiProperty({
+    description: 'Exchange where the order was placed',
+    type: () => Exchange,
+    required: false
+  })
+  exchange?: Exchange;
 
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({

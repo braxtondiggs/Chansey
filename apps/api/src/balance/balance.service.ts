@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { map } from 'rxjs/operators';
 import { Repository } from 'typeorm';
 
 import { UsersService } from './../users/users.service';
@@ -14,6 +15,7 @@ import {
 } from './dto';
 import { HistoricalBalance } from './historical-balance.entity';
 
+import { CoinService } from '../coin/coin.service';
 import { BinanceUSService } from '../exchange/binance/binance-us.service';
 import { CoinbaseService } from '../exchange/coinbase/coinbase.service';
 import { Exchange } from '../exchange/exchange.entity';
@@ -26,6 +28,7 @@ export class BalanceService {
   constructor(
     private readonly binanceService: BinanceUSService,
     private readonly coinbaseService: CoinbaseService,
+    private readonly coinService: CoinService,
     private readonly userService: UsersService,
     @InjectRepository(HistoricalBalance)
     private readonly historicalBalanceRepository: Repository<HistoricalBalance>
@@ -799,7 +802,12 @@ export class BalanceService {
       const currentBalances = await this.getCurrentBalances(user);
 
       // Create a map to aggregate assets across exchanges
-      const assetMap = new Map<string, AssetDetailsDto>();
+      const assetMap = new Map<string, Partial<AssetDetailsDto>>();
+      const symbols = currentBalances.map((exchange) => exchange.balances.map((balance) => balance.asset)).flat();
+
+      const coinDetails = await this.coinService.getMultipleCoinsBySymbol(symbols);
+      // Create a map of coin details by symbol for easy lookup
+      const coinDetailsMap = new Map(coinDetails.map((coin) => [coin.symbol.toUpperCase(), coin]));
 
       // Process all exchanges and their assets
       for (const exchange of currentBalances) {
@@ -809,9 +817,9 @@ export class BalanceService {
           if (quantity <= 0) continue;
 
           const symbol = balance.asset;
-          const name = balance.asset; // Placeholder for asset name
           const usdValue = balance.usdValue || 0;
           const price = quantity > 0 ? usdValue / quantity : 0;
+          const coin = coinDetailsMap.get(symbol.toUpperCase());
 
           // If asset already exists in map, update quantities
           if (assetMap.has(symbol)) {
@@ -823,12 +831,13 @@ export class BalanceService {
           } else {
             // Create new asset entry
             assetMap.set(symbol, {
-              symbol,
-              name,
+              image: coin?.image,
+              name: coin?.name,
               price,
+              priceChangePercentage24h: coin?.priceChangePercentage24h,
               quantity,
-              usdValue,
-              image: ''
+              symbol,
+              usdValue
             });
           }
         }
@@ -837,7 +846,7 @@ export class BalanceService {
       // Convert map to array and sort by USD value (highest first)
       const assets = Array.from(assetMap.values()).sort((a, b) => b.usdValue - a.usdValue);
 
-      return assets;
+      return assets as AssetDetailsDto[];
     } catch (error) {
       this.logger.error(`Error getting asset details for user: ${user.id}`, error.stack);
       throw error;
