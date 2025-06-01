@@ -8,11 +8,13 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CreatePortfolioDto, PortfolioResponseDto, UpdatePortfolioDto } from './dto';
+import { PortfolioType } from './portfolio-type.enum';
 import { PortfolioService } from './portfolio.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -32,13 +34,20 @@ export class PortfolioController {
     summary: 'Get all portfolio items',
     description: 'Retrieves all portfolio items belonging to the authenticated user.'
   })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    enum: PortfolioType,
+    description: 'Filter portfolio items by type (MANUAL or AUTOMATIC)',
+    example: PortfolioType.MANUAL
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'List of portfolio items retrieved successfully.',
     type: [PortfolioResponseDto]
   })
-  async getPortfolio(@GetUser() user: User) {
-    return this.portfolio.getPortfolioByUser(user);
+  async getPortfolio(@GetUser() user: User, @Query('type') type?: PortfolioType) {
+    return this.portfolio.getPortfolioByUser(user, undefined, type);
   }
 
   @Get(':id')

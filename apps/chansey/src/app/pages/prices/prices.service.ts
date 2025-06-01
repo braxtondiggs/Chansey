@@ -33,7 +33,7 @@ export class PriceService {
   }
 
   useWatchlist() {
-    return useAuthQuery<PortfolioItem[]>(coinKeys.lists.watchlist, '/api/portfolio', {
+    return useAuthQuery<PortfolioItem[]>(coinKeys.lists.watchlist, '/api/portfolio?type=MANUAL', {
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
       refetchInterval: 300000 // 5 minutes

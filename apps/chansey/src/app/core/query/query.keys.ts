@@ -87,6 +87,25 @@ riskKeys.lists = {
 riskKeys.detail = (id) => [...riskKeys.all, 'detail', id];
 
 /**
+ * Algorithm query keys
+ */
+export const algorithmKeys = createQueryKeys<{
+  all: QueryKey;
+  lists: {
+    all: QueryKey;
+  };
+  detail: (id: string) => QueryKey;
+}>('algorithms');
+
+// Define list queries
+algorithmKeys.lists = {
+  all: [...algorithmKeys.all, 'list']
+};
+
+// Define detail query
+algorithmKeys.detail = (id) => [...algorithmKeys.all, 'detail', id];
+
+/**
  * User profile query keys
  */
 export const profileKeys = createQueryKeys<{

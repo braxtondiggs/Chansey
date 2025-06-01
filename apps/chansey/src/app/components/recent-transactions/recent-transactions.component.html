@@ -17,7 +17,7 @@
   </ng-template>
 
   <!-- Loading skeleton -->
-  <div *ngIf="transactionsQuery.isPending()" class="mb-3">
+  <div *ngIf="transactionsQuery.isPending()" class="mb-3 overflow-hidden">
     <!-- Skeleton for table header -->
     <div class="flex p-3 mb-2 border-b border-gray-100 rounded-t dark:border-neutral-700">
       <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>

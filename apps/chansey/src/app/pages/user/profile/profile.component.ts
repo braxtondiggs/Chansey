@@ -209,12 +209,18 @@ export class ProfileComponent implements AfterViewInit {
       if (fragment) {
         const element = document.getElementById(fragment);
         if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if ('serviceWorker' in navigator && window.matchMedia('(display-mode: standalone)').matches) {
+            // PWA standalone mode - use more aggressive scrolling
+            window.scrollTo({
+              top: element.offsetTop - 100,
+              behavior: 'smooth'
+            });
+          } else {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
         }
-
-        this.location.replaceState(this.router.url.split('#')[0]);
       }
-    }, 100);
+    }, 500);
   }
 
   isExchangeActive(exchangeId: string): boolean {

@@ -1,16 +1,16 @@
 <section
-  class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
+  class="flex items-center justify-center min-h-screen mx-auto animate-fadein animate-duration-300 animate-ease-in lg:items-start"
 >
   <div class="flex justify-center gap-12">
     <div class="flex flex-col p-20 lg:min-w-[40rem]">
-      <a routerLink="/" class="mb-8 flex items-center justify-center">
+      <a routerLink="/" class="flex items-center justify-center mb-8">
         <app-lazy-image className="w-auto h-24 object-contain object-left" src="/public/icon.png" alt="Auth Image" />
-        <h5 class="title-h5 whitespace-nowrap font-normal">Cymbit Trading</h5>
+        <h5 class="font-normal title-h5 whitespace-nowrap">Cymbit Trading</h5>
       </a>
-      <div class="flex flex-grow flex-col justify-center">
-        <div class="mx-auto w-full max-w-md">
-          <h5 class="title-h5 text-center lg:text-left">Forgot Password</h5>
-          <p class="body-small mt-4 text-center lg:text-left">Enter your email to reset your password.</p>
+      <div class="flex flex-col justify-center flex-grow">
+        <div class="w-full max-w-md mx-auto">
+          <h5 class="text-center title-h5 lg:text-left">Forgot Password</h5>
+          <p class="mt-4 text-center body-small lg:text-left">Enter your email to reset your password.</p>
           <div class="flex flex-col">
             @for (message of messages(); track message; let first = $first) {
               <p-message
@@ -28,14 +28,9 @@
               <label for="on_label">Email</label>
             </p-floatlabel>
             <small *ngIf="formSubmitted && forgotForm.get('email')?.invalid" class="text-red-500">
-              {{
-                forgotForm.get('email')?.hasError('required')
-                  ? 'Email is
-              required'
-                  : 'Please enter a valid email'
-              }}
+              {{ forgotForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
             </small>
-            <div class="my-8 flex items-center justify-between gap-4">
+            <div class="flex items-center justify-between gap-4 my-8">
               <p-button
                 routerLink="/login"
                 [raised]="true"
@@ -56,14 +51,14 @@
               </p-button>
             </div>
           </form>
-          <div class="body-small mt-8 text-center lg:text-left">
+          <div class="mt-8 text-center body-small lg:text-left">
             Not registered?
             <a routerLink="/register" class="text-primary-500 hover:underline">Create an Account</a>
           </div>
         </div>
       </div>
     </div>
-    <div class="landing-container hidden h-full py-10 lg:flex">
+    <div class="hidden h-full py-10 landing-container lg:flex">
       <div
         class="mx-auto flex h-screen w-full items-center justify-center overflow-hidden lg:max-w-[32.5rem] xl:max-w-[50rem]"
       >

@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, inject, computed, Input } from '@an
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { PaginatorModule } from 'primeng/paginator';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SkeletonModule } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
@@ -19,6 +20,7 @@ import { UserAssetsService } from './user-assets.service';
     ButtonModule,
     CardModule,
     CommonModule,
+    PaginatorModule,
     ProgressSpinnerModule,
     SkeletonModule,
     TableModule,
@@ -45,13 +47,13 @@ export class UserAssetsComponent {
   }
 
   // Get appropriate color for percentage change
-  getChangeColor(change: number): string {
+  getChangeColor(change: number | undefined): string {
     if (change === null || change === undefined) return 'text-gray-500';
     return change >= 0 ? 'text-green-500' : 'text-red-500';
   }
 
   // Format percentage with plus/minus sign
-  formatPercentage(value: number | string | null): string {
+  formatPercentage(value: number | string | null | undefined): string {
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
     if (numValue === null || numValue === undefined || isNaN(numValue)) return '--';
 

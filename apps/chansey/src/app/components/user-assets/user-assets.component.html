@@ -9,7 +9,7 @@
   </ng-template>
 
   <!-- Loading skeleton -->
-  <div *ngIf="assetsQuery.isPending()" class="mb-3">
+  <div *ngIf="assetsQuery.isPending()" class="mb-3 overflow-hidden">
     <!-- Skeleton for table header -->
     <div class="flex p-3 mb-2 border-b border-gray-100 rounded-t dark:border-neutral-700">
       <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
@@ -81,7 +81,7 @@
               <p-avatar [image]="asset.image" shape="circle" size="large" class="mr-2 shadow-sm" />
               <div class="flex flex-col">
                 <span class="font-medium">{{ asset.name }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ asset.symbol }}</span>
+                <span class="text-xs text-gray-500 uppercase dark:text-gray-400">{{ asset.symbol }}</span>
               </div>
             </div>
           </td>

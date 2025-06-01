@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
+import { PortfolioType } from './portfolio-type.enum';
 import { Portfolio, PortfolioRelations } from './portfolio.entity';
 
 import { Coin } from '../coin/coin.entity';
@@ -34,13 +35,19 @@ export class PortfolioService {
     return portfolio;
   }
 
-  async getPortfolioByUser(user: User, relations?: PortfolioRelations[]): Promise<Portfolio[]> {
+  async getPortfolioByUser(user: User, relations?: PortfolioRelations[], type?: PortfolioType): Promise<Portfolio[]> {
+    const whereConditions: { user: { id: string }; type?: PortfolioType } = {
+      user: {
+        id: user.id
+      }
+    };
+
+    if (type) {
+      whereConditions.type = type;
+    }
+
     const portfolio = await this.portfolio.find({
-      where: {
-        user: {
-          id: user.id
-        }
-      },
+      where: whereConditions,
       relations
     });
     if (!portfolio) throw new NotFoundCustomException('Portfolio', { user: user.id });

@@ -12,8 +12,4 @@ export class CoinService {
   useCoins() {
     return useAuthQuery<Coin[]>(coinKeys.lists.all, '/api/coin');
   }
-
-  useWatchlist() {
-    return useAuthQuery<Coin[]>(coinKeys.lists.watchlist, '/api/portfolio/coins');
-  }
 }
