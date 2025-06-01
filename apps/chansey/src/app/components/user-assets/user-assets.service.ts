@@ -12,6 +12,7 @@ export interface UserAsset {
   price: number; // Current price of the asset
   usdValue: number; // Total USD value (quantity * price)
   image?: string; // Optional image URL for the asset
+  priceChangePercentage24h?: number; // 24h price change percentage
 }
 
 // Create query keys for user assets

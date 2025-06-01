@@ -8,22 +8,17 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  Res,
   UseGuards
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
-
-import { ChartConfiguration, ChartData } from 'chart.js';
-// import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
-import { FastifyReply } from 'fastify';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AlgorithmService } from './algorithm.service';
 import { AlgorithmResponseDto, CreateAlgorithmDto, DeleteResponseDto, UpdateAlgorithmDto } from './dto';
-import * as DynamicAlgorithmServices from './scripts';
 
+import { Roles } from '../authentication/decorator/roles.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
-import { TestnetSummary } from '../order/testnet/dto';
+import { RolesGuard } from '../authentication/guard/roles.guard';
 import { PriceService } from '../price/price.service';
 
 @ApiTags('Algorithm')
@@ -78,9 +73,11 @@ export class AlgorithmController {
   }
 
   @Post()
+  @UseGuards(JwtAuthenticationGuard, RolesGuard)
+  @Roles('admin')
   @ApiOperation({
     summary: 'Create a new algorithm',
-    description: 'Create a new algorithm with the provided details.'
+    description: 'Create a new algorithm with the provided details. Requires admin role.'
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -95,14 +92,20 @@ export class AlgorithmController {
     status: HttpStatus.CONFLICT,
     description: 'Algorithm with the same name already exists.'
   })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Access denied. Admin role required.'
+  })
   async createAlgorithm(@Body() dto: CreateAlgorithmDto) {
     return this.algorithm.create(dto);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthenticationGuard, RolesGuard)
+  @Roles('admin')
   @ApiOperation({
     summary: 'Update an algorithm',
-    description: 'Update the details of an existing algorithm by its ID.'
+    description: 'Update the details of an existing algorithm by its ID. Requires admin role.'
   })
   @ApiParam({
     name: 'id',
@@ -124,14 +127,20 @@ export class AlgorithmController {
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid input data.'
   })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Access denied. Admin role required.'
+  })
   async updateAlgorithm(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateAlgorithmDto) {
     return this.algorithm.update(id, dto);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthenticationGuard, RolesGuard)
+  @Roles('admin')
   @ApiOperation({
     summary: 'Delete an algorithm',
-    description: 'Remove an existing algorithm by its ID.'
+    description: 'Remove an existing algorithm by its ID. Requires admin role.'
   })
   @ApiParam({
     name: 'id',
@@ -148,6 +157,10 @@ export class AlgorithmController {
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'Algorithm not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Access denied. Admin role required.'
   })
   async removeAlgorithm(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.algorithm.remove(id);

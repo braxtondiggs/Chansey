@@ -13,7 +13,7 @@ import { LayoutService } from '../services/layout.service';
   imports: [CommonModule, AppMenu, RouterModule, AppTopBar],
   template: `<div class="layout-sidebar" (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
     <div class="sidebar-header">
-      <a class="logo" [routerLink]="['/app/dashboard']">
+      <a class="logo flex items-center" [routerLink]="['/app/dashboard']">
         <img class="logo-image" src="/public/icons/icon-72x72.png" alt="Cymbit Trading Logo" />
         <span class="app-name title-h7">Cymbit Trading</span>
       </a>

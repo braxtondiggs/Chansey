@@ -1,0 +1,208 @@
+<p-toast></p-toast>
+<p-confirmDialog></p-confirmDialog>
+
+<p-card>
+  <p-table
+    #dt
+    [loading]="isLoading()"
+    [paginator]="true"
+    [rowHover]="true"
+    [rows]="15"
+    [showCurrentPageReport]="true"
+    [selection]="selectedAlgorithms()"
+    (selectionChange)="onSelectionChange($event)"
+    [value]="algorithms()"
+    [globalFilterFields]="['name', 'description', 'service']"
+    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+    dataKey="id"
+    size="small"
+    stripedRows
+  >
+    <ng-template #caption>
+      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+        <div class="flex gap-4">
+          <p-button
+            label="New"
+            [raised]="true"
+            icon="pi pi-plus"
+            severity="success"
+            (onClick)="openNewAlgorithmDialog()"
+          />
+          <p-button
+            severity="danger"
+            label="Delete"
+            icon="pi pi-trash"
+            outlined
+            (onClick)="deleteSelectedAlgorithms()"
+            [disabled]="!selectedAlgorithms() || !selectedAlgorithms().length"
+            class="hidden md:inline-flex"
+          />
+        </div>
+        <p-iconfield>
+          <p-inputicon styleClass="pi pi-search" />
+          <input
+            pInputText
+            #searchInput
+            type="text"
+            (input)="applyGlobalFilter($event)"
+            placeholder="Search..."
+            class="w-full md:w-auto"
+          />
+        </p-iconfield>
+      </div>
+    </ng-template>
+
+    <ng-template #header>
+      <tr>
+        <th style="width: 4rem">
+          <p-tableHeaderCheckbox></p-tableHeaderCheckbox>
+        </th>
+        <th pSortableColumn="name" style="min-width: 12rem">Name <p-sortIcon field="name"></p-sortIcon></th>
+        <th style="min-width: 12rem">Description</th>
+        <th pSortableColumn="service" style="min-width: 10rem">Service <p-sortIcon field="service"></p-sortIcon></th>
+        <th pSortableColumn="status" style="min-width: 8rem">Status <p-sortIcon field="status"></p-sortIcon></th>
+        <th pSortableColumn="evaluate" style="min-width: 8rem">Evaluate <p-sortIcon field="evaluate"></p-sortIcon></th>
+        <th pSortableColumn="weight" style="min-width: 8rem">Weight <p-sortIcon field="weight"></p-sortIcon></th>
+        <th pSortableColumn="cron" style="min-width: 10rem">Cron <p-sortIcon field="cron"></p-sortIcon></th>
+        <th style="width: 8rem">Actions</th>
+      </tr>
+    </ng-template>
+
+    <ng-template #body let-algorithm>
+      <tr>
+        <td>
+          <p-tableCheckbox [value]="algorithm"></p-tableCheckbox>
+        </td>
+        <td>{{ algorithm.name }}</td>
+        <td>
+          <div class="overflow-x-hidden line-clamp-3">{{ algorithm.description || '-' }}</div>
+        </td>
+        <td>
+          <code class="text-sm">{{ algorithm.service }}</code>
+        </td>
+        <td>
+          <p-tag
+            [value]="algorithm.status ? 'Active' : 'Inactive'"
+            [severity]="getStatusSeverity(algorithm.status)"
+          ></p-tag>
+        </td>
+        <td>
+          <p-tag
+            [value]="algorithm.evaluate ? 'Yes' : 'No'"
+            [severity]="getEvaluateSeverity(algorithm.evaluate)"
+          ></p-tag>
+        </td>
+        <td>{{ algorithm.weight || '-' }}</td>
+        <td>
+          <code class="text-sm">{{ algorithm.cron }}</code>
+        </td>
+        <td>
+          <div class="flex gap-1">
+            <p-button
+              icon="pi pi-pencil"
+              severity="secondary"
+              class="mr-2"
+              [rounded]="true"
+              [outlined]="true"
+              (onClick)="openEditAlgorithmDialog(algorithm)"
+            />
+            <p-button
+              icon="pi pi-trash"
+              severity="danger"
+              [rounded]="true"
+              [outlined]="true"
+              (onClick)="confirmDeleteAlgorithm(algorithm)"
+            />
+          </div>
+        </td>
+      </tr>
+    </ng-template>
+
+    <ng-template #emptymessage>
+      <tr>
+        <td colspan="9">No algorithms found.</td>
+      </tr>
+    </ng-template>
+  </p-table>
+</p-card>
+
+<p-dialog
+  [(visible)]="algorithmDialog"
+  [style]="{ width: '450px' }"
+  header="Algorithm Details"
+  [modal]="true"
+  styleClass="p-fluid"
+>
+  <ng-template #content>
+    <form [formGroup]="algorithmForm" (ngSubmit)="saveAlgorithm()" class="my-4">
+      <p-fluid>
+        <p-floatlabel variant="on">
+          <input
+            pInputText
+            type="text"
+            id="name"
+            formControlName="name"
+            pSize="large"
+            [class.ng-invalid]="submitted() && algorithmForm.get('name')?.invalid"
+          />
+          <label for="name">Name *</label>
+        </p-floatlabel>
+        @if (submitted() && algorithmForm.get('name')?.errors?.['required']) {
+          <small class="text-red-500">Name is required.</small>
+        }
+
+        <p-floatlabel variant="on" class="mt-6">
+          <textarea pInputTextarea id="description" formControlName="description" rows="6" cols="30"></textarea>
+          <label for="description">Description</label>
+        </p-floatlabel>
+
+        <p-floatlabel variant="on" class="mt-6">
+          <input pInputText type="text" id="service" formControlName="service" pSize="large" />
+          <label for="service">Service Name</label>
+        </p-floatlabel>
+        <small class="text-gray-600">
+          Leave empty to auto-generate from algorithm name (e.g., "MyAlgorithmService")
+        </small>
+
+        <div class="flex items-center mt-6">
+          <p-checkbox formControlName="status" inputId="status" [binary]="true"></p-checkbox>
+          <label for="status" class="ml-2">Active Status</label>
+        </div>
+
+        <div class="flex items-center mt-6">
+          <p-checkbox formControlName="evaluate" inputId="evaluate" [binary]="true"></p-checkbox>
+          <label for="evaluate" class="ml-2">Evaluate in TestNet</label>
+        </div>
+
+        <p-floatlabel variant="on" class="mt-6">
+          <input
+            pInputText
+            id="cron"
+            formControlName="cron"
+            [class.ng-invalid]="submitted() && algorithmForm.get('cron')?.invalid"
+          />
+          <label for="cron">Cron Schedule *</label>
+        </p-floatlabel>
+        @if (submitted() && algorithmForm.get('cron')?.errors?.['required']) {
+          <small class="p-error">Cron schedule is required.</small>
+        }
+        @if (submitted() && algorithmForm.get('cron')?.errors?.['pattern']) {
+          <small class="p-error">Invalid cron expression format.</small>
+        }
+        <small class="text-gray-600">
+          Format: minute hour day month weekday (e.g., "* * * * *" for every minute)
+        </small>
+      </p-fluid>
+    </form>
+  </ng-template>
+
+  <ng-template #footer>
+    <p-button label="Cancel" icon="pi pi-times" [text]="true" (onClick)="hideDialog()" />
+    <p-button
+      label="Save"
+      icon="pi pi-check"
+      (onClick)="saveAlgorithm()"
+      [loading]="isCreatePending() || isUpdatePending()"
+    />
+  </ng-template>
+</p-dialog>

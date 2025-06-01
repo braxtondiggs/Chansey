@@ -42,12 +42,15 @@ export class Algorithm {
   @Expose()
   slug: string;
 
+  @IsOptional()
+  @IsString()
+  @Column({ nullable: true })
   @ApiProperty({
-    description: 'Service name derived from the algorithm name',
-    example: 'MyAlgorithmService'
+    description: 'Service name for the algorithm',
+    example: 'MyAlgorithmService',
+    required: false
   })
-  @Expose()
-  service: string;
+  service?: string;
 
   @Column({ nullable: true })
   @ApiProperty({
@@ -125,7 +128,10 @@ export class Algorithm {
         .replace(/^-+/, '')
         .replace(/-+$/, '');
 
-      this.service = `${this.name.replace(/\s+/g, '')}Service`;
+      // Only set service if it's not already provided
+      if (!this.service) {
+        this.service = `${this.name.replace(/\s+/g, '')}Service`;
+      }
     }
   }
 }

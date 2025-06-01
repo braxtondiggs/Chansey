@@ -79,7 +79,6 @@ export const appRoutes: Route[] = [
         loadComponent: () => import('./pages/watchlist').then((c) => c.WatchlistComponent),
         data: { breadcrumb: 'Watchlist' }
       }
-      // Additional authenticated routes can be added here
     ]
   },
   {
@@ -112,6 +111,11 @@ export const appRoutes: Route[] = [
         path: 'risks',
         loadComponent: () => import('./pages/admin/risks').then((c) => c.RisksComponent),
         data: { breadcrumb: 'Risk Levels' }
+      },
+      {
+        path: 'algorithms',
+        loadComponent: () => import('./pages/admin/algorithms').then((c) => c.AlgorithmsComponent),
+        data: { breadcrumb: 'Algorithms' }
       },
       {
         path: 'bull-board',

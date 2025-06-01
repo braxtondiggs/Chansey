@@ -60,6 +60,7 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
           'https://images.pexels.com',
           'https://www.cymbit.com',
           'https://cymbit.com',
+          'https://s3.cymbit.com',
           'https://coin-images.coingecko.com'
         ],
 
@@ -69,7 +70,9 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
           'https://api.coingecko.com',
           'https://api.cryptocurrencyalerting.com',
           'https://www.cymbit.com',
-          'https://cymbit.com'
+          'https://cymbit.com',
+          'https://s3.cymbit.com',
+          'https://coin-images.coingecko.com'
         ],
 
         // Allow fonts from self and specific CDNs

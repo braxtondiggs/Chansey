@@ -81,6 +81,11 @@ export class AppMenu implements OnInit {
         icon: 'pi pi-cog',
         items: [
           {
+            label: 'Algorithms',
+            icon: 'pi pi-fw pi-code',
+            routerLink: ['/admin/algorithms']
+          },
+          {
             label: 'Categories',
             icon: 'pi pi-fw pi-tags',
             routerLink: ['/admin/categories']

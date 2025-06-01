@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsBoolean, IsString, Validate } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Validate } from 'class-validator';
 
 export class CreateAlgorithmDto {
   @IsString()
@@ -36,4 +36,21 @@ export class CreateAlgorithmDto {
     description: 'Cron expression for this algorithm'
   })
   cron?: string;
+
+  @IsString()
+  @ApiProperty({
+    example: 'This is a test algorithm',
+    required: false,
+    description: 'Description of this algorithm'
+  })
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiProperty({
+    example: 'MyAlgorithmService',
+    required: false,
+    description: 'Service name for the algorithm'
+  })
+  service?: string;
 }

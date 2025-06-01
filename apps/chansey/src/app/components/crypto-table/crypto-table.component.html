@@ -3,89 +3,94 @@
   <!-- Loading skeleton -->
   <div *ngIf="isLoading" class="mb-4">
     <!-- Skeleton for search input -->
-    <div class="flex justify-end mb-4">
+    <div class="flex flex-col items-end mb-4">
       <div class="w-full max-w-xs">
         <p-skeleton width="100%" height="2.75rem" styleClass="rounded-md"></p-skeleton>
       </div>
     </div>
 
-    <!-- Skeleton for table header -->
-    <div class="flex w-full p-3 border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-      <div class="w-10 mr-4" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
-      <div class="flex-1 mr-6 min-w-48">
-        <p-skeleton width="80%" height="1.25rem"></p-skeleton>
-      </div>
-      <div class="mr-6 w-28">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
-      <div class="w-32 mr-6">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
-      <div class="w-32 mr-6">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
-      <div class="mr-6 w-44">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
-      <div class="w-24">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
-    </div>
-
-    <!-- Skeleton for table rows -->
-    <div
-      *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
-      class="flex p-3 border-b border-gray-200 dark:border-gray-700"
-    >
-      <!-- Action button skeleton -->
-      <p-skeleton
-        *ngIf="config.showWatchlistToggle || config.showRemoveAction"
-        width="40px"
-        height="2.5rem"
-        styleClass="mr-4 rounded-full"
+    <!-- Skeleton table wrapper with responsive overflow -->
+    <div class="overflow-x-auto">
+      <!-- Skeleton for table header -->
+      <div
+        class="flex w-full min-w-[800px] border-b border-gray-200 bg-gray-50 p-3 md:min-w-0 dark:border-gray-700 dark:bg-gray-800"
       >
-      </p-skeleton>
-
-      <!-- Coin name and image skeleton -->
-      <div class="flex items-center flex-1 mr-6 min-w-48">
-        <p-skeleton shape="circle" size="2.5rem" styleClass="mr-3"></p-skeleton>
-        <div class="flex flex-col">
-          <p-skeleton width="120px" height="1.25rem" styleClass="mb-1"></p-skeleton>
-          <p-skeleton width="60px" height="1rem"></p-skeleton>
+        <div class="flex-shrink-0 w-10 mr-4" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
+        <div class="flex-1 flex-shrink-0 mr-6 min-w-48">
+          <p-skeleton width="80%" height="1.25rem"></p-skeleton>
+        </div>
+        <div class="flex-shrink-0 mr-6 w-28">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
+        <div class="flex-shrink-0 w-32 mr-6">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
+        <div class="flex-shrink-0 w-32 mr-6">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
+        <div class="flex-shrink-0 mr-6 w-44">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
+        <div class="flex-shrink-0 w-24">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
       </div>
 
-      <!-- Price skeleton -->
-      <div class="mr-6 w-28">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
+      <!-- Skeleton for table rows -->
+      <div
+        *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
+        class="flex min-w-[800px] border-b border-gray-200 p-3 md:min-w-0 dark:border-gray-700"
+      >
+        <!-- Action button skeleton -->
+        <p-skeleton
+          *ngIf="config.showWatchlistToggle || config.showRemoveAction"
+          width="40px"
+          height="2.5rem"
+          styleClass="mr-4 rounded-full flex-shrink-0"
+        >
+        </p-skeleton>
 
-      <!-- Market cap skeleton -->
-      <div class="w-32 mr-6">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
+        <!-- Coin name and image skeleton -->
+        <div class="flex items-center flex-1 flex-shrink-0 mr-6 min-w-48">
+          <p-skeleton shape="circle" size="2.5rem" styleClass="mr-3"></p-skeleton>
+          <div class="flex flex-col">
+            <p-skeleton width="120px" height="1.25rem" styleClass="mb-1"></p-skeleton>
+            <p-skeleton width="60px" height="1rem"></p-skeleton>
+          </div>
+        </div>
 
-      <!-- Volume skeleton -->
-      <div class="w-32 mr-6">
-        <p-skeleton width="100%" height="1.25rem"></p-skeleton>
-      </div>
+        <!-- Price skeleton -->
+        <div class="flex-shrink-0 mr-6 w-28">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
 
-      <!-- Circulating supply skeleton -->
-      <div class="mr-6 w-44">
-        <p-skeleton width="100%" height="1rem" styleClass="mb-1"></p-skeleton>
-        <p-skeleton width="80%" height="0.5rem"></p-skeleton>
-      </div>
+        <!-- Market cap skeleton -->
+        <div class="flex-shrink-0 w-32 mr-6">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
 
-      <!-- 24h change skeleton -->
-      <div class="w-24">
-        <p-skeleton width="100%" height="2rem" styleClass="rounded-full"></p-skeleton>
+        <!-- Volume skeleton -->
+        <div class="flex-shrink-0 w-32 mr-6">
+          <p-skeleton width="100%" height="1.25rem"></p-skeleton>
+        </div>
+
+        <!-- Circulating supply skeleton -->
+        <div class="flex-shrink-0 mr-6 w-44">
+          <p-skeleton width="100%" height="1rem" styleClass="mb-1"></p-skeleton>
+          <p-skeleton width="80%" height="0.5rem"></p-skeleton>
+        </div>
+
+        <!-- 24h change skeleton -->
+        <div class="flex-shrink-0 w-24">
+          <p-skeleton width="100%" height="2rem" styleClass="rounded-full"></p-skeleton>
+        </div>
       </div>
     </div>
 
     <!-- Skeleton for pagination -->
-    <div class="flex items-center justify-between p-3 mt-4">
+    <div class="flex items-center justify-between p-3 mt-4 overflow-x-hidden">
       <p-skeleton width="200px" height="1.25rem"></p-skeleton>
       <div class="flex gap-2">
         <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
@@ -110,9 +115,6 @@
     dataKey="id"
     size="large"
     stripedRows
-    [responsiveLayout]="'stack'"
-    styleClass="p-datatable-sm p-datatable-responsive max-w-full sm:w-auto"
-    breakpoint="768px"
   >
     <ng-template #caption>
       <div class="flex flex-col items-end">
@@ -184,7 +186,7 @@
             <p-avatar [image]="coin.image" shape="circle" size="large" class="shadow-sm" />
             <div class="flex flex-col">
               <span class="text-lg font-medium">{{ coin.name }}</span>
-              <span class="text-sm text-gray-500 dark:text-gray-400">{{ coin.symbol }}</span>
+              <span class="text-sm text-gray-500 uppercase dark:text-gray-400">{{ coin.symbol }}</span>
             </div>
           </div>
         </td>
