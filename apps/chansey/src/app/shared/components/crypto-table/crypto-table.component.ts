@@ -18,9 +18,8 @@ import { TooltipModule } from 'primeng/tooltip';
 
 import { Coin } from '@chansey/api-interfaces';
 
-import { FormatLargeNumberPipe } from '@chansey-web/app/components/format-large-number.pipe';
-
-import { CounterDirective } from '../../shared/directives';
+import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
+import { FormatLargeNumberPipe } from '@chansey-web/app/shared/pipes/format-large-number.pipe';
 
 export interface CryptoTableConfig {
   showWatchlistToggle?: boolean;
@@ -75,6 +74,74 @@ export class CryptoTableComponent {
 
   searchFilter = signal<string>('');
   messageService = inject(MessageService);
+
+  /**
+   * Custom sort function to handle numeric fields properly
+   * This prevents PrimeNG from sorting by formatted display values
+   */
+  customSort = (event: { field: string; order: number }) => {
+    const { field, order } = event;
+
+    // Define numeric fields that need custom sorting
+    const numericFields = [
+      'currentPrice',
+      'marketCap',
+      'totalVolume',
+      'circulatingSupply',
+      'maxSupply',
+      'priceChangePercentage24h',
+      'marketRank'
+    ];
+
+    if (numericFields.includes(field)) {
+      this.coins.sort((a: Coin, b: Coin) => {
+        // Get the raw numeric values for comparison
+        const aValue = this.getNumericValue(a, field);
+        const bValue = this.getNumericValue(b, field);
+
+        // Handle null/undefined values - put them at the end
+        if (aValue === null && bValue === null) return 0;
+        if (aValue === null) return 1;
+        if (bValue === null) return -1;
+
+        // Perform numeric comparison
+        const result = aValue - bValue;
+        return order === 1 ? result : -result;
+      });
+    } else {
+      // For non-numeric fields, use default string sorting
+      this.coins.sort((a: Coin, b: Coin) => {
+        const aValue = this.getStringValue(a, field);
+        const bValue = this.getStringValue(b, field);
+
+        const result = aValue.localeCompare(bValue);
+        return order === 1 ? result : -result;
+      });
+    }
+  };
+
+  /**
+   * Get numeric value from coin object for sorting
+   */
+  private getNumericValue(coin: Coin, field: string): number | null {
+    const value = coin[field as keyof Coin];
+
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    // Convert to number and handle edge cases
+    const numValue = Number(value);
+    return isNaN(numValue) ? null : numValue;
+  }
+
+  /**
+   * Get string value from coin object for sorting
+   */
+  private getStringValue(coin: Coin, field: string): string {
+    const value = coin[field as keyof Coin];
+    return value ? String(value).toLowerCase() : '';
+  }
 
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;

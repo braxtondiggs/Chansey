@@ -8,7 +8,7 @@ import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
 
 @Entity()
-@Index(['coin', 'user'], { unique: true })
+@Index(['coin', 'user', 'type'], { unique: true })
 @Index(['id', 'user'], { unique: true })
 export class Portfolio {
   @PrimaryGeneratedColumn('uuid')

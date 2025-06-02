@@ -3,12 +3,21 @@ import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 
 import { BehaviorSubject, Observable, filter } from 'rxjs';
 
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class PwaService {
-  private readonly swUpdate = inject(SwUpdate);
-  private installPromptEvent: any;
+  private readonly swUpdate = inject(SwUpdate, { optional: true });
+  private installPromptEvent: BeforeInstallPromptEvent | null = null;
   private _installable$ = new BehaviorSubject<boolean>(false);
 
   constructor() {
@@ -21,20 +30,24 @@ export class PwaService {
   }
 
   private handleAppUpdates(): void {
-    if (this.swUpdate.isEnabled) {
+    if (this.swUpdate?.isEnabled) {
       // Check for service worker updates
       this.swUpdate.versionUpdates
         .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
         .subscribe(() => {
-          this.swUpdate.activateUpdate().then(() => {
-            window.location.reload();
-          });
+          if (this.swUpdate) {
+            this.swUpdate.activateUpdate().then(() => {
+              window.location.reload();
+            });
+          }
         });
 
       // Check for updates every 6 hours
       setInterval(
         () => {
-          this.swUpdate.checkForUpdate();
+          if (this.swUpdate) {
+            this.swUpdate.checkForUpdate();
+          }
         },
         6 * 60 * 60 * 1000
       );
@@ -42,9 +55,9 @@ export class PwaService {
   }
 
   private handleInstallPrompt(): void {
-    window.addEventListener('beforeinstallprompt', (event: any) => {
+    window.addEventListener('beforeinstallprompt', (event: Event) => {
       event.preventDefault();
-      this.installPromptEvent = event;
+      this.installPromptEvent = event as BeforeInstallPromptEvent;
       this._installable$.next(true);
     });
 
@@ -58,7 +71,7 @@ export class PwaService {
     if (this.installPromptEvent) {
       this.installPromptEvent.prompt();
 
-      this.installPromptEvent.userChoice.then((choiceResult: { outcome: string }) => {
+      this.installPromptEvent.userChoice.then((choiceResult) => {
         if (choiceResult.outcome === 'accepted') {
           console.log('User accepted the install prompt');
         } else {

@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { OrderModule } from '@chansey-api/order/order.module';
+
 import { TickerPairs } from './../coin/ticker-pairs/ticker-pairs.entity';
 import { AlgorithmController } from './algorithm.controller';
 import { Algorithm } from './algorithm.entity';
@@ -16,9 +18,7 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { Order } from '../order/order.entity';
-import { OrderService } from '../order/order.service';
 import { Testnet } from '../order/testnet/testnet.entity';
-import { TestnetService } from '../order/testnet/testnet.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Price } from '../price/price.entity';
@@ -31,6 +31,7 @@ import { UsersModule } from '../users/users.module';
     TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, Portfolio, Price, TickerPairs]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
+    forwardRef(() => OrderModule),
     forwardRef(() => UsersModule)
   ],
   controllers: [AlgorithmController],
@@ -38,10 +39,8 @@ import { UsersModule } from '../users/users.module';
     AlgorithmService,
     CoinService,
     ConfigService,
-    OrderService,
     PortfolioService,
     PriceService,
-    TestnetService,
     TickerPairService,
     ...Object.values(DynamicAlgorithmServices),
     ...Object.values(DynamicAlgorithmServices).map((cls) => ({

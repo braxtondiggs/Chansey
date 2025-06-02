@@ -55,7 +55,7 @@ export class PortfolioService {
   }
 
   async createPortfolioItem(portfolioDto: CreatePortfolioDto, user: User): Promise<Portfolio> {
-    // Check if portfolio item already exists for this user and coin
+    // Check if portfolio item already exists for this user, coin, and type
     const existingPortfolio = await this.portfolio.findOne({
       where: {
         coin: {
@@ -63,7 +63,8 @@ export class PortfolioService {
         },
         user: {
           id: user.id
-        }
+        },
+        type: portfolioDto.type
       }
     });
 

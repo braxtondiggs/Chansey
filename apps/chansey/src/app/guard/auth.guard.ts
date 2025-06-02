@@ -3,7 +3,7 @@ import { Router, UrlTree } from '@angular/router';
 
 import { Observable } from 'rxjs';
 
-import { AuthService } from '../services/auth.service';
+import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 
 @Injectable({
   providedIn: 'root'

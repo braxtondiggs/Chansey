@@ -7,3 +7,4 @@ export * from './lib/coin/ticker-pair.interface';
 export * from './lib/coin/ticker-pair-status.enum';
 export * from './lib/risk';
 export * from './lib/algorithm/algorithm.interface';
+export * from './lib/order';

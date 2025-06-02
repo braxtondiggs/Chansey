@@ -75,7 +75,7 @@ export class MeanReversionService {
       const threshold = this.getThreshold(volatility);
       const currentPrice = prices[prices.length - 1];
       continue;
-      try {
+      /* try {
         console.log(
           `currentPrice: ${currentPrice} mean: ${mean} Standard Deviation: ${standardDeviation} Volatility: ${volatility} ${
             mean - threshold * standardDeviation
@@ -101,7 +101,7 @@ export class MeanReversionService {
         }
       } catch (e) {
         console.log(e);
-      }
+      }*/
     }
   }
 

@@ -5,7 +5,7 @@ import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { AuthService } from './auth.service';
 
-import { TimeoutWarningComponent } from '../components/timeout-warning.component';
+import { TimeoutWarningComponent } from '../components/timeout-warning/timeout-warning.component';
 
 @Injectable({
   providedIn: 'root'

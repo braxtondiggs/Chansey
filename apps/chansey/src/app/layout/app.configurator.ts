@@ -23,7 +23,7 @@ import { RadioButtonModule } from 'primeng/radiobutton';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
-import { LayoutService } from '../services/layout.service';
+import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
 
 const presets = {
   Aura,

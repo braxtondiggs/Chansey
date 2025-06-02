@@ -14,8 +14,8 @@ import { TagModule } from 'primeng/tag';
 
 import { ExchangeKey } from '@chansey/api-interfaces';
 
-import { LayoutService } from '@chansey-web/app/services';
-import { CounterDirective } from '@chansey-web/app/shared/directives/counter.directive';
+import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
+import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
 
 import { ExchangeBalanceService, AccountValueDataPoint } from './exchange-balance.service';
 

@@ -4,7 +4,7 @@ import { AutoFocusModule } from 'primeng/autofocus';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 
-import { LayoutService } from '../services/layout.service';
+import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
 
 @Component({
   selector: 'app-search',

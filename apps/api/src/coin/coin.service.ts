@@ -38,7 +38,7 @@ export class CoinService {
     return coin;
   }
 
-  async getCoinBySymbol(symbol: string, relations?: CoinRelations[]): Promise<Coin> {
+  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin> {
     // Handle USD as a special case
     if (symbol.toLowerCase() === 'usd') {
       // Create a virtual USD coin
@@ -65,7 +65,7 @@ export class CoinService {
       where: { symbol: symbol.toLowerCase() },
       relations
     });
-    if (!coin) throw new NotFoundCustomException('Coin', { symbol });
+    if (!coin && fail) throw new NotFoundCustomException('Coin', { symbol });
     Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
   }

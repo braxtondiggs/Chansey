@@ -29,6 +29,22 @@
         "maxAge": "1h",
         "timeout": "5s"
       }
+    },
+    {
+      "name": "external-images",
+      "urls": [
+        "https://coin-images.coingecko.com/**",
+        "https://assets.coingecko.com/**",
+        "https://flagcdn.com/**",
+        "https://s3.cymbit.com/**"
+      ],
+      "cacheConfig": {
+        "strategy": "performance",
+        "maxSize": 200,
+        "maxAge": "7d",
+        "timeout": "10s"
+      }
     }
-  ]
+  ],
+  "navigationUrls": ["/**", "!/**/*.*", "!/**/*__*", "!/**/*__*/**"]
 }

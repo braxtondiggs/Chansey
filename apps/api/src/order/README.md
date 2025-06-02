@@ -8,7 +8,6 @@ on exchanges are properly reflected in the database.
 - **Automatic Hourly Sync**: Automatically syncs orders for all users with active exchange keys every hour
 - **Manual Sync**: Allows users to manually trigger synchronization via API endpoints
 - **Admin Sync**: Provides an endpoint for admins to sync orders for all users
-- **Cleanup**: Automatically removes stale orders daily at midnight
 
 ## API Endpoints
 
@@ -46,12 +45,6 @@ async syncAllUsersOrders() {
   // ...
 }
 
-@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT) // Change to desired cleanup frequency
-async cleanupStaleOrders() {
-  // ...
-}
-```
-
 ## Supported Exchanges
 
 Currently supports:
@@ -63,3 +56,4 @@ Additional exchanges can be added by:
 1. Adding the exchange service to the `exchangeConfigs` array in `syncOrdersForUser`
 2. Implementing the exchange client method
 3. Adding exchange identification logic in `saveExchangeOrders`
+```

@@ -2,8 +2,8 @@ import { Injectable } from '@angular/core';
 
 import { ExchangeKey, IUser } from '@chansey/api-interfaces';
 
-import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
-import { authKeys } from '@chansey-web/app/services';
+import { useAuthMutation } from '@chansey-web/app/core/query';
+import { authKeys } from '@chansey-web/app/shared/services/auth.service';
 
 // Define query keys for profile related data
 export const profileKeys = {

@@ -2,10 +2,10 @@ import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
+import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
+
 import { AppMenu } from './app.menu';
 import { AppTopBar } from './app.topbar';
-
-import { LayoutService } from '../services/layout.service';
 
 @Component({
   selector: 'app-sidebar',

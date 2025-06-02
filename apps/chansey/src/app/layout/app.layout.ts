@@ -4,6 +4,8 @@ import { NavigationEnd, Router, RouterModule } from '@angular/router';
 
 import { Subscription, filter } from 'rxjs';
 
+import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
+
 import { AppBreadcrumb } from './app.breadcrumb';
 import { AppConfigurator } from './app.configurator';
 import { AppFooter } from './app.footer';
@@ -11,8 +13,6 @@ import { AppRightMenu } from './app.rightmenu';
 import { AppSearch } from './app.search';
 import { AppSidebar } from './app.sidebar';
 import { AppTopBar } from './app.topbar';
-
-import { LayoutService } from '../services/layout.service';
 
 @Component({
   selector: 'app-layout',

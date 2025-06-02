@@ -2,9 +2,9 @@ import { CommonModule } from '@angular/common';
 import { Component, computed, inject, OnInit, signal, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
-import { AppMenuitem } from './app.menuitem';
+import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 
-import { AuthService } from '../services/auth.service';
+import { AppMenuitem } from './app.menuitem';
 
 interface MenuItem {
   label?: string;

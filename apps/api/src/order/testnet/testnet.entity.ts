@@ -25,7 +25,7 @@ export enum TestnetStatus {
 }
 
 @Entity()
-@Index(['algorithm', 'coin']) // Composite index for better query performance
+@Index(['algorithm', 'baseCoin', 'quoteCoin']) // Composite index for better query performance
 export class Testnet {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -101,10 +101,15 @@ export class Testnet {
   @Index()
   updatedAt: Timestamp;
 
-  @Index('testnet_coinId_index')
+  @Index('testnet_baseCoinId_index')
   @ManyToOne(() => Coin, { nullable: false, onDelete: 'CASCADE' })
   @JoinTable()
-  coin: Coin;
+  baseCoin: Coin;
+
+  @Index('testnet_quoteCoinId_index')
+  @ManyToOne(() => Coin, { nullable: true, onDelete: 'CASCADE' })
+  @JoinTable()
+  quoteCoin: Coin;
 
   @Index('testnet_algorithmId_index')
   @ManyToOne(() => Algorithm, { nullable: false, onDelete: 'CASCADE' })

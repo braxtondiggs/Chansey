@@ -63,7 +63,7 @@ export class MovingAverageCrossoverService {
 
         const threshold = (fastMA / slowMA) * 50;
         if (Math.abs(fastMA - slowMA) >= threshold) continue;
-        if (latestPrice < fastMA) {
+        /* if (latestPrice < fastMA) {
           // TODO: fast & slow average minus actual coin price. You can figure out the quality or quantity of the trade. Bigger difference means bigger trade.
           // TODO: once more data is considered maybe should only trade best SMAStrategy vs all
           await this.testnet.createOrder(OrderSide.BUY, {
@@ -79,7 +79,7 @@ export class MovingAverageCrossoverService {
             algorithm: this.id,
             type: OrderType.MARKET
           });
-        }
+        }*/
       }
     }
   }

@@ -17,7 +17,7 @@ import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
-import { LayoutService } from '@chansey-web/app/services/layout.service';
+import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
 
 const presets = {
   Aura,

@@ -24,6 +24,18 @@ export interface Coin {
   atl?: number;
   atlChange?: number;
   atlDate?: Date;
+  currentPrice?: number;
+  marketCap?: number;
+  priceChange24h?: number;
+  priceChangePercentage24h?: number;
+  priceChangePercentage7d?: number;
+  priceChangePercentage14d?: number;
+  priceChangePercentage30d?: number;
+  priceChangePercentage60d?: number;
+  priceChangePercentage200d?: number;
+  priceChangePercentage1y?: number;
+  marketCapChange24h?: number;
+  marketCapChangePercentage24h?: number;
   geckoLastUpdatedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
