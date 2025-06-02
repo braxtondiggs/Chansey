@@ -111,6 +111,8 @@
     [showCurrentPageReport]="true"
     [value]="coins"
     [globalFilterFields]="['name']"
+    [customSort]="true"
+    (sortFunction)="customSort($event)"
     currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
     dataKey="id"
     size="large"
@@ -133,7 +135,7 @@
     </ng-template>
 
     <ng-template pTemplate="header">
-      <tr>
+      <tr class="whitespace-nowrap">
         <th *ngIf="config.showWatchlistToggle || config.showRemoveAction"></th>
         <th pSortableColumn="name" class="min-w-48">Coin <p-sortIcon field="name" /></th>
         <th pSortableColumn="currentPrice" class="text-right min-w-28">Price <p-sortIcon field="latestPrice" /></th>
@@ -212,7 +214,11 @@
           </ng-template>
         </td>
         <td class="text-center min-w-24">
-          <p-tag [severity]="getTag(coin.priceChangePercentage24h)" [value]="coin.priceChangePercentage24h" />
+          <p-tag
+            [severity]="getTag(coin.priceChangePercentage24h)"
+            [value]="coin.priceChangePercentage24h"
+            *ngIf="coin.priceChangePercentage24h"
+          />
         </td>
       </tr>
     </ng-template>

@@ -48,7 +48,12 @@
               "with": "apps/chansey/src/environments/environment.prod.ts"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "optimization": {
+            "scripts": true,
+            "styles": true,
+            "fonts": false
+          }
         },
         "development": {
           "buildOptimizer": false,

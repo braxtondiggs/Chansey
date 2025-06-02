@@ -8,6 +8,7 @@ import { TestnetDto, TestnetSummaryDuration } from './dto';
 import { Testnet, TestnetStatus } from './testnet.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
+import { CoinService } from '../../coin/coin.service';
 import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
 import { BinanceUSService } from '../../exchange/binance/binance-us.service';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
@@ -22,6 +23,7 @@ export class TestnetService {
   constructor(
     private readonly algorithm: AlgorithmService,
     private readonly binance: BinanceUSService,
+    private readonly coin: CoinService,
     private readonly order: OrderService,
     private readonly tickerPair: TickerPairService,
     @InjectRepository(Testnet) private readonly testnet: Repository<Testnet>
@@ -29,34 +31,54 @@ export class TestnetService {
 
   async createOrder(side: OrderSide, order: TestnetDto) {
     try {
-      const binance = await this.binance.getBinanceClient();
-      const ticker = await this.tickerPair.getBasePairsById(order.coinId);
+      // Get the base and quote coins
+      const [baseCoin, quoteCoin] = await Promise.all([
+        this.coin.getCoinById(order.baseCoinId),
+        order.quoteCoinId ? this.coin.getCoinById(order.quoteCoinId) : this.coin.getCoinBySymbol('USDT')
+      ]);
 
-      const [{ quantity }, algorithm, response] = await Promise.all([
-        this.order.isExchangeValid(order, OrderType.MARKET, ticker.symbol),
+      if (!baseCoin) {
+        throw new Error(`Base coin with ID ${order.baseCoinId} not found`);
+      }
+
+      if (!quoteCoin) {
+        throw new Error(`Quote coin not found or USDT not available`);
+      }
+
+      // Find the ticker pair for this trading pair
+      const tickerPair = await this.tickerPair.getTickerPairBySymbol(baseCoin.symbol, quoteCoin.symbol);
+
+      if (!tickerPair) {
+        throw new Error(`No ticker pair found for ${baseCoin.symbol}/${quoteCoin.symbol}`);
+      }
+
+      const [algorithm, response] = await Promise.all([
+        // this.order.isExchangeValid(order, OrderType.MARKET, tickerPair.symbol),
         this.algorithm.getAlgorithmById(order.algorithm),
         this.gecko.simplePrice({
-          ids: ticker.baseAsset.slug,
+          ids: baseCoin.slug,
           vs_currencies: 'usd'
         })
       ]);
-      const price = response[ticker.baseAsset.slug]?.usd;
+      const price = response[baseCoin.slug]?.usd;
 
-      /*const testOrder = await binance.orderTest({
+      /*const binance = await this.binance.getBinanceClient();
+      const testOrder = await binance.orderTest({
         quantity,
         side,
-        symbol: ticker.symbol,
+        symbol: tickerPair.symbol,
         type: OrderType.MARKET as any
       });
 
       return (
         await this.testnet.insert({
           algorithm,
-          coin: ticker.baseAsset,
+          baseCoin,
+          quoteCoin,
           price,
           quantity: Number(quantity),
           side,
-          symbol: ticker.symbol,
+          symbol: tickerPair.symbol,
           orderId: testOrder.orderId?.toString(),
           status: TestnetStatus.FILLED,
           fee: 0, // Testnet orders don't have real fees
@@ -108,11 +130,11 @@ export class TestnetService {
     const orders = await this.testnet.find({
       where: { createdAt: Between(new Date(Date.now() - time), new Date()) },
       order: { createdAt: 'ASC' },
-      relations: ['coin'],
-      select: ['quantity', 'side', 'price', 'coin']
+      relations: ['baseCoin', 'quoteCoin'],
+      select: ['quantity', 'side', 'price', 'baseCoin', 'quoteCoin']
     });
 
-    const coins = [...new Set(orders.map((order) => order.coin.slug))];
+    const coins = [...new Set(orders.map((order) => order.baseCoin.slug))];
     const prices = await this.getPrices(coins);
 
     const summary = this.calculateSummary(orders, prices);
@@ -121,20 +143,20 @@ export class TestnetService {
 
   private calculateSummary(orders: Testnet[], prices: Record<string, number>) {
     return orders.reduce(
-      (acc, { coin, quantity, side, price, fee, commission }) => {
-        const currentPrice = prices[coin.slug] || price;
+      (acc, { baseCoin, quantity, side, price, fee, commission }) => {
+        const currentPrice = prices[baseCoin.slug] || price;
         const profit =
           side === OrderSide.BUY
             ? (currentPrice - price) * quantity - (fee + commission)
             : (price - currentPrice) * quantity - (fee + commission);
 
-        if (!acc[coin.slug]) {
-          acc[coin.slug] = { profitLoss: 0, percentage: 0, trades: 0 };
+        if (!acc[baseCoin.slug]) {
+          acc[baseCoin.slug] = { profitLoss: 0, percentage: 0, trades: 0 };
         }
 
-        acc[coin.slug].profitLoss += profit;
-        acc[coin.slug].percentage += (profit / (price * quantity)) * 100;
-        acc[coin.slug].trades += 1;
+        acc[baseCoin.slug].profitLoss += profit;
+        acc[baseCoin.slug].percentage += (profit / (price * quantity)) * 100;
+        acc[baseCoin.slug].trades += 1;
 
         return acc;
       },

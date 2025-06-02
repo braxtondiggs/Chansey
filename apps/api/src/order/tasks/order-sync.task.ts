@@ -4,8 +4,9 @@ import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { OrderSyncService } from './../services/order-sync.service';
+
 import { UsersService } from '../../users/users.service';
-import { OrderService } from '../order.service';
 
 @Processor('order-queue')
 @Injectable()
@@ -15,7 +16,7 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('order-queue') private readonly orderQueue: Queue,
-    private readonly orderService: OrderService,
+    private readonly orderSyncService: OrderSyncService,
     private readonly usersService: UsersService
   ) {
     super();
@@ -110,8 +111,6 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
     try {
       if (job.name === 'sync-orders') {
         return await this.handleSyncOrders(job);
-      } else if (job.name === 'cleanup-orders') {
-        return await this.handleCleanupOrders(job);
       } else {
         this.logger.warn(`Unknown job type: ${job.name}`);
         return { success: false, message: `Unknown job type: ${job.name}` };
@@ -151,7 +150,7 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
 
       for (const user of users) {
         try {
-          await this.orderService.syncOrdersForUser(user);
+          await this.orderSyncService.syncOrdersForUser(user);
           successCount++;
         } catch (error) {
           this.logger.error(`Failed to sync orders for user ${user.id}: ${error.message}`, error.stack);
@@ -178,29 +177,6 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
       };
     } catch (error) {
       this.logger.error(`Order synchronization failed: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle cleanup of stale orders
-   */
-  private async handleCleanupOrders(job: Job) {
-    try {
-      this.logger.log('Starting cleanup of stale orders');
-      await job.updateProgress(25);
-
-      const deletedCount = await this.orderService.cleanupStaleOrders();
-
-      await job.updateProgress(100);
-      this.logger.log(`Completed cleanup: ${deletedCount} stale orders removed`);
-
-      return {
-        deletedCount,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      this.logger.error(`Order cleanup failed: ${error.message}`, error.stack);
       throw error;
     }
   }

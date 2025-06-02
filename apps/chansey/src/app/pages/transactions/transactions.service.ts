@@ -44,12 +44,29 @@ export interface Transaction {
   status: OrderStatus;
   side: OrderSide;
   type: OrderType;
-  coin: {
+  cost?: number;
+  fee: number;
+  commission: number;
+  feeCurrency?: string;
+  baseCoin: {
     id: string;
     name: string;
     symbol: string;
     slug: string;
-    logo: string;
+    image: string;
+  };
+  quoteCoin: {
+    id: string;
+    name: string;
+    symbol: string;
+    slug: string;
+    image: string;
+  };
+  exchange?: {
+    id: string;
+    name: string;
+    slug: string;
+    image?: string;
   };
   createdAt: Date;
   updatedAt: Date;

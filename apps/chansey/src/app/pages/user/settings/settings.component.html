@@ -1,9 +1,9 @@
 <p-card class="tabs">
   <p-tabs value="0" scrollable>
     <p-tablist>
-      <p-tab value="0"><i class="pi pi-palette mr-2"></i>Appearance</p-tab>
-      <p-tab value="1"><i class="pi pi-bell mr-2"></i>Notification</p-tab>
-      <p-tab value="2"><i class="pi pi-shield mr-2"></i> Privacy & Security</p-tab>
+      <p-tab value="0"><i class="mr-2 pi pi-palette"></i>Appearance</p-tab>
+      <p-tab value="1"><i class="mr-2 pi pi-bell"></i>Notification</p-tab>
+      <p-tab value="2"><i class="mr-2 pi pi-shield"></i> Privacy & Security</p-tab>
     </p-tablist>
     <p-tabpanels>
       <p-tabpanel value="0">
@@ -11,13 +11,13 @@
           <div class="flex flex-col gap-4">
             <div class="flex flex-row items-center justify-between py-3">
               <span class="text-lg font-semibold">Dark Mode</span>
-              <p-toggleswitch class="mt-2 block" [(ngModel)]="darkMode" (ngModelChange)="toggleDarkMode()" />
+              <p-toggleswitch class="block mt-2" [(ngModel)]="darkMode" (ngModelChange)="toggleDarkMode()" />
             </div>
 
             <div class="flex flex-row items-center justify-between py-3">
               <span class="text-lg font-semibold">App Theme</span>
               <p-selectbutton
-                class="mt-2 block"
+                class="block mt-2"
                 [options]="presets"
                 [(ngModel)]="selectedPreset"
                 (ngModelChange)="onPresetChange($event)"
@@ -28,7 +28,7 @@
             <div class="flex flex-row items-center justify-between py-3">
               <span class="text-lg font-semibold">Card Style</span>
               <p-selectbutton
-                class="mt-2 block md:mt-0"
+                class="block mt-2 md:mt-0"
                 [(ngModel)]="cardStyle"
                 (ngModelChange)="onCardStyleChange($event)"
                 [options]="cardStyleOptions"
@@ -38,34 +38,34 @@
               />
             </div>
 
-            <div class="mb-4 flex flex-col items-start py-3">
+            <div class="flex flex-col items-start py-3 mb-4">
               <span class="mb-2 text-lg font-semibold">Theme Color:</span>
-              <div class="flex max-w-full flex-wrap gap-2 pr-0 pt-2 md:max-w-lg md:pr-48">
+              <div class="flex flex-wrap max-w-full gap-2 pt-2 pr-0 md:max-w-lg md:pr-48">
                 <button
                   *ngFor="let primaryColor of primaryColors; trackBy: trackByName"
                   type="button"
                   [title]="primaryColor.name"
                   (click)="updateColors($event, 'primary', primaryColor)"
-                  class="flex h-6 w-6 cursor-pointer items-center justify-center rounded duration-150 hover:shadow-lg"
+                  class="flex items-center justify-center w-6 h-6 duration-150 rounded cursor-pointer hover:shadow-lg"
                   [style]="{
                     'background-color':
                       primaryColor?.name === 'noir' ? 'var(--text-color)' : primaryColor?.palette?.['500']
                   }"
                 >
-                  <i *ngIf="primaryColor.name === selectedPrimaryColor" class="pi pi-check text-white"></i>
+                  <i *ngIf="primaryColor.name === selectedPrimaryColor" class="text-white pi pi-check"></i>
                 </button>
               </div>
             </div>
 
             <div>
               <span class="mb-2 text-lg font-semibold">Surface Color:</span>
-              <div class="flex max-w-full flex-wrap gap-2 pr-0 pt-2 md:max-w-lg md:pr-48">
+              <div class="flex flex-wrap max-w-full gap-2 pt-2 pr-0 md:max-w-lg md:pr-48">
                 <button
                   *ngFor="let surface of surfaces; trackBy: trackByName"
                   type="button"
                   [title]="surface.name"
                   (click)="updateColors($event, 'surface', surface)"
-                  class="flex h-6 w-6 cursor-pointer items-center justify-center rounded duration-150 hover:shadow-lg"
+                  class="flex items-center justify-center w-6 h-6 duration-150 rounded cursor-pointer hover:shadow-lg"
                   [style]="{
                     'background-color': surface?.palette?.['500']
                   }"
@@ -78,7 +78,7 @@
                           ? surface.name === 'zinc'
                           : surface.name === 'slate'
                     "
-                    class="pi pi-check text-white"
+                    class="text-white pi pi-check"
                   ></i>
                 </button>
               </div>
@@ -91,7 +91,7 @@
             <div class="flex flex-row items-center justify-between py-3">
               <span class="text-lg font-semibold">Menu Theme</span>
               <p-selectbutton
-                class="mt-2 block md:mt-0"
+                class="block mt-2 md:mt-0"
                 [(ngModel)]="menuTheme"
                 (ngModelChange)="onMenuThemeChange($event)"
                 [options]="menuThemeOptions"
@@ -103,9 +103,9 @@
 
             <div class="flex flex-col justify-between py-3 md:flex-row md:items-center">
               <span class="text-lg font-semibold">Menu Type</span>
-              <div class="flex w-64 flex-col flex-wrap gap-3 pt-2">
+              <div class="flex flex-col flex-wrap w-64 gap-3 pt-2">
                 <div class="flex">
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="static"
@@ -116,7 +116,7 @@
                     <label for="static">Static</label>
                   </div>
 
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="overlay"
@@ -128,7 +128,7 @@
                   </div>
                 </div>
                 <div class="flex">
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="slim"
@@ -138,7 +138,7 @@
                     />
                     <label for="slim">Slim</label>
                   </div>
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="compact"
@@ -150,7 +150,7 @@
                   </div>
                 </div>
                 <div class="flex">
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="reveal"
@@ -160,7 +160,7 @@
                     />
                     <label for="reveal">Reveal</label>
                   </div>
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="drawer"
@@ -172,7 +172,7 @@
                   </div>
                 </div>
                 <div class="flex">
-                  <div class="flex w-6/12 items-center gap-2">
+                  <div class="flex items-center w-6/12 gap-2">
                     <p-radiobutton
                       name="menuMode"
                       value="horizontal"
@@ -194,11 +194,11 @@
       <p-tabpanel value="1">
         <p-panel header="General" [toggleable]="true">
           <form [formGroup]="notificationForm">
-            <h3 class="text-md mb-3 mr-1 text-right font-semibold">Push</h3>
+            <h3 class="mb-3 mr-1 font-semibold text-right text-md">Push</h3>
             <div class="flex flex-row justify-between py-3">
               <div class="mb-2 md:mb-0">
-                <div class="text-900 mb-1 text-lg font-semibold">Account Updates</div>
-                <div class="text-600 text-sm">Receive notifications for account-related activities</div>
+                <div class="mb-1 text-lg font-semibold text-900">Account Updates</div>
+                <div class="text-sm text-600">Receive notifications for account-related activities</div>
               </div>
               <p-toggleswitch formControlName="pushNotifications" styleClass="mt-2 md:mt-0"></p-toggleswitch>
             </div>
@@ -212,8 +212,8 @@
         <p-panel header="Security Settings" [toggleable]="false">
           <div class="flex flex-row justify-between py-3">
             <div class="mb-2 md:mb-0">
-              <div class="text-900 mb-1 text-lg font-semibold">Two-Factor Authentication</div>
-              <div class="text-600 text-sm">Add an extra layer of security to your account</div>
+              <div class="mb-1 text-lg font-semibold text-900">Two-Factor Authentication</div>
+              <div class="text-sm text-600">Add an extra layer of security to your account</div>
             </div>
             <p-toggleswitch
               [disabled]="true"
@@ -228,5 +228,5 @@
   </p-tabs>
 </p-card>
 
-<p-toast position="bottom-right"></p-toast>
+<p-toast></p-toast>
 <p-confirmDialog [style]="{ width: '450px' }"></p-confirmDialog>

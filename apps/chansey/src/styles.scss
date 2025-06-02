@@ -1,6 +1,6 @@
 @use './tailwind.css';
 @use './app/styles/layout/layout.scss';
-@use './app/shared/directives/counter.directive.css';
+@use './app/shared/directives/counter/counter.directive.css';
 @use 'primeicons/primeicons.css';
 
 body {

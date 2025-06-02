@@ -68,10 +68,10 @@
         <tr>
           <td>
             <div class="flex items-center gap-1">
-              <p-avatar [image]="transaction.coin.logo" shape="circle" size="large" class="mr-2 shadow-sm" />
+              <p-avatar [image]="transaction.baseCoin.image" shape="circle" size="large" class="mr-2 shadow-sm" />
               <div class="flex flex-col">
                 <span class="font-medium">{{ transaction.symbol }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ transaction.coin.name }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ transaction.baseCoin.name }}</span>
               </div>
             </div>
           </td>

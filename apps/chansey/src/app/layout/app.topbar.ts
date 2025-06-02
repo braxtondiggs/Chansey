@@ -7,9 +7,9 @@ import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
 import { StyleClassModule } from 'primeng/styleclass';
 
-import { AppBreadcrumb } from './app.breadcrumb';
+import { AuthService, LayoutService } from '@chansey-web/app/shared/services';
 
-import { AuthService, LayoutService } from '../services';
+import { AppBreadcrumb } from './app.breadcrumb';
 
 interface NotificationsBars {
   id: string;

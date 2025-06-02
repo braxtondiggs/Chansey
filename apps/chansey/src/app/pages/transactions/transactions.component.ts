@@ -2,8 +2,6 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
-import { shapes } from '@dicebear/collection';
-import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -91,10 +89,10 @@ export class TransactionsComponent implements OnInit {
 
   ngOnInit(): void {
     // Initial data load
-    this.refreshData();
+    this.loadInitialData();
   }
 
-  refreshData(): void {
+  private loadInitialData(): void {
     this.loading.set(true);
     this.transactionsQuery.refetch();
   }
@@ -137,32 +135,6 @@ export class TransactionsComponent implements OnInit {
     return side === OrderSide.BUY ? 'success' : 'danger';
   }
 
-  // Format price with appropriate decimal places
-  formatPrice(price: number): string {
-    return price.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 8
-    });
-  }
-
-  // Format quantity with appropriate decimal places
-  formatQuantity(quantity: number): string {
-    return quantity.toLocaleString('en-US', {
-      minimumFractionDigits: 6,
-      maximumFractionDigits: 8
-    });
-  }
-
-  // Calculate total value (price * quantity)
-  calculateTotalValue(price: number, quantity: number): number {
-    return price * quantity;
-  }
-
-  // Format date for display
-  formatDate(date: Date): string {
-    return new Date(date).toLocaleString();
-  }
-
   // Apply filters to the table
   applyFilters(): void {
     const filters = this.filterForm.value;
@@ -202,13 +174,5 @@ export class TransactionsComponent implements OnInit {
       types: []
     });
     this.dt.clear();
-  }
-
-  getImage(slug: string): string {
-    return createAvatar(shapes, {
-      seed: slug,
-      size: 64,
-      radius: 64
-    }).toDataUri();
   }
 }

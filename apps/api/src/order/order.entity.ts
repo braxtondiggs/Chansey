@@ -38,9 +38,11 @@ export enum OrderStatus {
 
 @Entity()
 @Index('IDX_order_userId', ['user'])
-@Index('IDX_order_coinId', ['coin'])
+@Index('IDX_order_baseCoinId', ['baseCoin'])
+@Index('IDX_order_quoteCoinId', ['quoteCoin'])
 @Index('IDX_order_status_type', ['status', 'type'])
 @Index('IDX_order_symbol_side_createdat', ['symbol', 'side', 'createdAt'])
+@Index('IDX_order_basecoin_quotecoin', ['baseCoin', 'quoteCoin'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   @IsUUID()
@@ -256,15 +258,27 @@ export class Order {
   })
   user: User;
 
-  @ManyToOne(() => Coin, (coin) => coin.orders, {
-    nullable: false,
-    onDelete: 'CASCADE'
+  @ManyToOne(() => Coin, (coin) => coin.baseOrders, {
+    nullable: true,
+    onDelete: 'SET NULL'
   })
   @ApiProperty({
-    description: 'Coin associated with the order',
-    type: () => Coin
+    description: 'Base coin of the trading pair (the coin being bought/sold)',
+    type: () => Coin,
+    required: false
   })
-  coin: Coin;
+  baseCoin?: Coin;
+
+  @ManyToOne(() => Coin, (coin) => coin.quoteOrders, {
+    nullable: true,
+    onDelete: 'SET NULL'
+  })
+  @ApiProperty({
+    description: 'Quote coin of the trading pair (the coin used as payment)',
+    type: () => Coin,
+    required: false
+  })
+  quoteCoin?: Coin;
 
   @ManyToOne(() => Exchange, { nullable: true, onDelete: 'SET NULL' })
   @ApiProperty({
@@ -273,6 +287,198 @@ export class Order {
     required: false
   })
   exchange?: Exchange;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    nullable: true
+  })
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Time in force policy (GTC, IOC, FOK)',
+    example: 'GTC',
+    required: false
+  })
+  timeInForce?: string;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Stop price for stop orders',
+    example: 34000.0,
+    required: false
+  })
+  stopPrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Trigger price for conditional orders',
+    example: 34500.0,
+    required: false
+  })
+  triggerPrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Take profit price',
+    example: 36000.0,
+    required: false
+  })
+  takeProfitPrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Stop loss price',
+    example: 32000.0,
+    required: false
+  })
+  stopLossPrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true,
+    default: null
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Remaining unfilled quantity',
+    example: 0.2,
+    required: false
+  })
+  remaining?: number;
+
+  @Column({
+    type: 'boolean',
+    nullable: true
+  })
+  @IsOptional()
+  @ApiProperty({
+    description: 'Whether the order is post-only (maker-only)',
+    example: false,
+    required: false
+  })
+  postOnly?: boolean;
+
+  @Column({
+    type: 'boolean',
+    nullable: true
+  })
+  @IsOptional()
+  @ApiProperty({
+    description: 'Whether the order is reduce-only (position management)',
+    example: false,
+    required: false
+  })
+  reduceOnly?: boolean;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true
+  })
+  @IsDate()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Timestamp of the last trade execution',
+    example: '2024-04-23T18:25:43.511Z',
+    required: false,
+    type: Date
+  })
+  lastTradeTimestamp?: Date;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true
+  })
+  @IsDate()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Timestamp when the order was last updated',
+    example: '2024-04-23T18:25:43.511Z',
+    required: false,
+    type: Date
+  })
+  lastUpdateTimestamp?: Date;
+
+  @Column({
+    type: 'jsonb',
+    nullable: true
+  })
+  @IsOptional()
+  @ApiProperty({
+    description: 'Individual trade executions data',
+    example: [
+      {
+        id: 'trade123',
+        timestamp: 1640995200000,
+        price: 35000.5,
+        amount: 0.1,
+        cost: 3500.05,
+        fee: { cost: 3.5, currency: 'USDT' }
+      }
+    ],
+    required: false
+  })
+  trades?: any[];
+
+  @Column({
+    type: 'jsonb',
+    nullable: true
+  })
+  @IsOptional()
+  @ApiProperty({
+    description: 'Raw exchange order data for advanced analysis',
+    example: {
+      orderId: 123456789,
+      executedQty: '0.10000000',
+      cummulativeQuoteQty: '3500.05000000',
+      status: 'FILLED',
+      timeInForce: 'GTC',
+      type: 'MARKET'
+    },
+    required: false
+  })
+  info?: any;
 
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({

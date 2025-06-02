@@ -5,8 +5,8 @@ import { QueryClient } from '@tanstack/query-core';
 
 import { ILogin, ILoginResponse } from '@chansey/api-interfaces';
 
-import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
-import { authKeys } from '@chansey-web/app/services';
+import { useAuthMutation } from '@chansey-web/app/core/query';
+import { authKeys } from '@chansey-web/app/shared/services/auth.service';
 
 @Injectable({
   providedIn: 'root'

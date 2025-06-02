@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 
 import { QueryKey } from '@tanstack/angular-query-experimental';
 
-import { createQueryKeys, useAuthQuery } from '../../core/query/query.utils';
+import { createQueryKeys, useAuthQuery } from '../../../core/query/query.utils';
 
 // Asset interface to match response from API
 export interface UserAsset {

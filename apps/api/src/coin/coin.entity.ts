@@ -355,14 +355,23 @@ export class Coin {
   })
   updatedAt: Date;
 
-  @OneToMany(() => Order, (order) => order.coin)
+  @OneToMany(() => Order, (order) => order.baseCoin)
   @ApiProperty({
-    description: 'List of orders for the coin',
+    description: 'List of orders where this coin is the base coin',
     type: () => Order,
     isArray: true,
     required: false
   })
-  orders: Order[];
+  baseOrders: Order[];
+
+  @OneToMany(() => Order, (order) => order.quoteCoin)
+  @ApiProperty({
+    description: 'List of orders where this coin is the quote coin',
+    type: () => Order,
+    isArray: true,
+    required: false
+  })
+  quoteOrders: Order[];
 
   @OneToMany(() => Portfolio, (portfolio) => portfolio.coin)
   @ApiProperty({
@@ -410,5 +419,6 @@ export enum CoinRelations {
   PORTFOLIOS = 'portfolios',
   BASE_ASSETS = 'baseAssetPairs',
   QUOTE_ASSETS = 'quoteAssetPairs',
-  ORDERS = 'orders'
+  BASE_ORDERS = 'baseOrders',
+  QUOTE_ORDERS = 'quoteOrders'
 }

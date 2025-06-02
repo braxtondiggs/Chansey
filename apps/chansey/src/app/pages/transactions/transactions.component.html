@@ -1,22 +1,11 @@
 <p-card>
-  <div class="mb-4 flex justify-end">
-    <p-button
-      icon="pi pi-refresh"
-      class="p-button-outlined"
-      [loading]="isLoading()"
-      (click)="refreshData()"
-      label="Refresh"
-      [style.visibility]="transactionsQuery.isPending() ? 'hidden' : 'visible'"
-    />
-  </div>
-
   <form
     [formGroup]="filterForm"
-    class="mb-4 grid gap-3"
+    class="grid gap-3 my-5"
     style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
   >
     <div>
-      <div class="p-inputgroup w-full">
+      <div class="w-full p-inputgroup">
         <p-iconfield iconPosition="left" class="ml-auto">
           <p-inputicon>
             <i class="pi pi-search"></i>
@@ -84,43 +73,108 @@
 
   <!-- PrimeNG Skeleton loader for the table -->
   <div *ngIf="isLoading()" class="mb-4">
-    <!-- Skeleton for table header -->
-    <div class="flex border-b border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
-      <p-skeleton width="160px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="150px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="130px" height="1.25rem"></p-skeleton>
-    </div>
-
-    <!-- Skeleton for table rows -->
-    <div *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8]" class="flex border-b border-gray-200 p-3 dark:border-gray-700">
-      <p-skeleton width="160px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <div class="mr-6 flex items-center">
-        <p-skeleton shape="circle" size="2rem" styleClass="mr-2"></p-skeleton>
-        <p-skeleton width="120px" height="1.25rem"></p-skeleton>
-      </div>
-      <p-skeleton width="100px" height="2rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="150px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-      <p-skeleton width="130px" height="2rem"></p-skeleton>
+    <!-- Create a proper table structure for skeleton -->
+    <div class="overflow-auto">
+      <table class="w-full border-collapse">
+        <!-- Skeleton table header -->
+        <thead>
+          <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+            <th class="p-3 text-left" style="min-width: 120px">
+              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 100px">
+              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 150px">
+              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 120px">
+              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 120px">
+              <p-skeleton width="90px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 120px">
+              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 120px">
+              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 120px">
+              <p-skeleton width="90px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 130px">
+              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+            </th>
+            <th class="p-3 text-left" style="min-width: 160px">
+              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+            </th>
+          </tr>
+        </thead>
+        <!-- Skeleton table body -->
+        <tbody>
+          <tr *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8]" class="border-b border-gray-200 dark:border-gray-700">
+            <td class="p-3">
+              <div class="flex items-center gap-3">
+                <div class="flex -space-x-2">
+                  <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
+                  <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+                  <p-skeleton width="80px" height="1rem"></p-skeleton>
+                </div>
+              </div>
+            </td>
+            <td class="p-3">
+              <p-skeleton width="60px" height="2rem" styleClass="rounded-full"></p-skeleton>
+            </td>
+            <td class="p-3">
+              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+            </td>
+            <td class="p-3">
+              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+            </td>
+            <td class="p-3">
+              <p-skeleton width="90px" height="1.25rem"></p-skeleton>
+            </td>
+            <td class="p-3">
+              <div class="flex flex-col gap-1">
+                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+                <p-skeleton width="40px" height="1rem"></p-skeleton>
+              </div>
+            </td>
+            <td class="p-3">
+              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+            </td>
+            <td class="p-3">
+              <div class="flex items-center gap-2">
+                <p-skeleton shape="circle" size="1.5rem"></p-skeleton>
+                <p-skeleton width="70px" height="1.25rem"></p-skeleton>
+              </div>
+            </td>
+            <td class="p-3">
+              <p-skeleton width="80px" height="2rem" styleClass="rounded-full"></p-skeleton>
+            </td>
+            <td class="p-3">
+              <div class="flex flex-col gap-1">
+                <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+                <p-skeleton width="60px" height="1rem"></p-skeleton>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- Skeleton for pagination -->
-    <div class="flex justify-between p-3">
+    <div class="flex items-center justify-between p-3 border-t border-gray-200 dark:border-gray-700">
       <p-skeleton width="150px" height="1.25rem"></p-skeleton>
-      <div class="flex">
-        <p-skeleton width="2rem" height="2rem" styleClass="mr-1"></p-skeleton>
-        <p-skeleton width="2rem" height="2rem" styleClass="mr-1"></p-skeleton>
-        <p-skeleton width="2rem" height="2rem" styleClass="mr-1"></p-skeleton>
-        <p-skeleton width="2rem" height="2rem"></p-skeleton>
+      <div class="flex gap-1">
+        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
       </div>
     </div>
   </div>
@@ -129,55 +183,97 @@
     #dt
     [value]="transactions()"
     [paginator]="true"
-    [rows]="10"
+    [rows]="25"
     [rowHover]="true"
     [loading]="isLoading()"
     [rowsPerPageOptions]="[5, 10, 25, 50]"
     [showCurrentPageReport]="true"
     [filterDelay]="0"
     currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
-    [globalFilterFields]="['symbol', 'coin.name', 'coin.symbol', 'orderId', 'clientOrderId']"
+    [globalFilterFields]="[
+      'symbol',
+      'baseCoin.name',
+      'baseCoin.symbol',
+      'quoteCoin.name',
+      'quoteCoin.symbol',
+      'orderId',
+      'clientOrderId',
+      'feeCurrency',
+      'exchange.name',
+      'exchange.slug'
+    ]"
     [scrollable]="true"
-    scrollHeight="400px"
-    styleClass="p-datatable-sm"
+    dataKey="id"
+    stripedRows
     [sortField]="'transactTime'"
     [sortOrder]="-1"
-    responsiveLayout="scroll"
     [hidden]="isLoading()"
   >
     <ng-template pTemplate="header">
       <tr>
-        <th pSortableColumn="coin.name" style="min-width: 120px">Coin <p-sortIcon field="coin.name"></p-sortIcon></th>
-        <th pSortableColumn="side" style="min-width: 100px">Side <p-sortIcon field="side"></p-sortIcon></th>
-        <th pSortableColumn="type" style="min-width: 150px">Type <p-sortIcon field="type"></p-sortIcon></th>
-        <th pSortableColumn="price" style="min-width: 120px">Price <p-sortIcon field="price"></p-sortIcon></th>
-        <th pSortableColumn="quantity" style="min-width: 120px">Quantity <p-sortIcon field="quantity"></p-sortIcon></th>
-        <th pSortableColumn="executedQuantity" style="min-width: 120px">
-          Executed <p-sortIcon field="executedQuantity"></p-sortIcon>
-        </th>
-        <th style="min-width: 120px">Total Value</th>
-        <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status"></p-sortIcon></th>
-        <th pSortableColumn="transactTime" style="min-width: 160px">
-          Date <p-sortIcon field="transactTime"></p-sortIcon>
-        </th>
+        <th style="min-width: 120px">Trading Pair</th>
+        <th style="min-width: 100px">Side</th>
+        <th style="min-width: 150px">Type</th>
+        <th pSortableColumn="price" style="min-width: 120px">Price</th>
+        <th pSortableColumn="quantity" style="min-width: 120px">Quantity</th>
+        <th pSortableColumn="fee" style="min-width: 120px">Fees</th>
+        <th pSortableColumn="cost" style="min-width: 120px">Total Value <p-sortIcon field="cost" /></th>
+        <th style="min-width: 120px">Exchange</th>
+        <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status" /></th>
+        <th pSortableColumn="transactTime" style="min-width: 160px">Date <p-sortIcon field="transactTime" /></th>
       </tr>
     </ng-template>
     <ng-template pTemplate="body" let-transaction>
       <tr>
         <td>
-          <div class="align-items-center flex">
-            <p-avatar [image]="getImage(transaction.coin.symbol)" shape="circle" size="large" class="mr-2" />
-            <span>{{ transaction.coin.name }} ({{ transaction.coin.symbol }})</span>
+          <div class="flex items-center gap-3">
+            <div class="flex -space-x-2">
+              <p-avatar
+                [image]="transaction.baseCoin?.image"
+                shape="circle"
+                size="large"
+                class="border-2 border-white shadow-sm dark:border-gray-800"
+              />
+              <p-avatar
+                *ngIf="transaction.quoteCoin"
+                [image]="transaction.quoteCoin.image"
+                shape="circle"
+                size="large"
+                class="border-2 border-white shadow-sm dark:border-gray-800"
+              />
+            </div>
+            <div class="flex flex-col">
+              <span class="text-lg font-medium">{{ transaction.symbol }}</span>
+              <span class="text-sm text-gray-500 dark:text-gray-400">{{ transaction.baseCoin?.name }}</span>
+            </div>
           </div>
         </td>
         <td>
           <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
         </td>
         <td>{{ transaction.type.replace('_', ' ') }}</td>
-        <td>${{ formatPrice(transaction.price) }}</td>
-        <td>{{ formatQuantity(transaction.quantity) }}</td>
-        <td>{{ formatQuantity(transaction.executedQuantity) }}</td>
-        <td>${{ formatPrice(calculateTotalValue(transaction.price, transaction.quantity)) }}</td>
+        <td>${{ transaction.price | number: '1.2-2' }}</td>
+        <td>{{ transaction.quantity | number: '1.2-8' }}</td>
+        <td>
+          <div class="flex flex-col">
+            <span class="text-sm font-medium">${{ transaction.fee | number: '1.2-6' }}</span>
+          </div>
+        </td>
+        <td>${{ transaction.cost | number: '1.2-2' }} total</td>
+        <td>
+          <div class="flex items-center gap-2" *ngIf="transaction.exchange; else noExchange">
+            <p-avatar
+              [image]="transaction.exchange.image"
+              shape="circle"
+              size="normal"
+              class="border border-gray-200 shadow-sm dark:border-gray-700"
+            />
+            <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
+          </div>
+          <ng-template #noExchange>
+            <span class="text-sm text-gray-500 dark:text-gray-400">N/A</span>
+          </ng-template>
+        </td>
         <td>
           <p-tag [value]="transaction.status" [severity]="getStatusSeverity(transaction.status)"></p-tag>
         </td>
@@ -189,9 +285,9 @@
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="9" class="p-4 text-center">
+        <td colspan="10" class="p-4 text-center">
           <div *ngIf="!isLoading()">
-            <i class="pi pi-inbox mb-3 text-5xl text-gray-400"></i>
+            <i class="mb-3 text-5xl text-gray-400 pi pi-inbox"></i>
             <p class="text-gray-500">No transactions found</p>
           </div>
         </td>

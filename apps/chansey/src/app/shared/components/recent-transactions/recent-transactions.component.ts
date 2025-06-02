@@ -9,7 +9,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { OrderSide, OrderStatus, TransactionsService } from '../../pages/transactions/transactions.service';
+import { OrderSide, OrderStatus, TransactionsService } from '@chansey-web/app/pages/transactions/transactions.service';
 
 @Component({
   selector: 'app-recent-transactions',

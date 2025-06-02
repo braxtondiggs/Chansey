@@ -1,7 +1,7 @@
-import { CommonModule, Location } from '@angular/common';
-import { AfterViewInit, Component, computed, signal, effect, inject, ViewChild, ElementRef } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { AfterViewInit, Component, computed, signal, effect, inject, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
@@ -13,7 +13,7 @@ import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { DialogModule } from 'primeng/dialog';
 import { DividerModule } from 'primeng/divider';
 import { FieldsetModule } from 'primeng/fieldset';
-import { FileSelectEvent, FileUpload, FileUploadModule, UploadEvent } from 'primeng/fileupload';
+import { FileSelectEvent, FileUpload, FileUploadModule } from 'primeng/fileupload';
 import { FloatLabel } from 'primeng/floatlabel';
 import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
@@ -29,9 +29,9 @@ import { TooltipModule } from 'primeng/tooltip';
 
 import { ExchangeKey } from '@chansey/api-interfaces';
 
-import { ImageCropComponent } from '@chansey-web/app/components/image-crop/image-crop.component';
 import { RisksService } from '@chansey-web/app/pages/admin/risks/risks.service';
-import { AuthService, ExchangeService } from '@chansey-web/app/services';
+import { ImageCropComponent } from '@chansey-web/app/shared/components';
+import { AuthService, ExchangeService } from '@chansey-web/app/shared/services';
 import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
 
 import { ProfileService } from './profile.service';
@@ -77,8 +77,6 @@ export class ProfileComponent implements AfterViewInit {
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
   private route = inject(ActivatedRoute);
-  private router = inject(Router);
-  private location = inject(Location);
 
   @ViewChild('fileUpload') fileUpload!: FileUpload;
 
@@ -137,7 +135,7 @@ export class ProfileComponent implements AfterViewInit {
     // Setup effects to update forms when user data changes
     effect(() => {
       const userData = this.user();
-      if (userData) {
+      if (userData && !this.profileForm.dirty) {
         this.updateForms(userData);
       }
     });
@@ -209,18 +207,39 @@ export class ProfileComponent implements AfterViewInit {
       if (fragment) {
         const element = document.getElementById(fragment);
         if (element) {
-          if ('serviceWorker' in navigator && window.matchMedia('(display-mode: standalone)').matches) {
-            // PWA standalone mode - use more aggressive scrolling
-            window.scrollTo({
-              top: element.offsetTop - 100,
-              behavior: 'smooth'
-            });
+          const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+          if (isPWA) {
+            // PWA scrolling with fallback - force scroll with explicit coordinates
+            const elementRect = element.getBoundingClientRect();
+            const absoluteElementTop = elementRect.top + window.pageYOffset;
+            const middle = absoluteElementTop - window.innerHeight / 2;
+            window.scrollTo({ top: middle, behavior: 'smooth' });
           } else {
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
+
+          // Add visual highlighting after scroll
+          this.highlightElement(element);
         }
       }
     }, 500);
+  }
+
+  private highlightElement(element: HTMLElement): void {
+    const targetElement = (element.firstElementChild as HTMLElement) || element;
+
+    const originalBg = targetElement.style.backgroundColor;
+    const originalTransition = targetElement.style.transition;
+
+    targetElement.style.transition = 'background-color 0.3s ease';
+    targetElement.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+
+    setTimeout(() => {
+      targetElement.style.backgroundColor = originalBg;
+      setTimeout(() => {
+        targetElement.style.transition = originalTransition;
+      }, 600);
+    }, 1200);
   }
 
   isExchangeActive(exchangeId: string): boolean {
@@ -318,6 +337,7 @@ export class ProfileComponent implements AfterViewInit {
         });
 
         this.profileForm.markAsPristine();
+        this.formSubmitted = false;
 
         if (isEmailChanged) {
           this.messages.set([

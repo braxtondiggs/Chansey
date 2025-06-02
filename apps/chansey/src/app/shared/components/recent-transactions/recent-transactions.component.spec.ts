@@ -4,25 +4,7 @@ import { RouterTestingModule } from '@angular/router/testing';
 
 import { RecentTransactionsComponent } from './recent-transactions.component';
 
-import { TransactionsService } from '../../pages/transactions/transactions.service';
-
-jest.mock(
-  '@dicebear/collection',
-  () => ({
-    shapes: {}
-  }),
-  { virtual: true }
-);
-
-jest.mock(
-  '@dicebear/core',
-  () => ({
-    createAvatar: jest.fn().mockReturnValue({
-      toDataUriSync: jest.fn().mockReturnValue('data:image/svg+xml;utf8,<svg></svg>')
-    })
-  }),
-  { virtual: true }
-);
+import { TransactionsService } from '../../../pages/transactions/transactions.service';
 
 describe('RecentTransactionsComponent', () => {
   let component: RecentTransactionsComponent;

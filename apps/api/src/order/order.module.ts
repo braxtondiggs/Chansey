@@ -6,6 +6,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
+import { OrderCalculationService } from './services/order-calculation.service';
+import { OrderSyncService } from './services/order-sync.service';
+import { OrderValidationService } from './services/order-validation.service';
 import { OrderSyncTask } from './tasks/order-sync.task';
 import { TestnetController } from './testnet/testnet.controller';
 import { Testnet } from './testnet/testnet.entity';
@@ -32,6 +35,16 @@ import { UsersModule } from '../users/users.module';
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => UsersModule)
   ],
-  providers: [AlgorithmService, CoinService, OrderService, OrderSyncTask, TestnetService, TickerPairService]
+  providers: [
+    AlgorithmService,
+    CoinService,
+    OrderCalculationService,
+    OrderService,
+    OrderSyncService,
+    OrderSyncTask,
+    OrderValidationService,
+    TestnetService,
+    TickerPairService
+  ]
 })
 export class OrderModule {}

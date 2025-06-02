@@ -12,7 +12,7 @@ import { PasswordModule } from 'primeng/password';
 
 import { IRegister } from '@chansey/api-interfaces';
 
-import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
+import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
 import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
 
 import { RegisterService } from './register.service';

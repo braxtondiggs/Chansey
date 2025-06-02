@@ -8,7 +8,7 @@ import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 
-import { LazyImageComponent } from '@chansey-web/app/components/lazy-image.component';
+import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
 
 import { ForgotService } from './forgot.service';
 

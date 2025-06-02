@@ -1,1 +1,1 @@
-export { CounterDirective } from './counter.directive';
+export { CounterDirective } from './counter/counter.directive';
