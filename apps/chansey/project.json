@@ -108,10 +108,10 @@
       "executor": "@nx/eslint:lint"
     },
     "test": {
-      "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "executor": "@nx/vite:test",
+      "outputs": ["{workspaceRoot}/coverage/chansey"],
       "options": {
-        "jestConfig": "apps/chansey/jest.config.ts"
+        "config": "apps/chansey/vite.config.ts"
       }
     },
     "serve-static": {
