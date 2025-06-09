@@ -236,7 +236,7 @@
 
   @let exchanges = supportedExchangesQuery.data() || [];
   @if (exchanges.length > 1) {
-    <p-tabs value="{{ exchanges[0].slug }}" [lazy]="true">
+    <p-tabs value="{{ exchanges[0].slug }}" lazy scrollable>
       <p-tablist>
         @for (exchange of exchanges; track exchange) {
           <p-tab [value]="exchange.slug">

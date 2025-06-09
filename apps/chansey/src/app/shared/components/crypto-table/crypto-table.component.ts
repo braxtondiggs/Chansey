@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, EventEmitter, inject, Input, Output, signal, ViewChild } from '@angular/core';
+import { Component, ElementRef, EventEmitter, inject, Input, Output, signal, ViewChild, computed } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { MessageService } from 'primeng/api';
@@ -18,6 +18,7 @@ import { TooltipModule } from 'primeng/tooltip';
 
 import { Coin } from '@chansey/api-interfaces';
 
+import { PriceService } from '@chansey-web/app/pages/prices/prices.service';
 import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
 import { FormatLargeNumberPipe } from '@chansey-web/app/shared/pipes/format-large-number.pipe';
 
@@ -57,7 +58,13 @@ export class CryptoTableComponent {
   @ViewChild('dt') dt!: Table;
   @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
 
-  @Input() coins: Coin[] = [];
+  @Input() set coins(value: Coin[]) {
+    this.coinsSignal.set(value);
+  }
+  get coins(): Coin[] {
+    return this.coinsSignal();
+  }
+
   @Input() isLoading = false;
   @Input() config: CryptoTableConfig = {
     showWatchlistToggle: true,
@@ -72,16 +79,118 @@ export class CryptoTableComponent {
   @Output() toggleWatchlist = new EventEmitter<Coin>();
   @Output() removeCoin = new EventEmitter<Coin>();
 
+  // Internal signal to track coins array changes
+  coinsSignal = signal<Coin[]>([]);
   searchFilter = signal<string>('');
+  currentPage = signal<number>(0);
+  rowsPerPage = signal<number>(25);
+  // Sorting state signals
+  sortField = signal<string>('');
+  sortOrder = signal<number>(0); // 0 = no sort, 1 = asc, -1 = desc
   messageService = inject(MessageService);
+  priceService = inject(PriceService);
+
+  // Computed signal for sorted coins that the table displays
+  sortedCoins = computed(() => {
+    const coins = this.coinsSignal();
+    const sortField = this.sortField();
+    const sortOrder = this.sortOrder();
+
+    // Apply sorting if we have sort criteria
+    if (sortField && sortOrder !== 0) {
+      return this.applySorting([...coins], sortField, sortOrder);
+    }
+
+    return coins;
+  });
+
+  // Computed signal to get sorted and paginated coin IDs for price query
+  coinIds = computed(() => {
+    const sortedCoins = this.sortedCoins();
+    const page = this.currentPage();
+    const rows = this.rowsPerPage();
+
+    const startIndex = page * rows;
+    const endIndex = startIndex + rows;
+
+    // Get coins for the current page only
+    const visibleCoins = sortedCoins.slice(startIndex, endIndex);
+    const coinIds = visibleCoins
+      .filter((coin) => coin.slug) // Filter out coins without slugs
+      .map((coin) => coin.slug)
+      .join(',');
+    return coinIds;
+  });
+  priceQuery = this.priceService.usePrices(this.coinIds);
+
+  // Computed signal that provides a price lookup map
+  pricesMap = computed(() => {
+    const query = this.priceQuery;
+    const priceData = query?.data();
+
+    if (!priceData || typeof priceData !== 'object' || Array.isArray(priceData)) {
+      return new Map<string, number>();
+    }
+
+    const pricesMap = new Map<string, number>();
+    const typedPriceData = priceData as Record<string, { usd?: number }>;
+
+    Object.entries(typedPriceData).forEach(([coinId, data]) => {
+      if (data.usd) {
+        pricesMap.set(coinId, data.usd);
+      }
+    });
+
+    return pricesMap;
+  });
+
+  // Helper method to get price for a specific coin
+  getCoinPrice = computed(() => {
+    const pricesMap = this.pricesMap();
+    const sortedCoins = this.sortedCoins();
+
+    return (coinSlug: string) => {
+      // First, try to find the coin by slug to get its currentPrice
+      const coin = sortedCoins.find((c) => c.slug === coinSlug);
+      // If coin has currentPrice and it's not zero, use it
+      if (coin?.currentPrice && Number(coin.currentPrice) > 0) {
+        return +coin.currentPrice;
+      }
+
+      // Otherwise, fall back to price service data
+      return Number(pricesMap.get(coinSlug)) || 0;
+    };
+  });
+
+  // Check if we're loading price data - returns a function to check individual coins
+  isLoadingPrices = computed(() => {
+    const query = this.priceQuery;
+    const pricesMap = this.pricesMap();
+    const isQueryPending = query?.isPending() || false;
+
+    // Return a function that can check if a specific coin is loading
+    return (coinSlug?: string) => {
+      // If no coin slug provided, return false (don't show loading for global checks)
+      if (!coinSlug) return false;
+
+      // Find the coin to check its currentPrice
+      const coin = this.sortedCoins().find((c) => c.slug === coinSlug);
+
+      // Show loading if:
+      // 1. The query is pending (we're fetching new data)
+      // 2. AND we don't have reliable price data (no currentPrice AND no service price)
+      const hasCurrentPrice = coin?.currentPrice && Number(coin.currentPrice) > 0;
+      const hasServicePrice = pricesMap.get(coinSlug) && Number(pricesMap.get(coinSlug) || 0) > 0;
+
+      // Only show loading when query is pending AND we don't have any price data
+      return isQueryPending && !hasCurrentPrice && !hasServicePrice;
+    };
+  });
 
   /**
-   * Custom sort function to handle numeric fields properly
-   * This prevents PrimeNG from sorting by formatted display values
+   * Apply sorting to coins array without mutating the original
    */
-  customSort = (event: { field: string; order: number }) => {
-    const { field, order } = event;
-
+  private applySorting(coins: Coin[], field: string, order: number): Coin[] {
     // Define numeric fields that need custom sorting
     const numericFields = [
       'currentPrice',
@@ -93,8 +202,8 @@ export class CryptoTableComponent {
       'marketRank'
     ];
 
-    if (numericFields.includes(field)) {
-      this.coins.sort((a: Coin, b: Coin) => {
+    return coins.sort((a: Coin, b: Coin) => {
+      if (numericFields.includes(field)) {
         // Get the raw numeric values for comparison
         const aValue = this.getNumericValue(a, field);
         const bValue = this.getNumericValue(b, field);
@@ -107,17 +216,25 @@ export class CryptoTableComponent {
         // Perform numeric comparison
         const result = aValue - bValue;
         return order === 1 ? result : -result;
-      });
-    } else {
-      // For non-numeric fields, use default string sorting
-      this.coins.sort((a: Coin, b: Coin) => {
+      } else {
+        // For non-numeric fields, use default string sorting
         const aValue = this.getStringValue(a, field);
         const bValue = this.getStringValue(b, field);
 
         const result = aValue.localeCompare(bValue);
         return order === 1 ? result : -result;
-      });
-    }
+      }
+    });
+  }
+
+  /**
+   * Custom sort function to handle numeric fields properly
+   * This prevents PrimeNG from sorting by formatted display values
+   */
+  customSort = (event: { field: string; order: number }) => {
+    const { field, order } = event;
+    this.sortField.set(field);
+    this.sortOrder.set(order);
   };
 
   /**
@@ -174,6 +291,14 @@ export class CryptoTableComponent {
 
   onRemoveCoin(coin: Coin): void {
     this.removeCoin.emit(coin);
+  }
+
+  onPageChange(event: { first?: number; rows?: number; page?: number }): void {
+    const rows = event.rows || 25;
+    const page = event.first ? Math.floor(event.first / rows) : 0;
+
+    this.currentPage.set(page);
+    this.rowsPerPage.set(rows);
   }
 
   getTag(change: number | undefined): string {

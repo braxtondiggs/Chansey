@@ -1,8 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import * as ccxt from 'ccxt';
-import { async } from 'rxjs';
 import { Repository } from 'typeorm';
 
 import { Coin } from './../coin/coin.entity';
@@ -15,7 +13,7 @@ import { TestnetDto } from './testnet/dto/testnet.dto';
 
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceUSService } from '../exchange/binance/binance-us.service';
+import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
@@ -62,7 +60,7 @@ export class OrderService {
 
   constructor(
     @InjectRepository(Order) private readonly orderRepository: Repository<Order>,
-    private readonly binanceService: BinanceUSService,
+    private readonly exchangeManager: ExchangeManagerService,
     private readonly coinService: CoinService,
     private readonly tickerPairService: TickerPairService,
     private readonly orderValidationService: OrderValidationService,
@@ -90,7 +88,7 @@ export class OrderService {
     }
 
     const suggestedCoins = await this.coinService.getCoinsByRiskLevel(user);
-    const balance = await this.binanceService.getBalance(user);
+    const balance = await this.exchangeManager.getBalance('binance_us', user);
     const freeBalance = balance.find((b) => b.asset === 'USD');
     let remainingQuantity = Number(parseFloat(order.quantity).toFixed(8));
     const orders = [];
@@ -221,7 +219,7 @@ export class OrderService {
       const coin = await this.coinService.getCoinById(order.baseCoinId);
       if (!coin) throw new BadRequestException('Invalid base coin ID');
 
-      const balance = await this.binanceService.getBalance(user);
+      const balance = await this.exchangeManager.getBalance('binance_us', user);
       const coinBalance = balance.find((b) => b.asset === coin.symbol.toUpperCase());
 
       if (!coinBalance || Number(coinBalance.free) <= 0) {
@@ -393,7 +391,7 @@ export class OrderService {
     user: User
   ) {
     try {
-      const binance = await this.binanceService.getBinanceClient(user);
+      const binance = await this.exchangeManager.getExchangeClient('binance_us', user);
 
       // CCXT uses different method names for order creation
       const action = await binance.createOrder(symbol, 'market', side.toLowerCase(), parseFloat(quantity), undefined);
@@ -429,7 +427,7 @@ export class OrderService {
    * @throws BadRequestException if symbol not found
    */
   private async getExchangeInfo(symbol: string, user?: User) {
-    const binance = await this.binanceService.getBinanceClient(user);
+    const binance = await this.exchangeManager.getExchangeClient('binance_us', user);
     // CCXT uses fetchMarkets instead of exchangeInfo
     const markets = await binance.fetchMarkets();
 

@@ -55,6 +55,9 @@ export const coinKeys = createQueryKeys<{
     watchlist: QueryKey;
   };
   detail: (id: string) => QueryKey;
+  price: {
+    byCoinId: (coinId: string) => QueryKey;
+  };
 }>('coins');
 
 // Define list queries
@@ -66,6 +69,11 @@ coinKeys.lists = {
 
 // Define detail query
 coinKeys.detail = (id) => [...coinKeys.all, 'detail', id];
+
+// Define price queries
+coinKeys.price = {
+  byCoinId: (coinId) => [...coinKeys.all, 'price', coinId]
+};
 
 /**
  * Risk query keys

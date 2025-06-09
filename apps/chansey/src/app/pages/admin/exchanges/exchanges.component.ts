@@ -151,7 +151,8 @@ export class ExchangesComponent {
       const slug = this.generateSlug(exchangeData.name);
       const createData = {
         ...exchangeData,
-        slug
+        slug,
+        isScraped: false
       };
 
       this.createExchangeMutation.mutate(createData, {
@@ -194,7 +195,6 @@ export class ExchangesComponent {
   }
 
   deleteExchange(id: string): void {
-    console.log('Deleting exchange with ID:', id);
     this.deleteExchangeMutation.mutate(id, {
       onSuccess: () => {
         this.showSuccessMessage('Exchange deleted successfully');

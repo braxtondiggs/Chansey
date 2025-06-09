@@ -3,8 +3,12 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BinanceUSService } from './binance/binance-us.service';
+import { CoinbaseExchangeService } from './coinbase-exchange/coinbase-exchange.service';
+// eslint-disable-next-line import/order
 import { CoinbaseService } from './coinbase/coinbase.service';
+import { ExchangeKey } from './exchange-key/exchange-key.entity';
 import { ExchangeKeyModule } from './exchange-key/exchange-key.module';
+import { ExchangeManagerService } from './exchange-manager.service';
 import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
@@ -18,11 +22,19 @@ import { CoinService } from '../coin/coin.service';
   controllers: [ExchangeController],
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Coin, Exchange]),
+    TypeOrmModule.forFeature([Coin, Exchange, ExchangeKey]),
     forwardRef(() => ExchangeKeyModule),
     BullModule.registerQueue({ name: 'exchange-queue' })
   ],
-  providers: [BinanceUSService, CoinbaseService, CoinService, ExchangeService, ExchangeSyncTask],
-  exports: [ExchangeService, BinanceUSService, CoinbaseService]
+  providers: [
+    BinanceUSService,
+    CoinbaseService,
+    CoinbaseExchangeService,
+    CoinService,
+    ExchangeService,
+    ExchangeSyncTask,
+    ExchangeManagerService
+  ],
+  exports: [ExchangeService, BinanceUSService, CoinbaseService, CoinbaseExchangeService, ExchangeManagerService]
 })
 export class ExchangeModule {}

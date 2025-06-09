@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { map } from 'rxjs/operators';
 import { Repository } from 'typeorm';
 
 import { UsersService } from './../users/users.service';
@@ -16,8 +15,7 @@ import {
 import { HistoricalBalance } from './historical-balance.entity';
 
 import { CoinService } from '../coin/coin.service';
-import { BinanceUSService } from '../exchange/binance/binance-us.service';
-import { CoinbaseService } from '../exchange/coinbase/coinbase.service';
+import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { Exchange } from '../exchange/exchange.entity';
 import { User } from '../users/users.entity';
 
@@ -26,8 +24,7 @@ export class BalanceService {
   private readonly logger = new Logger(BalanceService.name);
 
   constructor(
-    private readonly binanceService: BinanceUSService,
-    private readonly coinbaseService: CoinbaseService,
+    private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,
     private readonly userService: UsersService,
     @InjectRepository(HistoricalBalance)
@@ -78,8 +75,13 @@ export class BalanceService {
     const exchangeBalances: ExchangeBalanceDto[] = [];
     const timeout = 15000;
 
-    // Get balances from each exchange
+    // Get balances from each exchange key
     for (const exchange of user.exchanges) {
+      // Skip inactive exchange keys
+      if (!exchange.isActive) {
+        continue;
+      }
+
       try {
         let balances: AssetBalanceDto[] = [];
         let totalUsdValue = 0;
@@ -95,17 +97,15 @@ export class BalanceService {
             try {
               let result: AssetBalanceDto[] = [];
 
-              switch (exchange.slug) {
-                case 'binance_us':
-                  result = await this.getBinanceBalances(user);
-                  break;
-                case 'gdax':
-                  result = await this.getCoinbaseBalances(user);
-                  break;
-                default:
-                  this.logger.warn(`No handler for exchange: ${exchange.slug}`);
-                  resolve([]);
-                  return;
+              // Get the appropriate service for this exchange using ExchangeManagerService
+              try {
+                const exchangeService = this.exchangeManagerService.getExchangeService(exchange.slug);
+                // All exchange services now have standardized getBalance method
+                result = await exchangeService.getBalance(user);
+              } catch (serviceError) {
+                this.logger.warn(`No handler for exchange: ${exchange.slug} - ${serviceError.message}`);
+                resolve([]);
+                return;
               }
 
               clearTimeout(timer);
@@ -154,7 +154,7 @@ export class BalanceService {
 
         // Calculate USD value for each asset and the total with timeout protection
         try {
-          balances = await this.calculateUsdValues(balances, exchange.slug, user);
+          balances = await this.calculateUsdValues(balances, exchange.slug);
           totalUsdValue = balances.reduce((sum, asset) => sum + (asset.usdValue || 0), 0);
 
           exchangeBalances.push({
@@ -304,63 +304,36 @@ export class BalanceService {
   }
 
   /**
-   * Get Binance balances for a user
-   * @param user The user to get balances for
-   * @returns Balances for all assets in the user's Binance account
-   */
-  private async getBinanceBalances(user: User): Promise<AssetBalanceDto[]> {
-    try {
-      return await this.binanceService.getBalance(user);
-    } catch (error) {
-      this.logger.error(`Error getting Binance balances: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Get Coinbase balances for a user
-   * @param user The user to get balances for
-   * @returns Balances for all assets in the user's Coinbase account
-   */
-  private async getCoinbaseBalances(user: User): Promise<AssetBalanceDto[]> {
-    try {
-      // Use getBalance method directly to match how Binance is handled
-      return await this.coinbaseService.getBalance(user);
-    } catch (error) {
-      // If the method fails, return an empty array
-      this.logger.error(`Error getting Coinbase balances: ${error.message}`, error.stack);
-      return [];
-    }
-  }
-
-  /**
-   * Calculate USD values for each asset
+   * Calculate USD values for each asset using the ExchangeManagerService
    * @param balances The balances to calculate USD values for
    * @param exchangeSlug The exchange slug
-   * @param user The user
    * @returns Balances with USD values added
    */
-  private async calculateUsdValues(
-    balances: AssetBalanceDto[],
-    exchangeSlug: string,
-    user: User
-  ): Promise<AssetBalanceDto[]> {
+  private async calculateUsdValues(balances: AssetBalanceDto[], exchangeSlug: string): Promise<AssetBalanceDto[]> {
     for (const balance of balances) {
       try {
         if (balance.asset === 'USDT' || balance.asset === 'USD') {
           // Stablecoins are already in USD
           balance.usdValue = parseFloat(balance.free) + parseFloat(balance.locked);
         } else {
-          // For other assets, fetch the current price
-          const symbol = `${balance.asset}/USDT`;
+          // For other assets, fetch the current price using ExchangeManagerService
           let price = 0;
+          let symbol = '';
 
-          if (exchangeSlug === 'binance_us') {
-            price = await this.binanceService.getPriceBySymbol(symbol, user);
-          } else if (exchangeSlug === 'gdax') {
-            // Coinbase uses 'gdax' as the slug internally
-            const response = await this.coinbaseService.getPrice(`${balance.asset}/USD`);
-            price = parseFloat(response.data.amount);
+          try {
+            // Use appropriate symbol format for each exchange
+            if (exchangeSlug === 'binance_us') {
+              symbol = `${balance.asset}/USDT`;
+            } else {
+              // Coinbase exchanges use USD quotes
+              symbol = `${balance.asset}/USD`;
+            }
+
+            const response = await this.exchangeManagerService.getPrice(exchangeSlug, symbol);
+            price = parseFloat(response.price);
+          } catch (priceError) {
+            this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${priceError.message}`);
+            price = 0;
           }
 
           // Calculate USD value
@@ -368,7 +341,7 @@ export class BalanceService {
           balance.usdValue = totalAmount * price;
         }
       } catch (error) {
-        this.logger.warn(`Unable to calculate USD value for ${balance.asset}: ${error.message}`);
+        this.logger.warn(`Unable to calculate USD value for ${balance.asset} on ${exchangeSlug}: ${error.message}`);
         balance.usdValue = 0;
       }
     }
@@ -607,7 +580,7 @@ export class BalanceService {
     for (const userRow of userIds) {
       try {
         const user = await this.userService.getById(userRow.userId, true);
-        user.exchanges = user.exchanges.map((exchange) => ({ ...exchange, id: exchange.exchangeId })) as any[]; //!NOTE: This is a terrible hack to trick the typeorm
+        // Note: user.exchanges is already ExchangeKey[] with exchange relation loaded
         users.push(user);
       } catch (error) {
         this.logger.warn(`Failed to get user details for ID ${userRow.userId}: ${error.message}`);

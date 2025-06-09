@@ -5,22 +5,37 @@ import { RouterModule } from '@angular/router';
 import { funEmoji } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
+import { ButtonModule } from 'primeng/button';
 import { StyleClassModule } from 'primeng/styleclass';
+import { TooltipModule } from 'primeng/tooltip';
 
-import { AuthService, LayoutService } from '@chansey-web/app/shared/services';
+import { AuthService, LayoutService, PwaService } from '@chansey-web/app/shared/services';
 
 import { AppBreadcrumb } from './app.breadcrumb';
 
 interface NotificationsBars {
   id: string;
   label: string;
-  badge?: string | any;
+  badge?: string | number;
+}
+
+interface NotificationData {
+  image: string;
+  name: string;
+  description: string;
+  time: string;
+  new: boolean;
+}
+
+interface NotificationGroup {
+  id: string;
+  data: NotificationData[];
 }
 
 @Component({
   selector: 'app-topbar',
   standalone: true,
-  imports: [AvatarModule, AppBreadcrumb, RouterModule, StyleClassModule, CommonModule],
+  imports: [AvatarModule, AppBreadcrumb, RouterModule, StyleClassModule, CommonModule, ButtonModule, TooltipModule],
   template: `<div class="layout-topbar">
     <div class="topbar-left">
       <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
@@ -29,11 +44,22 @@ interface NotificationsBars {
       <img class="horizontal-logo" src="/layout/images/logo-white.svg" alt="diamond-layout" />
       <span class="topbar-separator"></span>
       <app-breadcrumb></app-breadcrumb>
-      <img class="mobile-logo" src="/public/icons/icon-72x72.png" alt="cymbit trading icon" />
+      <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
     </div>
 
     <div class="topbar-right">
       <ul class="topbar-menu">
+        <li class="right-sidebar-item" *ngIf="pwaService.installable$ | async">
+          <button
+            type="button"
+            class="right-sidebar-button"
+            (click)="installApp()"
+            pTooltip="Install App for faster access"
+            tooltipPosition="bottom"
+          >
+            <i class="pi pi-download"></i>
+          </button>
+        </li>
         <li class="right-sidebar-item">
           <a class="right-sidebar-button" (click)="toggleSearchBar()">
             <i class="pi pi-search"></i>
@@ -189,6 +215,7 @@ interface NotificationsBars {
 export class AppTopBar {
   layoutService = inject(LayoutService);
   authService = inject(AuthService);
+  pwaService = inject(PwaService);
 
   user = this.authService.useUser();
   logoutMutation = this.authService.useLogoutMutation();
@@ -227,6 +254,10 @@ export class AppTopBar {
     });
   }
 
+  installApp() {
+    this.pwaService.promptInstall();
+  }
+
   notificationsBars = signal<NotificationsBars[]>([
     /*{
       id: 'inbox',
@@ -243,7 +274,7 @@ export class AppTopBar {
     }*/
   ]);
 
-  notifications = signal<any[]>([
+  notifications = signal<NotificationGroup[]>([
     /*{
       id: 'inbox',
       data: [
@@ -313,7 +344,7 @@ export class AppTopBar {
   selectedNotificationBar = model(this.notificationsBars()[0]?.id ?? 'inbox');
 
   selectedNotificationsBarData = computed(
-    () => this.notifications().find((f) => f.id === this.selectedNotificationBar()).data
+    () => this.notifications().find((f) => f.id === this.selectedNotificationBar())?.data || []
   );
 
   onMenuButtonClick() {

@@ -100,4 +100,13 @@ export class CreateExchangeDto {
   @IsBoolean()
   @ApiProperty()
   supported: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({
+    required: false,
+    description: 'Indicates if the exchange was scraped from external sources (true) or manually added (false)',
+    default: true
+  })
+  isScraped?: boolean;
 }

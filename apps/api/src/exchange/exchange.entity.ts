@@ -165,6 +165,13 @@ export class Exchange {
   })
   supported: boolean;
 
+  @Column({ default: true })
+  @ApiProperty({
+    description: 'Indicates if the exchange was scraped from external sources (true) or manually added (false)',
+    example: true
+  })
+  isScraped: boolean;
+
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;
 

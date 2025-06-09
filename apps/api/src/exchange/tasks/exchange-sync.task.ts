@@ -158,7 +158,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
           twitter: ex.twitter_handle,
           otherUrl1: ex.other_url_1,
           otherUrl2: ex.other_url_2,
-          centralized: ex.centralized
+          centralized: ex.centralized,
+          isScraped: true // Mark as scraped since it comes from API
         });
 
       // Step 2: Further ensure we're not trying to insert duplicates by checking against DB data

@@ -24,7 +24,7 @@ export class CoinService {
   constructor(@InjectRepository(Coin) private readonly coin: Repository<Coin>) {}
 
   async getCoins() {
-    const coins = await this.coin.find({ order: { name: 'ASC' } });
+    const coins = await this.coin.find({ order: { marketRank: 'ASC' } });
     return coins.map((coin) => {
       Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
       return coin;

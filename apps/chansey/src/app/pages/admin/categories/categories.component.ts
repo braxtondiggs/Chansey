@@ -181,7 +181,6 @@ export class CategoriesComponent {
   }
 
   deleteCategory(id: string): void {
-    console.log('Deleting category with ID:', id);
     this.deleteCategoryMutation.mutate(id, {
       onSuccess: () => {
         this.showSuccessMessage('Category deleted successfully');
