@@ -10,13 +10,11 @@ import { OrderValidationService } from './services/order-validation.service';
 
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceUSService } from '../exchange/binance/binance-us.service';
-import { CoinbaseService } from '../exchange/coinbase/coinbase.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
+import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 describe('OrderService', () => {
   let service: OrderService;
@@ -66,8 +64,10 @@ describe('OrderService', () => {
   };
 
   // Mock services
-  const mockBinanceUSService = {};
-  const mockCoinbaseService = {};
+  const mockExchangeManagerService = {
+    getBalance: jest.fn(),
+    getExchangeClient: jest.fn()
+  };
   const mockCoinService = {
     getCoinBySymbol: jest.fn(),
     getCoinById: jest.fn()
@@ -91,12 +91,8 @@ describe('OrderService', () => {
           useValue: mockOrderRepository
         },
         {
-          provide: BinanceUSService,
-          useValue: mockBinanceUSService
-        },
-        {
-          provide: CoinbaseService,
-          useValue: mockCoinbaseService
+          provide: ExchangeManagerService,
+          useValue: mockExchangeManagerService
         },
         {
           provide: CoinService,

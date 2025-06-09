@@ -21,6 +21,8 @@ export interface Exchange {
   slack?: string;
   otherUrl1?: string;
   otherUrl2?: string;
+  supported: boolean;
+  isScraped: boolean;
   createdAt: Date;
   updatedAt: Date;
   tickers?: TickerPair[];

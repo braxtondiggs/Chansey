@@ -141,6 +141,18 @@ export class ExchangeResponseDto {
   otherUrl2?: string;
 
   @ApiProperty({
+    description: 'Indicates if the exchange is supported by the application',
+    example: true
+  })
+  supported: boolean;
+
+  @ApiProperty({
+    description: 'Indicates if the exchange was scraped from external sources (true) or manually added (false)',
+    example: true
+  })
+  isScraped: boolean;
+
+  @ApiProperty({
     description: 'Date when the exchange was created',
     example: '2023-01-15T10:20:30.000Z'
   })

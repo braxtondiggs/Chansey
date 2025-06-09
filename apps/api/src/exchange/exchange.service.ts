@@ -1,7 +1,7 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { ILike, In, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { ExchangeKeyService } from './exchange-key/exchange-key.service';
@@ -45,13 +45,13 @@ export class ExchangeService {
   }
 
   async getExchangeByName(name: string): Promise<Exchange> {
-    const exchange = await this.exchange.findOne({ where: { name: ILike(`%${name}%`) } });
+    const exchange = await this.exchange.findOne({ where: { name } });
     if (!exchange) throw new NotFoundCustomException('Exchange', { name });
     return exchange;
   }
 
   async createExchange(Exchange: CreateExchangeDto): Promise<Exchange> {
-    const exchange = await this.exchange.findOne({ where: { name: ILike(`%${Exchange.name}%`) } });
+    const exchange = await this.exchange.findOne({ where: { name: Exchange.name } });
     return exchange ?? ((await this.exchange.insert(Exchange)).generatedMaps[0] as Exchange);
   }
 

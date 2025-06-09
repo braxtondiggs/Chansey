@@ -8,7 +8,7 @@ import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
   template: `
     <div class="layout-footer">
       <div class="footer-logo-container">
-        <img src="/public/icons/icon-72x72.png" alt="Cymbit Trading Logo" />
+        <img src="/public/icon.png" alt="Cymbit Trading Logo" />
         <span class="footer-app-name">Cymbit Trading</span>
       </div>
     </div>

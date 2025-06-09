@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, computed, signal, effect, inject, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
@@ -26,6 +26,7 @@ import { TabsModule } from 'primeng/tabs';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
+import { delay, filter } from 'rxjs';
 
 import { ExchangeKey } from '@chansey/api-interfaces';
 
@@ -76,6 +77,7 @@ export class ProfileComponent implements AfterViewInit {
   private profileService = inject(ProfileService);
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
+  private router = inject(Router);
   private route = inject(ActivatedRoute);
 
   @ViewChild('fileUpload') fileUpload!: FileUpload;
@@ -202,27 +204,21 @@ export class ProfileComponent implements AfterViewInit {
   });
 
   ngAfterViewInit(): void {
-    setTimeout(() => {
-      const fragment = this.route.snapshot.fragment;
-      if (fragment) {
-        const element = document.getElementById(fragment);
-        if (element) {
-          const isPWA = window.matchMedia('(display-mode: standalone)').matches;
-          if (isPWA) {
-            // PWA scrolling with fallback - force scroll with explicit coordinates
-            const elementRect = element.getBoundingClientRect();
-            const absoluteElementTop = elementRect.top + window.pageYOffset;
-            const middle = absoluteElementTop - window.innerHeight / 2;
-            window.scrollTo({ top: middle, behavior: 'smooth' });
-          } else {
+    this.router.events
+      .pipe(
+        filter((e) => e instanceof NavigationEnd),
+        delay(50)
+      )
+      .subscribe(() => {
+        const fragment = this.route.snapshot.fragment;
+        if (fragment) {
+          const element = document.getElementById(fragment);
+          if (element) {
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            this.highlightElement(element);
           }
-
-          // Add visual highlighting after scroll
-          this.highlightElement(element);
         }
-      }
-    }, 500);
+      });
   }
 
   private highlightElement(element: HTMLElement): void {

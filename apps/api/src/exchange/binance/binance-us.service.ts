@@ -1,104 +1,66 @@
-import { forwardRef, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, forwardRef, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
+import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { User } from '../../users/users.entity';
+import { BaseExchangeService } from '../base-exchange.service';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
 @Injectable()
-export class BinanceUSService {
-  private readonly logger = new Logger(BinanceUSService.name);
-  private binanceClients: Map<string, ccxt.binanceus> = new Map();
-  private binanceSlug = 'binance_us';
+export class BinanceUSService extends BaseExchangeService {
+  protected readonly exchangeSlug = 'binance_us';
+  protected readonly exchangeId: keyof typeof ccxt = 'binanceus';
+  protected readonly apiKeyConfigName = 'BINANCE_API_KEY';
+  protected readonly apiSecretConfigName = 'BINANCE_API_SECRET';
 
   constructor(
-    private readonly config: ConfigService,
-    @Inject(forwardRef(() => ExchangeKeyService))
-    private readonly exchangeKeyService: ExchangeKeyService,
-    @Inject(forwardRef(() => ExchangeService))
-    private readonly exchangeService: ExchangeService
-  ) {}
-
-  async getBinanceClient(user?: User): Promise<ccxt.binanceus> {
-    if (user) {
-      if (this.binanceClients.has(user.id)) {
-        return this.binanceClients.get(user.id);
-      }
-
-      try {
-        // Get the Binance exchange ID
-        const binanceExchange = await this.exchangeService.findBySlug(this.binanceSlug);
-
-        // Get the user's Binance keys
-        const exchangeKeys = await this.exchangeKeyService.findByExchange(binanceExchange.id, user.id);
-
-        // Use the first active key
-        const activeKey = exchangeKeys.find((key) => key.isActive);
-
-        if (activeKey && activeKey.decryptedApiKey && activeKey.decryptedSecretKey) {
-          const binanceClient = new ccxt.binanceus({
-            apiKey: activeKey.decryptedApiKey,
-            secret: activeKey.decryptedSecretKey,
-            enableRateLimit: true
-          });
-
-          this.binanceClients.set(user.id, binanceClient);
-          return binanceClient;
-        }
-      } catch (error) {
-        this.logger.error(`Failed to get Binance client for user ${user.id}`, error);
-        // Fall through to default client
-      }
-    }
-
-    // Return default Binance client using app-wide API keys
-    const defaultApiKey = this.config.get<string>('BINANCE_API_KEY');
-    const defaultApiSecret = this.config.get<string>('BINANCE_API_SECRET');
-
-    if (!defaultApiKey || !defaultApiSecret) {
-      this.logger.error('Default Binance API keys are not set in configuration');
-      throw new InternalServerErrorException('Binance API keys are not configured');
-    }
-
-    // Assuming the default client is shared and singleton
-    if (!this.binanceClients.has('default')) {
-      const defaultBinanceClient = new ccxt.binanceus({
-        apiKey: defaultApiKey,
-        secret: defaultApiSecret,
-        enableRateLimit: true
-      });
-      this.binanceClients.set('default', defaultBinanceClient);
-    }
-
-    return this.binanceClients.get('default');
+    configService?: ConfigService,
+    @Inject(forwardRef(() => ExchangeService)) exchangeService?: ExchangeService,
+    @Inject(forwardRef(() => ExchangeKeyService)) exchangeKeyService?: ExchangeKeyService
+  ) {
+    super(configService, exchangeKeyService, exchangeService);
   }
 
-  async getBinanceAccountInfo(user: User) {
-    const binanceClient = await this.getBinanceClient(user);
+  /**
+   * Get a CCXT Binance.US client for a user or the default client
+   * @param user Optional user for fetching their specific API keys
+   * @returns A configured CCXT Binance.US client
+   */
+  async getBinanceClient(user?: User): Promise<ccxt.binanceus> {
+    return (await this.getClient(user)) as ccxt.binanceus;
+  }
+
+  /**
+   * Override formatSymbol for Binance-specific symbol formatting
+   * @param symbol Raw symbol like "BTCUSD"
+   * @returns Formatted symbol for Binance
+   */
+  protected formatSymbol(symbol: string): string {
+    // Binance uses USDT instead of USD
+    if (symbol.includes('/')) {
+      return symbol.replace('/USD', '/USDT');
+    }
+    // Convert BTCUSD to BTC/USDT format
+    return symbol.replace(/([A-Z0-9]{3,})USD$/, '$1/USDT').replace(/([A-Z0-9]{3,})([A-Z0-9]{3,})$/, '$1/$2');
+  }
+
+  /**
+   * Override getBalance to handle Binance-specific balance fetching
+   * @param user The user to fetch balances for
+   * @returns Array of balances
+   */
+  async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
-      // Fetch with option to include zero balances
-      // This ensures all assets are returned, even if they have a very small value
-      const accountInfo = await binanceClient.fetchBalance({
+      const client = await this.getClient(user);
+      const balanceData = await client.fetchBalance({
         type: 'spot' // Ensure we're getting spot account balances
       });
-      this.logger.debug(`Fetched Binance account info for user: ${user?.id || 'default'}`);
-      return accountInfo;
-    } catch (error) {
-      this.logger.error('Failed to fetch Binance account information', error);
-      throw new InternalServerErrorException('Failed to fetch Binance account information');
-    }
-  }
 
-  async getBalance(user: User, type = 'ALL') {
-    try {
-      const accountInfo = await this.getBinanceAccountInfo(user);
-      const coin = type.toUpperCase();
-
-      // Get regular balances
-      const balance = Object.entries(accountInfo.total).map(([asset, total]) => {
-        const free = accountInfo.free[asset]?.toString() || '0';
+      const balances = Object.entries(balanceData.total).map(([asset, total]) => {
+        const free = balanceData.free[asset]?.toString() || '0';
         const locked = (parseFloat(total.toString()) - parseFloat(free)).toString();
         return {
           asset,
@@ -107,73 +69,64 @@ export class BinanceUSService {
         };
       });
 
-      if (coin !== 'ALL') {
-        return balance.filter((b) => b.asset === coin);
-      }
-
       // Return assets that have either free or locked balance greater than zero
-      return balance.filter((b) => {
+      return balances.filter((b) => {
         const freeAmount = parseFloat(b.free);
         const lockedAmount = parseFloat(b.locked);
         return freeAmount > 0 || lockedAmount > 0;
       });
     } catch (error) {
-      this.logger.error('Failed to fetch Binance balance', error);
-      throw new InternalServerErrorException('Failed to fetch Binance balance');
-    }
-  }
-
-  async getFreeBalance(user: User) {
-    try {
-      const accountInfo = await this.getBinanceAccountInfo(user);
-
-      // Transform to match original format and filter for USD/USDT
-      const balances = Object.entries(accountInfo.free)
-        .filter(([asset, amount]) => (asset === 'USD' || asset === 'USDT') && parseFloat(amount.toString()) > 0)
-        .map(([asset, free]) => ({
-          asset,
-          free: free.toString(),
-          locked: (parseFloat(accountInfo.total[asset]?.toString() || '0') - parseFloat(free.toString())).toString()
-        }));
-
-      return balances;
-    } catch (error) {
-      this.logger.error('Failed to fetch Binance free balance', error);
-      throw new InternalServerErrorException('Failed to fetch Binance free balance');
-    }
-  }
-
-  async getPriceBySymbol(symbol: string, user?: User) {
-    try {
-      const binanceClient = await this.getBinanceClient(user);
-      // CCXT expects symbols in format like 'BTC/USDT'
-      const formattedSymbol = symbol.includes('/') ? symbol : symbol.replace(/([A-Z0-9]{3,})([A-Z0-9]{3,})$/, '$1/$2');
-      const ticker = await binanceClient.fetchTicker(formattedSymbol);
-      return ticker.last;
-    } catch (error) {
-      this.logger.error(`Failed to fetch price for symbol ${symbol}`, error);
-      throw new InternalServerErrorException(`Failed to fetch price for symbol ${symbol}`);
+      this.logger.error(`Error fetching ${this.constructor.name} balances`, error.stack || error.message);
+      throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
     }
   }
 
   /**
-   * Create a temporary Binance client with the given API keys for validation purposes
-   * @param apiKey - The API key to use
-   * @param apiSecret - The API secret to use
-   * @returns A CCXT Binance.US exchange client instance
+   * Override getFreeBalance to handle Binance-specific free balance fetching
+   * @param user The user to get balances for
+   * @returns USD/USDT balance information
    */
-  async getTemporaryClient(apiKey: string, apiSecret: string): Promise<ccxt.binanceus> {
+  async getFreeBalance(user: User) {
     try {
-      const binanceClient = new ccxt.binanceus({
+      const client = await this.getClient(user);
+      const balanceData = await client.fetchBalance();
+
+      // Transform to match original format and filter for USD/USDT
+      const balances = Object.entries(balanceData.free)
+        .filter(([asset, amount]) => (asset === 'USD' || asset === 'USDT') && parseFloat(amount.toString()) > 0)
+        .map(([asset, free]) => ({
+          asset,
+          free: free.toString(),
+          locked: (parseFloat(balanceData.total[asset]?.toString() || '0') - parseFloat(free.toString())).toString()
+        }));
+
+      return balances;
+    } catch (error) {
+      this.logger.error(`Error fetching ${this.constructor.name} free balance`, error.stack || error.message);
+      throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} free balance`);
+    }
+  }
+
+  /**
+   * Static method to validate Binance US API keys without requiring an instance
+   * @param apiKey - The API key to validate
+   * @param secretKey - The secret key to validate
+   * @returns true if validation is successful, false otherwise
+   */
+  static async validateApiKeys(apiKey: string, secretKey: string): Promise<boolean> {
+    try {
+      // Create a temporary Binance US client with the provided keys
+      const client = new ccxt.binanceus({
         apiKey,
-        secret: apiSecret,
+        secret: secretKey.replace(/\\n/g, '\n').trim(),
         enableRateLimit: true
       });
 
-      return binanceClient;
+      // Try to fetch balance - this will throw an error if the keys are invalid
+      await client.fetchBalance();
+      return true;
     } catch (error) {
-      this.logger.error('Failed to create temporary Binance client', error);
-      throw new InternalServerErrorException('Could not create Binance client with provided keys');
+      return false;
     }
   }
 }

@@ -1,12 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import {
-  forwardRef,
-  Inject,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-  ConflictException
-} from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
@@ -15,8 +8,7 @@ import { Repository } from 'typeorm';
 import { CreateExchangeKeyDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 
-import { BinanceUSService } from '../binance/binance-us.service';
-import { CoinbaseService } from '../coinbase/coinbase.service';
+import { ExchangeManagerService } from '../exchange-manager.service';
 import { ExchangeService } from '../exchange.service';
 
 @Injectable()
@@ -26,10 +18,8 @@ export class ExchangeKeyService {
     private exchangeKeyRepository: Repository<ExchangeKey>,
     @Inject(forwardRef(() => ExchangeService))
     private exchangeService: ExchangeService,
-    @Inject(forwardRef(() => BinanceUSService))
-    private binanceService: BinanceUSService,
-    @Inject(forwardRef(() => CoinbaseService))
-    private coinbaseService: CoinbaseService,
+    @Inject(forwardRef(() => ExchangeManagerService))
+    private exchangeManagerService: ExchangeManagerService,
     @InjectQueue('order-queue') private readonly orderQueue: Queue
   ) {}
 
@@ -168,12 +158,10 @@ export class ExchangeKeyService {
 
   /**
    * Validates that the provided API keys work with the specified exchange
-   * @param exchangeSlug - The slug of the exchange (e.g., 'binance', 'coinbase')
+   * @param exchangeSlug - The slug of the exchange (e.g., 'binance_us', 'coinbase')
    * @param apiKey - The API key to validate
    * @param secretKey - The secret key to validate
    * @param userId - The ID of the user who owns the key (optional)
-   * @throws UnauthorizedException if the keys are invalid
-   * @throws BadRequestException if the exchange is not supported for validation
    * @returns true if validation is successful, false otherwise
    */
   async validateExchangeKeys(
@@ -183,22 +171,17 @@ export class ExchangeKeyService {
     userId?: string
   ): Promise<boolean> {
     try {
-      switch (exchangeSlug.toLowerCase()) {
-        case 'binance_us':
-          await this.validateBinanceKeys(apiKey, secretKey);
-          break;
-        case 'gdax': //coinbase slug
-          await this.validateCoinbaseKeys(apiKey, secretKey);
-          break;
-        default:
-          // For unsupported exchanges, we'll allow the keys without validation
-          return true;
-      }
+      // Get the exchange service through the manager
+      const exchangeService = this.exchangeManagerService.getExchangeService(exchangeSlug);
+
+      // Use the base exchange service's validateKeys method
+      await exchangeService.validateKeys(apiKey, secretKey);
 
       // If we get here, validation was successful
+      const isValid = true;
 
-      // If userId is provided, add a job to the order queue to sync orders for this specific user
-      if (userId) {
+      // If validation is successful and userId is provided, add a job to sync orders
+      if (isValid && userId) {
         await this.orderQueue.add(
           'sync-orders',
           {
@@ -218,38 +201,11 @@ export class ExchangeKeyService {
         );
       }
 
-      return true;
+      return isValid;
     } catch (error) {
       // Validation failed, return false instead of throwing an exception
       // The caller will handle setting isActive to false
       return false;
-    }
-  }
-
-  /**
-   * Validates Binance API keys by attempting to get account information
-   */
-  private async validateBinanceKeys(apiKey: string, secretKey: string): Promise<void> {
-    try {
-      // Create a temporary client with the provided keys
-      const binanceClient = await this.binanceService.getTemporaryClient(apiKey, secretKey);
-
-      // Try to fetch balance - this will throw an error if the keys are invalid
-      await binanceClient.fetchBalance();
-    } catch (error) {
-      throw new UnauthorizedException('Invalid Binance API keys');
-    }
-  }
-
-  /**
-   * Validates Coinbase API keys by attempting to get accounts
-   */
-  private async validateCoinbaseKeys(apiKey: string, secretKey: string): Promise<void> {
-    try {
-      // Use the CoinbaseService to validate the keys
-      await this.coinbaseService.validateKeys(apiKey, secretKey);
-    } catch (error) {
-      throw new UnauthorizedException('Invalid Coinbase API keys');
     }
   }
 }

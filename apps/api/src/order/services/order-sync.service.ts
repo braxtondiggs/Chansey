@@ -11,12 +11,11 @@ import { OrderCalculationService } from './order-calculation.service';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
 import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service';
-import { BinanceUSService } from '../../exchange/binance/binance-us.service';
-import { CoinbaseService } from '../../exchange/coinbase/coinbase.service';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
+import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { User } from '../../users/users.entity';
-import { Order, OrderSide, OrderStatus } from '../order.entity';
+import { Order, OrderSide } from '../order.entity';
 
 @Injectable()
 export class OrderSyncService {
@@ -29,8 +28,7 @@ export class OrderSyncService {
     private readonly exchangeService: ExchangeService,
     private readonly tickerPairService: TickerPairService,
     private readonly exchangeKeyService: ExchangeKeyService,
-    private readonly binanceService: BinanceUSService,
-    private readonly coinbaseService: CoinbaseService
+    private readonly exchangeManager: ExchangeManagerService
   ) {}
 
   /**
@@ -40,14 +38,17 @@ export class OrderSyncService {
     try {
       const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
       const markets = await client.loadMarkets();
+      this.logger.log(`Fetching historical orders since: ${since}`);
+      this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
       const allOrders: ccxt.Order[] = [];
 
       for (const symbol of Object.keys(markets)) {
         try {
           const symbolOrders = await client.fetchOrders(symbol, since);
+          this.logger.log(`Fetched ${symbolOrders.length} orders for ${symbol}`);
           allOrders.push(...symbolOrders);
         } catch (error) {
-          this.logger.debug(`Failed to fetch orders for ${symbol}: ${error.message}`);
+          this.logger.log(`Failed to fetch orders for ${symbol}: ${error.message}`);
         }
       }
 
@@ -56,6 +57,118 @@ export class OrderSyncService {
       this.logger.error(`Failed to fetch historical orders: ${error.message}`);
       return [];
     }
+  }
+
+  /**
+   * Fetch historical trades from exchange using fetchMyTrades
+   * This can catch trades that might be missed by fetchOrders
+   */
+  async fetchMyTrades(client: ccxt.Exchange, lastSyncTime?: Date): Promise<ccxt.Trade[]> {
+    try {
+      const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
+
+      // Check if the exchange supports fetchMyTrades
+      if (!client.has.fetchMyTrades) {
+        this.logger.debug(`Exchange ${client.id} does not support fetchMyTrades`);
+        return [];
+      }
+
+      const markets = await client.loadMarkets();
+      this.logger.log(`Fetching historical trades since: ${since}`);
+      this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
+      const allTrades: ccxt.Trade[] = [];
+
+      for (const symbol of Object.keys(markets)) {
+        try {
+          const symbolTrades = await client.fetchMyTrades(symbol, since);
+          this.logger.log(`Fetched ${symbolTrades.length} trades for ${symbol}`);
+          allTrades.push(...symbolTrades);
+        } catch (error) {
+          this.logger.log(`Failed to fetch trades for ${symbol}: ${error.message}`);
+        }
+      }
+
+      return this.removeDuplicateTrades(allTrades);
+    } catch (error) {
+      this.logger.error(`Failed to fetch historical trades: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Convert CCXT Trade objects to CCXT Order objects
+   * This allows us to process trades using the existing order sync logic
+   */
+  convertTradesToOrders(trades: ccxt.Trade[]): ccxt.Order[] {
+    const tradeGroups = new Map<string, ccxt.Trade[]>();
+
+    // Group trades by order ID if available, otherwise by symbol and timestamp
+    for (const trade of trades) {
+      const groupKey = trade.order || `${trade.symbol}_${trade.timestamp}_${trade.side}`;
+      if (!tradeGroups.has(groupKey)) {
+        tradeGroups.set(groupKey, []);
+      }
+      const group = tradeGroups.get(groupKey);
+      if (group) {
+        group.push(trade);
+      }
+    }
+
+    const orders: ccxt.Order[] = [];
+
+    for (const [groupKey, groupTrades] of tradeGroups) {
+      const firstTrade = groupTrades[0];
+
+      // Calculate aggregated values from trades
+      const totalAmount = groupTrades.reduce((sum, t) => sum + (t.amount || 0), 0);
+      const totalCost = groupTrades.reduce((sum, t) => sum + (t.cost || 0), 0);
+      const weightedPrice = totalCost > 0 && totalAmount > 0 ? totalCost / totalAmount : firstTrade.price || 0;
+
+      // Create order object from trade data
+      const syntheticOrder: ccxt.Order = {
+        id: firstTrade.order || `trade_${groupKey}`,
+        clientOrderId: firstTrade.order || undefined,
+        datetime: firstTrade.datetime,
+        timestamp: firstTrade.timestamp,
+        lastTradeTimestamp: Math.max(...groupTrades.map((t) => t.timestamp || 0)),
+        symbol: firstTrade.symbol,
+        type: 'market', // Trades are typically market executions
+        timeInForce: undefined,
+        amount: totalAmount,
+        price: weightedPrice,
+        average: weightedPrice,
+        filled: totalAmount,
+        remaining: 0,
+        cost: totalCost,
+        side: firstTrade.side,
+        status: 'closed', // Trades represent completed executions
+        postOnly: false, // Trades are not post-only since they already executed
+        reduceOnly: false, // Trades are not reduce-only by default
+        fee: groupTrades.reduce(
+          (sum, t) => {
+            if (t.fee) {
+              return {
+                cost: (sum.cost || 0) + (t.fee.cost || 0),
+                currency: t.fee.currency || sum.currency
+              };
+            }
+            return sum;
+          },
+          { cost: 0, currency: undefined }
+        ),
+        trades: groupTrades,
+        info: {
+          ...firstTrade.info,
+          synthetic: true, // Mark as converted from trades
+          tradeIds: groupTrades.map((t) => t.id).join(',')
+        }
+      };
+
+      orders.push(syntheticOrder);
+    }
+
+    this.logger.log(`Converted ${trades.length} trades into ${orders.length} synthetic orders`);
+    return orders;
   }
 
   /**
@@ -90,6 +203,31 @@ export class OrderSyncService {
   }
 
   private async findExistingOrder(exchangeOrder: ccxt.Order, user: User): Promise<Order | null> {
+    // For synthetic orders from trades, also check for existing trades data
+    if (exchangeOrder.info?.synthetic && exchangeOrder.info?.tradeIds) {
+      const tradeIds = exchangeOrder.info.tradeIds as string;
+
+      // Check if we already have an order with the same trade IDs
+      const existingOrderWithTrades = await this.orderRepository.findOne({
+        where: {
+          user: { id: user.id },
+          symbol: exchangeOrder.symbol
+        }
+      });
+
+      if (existingOrderWithTrades?.trades) {
+        const existingTradeIds = Array.isArray(existingOrderWithTrades.trades)
+          ? existingOrderWithTrades.trades.map((t: { id: string }) => t.id).join(',')
+          : '';
+
+        if (existingTradeIds === tradeIds) {
+          this.logger.debug(`Found existing order with same trade IDs: ${tradeIds}`);
+          return existingOrderWithTrades;
+        }
+      }
+    }
+
+    // Standard check by order ID
     return this.orderRepository.findOne({
       where: {
         orderId: exchangeOrder.id.toString(),
@@ -339,6 +477,20 @@ export class OrderSyncService {
     return uniqueOrders;
   }
 
+  private removeDuplicateTrades(trades: ccxt.Trade[]): ccxt.Trade[] {
+    const uniqueTrades: ccxt.Trade[] = [];
+    const seenTradeIds = new Set<string | number>();
+
+    for (const trade of trades) {
+      if (!seenTradeIds.has(trade.id)) {
+        seenTradeIds.add(trade.id);
+        uniqueTrades.push(trade);
+      }
+    }
+
+    return uniqueTrades;
+  }
+
   /**
    * Synchronizes orders from exchange for a specific user
    * @param user The user to sync orders for
@@ -349,7 +501,7 @@ export class OrderSyncService {
       this.logger.log(`Syncing orders for user: ${user.id}`);
 
       // Get exchange keys for the user
-      const exchangeKeys = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+      const exchangeKeys = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id, true);
       if (!exchangeKeys || exchangeKeys.length === 0) {
         this.logger.debug(`No active exchange keys found for user: ${user.id}`);
         return 0;
@@ -357,37 +509,29 @@ export class OrderSyncService {
 
       let totalNewOrders = 0;
 
-      // Define exchange configurations
-      const exchangeConfigs = [
-        {
-          name: 'Binance',
-          client: await this.binanceService.getBinanceClient(user),
-          service: this.binanceService
-        },
-        {
-          name: 'Coinbase',
-          client: await this.coinbaseService.getCoinbaseClient(user),
-          service: this.coinbaseService
-        }
-      ];
+      // Get available exchanges from the centralized manager
+      const availableExchanges = await this.exchangeService.getExchanges({ supported: true });
 
+      this.logger.log(`Available exchanges for user ${user.id}: ${availableExchanges.map((e) => e.name).join(', ')}`);
       // Process each exchange
-      for (const config of exchangeConfigs) {
+      for (const exchange of availableExchanges) {
         try {
-          if (config.client) {
-            const syncCount = await this.syncOrdersForExchange(user, config.name, config.client);
+          const client = await this.exchangeManager.getExchangeClient(exchange.slug, user);
+
+          if (client) {
+            const syncCount = await this.syncOrdersForExchange(user, exchange.name, client);
             totalNewOrders += syncCount;
 
             if (syncCount > 0) {
-              this.logger.log(`Synced ${syncCount} ${config.name} orders for user: ${user.id}`);
+              this.logger.log(`Synced ${syncCount} ${exchange.name} orders for user: ${user.id}`);
             }
           } else {
-            this.logger.debug(`No valid ${config.name} client for user: ${user.id}`);
+            this.logger.debug(`No valid ${exchange.name} client for user: ${user.id}`);
           }
         } catch (error: unknown) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           const errorStack = error instanceof Error ? error.stack : undefined;
-          this.logger.error(`Error syncing ${config.name} orders for user ${user.id}: ${errorMessage}`, errorStack);
+          this.logger.error(`Error syncing ${exchange.name} orders for user ${user.id}: ${errorMessage}`, errorStack);
         }
       }
 
@@ -417,14 +561,37 @@ export class OrderSyncService {
       order: { transactTime: 'DESC' }
     });
 
-    // Use the exchange API to fetch historical orders
+    let totalNewOrders = 0;
+
+    // Fetch orders using fetchOrders API
     const newOrders = await this.fetchHistoricalOrders(client, mostRecentOrder?.transactTime);
+    this.logger.log(`Fetched ${newOrders.length} new orders from ${exchangeName} for user ${user.id}`);
 
     if (newOrders.length > 0) {
-      return await this.saveExchangeOrders(newOrders, user, exchangeName);
+      totalNewOrders += await this.saveExchangeOrders(newOrders, user, exchangeName);
     }
 
-    return 0;
+    // Fetch trades using fetchMyTrades API to catch any missing orders
+    try {
+      const newTrades = await this.fetchMyTrades(client, mostRecentOrder?.transactTime);
+      this.logger.log(`Fetched ${newTrades.length} new trades from ${exchangeName} for user ${user.id}`);
+
+      if (newTrades.length > 0) {
+        // Convert trades to orders and save them
+        const syntheticOrders = this.convertTradesToOrders(newTrades);
+        this.logger.log(`Converted ${newTrades.length} trades into ${syntheticOrders.length} synthetic orders`);
+
+        if (syntheticOrders.length > 0) {
+          totalNewOrders += await this.saveExchangeOrders(syntheticOrders, user, exchangeName);
+        }
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Trade synchronization failed for ${exchangeName}: ${errorMessage}`);
+      // Don't throw - continue with order sync even if trade sync fails
+    }
+
+    return totalNewOrders;
   }
 
   /**

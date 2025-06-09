@@ -3,7 +3,7 @@
   <!-- Loading skeleton -->
   <div *ngIf="isLoading" class="mb-4">
     <!-- Skeleton for search input -->
-    <div class="flex flex-col items-end mb-4">
+    <div class="mb-4 flex flex-col items-end">
       <div class="w-full max-w-xs">
         <p-skeleton width="100%" height="2.75rem" styleClass="rounded-md"></p-skeleton>
       </div>
@@ -15,25 +15,25 @@
       <div
         class="flex w-full min-w-[800px] border-b border-gray-200 bg-gray-50 p-3 md:min-w-0 dark:border-gray-700 dark:bg-gray-800"
       >
-        <div class="flex-shrink-0 w-10 mr-4" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
+        <div class="mr-4 w-10 flex-shrink-0" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
-        <div class="flex-1 flex-shrink-0 mr-6 min-w-48">
+        <div class="mr-6 min-w-48 flex-1 flex-shrink-0">
           <p-skeleton width="80%" height="1.25rem"></p-skeleton>
         </div>
-        <div class="flex-shrink-0 mr-6 w-28">
+        <div class="mr-6 w-28 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
-        <div class="flex-shrink-0 w-32 mr-6">
+        <div class="mr-6 w-32 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
-        <div class="flex-shrink-0 w-32 mr-6">
+        <div class="mr-6 w-32 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
-        <div class="flex-shrink-0 mr-6 w-44">
+        <div class="mr-6 w-44 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
-        <div class="flex-shrink-0 w-24">
+        <div class="w-24 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
       </div>
@@ -53,7 +53,7 @@
         </p-skeleton>
 
         <!-- Coin name and image skeleton -->
-        <div class="flex items-center flex-1 flex-shrink-0 mr-6 min-w-48">
+        <div class="mr-6 flex min-w-48 flex-1 flex-shrink-0 items-center">
           <p-skeleton shape="circle" size="2.5rem" styleClass="mr-3"></p-skeleton>
           <div class="flex flex-col">
             <p-skeleton width="120px" height="1.25rem" styleClass="mb-1"></p-skeleton>
@@ -62,35 +62,35 @@
         </div>
 
         <!-- Price skeleton -->
-        <div class="flex-shrink-0 mr-6 w-28">
+        <div class="mr-6 w-28 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
 
         <!-- Market cap skeleton -->
-        <div class="flex-shrink-0 w-32 mr-6">
+        <div class="mr-6 w-32 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
 
         <!-- Volume skeleton -->
-        <div class="flex-shrink-0 w-32 mr-6">
+        <div class="mr-6 w-32 flex-shrink-0">
           <p-skeleton width="100%" height="1.25rem"></p-skeleton>
         </div>
 
         <!-- Circulating supply skeleton -->
-        <div class="flex-shrink-0 mr-6 w-44">
+        <div class="mr-6 w-44 flex-shrink-0">
           <p-skeleton width="100%" height="1rem" styleClass="mb-1"></p-skeleton>
           <p-skeleton width="80%" height="0.5rem"></p-skeleton>
         </div>
 
         <!-- 24h change skeleton -->
-        <div class="flex-shrink-0 w-24">
+        <div class="w-24 flex-shrink-0">
           <p-skeleton width="100%" height="2rem" styleClass="rounded-full"></p-skeleton>
         </div>
       </div>
     </div>
 
     <!-- Skeleton for pagination -->
-    <div class="flex items-center justify-between p-3 mt-4 overflow-x-hidden">
+    <div class="mt-4 flex items-center justify-between overflow-x-hidden p-3">
       <p-skeleton width="200px" height="1.25rem"></p-skeleton>
       <div class="flex gap-2">
         <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
@@ -109,10 +109,11 @@
     [rowHover]="true"
     [rows]="25"
     [showCurrentPageReport]="true"
-    [value]="coins"
+    [value]="sortedCoins()"
     [globalFilterFields]="['name']"
     [customSort]="true"
     (sortFunction)="customSort($event)"
+    (onPage)="onPageChange($event)"
     currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
     dataKey="id"
     size="large"
@@ -138,19 +139,19 @@
       <tr class="whitespace-nowrap">
         <th *ngIf="config.showWatchlistToggle || config.showRemoveAction"></th>
         <th pSortableColumn="name" class="min-w-48">Coin <p-sortIcon field="name" /></th>
-        <th pSortableColumn="currentPrice" class="text-right min-w-28">Price <p-sortIcon field="latestPrice" /></th>
-        <th pSortableColumn="marketCap" class="text-right min-w-32">Market Cap <p-sortIcon field="marketCap" /></th>
-        <th pSortableColumn="totalVolume" class="text-right min-w-32">24h Vol <p-sortIcon field="totalVolume" /></th>
-        <th pSortableColumn="circulatingSupply" class="text-center min-w-44">
+        <th class="min-w-28 text-right">Price</th>
+        <th pSortableColumn="marketCap" class="min-w-32 text-right">Market Cap <p-sortIcon field="marketCap" /></th>
+        <th pSortableColumn="totalVolume" class="min-w-32 text-right">24h Vol <p-sortIcon field="totalVolume" /></th>
+        <th pSortableColumn="circulatingSupply" class="min-w-44 text-center">
           Circulating Supply <p-sortIcon field="circulatingSupply" />
         </th>
-        <th pSortableColumn="priceChangePercentage24h" class="text-center min-w-24">
+        <th pSortableColumn="priceChangePercentage24h" class="min-w-24 text-center">
           24h % <p-sortIcon field="priceChangePercentage24h" />
         </th>
       </tr>
     </ng-template>
 
-    <ng-template pTemplate="body" let-coin>
+    <ng-template pTemplate="body" let-coin let-ri="rowIndex">
       <tr>
         <td class="!p-0 !pl-2" *ngIf="config.showWatchlistToggle || config.showRemoveAction">
           <!-- Watchlist toggle button -->
@@ -188,16 +189,17 @@
             <p-avatar [image]="coin.image" shape="circle" size="large" class="shadow-sm" />
             <div class="flex flex-col">
               <span class="text-lg font-medium">{{ coin.name }}</span>
-              <span class="text-sm text-gray-500 uppercase dark:text-gray-400">{{ coin.symbol }}</span>
+              <span class="text-sm uppercase text-gray-500 dark:text-gray-400">{{ coin.symbol }}</span>
             </div>
           </div>
         </td>
-        <td class="font-medium text-right min-w-28">
-          <span [appCounter]="+coin.currentPrice || 0"></span>
+        <td class="min-w-28 text-right font-medium">
+          <span *ngIf="!isLoadingPrices()(coin.slug)" [appCounter]="getCoinPrice()(coin.slug)"></span>
+          <p-skeleton *ngIf="isLoadingPrices()(coin.slug)" width="60px" height="1.25rem" styleClass="inline-block" />
         </td>
-        <td class="text-right min-w-32">{{ coin.marketCap | formatLargeNumber }}</td>
-        <td class="text-right min-w-32">{{ coin.totalVolume | formatLargeNumber }}</td>
-        <td class="text-center min-w-44">
+        <td class="min-w-32 text-right">{{ coin.marketCap | formatLargeNumber }}</td>
+        <td class="min-w-32 text-right">{{ coin.totalVolume | formatLargeNumber }}</td>
+        <td class="min-w-44 text-center">
           <div *ngIf="coin.maxSupply; else noMaxSupply" class="space-y-1">
             <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400">
               <span>{{ coin.circulatingSupply | number: '1.0-0' }}</span>
@@ -213,7 +215,7 @@
             <span>{{ coin.circulatingSupply | number: '1.0-0' }}</span>
           </ng-template>
         </td>
-        <td class="text-center min-w-24">
+        <td class="min-w-24 text-center">
           <p-tag
             [severity]="getTag(coin.priceChangePercentage24h)"
             [value]="coin.priceChangePercentage24h"
@@ -228,17 +230,17 @@
         <td [attr.colspan]="config.showWatchlistToggle || config.showRemoveAction ? 7 : 6" class="p-4 text-center">
           <div class="text-gray-500">
             <ng-container *ngIf="searchFilter(); else noCoins">
-              <i class="mr-2 pi pi-search"></i>
+              <i class="pi pi-search mr-2"></i>
               No coins found matching "{{ searchFilter() }}"
               <div class="mt-2 text-sm">
                 Try adjusting your search terms or
-                <button type="button" class="underline text-primary-500 hover:text-primary-600" (click)="clearSearch()">
+                <button type="button" class="text-primary-500 hover:text-primary-600 underline" (click)="clearSearch()">
                   clear the search
                 </button>
               </div>
             </ng-container>
             <ng-template #noCoins>
-              <i class="mr-2 pi pi-info-circle"></i>
+              <i class="pi pi-info-circle mr-2"></i>
               {{ config.emptyMessage }}
             </ng-template>
           </div>

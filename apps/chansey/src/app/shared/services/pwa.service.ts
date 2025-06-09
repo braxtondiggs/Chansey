@@ -19,6 +19,7 @@ export class PwaService {
   private readonly swUpdate = inject(SwUpdate, { optional: true });
   private installPromptEvent: BeforeInstallPromptEvent | null = null;
   private _installable$ = new BehaviorSubject<boolean>(false);
+  private _updateAvailable$ = new BehaviorSubject<boolean>(false);
 
   constructor() {
     this.handleAppUpdates();
@@ -29,17 +30,19 @@ export class PwaService {
     return this._installable$.asObservable();
   }
 
+  get updateAvailable$(): Observable<boolean> {
+    return this._updateAvailable$.asObservable();
+  }
+
   private handleAppUpdates(): void {
     if (this.swUpdate?.isEnabled) {
+      this.swUpdate.checkForUpdate();
+
       // Check for service worker updates
       this.swUpdate.versionUpdates
         .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
         .subscribe(() => {
-          if (this.swUpdate) {
-            this.swUpdate.activateUpdate().then(() => {
-              window.location.reload();
-            });
-          }
+          this._updateAvailable$.next(true);
         });
 
       // Check for updates every 6 hours
@@ -78,6 +81,14 @@ export class PwaService {
           console.log('User dismissed the install prompt');
         }
         this.installPromptEvent = null;
+      });
+    }
+  }
+
+  applyUpdate(): void {
+    if (this.swUpdate) {
+      this.swUpdate.activateUpdate().then(() => {
+        window.location.reload();
       });
     }
   }

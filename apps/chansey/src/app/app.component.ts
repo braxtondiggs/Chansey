@@ -1,12 +1,19 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
+import { MessageService } from 'primeng/api';
+
+import { PwaToastComponent } from '@chansey-web/app/shared/components';
 import { TitleService, SessionActivityService, AuthService, PwaService } from '@chansey-web/app/shared/services';
 
 @Component({
   selector: 'app-root',
-  template: `<router-outlet></router-outlet>`,
-  imports: [RouterModule],
+  template: `
+    <router-outlet></router-outlet>
+    <app-pwa-toast></app-pwa-toast>
+  `,
+  imports: [RouterModule, PwaToastComponent],
+  providers: [MessageService],
   standalone: true
 })
 export class AppComponent implements OnInit {
@@ -15,11 +22,9 @@ export class AppComponent implements OnInit {
   private readonly titleService = inject(TitleService);
   private readonly sessionActivityService = inject(SessionActivityService);
   private readonly authService = inject(AuthService);
-  private readonly pwaService = inject(PwaService);
 
   ngOnInit() {
     this.titleService.init();
-    this.pwaService;
 
     // Initialize the session activity monitoring for authenticated users
     this.authService.isAuthenticated().then((isAuthenticated) => {
