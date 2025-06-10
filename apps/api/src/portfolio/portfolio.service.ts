@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
@@ -6,14 +6,20 @@ import { Repository } from 'typeorm';
 import { CreatePortfolioDto, UpdatePortfolioDto } from './dto';
 import { PortfolioType } from './portfolio-type.enum';
 import { Portfolio, PortfolioRelations } from './portfolio.entity';
+import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
 
 import { Coin } from '../coin/coin.entity';
+import { PriceService } from '../price/price.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class PortfolioService {
-  constructor(@InjectRepository(Portfolio) private readonly portfolio: Repository<Portfolio>) {}
+  constructor(
+    @InjectRepository(Portfolio) private readonly portfolio: Repository<Portfolio>,
+    private readonly portfolioHistoricalPriceTask: PortfolioHistoricalPriceTask,
+    @Inject(forwardRef(() => PriceService)) private readonly priceService: PriceService
+  ) {}
 
   async getPortfolio(): Promise<Portfolio[]> {
     return await this.portfolio.find({
@@ -79,7 +85,26 @@ export class PortfolioService {
       type: portfolioDto.type
     });
 
-    return await this.portfolio.save(newPortfolio);
+    const savedPortfolio = await this.portfolio.save(newPortfolio);
+
+    // Trigger historical price data fetching for the new portfolio item
+    // This happens asynchronously in the background via BullMQ
+    try {
+      // Check if there are at least 100 prices in the database before queuing job
+      const priceCount = await this.priceService.getPriceCount();
+      if (priceCount >= 100) {
+        await this.portfolioHistoricalPriceTask.addHistoricalPriceJob(portfolioDto.coinId);
+      } else {
+        console.log(
+          `Skipping historical price job for coin ${portfolioDto.coinId}: only ${priceCount} prices in database (minimum 100 required)`
+        );
+      }
+    } catch (error) {
+      // Log error but don't fail the portfolio creation
+      console.error(`Failed to queue historical price job for coin ${portfolioDto.coinId}:`, error);
+    }
+
+    return savedPortfolio;
   }
 
   async updatePortfolioItem(portfolioId: string, userId: string, dto: UpdatePortfolioDto): Promise<Portfolio> {

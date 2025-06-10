@@ -19,8 +19,7 @@ import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module'
 import { ExchangeModule } from '../exchange/exchange.module';
 import { Order } from '../order/order.entity';
 import { Testnet } from '../order/testnet/testnet.entity';
-import { Portfolio } from '../portfolio/portfolio.entity';
-import { PortfolioService } from '../portfolio/portfolio.service';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
 import { UsersModule } from '../users/users.module';
@@ -28,18 +27,18 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, Portfolio, Price, TickerPairs]),
+    TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, Price, TickerPairs]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
-    forwardRef(() => UsersModule)
+    forwardRef(() => UsersModule),
+    forwardRef(() => PortfolioModule)
   ],
   controllers: [AlgorithmController],
   providers: [
     AlgorithmService,
     CoinService,
     ConfigService,
-    PortfolioService,
     PriceService,
     TickerPairService,
     ...Object.values(DynamicAlgorithmServices),

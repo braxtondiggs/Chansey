@@ -54,7 +54,9 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
         description: 'Scheduled order synchronization job'
       },
       {
-        repeat: { pattern: CronExpression.EVERY_HOUR },
+        repeat: {
+          pattern: process.env.NODE_ENV === 'production' ? CronExpression.EVERY_HOUR : CronExpression.EVERY_12_HOURS
+        },
         attempts: 3,
         backoff: {
           type: 'exponential',

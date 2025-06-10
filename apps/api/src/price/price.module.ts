@@ -10,20 +10,18 @@ import { Price } from './price.entity';
 import { PriceService } from './price.service';
 import { PriceSyncTask } from './tasks/price-sync.task';
 
-import { AppModule } from '../app.module';
-import { Portfolio } from '../portfolio/portfolio.entity';
-import { PortfolioService } from '../portfolio/portfolio.service';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   imports: [
-    forwardRef(() => AppModule),
     SharedCacheModule,
-    TypeOrmModule.forFeature([Coin, Price, Portfolio]),
-    BullModule.registerQueue({ name: 'price-queue' })
+    TypeOrmModule.forFeature([Coin, Price]),
+    BullModule.registerQueue({ name: 'price-queue' }),
+    forwardRef(() => PortfolioModule)
   ],
   controllers: [PriceController],
-  providers: [CoinService, PriceService, PriceSyncTask, PortfolioService],
+  providers: [CoinService, PriceService, PriceSyncTask],
   exports: [PriceService, PriceSyncTask]
 })
 export class PriceModule {}
