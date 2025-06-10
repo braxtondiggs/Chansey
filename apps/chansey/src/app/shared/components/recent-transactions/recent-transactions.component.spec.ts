@@ -1,37 +1,37 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { RouterTestingModule } from '@angular/router/testing';
+import { Router } from '@angular/router';
+
+import { createComponentFactory, mockProvider, Spectator } from '@ngneat/spectator/vitest';
 
 import { RecentTransactionsComponent } from './recent-transactions.component';
 
 import { TransactionsService } from '../../../pages/transactions/transactions.service';
 
 describe('RecentTransactionsComponent', () => {
-  let component: RecentTransactionsComponent;
-  let fixture: ComponentFixture<RecentTransactionsComponent>;
-  let mockTransactionsService: { useTransactions: jest.Mock };
+  let spectator: Spectator<RecentTransactionsComponent>;
 
-  beforeEach(async () => {
-    mockTransactionsService = {
-      useTransactions: jest.fn().mockReturnValue({
-        data: jest.fn().mockReturnValue([]),
-        refetch: jest.fn(),
-        isPending: jest.fn().mockReturnValue(false),
-        isFetching: jest.fn().mockReturnValue(false)
+  const mockTransactionsService = {
+    useTransactions: vi.fn().mockReturnValue({
+      data: vi.fn().mockReturnValue([]),
+      refetch: vi.fn(),
+      isPending: vi.fn().mockReturnValue(false),
+      isFetching: vi.fn().mockReturnValue(false)
+    })
+  };
+
+  const createComponent = createComponentFactory({
+    component: RecentTransactionsComponent,
+    imports: [NoopAnimationsModule],
+    providers: [
+      { provide: TransactionsService, useValue: mockTransactionsService },
+      mockProvider(Router, {
+        navigate: vi.fn()
       })
-    };
-
-    await TestBed.configureTestingModule({
-      imports: [RecentTransactionsComponent, RouterTestingModule, NoopAnimationsModule],
-      providers: [{ provide: TransactionsService, useValue: mockTransactionsService }]
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(RecentTransactionsComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    ]
   });
 
   it('should create', () => {
-    expect(component).toBeTruthy();
+    spectator = createComponent();
+    expect(spectator.component).toBeTruthy();
   });
 });

@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
@@ -15,29 +17,29 @@ describe('ExchangeService', () => {
         {
           provide: getRepositoryToken(Exchange),
           useValue: {
-            find: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            save: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            delete: jest.fn(() => ({}))
+            find: vi.fn(() => []),
+            findOne: vi.fn(() => ({})),
+            save: vi.fn(() => ({})),
+            update: vi.fn(() => ({})),
+            delete: vi.fn(() => ({}))
           }
         },
         {
           provide: ExchangeKeyService,
           useValue: {
-            findAll: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            findByExchange: jest.fn(() => []),
-            create: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            remove: jest.fn(() => ({}))
+            findAll: vi.fn(() => []),
+            findOne: vi.fn(() => ({})),
+            findByExchange: vi.fn(() => []),
+            create: vi.fn(() => ({})),
+            update: vi.fn(() => ({})),
+            remove: vi.fn(() => ({}))
           }
         },
         {
           provide: 'BullQueue_exchange-queue',
           useValue: {
-            add: jest.fn(),
-            getRepeatableJobs: jest.fn()
+            add: vi.fn(),
+            getRepeatableJobs: vi.fn()
             // Add other methods as needed for your tests
           }
         }

@@ -116,10 +116,17 @@
       "executor": "@nx/eslint:lint"
     },
     "test": {
-      "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "executor": "@nx/vite:test",
+      "outputs": ["{workspaceRoot}/coverage/chansey"],
       "options": {
-        "jestConfig": "apps/chansey/jest.config.ts"
+        "config": "apps/chansey/vite.config.mts",
+        "passWithNoTests": true
+      },
+      "configurations": {
+        "ci": {
+          "coverage": true,
+          "watch": false
+        }
       }
     },
     "serve-static": {

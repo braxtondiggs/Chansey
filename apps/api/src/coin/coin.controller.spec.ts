@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { CoinController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
@@ -24,65 +26,65 @@ describe('CoinController', () => {
         {
           provide: getRepositoryToken(Coin),
           useValue: {
-            find: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            save: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            delete: jest.fn(() => ({}))
+            find: vi.fn(() => []),
+            findOne: vi.fn(() => ({})),
+            save: vi.fn(() => ({})),
+            update: vi.fn(() => ({})),
+            delete: vi.fn(() => ({}))
           }
         },
         {
           provide: getRepositoryToken(Portfolio),
           useValue: {
-            find: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            save: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            delete: jest.fn(() => ({}))
+            find: vi.fn(() => []),
+            findOne: vi.fn(() => ({})),
+            save: vi.fn(() => ({})),
+            update: vi.fn(() => ({})),
+            delete: vi.fn(() => ({}))
           }
         },
         {
           provide: ExchangeService,
           useValue: {
-            findAll: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            findBySlug: jest.fn(() => ({})),
-            create: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            remove: jest.fn(() => ({}))
+            findAll: vi.fn(() => []),
+            findOne: vi.fn(() => ({})),
+            findBySlug: vi.fn(() => ({})),
+            create: vi.fn(() => ({})),
+            update: vi.fn(() => ({})),
+            remove: vi.fn(() => ({}))
           }
         },
         PortfolioService,
         {
           provide: PortfolioHistoricalPriceTask,
           useValue: {
-            addUpdateHistoricalPriceJob: jest.fn(),
-            process: jest.fn()
+            addUpdateHistoricalPriceJob: vi.fn(),
+            process: vi.fn()
           }
         },
         {
           provide: PriceService,
           useValue: {
-            getPrices: jest.fn(() => []),
-            getPrice: jest.fn(() => ({})),
-            getPriceBySymbol: jest.fn(() => ({})),
-            createPrice: jest.fn(() => ({})),
-            getSummary: jest.fn(() => [])
+            getPrices: vi.fn(() => []),
+            getPrice: vi.fn(() => ({})),
+            getPriceBySymbol: vi.fn(() => ({})),
+            createPrice: vi.fn(() => ({})),
+            getSummary: vi.fn(() => [])
           }
         },
         {
           provide: 'BullQueue_coin-queue',
           useValue: {
-            add: jest.fn(),
-            getRepeatableJobs: jest.fn()
+            add: vi.fn(),
+            getRepeatableJobs: vi.fn()
             // Add other methods as needed for your tests
           }
         },
         {
           provide: 'BullQueue_ticker-pairs-queue',
           useValue: {
-            add: jest.fn(),
-            getRepeatableJobs: jest.fn()
+            add: vi.fn(),
+            getRepeatableJobs: vi.fn()
             // Add other methods as needed for your tests
           }
         }

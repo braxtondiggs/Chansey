@@ -2,6 +2,8 @@ import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { Order, OrderStatus } from './order.entity';
 import { OrderService } from './order.service';
 import { OrderCalculationService } from './services/order-calculation.service';
@@ -58,19 +60,19 @@ describe('OrderService', () => {
 
   // Create mock repository
   const mockOrderRepository = {
-    find: jest.fn(),
-    findOne: jest.fn(),
-    insert: jest.fn()
+    find: vi.fn(),
+    findOne: vi.fn(),
+    insert: vi.fn()
   };
 
   // Mock services
   const mockExchangeManagerService = {
-    getBalance: jest.fn(),
-    getExchangeClient: jest.fn()
+    getBalance: vi.fn(),
+    getExchangeClient: vi.fn()
   };
   const mockCoinService = {
-    getCoinBySymbol: jest.fn(),
-    getCoinById: jest.fn()
+    getCoinBySymbol: vi.fn(),
+    getCoinById: vi.fn()
   };
   const mockTickerPairService = {};
   const mockExchangeKeyService = {};
@@ -78,7 +80,7 @@ describe('OrderService', () => {
   const mockUsersService = {};
   const mockOrderValidationService = {};
   const mockOrderCalculationService = {
-    extractCoinSymbol: jest.fn()
+    extractCoinSymbol: vi.fn()
   };
   const mockOrderSyncService = {};
 
@@ -138,7 +140,7 @@ describe('OrderService', () => {
 
   describe('getOrders', () => {
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should return orders with correct format', async () => {
@@ -172,7 +174,7 @@ describe('OrderService', () => {
       mockOrderRepository.find.mockRejectedValue(new Error('Database error'));
 
       // Create a spy on the logger
-      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const loggerSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
       // Call the method
       const result = await service.getOrders(mockUser as User);
@@ -200,7 +202,7 @@ describe('OrderService', () => {
 
   describe('getOpenOrders', () => {
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should return only open orders with correct format', async () => {
@@ -232,7 +234,7 @@ describe('OrderService', () => {
       mockOrderRepository.find.mockRejectedValue(new Error('Database connection failed'));
 
       // Create a spy on the logger
-      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const loggerSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
       // Call the method
       const result = await service.getOpenOrders(mockUser as User);
@@ -263,7 +265,7 @@ describe('OrderService', () => {
 
   describe('getOrder', () => {
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should return a single order with correct format', async () => {
@@ -311,7 +313,7 @@ describe('OrderService', () => {
       mockOrderRepository.findOne.mockRejectedValue(new Error('Database timeout'));
 
       // Create a spy on the logger
-      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const loggerSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
       // Call the method and expect it to throw NotFoundCustomException
       await expect(service.getOrder(mockUser as User, mockOrder.id)).rejects.toThrow('Order with id: 123 not found');
@@ -326,7 +328,7 @@ describe('OrderService', () => {
 
   describe('loadMissingCoinInfo integration', () => {
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should load missing coin information when baseCoin or quoteCoin is null', async () => {

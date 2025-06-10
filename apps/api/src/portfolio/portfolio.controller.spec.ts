@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { PortfolioController } from './portfolio.controller';
 import { Portfolio } from './portfolio.entity';
 import { PortfolioService } from './portfolio.service';
@@ -19,26 +21,26 @@ describe('PortfolioController', () => {
         {
           provide: getRepositoryToken(Portfolio),
           useValue: {
-            find: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            save: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            delete: jest.fn(() => ({}))
+            find: vi.fn(() => []),
+            findOne: vi.fn(() => ({})),
+            save: vi.fn(() => ({})),
+            update: vi.fn(() => ({})),
+            delete: vi.fn(() => ({}))
           }
         },
         {
           provide: PortfolioHistoricalPriceTask,
           useValue: {
-            addUpdateHistoricalPriceJob: jest.fn(),
-            process: jest.fn()
+            addUpdateHistoricalPriceJob: vi.fn(),
+            process: vi.fn()
           }
         },
         {
           provide: PriceService,
           useValue: {
-            getPriceByTimeframe: jest.fn(() => []),
-            getLatestPrice: jest.fn(() => ({})),
-            createPrice: jest.fn(() => ({}))
+            getPriceByTimeframe: vi.fn(() => []),
+            getLatestPrice: vi.fn(() => ({})),
+            createPrice: vi.fn(() => ({}))
           }
         }
       ]

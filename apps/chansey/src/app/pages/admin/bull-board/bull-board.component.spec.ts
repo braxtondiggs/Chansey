@@ -1,22 +1,16 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { createComponentFactory, Spectator } from '@ngneat/spectator/vitest';
 
 import { BullBoardComponent } from './bull-board.component';
 
 describe('BullBoardComponent', () => {
-  let component: BullBoardComponent;
-  let fixture: ComponentFixture<BullBoardComponent>;
+  let spectator: Spectator<BullBoardComponent>;
+  const createComponent = createComponentFactory(BullBoardComponent);
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [BullBoardComponent]
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(BullBoardComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+  beforeEach(() => {
+    spectator = createComponent();
   });
 
   it('should create', () => {
-    expect(component).toBeTruthy();
+    expect(spectator.component).toBeTruthy();
   });
 });

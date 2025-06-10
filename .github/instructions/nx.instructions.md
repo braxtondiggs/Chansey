@@ -21,6 +21,52 @@ the user:
 - To help answer questions about the workspace structure or simply help with demonstrating how tasks depend on each
   other, use the 'nx_visualize_graph' tool
 
+# Available Commands (from package.json)
+
+The workspace has these npm scripts available - ALWAYS use these instead of guessing commands:
+
+## Development Commands
+
+- `npm start` - Start all projects in parallel (both API and frontend) [nx run-many --parallel --target=serve --all]
+- `npm run api` - Start only the NestJS API [nx serve api]
+- `npm run site` - Start only the Angular frontend [nx serve chansey]
+- `npm run start:prod` - Start production build of API [node dist/api/main.js]
+
+## Build & Test Commands
+
+- `npm run build` - Build all projects [nx run-many --target=build --all]
+- `npm test` - Run tests for all projects [nx run-many --target=test --all]
+- `npm run lint` - Lint all projects [nx run-many --target=lint --all]
+- `npm run e2e` - Run end-to-end tests [ng e2e]
+
+## Analysis & Maintenance
+
+- `npm run dep-graph` - View dependency graph [nx dep-graph]
+- `npm run analyze:site` - Analyze the Angular bundle [npx nx analyze chansey]
+- `npm run format` - Format code (excludes node_modules and JSON) [nx format:write --exclude ./node_modules,*.json]
+- `npm run format:check` - Check code formatting [nx format:check --exclude ./node_modules]
+- `npm run format:tailwind` - Format Tailwind classes in HTML files [prettier --write "apps/chansey/src/**/*.html"
+  --config .prettierrc]
+
+## Affected Commands (for incremental builds/tests)
+
+- `npm run affected` - Run affected command [nx affected]
+- `npm run affected:apps` - List affected apps [nx affected:apps]
+- `npm run affected:libs` - List affected libraries [nx affected:libs]
+- `npm run affected:build` - Build only affected projects [nx affected:build]
+- `npm run affected:test` - Test only affected projects [nx affected:test]
+- `npm run affected:lint` - Lint only affected projects [nx affected:lint]
+- `npm run affected:e2e` - E2E test only affected projects [nx affected:e2e]
+- `npm run affected:dep-graph` - Show dependency graph for affected projects [nx affected:dep-graph]
+
+## Utility Commands
+
+- `npm run update` - Update Nx workspace [nx migrate latest]
+- `npm run workspace-generator` - Run workspace generators [nx workspace-generator]
+- `npm run prepare` - Prepare git hooks [husky]
+
+When suggesting commands to users, ALWAYS reference these npm scripts rather than raw nx commands.
+
 # Generation Guidelines
 
 If the user wants to generate something, use the following flow:
@@ -63,13 +109,16 @@ If the user wants to generate something, use the following flow:
 
 When helping with tests or creating new tests:
 
-## Unit Testing (Jest)
+## Unit Testing (Vitest)
 
-- Use Jest for unit testing both frontend and backend code
+- Use Vitest for unit testing both frontend and backend code
+- The workspace is configured with @analogjs/vitest-angular for Angular testing
 - For Angular components, use TestBed and appropriate test utilities
 - Mock dependencies appropriately to isolate the unit being tested
 - For services that make HTTP calls, use HttpClientTestingModule
 - For NestJS, use the NestJS testing module to create test modules
+- Vitest configuration supports coverage reporting with @vitest/coverage-v8
+- Tests run with the `nx test` command or project-specific `nx test <project>` commands
 
 ## End-to-End Testing (Cypress)
 
