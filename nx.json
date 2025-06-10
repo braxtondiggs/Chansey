@@ -38,7 +38,9 @@
       "configurations": {
         "ci": {
           "coverage": true,
-          "watch": false
+          "watch": false,
+          "reporter": ["default", "json"],
+          "outputFile": "test-results.json"
         }
       }
     },
@@ -72,5 +74,14 @@
   "nxCloudAccessToken": "MzAwYzE3YTYtZDVhYy00MmFjLWE2ZDMtM2I5YzA1Y2Y0YWVkfHJlYWQ=",
   "useInferencePlugins": false,
   "defaultBase": "master",
-  "nxCloudId": "67169e854c1cf0f07e274815"
+  "nxCloudId": "67169e854c1cf0f07e274815",
+  "tasksRunnerOptions": {
+    "default": {
+      "runner": "nx-cloud",
+      "options": {
+        "cacheableOperations": ["build", "lint", "test", "e2e"],
+        "accessToken": "MzAwYzE3YTYtZDVhYy00MmFjLWE2ZDMtM2I5YzA1Y2Y0YWVkfHJlYWQ="
+      }
+    }
+  }
 }

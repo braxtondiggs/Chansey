@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     root: __dirname,
     cacheDir: '../../node_modules/.vite/chansey',
 
-    plugins: [nxViteTsPaths(), angular()],
+    plugins: [angular(), nxViteTsPaths()],
 
     test: {
       globals: true,
@@ -20,9 +20,20 @@ export default defineConfig(({ mode }) => {
         provider: 'v8'
       },
       setupFiles: ['src/test-setup.ts'],
+      testTimeout: 10000, // Increase timeout for CI
+      hookTimeout: 10000, // Increase hook timeout
+      teardownTimeout: 5000, // Add teardown timeout
+      retry: process.env.CI ? 2 : 0, // Retry flaky tests in CI
       server: {
         deps: {
           inline: ['@ngneat/spectator']
+        }
+      },
+      // Add pool options for better stability
+      pool: 'forks',
+      poolOptions: {
+        forks: {
+          singleFork: process.env.CI // Use single fork in CI for better stability
         }
       }
     },
