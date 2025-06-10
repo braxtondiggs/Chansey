@@ -228,12 +228,27 @@ export abstract class BaseExchangeService {
   /**
    * Format symbol for the specific exchange
    * Override in subclasses if needed
-   * @param symbol Raw symbol like "BTCUSD"
+   * @param symbol Raw symbol like "BTCUSD" or "BTC/USDT"
    * @returns Formatted symbol
    */
   protected formatSymbol(symbol: string): string {
+    // If symbol already contains a slash, return as-is
+    if (symbol.includes('/')) {
+      return symbol;
+    }
+    
     // Default implementation - convert BTCUSD to BTC/USD
-    return symbol.replace('USDT', '/USD').replace(/([A-Z]{3,4})([A-Z]{3,4})/, '$1/$2');
+    // Handle common patterns like BTCUSD, BTCUSDT, ETHUSDT, etc.
+    if (symbol.endsWith('USDT')) {
+      const base = symbol.slice(0, -4); // Remove 'USDT'
+      return `${base}/USDT`;
+    } else if (symbol.endsWith('USD')) {
+      const base = symbol.slice(0, -3); // Remove 'USD'
+      return `${base}/USD`;
+    }
+    
+    // Fallback: try to split common crypto pairs
+    return symbol.replace(/([A-Z]{3,4})([A-Z]{3,4})/, '$1/$2');
   }
 
   /**

@@ -7,7 +7,7 @@ import { Coin } from '../coin/coin.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
 
 @Entity()
-@Index(['coin', 'createdAt'], { unique: true })
+@Index(['coin', 'geckoLastUpdatedAt'], { unique: true })
 export class Price {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({

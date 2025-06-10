@@ -33,19 +33,7 @@ export class BinanceUSService extends BaseExchangeService {
     return (await this.getClient(user)) as ccxt.binanceus;
   }
 
-  /**
-   * Override formatSymbol for Binance-specific symbol formatting
-   * @param symbol Raw symbol like "BTCUSD"
-   * @returns Formatted symbol for Binance
-   */
-  protected formatSymbol(symbol: string): string {
-    // Binance uses USDT instead of USD
-    if (symbol.includes('/')) {
-      return symbol.replace('/USD', '/USDT');
-    }
-    // Convert BTCUSD to BTC/USDT format
-    return symbol.replace(/([A-Z0-9]{3,})USD$/, '$1/USDT').replace(/([A-Z0-9]{3,})([A-Z0-9]{3,})$/, '$1/$2');
-  }
+
 
   /**
    * Override getBalance to handle Binance-specific balance fetching

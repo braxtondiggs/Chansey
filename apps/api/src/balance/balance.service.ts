@@ -127,7 +127,7 @@ export class BalanceService {
           this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${timeoutError.message}`);
           // Add empty balance array for this exchange so we at least have an entry
           exchangeBalances.push({
-            id: exchange.id,
+            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
             slug: exchange.slug,
             name: exchange.name,
             balances: [],
@@ -142,7 +142,7 @@ export class BalanceService {
           this.logger.warn(`No balances retrieved for exchange ${exchange.name}`);
           // Still add an entry with empty balances to maintain exchange record
           exchangeBalances.push({
-            id: exchange.id,
+            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
             slug: exchange.slug,
             name: exchange.name,
             balances: [],
@@ -158,7 +158,7 @@ export class BalanceService {
           totalUsdValue = balances.reduce((sum, asset) => sum + (asset.usdValue || 0), 0);
 
           exchangeBalances.push({
-            id: exchange.id,
+            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
             slug: exchange.slug,
             name: exchange.name,
             balances,
@@ -169,7 +169,7 @@ export class BalanceService {
           this.logger.error(`Error calculating USD values for ${exchange.name}: ${calcError.message}`);
           // Add the exchange with balances but zero USD value
           exchangeBalances.push({
-            id: exchange.id,
+            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
             slug: exchange.slug,
             name: exchange.name,
             balances,
@@ -446,11 +446,6 @@ export class BalanceService {
     }
   }
 
-  /**
-   * Store all user balances for historical tracking
-   * NOTE: The scheduled task functionality has been moved to the worker service.
-   * This method remains for manual invocation if needed.
-   */
   async storeHistoricalBalances() {
     this.logger.log('Starting manual historical balance storage');
 

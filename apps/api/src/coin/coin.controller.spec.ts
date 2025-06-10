@@ -10,6 +10,7 @@ import { CoinService } from './coin.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { PortfolioHistoricalPriceTask } from '../portfolio/tasks/portfolio-historical-price.task';
 import { PriceService } from '../price/price.service';
 
 describe('CoinController', () => {
@@ -52,6 +53,13 @@ describe('CoinController', () => {
           }
         },
         PortfolioService,
+        {
+          provide: PortfolioHistoricalPriceTask,
+          useValue: {
+            addUpdateHistoricalPriceJob: jest.fn(),
+            process: jest.fn()
+          }
+        },
         {
           provide: PriceService,
           useValue: {

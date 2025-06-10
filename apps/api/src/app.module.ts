@@ -108,10 +108,12 @@ const isProduction = process.env.NODE_ENV === 'production';
       adapter: FastifyAdapter
     }),
     BullBoardModule.forFeature(
+      { name: 'balance-queue', adapter: BullMQAdapter },
       { name: 'category-queue', adapter: BullMQAdapter },
       { name: 'coin-queue', adapter: BullMQAdapter },
       { name: 'exchange-queue', adapter: BullMQAdapter },
       { name: 'order-queue', adapter: BullMQAdapter },
+      { name: 'portfolio-queue', adapter: BullMQAdapter },
       { name: 'price-queue', adapter: BullMQAdapter },
       { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
       { name: 'user-queue', adapter: BullMQAdapter }

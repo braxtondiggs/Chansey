@@ -3,6 +3,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { Portfolio } from './portfolio.entity';
 import { PortfolioService } from './portfolio.service';
+import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
+
+import { PriceService } from '../price/price.service';
 
 describe('PortfolioService', () => {
   let service: PortfolioService;
@@ -19,6 +22,21 @@ describe('PortfolioService', () => {
             save: jest.fn(() => ({})),
             update: jest.fn(() => ({})),
             delete: jest.fn(() => ({}))
+          }
+        },
+        {
+          provide: PortfolioHistoricalPriceTask,
+          useValue: {
+            addUpdateHistoricalPriceJob: jest.fn(),
+            process: jest.fn()
+          }
+        },
+        {
+          provide: PriceService,
+          useValue: {
+            getPriceByTimeframe: jest.fn(() => []),
+            getLatestPrice: jest.fn(() => ({})),
+            createPrice: jest.fn(() => ({}))
           }
         }
       ]
