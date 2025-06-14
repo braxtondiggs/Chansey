@@ -263,39 +263,8 @@
       --p-card-body-padding: 0 !important;
     }
 
-    /* Remove padding only from p-card components in the categories component */
-    app-categories p-card .p-card,
-    app-exchanges p-card .p-card,
-    app-coins p-card .p-card,
-    app-risks p-card .p-card,
-    app-categories .p-card,
-    app-categories .p-card,
-    app-exchanges .p-card,
-    app-coins .p-card,
-    app-risks .p-card {
-      padding: 0 !important;
-    }
-
-    app-categories p-card .p-card-body,
-    app-exchanges p-card .p-card-body,
-    app-coins p-card .p-card-body,
-    app-risks p-card .p-card-body,
-    app-categories .p-card-body,
-    app-exchanges .p-card-body,
-    app-coins .p-card-body,
-    app-risks .p-card-body {
-      padding: 0 !important;
-    }
-
-    app-categories p-card .p-card-content,
-    app-exchanges p-card .p-card-content,
-    app-coins p-card .p-card-content,
-    app-risks p-card .p-card-content,
-    app-categories .p-card-content,
-    app-exchanges .p-card-content,
-    app-coins .p-card-content,
-    app-risks .p-card-content {
-      padding: 0 !important;
+    :root p-card {
+      --p-card-body-padding: 0 !important;
     }
 
     .p-paginator-current {

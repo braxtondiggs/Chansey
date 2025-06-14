@@ -6,14 +6,12 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 import * as dayjs from 'dayjs';
 
 import { CoinService } from '../../coin/coin.service';
-import { TestnetSummary } from '../../order/testnet/dto';
 import { CreatePriceDto } from '../../price/dto/create-price.dto';
 import { PriceService } from '../../price/price.service';
 
 interface HistoricalPriceJobData {
   coinId: string;
 }
-
 @Processor('portfolio-queue')
 @Injectable()
 export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModuleInit {
@@ -70,7 +68,7 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
       await job.updateProgress(20);
 
       // Check if we already have recent price data for this coin
-      const existingPrices = await this.price.findAll(coin.id, TestnetSummary.all);
+      const existingPrices = await this.price.findAll(coin.id, 'all');
       const latestPriceDate =
         existingPrices.length > 0
           ? dayjs(Math.max(...existingPrices.map((p) => new Date(p.geckoLastUpdatedAt).getTime())))
