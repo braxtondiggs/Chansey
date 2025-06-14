@@ -261,4 +261,23 @@ export class CoinService {
       .take(take)
       .getMany();
   }
+
+  /**
+   * Get popular coins for backtesting based on market cap and trading volume
+   * @param limit Number of coins to return (default: 20)
+   * @returns Array of popular coins suitable for backtesting
+   */
+  async getPopularCoins(limit = 20): Promise<Coin[]> {
+    return await this.coin.find({
+      where: {
+        marketCap: Not(IsNull()),
+        totalVolume: Not(IsNull()),
+        currentPrice: Not(IsNull())
+      },
+      order: {
+        marketCap: 'DESC'
+      },
+      take: limit
+    });
+  }
 }

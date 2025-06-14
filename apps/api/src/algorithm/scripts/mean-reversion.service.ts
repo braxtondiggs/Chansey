@@ -3,17 +3,36 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CronJob } from 'cron';
 
-import { TestnetService } from './../../order/testnet/testnet.service';
+import { OrderService } from './../../order/order.service';
 
 import { OrderSide, OrderType } from '../../order/order.entity';
-import {
-  TestnetSummary as PriceRange,
-  TestnetSummaryDuration as PriceSummary
-} from '../../order/testnet/dto/testnet-summary.dto';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Price } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
+
+// Time period enums for algorithm analysis
+enum PriceRange {
+  '30m' = '30m',
+  '1h' = '1h',
+  '6h' = '6h',
+  '12h' = '12h',
+  '1d' = '1d',
+  '7d' = '7d',
+  '14d' = '14d',
+  '30d' = '30d'
+}
+
+enum PriceSummary {
+  '30m' = 30 * 60 * 1000,
+  '1h' = 60 * 60 * 1000,
+  '6h' = 6 * 60 * 60 * 1000,
+  '12h' = 12 * 60 * 60 * 1000,
+  '1d' = 24 * 60 * 60 * 1000,
+  '7d' = 7 * 24 * 60 * 60 * 1000,
+  '14d' = 14 * 24 * 60 * 60 * 1000,
+  '30d' = 30 * 24 * 60 * 60 * 1000
+}
 
 @Injectable()
 export class MeanReversionService {
@@ -30,7 +49,7 @@ export class MeanReversionService {
     private readonly price: PriceService,
     private readonly portfolio: PortfolioService,
     private readonly schedulerRegistry: SchedulerRegistry,
-    private readonly testnet: TestnetService
+    private readonly orderService: OrderService
   ) {}
 
   async onInit(algorithm: Algorithm) {

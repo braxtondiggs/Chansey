@@ -9,7 +9,6 @@ import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
-import { TestnetDto } from './testnet/dto/testnet.dto';
 
 import { CoinService } from '../coin/coin.service';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
@@ -509,11 +508,11 @@ export class OrderService {
    * @returns Validated order with adjusted values
    */
   private async validateOrderForExchange(
-    order: OrderDto | TestnetDto,
+    order: OrderDto,
     orderType: OrderType,
     symbol: string,
     user?: User
-  ): Promise<OrderDto | TestnetDto> {
+  ): Promise<OrderDto> {
     try {
       const { symbols } = await this.getExchangeInfo(symbol, user);
       const symbolInfo = symbols[0];

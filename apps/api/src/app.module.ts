@@ -109,6 +109,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     }),
     BullBoardModule.forFeature(
       { name: 'balance-queue', adapter: BullMQAdapter },
+      { name: 'backtest-queue', adapter: BullMQAdapter },
       { name: 'category-queue', adapter: BullMQAdapter },
       { name: 'coin-queue', adapter: BullMQAdapter },
       { name: 'exchange-queue', adapter: BullMQAdapter },

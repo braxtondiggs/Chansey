@@ -3,7 +3,6 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
-import { from } from 'rxjs';
 
 import { UsersService } from '../users.service';
 

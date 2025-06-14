@@ -5,8 +5,7 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
-import { OrderSide, OrderType } from '../../order/order.entity';
-import { TestnetService } from '../../order/testnet/testnet.service';
+import { OrderService } from '../../order/order.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Price, PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
@@ -23,7 +22,7 @@ export class MovingAverageCrossoverService {
     private readonly portfolio: PortfolioService,
     private readonly price: PriceService,
     private readonly schedulerRegistry: SchedulerRegistry,
-    private readonly testnet: TestnetService
+    private readonly orderService: OrderService
   ) {}
 
   async onInit(algorithm: Algorithm) {

@@ -6,8 +6,6 @@ import { Between, In, Repository } from 'typeorm';
 import { CreatePriceDto } from './dto/create-price.dto';
 import { Price, PriceSummaryByDay, PriceSummaryByHour } from './price.entity';
 
-import { TestnetSummary as PriceRange, TestnetSummaryDuration as PriceRangeTime } from '../order/testnet/dto';
-
 type PriceAggregation = {
   avg: number;
   date: Date;
@@ -15,6 +13,38 @@ type PriceAggregation = {
   low: number;
   coin: string;
 };
+
+enum PriceRange {
+  '30m' = '30m',
+  '1h' = '1h',
+  '6h' = '6h',
+  '12h' = '12h',
+  '1d' = '1d',
+  '7d' = '7d',
+  '14d' = '14d',
+  '30d' = '30d',
+  '90d' = '90d',
+  '180d' = '180d',
+  '1y' = '1y',
+  '5y' = '5y',
+  'all' = 'all'
+}
+
+enum PriceRangeTime {
+  '30m' = 30 * 60 * 1000,
+  '1h' = 60 * 60 * 1000,
+  '6h' = 6 * 60 * 60 * 1000,
+  '12h' = 12 * 60 * 60 * 1000,
+  '1d' = 24 * 60 * 60 * 1000,
+  '7d' = 7 * 24 * 60 * 60 * 1000,
+  '14d' = 14 * 24 * 60 * 60 * 1000,
+  '30d' = 30 * 24 * 60 * 60 * 1000,
+  '90d' = 90 * 24 * 60 * 60 * 1000,
+  '180d' = 180 * 24 * 60 * 60 * 1000,
+  '1y' = 365 * 24 * 60 * 60 * 1000,
+  '5y' = 5 * 365 * 24 * 60 * 60 * 1000,
+  'all' = new Date().getTime() // NOTE: This is a special case, 1970-01-01
+}
 
 type PriceMap = { [key: string]: PriceAggregation[] };
 
@@ -35,7 +65,7 @@ export class PriceService {
     return prices;
   }
 
-  async findAll(coins: string[] | string, range = PriceRange['all']): Promise<Price[]> {
+  async findAll(coins: string[] | string, range = 'all'): Promise<Price[]> {
     const cacheKey = `prices_${Array.isArray(coins) ? coins.join('_') : coins}_${range}`;
     return this.getCachedPrices(cacheKey, async () => {
       const coin = Array.isArray(coins) ? { id: In(coins) } : { id: coins };
