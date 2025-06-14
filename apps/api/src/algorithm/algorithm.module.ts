@@ -18,7 +18,6 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { Order } from '../order/order.entity';
-import { Testnet } from '../order/testnet/testnet.entity';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
@@ -27,7 +26,7 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Algorithm, Coin, Order, Testnet, Price, TickerPairs]),
+    TypeOrmModule.forFeature([Algorithm, Coin, Order, Price, TickerPairs]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),

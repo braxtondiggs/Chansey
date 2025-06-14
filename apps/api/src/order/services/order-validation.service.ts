@@ -4,7 +4,6 @@ import * as ccxt from 'ccxt';
 
 import { OrderDto } from '../dto/order.dto';
 import { OrderType } from '../order.entity';
-import { TestnetDto } from '../testnet/dto/testnet.dto';
 
 interface SymbolPriceFilter {
   filterType: string;
@@ -160,11 +159,7 @@ export class OrderValidationService {
   /**
    * Validate exchange requirements for an order
    */
-  async validateExchangeOrder(
-    order: OrderDto | TestnetDto,
-    orderType: OrderType,
-    symbolInfo: SymbolInfo
-  ): Promise<OrderDto | TestnetDto> {
+  async validateExchangeOrder(order: OrderDto, orderType: OrderType, symbolInfo: SymbolInfo): Promise<OrderDto> {
     this.validateSymbolStatus(symbolInfo);
 
     const filters = this.getSymbolFilters(symbolInfo.filters);

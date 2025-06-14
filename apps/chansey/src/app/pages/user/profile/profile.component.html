@@ -314,14 +314,14 @@
                     </div>
                   </div>
 
-                  <div class="flex items-center justify-between gap-2 mt-4">
-                    <div class="flex items-center">
+                  <div class="flex flex-col w-full gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                    <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
                       <button
                         *ngIf="isBinanceUs(exchange.name)"
                         pButton
                         icon="pi pi-question-circle"
                         label="API Key Help"
-                        class="p-button-text p-button-info"
+                        class="w-full p-button-text p-button-info sm:w-auto"
                         pTooltip="Get help with Binance US API keys"
                         tooltipPosition="top"
                         (click)="toggleBinanceHelp()"
@@ -332,14 +332,14 @@
                         pButton
                         icon="pi pi-question-circle"
                         label="API Key Help"
-                        class="p-button-text p-button-info"
+                        class="w-full p-button-text p-button-info sm:w-auto"
                         pTooltip="Get help with Coinbase API keys"
                         tooltipPosition="top"
                         (click)="toggleCoinbaseHelp()"
                         type="button"
                       ></button>
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
                       <p-button
                         *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
                         type="button"
@@ -347,6 +347,7 @@
                         icon="pi pi-pencil"
                         size="large"
                         severity="success"
+                        class="w-full sm:w-auto"
                         (click)="toggleEditExchangeKeys(exchange.slug)"
                       ></p-button>
 
@@ -357,6 +358,7 @@
                         icon="pi pi-trash"
                         size="large"
                         severity="danger"
+                        class="w-full sm:w-auto"
                         (click)="removeExchangeKeys(exchange.slug)"
                       ></p-button>
 
@@ -367,6 +369,7 @@
                         icon="pi pi-times"
                         size="large"
                         severity="secondary"
+                        class="w-full sm:w-auto"
                         (click)="cancelEditExchangeKeys(exchange.slug)"
                       ></p-button>
 
@@ -378,6 +381,7 @@
                         size="large"
                         [loading]="exchangeForms[exchange.slug].loading"
                         [disabled]="!exchangeForms[exchange.slug].form.valid"
+                        class="w-full sm:w-auto"
                       />
                     </div>
                   </div>
@@ -466,14 +470,14 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between gap-2 mt-4">
-              <div class="flex items-center">
+            <div class="flex flex-col w-full gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+              <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
                 <button
                   *ngIf="isBinanceUs(exchange.name)"
                   pButton
                   icon="pi pi-question-circle"
                   label="API Key Help"
-                  class="p-button-text p-button-info"
+                  class="w-full p-button-text p-button-info sm:w-auto"
                   pTooltip="Get help with Binance US API keys"
                   tooltipPosition="top"
                   (click)="toggleBinanceHelp()"
@@ -484,14 +488,14 @@
                   pButton
                   icon="pi pi-question-circle"
                   label="API Key Help"
-                  class="p-button-text p-button-info"
+                  class="w-full p-button-text p-button-info sm:w-auto"
                   pTooltip="Get help with Coinbase API keys"
                   tooltipPosition="top"
                   (click)="toggleCoinbaseHelp()"
                   type="button"
                 ></button>
               </div>
-              <div class="flex gap-2">
+              <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
                 <p-button
                   *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
                   type="button"
@@ -499,6 +503,7 @@
                   icon="pi pi-pencil"
                   size="large"
                   severity="success"
+                  class="w-full sm:w-auto"
                   (click)="toggleEditExchangeKeys(exchange.slug)"
                 />
 
@@ -509,6 +514,7 @@
                   icon="pi pi-trash"
                   size="large"
                   severity="danger"
+                  class="w-full sm:w-auto"
                   (click)="removeExchangeKeys(exchange.slug)"
                 />
 
@@ -519,6 +525,7 @@
                   icon="pi pi-times"
                   size="large"
                   severity="secondary"
+                  class="w-full sm:w-auto"
                   (click)="cancelEditExchangeKeys(exchange.slug)"
                 />
 
@@ -530,6 +537,7 @@
                   size="large"
                   [loading]="exchangeForms[exchange.slug].loading"
                   [disabled]="!exchangeForms[exchange.slug].form.valid"
+                  class="w-full sm:w-auto"
                 />
               </div>
             </div>
