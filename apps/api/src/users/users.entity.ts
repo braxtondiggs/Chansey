@@ -47,6 +47,9 @@ export class User {
   @Column({ nullable: true })
   picture?: string;
 
+  @Column({ default: false })
+  hide_balance: boolean;
+
   rememberMe: boolean;
   token: string;
 

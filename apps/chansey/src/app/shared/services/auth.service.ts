@@ -1,7 +1,10 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { QueryClient } from '@tanstack/angular-query-experimental';
+import { Observable, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
 
@@ -23,6 +26,7 @@ authKeys.token = [...authKeys.all, 'token'];
 export class AuthService {
   private readonly router = inject(Router);
   private readonly queryClient = inject(QueryClient);
+  private readonly http = inject(HttpClient);
 
   useUser() {
     return useAuthQuery<IUser>(authKeys.user, '/api/user');
@@ -31,9 +35,6 @@ export class AuthService {
   useLogoutMutation() {
     return useAuthMutation<ILogoutResponse, void>('/api/auth/logout', 'POST', {
       onSuccess: () => {
-        // Clear the authentication token
-        localStorage.removeItem('token');
-
         // Clear all TanStack Query cache to ensure no stale data
         this.queryClient.clear();
 
@@ -44,11 +45,36 @@ export class AuthService {
     });
   }
 
-  isAuthenticated(): Promise<boolean> {
-    return Promise.resolve(Boolean(this.getToken()));
+  /**
+   * Attempts to refresh the access token using the refresh token stored in HttpOnly cookie
+   */
+  refreshToken(): Observable<boolean> {
+    return this.http.post('/api/auth/refresh', {}, { withCredentials: true }).pipe(
+      map(() => true),
+      catchError((error) => {
+        console.error('Token refresh failed:', error);
+        this.logout();
+        return of(false);
+      })
+    );
   }
 
-  getToken(): string | null {
-    return localStorage.getItem('token');
+  /**
+   * Checks if user is authenticated by making a request to a protected endpoint
+   * This relies on the HttpOnly cookie authentication
+   */
+  isAuthenticated(): Observable<boolean> {
+    return this.http.get('/api/user', { withCredentials: true }).pipe(
+      map(() => true),
+      catchError(() => of(false))
+    );
+  }
+
+  /**
+   * Logout and clear session
+   */
+  logout(): void {
+    this.queryClient.clear();
+    this.router.navigate(['/login']);
   }
 }

@@ -150,15 +150,18 @@ export class CryptoTableComponent {
     const sortedCoins = this.sortedCoins();
 
     return (coinSlug: string) => {
-      // First, try to find the coin by slug to get its currentPrice
+      const priceFromService = Number(pricesMap.get(coinSlug));
+      if (priceFromService > 0) {
+        return priceFromService;
+      }
+
+      // Fall back to coin's currentPrice if price service doesn't have data
       const coin = sortedCoins.find((c) => c.slug === coinSlug);
-      // If coin has currentPrice and it's not zero, use it
       if (coin?.currentPrice && Number(coin.currentPrice) > 0) {
         return +coin.currentPrice;
       }
 
-      // Otherwise, fall back to price service data
-      return Number(pricesMap.get(coinSlug)) || 0;
+      return 0;
     };
   });
 

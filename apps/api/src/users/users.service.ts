@@ -171,7 +171,7 @@ export class UsersService {
       return {
         ...data,
         ...dbUser,
-        roles: (user as any).allowed_roles,
+        roles: (user as any).roles,
         exchanges
       };
     } catch (error) {

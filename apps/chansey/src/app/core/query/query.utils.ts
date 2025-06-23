@@ -10,19 +10,14 @@ import {
 } from '@tanstack/angular-query-experimental';
 
 /**
- * Custom fetch function that adds JWT authentication token and handles auth errors
+ * Custom fetch function that uses HttpOnly cookies for authentication
  */
 export async function authenticatedFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('token') || '';
-
   // Check if body is FormData and avoid setting Content-Type to let the browser set it correctly
   const isFormData = options.body instanceof FormData;
 
   // Create headers object
   const headers = { ...((options.headers as Record<string, string>) || {}) };
-
-  // Set authorization header
-  headers['Authorization'] = `Bearer ${token}`;
 
   // Only set Content-Type for JSON requests, not for FormData
   if (!isFormData) {
@@ -31,15 +26,15 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
 
   const response = await fetch(url, {
     ...options,
-    headers
+    headers,
+    // Include HttpOnly cookies in requests
+    credentials: 'include'
   });
 
   if (!response.ok) {
-    // Check for 401 Unauthorized and log out the user
+    // Check for 401 Unauthorized - let the interceptor handle token refresh
     if (response.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-      throw new Error('Your session has expired. Please log in again.');
+      throw new Error('Authentication required');
     }
 
     const error = await response.json().catch(() => ({}));

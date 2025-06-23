@@ -21,6 +21,8 @@ import { UsersService } from './users.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { StorageService } from '../storage/storage.service';
+import { UploadThrottle } from '../utils/decorators/throttle.decorator';
+import { validateImageFile } from '../utils/file-validation.util';
 
 @ApiTags('User')
 @ApiBearerAuth('token')
@@ -51,6 +53,7 @@ export class UserController {
   }
 
   @Post('profile-image')
+  @UploadThrottle()
   @ApiOperation({
     summary: 'Upload profile image',
     description: 'Uploads a profile image for the authenticated user.'
@@ -67,6 +70,9 @@ export class UserController {
       if (!data) {
         throw new Error('No file uploaded');
       }
+
+      // Validate the uploaded file
+      validateImageFile(data);
 
       const buffer = await data.toBuffer();
       const fileName = data.filename;

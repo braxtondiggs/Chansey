@@ -11,10 +11,13 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { SkeletonModule } from 'primeng/skeleton';
 import { TagModule } from 'primeng/tag';
+import { TooltipModule } from 'primeng/tooltip';
 
 import { ExchangeKey } from '@chansey/api-interfaces';
 
+import { ProfileService } from '@chansey-web/app/pages/user/profile/profile.service';
 import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
+import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
 
 import { ExchangeBalanceService, AccountValueDataPoint } from './exchange-balance.service';
@@ -32,7 +35,8 @@ import { ExchangeBalanceService, AccountValueDataPoint } from './exchange-balanc
     ReactiveFormsModule,
     SelectButtonModule,
     SkeletonModule,
-    TagModule
+    TagModule,
+    TooltipModule
   ],
   templateUrl: './exchange-balance.component.html',
   styleUrls: ['./exchange-balance.component.css']
@@ -50,6 +54,9 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
   isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
   private readonly fb = inject(FormBuilder);
   private readonly layoutService = inject(LayoutService);
+  private readonly authService = inject(AuthService);
+  private readonly profileService = inject(ProfileService);
+
   timePeriodForm: FormGroup = this.fb.group({
     value: new FormControl(this.currentDays())
   });
@@ -57,6 +64,11 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
   // Services
   balanceService = inject(ExchangeBalanceService);
   lastUpdated = signal<Date | null>(null);
+
+  // User and preferences
+  userQuery = this.authService.useUser();
+  updatePreferencesMutation = this.profileService.useUpdateProfileMutation();
+  isBalanceHidden = computed(() => this.userQuery.data()?.hide_balance ?? false);
 
   balanceQuery = this.balanceService.useExchangeBalance();
   balanceHistoryQuery = this.balanceService.useBalanceHistory(this.currentDays);
@@ -117,6 +129,9 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     // Determine if we're on a mobile device
     const isMobile = window.innerWidth < 768;
 
+    // Check if balance is hidden
+    const balanceHidden = this.isBalanceHidden();
+
     // Determine appropriate time unit based on selected date range
     const timeUnit = this.getTimeUnit(this.currentDays());
 
@@ -173,6 +188,9 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       {
         id: 'hoverLine',
         afterDatasetsDraw: (chart: any) => {
+          // Don't draw hover line if balance is hidden
+          if (balanceHidden) return;
+          
           const {
             ctx,
             tooltip,
@@ -204,7 +222,10 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       maintainAspectRatio: false,
       responsive: true,
       aspectRatio: 1,
-      interaction: {
+      interaction: balanceHidden ? {
+        intersect: false,
+        mode: 'none' as any // Disable all interactions when balance is hidden
+      } : {
         intersect: false,
         mode: 'index',
         axis: 'xy', // Better cross-axis tracking for mobile touch
@@ -216,8 +237,8 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       elements: {
         point: {
           radius: isMobile ? 0 : this.currentDays() > 30 ? 0 : this.currentDays() > 7 ? 1 : 2, // Hide points on mobile
-          hoverRadius: isMobile ? 8 : 6, // Larger hover radius for mobile touch targets
-          hitRadius: isMobile ? 30 : 20 // Larger hit area on mobile for better touch interaction
+          hoverRadius: balanceHidden ? 0 : (isMobile ? 8 : 6), // Disable hover when balance is hidden
+          hitRadius: balanceHidden ? 0 : (isMobile ? 30 : 20) // Disable hit area when balance is hidden
         },
         line: {
           tension: 0.6,
@@ -269,7 +290,9 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       },
 
       plugins: {
-        tooltip: {
+        tooltip: balanceHidden ? {
+          enabled: false // Completely disable tooltip when balance is hidden
+        } : {
           enabled: false,
           position: 'nearest',
           external: function (context: any) {
@@ -388,5 +411,13 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
   // Cleanup event listener when component is destroyed
   ngOnDestroy() {
     window.removeEventListener('resize', this.handleResize.bind(this));
+  }
+
+  // Toggle balance visibility
+  toggleBalanceVisibility() {
+    const currentHidden = this.isBalanceHidden();
+    this.updatePreferencesMutation.mutate({
+      hide_balance: !currentHidden
+    });
   }
 }

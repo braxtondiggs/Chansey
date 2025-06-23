@@ -9,13 +9,7 @@ import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
 })
 export class OtpService {
   useVerifyOtpMutation() {
-    return useAuthMutation<ILoginResponse, IVerifyOtpRequest>('/api/auth/otp/verify', 'POST', {
-      onSuccess: (response) => {
-        if (response.access_token) {
-          localStorage.setItem('token', response.access_token);
-        }
-      }
-    });
+    return useAuthMutation<ILoginResponse, IVerifyOtpRequest>('/api/auth/verify-otp', 'POST');
   }
 
   useResendOtpMutation() {

@@ -1,12 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards, HttpException } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards, HttpException, Req } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
 
 import { AuthenticationService } from './authentication.service';
 import {
   ForgotPasswordDto,
-  LogInDto,
   LoginResponseDto,
   LogoutResponseDto,
   OtpResponseDto,
@@ -18,17 +17,23 @@ import {
   ChangePasswordResponseDto
 } from './dto';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
+import { RefreshTokenService } from './refresh-token.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '../users/users.entity';
+import { AuthThrottle } from '../utils/decorators/throttle.decorator';
 
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthenticationController {
-  constructor(private readonly authentication: AuthenticationService) {}
+  constructor(
+    private readonly authentication: AuthenticationService,
+    private readonly refreshTokenService: RefreshTokenService
+  ) {}
 
   @Post('register')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Register a new user',
     description: 'Registers a new user with the provided details.'
@@ -48,11 +53,11 @@ export class AuthenticationController {
   }
 
   @Post('login')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Login to the application',
     description: 'Authenticates a user using email and password.'
   })
-  @ApiBody({ type: LogInDto })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'User logged in successfully.',
@@ -66,9 +71,20 @@ export class AuthenticationController {
   @UseGuards(LocalAuthenticationGuard)
   async logIn(@GetUser() user: User, @Res() response: FastifyReply) {
     const rememberMe = user.rememberMe || false;
-    const cookie = this.authentication.getCookieWithJwtToken(user.id_token, user.expires_in, rememberMe);
-    response.header('Set-Cookie', cookie);
-    return response.send(user);
+
+    // Generate new secure tokens
+    const accessToken = await this.refreshTokenService.generateAccessToken((user as any).user);
+    const refreshToken = await this.refreshTokenService.generateRefreshToken((user as any).user, rememberMe);
+
+    // Set secure HttpOnly cookies with appropriate expiration
+    const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, refreshToken, rememberMe);
+    cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
+
+    // Return user data with remember me preference
+    return response.send({
+      ...user,
+      rememberMe: rememberMe
+    });
   }
 
   @Post('logout')
@@ -86,20 +102,31 @@ export class AuthenticationController {
     description: 'Invalid credentials.'
   })
   async logOut(@Res() response: FastifyReply) {
+    // Clear the new secure cookies
+    const cookies = this.refreshTokenService.getCookiesForLogOut();
+    cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
+
+    // Also clear old cookies for backwards compatibility
     response
-      .header('Set-Cookie', this.authentication.getCookieForLogOut())
       .clearCookie('Authentication')
       .clearCookie('Refresh')
+      .clearCookie('chansey_auth')
       .status(HttpStatus.OK)
       .send(new LogoutResponseDto('Logout successful'));
-    const { data, errors } = await this.authentication.auth.logout();
-    if (errors && errors.length) {
-      throw new HttpException(errors[0], HttpStatus.BAD_REQUEST);
+
+    // Call external auth service logout
+    try {
+      const { errors } = await this.authentication.auth.logout();
+      if (errors && errors.length) {
+        console.warn('External auth logout warning:', errors[0]);
+      }
+    } catch (error) {
+      console.warn('External auth logout failed:', error);
     }
-    return data;
   }
 
   @Post('change-password')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Change user password',
     description: 'Allows authenticated users to change their password'
@@ -124,6 +151,7 @@ export class AuthenticationController {
   }
 
   @Post('forgot-password')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Forgot Password',
     description: 'Sends a password reset link to the provided email address.'
@@ -147,6 +175,7 @@ export class AuthenticationController {
   }
 
   @Post('reset-password')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Reset Password',
     description: 'Resets user password using the provided token.'
@@ -176,6 +205,7 @@ export class AuthenticationController {
   }
 
   @Post('verify-otp')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Verify OTP',
     description: 'Verifies the one-time password (OTP) code entered by the user'
@@ -192,18 +222,36 @@ export class AuthenticationController {
   })
   @HttpCode(HttpStatus.OK)
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto, @Res() response: FastifyReply) {
-    const user = await this.authentication.verifyOtp(verifyOtpDto);
-    if (user.id_token) {
-      const cookie = this.authentication.getCookieWithJwtToken(user.id_token, user.expires_in);
-      response.header('Set-Cookie', cookie);
+    const authResult = await this.authentication.verifyOtp(verifyOtpDto);
+
+    if (authResult.user && authResult.access_token) {
+      // Create user object for token generation
+      const user = {
+        id: authResult.user.id,
+        email: authResult.user.email,
+        given_name: authResult.user.given_name,
+        family_name: authResult.user.family_name
+      } as User;
+
+      const rememberMe = false; // OTP usually doesn't have remember me context
+
+      // Generate new secure tokens
+      const accessToken = await this.refreshTokenService.generateAccessToken(user);
+      const refreshToken = await this.refreshTokenService.generateRefreshToken(user, rememberMe);
+
+      // Set secure HttpOnly cookies
+      const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, refreshToken, rememberMe);
+      cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
     }
-    return response.send(user);
+
+    return response.send(authResult);
   }
 
   @Post('resend-otp')
+  @AuthThrottle()
   @ApiOperation({
     summary: 'Resend OTP',
-    description: 'Resends the one-time password (OTP) code to the user'
+    description: 'Resend the one-time password (OTP) code to the user'
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -218,5 +266,42 @@ export class AuthenticationController {
   async resendOtp(@Body() { email }: { email: string }) {
     const result = await this.authentication.resendOtp(email);
     return new OtpResponseDto(result.message);
+  }
+
+  @Post('refresh')
+  @AuthThrottle()
+  @ApiOperation({
+    summary: 'Refresh Access Token',
+    description: 'Refreshes the access token using a valid refresh token'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Tokens refreshed successfully'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid refresh token'
+  })
+  @HttpCode(HttpStatus.OK)
+  async refreshToken(@Req() req: FastifyRequest, @Res() response: FastifyReply) {
+    const refreshToken = req.cookies['chansey_refresh'];
+
+    if (!refreshToken) {
+      throw new HttpException('Refresh token not found', HttpStatus.UNAUTHORIZED);
+    }
+
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      rememberMe
+    } = await this.refreshTokenService.refreshAccessToken(refreshToken);
+    const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, newRefreshToken, rememberMe);
+
+    cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
+
+    return response.send({
+      message: 'Tokens refreshed successfully',
+      access_token: accessToken
+    });
   }
 }

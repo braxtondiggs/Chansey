@@ -4,7 +4,7 @@ import { RouterModule } from '@angular/router';
 import { MessageService } from 'primeng/api';
 
 import { PwaToastComponent } from '@chansey-web/app/shared/components';
-import { TitleService, SessionActivityService, AuthService, PwaService } from '@chansey-web/app/shared/services';
+import { TitleService, SessionActivityService, AuthService } from '@chansey-web/app/shared/services';
 
 @Component({
   selector: 'app-root',
@@ -27,7 +27,7 @@ export class AppComponent implements OnInit {
     this.titleService.init();
 
     // Initialize the session activity monitoring for authenticated users
-    this.authService.isAuthenticated().then((isAuthenticated) => {
+    this.authService.isAuthenticated().subscribe((isAuthenticated: boolean) => {
       if (isAuthenticated) {
         // Start monitoring user activity for auto logout
         this.sessionActivityService.init(this.IDLE_TIMEOUT);

@@ -22,6 +22,7 @@ export interface IUserProfileUpdate {
   birthdate?: string;
   phone_number?: string;
   risk?: string;
+  hide_balance?: boolean;
 }
 
 export interface ChangePasswordRequest {

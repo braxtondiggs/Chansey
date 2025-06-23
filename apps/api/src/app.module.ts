@@ -2,7 +2,9 @@ import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
@@ -119,6 +121,23 @@ const isProduction = process.env.NODE_ENV === 'production';
       { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
       { name: 'user-queue', adapter: BullMQAdapter }
     ),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000, // 1 second
+        limit: 10 // 10 requests per second
+      },
+      {
+        name: 'medium',
+        ttl: 60000, // 1 minute
+        limit: 100 // 100 requests per minute
+      },
+      {
+        name: 'long',
+        ttl: 3600000, // 1 hour
+        limit: 1000 // 1000 requests per hour
+      }
+    ]),
     ScheduleModule.forRoot(),
     AlgorithmModule,
     AuthenticationModule,
@@ -141,6 +160,10 @@ const isProduction = process.env.NODE_ENV === 'production';
     {
       provide: 'APP_FILTER',
       useClass: HttpExceptionFilter
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard
     }
   ]
 })
