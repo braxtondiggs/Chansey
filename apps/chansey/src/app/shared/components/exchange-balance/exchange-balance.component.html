@@ -31,8 +31,21 @@
 
     @let accountData = balanceHistoryQuery.data();
     <div *ngIf="!balanceHistoryQuery.isError() && accountData">
-      <!-- Time period selector - always visible -->
-      <div class="flex justify-center mb-3 md:justify-end">
+      <!-- Balance visibility toggle and Time period selector -->
+      <div class="flex items-center justify-end gap-3 mt-3 mb-3 mr-3 md:mr-0 md:mt-0">
+        <div class="flex items-center">
+          <p-button
+            [icon]="isBalanceHidden() ? 'pi pi-eye-slash' : 'pi pi-eye'"
+            [severity]="isBalanceHidden() ? 'secondary' : 'info'"
+            [outlined]="true"
+            [rounded]="true"
+            (click)="toggleBalanceVisibility()"
+            [pTooltip]="isBalanceHidden() ? 'Show balance' : 'Hide balance'"
+            tooltipPosition="top"
+            size="small"
+            [loading]="updatePreferencesMutation.isPending()"
+          />
+        </div>
         <form [formGroup]="timePeriodForm">
           <p-selectButton formControlName="value" [options]="timePeriods()" optionLabel="label" optionValue="value" />
         </form>
@@ -40,10 +53,14 @@
 
       <div *ngIf="accountData.history.length > 0">
         <div class="inline-flex flex-col gap-2 mb-6 md:-mt-12">
-          <div class="text-6xl balance-value">
+          <div class="text-6xl balance-value" [class.blur-md]="isBalanceHidden()">
             <span [appCounter]="totalUsdValue()"></span>
           </div>
-          <div [ngClass]="accountData.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'" class="text-2xl">
+          <div
+            [ngClass]="accountData.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'"
+            class="text-2xl"
+            [class.blur-md]="isBalanceHidden()"
+          >
             <span
               class="pi"
               [ngClass]="
@@ -59,6 +76,18 @@
 
         <!-- Chart container with relative positioning for overlay -->
         <div class="relative">
+          <!-- Balance hidden overlay -->
+          <div
+            *ngIf="isBalanceHidden()"
+            class="absolute inset-0 z-20 flex flex-col items-center justify-center rounded"
+          >
+            <div class="text-center">
+              <i class="mb-3 text-3xl pi pi-eye-slash text-surface-400"></i>
+              <p class="mb-1 text-base font-medium text-surface-700 dark:text-surface-200">Chart Values Hidden</p>
+              <p class="text-sm text-surface-500 dark:text-surface-400">Click the eye icon above to view</p>
+            </div>
+          </div>
+
           <!-- Loading overlay when refetching -->
           <div
             *ngIf="balanceHistoryQuery.isFetching()"
@@ -75,6 +104,7 @@
             [plugins]="chartPlugins"
             type="line"
             class="h-[18rem] sm:h-[20rem] md:h-[25rem] lg:h-[30rem]"
+            [class.blur-sm]="isBalanceHidden()"
           />
         </div>
 

@@ -74,4 +74,8 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsString()
   @IsOptional()
   confirm_new_password?: string;
+
+  @ApiProperty({ description: 'Whether to hide user balance display', required: false })
+  @IsOptional()
+  hide_balance?: boolean;
 }

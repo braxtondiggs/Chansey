@@ -40,16 +40,13 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
         defaultSrc: [`'self'`],
 
         // Allow styles from self and specific CDNs
-        styleSrc: [`'self'`, `'unsafe-inline'`, 'https://fonts.googleapis.com'],
+        styleSrc: [`'self'`, 'https://fonts.googleapis.com'],
 
-        // Allow scripts from self, external domains, and needed CSP directives
-        scriptSrc: [`'self'`, `'unsafe-inline'`, `'unsafe-eval'`, 'https://www.cymbit.com', 'https://cymbit.com'],
+        // Allow scripts from self and external domains
+        scriptSrc: [`'self'`, 'https://www.cymbit.com', 'https://cymbit.com'],
 
         // Add script-src-elem to explicitly control script elements
-        scriptSrcElem: [`'self'`, `'unsafe-inline'`, 'https://www.cymbit.com', 'https://cymbit.com'],
-
-        // Add script-src-attr to allow inline event handlers
-        scriptSrcAttr: [`'unsafe-inline'`],
+        scriptSrcElem: [`'self'`, 'https://www.cymbit.com', 'https://cymbit.com'],
 
         // Allow images from self, data URIs, and specific domains
         imgSrc: [
@@ -124,8 +121,12 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
 
   await app.register(compression, { global: true });
 
+  if (!process.env.COOKIE_SECRET) {
+    throw new Error('COOKIE_SECRET environment variable is required');
+  }
+
   await app.register(fastifyCookie, {
-    secret: process.env.COOKIE_SECRET || 'default_secret', // Replace with a secure secret in production
+    secret: process.env.COOKIE_SECRET,
     hook: 'onRequest',
     parseOptions: { domain: '.cymbit.com' }
   });
@@ -139,11 +140,14 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
 
   await app.register(fastifyMultipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024, // 2 MB
-      files: 1,
-      headerPairs: 2000,
-      parts: 1000
-    }
+      fileSize: 2 * 1024 * 1024, // 2 MB for images
+      files: 1, // Only allow single file uploads
+      headerPairs: 100, // Reduced from 2000
+      parts: 10, // Reduced from 1000
+      fieldNameSize: 100,
+      fieldSize: 1024 * 100 // 100 KB field size limit
+    },
+    attachFieldsToBody: false
   });
 
   app.useLogger(app.get(Logger));

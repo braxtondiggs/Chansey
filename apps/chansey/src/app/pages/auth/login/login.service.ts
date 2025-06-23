@@ -24,7 +24,6 @@ export class LoginService {
           return;
         }
 
-        localStorage.setItem('token', response.access_token);
         this.queryClient.setQueryData(authKeys.user, response.user);
       },
       invalidateQueries: [authKeys.user]

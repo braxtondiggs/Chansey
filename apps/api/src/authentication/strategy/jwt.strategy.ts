@@ -8,7 +8,6 @@ import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
 
 interface AccessTokenPayload {
-  allowed_roles: string[];
   aud: string; // Audience (who the token is for)
   exp: number; // Expiration time (in seconds since epoch)
   iat: number; // Issued at time (in seconds since epoch)
@@ -28,7 +27,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private readonly userService: UsersService
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (request) => {
+          return request.cookies?.chansey_access;
+        }
+      ]),
       ignoreExpiration: false,
       secretOrKey: configService.get('JWT_SECRET'),
       algorithms: ['HS512']
