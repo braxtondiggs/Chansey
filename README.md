@@ -1,98 +1,196 @@
 # Chansey
 
-This project was generated using [Nx](https://nx.dev).
+A modern cryptocurrency portfolio management application built with Angular and NestJS. Track your investments across multiple exchanges, monitor performance, and manage your crypto portfolio with real-time data synchronization.
 
-<p style="text-align: center;"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="450"></p>
+## 🚀 Features
 
-🔎 **Smart, Extensible Build Framework**
+- **Multi-Exchange Support**: Connect to Binance, Coinbase, and other major cryptocurrency exchanges
+- **Real-Time Synchronization**: Automated order and balance updates via background job processing
+- **Portfolio Analytics**: Track performance, asset allocation, and historical data
+- **Secure API Integration**: Encrypted storage of exchange API keys with JWT authentication
+- **Responsive PWA**: Mobile-first design with offline capabilities
+- **Admin Dashboard**: Queue management and system monitoring tools
 
-## Quick Start & Documentation
+## 🛠 Technology Stack
 
-[Nx Documentation](https://nx.dev/angular)
+### Frontend (apps/chansey)
+- **Angular 19** with standalone components
+- **PrimeNG** UI component library
+- **TailwindCSS** for styling
+- **TanStack Query** for state management and caching
+- **PWA** with service worker support
 
-[10-minute video showing all Nx features](https://nx.dev/getting-started/intro)
+### Backend (apps/api)
+- **NestJS** REST API framework
+- **TypeORM** with PostgreSQL database
+- **Redis** for caching and session storage
+- **BullMQ** for background job processing
+- **CCXT** for cryptocurrency exchange integration
+- **JWT** authentication with refresh tokens
 
-[Interactive Tutorial](https://nx.dev/tutorial/01-create-application)
+### Infrastructure
+- **Railway** deployment platform
+- **Minio** for file storage
+- **CoinGecko API** for price data
 
-## Adding capabilities to your workspace
+## 📋 Prerequisites
 
-Nx supports many plugins which add capabilities for developing different types of applications and different tools.
+- **Node.js** 18+ and npm
+- **PostgreSQL** 14+
+- **Redis** 6+
+- **Git**
 
-These capabilities include generating applications, libraries, etc as well as the devtools to test, and build projects as well.
+## 🔧 Quick Start
 
-Below are our core plugins:
+### 1. Clone and Install
+```bash
+git clone https://github.com/braxtondiggs/Chansey.git
+cd Chansey
+npm install
+```
 
-- [Angular](https://angular.io)
-  - `ng add @nx/angular`
-- [React](https://reactjs.org)
-  - `ng add @nrwl/react`
-- Web (no framework frontends)
-  - `ng add @nrwl/web`
-- [Nest](https://nestjs.com)
-  - `ng add @nx/nest`
-- [Express](https://expressjs.com)
-  - `ng add @nrwl/express`
-- [Node](https://nodejs.org)
-  - `ng add @nx/node`
+### 2. Environment Setup
+Create environment files for both applications:
 
-There are also many [community plugins](https://nx.dev/community) you could add.
+**apps/api/.env**
+```env
+DATABASE_URL=postgresql://username:password@localhost:5432/chansey
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=your-jwt-secret
+COINGECKO_API_KEY=your-coingecko-api-key
+```
 
-## Generate an application
+**apps/chansey/.env**
+```env
+API_URL=http://localhost:3000/api
+```
 
-Run `ng g @nx/angular:app my-app` to generate an application.
+### 3. Database Setup
+```bash
+# Run database migrations
+npm run db:migrate
 
-> You can use any of the plugins above to generate applications as well.
+# Seed initial data (optional)
+npm run db:seed
+```
 
-When using Nx, you can create multiple applications and libraries in the same workspace.
+### 4. Start Development Servers
+```bash
+# Start both API and frontend
+npm start
 
-## Generate a library
+# Or start individually
+npm run api    # API server on http://localhost:3000
+npm run site   # Frontend on http://localhost:4200
+```
 
-Run `ng g @nx/angular:lib my-lib` to generate a library.
+## 📜 Development Commands
 
-> You can also use any of the plugins above to generate libraries as well.
+### Essential Commands
+```bash
+npm start           # Start both applications
+npm run build       # Build all applications
+npm run test        # Run all tests
+npm run lint        # Run ESLint on all projects
+npm run format      # Format code with Prettier
+npm run e2e         # Run Cypress end-to-end tests
+```
 
-Libraries are shareable across libraries and applications. They can be imported from `@chansey/mylib`.
+### Nx-Specific Commands
+```bash
+nx serve api                # Serve API only
+nx serve chansey           # Serve frontend only
+nx build api --prod        # Production build for API
+nx affected:test           # Test only affected projects
+nx affected:lint           # Lint only affected projects
+nx dep-graph              # View project dependency graph
+```
 
-## Development server
+### Database Operations
+```bash
+npm run db:migrate         # Run database migrations
+npm run db:migration:create # Create new migration
+npm run db:seed           # Seed database with initial data
+```
 
-Run `ng serve my-app` for a dev server. Navigate to http://localhost:4200/. The app will automatically reload if you change any of the source files.
+## 🏗 Architecture Overview
 
-## Code scaffolding
+### Monorepo Structure
+```
+├── apps/
+│   ├── api/              # NestJS API server
+│   ├── chansey/          # Angular frontend
+│   └── chansey-e2e/      # Cypress E2E tests
+├── libs/
+│   └── api-interfaces/   # Shared TypeScript interfaces
+└── docs/
+    └── bruno/           # API documentation and testing
+```
 
-Run `ng g component my-component --project=my-app` to generate a new component.
+### Key Features
 
-## Build
+#### Exchange Integration
+- Standardized exchange API interactions via CCXT library
+- Secure API key storage with encryption
+- Automated order synchronization via scheduled tasks
+- Support for multiple exchanges per user
 
-Run `ng build my-app` to build the project. The build artifacts will be stored in the `dist/` directory. Use the `--prod` flag for a production build.
+#### Background Processing
+- **BullMQ** job queues with Redis backend
+- Scheduled tasks for:
+  - Order synchronization (hourly)
+  - Price data updates
+  - Balance calculations
+  - Portfolio historical data collection
 
-## Running unit tests
+#### Security & Authentication
+- JWT-based authentication with refresh tokens
+- Role-based access control (admin/user)
+- API key encryption for exchange credentials
+- Rate limiting and security headers
+- CSRF protection
 
-Run `ng test my-app` to execute the unit tests via [Jest](https://jestjs.io).
+## 🧪 Testing
 
-Run `nx affected:test` to execute the unit tests affected by a change.
+```bash
+# Unit tests
+npm run test
 
-## Running end-to-end tests
+# E2E tests
+npm run e2e
 
-Run `ng e2e my-app` to execute the end-to-end tests via [Cypress](https://www.cypress.io).
+# Test specific application
+nx test api
+nx test chansey
 
-Run `nx affected:e2e` to execute the end-to-end tests affected by a change.
+# Test affected projects only
+nx affected:test
+```
 
-## Understand your workspace
+## 📊 Monitoring
 
-Run `nx dep-graph` to see a diagram of the dependencies of your projects.
+- **Queue Dashboard**: Available at `/api/admin/queues` (admin only)
+- **API Documentation**: Swagger/OpenAPI docs when running API
+- **Bruno Collection**: Comprehensive API testing in `docs/bruno/`
 
-## Further help
+## 🚀 Deployment
 
-Visit the [Nx Documentation](https://nx.dev/angular) to learn more.
+The application is deployed on Railway with PostgreSQL and Redis add-ons. See deployment documentation for detailed setup instructions.
 
-## ☁ Nx Cloud
+## 🤝 Contributing
 
-### Distributed Computation Caching & Distributed Task Execution
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Follow the existing code style and run `npm run lint`
+4. Write tests for new functionality
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
-<p style="text-align: center;"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-cloud-card.png"></p>
+## 📝 License
 
-Nx Cloud pairs with Nx in order to enable you to build and test code more rapidly, by up to 10 times. Even teams that are new to Nx can connect to Nx Cloud and start saving time instantly.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Teams using Nx gain the advantage of building full-stack applications with their preferred framework alongside Nx’s advanced code generation and project dependency graph, plus a unified experience for both frontend and backend developers.
+---
 
-Visit [Nx Cloud](https://nx.app/) to learn more.
+Built with ❤️ using [Nx](https://nx.dev) monorepo tooling
