@@ -1,0 +1,708 @@
+<div class="h-full overflow-y-auto">
+  <!-- Trading Header with Status Bar -->
+  <div class="relative mb-4">
+    <!-- Active Trading Status Bar -->
+    <div class="flex items-center justify-between p-3 bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-950 dark:to-blue-950 rounded-lg border border-primary-100 dark:border-primary-800">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span class="text-sm font-medium text-primary-700 dark:text-primary-300">Live Trading</span>
+        </div>
+        <div class="h-4 w-px bg-primary-200 dark:bg-primary-700"></div>
+        <span class="text-xs text-primary-600 dark:text-primary-400" *ngIf="selectedExchangeId(); else noExchange">
+          Connected to {{ getSelectedExchangeName() }}
+        </span>
+        <ng-template #noExchange>
+          <span class="text-xs text-orange-600 dark:text-orange-400">No exchange selected</span>
+        </ng-template>
+      </div>
+      <div class="flex items-center gap-2">
+        <i class="pi pi-chart-line text-primary-600 dark:text-primary-400 text-sm"></i>
+        <span class="text-xs text-primary-600 dark:text-primary-400">Real-time</span>
+      </div>
+    </div>
+    
+    <!-- Decorative separator line -->
+    <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-16 h-0.5 bg-gradient-to-r from-transparent via-primary-300 to-transparent dark:via-primary-600"></div>
+  </div>
+
+  <!-- Exchange Selection -->
+  <div class="mb-3">
+    <div class="flex items-center gap-2 mb-3">
+      <i class="pi pi-building text-primary-600 dark:text-primary-400"></i>
+      <label class="text-sm font-medium text-surface-700 dark:text-surface-300">Exchange Platform</label>
+      <div class="flex-1 h-px bg-gradient-to-r from-surface-200 via-transparent to-surface-200 dark:from-surface-700 dark:to-surface-700"></div>
+    </div>
+    <p-select
+      [options]="exchangeOptions()"
+      [(ngModel)]="selectedExchangeId"
+      (onChange)="onExchangeChange($event)"
+      placeholder="Choose an exchange..."
+      optionLabel="label"
+      optionValue="value"
+      class="w-full"
+      [loading]="exchangeQuery.isPending()"
+    >
+      <ng-template pTemplate="selectedItem" let-option>
+        <div class="flex items-center gap-3" *ngIf="option">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full" [class]="getExchangeStatusClass(option.status)"></div>
+            <span class="font-medium">{{ option.label }}</span>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400">
+            {{ option.pairCount }} pairs
+          </span>
+        </div>
+      </ng-template>
+      <ng-template pTemplate="item" let-option>
+        <div class="flex items-center justify-between w-full py-2">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full" [class]="getExchangeStatusClass(option.status)"></div>
+            <div>
+              <div class="font-medium">{{ option.label }}</div>
+              <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs px-2 py-1 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400">
+              {{ option.pairCount }} pairs
+            </div>
+            <div class="text-xs mt-1" [class]="getExchangeStatusTextClass(option.status)">
+              {{ option.statusText }}
+            </div>
+          </div>
+        </div>
+      </ng-template>
+    </p-select>
+  </div>
+
+  <!-- Exchange Selection Notice -->
+  <div *ngIf="!selectedExchangeId()" class="mb-4 p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+    <div class="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+      <i class="pi pi-info-circle"></i>
+      <span class="text-sm font-medium">Please select an exchange above to start trading</span>
+    </div>
+  </div>
+
+  <!-- Trading Pair Section Header -->
+  <div class="flex items-center gap-2 mb-3" [class.opacity-50]="!selectedExchangeId()">
+    <i class="pi pi-chart-bar text-primary-600 dark:text-primary-400"></i>
+    <h3 class="text-lg font-semibold text-surface-800 dark:text-surface-200">Market Selection</h3>
+    <div class="flex-1 h-px bg-gradient-to-r from-surface-200 via-transparent to-surface-200 dark:from-surface-700 dark:to-surface-700"></div>
+    <span class="text-xs px-2 py-1 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 rounded-full" *ngIf="filteredTradingPairOptions().length > 0">
+      {{ filteredTradingPairOptions().length }} pairs
+    </span>
+  </div>
+
+  <!-- Enhanced Trading Pair Selection -->
+  <p-card class="mb-4" [class.opacity-50]="!selectedExchangeId()">
+    <ng-template pTemplate="header">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-lg font-semibold">Trading Pair</span>
+          <div class="w-1 h-1 bg-primary-500 rounded-full" *ngIf="selectedPair()"></div>
+        </div>
+        <div class="text-right" *ngIf="selectedPair()">
+          <div class="text-lg font-bold">
+            {{ selectedPair()?.currentPrice | currency: 'USD' : 'symbol' : '1.2-8' }}
+          </div>
+          <div [class]="priceChangeClass()" class="flex items-center gap-1 text-sm font-medium">
+            <i
+              class="text-xs pi"
+              [class.pi-arrow-up]="(selectedPair()?.priceChangePercentage24h || 0) >= 0"
+              [class.pi-arrow-down]="(selectedPair()?.priceChangePercentage24h || 0) < 0"
+            ></i>
+            {{ selectedPair()?.priceChangePercentage24h | number: '1.2-2' }}%
+          </div>
+        </div>
+      </div>
+
+      <!-- Trading Pair Search -->
+      <p-select
+        [options]="filteredTradingPairOptions()"
+        [(ngModel)]="selectedPairValue"
+        (onChange)="onPairChange($event)"
+        placeholder="Search trading pairs..."
+        optionLabel="label"
+        optionValue="value"
+        class="w-full"
+        [loading]="tradingPairsQuery.isPending()"
+        [filter]="true"
+        filterBy="label"
+        [showClear]="true"
+        [disabled]="!selectedExchangeId()"
+      >
+        <ng-template pTemplate="selectedItem" let-option>
+          <div class="flex items-center gap-2" *ngIf="option">
+            <span class="font-medium">{{ option.label }}</span>
+            <span class="text-xs px-2 py-1 rounded bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300">
+              {{ getSelectedExchangeName() }}
+            </span>
+          </div>
+        </ng-template>
+        <ng-template pTemplate="item" let-option>
+          <div class="flex items-center justify-between w-full">
+            <span class="font-medium">{{ option.label }}</span>
+            <div class="text-sm text-right">
+              <div class="font-medium">{{ option.price | currency: 'USD' : 'symbol' : '1.2-6' }}</div>
+              <div [class]="option.change24h >= 0 ? 'text-green-600' : 'text-red-600'" class="text-xs">
+                {{ option.change24h | number: '1.2-2' }}%
+              </div>
+            </div>
+          </div>
+        </ng-template>
+      </p-select>
+    </ng-template>
+
+    <!-- Market Stats -->
+    <div class="grid grid-cols-3 gap-4 px-4 pb-4" *ngIf="selectedPair()">
+      <div class="text-center">
+        <div class="mb-1 text-xs text-surface-600 dark:text-surface-400">24h Volume</div>
+        <div class="text-sm font-semibold">{{ selectedPair()?.volume24h | currency: 'USD' : 'symbol' : '1.0-0' }}</div>
+      </div>
+      <div class="text-center">
+        <div class="mb-1 text-xs text-surface-600 dark:text-surface-400">Spread</div>
+        <div class="text-sm font-semibold">{{ calculateSpread() | number: '1.4-4' }}%</div>
+      </div>
+      <div class="text-center">
+        <div class="mb-1 text-xs text-surface-600 dark:text-surface-400">24h High</div>
+        <div class="text-sm font-semibold">{{ selectedPair()?.high24h | currency: 'USD' : 'symbol' : '1.2-6' }}</div>
+      </div>
+    </div>
+  </p-card>
+
+  <!-- Order Execution Section -->
+  <div class="flex items-center gap-2 mb-3" [class.opacity-50]="!selectedExchangeId()">
+    <i class="pi pi-send text-primary-600 dark:text-primary-400"></i>
+    <h3 class="text-lg font-semibold text-surface-800 dark:text-surface-200">Place Orders</h3>
+    <div class="flex-1 h-px bg-gradient-to-r from-surface-200 via-transparent to-surface-200 dark:from-surface-700 dark:to-surface-700"></div>
+    <div class="flex items-center gap-1" *ngIf="selectedPair()">
+      <div class="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
+      <span class="text-xs text-green-600 dark:text-green-400">Ready</span>
+    </div>
+  </div>
+
+  <!-- Main Trading Interface -->
+  <div class="grid grid-cols-1 gap-4">
+    <!-- Order Form -->
+    <p-card [class.opacity-50]="!selectedExchangeId()">
+      <ng-template pTemplate="header">
+        <div class="p-4">
+          <h3 class="text-lg font-semibold">Place Order</h3>
+        </div>
+      </ng-template>
+
+      <p-tabs [(value)]="activeOrderTab">
+        <p-tablist class="flex w-full">
+          <p-tab value="buy" [disabled]="!selectedPair() || !selectedExchangeId()" class="flex-1">
+            <div class="flex items-center justify-center gap-2 text-green-600">
+              <i class="pi pi-arrow-up"></i>
+              <span>Buy</span>
+            </div>
+          </p-tab>
+          <p-tab value="sell" [disabled]="!selectedPair() || !selectedExchangeId()" class="flex-1">
+            <div class="flex items-center justify-center gap-2 text-red-600">
+              <i class="pi pi-arrow-down"></i>
+              <span>Sell</span>
+            </div>
+          </p-tab>
+        </p-tablist>
+
+        <p-tabpanels>
+          <p-tabpanel value="buy">
+            <form [formGroup]="buyOrderForm" (ngSubmit)="onSubmitOrder('BUY')" class="space-y-4">
+              <!-- Buy Order Form -->
+              <div>
+                <label class="block mb-2 text-sm font-medium">Order Type</label>
+                <p-select
+                  formControlName="type"
+                  [options]="enhancedOrderTypeOptions"
+                  placeholder="Select order type"
+                  class="w-full"
+                  optionLabel="label"
+                  optionValue="value"
+                >
+                  <ng-template pTemplate="selectedItem" let-option>
+                    <div class="flex items-center gap-2">
+                      <i [class]="option.icon" class="text-sm"></i>
+                      <span>{{ option.label }}</span>
+                    </div>
+                  </ng-template>
+                  <ng-template pTemplate="item" let-option>
+                    <div class="flex items-center gap-2">
+                      <i [class]="option.icon" class="text-sm"></i>
+                      <div>
+                        <div class="font-medium">{{ option.label }}</div>
+                        <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+                      </div>
+                    </div>
+                  </ng-template>
+                </p-select>
+              </div>
+
+              <div>
+                <label class="block mb-2 text-sm font-medium">Quantity ({{ selectedPair()?.base?.symbol }})</label>
+                <div class="space-y-2">
+                  <p-inputnumber
+                    formControlName="quantity"
+                    placeholder="0.00"
+                    mode="decimal"
+                    [minFractionDigits]="2"
+                    [maxFractionDigits]="8"
+                    class="w-full"
+                  />
+                  <!-- Percentage Buttons -->
+                  <div class="grid grid-cols-4 gap-1">
+                    <p-button
+                      label="25%"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('BUY', 25)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                    <p-button
+                      label="50%"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('BUY', 50)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                    <p-button
+                      label="75%"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('BUY', 75)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                    <p-button
+                      label="Max"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('BUY', 100)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                  </div>
+                </div>
+                <div class="flex justify-between mt-1 text-xs text-surface-600 dark:text-surface-400">
+                  <span
+                    >Available: {{ getBuyBalance()?.available | number: '1.2-8' }}
+                    {{ selectedPair()?.quote?.symbol }}</span
+                  >
+                  <span class="text-primary-600"
+                    >≈ {{ calculateMaxBuyQuantity() | number: '1.2-8' }} {{ selectedPair()?.base?.symbol }}</span
+                  >
+                </div>
+              </div>
+
+              <!-- Price Input (for Limit/Stop orders) -->
+              <div *ngIf="buyOrderForm.get('type')?.value !== 'MARKET'">
+                <label class="block mb-2 text-sm font-medium">Price ({{ selectedPair()?.quote?.symbol }})</label>
+                <p-inputnumber
+                  formControlName="price"
+                  placeholder="0.00"
+                  mode="decimal"
+                  [minFractionDigits]="2"
+                  [maxFractionDigits]="8"
+                  class="w-full"
+                />
+              </div>
+
+              <!-- Stop Price (for Stop orders) -->
+              <div
+                *ngIf="
+                  buyOrderForm.get('type')?.value === 'STOP_LOSS' || buyOrderForm.get('type')?.value === 'STOP_LIMIT'
+                "
+              >
+                <label class="block mb-2 text-sm font-medium">Stop Price ({{ selectedPair()?.quote?.symbol }})</label>
+                <p-inputnumber
+                  formControlName="stopPrice"
+                  placeholder="0.00"
+                  mode="decimal"
+                  [minFractionDigits]="2"
+                  [maxFractionDigits]="8"
+                  class="w-full"
+                />
+                <div class="mt-1 text-xs text-surface-600 dark:text-surface-400">
+                  <i class="mr-1 pi pi-info-circle"></i>
+                  Order will trigger when price
+                  {{ buyOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+                </div>
+              </div>
+
+              <div class="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
+                <div class="flex justify-between text-sm">
+                  <span>Estimated Cost:</span>
+                  <span class="font-semibold">{{
+                    calculateOrderTotal('BUY') | currency: 'USD' : 'symbol' : '1.2-8'
+                  }}</span>
+                </div>
+                <div class="flex justify-between mt-1 text-sm">
+                  <span>Estimated Fees:</span>
+                  <span>{{ calculateOrderFees('BUY') | currency: 'USD' : 'symbol' : '1.2-8' }}</span>
+                </div>
+              </div>
+
+              <p-button
+                type="submit"
+                severity="success"
+                [label]="'Buy ' + (selectedPair()?.base?.symbol || '')"
+                icon="pi pi-arrow-up"
+                class="w-full"
+                [disabled]="buyOrderForm.invalid || createOrderMutation.isPending() || !selectedPair()"
+                [loading]="createOrderMutation.isPending()"
+              />
+            </form>
+          </p-tabpanel>
+
+          <p-tabpanel value="sell">
+            <form [formGroup]="sellOrderForm" (ngSubmit)="onSubmitOrder('SELL')" class="space-y-4">
+              <!-- Sell Order Form -->
+              <div>
+                <label class="block mb-2 text-sm font-medium">Order Type</label>
+                <p-select
+                  formControlName="type"
+                  [options]="enhancedOrderTypeOptions"
+                  placeholder="Select order type"
+                  class="w-full"
+                  optionLabel="label"
+                  optionValue="value"
+                >
+                  <ng-template pTemplate="selectedItem" let-option>
+                    <div class="flex items-center gap-2">
+                      <i [class]="option.icon" class="text-sm"></i>
+                      <span>{{ option.label }}</span>
+                    </div>
+                  </ng-template>
+                  <ng-template pTemplate="item" let-option>
+                    <div class="flex items-center gap-2">
+                      <i [class]="option.icon" class="text-sm"></i>
+                      <div>
+                        <div class="font-medium">{{ option.label }}</div>
+                        <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+                      </div>
+                    </div>
+                  </ng-template>
+                </p-select>
+              </div>
+
+              <div>
+                <label class="block mb-2 text-sm font-medium">Quantity ({{ selectedPair()?.base?.symbol }})</label>
+                <div class="space-y-2">
+                  <p-inputnumber
+                    formControlName="quantity"
+                    placeholder="0.00"
+                    mode="decimal"
+                    [minFractionDigits]="2"
+                    [maxFractionDigits]="8"
+                    class="w-full"
+                  />
+                  <!-- Percentage Buttons -->
+                  <div class="grid grid-cols-4 gap-1">
+                    <p-button
+                      label="25%"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('SELL', 25)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                    <p-button
+                      label="50%"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('SELL', 50)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                    <p-button
+                      label="75%"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('SELL', 75)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                    <p-button
+                      label="Max"
+                      severity="secondary"
+                      size="small"
+                      outlined
+                      (click)="setQuantityPercentage('SELL', 100)"
+                      [disabled]="!selectedPair()"
+                      class="text-xs"
+                    />
+                  </div>
+                </div>
+                <div class="mt-1 text-xs text-surface-600 dark:text-surface-400">
+                  Available: {{ getSellBalance()?.available | number: '1.2-8' }} {{ selectedPair()?.base?.symbol }}
+                </div>
+              </div>
+
+              <!-- Price Input (for Limit/Stop orders) -->
+              <div *ngIf="sellOrderForm.get('type')?.value !== 'MARKET'">
+                <label class="block mb-2 text-sm font-medium">Price ({{ selectedPair()?.quote?.symbol }})</label>
+                <p-inputnumber
+                  formControlName="price"
+                  placeholder="0.00"
+                  mode="decimal"
+                  [minFractionDigits]="2"
+                  [maxFractionDigits]="8"
+                  class="w-full"
+                />
+              </div>
+
+              <!-- Stop Price (for Stop orders) -->
+              <div
+                *ngIf="
+                  sellOrderForm.get('type')?.value === 'STOP_LOSS' || sellOrderForm.get('type')?.value === 'STOP_LIMIT'
+                "
+              >
+                <label class="block mb-2 text-sm font-medium">Stop Price ({{ selectedPair()?.quote?.symbol }})</label>
+                <p-inputnumber
+                  formControlName="stopPrice"
+                  placeholder="0.00"
+                  mode="decimal"
+                  [minFractionDigits]="2"
+                  [maxFractionDigits]="8"
+                  class="w-full"
+                />
+                <div class="mt-1 text-xs text-surface-600 dark:text-surface-400">
+                  <i class="mr-1 pi pi-info-circle"></i>
+                  Order will trigger when price
+                  {{ sellOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+                </div>
+              </div>
+
+              <div class="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
+                <div class="flex justify-between text-sm">
+                  <span>Estimated Value:</span>
+                  <span class="font-semibold">{{
+                    calculateOrderTotal('SELL') | currency: 'USD' : 'symbol' : '1.2-8'
+                  }}</span>
+                </div>
+                <div class="flex justify-between mt-1 text-sm">
+                  <span>Estimated Fees:</span>
+                  <span>{{ calculateOrderFees('SELL') | currency: 'USD' : 'symbol' : '1.2-8' }}</span>
+                </div>
+              </div>
+
+              <p-button
+                type="submit"
+                label="Sell {{ selectedPair()?.base?.symbol }}"
+                class="w-full bg-red-600 hover:bg-red-700"
+                [disabled]="sellOrderForm.invalid || createOrderMutation.isPending()"
+                [loading]="createOrderMutation.isPending()"
+              />
+            </form>
+          </p-tabpanel>
+        </p-tabpanels>
+      </p-tabs>
+    </p-card>
+
+    <!-- Order Book & Market Data -->
+    <div class="space-y-4 lg:col-span-2">
+      <!-- Quick Actions -->
+      <div class="grid grid-cols-2 gap-4">
+        <p-button
+          label="Quick Buy"
+          icon="pi pi-arrow-up"
+          class="bg-green-600 hover:bg-green-700"
+          (click)="quickBuy()"
+          [disabled]="!selectedPair()"
+        />
+        <p-button
+          label="Quick Sell"
+          icon="pi pi-arrow-down"
+          class="bg-red-600 hover:bg-red-700"
+          (click)="quickSell()"
+          [disabled]="!selectedPair()"
+        />
+      </div>
+
+      <!-- Order Book -->
+      <p-card>
+        <ng-template pTemplate="header">
+          <div class="p-4">
+            <h3 class="text-lg font-semibold">Order Book</h3>
+          </div>
+        </ng-template>
+
+        <div class="grid grid-cols-2 gap-4" *ngIf="orderBookQuery()?.data(); else orderBookLoading">
+          <!-- Asks (Sell Orders) -->
+          <div>
+            <h4 class="mb-2 text-sm font-semibold text-red-600">Asks (Sell)</h4>
+            <div class="space-y-1">
+              <div
+                *ngFor="let ask of getTopAsks(); trackBy: trackByPrice"
+                class="flex justify-between p-2 text-sm rounded bg-red-50 dark:bg-red-950"
+              >
+                <span class="text-red-600">{{ ask.price | number: '1.2-8' }}</span>
+                <span>{{ ask.quantity | number: '1.2-8' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bids (Buy Orders) -->
+          <div>
+            <h4 class="mb-2 text-sm font-semibold text-green-600">Bids (Buy)</h4>
+            <div class="space-y-1">
+              <div
+                *ngFor="let bid of getTopBids(); trackBy: trackByPrice"
+                class="flex justify-between p-2 text-sm rounded bg-green-50 dark:bg-green-950"
+              >
+                <span class="text-green-600">{{ bid.price | number: '1.2-8' }}</span>
+                <span>{{ bid.quantity | number: '1.2-8' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ng-template #orderBookLoading>
+          <div class="flex items-center justify-center p-8">
+            <i class="mr-2 pi pi-spinner pi-spin"></i>
+            Loading order book...
+          </div>
+        </ng-template>
+      </p-card>
+    </div>
+  </div>
+
+  <!-- Collapsible Active Orders -->
+  <p-card class="mt-4">
+    <ng-template pTemplate="header">
+      <div class="flex items-center justify-between p-3">
+        <button
+          (click)="showActiveOrders.set(!showActiveOrders())"
+          class="flex items-center gap-2 text-lg font-semibold transition-colors hover:text-primary-600"
+        >
+          <i class="pi" [class.pi-chevron-down]="showActiveOrders()" [class.pi-chevron-right]="!showActiveOrders()"></i>
+          Active Orders
+          <span class="px-2 py-1 ml-2 text-xs rounded-full bg-primary-100 text-primary-800">
+            {{ (activeOrdersQuery.data() || []).length }}
+          </span>
+        </button>
+        <p-button
+          icon="pi pi-refresh"
+          severity="secondary"
+          size="small"
+          text
+          (click)="refreshActiveOrders()"
+          [loading]="activeOrdersQuery.isPending()"
+          pTooltip="Refresh"
+        />
+      </div>
+    </ng-template>
+
+    <!-- Collapsible Content -->
+    <div *ngIf="showActiveOrders()" class="px-3 pb-3">
+      <!-- Mobile-Friendly Order Cards -->
+      <div class="space-y-2 md:hidden">
+        <div
+          *ngFor="let order of activeOrdersQuery.data() || []; trackBy: trackByOrderId"
+          class="p-3 border rounded-lg bg-surface-50 dark:bg-surface-800"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold">{{ order.symbol }}</span>
+              <span [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'" class="text-sm font-medium">
+                {{ order.side }}
+              </span>
+            </div>
+            <span class="px-2 py-1 text-xs font-semibold rounded-full" [class]="getStatusClass(order.status)">
+              {{ order.status }}
+            </span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 mb-2 text-sm text-surface-600 dark:text-surface-400">
+            <div><span class="font-medium">Type:</span> {{ order.type }}</div>
+            <div><span class="font-medium">Quantity:</span> {{ order.quantity | number: '1.2-6' }}</div>
+            <div><span class="font-medium">Price:</span> {{ order.price | number: '1.2-6' }}</div>
+            <div><span class="font-medium">Filled:</span> {{ order.executedQuantity | number: '1.2-6' }}</div>
+          </div>
+          <p-button
+            icon="pi pi-times"
+            label="Cancel"
+            severity="danger"
+            size="small"
+            outlined
+            (click)="cancelOrder(order.id)"
+            [disabled]="cancelOrderMutation.isPending()"
+            class="w-full"
+          />
+        </div>
+      </div>
+
+      <!-- Desktop Table -->
+      <div class="hidden md:block">
+        <p-table
+          [value]="activeOrdersQuery.data() || []"
+          [loading]="activeOrdersQuery.isPending()"
+          styleClass="p-datatable-sm"
+        >
+          <ng-template pTemplate="header">
+            <tr>
+              <th class="text-xs">Symbol</th>
+              <th class="text-xs">Side</th>
+              <th class="text-xs">Type</th>
+              <th class="text-xs">Quantity</th>
+              <th class="text-xs">Price</th>
+              <th class="text-xs">Filled</th>
+              <th class="text-xs">Status</th>
+              <th class="text-xs">Actions</th>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="body" let-order>
+            <tr>
+              <td class="text-sm font-medium">{{ order.symbol }}</td>
+              <td>
+                <span [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'" class="text-sm font-medium">
+                  {{ order.side }}
+                </span>
+              </td>
+              <td class="text-sm">{{ order.type }}</td>
+              <td class="text-sm">{{ order.quantity | number: '1.2-6' }}</td>
+              <td class="text-sm">{{ order.price | number: '1.2-6' }}</td>
+              <td class="text-sm">{{ order.executedQuantity | number: '1.2-6' }}</td>
+              <td>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full" [class]="getStatusClass(order.status)">
+                  {{ order.status }}
+                </span>
+              </td>
+              <td>
+                <p-button
+                  icon="pi pi-times"
+                  severity="danger"
+                  size="small"
+                  text
+                  (click)="cancelOrder(order.id)"
+                  [disabled]="cancelOrderMutation.isPending()"
+                  pTooltip="Cancel Order"
+                />
+              </td>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="emptymessage">
+            <tr>
+              <td colspan="8" class="py-4 text-center text-surface-600 dark:text-surface-400">
+                <i class="block mb-2 text-2xl pi pi-inbox"></i>
+                No active orders
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      </div>
+    </div>
+  </p-card>
+
+  <p-toast />
+</div>
