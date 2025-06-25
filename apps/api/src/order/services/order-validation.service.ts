@@ -157,6 +157,53 @@ export class OrderValidationService {
   }
 
   /**
+   * Validate order with exchange requirements
+   */
+  async validateOrder(orderDto: OrderDto, symbol: string, exchange: any): Promise<void> {
+    // Get market info from exchange
+    const markets = await exchange.fetchMarkets();
+    const market = markets.find((m: any) => m.symbol === symbol);
+    
+    if (!market) {
+      throw new BadRequestException(`Trading pair ${symbol} not found on exchange`);
+    }
+
+    if (!market.active) {
+      throw new BadRequestException(`Trading is suspended for ${symbol}`);
+    }
+
+    const quantity = parseFloat(orderDto.quantity);
+    
+    // Validate quantity limits
+    if (market.limits?.amount?.min && quantity < market.limits.amount.min) {
+      throw new BadRequestException(`Quantity ${quantity} is below minimum ${market.limits.amount.min}`);
+    }
+    
+    if (market.limits?.amount?.max && quantity > market.limits.amount.max) {
+      throw new BadRequestException(`Quantity ${quantity} exceeds maximum ${market.limits.amount.max}`);
+    }
+
+    // Validate price for limit orders
+    if (orderDto.price) {
+      const price = parseFloat(orderDto.price);
+      
+      if (market.limits?.price?.min && price < market.limits.price.min) {
+        throw new BadRequestException(`Price ${price} is below minimum ${market.limits.price.min}`);
+      }
+      
+      if (market.limits?.price?.max && price > market.limits.price.max) {
+        throw new BadRequestException(`Price ${price} exceeds maximum ${market.limits.price.max}`);
+      }
+
+      // Check minimum notional value
+      const notional = quantity * price;
+      if (market.limits?.cost?.min && notional < market.limits.cost.min) {
+        throw new BadRequestException(`Order value ${notional} is below minimum ${market.limits.cost.min}`);
+      }
+    }
+  }
+
+  /**
    * Validate exchange requirements for an order
    */
   async validateExchangeOrder(order: OrderDto, orderType: OrderType, symbolInfo: SymbolInfo): Promise<OrderDto> {

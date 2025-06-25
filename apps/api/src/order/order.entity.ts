@@ -43,6 +43,9 @@ export enum OrderStatus {
 @Index('IDX_order_status_type', ['status', 'type'])
 @Index('IDX_order_symbol_side_createdat', ['symbol', 'side', 'createdAt'])
 @Index('IDX_order_basecoin_quotecoin', ['baseCoin', 'quoteCoin'])
+@Index('IDX_order_user_status', ['user', 'status'])
+@Index('IDX_order_user_side', ['user', 'side'])
+@Index('IDX_order_exchange_status', ['exchange', 'status'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   @IsUUID()
@@ -52,24 +55,28 @@ export class Order {
   })
   id: string;
 
-  @Column()
+  @Column({ length: 20 })
+  @IsString()
+  @IsNotEmpty()
   @ApiProperty({
-    description: 'Unique identifier for the order',
-    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+    description: 'Trading pair symbol (e.g., BTC/USDT)',
+    example: 'BTC/USDT'
   })
   symbol: string;
 
-  @Column()
+  @Column({ length: 50 })
+  @IsString()
   @ApiProperty({
-    description: 'Unique order ID',
+    description: 'Exchange-specific order ID',
     example: '123456789012345678',
     type: String
   })
   orderId: string;
 
-  @Column()
+  @Column({ length: 50 })
+  @IsString()
   @ApiProperty({
-    description: 'Client-specified order ID',
+    description: 'Client-specified order ID for tracking',
     example: 'client-12345'
   })
   clientOrderId: string;
@@ -493,6 +500,41 @@ export class Order {
     example: '2024-04-23T18:25:43.511Z'
   })
   updatedAt: Date;
+
+  /**
+   * Calculate the total value of the order (quantity * price)
+   */
+  getTotalValue(): number {
+    return this.quantity * this.price;
+  }
+
+  /**
+   * Check if the order is completely filled
+   */
+  isFilled(): boolean {
+    return this.status === OrderStatus.FILLED;
+  }
+
+  /**
+   * Check if the order is still active (can be filled)
+   */
+  isActive(): boolean {
+    return [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED].includes(this.status);
+  }
+
+  /**
+   * Get the remaining quantity to be filled
+   */
+  getRemainingQuantity(): number {
+    return this.quantity - this.executedQuantity;
+  }
+
+  /**
+   * Get the fill percentage
+   */
+  getFillPercentage(): number {
+    return this.quantity > 0 ? (this.executedQuantity / this.quantity) * 100 : 0;
+  }
 
   constructor(partial: Partial<Order>) {
     Object.assign(this, partial);
