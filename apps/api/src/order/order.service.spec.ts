@@ -1,86 +1,83 @@
-import { Logger } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Order, OrderStatus } from './order.entity';
+import { Repository } from 'typeorm';
+
+import { OrderDto } from './dto/order.dto';
+import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
 import { OrderCalculationService } from './services/order-calculation.service';
-import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
 
 import { CoinService } from '../coin/coin.service';
-import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
-import { ExchangeService } from '../exchange/exchange.service';
 import { User } from '../users/users.entity';
-import { UsersService } from '../users/users.service';
 
 describe('OrderService', () => {
   let service: OrderService;
+  let orderRepository: jest.Mocked<Repository<Order>>;
+  let exchangeManagerService: jest.Mocked<ExchangeManagerService>;
+  let coinService: jest.Mocked<CoinService>;
+  let orderValidationService: jest.Mocked<OrderValidationService>;
+  let orderCalculationService: jest.Mocked<OrderCalculationService>;
 
-  // Mock data
-  const mockUser: Partial<User> = { id: '1', email: 'test@example.com' };
+  const mockUser: User = {
+    id: 'user-123',
+    email: 'test@example.com'
+  } as User;
+
   const mockBaseCoin = {
-    id: '1',
-    name: 'Bitcoin',
+    id: 'coin-btc',
     symbol: 'BTC',
-    slug: 'bitcoin',
-    image: 'https://example.com/bitcoin.png'
+    name: 'Bitcoin',
+    slug: 'bitcoin'
   };
 
   const mockQuoteCoin = {
-    id: '2',
-    name: 'Tether USD',
+    id: 'coin-usdt',
     symbol: 'USDT',
-    slug: 'tether',
-    image: 'https://example.com/tether.png'
+    name: 'Tether USD',
+    slug: 'tether'
   };
 
-  const mockOrder = {
-    id: '123',
-    symbol: 'BTCUSDT',
-    orderId: '456',
-    clientOrderId: 'client123',
-    transactTime: new Date(),
+  const mockExchangeOrder = {
+    id: 'exchange-order-123',
+    symbol: 'BTC/USDT',
+    side: 'buy',
+    type: 'market',
+    amount: 0.1,
+    price: 50000,
+    filled: 0.1,
+    cost: 5000,
+    fee: { cost: 5, currency: 'USDT' },
+    status: 'closed',
+    timestamp: Date.now(),
+    trades: [],
+    info: {}
+  };
+
+  const mockOrder: Order = {
+    id: 'order-123',
+    symbol: 'BTC/USDT',
+    orderId: 'exchange-order-123',
+    clientOrderId: 'client-123',
+    side: OrderSide.BUY,
+    type: OrderType.MARKET,
     quantity: 0.1,
     price: 50000,
     executedQuantity: 0.1,
-    status: OrderStatus.NEW,
-    side: 'BUY',
-    type: 'MARKET',
+    cost: 5000,
+    fee: 5,
+    feeCurrency: 'USDT',
+    status: OrderStatus.FILLED,
+    transactTime: new Date(),
     baseCoin: mockBaseCoin,
     quoteCoin: mockQuoteCoin,
     user: mockUser,
     createdAt: new Date(),
     updatedAt: new Date()
-  };
-
-  // Create mock repository
-  const mockOrderRepository = {
-    find: jest.fn(),
-    findOne: jest.fn(),
-    insert: jest.fn()
-  };
-
-  // Mock services
-  const mockExchangeManagerService = {
-    getBalance: jest.fn(),
-    getExchangeClient: jest.fn()
-  };
-  const mockCoinService = {
-    getCoinBySymbol: jest.fn(),
-    getCoinById: jest.fn()
-  };
-  const mockTickerPairService = {};
-  const mockExchangeKeyService = {};
-  const mockExchangeService = {};
-  const mockUsersService = {};
-  const mockOrderValidationService = {};
-  const mockOrderCalculationService = {
-    extractCoinSymbol: jest.fn()
-  };
-  const mockOrderSyncService = {};
+  } as Order;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -88,281 +85,316 @@ describe('OrderService', () => {
         OrderService,
         {
           provide: getRepositoryToken(Order),
-          useValue: mockOrderRepository
+          useValue: {
+            find: jest.fn(),
+            findOne: jest.fn(),
+            create: jest.fn(),
+            save: jest.fn()
+          }
         },
         {
           provide: ExchangeManagerService,
-          useValue: mockExchangeManagerService
+          useValue: {
+            getExchangeClient: jest.fn()
+          }
         },
         {
           provide: CoinService,
-          useValue: mockCoinService
-        },
-        {
-          provide: TickerPairService,
-          useValue: mockTickerPairService
-        },
-        {
-          provide: ExchangeKeyService,
-          useValue: mockExchangeKeyService
-        },
-        {
-          provide: ExchangeService,
-          useValue: mockExchangeService
-        },
-        {
-          provide: UsersService,
-          useValue: mockUsersService
+          useValue: {
+            getCoinById: jest.fn(),
+            getCoinBySymbol: jest.fn()
+          }
         },
         {
           provide: OrderValidationService,
-          useValue: mockOrderValidationService
+          useValue: {
+            validateOrder: jest.fn()
+          }
         },
         {
           provide: OrderCalculationService,
-          useValue: mockOrderCalculationService
-        },
-        {
-          provide: OrderSyncService,
-          useValue: mockOrderSyncService
+          useValue: {
+            mapCcxtStatusToOrderStatus: jest.fn()
+          }
         }
       ]
     }).compile();
 
     service = module.get<OrderService>(OrderService);
+    orderRepository = module.get(getRepositoryToken(Order));
+    exchangeManagerService = module.get(ExchangeManagerService);
+    coinService = module.get(CoinService);
+    orderValidationService = module.get(OrderValidationService);
+    orderCalculationService = module.get(OrderCalculationService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('createOrder', () => {
+    const mockOrderDto: OrderDto = {
+      side: OrderSide.BUY,
+      type: OrderType.MARKET,
+      coinId: 'coin-btc',
+      quantity: '0.1'
+    };
+
+    const mockExchangeClient = {
+      createOrder: jest.fn()
+    };
+
+    beforeEach(() => {
+      coinService.getCoinById.mockImplementation((id) => {
+        if (id === 'coin-btc') return Promise.resolve(mockBaseCoin as any);
+        if (id === 'coin-usdt') return Promise.resolve(mockQuoteCoin as any);
+        return Promise.resolve(null);
+      });
+      coinService.getCoinBySymbol.mockResolvedValue(mockQuoteCoin as any);
+      exchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient as any);
+      orderValidationService.validateOrder.mockResolvedValue();
+      mockExchangeClient.createOrder.mockResolvedValue(mockExchangeOrder);
+      orderRepository.create.mockReturnValue(mockOrder);
+      orderRepository.save.mockResolvedValue(mockOrder);
+    });
+
+    it('should create a buy order successfully', async () => {
+      const result = await service.createOrder(mockOrderDto, mockUser);
+
+      expect(coinService.getCoinById).toHaveBeenCalledWith('coin-btc');
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT');
+      expect(exchangeManagerService.getExchangeClient).toHaveBeenCalledWith('binance_us', mockUser);
+      expect(orderValidationService.validateOrder).toHaveBeenCalledWith(
+        mockOrderDto,
+        'BTC/USDT',
+        mockExchangeClient
+      );
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
+        'BTC/USDT',
+        'market',
+        'buy',
+        0.1,
+        undefined
+      );
+      expect(orderRepository.save).toHaveBeenCalled();
+      expect(result).toEqual(mockOrder);
+    });
+
+    it('should create a sell order successfully', async () => {
+      const sellOrderDto: OrderDto = {
+        ...mockOrderDto,
+        side: OrderSide.SELL
+      };
+
+      mockExchangeClient.createOrder.mockResolvedValue({
+        ...mockExchangeOrder,
+        side: 'sell'
+      });
+
+      const result = await service.createOrder(sellOrderDto, mockUser);
+
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
+        'BTC/USDT',
+        'market',
+        'sell',
+        0.1,
+        undefined
+      );
+      expect(result).toEqual(mockOrder);
+    });
+
+    it('should create a limit order with price', async () => {
+      const limitOrderDto: OrderDto = {
+        ...mockOrderDto,
+        type: OrderType.LIMIT,
+        price: '55000'
+      };
+
+      mockExchangeClient.createOrder.mockResolvedValue({
+        ...mockExchangeOrder,
+        type: 'limit',
+        price: 55000
+      });
+
+      await service.createOrder(limitOrderDto, mockUser);
+
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
+        'BTC/USDT',
+        'limit',
+        'buy',
+        0.1,
+        55000
+      );
+    });
+
+    it('should use custom quote coin when provided', async () => {
+      const customQuoteCoin = { id: 'coin-busd', symbol: 'BUSD' };
+      const orderDtoWithQuote: OrderDto = {
+        ...mockOrderDto,
+        quoteCoinId: 'coin-busd'
+      };
+
+      coinService.getCoinById.mockImplementation((id) => {
+        if (id === 'coin-btc') return Promise.resolve(mockBaseCoin as any);
+        if (id === 'coin-busd') return Promise.resolve(customQuoteCoin as any);
+        return Promise.resolve(null);
+      });
+
+      await service.createOrder(orderDtoWithQuote, mockUser);
+
+      expect(coinService.getCoinById).toHaveBeenCalledWith('coin-busd');
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
+        'BTC/BUSD',
+        'market',
+        'buy',
+        0.1,
+        undefined
+      );
+    });
+
+    it('should throw BadRequestException for invalid coin ID', async () => {
+      coinService.getCoinById.mockResolvedValue(null);
+
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
+        BadRequestException
+      );
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
+        'Invalid coin ID: coin-btc'
+      );
+    });
+
+    it('should throw BadRequestException for invalid quote coin ID', async () => {
+      const orderDtoWithInvalidQuote: OrderDto = {
+        ...mockOrderDto,
+        quoteCoinId: 'invalid-quote'
+      };
+
+      coinService.getCoinById.mockImplementation((id) => {
+        if (id === 'coin-btc') return Promise.resolve(mockBaseCoin as any);
+        if (id === 'invalid-quote') return Promise.resolve(null);
+        return Promise.resolve(null);
+      });
+
+      await expect(service.createOrder(orderDtoWithInvalidQuote, mockUser)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+
+    it('should throw BadRequestException when USDT not found', async () => {
+      coinService.getCoinBySymbol.mockResolvedValue(null);
+
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
+        'USDT not found in system'
+      );
+    });
+
+    it('should throw BadRequestException when validation fails', async () => {
+      orderValidationService.validateOrder.mockRejectedValue(
+        new BadRequestException('Insufficient balance')
+      );
+
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
+        'Failed to create order: Insufficient balance'
+      );
+    });
+
+    it('should throw BadRequestException when exchange order fails', async () => {
+      mockExchangeClient.createOrder.mockRejectedValue(new Error('Exchange API error'));
+
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
+        'Failed to create order: Exchange error: Exchange API error'
+      );
+    });
   });
 
   describe('getOrders', () => {
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
+    it('should return orders with default options', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
 
-    it('should return orders with correct format', async () => {
-      // Setup repository mock to return a test order
-      mockOrderRepository.find.mockResolvedValue([mockOrder]);
+      const result = await service.getOrders(mockUser);
 
-      // Call the method
-      const result = await service.getOrders(mockUser as User);
-
-      // Verify repository was called with correct parameters
-      expect(mockOrderRepository.find).toHaveBeenCalledWith({
+      expect(orderRepository.find).toHaveBeenCalledWith({
         where: { user: { id: mockUser.id } },
         relations: ['baseCoin', 'quoteCoin', 'exchange'],
-        order: { transactTime: 'DESC' }
+        order: { createdAt: 'DESC' }
       });
-
-      // Verify the result format
-      expect(result).toHaveLength(1);
-      expect(result[0]).toHaveProperty('id', mockOrder.id);
-      expect(result[0]).toHaveProperty('symbol', mockOrder.symbol);
-      expect(result[0]).toHaveProperty('baseCoin');
-      expect(result[0]).toHaveProperty('quoteCoin');
-      expect(result[0]).toHaveProperty('quantity', mockOrder.quantity);
-      expect(result[0]).toHaveProperty('price', mockOrder.price);
-      expect(result[0]).toHaveProperty('status', mockOrder.status);
-      expect(result[0].baseCoin).toHaveProperty('image', mockOrder.baseCoin.image);
+      expect(result).toEqual([mockOrder]);
     });
 
-    it('should handle errors and return empty array', async () => {
-      // Setup repository to throw an error
-      mockOrderRepository.find.mockRejectedValue(new Error('Database error'));
+    it('should apply status filter', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
 
-      // Create a spy on the logger
-      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      await service.getOrders(mockUser, { status: OrderStatus.FILLED });
 
-      // Call the method
-      const result = await service.getOrders(mockUser as User);
-
-      // Verify error handling
-      expect(loggerSpy).toHaveBeenCalledWith('Failed to fetch orders: Database error', expect.any(String));
-      expect(result).toEqual([]);
-
-      // Clean up spy
-      loggerSpy.mockRestore();
-    });
-
-    it('should return empty array when no orders found', async () => {
-      // Setup repository to return empty array
-      mockOrderRepository.find.mockResolvedValue([]);
-
-      // Call the method
-      const result = await service.getOrders(mockUser as User);
-
-      // Verify result
-      expect(result).toEqual([]);
-      expect(mockOrderRepository.find).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('getOpenOrders', () => {
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('should return only open orders with correct format', async () => {
-      // Setup repository mock
-      mockOrderRepository.find.mockResolvedValue([mockOrder]);
-
-      // Call the method
-      const result = await service.getOpenOrders(mockUser as User);
-
-      // Verify result format and filtering
-      expect(mockOrderRepository.find).toHaveBeenCalledWith({
-        where: {
-          user: { id: mockUser.id },
-          status: OrderStatus.NEW
-        },
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: { user: { id: mockUser.id }, status: OrderStatus.FILLED },
         relations: ['baseCoin', 'quoteCoin', 'exchange'],
-        order: { transactTime: 'DESC' }
+        order: { createdAt: 'DESC' }
       });
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toHaveProperty('symbol', mockOrder.symbol);
-      expect(result[0]).toHaveProperty('baseCoin');
-      expect(result[0]).toHaveProperty('quoteCoin');
-      expect(result[0]).toHaveProperty('status', OrderStatus.NEW);
     });
 
-    it('should handle errors and return empty array', async () => {
-      // Setup repository to throw an error
-      mockOrderRepository.find.mockRejectedValue(new Error('Database connection failed'));
+    it('should apply side filter', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
 
-      // Create a spy on the logger
-      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      await service.getOrders(mockUser, { side: OrderSide.BUY });
 
-      // Call the method
-      const result = await service.getOpenOrders(mockUser as User);
-
-      // Verify error handling
-      expect(loggerSpy).toHaveBeenCalledWith(
-        'Failed to fetch open orders: Database connection failed',
-        expect.any(String)
-      );
-      expect(result).toEqual([]);
-
-      // Clean up spy
-      loggerSpy.mockRestore();
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: { user: { id: mockUser.id }, side: OrderSide.BUY },
+        relations: ['baseCoin', 'quoteCoin', 'exchange'],
+        order: { createdAt: 'DESC' }
+      });
     });
 
-    it('should return empty array when no open orders found', async () => {
-      // Setup repository to return empty array
-      mockOrderRepository.find.mockResolvedValue([]);
+    it('should apply limit', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
 
-      // Call the method
-      const result = await service.getOpenOrders(mockUser as User);
+      await service.getOrders(mockUser, { limit: 10 });
 
-      // Verify result
-      expect(result).toEqual([]);
-      expect(mockOrderRepository.find).toHaveBeenCalledTimes(1);
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: { user: { id: mockUser.id } },
+        relations: ['baseCoin', 'quoteCoin', 'exchange'],
+        order: { createdAt: 'DESC' },
+        take: 10
+      });
     });
   });
 
   describe('getOrder', () => {
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
+    it('should return a specific order', async () => {
+      orderRepository.findOne.mockResolvedValue(mockOrder);
 
-    it('should return a single order with correct format', async () => {
-      // Setup repository mock
-      mockOrderRepository.findOne.mockResolvedValue(mockOrder);
+      const result = await service.getOrder(mockUser, 'order-123');
 
-      // Call the method
-      const result = await service.getOrder(mockUser as User, mockOrder.id);
-
-      // Verify repository was called with correct parameters
-      expect(mockOrderRepository.findOne).toHaveBeenCalledWith({
-        where: { id: mockOrder.id, user: { id: mockUser.id } },
+      expect(orderRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'order-123', user: { id: mockUser.id } },
         relations: ['baseCoin', 'quoteCoin', 'exchange']
       });
-
-      // Verify result format
-      expect(result).toHaveProperty('id', mockOrder.id);
-      expect(result).toHaveProperty('symbol', mockOrder.symbol);
-      expect(result).toHaveProperty('baseCoin');
-      expect(result).toHaveProperty('quoteCoin');
-      expect(result).toHaveProperty('quantity', mockOrder.quantity);
-      expect(result).toHaveProperty('price', mockOrder.price);
-      expect(result).toHaveProperty('status', mockOrder.status);
-      expect(result.baseCoin).toHaveProperty('image', mockOrder.baseCoin.image);
+      expect(result).toEqual(mockOrder);
     });
 
-    it('should throw NotFoundCustomException when order not found', async () => {
-      // Setup repository to return null
-      mockOrderRepository.findOne.mockResolvedValue(null);
+    it('should throw NotFoundException when order not found', async () => {
+      orderRepository.findOne.mockResolvedValue(null);
 
-      // Call the method and expect it to throw
-      await expect(service.getOrder(mockUser as User, 'non-existent-id')).rejects.toThrow(
-        'Order with id: non-existent-id not found'
+      await expect(service.getOrder(mockUser, 'non-existent')).rejects.toThrow(NotFoundException);
+      await expect(service.getOrder(mockUser, 'non-existent')).rejects.toThrow(
+        'Order with ID non-existent not found'
       );
-
-      // Verify repository was called
-      expect(mockOrderRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 'non-existent-id', user: { id: mockUser.id } },
-        relations: ['baseCoin', 'quoteCoin', 'exchange']
-      });
-    });
-
-    it('should handle database errors gracefully', async () => {
-      // Setup repository to throw an error
-      mockOrderRepository.findOne.mockRejectedValue(new Error('Database timeout'));
-
-      // Create a spy on the logger
-      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-
-      // Call the method and expect it to throw NotFoundCustomException
-      await expect(service.getOrder(mockUser as User, mockOrder.id)).rejects.toThrow('Order with id: 123 not found');
-
-      // Verify error was logged
-      expect(loggerSpy).toHaveBeenCalledWith('Failed to fetch order 123', expect.any(Error));
-
-      // Clean up spy
-      loggerSpy.mockRestore();
     });
   });
 
-  describe('loadMissingCoinInfo integration', () => {
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
+  describe('mapExchangeStatusToOrderStatus', () => {
+    it('should map exchange statuses correctly', () => {
+      // Access private method for testing
+      const mapMethod = (service as any).mapExchangeStatusToOrderStatus.bind(service);
 
-    it('should load missing coin information when baseCoin or quoteCoin is null', async () => {
-      // Create order with missing coin information
-      const orderWithMissingCoins = {
-        ...mockOrder,
-        baseCoin: null,
-        quoteCoin: null
-      };
-
-      // Setup repository mock
-      mockOrderRepository.find.mockResolvedValue([orderWithMissingCoins]);
-
-      // Setup coin service mocks
-      mockCoinService.getCoinBySymbol
-        .mockResolvedValueOnce(mockBaseCoin) // for base coin
-        .mockResolvedValueOnce(mockQuoteCoin); // for quote coin
-
-      // Setup calculation service mock
-      mockOrderCalculationService.extractCoinSymbol.mockReturnValue({
-        base: 'BTC',
-        quote: 'USDT'
-      });
-
-      // Call the method
-      const result = await service.getOrders(mockUser as User);
-
-      // Verify coin service was called to fetch missing coins
-      expect(mockOrderCalculationService.extractCoinSymbol).toHaveBeenCalledWith(mockOrder.symbol);
-      expect(mockCoinService.getCoinBySymbol).toHaveBeenCalledWith('BTC', undefined, false);
-      expect(mockCoinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false);
-
-      // Verify result contains the loaded coins
-      expect(result).toHaveLength(1);
-      expect(result[0].baseCoin).toEqual(mockBaseCoin);
-      expect(result[0].quoteCoin).toEqual(mockQuoteCoin);
+      expect(mapMethod('open')).toBe(OrderStatus.NEW);
+      expect(mapMethod('closed')).toBe(OrderStatus.FILLED);
+      expect(mapMethod('canceled')).toBe(OrderStatus.CANCELED);
+      expect(mapMethod('cancelled')).toBe(OrderStatus.CANCELED);
+      expect(mapMethod('expired')).toBe(OrderStatus.EXPIRED);
+      expect(mapMethod('rejected')).toBe(OrderStatus.REJECTED);
+      expect(mapMethod('partial')).toBe(OrderStatus.PARTIALLY_FILLED);
+      expect(mapMethod('unknown')).toBe(OrderStatus.NEW); // default case
     });
   });
 });
