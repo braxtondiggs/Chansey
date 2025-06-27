@@ -27,6 +27,12 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
    * This ensures the cron jobs are only scheduled once when the application starts
    */
   async onModuleInit() {
+    // Skip scheduling jobs in local development
+    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_ORDER_QUEUE === 'true') {
+      this.logger.log('Order queue jobs disabled for local development');
+      return;
+    }
+
     if (!this.jobScheduled) {
       await this.scheduleOrderSyncJob();
       await this.scheduleCleanupJob();

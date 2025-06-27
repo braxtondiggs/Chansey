@@ -29,6 +29,12 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
   }
 
   async onModuleInit() {
+    // Skip scheduling jobs in local development
+    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
+      this.logger.log('Portfolio historical price jobs disabled for local development');
+      return;
+    }
+
     this.logger.log('Portfolio Historical Price Task initialized');
   }
 

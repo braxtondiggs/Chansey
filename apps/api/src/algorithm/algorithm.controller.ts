@@ -8,18 +8,19 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  UseGuards
+  UseGuards,
+  Query
 } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 
 import { AlgorithmService } from './algorithm.service';
-import { AlgorithmResponseDto, CreateAlgorithmDto, DeleteResponseDto, UpdateAlgorithmDto } from './dto';
+import { CreateAlgorithmDto, UpdateAlgorithmDto, AlgorithmResponseDto, DeleteResponseDto } from './dto';
+import { AlgorithmRegistry } from './registry/algorithm-registry.service';
+import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
 
 import { Roles } from '../authentication/decorator/roles.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
-import { PriceService } from '../price/price.service';
 
 @ApiTags('Algorithm')
 @ApiBearerAuth('token')
@@ -27,15 +28,15 @@ import { PriceService } from '../price/price.service';
 @Controller('algorithm')
 export class AlgorithmController {
   constructor(
-    private readonly algorithm: AlgorithmService,
-    private readonly moduleRef: ModuleRef,
-    private readonly price: PriceService
+    private readonly algorithmService: AlgorithmService,
+    private readonly algorithmRegistry: AlgorithmRegistry,
+    private readonly contextBuilder: AlgorithmContextBuilder
   ) {}
 
   @Get()
   @ApiOperation({
     summary: 'Get all algorithms',
-    description: 'Retrieve a list of all available algorithms.'
+    description: 'Retrieve a list of all available algorithms with their strategies.'
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -44,181 +45,202 @@ export class AlgorithmController {
     isArray: true
   })
   async getAlgorithms() {
-    return this.algorithm.getAlgorithms();
+    const algorithms = await this.algorithmService.getAlgorithms();
+    const strategies = this.algorithmRegistry.getAllStrategies();
+
+    return algorithms.map((algorithm) => ({
+      ...algorithm,
+      strategy: strategies.find((s) => s.constructor.name === algorithm.service),
+      hasStrategy: strategies.some((s) => s.constructor.name === algorithm.service)
+    }));
+  }
+
+  @Get('strategies')
+  @ApiOperation({
+    summary: 'Get all available strategies',
+    description: 'Retrieve a list of all registered algorithm strategies.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of strategies retrieved successfully.'
+  })
+  async getStrategies() {
+    const strategies = this.algorithmRegistry.getAllStrategies();
+    return strategies.map((strategy) => ({
+      id: strategy.id,
+      name: strategy.name,
+      version: strategy.version,
+      description: strategy.description,
+      configSchema: strategy.getConfigSchema?.()
+    }));
+  }
+
+  @Get('health')
+  @ApiOperation({
+    summary: 'Get algorithm health status',
+    description: 'Check the health status of all registered algorithms and strategies.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Health status retrieved successfully.'
+  })
+  async getHealthStatus() {
+    const algorithms = await this.algorithmService.getActiveAlgorithms();
+    const strategyHealth = await this.algorithmRegistry.getHealthStatus();
+
+    return {
+      totalAlgorithms: algorithms.length,
+      activeAlgorithms: algorithms.filter((a) => a.status).length,
+      strategyHealth,
+      healthyStrategies: Object.values(strategyHealth).filter(Boolean).length,
+      totalStrategies: Object.keys(strategyHealth).length,
+      timestamp: new Date()
+    };
+  }
+
+  @Post(':id/execute')
+  @ApiOperation({
+    summary: 'Execute an algorithm',
+    description: 'Execute a specific algorithm with current market data.'
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Algorithm ID',
+    type: 'string'
+  })
+  @ApiQuery({
+    name: 'minimal',
+    description: 'Use minimal context for faster execution',
+    required: false,
+    type: 'boolean'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Algorithm executed successfully.'
+  })
+  async executeAlgorithm(@Param('id', ParseUUIDPipe) algorithmId: string, @Query('minimal') minimal?: boolean) {
+    const algorithm = await this.algorithmService.getAlgorithmById(algorithmId);
+
+    // Build execution context
+    const context = minimal
+      ? await this.contextBuilder.buildMinimalContext(algorithm)
+      : await this.contextBuilder.buildContext(algorithm);
+
+    // Validate context
+    if (!this.contextBuilder.validateContext(context)) {
+      throw new Error('Invalid execution context');
+    }
+
+    // Execute algorithm
+    const result = await this.algorithmRegistry.executeAlgorithm(algorithmId, context);
+
+    return {
+      algorithm: {
+        id: algorithm.id,
+        name: algorithm.name,
+        service: algorithm.service || 'Unknown'
+      },
+      execution: result,
+      context: {
+        timestamp: context.timestamp,
+        coinsAnalyzed: context.coins.length,
+        priceDataPoints: Object.keys(context.priceData).length
+      }
+    };
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Get algorithm by ID',
-    description: 'Retrieve a single algorithm by its unique identifier.'
+    description: 'Retrieve a specific algorithm with its strategy information.'
   })
   @ApiParam({
     name: 'id',
-    required: true,
-    description: 'UUID of the algorithm',
-    type: String,
-    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+    description: 'Algorithm ID',
+    type: 'string'
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Algorithm retrieved successfully.',
     type: AlgorithmResponseDto
   })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Algorithm not found.'
-  })
-  getAlgorithmById(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.algorithm.getAlgorithmById(id);
+  async getAlgorithmById(@Param('id', ParseUUIDPipe) algorithmId: string) {
+    const algorithm = await this.algorithmService.getAlgorithmById(algorithmId);
+    const strategy = this.algorithmRegistry.getStrategyForAlgorithm(algorithmId);
+
+    return {
+      ...algorithm,
+      strategy: strategy
+        ? {
+            id: strategy.id,
+            name: strategy.name,
+            version: strategy.version,
+            description: strategy.description,
+            configSchema: strategy.getConfigSchema?.()
+          }
+        : null,
+      hasStrategy: !!strategy
+    };
   }
 
   @Post()
-  @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   @ApiOperation({
     summary: 'Create a new algorithm',
-    description: 'Create a new algorithm with the provided details. Requires admin role.'
+    description: 'Create a new algorithm configuration.'
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Algorithm created successfully.',
     type: AlgorithmResponseDto
   })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid input data.'
-  })
-  @ApiResponse({
-    status: HttpStatus.CONFLICT,
-    description: 'Algorithm with the same name already exists.'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'Access denied. Admin role required.'
-  })
-  async createAlgorithm(@Body() dto: CreateAlgorithmDto) {
-    return this.algorithm.create(dto);
+  async createAlgorithm(@Body() createAlgorithmDto: CreateAlgorithmDto) {
+    return await this.algorithmService.create(createAlgorithmDto);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   @ApiOperation({
     summary: 'Update an algorithm',
-    description: 'Update the details of an existing algorithm by its ID. Requires admin role.'
+    description: 'Update an existing algorithm configuration.'
   })
   @ApiParam({
     name: 'id',
-    required: true,
-    description: 'UUID of the algorithm to update',
-    type: String,
-    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+    description: 'Algorithm ID',
+    type: 'string'
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Algorithm updated successfully.',
     type: AlgorithmResponseDto
   })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Algorithm not found.'
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid input data.'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'Access denied. Admin role required.'
-  })
-  async updateAlgorithm(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateAlgorithmDto) {
-    return this.algorithm.update(id, dto);
+  async updateAlgorithm(
+    @Param('id', ParseUUIDPipe) algorithmId: string,
+    @Body() updateAlgorithmDto: UpdateAlgorithmDto
+  ) {
+    return await this.algorithmService.update(algorithmId, updateAlgorithmDto);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   @ApiOperation({
     summary: 'Delete an algorithm',
-    description: 'Remove an existing algorithm by its ID. Requires admin role.'
+    description: 'Delete an algorithm configuration.'
   })
   @ApiParam({
     name: 'id',
-    required: true,
-    description: 'UUID of the algorithm to delete',
-    type: String,
-    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
+    description: 'Algorithm ID',
+    type: 'string'
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Algorithm deleted successfully.',
     type: DeleteResponseDto
   })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Algorithm not found.'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'Access denied. Admin role required.'
-  })
-  async removeAlgorithm(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.algorithm.remove(id);
+  async deleteAlgorithm(@Param('id', ParseUUIDPipe) algorithmId: string) {
+    return await this.algorithmService.remove(algorithmId);
   }
-
-  /*@Get('chart/:algorithmId/:coinId')
-  @ApiOperation({
-    summary: 'Generate algorithm chart',
-    description: 'Generate a chart image for a specific algorithm and coin.'
-  })
-  @ApiParam({
-    name: 'algorithmId',
-    required: true,
-    description: 'UUID of the algorithm',
-    type: String,
-    example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
-  })
-  @ApiParam({
-    name: 'coinId',
-    required: true,
-    description: 'UUID of the coin',
-    type: String,
-    example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f'
-  })
-  @ApiProduces('image/png')
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Algorithm chart generated successfully.'
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Algorithm or Coin not found.'
-  })
-  async chart(@Param() { algorithmId, coinId = '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f' }, @Res() res: FastifyReply) {
-    const width = 800; //px
-    const height = 800; //px
-    const prices = await this.price.findAllByDay(coinId, TestnetSummary['90d']);
-    const algorithms = await this.algorithm.getAlgorithmsForTesting();
-    const algorithm = algorithms.find(({ id }) => id === algorithmId);
-    const provider = this.moduleRef.get(algorithm.service, { strict: false });
-    let data: ChartData;
-
-    if (provider && algorithm) data = provider?.getChartData?.(prices[coinId]);
-
-    const configuration: ChartConfiguration = {
-      type: 'line',
-      options: {
-        elements: {
-          point: {
-            radius: 0
-          }
-        }
-      },
-      data
-    };
-    const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height });
-    const image = await chartJSNodeCanvas.renderToBuffer(configuration);
-    res.header('Content-Type', 'image/png');
-    res.send(image);
-  }*/
 }

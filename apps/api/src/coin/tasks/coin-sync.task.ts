@@ -29,6 +29,12 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
    * This ensures the cron jobs are only scheduled once when the application starts
    */
   async onModuleInit() {
+    // Skip scheduling jobs in local development
+    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
+      this.logger.log('Coin sync jobs disabled for local development');
+      return;
+    }
+
     if (!this.jobScheduled) {
       await this.scheduleSyncJob();
       await this.scheduleDetailJob();
@@ -108,7 +114,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
     try {
-      let result;
+      let result: Record<string, unknown>;
 
       if (job.name === 'coin-sync') {
         result = await this.handleSyncCoins(job);

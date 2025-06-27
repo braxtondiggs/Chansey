@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { ILike, Repository } from 'typeorm';
 
-import { Algorithm } from './algorithm.entity';
+import { Algorithm, AlgorithmStatus } from './algorithm.entity';
 import { CreateAlgorithmDto, UpdateAlgorithmDto } from './dto/';
 
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
@@ -21,7 +21,7 @@ export class AlgorithmService {
   }
 
   async getActiveAlgorithms(): Promise<Algorithm[]> {
-    const algorithms = await this.algorithm.find({ where: { status: true } });
+    const algorithms = await this.algorithm.find({ where: { status: AlgorithmStatus.ACTIVE } });
     return algorithms.map((algorithm) => {
       Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
       return algorithm;
@@ -29,7 +29,12 @@ export class AlgorithmService {
   }
 
   async getAlgorithmsForTesting(): Promise<Algorithm[]> {
-    const algorithms = await this.algorithm.find({ where: { evaluate: true, status: true } });
+    const algorithms = await this.algorithm.find({ 
+      where: { 
+        evaluate: true, 
+        status: AlgorithmStatus.ACTIVE 
+      } 
+    });
     return algorithms.map((algorithm) => {
       Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
       return algorithm;
