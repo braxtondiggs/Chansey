@@ -36,6 +36,12 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
    * This ensures the cron job is only scheduled once when the application starts
    */
   async onModuleInit() {
+    // Skip scheduling jobs in local development
+    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
+      this.logger.log('Ticker pairs sync jobs disabled for local development');
+      return;
+    }
+
     if (!this.jobScheduled) {
       await this.scheduleTickerPairSyncJob();
       this.jobScheduled = true;

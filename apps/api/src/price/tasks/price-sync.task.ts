@@ -32,6 +32,12 @@ export class PriceSyncTask extends WorkerHost implements OnModuleInit {
    * This ensures the cron jobs are only scheduled once when the application starts
    */
   async onModuleInit() {
+    // Skip scheduling jobs in local development
+    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
+      this.logger.log('Price sync jobs disabled for local development');
+      return;
+    }
+
     if (!this.jobScheduled) {
       await this.schedulePriceSyncJob();
       this.jobScheduled = true;

@@ -52,7 +52,7 @@
       </div>
 
       <div *ngIf="accountData.history.length > 0">
-        <div class="inline-flex flex-col gap-2 mb-6 md:-mt-12">
+        <div class="inline-flex flex-col gap-2 mb-6 ml-4 md:-mt-12 md:ml-0">
           <div class="text-6xl balance-value" [class.blur-md]="isBalanceHidden()">
             <span [appCounter]="totalUsdValue()"></span>
           </div>
