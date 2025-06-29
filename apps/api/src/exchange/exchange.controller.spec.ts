@@ -6,6 +6,8 @@ import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
 
+import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
+
 describe('ExchangeController', () => {
   let controller: ExchangeController;
 
@@ -33,6 +35,20 @@ describe('ExchangeController', () => {
             create: jest.fn(() => ({})),
             update: jest.fn(() => ({})),
             remove: jest.fn(() => ({}))
+          }
+        },
+        {
+          provide: TickerPairService,
+          useValue: {
+            getTickerPairs: jest.fn(() => []),
+            getTickerPairsByExchange: jest.fn(() => []),
+            getTickerPairBySymbol: jest.fn(() => ({})),
+            getBasePairsBySymbol: jest.fn(() => []),
+            getQuotePairsBySymbol: jest.fn(() => []),
+            getBasePairsById: jest.fn(() => ({})),
+            createTickerPair: jest.fn(() => ({})),
+            removeTickerPair: jest.fn(),
+            saveTickerPair: jest.fn(() => [])
           }
         },
         {

@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, signal, computed, effect } from '@angular/core';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 
 import { MessageService } from 'primeng/api';
+import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -13,8 +14,9 @@ import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import { Subject, takeUntil } from 'rxjs';
 
-import { OrderSide, OrderType, OrderStatus } from '@chansey/api-interfaces';
+import { OrderSide, OrderType, OrderStatus, Exchange, TickerPair } from '@chansey/api-interfaces';
 
+import { AuthService } from '../../services';
 import { CryptoTradingService, Balance } from '../../services/crypto-trading.service';
 import { ExchangeService } from '../../services/exchange.service';
 
@@ -25,6 +27,7 @@ import { ExchangeService } from '../../services/exchange.service';
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
+    AvatarModule,
     ButtonModule,
     CardModule,
     InputNumberModule,
@@ -37,6 +40,7 @@ import { ExchangeService } from '../../services/exchange.service';
   templateUrl: './crypto-trading.component.html'
 })
 export class CryptoTradingComponent implements OnInit, OnDestroy {
+  private readonly authService = inject(AuthService);
   private readonly tradingService = inject(CryptoTradingService);
   private readonly exchangeService = inject(ExchangeService);
   private readonly fb = inject(FormBuilder);
@@ -54,8 +58,9 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   sellOrderForm!: FormGroup;
 
   // Query hooks
-  exchangeQuery = { data: () => [], isPending: () => false }; // Placeholder - replace with actual exchange query
-  tradingPairsQuery = this.tradingService.useTradingPairs();
+  userQuery = this.authService.useUser();
+  exchangeQuery = this.exchangeService.useSupportedExchanges();
+  tradingPairsQuery = this.tradingService.useTradingPairs(this.selectedExchangeId);
   balancesQuery = this.tradingService.useBalances();
   activeOrdersQuery = this.tradingService.useActiveOrders();
 
@@ -76,43 +81,35 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   });
 
   exchangeOptions = computed(() => {
-    // Mock data for exchanges - replace with actual data from exchangeService
-    const mockExchanges = [
-      { id: 'binance', name: 'Binance', description: 'Global crypto exchange', isConnected: true, availablePairs: new Array(100) },
-      { id: 'coinbase', name: 'Coinbase Pro', description: 'US-based exchange', isConnected: true, availablePairs: new Array(75) },
-      { id: 'kraken', name: 'Kraken', description: 'Secure crypto exchange', isConnected: false, availablePairs: new Array(50) }
-    ];
-    
-    return mockExchanges.map((exchange: any) => ({
-      label: exchange.name,
-      value: exchange.id,
-      description: exchange.description,
-      status: exchange.isConnected ? 'connected' : 'disconnected',
-      statusText: exchange.isConnected ? 'Connected' : 'Disconnected',
-      pairCount: exchange.availablePairs?.length || 0
-    }));
+    const supportedExchanges = this.exchangeQuery.data();
+    const userExchanges = this.userQuery.data()?.exchanges;
+
+    return supportedExchanges?.map((exchange: Exchange) => {
+      // Find matching user exchange to check if it's active
+      const userExchange = userExchanges?.find((ue: any) => ue.exchangeId === exchange.id);
+      const isActive = userExchange?.isActive || false;
+
+      return {
+        label: exchange.name,
+        value: exchange.id,
+        image: exchange.image,
+        status: isActive ? 'connected' : 'disconnected',
+        pairCount: 0
+      };
+    });
   });
 
   tradingPairOptions = computed(() => {
     const pairs = this.tradingPairsQuery.data() || [];
-    return pairs.map((pair: any) => ({
-      label: `${pair.base.symbol}/${pair.quote.symbol}`,
-      value: pair.symbol,
-      exchangeId: pair.exchangeId || 'binance', // Default to binance if not specified
-      price: pair.currentPrice,
-      change24h: pair.priceChangePercentage24h
-    }));
-  });
-
-  filteredTradingPairOptions = computed(() => {
-    const allPairs = this.tradingPairOptions();
     const selectedExchange = this.selectedExchangeId();
-    
-    if (!selectedExchange) {
-      return [];
-    }
-    
-    return allPairs.filter(pair => pair.exchangeId === selectedExchange);
+
+    return pairs.map((pair: TickerPair) => ({
+      label: `${pair.baseAsset?.symbol}/${pair.quoteAsset?.symbol}`.toUpperCase(),
+      value: pair.symbol.toUpperCase(),
+      exchangeId: selectedExchange || pair.exchange?.id,
+      price: pair.currentPrice,
+      change24h: pair.spreadPercentage || 0
+    }));
   });
 
   orderTypeOptions = [
@@ -147,18 +144,32 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     }
   ];
 
+  // Auto-select the first connected exchange when available
+  private shouldAutoSelect = computed(() => {
+    const exchanges = this.exchangeOptions();
+    const currentSelection = this.selectedExchangeId();
+
+    if (!exchanges || exchanges.length === 0 || currentSelection) {
+      return null;
+    }
+
+    const connectedExchanges = exchanges.filter((ex) => ex.status === 'connected');
+    return connectedExchanges.length > 0 ? connectedExchanges[0] : null;
+  });
+
+  constructor() {
+    // Watch for auto-selection opportunities
+    effect(() => {
+      const exchangeToSelect = this.shouldAutoSelect();
+      if (exchangeToSelect) {
+        this.selectedExchangeId.set(exchangeToSelect.value);
+      }
+    });
+  }
+
   ngOnInit() {
     this.initializeForms();
     this.setupFormSubscriptions();
-    this.autoSelectDefaultExchange();
-  }
-
-  private autoSelectDefaultExchange() {
-    // Auto-select the first connected exchange for better UX
-    const connectedExchanges = this.exchangeOptions().filter(ex => ex.status === 'connected');
-    if (connectedExchanges.length > 0 && !this.selectedExchangeId()) {
-      this.selectedExchangeId.set(connectedExchanges[0].value);
-    }
   }
 
   ngOnDestroy() {
@@ -249,14 +260,14 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     const formValue = form.value;
     const orderData = {
-      baseCoinId: pair.base.id,
+      baseCoinId: pair.baseAsset?.id,
       quantity: formValue.quantity.toString(),
       price: formValue.price?.toString(),
       type: formValue.type,
       side: side === 'BUY' ? OrderSide.BUY : OrderSide.SELL
     };
 
-    this.createOrderMutation.mutate(orderData, {
+    /*this.createOrderMutation.mutate(orderData, {
       onSuccess: () => {
         this.messageService.add({
           severity: 'success',
@@ -272,7 +283,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
           detail: error.message || 'Failed to place order'
         });
       }
-    });
+    });*/
   }
 
   quickBuy() {
@@ -343,7 +354,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     if (!pair || !balances) return undefined;
 
-    return balances.find((b) => b.coin.id === pair.quote.id);
+    return balances.find((b) => b.coin.id === pair.quoteAsset?.id);
   }
 
   getSellBalance(): Balance | undefined {
@@ -352,7 +363,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     if (!pair || !balances) return undefined;
 
-    return balances.find((b) => b.coin.id === pair.base.id);
+    return balances.find((b) => b.coin.id === pair.baseAsset?.id);
   }
 
   getTopBids() {
@@ -367,13 +378,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
   calculateSpread(): number {
     const pair = this.selectedPair();
-    if (!pair?.bid || !pair?.ask) return 0;
+    // if (!pair?.bid || !pair?.ask) return 0;
 
-    return this.tradingService.calculateSpread(pair.bid, pair.ask);
+    return 5; // return this.tradingService.calculateSpread(pair.bid, pair.ask);
   }
 
   priceChangeClass(): string {
-    const change = this.selectedPair()?.priceChangePercentage24h || 0;
+    const change = this.selectedPair()?.spreadPercentage || 0;
     return change >= 0 ? 'text-green-600' : 'text-red-600';
   }
 
@@ -439,13 +450,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   onExchangeChange(event: { value: string }) {
     const exchangeId = event.value;
     this.selectedExchangeId.set(exchangeId);
-    
+
     // Clear selected pair when exchange changes
     this.selectedPairValue.set(null);
-    
+
     // Set the active exchange for trading operations
     // this.tradingService.setActiveExchange(exchangeId); // Uncomment when method is available
-    
+
     this.messageService.add({
       severity: 'info',
       summary: 'Exchange Selected',
@@ -456,19 +467,15 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   getSelectedExchangeName(): string {
     const exchangeId = this.selectedExchangeId();
     const exchanges = this.exchangeOptions();
-    const exchange = exchanges.find((ex: any) => ex.value === exchangeId);
+    const exchange = exchanges?.find((ex: any) => ex.value === exchangeId);
     return exchange?.label || 'No Exchange';
   }
 
   getExchangeStatusClass(status: string): string {
-    return status === 'connected' 
-      ? 'bg-green-500' 
-      : 'bg-red-500';
+    return status === 'connected' ? 'bg-green-500' : 'bg-red-500';
   }
 
   getExchangeStatusTextClass(status: string): string {
-    return status === 'connected' 
-      ? 'text-green-600 dark:text-green-400' 
-      : 'text-red-600 dark:text-red-400';
+    return status === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
   }
 }

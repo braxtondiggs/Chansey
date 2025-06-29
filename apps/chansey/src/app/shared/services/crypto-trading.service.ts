@@ -1,25 +1,24 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
+import { injectQuery, QueryKey } from '@tanstack/angular-query-experimental';
 import { BehaviorSubject } from 'rxjs';
 
-import { Order, CreateOrderRequest, OrderStatus, OrderSide, OrderType, Coin } from '@chansey/api-interfaces';
+import {
+  Order,
+  CreateOrderRequest,
+  OrderStatus,
+  OrderSide,
+  OrderType,
+  Coin,
+  TickerPair
+} from '@chansey/api-interfaces';
 
-import { createQueryKeys, useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
-
-export interface TradingPair {
-  base: Coin;
-  quote: Coin;
-  symbol: string;
-  currentPrice?: number;
-  priceChange24h?: number;
-  priceChangePercentage24h?: number;
-  volume24h?: number;
-  high24h?: number;
-  low24h?: number;
-  bid?: number;
-  ask?: number;
-  spread?: number;
-}
+import {
+  createQueryKeys,
+  useAuthQuery,
+  useAuthMutation,
+  authenticatedFetch
+} from '@chansey-web/app/core/query/query.utils';
 
 export interface Balance {
   coin: Coin;
@@ -52,7 +51,7 @@ export interface TradeEstimate {
 // Create query keys for trading
 export const tradingKeys = createQueryKeys<{
   all: string[];
-  pairs: string[];
+  getByExchange: (exchangeId: string | undefined) => QueryKey;
   balances: string[];
   orderBook: (symbol: string) => string[];
   orders: string[];
@@ -62,8 +61,7 @@ export const tradingKeys = createQueryKeys<{
   ticker: (symbol: string) => string[];
 }>('trading');
 
-// Define specific query keys
-tradingKeys.pairs = [...tradingKeys.all, 'pairs'];
+tradingKeys.getByExchange = (exchangeId) => [...tradingKeys.all, 'ticker-pair', exchangeId];
 tradingKeys.balances = [...tradingKeys.all, 'balances'];
 tradingKeys.orderBook = (symbol: string) => [...tradingKeys.all, 'orderBook', symbol];
 tradingKeys.orders = [...tradingKeys.all, 'orders'];
@@ -77,7 +75,7 @@ tradingKeys.ticker = (symbol: string) => [...tradingKeys.all, 'ticker', symbol];
 })
 export class CryptoTradingService {
   // Real-time state subjects for local state management
-  private readonly selectedPairSubject = new BehaviorSubject<TradingPair | null>(null);
+  private readonly selectedPairSubject = new BehaviorSubject<TickerPair | null>(null);
 
   // Public observables
   readonly selectedPair$ = this.selectedPairSubject.asObservable();
@@ -87,11 +85,14 @@ export class CryptoTradingService {
   /**
    * Get available trading pairs for connected exchanges
    */
-  useTradingPairs(exchangeId?: string) {
-    const params = exchangeId ? `?exchangeId=${exchangeId}` : '';
-    return useAuthQuery<TradingPair[]>(tradingKeys.pairs, `/api/trading/pairs${params}`, {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      refetchInterval: 1000 * 60 * 5 // 5 minutes
+  useTradingPairs(exchangeId: Signal<string | null>) {
+    return injectQuery(() => {
+      const exchangeValue = exchangeId();
+      return {
+        queryKey: tradingKeys.getByExchange(exchangeValue?.toString() || 'all'),
+        queryFn: () => authenticatedFetch<TickerPair[]>(`/api/exchange/${exchangeValue?.toString()}/tickers`),
+        enabled: !!exchangeValue
+      };
     });
   }
 
@@ -168,7 +169,7 @@ export class CryptoTradingService {
     params.append('symbol', symbol);
     if (exchangeId) params.append('exchangeId', exchangeId);
 
-    return useAuthQuery<TradingPair>(tradingKeys.ticker(symbol), `/api/trading/ticker?${params}`, {
+    return useAuthQuery<TickerPair>(tradingKeys.ticker(symbol), `/api/trading/ticker?${params}`, {
       staleTime: 1000 * 30, // 30 seconds
       refetchInterval: 1000 * 30, // 30 seconds
       enabled: !!symbol
@@ -198,14 +199,14 @@ export class CryptoTradingService {
   /**
    * Set selected trading pair
    */
-  setSelectedPair(pair: TradingPair): void {
+  setSelectedPair(pair: TickerPair): void {
     this.selectedPairSubject.next(pair);
   }
 
   /**
    * Get current selected pair
    */
-  getSelectedPair(): TradingPair | null {
+  getSelectedPair(): TickerPair | null {
     return this.selectedPairSubject.value;
   }
 

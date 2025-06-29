@@ -7,6 +7,7 @@ import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
 
+import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
@@ -14,7 +15,8 @@ export class ExchangeService {
   constructor(
     @InjectRepository(Exchange) private readonly exchange: Repository<Exchange>,
     @Inject(forwardRef(() => ExchangeKeyService))
-    private readonly exchangeKeyService: ExchangeKeyService
+    private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly tickerPairService: TickerPairService
   ) {}
 
   async findOne(id: string): Promise<Exchange> {
@@ -65,6 +67,42 @@ export class ExchangeService {
     const response = await this.exchange.delete(exchangeId);
     if (!response.affected) throw new NotFoundCustomException('Exchange', { id: exchangeId });
     return response;
+  }
+
+  async getExchangeTickers(exchangeId: string) {
+    // Verify exchange exists
+    await this.getExchangeById(exchangeId);
+
+    // Get ticker pairs from database with relations
+    const tickerPairs = await this.tickerPairService.getTickerPairsByExchange(exchangeId);
+
+    // Transform to a more readable format
+    return tickerPairs.map((pair) => ({
+      symbol: `${pair.baseAsset.symbol}/${pair.quoteAsset.symbol}`,
+      base: pair.baseAsset.symbol,
+      quote: pair.quoteAsset.symbol,
+      baseAsset: {
+        id: pair.baseAsset.id,
+        name: pair.baseAsset.name,
+        symbol: pair.baseAsset.symbol,
+        slug: pair.baseAsset.slug
+      },
+      quoteAsset: {
+        id: pair.quoteAsset.id,
+        name: pair.quoteAsset.name,
+        symbol: pair.quoteAsset.symbol,
+        slug: pair.quoteAsset.slug
+      },
+      volume: pair.volume,
+      tradeUrl: pair.tradeUrl,
+      spreadPercentage: pair.spreadPercentage,
+      lastTraded: pair.lastTraded,
+      status: pair.status,
+      isSpotTradingAllowed: pair.isSpotTradingAllowed,
+      isMarginTradingAllowed: pair.isMarginTradingAllowed,
+      fetchAt: pair.fetchAt,
+      currentPrice: pair.baseAsset.currentPrice
+    }));
   }
 
   async createMany(exchanges: Exchange[]): Promise<Exchange[]> {

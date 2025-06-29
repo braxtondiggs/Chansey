@@ -28,7 +28,7 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
    */
   async onModuleInit() {
     // Skip scheduling jobs in local development
-    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_ORDER_QUEUE === 'true') {
+    if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
       this.logger.log('Order queue jobs disabled for local development');
       return;
     }

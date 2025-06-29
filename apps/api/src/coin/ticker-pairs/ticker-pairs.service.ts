@@ -24,7 +24,8 @@ export class TickerPairService {
 
   async getTickerPairsByExchange(exchangeId: string) {
     return this.pairs.find({
-      where: { exchange: { id: exchangeId } }
+      where: { exchange: { id: exchangeId } },
+      relations: ['baseAsset', 'quoteAsset', 'exchange']
     });
   }
 

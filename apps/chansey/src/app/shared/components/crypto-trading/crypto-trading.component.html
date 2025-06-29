@@ -2,14 +2,16 @@
   <!-- Trading Header with Status Bar -->
   <div class="relative mb-4">
     <!-- Active Trading Status Bar -->
-    <div class="flex items-center justify-between p-3 bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-950 dark:to-blue-950 rounded-lg border border-primary-100 dark:border-primary-800">
+    <div
+      class="from-primary-50 dark:from-primary-950 border-primary-100 dark:border-primary-800 flex items-center justify-between rounded-lg border bg-gradient-to-r to-blue-50 p-3 dark:to-blue-950"
+    >
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
-          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span class="text-sm font-medium text-primary-700 dark:text-primary-300">Live Trading</span>
+          <div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
+          <span class="text-primary-700 dark:text-primary-300 text-sm font-medium">Live Trading</span>
         </div>
-        <div class="h-4 w-px bg-primary-200 dark:bg-primary-700"></div>
-        <span class="text-xs text-primary-600 dark:text-primary-400" *ngIf="selectedExchangeId(); else noExchange">
+        <div class="bg-primary-200 dark:bg-primary-700 h-4 w-px"></div>
+        <span class="text-primary-600 dark:text-primary-400 text-xs" *ngIf="selectedExchangeId(); else noExchange">
           Connected to {{ getSelectedExchangeName() }}
         </span>
         <ng-template #noExchange>
@@ -18,20 +20,24 @@
       </div>
       <div class="flex items-center gap-2">
         <i class="pi pi-chart-line text-primary-600 dark:text-primary-400 text-sm"></i>
-        <span class="text-xs text-primary-600 dark:text-primary-400">Real-time</span>
+        <span class="text-primary-600 dark:text-primary-400 text-xs">Real-time</span>
       </div>
     </div>
-    
+
     <!-- Decorative separator line -->
-    <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-16 h-0.5 bg-gradient-to-r from-transparent via-primary-300 to-transparent dark:via-primary-600"></div>
+    <div
+      class="via-primary-300 dark:via-primary-600 absolute -bottom-2 left-1/2 h-0.5 w-16 -translate-x-1/2 transform bg-gradient-to-r from-transparent to-transparent"
+    ></div>
   </div>
 
   <!-- Exchange Selection -->
   <div class="mb-3">
-    <div class="flex items-center gap-2 mb-3">
+    <div class="mb-3 flex items-center gap-2">
       <i class="pi pi-building text-primary-600 dark:text-primary-400"></i>
-      <label class="text-sm font-medium text-surface-700 dark:text-surface-300">Exchange Platform</label>
-      <div class="flex-1 h-px bg-gradient-to-r from-surface-200 via-transparent to-surface-200 dark:from-surface-700 dark:to-surface-700"></div>
+      <label class="text-surface-700 dark:text-surface-300 text-sm font-medium">Exchange Platform</label>
+      <div
+        class="from-surface-200 to-surface-200 dark:from-surface-700 dark:to-surface-700 h-px flex-1 bg-gradient-to-r via-transparent"
+      ></div>
     </div>
     <p-select
       [options]="exchangeOptions()"
@@ -45,30 +51,39 @@
     >
       <ng-template pTemplate="selectedItem" let-option>
         <div class="flex items-center gap-3" *ngIf="option">
-          <div class="flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full" [class]="getExchangeStatusClass(option.status)"></div>
-            <span class="font-medium">{{ option.label }}</span>
+          <div class="flex items-center gap-3">
+            <p-avatar [image]="option.image" shape="circle" />
+            <div class="flex items-center gap-2">
+              <div class="h-2 w-2 rounded-full" [class]="getExchangeStatusClass(option.status)"></div>
+              <span class="font-medium">{{ option.label }}</span>
+            </div>
           </div>
-          <span class="text-xs px-2 py-1 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400">
+          <span
+            class="bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400 rounded-full px-2 py-1 text-xs"
+          >
             {{ option.pairCount }} pairs
           </span>
         </div>
       </ng-template>
       <ng-template pTemplate="item" let-option>
-        <div class="flex items-center justify-between w-full py-2">
-          <div class="flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full" [class]="getExchangeStatusClass(option.status)"></div>
-            <div>
-              <div class="font-medium">{{ option.label }}</div>
-              <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+        <div class="py- flex w-full items-center justify-between">
+          <div class="flex items-center gap-3">
+            <p-avatar [image]="option.image" shape="circle" size="normal" />
+            <div class="flex items-center gap-2">
+              <div>
+                <div class="text-surface-900 dark:text-surface-100 font-semibold">{{ option.label }}</div>
+                <div class="text-xs capitalize" [class]="getExchangeStatusTextClass(option.status)">
+                  <div class="inline-block h-2 w-2 rounded-full" [class]="getExchangeStatusClass(option.status)"></div>
+                  {{ option.status }}
+                </div>
+              </div>
             </div>
           </div>
           <div class="text-right">
-            <div class="text-xs px-2 py-1 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400">
+            <div
+              class="bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400 rounded-full px-3 py-1 text-xs font-medium"
+            >
               {{ option.pairCount }} pairs
-            </div>
-            <div class="text-xs mt-1" [class]="getExchangeStatusTextClass(option.status)">
-              {{ option.statusText }}
             </div>
           </div>
         </div>
@@ -77,7 +92,10 @@
   </div>
 
   <!-- Exchange Selection Notice -->
-  <div *ngIf="!selectedExchangeId()" class="mb-4 p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+  <div
+    *ngIf="!selectedExchangeId()"
+    class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950"
+  >
     <div class="flex items-center gap-2 text-blue-700 dark:text-blue-300">
       <i class="pi pi-info-circle"></i>
       <span class="text-sm font-medium">Please select an exchange above to start trading</span>
@@ -85,22 +103,21 @@
   </div>
 
   <!-- Trading Pair Section Header -->
-  <div class="flex items-center gap-2 mb-3" [class.opacity-50]="!selectedExchangeId()">
+  <div class="mb-3 flex items-center gap-2" [class.opacity-50]="!selectedExchangeId()">
     <i class="pi pi-chart-bar text-primary-600 dark:text-primary-400"></i>
-    <h3 class="text-lg font-semibold text-surface-800 dark:text-surface-200">Market Selection</h3>
-    <div class="flex-1 h-px bg-gradient-to-r from-surface-200 via-transparent to-surface-200 dark:from-surface-700 dark:to-surface-700"></div>
-    <span class="text-xs px-2 py-1 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 rounded-full" *ngIf="filteredTradingPairOptions().length > 0">
-      {{ filteredTradingPairOptions().length }} pairs
-    </span>
+    <h3 class="text-surface-800 dark:text-surface-200 text-lg font-semibold">Market Selection</h3>
+    <div
+      class="from-surface-200 to-surface-200 dark:from-surface-700 dark:to-surface-700 h-px flex-1 bg-gradient-to-r via-transparent"
+    ></div>
   </div>
 
   <!-- Enhanced Trading Pair Selection -->
   <p-card class="mb-4" [class.opacity-50]="!selectedExchangeId()">
     <ng-template pTemplate="header">
-      <div class="flex items-center justify-between mb-3">
+      <div class="mb-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-lg font-semibold">Trading Pair</span>
-          <div class="w-1 h-1 bg-primary-500 rounded-full" *ngIf="selectedPair()"></div>
+          <div class="bg-primary-500 h-1 w-1 rounded-full" *ngIf="selectedPair()"></div>
         </div>
         <div class="text-right" *ngIf="selectedPair()">
           <div class="text-lg font-bold">
@@ -108,18 +125,18 @@
           </div>
           <div [class]="priceChangeClass()" class="flex items-center gap-1 text-sm font-medium">
             <i
-              class="text-xs pi"
-              [class.pi-arrow-up]="(selectedPair()?.priceChangePercentage24h || 0) >= 0"
-              [class.pi-arrow-down]="(selectedPair()?.priceChangePercentage24h || 0) < 0"
+              class="pi text-xs"
+              [class.pi-arrow-up]="(selectedPair()?.spreadPercentage || 0) >= 0"
+              [class.pi-arrow-down]="(selectedPair()?.spreadPercentage || 0) < 0"
             ></i>
-            {{ selectedPair()?.priceChangePercentage24h | number: '1.2-2' }}%
+            {{ selectedPair()?.spreadPercentage | number: '1.2-2' }}%
           </div>
         </div>
       </div>
 
       <!-- Trading Pair Search -->
       <p-select
-        [options]="filteredTradingPairOptions()"
+        [options]="tradingPairOptions()"
         [(ngModel)]="selectedPairValue"
         (onChange)="onPairChange($event)"
         placeholder="Search trading pairs..."
@@ -134,16 +151,16 @@
       >
         <ng-template pTemplate="selectedItem" let-option>
           <div class="flex items-center gap-2" *ngIf="option">
-            <span class="font-medium">{{ option.label }}</span>
-            <span class="text-xs px-2 py-1 rounded bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300">
+            <span class="font-medium uppercase">{{ option.label }}</span>
+            <span class="rounded px-2 py-1 text-xs">
               {{ getSelectedExchangeName() }}
             </span>
           </div>
         </ng-template>
         <ng-template pTemplate="item" let-option>
-          <div class="flex items-center justify-between w-full">
-            <span class="font-medium">{{ option.label }}</span>
-            <div class="text-sm text-right">
+          <div class="flex w-full items-center justify-between">
+            <span class="font-medium uppercase">{{ option.label }}</span>
+            <div class="text-right text-sm">
               <div class="font-medium">{{ option.price | currency: 'USD' : 'symbol' : '1.2-6' }}</div>
               <div [class]="option.change24h >= 0 ? 'text-green-600' : 'text-red-600'" class="text-xs">
                 {{ option.change24h | number: '1.2-2' }}%
@@ -157,63 +174,71 @@
     <!-- Market Stats -->
     <div class="grid grid-cols-3 gap-4 px-4 pb-4" *ngIf="selectedPair()">
       <div class="text-center">
-        <div class="mb-1 text-xs text-surface-600 dark:text-surface-400">24h Volume</div>
-        <div class="text-sm font-semibold">{{ selectedPair()?.volume24h | currency: 'USD' : 'symbol' : '1.0-0' }}</div>
+        <div class="text-surface-600 dark:text-surface-400 mb-1 text-xs">24h Volume</div>
+        <div class="text-sm font-semibold">{{ selectedPair()?.volume | currency: 'USD' : 'symbol' : '1.0-0' }}</div>
       </div>
       <div class="text-center">
-        <div class="mb-1 text-xs text-surface-600 dark:text-surface-400">Spread</div>
+        <div class="text-surface-600 dark:text-surface-400 mb-1 text-xs">Spread</div>
         <div class="text-sm font-semibold">{{ calculateSpread() | number: '1.4-4' }}%</div>
       </div>
       <div class="text-center">
-        <div class="mb-1 text-xs text-surface-600 dark:text-surface-400">24h High</div>
-        <div class="text-sm font-semibold">{{ selectedPair()?.high24h | currency: 'USD' : 'symbol' : '1.2-6' }}</div>
+        <div class="text-surface-600 dark:text-surface-400 mb-1 text-xs">24h High</div>
+        <div class="text-sm font-semibold">
+          {{ selectedPair()?.spreadPercentage | currency: 'USD' : 'symbol' : '1.2-6' }}
+        </div>
       </div>
     </div>
   </p-card>
 
   <!-- Order Execution Section -->
-  <div class="flex items-center gap-2 mb-3" [class.opacity-50]="!selectedExchangeId()">
-    <i class="pi pi-send text-primary-600 dark:text-primary-400"></i>
-    <h3 class="text-lg font-semibold text-surface-800 dark:text-surface-200">Place Orders</h3>
-    <div class="flex-1 h-px bg-gradient-to-r from-surface-200 via-transparent to-surface-200 dark:from-surface-700 dark:to-surface-700"></div>
-    <div class="flex items-center gap-1" *ngIf="selectedPair()">
-      <div class="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
-      <span class="text-xs text-green-600 dark:text-green-400">Ready</span>
+  <div
+    class="from-surface-50 to-surface-100 dark:from-surface-800 dark:to-surface-900 border-surface-200 dark:border-surface-700 mb-6 flex items-center gap-3 rounded-xl border bg-gradient-to-r p-4"
+    [class.opacity-50]="!selectedExchangeId()"
+  >
+    <div class="bg-primary-100 dark:bg-primary-900 flex h-10 w-10 items-center justify-center rounded-lg">
+      <i class="pi pi-send text-primary-600 dark:text-primary-400 text-lg"></i>
+    </div>
+    <div class="flex-1">
+      <h3 class="text-surface-900 dark:text-surface-100 mb-1 text-xl font-bold">Place Orders</h3>
+      <p class="text-surface-600 dark:text-surface-400 text-sm">Execute your trading strategy</p>
+    </div>
+    <div class="flex items-center gap-2" *ngIf="selectedPair()">
+      <div class="flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 dark:bg-green-900">
+        <div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
+        <span class="text-sm font-medium text-green-700 dark:text-green-300">Ready to Trade</span>
+      </div>
     </div>
   </div>
+  <!-- Order Form -->
+  <div [class.opacity-50]="!selectedExchangeId()">
+    <p-tabs [(value)]="activeOrderTab">
+      <p-tablist class="bg-surface-50 dark:bg-surface-800 flex w-full rounded-t-2xl border-0">
+        <p-tab value="buy" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1 border-0">
+          <div
+            class="flex w-full items-center justify-center font-semibold transition-all duration-200 hover:bg-green-50 dark:hover:bg-green-900/20"
+          >
+            <span class="text-green-700 dark:text-green-300">Buy</span>
+          </div>
+        </p-tab>
+        <p-tab value="sell" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1 border-0">
+          <div
+            class="flex w-full items-center justify-center font-semibold transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <span class="text-red-700 dark:text-red-300">Sell</span>
+          </div>
+        </p-tab>
+      </p-tablist>
 
-  <!-- Main Trading Interface -->
-  <div class="grid grid-cols-1 gap-4">
-    <!-- Order Form -->
-    <p-card [class.opacity-50]="!selectedExchangeId()">
-      <ng-template pTemplate="header">
-        <div class="p-4">
-          <h3 class="text-lg font-semibold">Place Order</h3>
-        </div>
-      </ng-template>
-
-      <p-tabs [(value)]="activeOrderTab">
-        <p-tablist class="flex w-full">
-          <p-tab value="buy" [disabled]="!selectedPair() || !selectedExchangeId()" class="flex-1">
-            <div class="flex items-center justify-center gap-2 text-green-600">
-              <i class="pi pi-arrow-up"></i>
-              <span>Buy</span>
-            </div>
-          </p-tab>
-          <p-tab value="sell" [disabled]="!selectedPair() || !selectedExchangeId()" class="flex-1">
-            <div class="flex items-center justify-center gap-2 text-red-600">
-              <i class="pi pi-arrow-down"></i>
-              <span>Sell</span>
-            </div>
-          </p-tab>
-        </p-tablist>
-
-        <p-tabpanels>
-          <p-tabpanel value="buy">
-            <form [formGroup]="buyOrderForm" (ngSubmit)="onSubmitOrder('BUY')" class="space-y-4">
+      <p-tabpanels class="border-0">
+        <p-tabpanel value="buy" class="border-0">
+          <div class="p-6">
+            <form [formGroup]="buyOrderForm" (ngSubmit)="onSubmitOrder('BUY')" class="space-y-6">
               <!-- Buy Order Form -->
-              <div>
-                <label class="block mb-2 text-sm font-medium">Order Type</label>
+              <div class="space-y-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-cog text-primary-600 dark:text-primary-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Order Type</label>
+                </div>
                 <p-select
                   formControlName="type"
                   [options]="enhancedOrderTypeOptions"
@@ -221,6 +246,7 @@
                   class="w-full"
                   optionLabel="label"
                   optionValue="value"
+                  [style]="{ 'border-radius': '12px' }"
                 >
                   <ng-template pTemplate="selectedItem" let-option>
                     <div class="flex items-center gap-2">
@@ -233,16 +259,22 @@
                       <i [class]="option.icon" class="text-sm"></i>
                       <div>
                         <div class="font-medium">{{ option.label }}</div>
-                        <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+                        <div class="text-surface-600 dark:text-surface-400 text-xs">{{ option.description }}</div>
                       </div>
                     </div>
                   </ng-template>
                 </p-select>
               </div>
 
-              <div>
-                <label class="block mb-2 text-sm font-medium">Quantity ({{ selectedPair()?.base?.symbol }})</label>
-                <div class="space-y-2">
+              <div class="space-y-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-calculator text-primary-600 dark:text-primary-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Quantity</label>
+                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
+                    >({{ selectedPair()?.baseAsset?.symbol }})</span
+                  >
+                </div>
+                <div class="space-y-4">
                   <p-inputnumber
                     formControlName="quantity"
                     placeholder="0.00"
@@ -250,61 +282,81 @@
                     [minFractionDigits]="2"
                     [maxFractionDigits]="8"
                     class="w-full"
+                    [style]="{ 'border-radius': '12px' }"
                   />
                   <!-- Percentage Buttons -->
-                  <div class="grid grid-cols-4 gap-1">
-                    <p-button
-                      label="25%"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('BUY', 25)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
-                    <p-button
-                      label="50%"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('BUY', 50)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
-                    <p-button
-                      label="75%"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('BUY', 75)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
-                    <p-button
-                      label="Max"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('BUY', 100)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
+                  <div class="space-y-2">
+                    <div class="mb-2 flex items-center gap-2">
+                      <i class="pi pi-percentage text-surface-400 dark:text-surface-500 text-xs"></i>
+                      <span class="text-surface-600 dark:text-surface-400 text-xs font-medium">Quick Amount</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <p-button
+                        label="25%"
+                        severity="secondary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('BUY', 25)"
+                        [disabled]="!selectedPair()"
+                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
+                      />
+                      <p-button
+                        label="50%"
+                        severity="secondary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('BUY', 50)"
+                        [disabled]="!selectedPair()"
+                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
+                      />
+                      <p-button
+                        label="75%"
+                        severity="secondary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('BUY', 75)"
+                        [disabled]="!selectedPair()"
+                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
+                      />
+                      <p-button
+                        label="Max"
+                        severity="primary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('BUY', 100)"
+                        [disabled]="!selectedPair()"
+                        class="h-10 rounded-lg border-2 text-sm font-bold transition-all duration-200"
+                      />
+                    </div>
                   </div>
                 </div>
-                <div class="flex justify-between mt-1 text-xs text-surface-600 dark:text-surface-400">
-                  <span
-                    >Available: {{ getBuyBalance()?.available | number: '1.2-8' }}
-                    {{ selectedPair()?.quote?.symbol }}</span
-                  >
-                  <span class="text-primary-600"
-                    >≈ {{ calculateMaxBuyQuantity() | number: '1.2-8' }} {{ selectedPair()?.base?.symbol }}</span
-                  >
+              </div>
+              <div
+                class="bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700 mt-4 rounded-xl border p-3"
+              >
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-surface-600 dark:text-surface-400 font-medium">Available Balance</span>
+                  <span class="text-surface-900 dark:text-surface-100 font-semibold">
+                    {{ getBuyBalance()?.available | number: '1.2-8' }} {{ selectedPair()?.quoteAsset?.symbol }}
+                  </span>
+                </div>
+                <div class="mt-2 flex items-center justify-between text-sm">
+                  <span class="text-surface-600 dark:text-surface-400 font-medium">Max Buyable</span>
+                  <span class="text-primary-600 dark:text-primary-400 font-semibold">
+                    ≈ {{ calculateMaxBuyQuantity() | number: '1.2-8' }} {{ selectedPair()?.quoteAsset?.symbol }}
+                  </span>
                 </div>
               </div>
 
               <!-- Price Input (for Limit/Stop orders) -->
-              <div *ngIf="buyOrderForm.get('type')?.value !== 'MARKET'">
-                <label class="block mb-2 text-sm font-medium">Price ({{ selectedPair()?.quote?.symbol }})</label>
+              <div *ngIf="buyOrderForm.get('type')?.value !== 'MARKET'" class="space-y-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-dollar text-primary-600 dark:text-primary-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Price</label>
+                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
+                    >({{ selectedPair()?.quoteAsset?.symbol }})</span
+                  >
+                </div>
                 <p-inputnumber
                   formControlName="price"
                   placeholder="0.00"
@@ -312,6 +364,7 @@
                   [minFractionDigits]="2"
                   [maxFractionDigits]="8"
                   class="w-full"
+                  [style]="{ 'border-radius': '12px' }"
                 />
               </div>
 
@@ -320,8 +373,15 @@
                 *ngIf="
                   buyOrderForm.get('type')?.value === 'STOP_LOSS' || buyOrderForm.get('type')?.value === 'STOP_LIMIT'
                 "
+                class="space-y-3"
               >
-                <label class="block mb-2 text-sm font-medium">Stop Price ({{ selectedPair()?.quote?.symbol }})</label>
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-stop text-orange-600 dark:text-orange-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Stop Price</label>
+                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
+                    >({{ selectedPair()?.quoteAsset?.symbol }})</span
+                  >
+                </div>
                 <p-inputnumber
                   formControlName="stopPrice"
                   placeholder="0.00"
@@ -329,44 +389,66 @@
                   [minFractionDigits]="2"
                   [maxFractionDigits]="8"
                   class="w-full"
+                  [style]="{ 'border-radius': '12px' }"
                 />
-                <div class="mt-1 text-xs text-surface-600 dark:text-surface-400">
-                  <i class="mr-1 pi pi-info-circle"></i>
-                  Order will trigger when price
-                  {{ buyOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+                <div
+                  class="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-800 dark:bg-orange-900/20"
+                >
+                  <i class="pi pi-info-circle mt-0.5 text-sm text-orange-600 dark:text-orange-400"></i>
+                  <div class="text-sm text-orange-700 dark:text-orange-300">
+                    <span class="font-medium">Trigger Condition:</span> Order will execute when price
+                    {{ buyOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+                  </div>
                 </div>
               </div>
 
-              <div class="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
-                <div class="flex justify-between text-sm">
-                  <span>Estimated Cost:</span>
-                  <span class="font-semibold">{{
-                    calculateOrderTotal('BUY') | currency: 'USD' : 'symbol' : '1.2-8'
-                  }}</span>
+              <div
+                class="rounded-2xl border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-5 dark:border-green-800 dark:from-green-900/20 dark:to-emerald-900/20"
+              >
+                <div class="mb-4 flex items-center gap-2">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
+                    <i class="pi pi-calculator text-green-600 dark:text-green-400"></i>
+                  </div>
+                  <h4 class="font-bold text-green-800 dark:text-green-200">Order Summary</h4>
                 </div>
-                <div class="flex justify-between mt-1 text-sm">
-                  <span>Estimated Fees:</span>
-                  <span>{{ calculateOrderFees('BUY') | currency: 'USD' : 'symbol' : '1.2-8' }}</span>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-green-700 dark:text-green-300">Estimated Cost</span>
+                    <span class="text-lg font-bold text-green-900 dark:text-green-100">{{
+                      calculateOrderTotal('BUY') | currency: 'USD' : 'symbol' : '1.2-8'
+                    }}</span>
+                  </div>
+                  <div class="h-px bg-green-200 dark:bg-green-800"></div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-green-700 dark:text-green-300">Trading Fees</span>
+                    <span class="text-sm font-semibold text-green-800 dark:text-green-200">{{
+                      calculateOrderFees('BUY') | currency: 'USD' : 'symbol' : '1.2-8'
+                    }}</span>
+                  </div>
                 </div>
               </div>
 
               <p-button
                 type="submit"
-                severity="success"
-                [label]="'Buy ' + (selectedPair()?.base?.symbol || '')"
+                [label]="'Buy ' + (selectedPair()?.baseAsset?.symbol || '')"
                 icon="pi pi-arrow-up"
-                class="w-full"
+                class="h-14 w-full rounded-2xl border-0 bg-gradient-to-r from-green-600 to-emerald-600 text-lg font-bold shadow-lg transition-all duration-200 hover:from-green-700 hover:to-emerald-700 hover:shadow-xl"
                 [disabled]="buyOrderForm.invalid || createOrderMutation.isPending() || !selectedPair()"
                 [loading]="createOrderMutation.isPending()"
               />
             </form>
-          </p-tabpanel>
+          </div>
+        </p-tabpanel>
 
-          <p-tabpanel value="sell">
-            <form [formGroup]="sellOrderForm" (ngSubmit)="onSubmitOrder('SELL')" class="space-y-4">
+        <p-tabpanel value="sell" class="border-0">
+          <div class="p-6">
+            <form [formGroup]="sellOrderForm" (ngSubmit)="onSubmitOrder('SELL')" class="space-y-6">
               <!-- Sell Order Form -->
-              <div>
-                <label class="block mb-2 text-sm font-medium">Order Type</label>
+              <div class="space-y-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-cog text-primary-600 dark:text-primary-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Order Type</label>
+                </div>
                 <p-select
                   formControlName="type"
                   [options]="enhancedOrderTypeOptions"
@@ -374,6 +456,7 @@
                   class="w-full"
                   optionLabel="label"
                   optionValue="value"
+                  [style]="{ 'border-radius': '12px' }"
                 >
                   <ng-template pTemplate="selectedItem" let-option>
                     <div class="flex items-center gap-2">
@@ -386,16 +469,22 @@
                       <i [class]="option.icon" class="text-sm"></i>
                       <div>
                         <div class="font-medium">{{ option.label }}</div>
-                        <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+                        <div class="text-surface-600 dark:text-surface-400 text-xs">{{ option.description }}</div>
                       </div>
                     </div>
                   </ng-template>
                 </p-select>
               </div>
 
-              <div>
-                <label class="block mb-2 text-sm font-medium">Quantity ({{ selectedPair()?.base?.symbol }})</label>
-                <div class="space-y-2">
+              <div class="space-y-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-calculator text-primary-600 dark:text-primary-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Quantity</label>
+                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
+                    >({{ selectedPair()?.baseAsset?.symbol }})</span
+                  >
+                </div>
+                <div class="space-y-4">
                   <p-inputnumber
                     formControlName="quantity"
                     placeholder="0.00"
@@ -403,55 +492,75 @@
                     [minFractionDigits]="2"
                     [maxFractionDigits]="8"
                     class="w-full"
+                    [style]="{ 'border-radius': '12px' }"
                   />
                   <!-- Percentage Buttons -->
-                  <div class="grid grid-cols-4 gap-1">
-                    <p-button
-                      label="25%"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('SELL', 25)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
-                    <p-button
-                      label="50%"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('SELL', 50)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
-                    <p-button
-                      label="75%"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('SELL', 75)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
-                    <p-button
-                      label="Max"
-                      severity="secondary"
-                      size="small"
-                      outlined
-                      (click)="setQuantityPercentage('SELL', 100)"
-                      [disabled]="!selectedPair()"
-                      class="text-xs"
-                    />
+                  <div class="space-y-2">
+                    <div class="mb-2 flex items-center gap-2">
+                      <i class="pi pi-percentage text-surface-400 dark:text-surface-500 text-xs"></i>
+                      <span class="text-surface-600 dark:text-surface-400 text-xs font-medium">Quick Amount</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <p-button
+                        label="25%"
+                        severity="secondary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('SELL', 25)"
+                        [disabled]="!selectedPair()"
+                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
+                      />
+                      <p-button
+                        label="50%"
+                        severity="secondary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('SELL', 50)"
+                        [disabled]="!selectedPair()"
+                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
+                      />
+                      <p-button
+                        label="75%"
+                        severity="secondary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('SELL', 75)"
+                        [disabled]="!selectedPair()"
+                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
+                      />
+                      <p-button
+                        label="Max"
+                        severity="primary"
+                        size="small"
+                        outlined
+                        (click)="setQuantityPercentage('SELL', 100)"
+                        [disabled]="!selectedPair()"
+                        class="h-10 rounded-lg border-2 text-sm font-bold transition-all duration-200"
+                      />
+                    </div>
                   </div>
-                </div>
-                <div class="mt-1 text-xs text-surface-600 dark:text-surface-400">
-                  Available: {{ getSellBalance()?.available | number: '1.2-8' }} {{ selectedPair()?.base?.symbol }}
+                  <div
+                    class="bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700 rounded-xl border p-3"
+                  >
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-surface-600 dark:text-surface-400 font-medium">Available Balance</span>
+                      <span class="text-surface-900 dark:text-surface-100 font-semibold">
+                        {{ getSellBalance()?.available | number: '1.2-8' }} {{ selectedPair()?.baseAsset?.symbol }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <!-- Price Input (for Limit/Stop orders) -->
-              <div *ngIf="sellOrderForm.get('type')?.value !== 'MARKET'">
-                <label class="block mb-2 text-sm font-medium">Price ({{ selectedPair()?.quote?.symbol }})</label>
+              <div *ngIf="sellOrderForm.get('type')?.value !== 'MARKET'" class="space-y-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <i class="pi pi-dollar text-primary-600 dark:text-primary-400"></i>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Price</label>
+                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
+                    >({{ selectedPair()?.quoteAsset?.symbol }})</span
+                  >
+                </div>
                 <p-inputnumber
                   formControlName="price"
                   placeholder="0.00"
@@ -459,6 +568,7 @@
                   [minFractionDigits]="2"
                   [maxFractionDigits]="8"
                   class="w-full"
+                  [style]="{ 'border-radius': '12px' }"
                 />
               </div>
 
@@ -468,7 +578,9 @@
                   sellOrderForm.get('type')?.value === 'STOP_LOSS' || sellOrderForm.get('type')?.value === 'STOP_LIMIT'
                 "
               >
-                <label class="block mb-2 text-sm font-medium">Stop Price ({{ selectedPair()?.quote?.symbol }})</label>
+                <label class="mb-2 block text-sm font-medium"
+                  >Stop Price ({{ selectedPair()?.quoteAsset?.symbol }})</label
+                >
                 <p-inputnumber
                   formControlName="stopPrice"
                   placeholder="0.00"
@@ -477,105 +589,119 @@
                   [maxFractionDigits]="8"
                   class="w-full"
                 />
-                <div class="mt-1 text-xs text-surface-600 dark:text-surface-400">
-                  <i class="mr-1 pi pi-info-circle"></i>
+                <div class="text-surface-600 dark:text-surface-400 mt-1 text-xs">
+                  <i class="pi pi-info-circle mr-1"></i>
                   Order will trigger when price
                   {{ sellOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
                 </div>
               </div>
 
-              <div class="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
-                <div class="flex justify-between text-sm">
-                  <span>Estimated Value:</span>
-                  <span class="font-semibold">{{
-                    calculateOrderTotal('SELL') | currency: 'USD' : 'symbol' : '1.2-8'
-                  }}</span>
+              <div
+                class="rounded-2xl border-2 border-red-200 bg-gradient-to-br from-red-50 to-rose-50 p-5 dark:border-red-800 dark:from-red-900/20 dark:to-rose-900/20"
+              >
+                <div class="mb-4 flex items-center gap-2">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900">
+                    <i class="pi pi-calculator text-red-600 dark:text-red-400"></i>
+                  </div>
+                  <h4 class="font-bold text-red-800 dark:text-red-200">Order Summary</h4>
                 </div>
-                <div class="flex justify-between mt-1 text-sm">
-                  <span>Estimated Fees:</span>
-                  <span>{{ calculateOrderFees('SELL') | currency: 'USD' : 'symbol' : '1.2-8' }}</span>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-red-700 dark:text-red-300">Estimated Value</span>
+                    <span class="text-lg font-bold text-red-900 dark:text-red-100">{{
+                      calculateOrderTotal('SELL') | currency: 'USD' : 'symbol' : '1.2-8'
+                    }}</span>
+                  </div>
+                  <div class="h-px bg-red-200 dark:bg-red-800"></div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-red-700 dark:text-red-300">Trading Fees</span>
+                    <span class="text-sm font-semibold text-red-800 dark:text-red-200">{{
+                      calculateOrderFees('SELL') | currency: 'USD' : 'symbol' : '1.2-8'
+                    }}</span>
+                  </div>
                 </div>
               </div>
 
               <p-button
                 type="submit"
-                label="Sell {{ selectedPair()?.base?.symbol }}"
-                class="w-full bg-red-600 hover:bg-red-700"
+                label="Sell {{ selectedPair()?.baseAsset?.symbol }}"
+                icon="pi pi-arrow-down"
+                class="h-14 w-full rounded-2xl border-0 bg-gradient-to-r from-red-600 to-rose-600 text-lg font-bold shadow-lg transition-all duration-200 hover:from-red-700 hover:to-rose-700 hover:shadow-xl"
                 [disabled]="sellOrderForm.invalid || createOrderMutation.isPending()"
                 [loading]="createOrderMutation.isPending()"
               />
             </form>
-          </p-tabpanel>
-        </p-tabpanels>
-      </p-tabs>
-    </p-card>
-
-    <!-- Order Book & Market Data -->
-    <div class="space-y-4 lg:col-span-2">
-      <!-- Quick Actions -->
-      <div class="grid grid-cols-2 gap-4">
-        <p-button
-          label="Quick Buy"
-          icon="pi pi-arrow-up"
-          class="bg-green-600 hover:bg-green-700"
-          (click)="quickBuy()"
-          [disabled]="!selectedPair()"
-        />
-        <p-button
-          label="Quick Sell"
-          icon="pi pi-arrow-down"
-          class="bg-red-600 hover:bg-red-700"
-          (click)="quickSell()"
-          [disabled]="!selectedPair()"
-        />
-      </div>
-
-      <!-- Order Book -->
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-4">
-            <h3 class="text-lg font-semibold">Order Book</h3>
           </div>
-        </ng-template>
+        </p-tabpanel>
+      </p-tabpanels>
+    </p-tabs>
+  </div>
 
-        <div class="grid grid-cols-2 gap-4" *ngIf="orderBookQuery()?.data(); else orderBookLoading">
-          <!-- Asks (Sell Orders) -->
-          <div>
-            <h4 class="mb-2 text-sm font-semibold text-red-600">Asks (Sell)</h4>
-            <div class="space-y-1">
-              <div
-                *ngFor="let ask of getTopAsks(); trackBy: trackByPrice"
-                class="flex justify-between p-2 text-sm rounded bg-red-50 dark:bg-red-950"
-              >
-                <span class="text-red-600">{{ ask.price | number: '1.2-8' }}</span>
-                <span>{{ ask.quantity | number: '1.2-8' }}</span>
-              </div>
-            </div>
-          </div>
+  <!-- Order Book & Market Data -->
+  <div class="space-y-4 lg:col-span-2">
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-2 gap-4">
+      <p-button
+        label="Quick Buy"
+        icon="pi pi-arrow-up"
+        class="bg-green-600 hover:bg-green-700"
+        (click)="quickBuy()"
+        [disabled]="!selectedPair()"
+      />
+      <p-button
+        label="Quick Sell"
+        icon="pi pi-arrow-down"
+        class="bg-red-600 hover:bg-red-700"
+        (click)="quickSell()"
+        [disabled]="!selectedPair()"
+      />
+    </div>
 
-          <!-- Bids (Buy Orders) -->
-          <div>
-            <h4 class="mb-2 text-sm font-semibold text-green-600">Bids (Buy)</h4>
-            <div class="space-y-1">
-              <div
-                *ngFor="let bid of getTopBids(); trackBy: trackByPrice"
-                class="flex justify-between p-2 text-sm rounded bg-green-50 dark:bg-green-950"
-              >
-                <span class="text-green-600">{{ bid.price | number: '1.2-8' }}</span>
-                <span>{{ bid.quantity | number: '1.2-8' }}</span>
-              </div>
+    <!-- Order Book -->
+    <p-card>
+      <ng-template pTemplate="header">
+        <div class="p-4">
+          <h3 class="text-lg font-semibold">Order Book</h3>
+        </div>
+      </ng-template>
+
+      <div class="grid grid-cols-2 gap-4" *ngIf="orderBookQuery()?.data(); else orderBookLoading">
+        <!-- Asks (Sell Orders) -->
+        <div>
+          <h4 class="mb-2 text-sm font-semibold text-red-600">Asks (Sell)</h4>
+          <div class="space-y-1">
+            <div
+              *ngFor="let ask of getTopAsks(); trackBy: trackByPrice"
+              class="flex justify-between rounded bg-red-50 p-2 text-sm dark:bg-red-950"
+            >
+              <span class="text-red-600">{{ ask.price | number: '1.2-8' }}</span>
+              <span>{{ ask.quantity | number: '1.2-8' }}</span>
             </div>
           </div>
         </div>
 
-        <ng-template #orderBookLoading>
-          <div class="flex items-center justify-center p-8">
-            <i class="mr-2 pi pi-spinner pi-spin"></i>
-            Loading order book...
+        <!-- Bids (Buy Orders) -->
+        <div>
+          <h4 class="mb-2 text-sm font-semibold text-green-600">Bids (Buy)</h4>
+          <div class="space-y-1">
+            <div
+              *ngFor="let bid of getTopBids(); trackBy: trackByPrice"
+              class="flex justify-between rounded bg-green-50 p-2 text-sm dark:bg-green-950"
+            >
+              <span class="text-green-600">{{ bid.price | number: '1.2-8' }}</span>
+              <span>{{ bid.quantity | number: '1.2-8' }}</span>
+            </div>
           </div>
-        </ng-template>
-      </p-card>
-    </div>
+        </div>
+      </div>
+
+      <ng-template #orderBookLoading>
+        <div class="flex items-center justify-center p-8">
+          <i class="pi pi-spinner pi-spin mr-2"></i>
+          Loading order book...
+        </div>
+      </ng-template>
+    </p-card>
   </div>
 
   <!-- Collapsible Active Orders -->
@@ -584,11 +710,11 @@
       <div class="flex items-center justify-between p-3">
         <button
           (click)="showActiveOrders.set(!showActiveOrders())"
-          class="flex items-center gap-2 text-lg font-semibold transition-colors hover:text-primary-600"
+          class="hover:text-primary-600 flex items-center gap-2 text-lg font-semibold transition-colors"
         >
           <i class="pi" [class.pi-chevron-down]="showActiveOrders()" [class.pi-chevron-right]="!showActiveOrders()"></i>
           Active Orders
-          <span class="px-2 py-1 ml-2 text-xs rounded-full bg-primary-100 text-primary-800">
+          <span class="bg-primary-100 text-primary-800 ml-2 rounded-full px-2 py-1 text-xs">
             {{ (activeOrdersQuery.data() || []).length }}
           </span>
         </button>
@@ -610,20 +736,20 @@
       <div class="space-y-2 md:hidden">
         <div
           *ngFor="let order of activeOrdersQuery.data() || []; trackBy: trackByOrderId"
-          class="p-3 border rounded-lg bg-surface-50 dark:bg-surface-800"
+          class="bg-surface-50 dark:bg-surface-800 rounded-lg border p-3"
         >
-          <div class="flex items-center justify-between mb-2">
+          <div class="mb-2 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="font-semibold">{{ order.symbol }}</span>
               <span [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'" class="text-sm font-medium">
                 {{ order.side }}
               </span>
             </div>
-            <span class="px-2 py-1 text-xs font-semibold rounded-full" [class]="getStatusClass(order.status)">
+            <span class="rounded-full px-2 py-1 text-xs font-semibold" [class]="getStatusClass(order.status)">
               {{ order.status }}
             </span>
           </div>
-          <div class="grid grid-cols-2 gap-2 mb-2 text-sm text-surface-600 dark:text-surface-400">
+          <div class="text-surface-600 dark:text-surface-400 mb-2 grid grid-cols-2 gap-2 text-sm">
             <div><span class="font-medium">Type:</span> {{ order.type }}</div>
             <div><span class="font-medium">Quantity:</span> {{ order.quantity | number: '1.2-6' }}</div>
             <div><span class="font-medium">Price:</span> {{ order.price | number: '1.2-6' }}</div>
@@ -674,7 +800,7 @@
               <td class="text-sm">{{ order.price | number: '1.2-6' }}</td>
               <td class="text-sm">{{ order.executedQuantity | number: '1.2-6' }}</td>
               <td>
-                <span class="px-2 py-1 text-xs font-semibold rounded-full" [class]="getStatusClass(order.status)">
+                <span class="rounded-full px-2 py-1 text-xs font-semibold" [class]="getStatusClass(order.status)">
                   {{ order.status }}
                 </span>
               </td>
@@ -693,8 +819,8 @@
           </ng-template>
           <ng-template pTemplate="emptymessage">
             <tr>
-              <td colspan="8" class="py-4 text-center text-surface-600 dark:text-surface-400">
-                <i class="block mb-2 text-2xl pi pi-inbox"></i>
+              <td colspan="8" class="text-surface-600 dark:text-surface-400 py-4 text-center">
+                <i class="pi pi-inbox mb-2 block text-2xl"></i>
                 No active orders
               </td>
             </tr>

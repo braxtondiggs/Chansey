@@ -52,7 +52,6 @@ export class ExchangeManagerService {
    */
   async getExchangeClient(exchangeSlug: string, user?: User): Promise<ccxt.Exchange> {
     const service = this.getExchangeService(exchangeSlug);
-    console.log(`Getting client for exchange: ${service}`);
     return await service.getClient(user);
   }
 
