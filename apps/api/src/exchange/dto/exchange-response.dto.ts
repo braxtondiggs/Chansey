@@ -171,6 +171,13 @@ export class ExchangeResponseDto {
   })
   tickers?: TickerPairResponseDto[];
 
+  @ApiProperty({
+    description: 'Total count of ticker pairs available on this exchange',
+    example: 245,
+    required: false
+  })
+  tickerPairsCount?: number;
+
   constructor(exchange: Partial<CreateExchangeDto>) {
     Object.assign(this, exchange);
   }

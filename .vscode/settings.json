@@ -18,12 +18,10 @@
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
     "source.addMissingImports": "explicit",
-    "source.fixAll.eslint": "explicit"
+    "source.organizeImports": "always",
+    "source.fixAll": "explicit"
   },
   "vsicons.presets.angular": true,
-  "[css]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
   "tailwindCSS.experimental.classRegex": [["className=\"([^\"\\\\]*)\"", "\"([^\"]*)\""]],
   "tailwindCSS.includeLanguages": {
     "typescript": "javascript",

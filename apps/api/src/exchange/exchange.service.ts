@@ -77,32 +77,53 @@ export class ExchangeService {
     const tickerPairs = await this.tickerPairService.getTickerPairsByExchange(exchangeId);
 
     // Transform to a more readable format
-    return tickerPairs.map((pair) => ({
-      symbol: `${pair.baseAsset.symbol}/${pair.quoteAsset.symbol}`,
-      base: pair.baseAsset.symbol,
-      quote: pair.quoteAsset.symbol,
-      baseAsset: {
-        id: pair.baseAsset.id,
-        name: pair.baseAsset.name,
-        symbol: pair.baseAsset.symbol,
-        slug: pair.baseAsset.slug
-      },
-      quoteAsset: {
-        id: pair.quoteAsset.id,
-        name: pair.quoteAsset.name,
-        symbol: pair.quoteAsset.symbol,
-        slug: pair.quoteAsset.slug
-      },
-      volume: pair.volume,
-      tradeUrl: pair.tradeUrl,
-      spreadPercentage: pair.spreadPercentage,
-      lastTraded: pair.lastTraded,
-      status: pair.status,
-      isSpotTradingAllowed: pair.isSpotTradingAllowed,
-      isMarginTradingAllowed: pair.isMarginTradingAllowed,
-      fetchAt: pair.fetchAt,
-      currentPrice: pair.baseAsset.currentPrice
-    }));
+    return tickerPairs.map((pair) => {
+      // Handle fiat pairs where coin objects might be null
+      const baseSymbol = pair.baseAsset?.symbol || pair.baseAssetSymbol;
+      const quoteSymbol = pair.quoteAsset?.symbol || pair.quoteAssetSymbol;
+
+      return {
+        symbol: `${baseSymbol}/${quoteSymbol}`,
+        base: baseSymbol,
+        quote: quoteSymbol,
+        baseAsset: pair.baseAsset
+          ? {
+              id: pair.baseAsset.id,
+              name: pair.baseAsset.name,
+              symbol: pair.baseAsset.symbol,
+              slug: pair.baseAsset.slug
+            }
+          : {
+              id: null,
+              name: pair.baseAssetSymbol,
+              symbol: pair.baseAssetSymbol,
+              slug: pair.baseAssetSymbol
+            },
+        quoteAsset: pair.quoteAsset
+          ? {
+              id: pair.quoteAsset.id,
+              name: pair.quoteAsset.name,
+              symbol: pair.quoteAsset.symbol,
+              slug: pair.quoteAsset.slug
+            }
+          : {
+              id: null,
+              name: pair.quoteAssetSymbol,
+              symbol: pair.quoteAssetSymbol,
+              slug: pair.quoteAssetSymbol
+            },
+        volume: pair.volume,
+        tradeUrl: pair.tradeUrl,
+        spreadPercentage: pair.spreadPercentage,
+        lastTraded: pair.lastTraded,
+        status: pair.status,
+        isSpotTradingAllowed: pair.isSpotTradingAllowed,
+        isMarginTradingAllowed: pair.isMarginTradingAllowed,
+        isFiatPair: pair.isFiatPair,
+        fetchAt: pair.fetchAt,
+        currentPrice: pair.baseAsset?.currentPrice || null
+      };
+    });
   }
 
   async createMany(exchanges: Exchange[]): Promise<Exchange[]> {

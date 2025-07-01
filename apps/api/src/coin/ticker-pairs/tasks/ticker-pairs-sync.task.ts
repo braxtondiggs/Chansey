@@ -152,11 +152,12 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           // eslint-disable-next-line no-constant-condition
           while (true) {
             let tickers = [];
+            const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
 
             try {
               // Get tickers from CoinGecko for this exchange
               const response = await this.gecko.exchangeIdTickers({
-                id: exchange.slug,
+                id,
                 page
               });
 
@@ -186,39 +187,56 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               const baseId = ticker.coin_id?.toLowerCase();
               const quoteId = ticker.target_coin_id?.toLowerCase();
 
-              // Skip if coin IDs are missing
-              if (!baseId || !quoteId) {
-                this.logger.debug(`Skipping ticker with missing coin IDs: ${ticker.base}/${ticker.target}`);
-                continue;
-              }
-
               // Get the coin objects from our database
               const baseCoin = coinsBySlug.get(baseId);
               const quoteCoin = coinsBySlug.get(quoteId);
 
-              // Skip if either coin is not in our database
-              if (!baseCoin || !quoteCoin) {
+              // Determine if this is a fiat pair
+              const baseIsFiat = !baseCoin && this.isFiatCurrency(ticker.base);
+              const quoteIsFiat = !quoteCoin && this.isFiatCurrency(ticker.target);
+              const isFiatPair = baseIsFiat || quoteIsFiat;
+
+              // Skip if neither coin exists and it's not a fiat pair
+              if (!baseCoin && !quoteCoin && !isFiatPair) {
                 this.logger.debug(
-                  `Skipping ticker ${ticker.base}/${ticker.target}: coins not found in database (base: ${!!baseCoin}, quote: ${!!quoteCoin})`
+                  `Skipping ticker ${ticker.base}/${ticker.target}: coins not found in database and not fiat pair`
+                );
+                continue;
+              }
+
+              // Skip if one coin exists but the other doesn't and it's not fiat
+              if ((!baseCoin && !baseIsFiat) || (!quoteCoin && !quoteIsFiat)) {
+                this.logger.debug(
+                  `Skipping ticker ${ticker.base}/${ticker.target}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
                 );
                 continue;
               }
 
               // Create a unique key for this ticker pair
-              const pairKey = `${baseCoin.id}-${quoteCoin.id}-${exchange.id}`;
+              const baseKey = baseCoin?.id || ticker.base;
+              const quoteKey = quoteCoin?.id || ticker.target;
+              const pairKey = `${baseKey}-${quoteKey}-${exchange.id}`;
               exchangePairs.add(pairKey);
 
               // Look for an existing ticker pair matching this one
-              const existingPair = existingPairs.find(
-                (p) =>
-                  p.baseAsset.id === baseCoin.id && p.quoteAsset.id === quoteCoin.id && p.exchange.id === exchange.id
-              );
+              const existingPair = existingPairs.find((p) => {
+                if (isFiatPair) {
+                  // For fiat pairs, match by symbol and exchange
+                  const expectedSymbol = `${ticker.base}${ticker.target}`.toUpperCase();
+                  return p.symbol === expectedSymbol && p.exchange.id === exchange.id;
+                } else {
+                  // For regular pairs, match by coin IDs
+                  return (
+                    p.baseAsset?.id === baseCoin?.id &&
+                    p.quoteAsset?.id === quoteCoin?.id &&
+                    p.exchange.id === exchange.id
+                  );
+                }
+              });
 
               if (!existingPair) {
                 // Create a new ticker pair
-                const newPair = await this.tickerPair.createTickerPair({
-                  baseAsset: baseCoin,
-                  quoteAsset: quoteCoin,
+                const pairData: any = {
                   exchange,
                   volume: ticker.volume || 0,
                   tradeUrl: ticker.trade_url,
@@ -227,8 +245,24 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
                   fetchAt: new Date(),
                   status: DEFAULT_STATUS,
                   isSpotTradingAllowed: DEFAULT_SPOT_TRADING_ALLOWED,
-                  isMarginTradingAllowed: DEFAULT_MARGIN_TRADING_ALLOWED
-                });
+                  isMarginTradingAllowed: DEFAULT_MARGIN_TRADING_ALLOWED,
+                  isFiatPair
+                };
+
+                if (isFiatPair) {
+                  // For fiat pairs, store symbols instead of coin references
+                  pairData.baseAssetSymbol = ticker.base.toLowerCase();
+                  pairData.quoteAssetSymbol = ticker.target.toLowerCase();
+                  // Only set coin references if they exist
+                  if (baseCoin) pairData.baseAsset = baseCoin;
+                  if (quoteCoin) pairData.quoteAsset = quoteCoin;
+                } else {
+                  // For regular pairs, use coin references
+                  pairData.baseAsset = baseCoin;
+                  pairData.quoteAsset = quoteCoin;
+                }
+
+                const newPair = await this.tickerPair.createTickerPair(pairData);
 
                 newPairs.push(newPair);
               } else {
@@ -258,7 +292,12 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
             if (pair.exchange.id !== exchange.id) return false;
 
             // Check if the pair is still present in the exchange data
-            const pairKey = `${pair.baseAsset.id}-${pair.quoteAsset.id}-${pair.exchange.id}`;
+            let pairKey: string;
+            if (pair.isFiatPair) {
+              pairKey = `${pair.baseAssetSymbol || pair.baseAsset?.symbol}-${pair.quoteAssetSymbol || pair.quoteAsset?.symbol}-${pair.exchange.id}`;
+            } else {
+              pairKey = `${pair.baseAsset?.id}-${pair.quoteAsset?.id}-${pair.exchange.id}`;
+            }
             return !exchangePairs.has(pairKey);
           });
 
@@ -316,6 +355,10 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         }
       }
 
+      // Update ticker pairs count for all exchanges
+      this.logger.log('Updating ticker pairs count for all exchanges');
+      await this.updateExchangeTickerPairsCounts();
+
       await job.updateProgress(100);
       this.logger.log('Ticker pairs synchronization completed');
 
@@ -330,5 +373,74 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.error('Failed to synchronize ticker pairs:', error);
       throw error;
     }
+  }
+
+  /**
+   * Update ticker pairs count for all exchanges
+   * This method counts the actual ticker pairs for each exchange and updates the stored count
+   */
+  private async updateExchangeTickerPairsCounts(): Promise<void> {
+    try {
+      // Get all exchanges
+      const exchanges = await this.exchange.getExchanges();
+
+      // Get ticker pair counts per exchange in a single query
+      const counts = await this.tickerPair.getTickerPairsCountByExchange();
+
+      // Create a map for efficient lookup
+      const countMap = new Map<string, number>();
+      counts.forEach(({ exchangeId, count }) => {
+        countMap.set(exchangeId, count);
+      });
+
+      // Update each exchange with its ticker pairs count
+      const updatePromises = exchanges.map(async (exchange) => {
+        const tickerPairsCount = countMap.get(exchange.id) || 0;
+
+        // Only update if the count has changed
+        if (exchange.tickerPairsCount !== tickerPairsCount) {
+          try {
+            await this.exchange.updateExchange(exchange.id, { tickerPairsCount });
+            this.logger.debug(`Updated ${exchange.name} ticker pairs count to ${tickerPairsCount}`);
+          } catch (error) {
+            this.logger.error(`Failed to update ticker pairs count for ${exchange.name}: ${error.message}`);
+          }
+        }
+      });
+
+      await Promise.all(updatePromises);
+      this.logger.log('Successfully updated ticker pairs counts for all exchanges');
+    } catch (error) {
+      this.logger.error(`Failed to update exchange ticker pairs counts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if a currency symbol is a fiat currency
+   */
+  private isFiatCurrency(symbol: string): boolean {
+    const fiatCurrencies = [
+      'USD',
+      'EUR',
+      'GBP',
+      'JPY',
+      'AUD',
+      'CAD',
+      'CHF',
+      'CNY',
+      'SEK',
+      'NZD',
+      'MXN',
+      'SGD',
+      'HKD',
+      'NOK',
+      'TRY',
+      'RUB',
+      'INR',
+      'BRL',
+      'ZAR',
+      'KRW'
+    ];
+    return fiatCurrencies.includes(symbol.toUpperCase());
   }
 }

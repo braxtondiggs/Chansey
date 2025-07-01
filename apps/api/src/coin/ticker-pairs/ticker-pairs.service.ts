@@ -76,4 +76,18 @@ export class TickerPairService {
   async saveTickerPair(data: TickerPairs[]): Promise<TickerPairs[]> {
     return this.pairs.save(data);
   }
+
+  async getTickerPairsCountByExchange(): Promise<{ exchangeId: string; count: number }[]> {
+    const result = await this.pairs
+      .createQueryBuilder('ticker')
+      .select('ticker.exchangeId', 'exchangeId')
+      .addSelect('COUNT(ticker.id)', 'count')
+      .groupBy('ticker.exchangeId')
+      .getRawMany();
+
+    return result.map(({ exchangeId, count }) => ({
+      exchangeId,
+      count: parseInt(count) || 0
+    }));
+  }
 }

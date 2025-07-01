@@ -112,7 +112,7 @@
   </div>
 
   <!-- Enhanced Trading Pair Selection -->
-  <p-card class="mb-4" [class.opacity-50]="!selectedExchangeId()">
+  <p-card class="mb-6 block" [class.opacity-50]="!selectedExchangeId()">
     <ng-template pTemplate="header">
       <div class="mb-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -190,37 +190,18 @@
     </div>
   </p-card>
 
-  <!-- Order Execution Section -->
-  <div
-    class="from-surface-50 to-surface-100 dark:from-surface-800 dark:to-surface-900 border-surface-200 dark:border-surface-700 mb-6 flex items-center gap-3 rounded-xl border bg-gradient-to-r p-4"
-    [class.opacity-50]="!selectedExchangeId()"
-  >
-    <div class="bg-primary-100 dark:bg-primary-900 flex h-10 w-10 items-center justify-center rounded-lg">
-      <i class="pi pi-send text-primary-600 dark:text-primary-400 text-lg"></i>
-    </div>
-    <div class="flex-1">
-      <h3 class="text-surface-900 dark:text-surface-100 mb-1 text-xl font-bold">Place Orders</h3>
-      <p class="text-surface-600 dark:text-surface-400 text-sm">Execute your trading strategy</p>
-    </div>
-    <div class="flex items-center gap-2" *ngIf="selectedPair()">
-      <div class="flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 dark:bg-green-900">
-        <div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
-        <span class="text-sm font-medium text-green-700 dark:text-green-300">Ready to Trade</span>
-      </div>
-    </div>
-  </div>
   <!-- Order Form -->
   <div [class.opacity-50]="!selectedExchangeId()">
     <p-tabs [(value)]="activeOrderTab">
-      <p-tablist class="bg-surface-50 dark:bg-surface-800 flex w-full rounded-t-2xl border-0">
-        <p-tab value="buy" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1 border-0">
+      <p-tablist class="bg-surface-50 dark:bg-surface-800 flex w-full rounded-t-2xl">
+        <p-tab value="buy" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1">
           <div
             class="flex w-full items-center justify-center font-semibold transition-all duration-200 hover:bg-green-50 dark:hover:bg-green-900/20"
           >
             <span class="text-green-700 dark:text-green-300">Buy</span>
           </div>
         </p-tab>
-        <p-tab value="sell" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1 border-0">
+        <p-tab value="sell" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1">
           <div
             class="flex w-full items-center justify-center font-semibold transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20"
           >
@@ -229,106 +210,71 @@
         </p-tab>
       </p-tablist>
 
-      <p-tabpanels class="border-0">
-        <p-tabpanel value="buy" class="border-0">
+      <p-tabpanels class="!p-0">
+        <p-tabpanel value="buy">
           <div class="p-6">
             <form [formGroup]="buyOrderForm" (ngSubmit)="onSubmitOrder('BUY')" class="space-y-6">
               <!-- Buy Order Form -->
               <div class="space-y-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-cog text-primary-600 dark:text-primary-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Order Type</label>
-                </div>
-                <p-select
-                  formControlName="type"
-                  [options]="enhancedOrderTypeOptions"
-                  placeholder="Select order type"
-                  class="w-full"
-                  optionLabel="label"
-                  optionValue="value"
-                  [style]="{ 'border-radius': '12px' }"
-                >
-                  <ng-template pTemplate="selectedItem" let-option>
-                    <div class="flex items-center gap-2">
-                      <i [class]="option.icon" class="text-sm"></i>
-                      <span>{{ option.label }}</span>
-                    </div>
-                  </ng-template>
-                  <ng-template pTemplate="item" let-option>
-                    <div class="flex items-center gap-2">
-                      <i [class]="option.icon" class="text-sm"></i>
-                      <div>
-                        <div class="font-medium">{{ option.label }}</div>
-                        <div class="text-surface-600 dark:text-surface-400 text-xs">{{ option.description }}</div>
+                <p-floatlabel variant="on">
+                  <p-select
+                    inputId="orderType"
+                    formControlName="type"
+                    [options]="enhancedOrderTypeOptions"
+                    placeholder="Select order type"
+                    class="w-full"
+                    optionLabel="label"
+                    optionValue="value"
+                    size="large"
+                  >
+                    <ng-template pTemplate="selectedItem" let-option>
+                      <div class="flex items-center gap-2">
+                        <i [class]="option.icon" class="text-sm"></i>
+                        <span>{{ option.label }}</span>
                       </div>
-                    </div>
-                  </ng-template>
-                </p-select>
+                    </ng-template>
+                    <ng-template pTemplate="item" let-option>
+                      <div class="flex items-center gap-4">
+                        <i [class]="option.icon" class="text-sm"></i>
+                        <div>
+                          <div class="font-medium">{{ option.label }}</div>
+                          <div class="text-surface-600 dark:text-surface-400 text-xs">{{ option.description }}</div>
+                        </div>
+                      </div>
+                    </ng-template>
+                  </p-select>
+                  <label for="orderType">Order Type</label>
+                </p-floatlabel>
               </div>
 
               <div class="space-y-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-calculator text-primary-600 dark:text-primary-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Quantity</label>
-                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
-                    >({{ selectedPair()?.baseAsset?.symbol }})</span
-                  >
-                </div>
-                <div class="space-y-4">
+                <p-floatlabel variant="on">
                   <p-inputnumber
                     formControlName="quantity"
-                    placeholder="0.00"
                     mode="decimal"
                     [minFractionDigits]="2"
                     [maxFractionDigits]="8"
+                    size="large"
                     class="w-full"
-                    [style]="{ 'border-radius': '12px' }"
                   />
-                  <!-- Percentage Buttons -->
-                  <div class="space-y-2">
-                    <div class="mb-2 flex items-center gap-2">
-                      <i class="pi pi-percentage text-surface-400 dark:text-surface-500 text-xs"></i>
-                      <span class="text-surface-600 dark:text-surface-400 text-xs font-medium">Quick Amount</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                      <p-button
-                        label="25%"
-                        severity="secondary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('BUY', 25)"
-                        [disabled]="!selectedPair()"
-                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
-                      />
-                      <p-button
-                        label="50%"
-                        severity="secondary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('BUY', 50)"
-                        [disabled]="!selectedPair()"
-                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
-                      />
-                      <p-button
-                        label="75%"
-                        severity="secondary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('BUY', 75)"
-                        [disabled]="!selectedPair()"
-                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
-                      />
-                      <p-button
-                        label="Max"
-                        severity="primary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('BUY', 100)"
-                        [disabled]="!selectedPair()"
-                        class="h-10 rounded-lg border-2 text-sm font-bold transition-all duration-200"
-                      />
-                    </div>
-                  </div>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
+                    Quantity<span *ngIf="selectedPair()?.baseAsset?.symbol">
+                      ({{ selectedPair()?.baseAsset?.symbol }})</span
+                    >
+                  </label>
+                </p-floatlabel>
+                <!-- Percentage Buttons -->
+                <div class="space-y-3">
+                  <p-selectbutton
+                    [options]="quickAmountOptions"
+                    [(ngModel)]="selectedBuyPercentage"
+                    (onChange)="onBuyPercentageChange($event.value)"
+                    optionLabel="label"
+                    optionValue="value"
+                    size="large"
+                    [disabled]="!selectedPairValue()"
+                    class="quickAmount flex w-full justify-between"
+                  />
                 </div>
               </div>
               <div
@@ -350,22 +296,21 @@
 
               <!-- Price Input (for Limit/Stop orders) -->
               <div *ngIf="buyOrderForm.get('type')?.value !== 'MARKET'" class="space-y-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-dollar text-primary-600 dark:text-primary-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Price</label>
-                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
-                    >({{ selectedPair()?.quoteAsset?.symbol }})</span
-                  >
-                </div>
-                <p-inputnumber
-                  formControlName="price"
-                  placeholder="0.00"
-                  mode="decimal"
-                  [minFractionDigits]="2"
-                  [maxFractionDigits]="8"
-                  class="w-full"
-                  [style]="{ 'border-radius': '12px' }"
-                />
+                <p-floatlabel variant="on">
+                  <p-inputnumber
+                    formControlName="price"
+                    mode="decimal"
+                    [minFractionDigits]="2"
+                    [maxFractionDigits]="8"
+                    size="large"
+                    class="w-full"
+                  />
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
+                    Price<span *ngIf="selectedPair()?.quoteAsset?.symbol">
+                      ({{ selectedPair()?.quoteAsset?.symbol }})</span
+                    >
+                  </label>
+                </p-floatlabel>
               </div>
 
               <!-- Stop Price (for Stop orders) -->
@@ -375,22 +320,21 @@
                 "
                 class="space-y-3"
               >
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-stop text-orange-600 dark:text-orange-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Stop Price</label>
-                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
-                    >({{ selectedPair()?.quoteAsset?.symbol }})</span
-                  >
-                </div>
-                <p-inputnumber
-                  formControlName="stopPrice"
-                  placeholder="0.00"
-                  mode="decimal"
-                  [minFractionDigits]="2"
-                  [maxFractionDigits]="8"
-                  class="w-full"
-                  [style]="{ 'border-radius': '12px' }"
-                />
+                <p-floatlabel variant="on">
+                  <p-inputnumber
+                    formControlName="stopPrice"
+                    mode="decimal"
+                    [minFractionDigits]="2"
+                    [maxFractionDigits]="8"
+                    size="large"
+                    class="w-full"
+                  />
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
+                    Stop Price<span *ngIf="selectedPair()?.quoteAsset?.symbol">
+                      ({{ selectedPair()?.quoteAsset?.symbol }})</span
+                    >
+                  </label>
+                </p-floatlabel>
                 <div
                   class="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-800 dark:bg-orange-900/20"
                 >
@@ -432,7 +376,7 @@
                 type="submit"
                 [label]="'Buy ' + (selectedPair()?.baseAsset?.symbol || '')"
                 icon="pi pi-arrow-up"
-                class="h-14 w-full rounded-2xl border-0 bg-gradient-to-r from-green-600 to-emerald-600 text-lg font-bold shadow-lg transition-all duration-200 hover:from-green-700 hover:to-emerald-700 hover:shadow-xl"
+                class="h-14 w-full rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 text-lg font-bold shadow-lg transition-all duration-200 hover:from-green-700 hover:to-emerald-700 hover:shadow-xl"
                 [disabled]="buyOrderForm.invalid || createOrderMutation.isPending() || !selectedPair()"
                 [loading]="createOrderMutation.isPending()"
               />
@@ -440,136 +384,100 @@
           </div>
         </p-tabpanel>
 
-        <p-tabpanel value="sell" class="border-0">
+        <p-tabpanel value="sell">
           <div class="p-6">
             <form [formGroup]="sellOrderForm" (ngSubmit)="onSubmitOrder('SELL')" class="space-y-6">
               <!-- Sell Order Form -->
               <div class="space-y-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-cog text-primary-600 dark:text-primary-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Order Type</label>
-                </div>
-                <p-select
-                  formControlName="type"
-                  [options]="enhancedOrderTypeOptions"
-                  placeholder="Select order type"
-                  class="w-full"
-                  optionLabel="label"
-                  optionValue="value"
-                  [style]="{ 'border-radius': '12px' }"
-                >
-                  <ng-template pTemplate="selectedItem" let-option>
-                    <div class="flex items-center gap-2">
-                      <i [class]="option.icon" class="text-sm"></i>
-                      <span>{{ option.label }}</span>
-                    </div>
-                  </ng-template>
-                  <ng-template pTemplate="item" let-option>
-                    <div class="flex items-center gap-2">
-                      <i [class]="option.icon" class="text-sm"></i>
-                      <div>
-                        <div class="font-medium">{{ option.label }}</div>
-                        <div class="text-surface-600 dark:text-surface-400 text-xs">{{ option.description }}</div>
+                <p-floatlabel variant="on">
+                  <p-select
+                    inputId="sellOrderType"
+                    formControlName="type"
+                    [options]="enhancedOrderTypeOptions"
+                    placeholder="Select order type"
+                    class="w-full"
+                    optionLabel="label"
+                    optionValue="value"
+                    size="large"
+                  >
+                    <ng-template pTemplate="selectedItem" let-option>
+                      <div class="flex items-center gap-2">
+                        <i [class]="option.icon" class="text-sm"></i>
+                        <span>{{ option.label }}</span>
                       </div>
-                    </div>
-                  </ng-template>
-                </p-select>
+                    </ng-template>
+                    <ng-template pTemplate="item" let-option>
+                      <div class="flex items-center gap-2">
+                        <i [class]="option.icon" class="text-sm"></i>
+                        <div>
+                          <div class="font-medium">{{ option.label }}</div>
+                          <div class="text-surface-600 dark:text-surface-400 text-xs">{{ option.description }}</div>
+                        </div>
+                      </div>
+                    </ng-template>
+                  </p-select>
+                  <label for="sellOrderType">Order Type</label>
+                </p-floatlabel>
               </div>
 
               <div class="space-y-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-calculator text-primary-600 dark:text-primary-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Quantity</label>
-                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
-                    >({{ selectedPair()?.baseAsset?.symbol }})</span
-                  >
-                </div>
-                <div class="space-y-4">
+                <p-floatlabel variant="on">
                   <p-inputnumber
                     formControlName="quantity"
-                    placeholder="0.00"
                     mode="decimal"
                     [minFractionDigits]="2"
                     [maxFractionDigits]="8"
+                    size="large"
                     class="w-full"
-                    [style]="{ 'border-radius': '12px' }"
                   />
-                  <!-- Percentage Buttons -->
-                  <div class="space-y-2">
-                    <div class="mb-2 flex items-center gap-2">
-                      <i class="pi pi-percentage text-surface-400 dark:text-surface-500 text-xs"></i>
-                      <span class="text-surface-600 dark:text-surface-400 text-xs font-medium">Quick Amount</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                      <p-button
-                        label="25%"
-                        severity="secondary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('SELL', 25)"
-                        [disabled]="!selectedPair()"
-                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
-                      />
-                      <p-button
-                        label="50%"
-                        severity="secondary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('SELL', 50)"
-                        [disabled]="!selectedPair()"
-                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
-                      />
-                      <p-button
-                        label="75%"
-                        severity="secondary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('SELL', 75)"
-                        [disabled]="!selectedPair()"
-                        class="hover:border-primary-400 h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200"
-                      />
-                      <p-button
-                        label="Max"
-                        severity="primary"
-                        size="small"
-                        outlined
-                        (click)="setQuantityPercentage('SELL', 100)"
-                        [disabled]="!selectedPair()"
-                        class="h-10 rounded-lg border-2 text-sm font-bold transition-all duration-200"
-                      />
-                    </div>
-                  </div>
-                  <div
-                    class="bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700 rounded-xl border p-3"
-                  >
-                    <div class="flex items-center justify-between text-sm">
-                      <span class="text-surface-600 dark:text-surface-400 font-medium">Available Balance</span>
-                      <span class="text-surface-900 dark:text-surface-100 font-semibold">
-                        {{ getSellBalance()?.available | number: '1.2-8' }} {{ selectedPair()?.baseAsset?.symbol }}
-                      </span>
-                    </div>
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
+                    Quantity<span *ngIf="selectedPair()?.baseAsset?.symbol">
+                      ({{ selectedPair()?.baseAsset?.symbol }})</span
+                    >
+                  </label>
+                </p-floatlabel>
+                <!-- Percentage Buttons -->
+                <div class="space-y-3">
+                  <p-selectbutton
+                    [options]="quickAmountOptions"
+                    [(ngModel)]="selectedSellPercentage"
+                    (onChange)="onSellPercentageChange($event.value)"
+                    optionLabel="label"
+                    optionValue="value"
+                    size="large"
+                    [disabled]="!selectedPairValue()"
+                    class="quickAmount flex w-full justify-between"
+                  />
+                </div>
+                <div
+                  class="bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700 mt-4 rounded-xl border p-3"
+                >
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-surface-600 dark:text-surface-400 font-medium">Available Balance</span>
+                    <span class="text-surface-900 dark:text-surface-100 font-semibold">
+                      {{ getSellBalance()?.available | number: '1.2-8' }} {{ selectedPair()?.baseAsset?.symbol }}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <!-- Price Input (for Limit/Stop orders) -->
               <div *ngIf="sellOrderForm.get('type')?.value !== 'MARKET'" class="space-y-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <i class="pi pi-dollar text-primary-600 dark:text-primary-400"></i>
-                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">Price</label>
-                  <span class="text-surface-500 dark:text-surface-400 text-xs font-medium"
-                    >({{ selectedPair()?.quoteAsset?.symbol }})</span
-                  >
-                </div>
-                <p-inputnumber
-                  formControlName="price"
-                  placeholder="0.00"
-                  mode="decimal"
-                  [minFractionDigits]="2"
-                  [maxFractionDigits]="8"
-                  class="w-full"
-                  [style]="{ 'border-radius': '12px' }"
-                />
+                <p-floatlabel variant="on">
+                  <p-inputnumber
+                    formControlName="price"
+                    mode="decimal"
+                    [minFractionDigits]="2"
+                    [maxFractionDigits]="8"
+                    size="large"
+                    class="w-full"
+                  />
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
+                    Price<span *ngIf="selectedPair()?.quoteAsset?.symbol">
+                      ({{ selectedPair()?.quoteAsset?.symbol }})</span
+                    >
+                  </label>
+                </p-floatlabel>
               </div>
 
               <!-- Stop Price (for Stop orders) -->
@@ -577,22 +485,31 @@
                 *ngIf="
                   sellOrderForm.get('type')?.value === 'STOP_LOSS' || sellOrderForm.get('type')?.value === 'STOP_LIMIT'
                 "
+                class="space-y-3"
               >
-                <label class="mb-2 block text-sm font-medium"
-                  >Stop Price ({{ selectedPair()?.quoteAsset?.symbol }})</label
+                <p-floatlabel variant="on">
+                  <p-inputnumber
+                    formControlName="stopPrice"
+                    mode="decimal"
+                    [minFractionDigits]="2"
+                    [maxFractionDigits]="8"
+                    size="large"
+                    class="w-full"
+                  />
+                  <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
+                    Stop Price<span *ngIf="selectedPair()?.quoteAsset?.symbol">
+                      ({{ selectedPair()?.quoteAsset?.symbol }})</span
+                    >
+                  </label>
+                </p-floatlabel>
+                <div
+                  class="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-800 dark:bg-orange-900/20"
                 >
-                <p-inputnumber
-                  formControlName="stopPrice"
-                  placeholder="0.00"
-                  mode="decimal"
-                  [minFractionDigits]="2"
-                  [maxFractionDigits]="8"
-                  class="w-full"
-                />
-                <div class="text-surface-600 dark:text-surface-400 mt-1 text-xs">
-                  <i class="pi pi-info-circle mr-1"></i>
-                  Order will trigger when price
-                  {{ sellOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+                  <i class="pi pi-info-circle mt-0.5 text-sm text-orange-600 dark:text-orange-400"></i>
+                  <div class="text-sm text-orange-700 dark:text-orange-300">
+                    <span class="font-medium">Trigger Condition:</span> Order will execute when price
+                    {{ sellOrderForm.get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+                  </div>
                 </div>
               </div>
 
@@ -626,7 +543,7 @@
                 type="submit"
                 label="Sell {{ selectedPair()?.baseAsset?.symbol }}"
                 icon="pi pi-arrow-down"
-                class="h-14 w-full rounded-2xl border-0 bg-gradient-to-r from-red-600 to-rose-600 text-lg font-bold shadow-lg transition-all duration-200 hover:from-red-700 hover:to-rose-700 hover:shadow-xl"
+                class="h-14 w-full rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 text-lg font-bold shadow-lg transition-all duration-200 hover:from-red-700 hover:to-rose-700 hover:shadow-xl"
                 [disabled]="sellOrderForm.invalid || createOrderMutation.isPending()"
                 [loading]="createOrderMutation.isPending()"
               />
@@ -832,3 +749,9 @@
 
   <p-toast />
 </div>
+
+<style>
+  :host ::ng-deep .quickAmount .p-togglebutton {
+    flex: 1;
+  }
+</style>

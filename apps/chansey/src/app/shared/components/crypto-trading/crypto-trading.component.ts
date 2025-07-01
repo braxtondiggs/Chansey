@@ -1,23 +1,25 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, OnInit, OnDestroy, signal, computed, effect } from '@angular/core';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { MessageService } from 'primeng/api';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { FloatLabel } from 'primeng/floatlabel';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { SelectModule } from 'primeng/select';
+import { SelectButtonModule } from 'primeng/selectbutton';
 import { TableModule } from 'primeng/table';
 import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import { Subject, takeUntil } from 'rxjs';
 
-import { OrderSide, OrderType, OrderStatus, Exchange, TickerPair } from '@chansey/api-interfaces';
+import { Exchange, OrderSide, OrderStatus, OrderType, TickerPair } from '@chansey/api-interfaces';
 
 import { AuthService } from '../../services';
-import { CryptoTradingService, Balance } from '../../services/crypto-trading.service';
+import { Balance, CryptoTradingService } from '../../services/crypto-trading.service';
 import { ExchangeService } from '../../services/exchange.service';
 
 @Component({
@@ -25,6 +27,7 @@ import { ExchangeService } from '../../services/exchange.service';
   standalone: true,
   imports: [
     CommonModule,
+    FloatLabel,
     FormsModule,
     ReactiveFormsModule,
     AvatarModule,
@@ -32,6 +35,7 @@ import { ExchangeService } from '../../services/exchange.service';
     CardModule,
     InputNumberModule,
     SelectModule,
+    SelectButtonModule,
     TabsModule,
     TableModule,
     ToastModule,
@@ -52,6 +56,8 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   selectedExchangeId = signal<string | null>(null);
   activeOrderTab = signal<string>('buy');
   showActiveOrders = signal<boolean>(true);
+  selectedBuyPercentage = signal<number | null>(null);
+  selectedSellPercentage = signal<number | null>(null);
 
   // Forms
   buyOrderForm!: FormGroup;
@@ -94,7 +100,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
         value: exchange.id,
         image: exchange.image,
         status: isActive ? 'connected' : 'disconnected',
-        pairCount: 0
+        pairCount: exchange.tickerPairsCount || 0
       };
     });
   });
@@ -121,7 +127,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     {
       label: 'Market',
       value: OrderType.MARKET,
-      icon: 'pi pi-flash',
+      icon: 'pi pi-bolt',
       description: 'Execute immediately at current market price'
     },
     {
@@ -142,6 +148,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       icon: 'pi pi-cog',
       description: 'Limit order triggered when price hits stop price'
     }
+  ];
+
+  quickAmountOptions = [
+    { label: '25%', value: 25 },
+    { label: '50%', value: 50 },
+    { label: '75%', value: 75 },
+    { label: 'Max', value: 100 }
   ];
 
   // Auto-select the first connected exchange when available
@@ -419,6 +432,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     if (!balance || !pair) return;
 
+    // Update the selected percentage signal
+    if (side === 'BUY') {
+      this.selectedBuyPercentage.set(percentage);
+    } else {
+      this.selectedSellPercentage.set(percentage);
+    }
+
     let quantity: number;
     if (side === 'BUY') {
       // For buying, calculate quantity based on available quote currency
@@ -431,6 +451,18 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     }
 
     form.get('quantity')?.setValue(quantity);
+  }
+
+  onBuyPercentageChange(percentage: number | null) {
+    if (percentage !== null) {
+      this.setQuantityPercentage('BUY', percentage);
+    }
+  }
+
+  onSellPercentageChange(percentage: number | null) {
+    if (percentage !== null) {
+      this.setQuantityPercentage('SELL', percentage);
+    }
   }
 
   calculateMaxBuyQuantity(): number {

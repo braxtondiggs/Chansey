@@ -109,4 +109,13 @@ export class CreateExchangeDto {
     default: true
   })
   isScraped?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @ApiProperty({
+    required: false,
+    description: 'Total count of ticker pairs available on this exchange',
+    default: 0
+  })
+  tickerPairsCount?: number;
 }
