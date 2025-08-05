@@ -37,7 +37,7 @@ export class RefreshTokenService {
       const timeUntilExpiry = payload.exp - currentTime;
       const rememberMe = timeUntilExpiry > 14 * 24 * 60 * 60; // If more than 14 days remaining, it was a remember me token
 
-      // Generate new tokens with same remember me preference
+      // Generate new tokens with same remember me preference and preserved roles
       const newAccessToken = await this.generateAccessToken(user);
       const newRefreshToken = await this.generateRefreshToken(user, rememberMe);
 
@@ -70,7 +70,8 @@ export class RefreshTokenService {
   async generateRefreshToken(user: User, rememberMe = false): Promise<string> {
     const payload = {
       sub: user.id,
-      type: 'refresh'
+      type: 'refresh',
+      roles: (user as any).roles || ['user'] // Include roles in refresh token to preserve them
     };
 
     // Use longer expiration for remember me
