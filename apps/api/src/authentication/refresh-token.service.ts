@@ -29,13 +29,22 @@ export class RefreshTokenService {
         throw new UnauthorizedException('User not found');
       }
 
+      // Extract roles from the refresh token payload
+      // Refresh tokens now include roles to preserve them during token refresh
+      const userRoles = payload.roles || ['user']; // Default to 'user' if no roles found
+
+      console.log(`Refreshing token for user ${payload.sub} with roles:`, userRoles);
+
       // Check if this was a "remember me" token by looking at its expiration
       const currentTime = Math.floor(Date.now() / 1000);
       const timeUntilExpiry = payload.exp - currentTime;
       const rememberMe = timeUntilExpiry > 14 * 24 * 60 * 60; // If more than 14 days remaining, it was a remember me token
 
-      // Generate new tokens with same remember me preference
-      const newAccessToken = await this.generateAccessToken(user);
+      // Add roles to user object for token generation
+      const userWithRoles = { ...user, roles: userRoles };
+
+      // Generate new tokens with same remember me preference and preserved roles
+      const newAccessToken = await this.generateAccessToken(userWithRoles);
       const newRefreshToken = await this.generateRefreshToken(user, rememberMe);
 
       return {
@@ -67,7 +76,8 @@ export class RefreshTokenService {
   async generateRefreshToken(user: User, rememberMe = false): Promise<string> {
     const payload = {
       sub: user.id,
-      type: 'refresh'
+      type: 'refresh',
+      roles: (user as any).roles || ['user'] // Include roles in refresh token to preserve them
     };
 
     // Use longer expiration for remember me
