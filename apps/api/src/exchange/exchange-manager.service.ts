@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as ccxt from 'ccxt';
 
@@ -23,6 +23,7 @@ export class ExchangeManagerService {
     private readonly binanceUSService: BinanceUSService,
     private readonly coinbaseService: CoinbaseService,
     private readonly coinbaseExchangeService: CoinbaseExchangeService,
+    @Inject(forwardRef(() => ExchangeService))
     private readonly exchangeService: ExchangeService
   ) {}
 
@@ -52,8 +53,17 @@ export class ExchangeManagerService {
    */
   async getExchangeClient(exchangeSlug: string, user?: User): Promise<ccxt.Exchange> {
     const service = this.getExchangeService(exchangeSlug);
-    console.log(`Getting client for exchange: ${service}`);
     return await service.getClient(user);
+  }
+
+  /**
+   * Get a public-only exchange client (no API keys, public endpoints only)
+   * @param exchangeSlug Exchange identifier (defaults to 'binance_us')
+   * @returns Public exchange client instance
+   */
+  async getPublicClient(exchangeSlug = 'binance_us'): Promise<ccxt.Exchange> {
+    const service = this.getExchangeService(exchangeSlug);
+    return await service.getPublicClient();
   }
 
   /**
@@ -77,6 +87,17 @@ export class ExchangeManagerService {
   async getBalance(exchangeSlug: string, user: User) {
     const service = this.getExchangeService(exchangeSlug);
     return await service.getBalance(user);
+  }
+
+  /**
+   * Format symbol for a specific exchange using the base service implementation
+   * @param exchangeSlug Exchange identifier
+   * @param symbol Raw symbol to format
+   * @returns Formatted symbol
+   */
+  formatSymbol(exchangeSlug: string, symbol: string): string {
+    const service = this.getExchangeService(exchangeSlug);
+    return service.formatSymbol(symbol);
   }
 
   /**

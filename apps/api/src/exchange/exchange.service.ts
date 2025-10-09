@@ -7,6 +7,7 @@ import { CreateExchangeDto, UpdateExchangeDto } from './dto';
 import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
 
+import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
@@ -14,7 +15,8 @@ export class ExchangeService {
   constructor(
     @InjectRepository(Exchange) private readonly exchange: Repository<Exchange>,
     @Inject(forwardRef(() => ExchangeKeyService))
-    private readonly exchangeKeyService: ExchangeKeyService
+    private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly tickerPairService: TickerPairService
   ) {}
 
   async findOne(id: string): Promise<Exchange> {
@@ -65,6 +67,63 @@ export class ExchangeService {
     const response = await this.exchange.delete(exchangeId);
     if (!response.affected) throw new NotFoundCustomException('Exchange', { id: exchangeId });
     return response;
+  }
+
+  async getExchangeTickers(exchangeId: string) {
+    // Verify exchange exists
+    await this.getExchangeById(exchangeId);
+
+    // Get ticker pairs from database with relations
+    const tickerPairs = await this.tickerPairService.getTickerPairsByExchange(exchangeId);
+
+    // Transform to a more readable format
+    return tickerPairs.map((pair) => {
+      // Handle fiat pairs where coin objects might be null
+      const baseSymbol = pair.baseAsset?.symbol || pair.baseAssetSymbol;
+      const quoteSymbol = pair.quoteAsset?.symbol || pair.quoteAssetSymbol;
+
+      return {
+        symbol: `${baseSymbol}/${quoteSymbol}`,
+        base: baseSymbol,
+        quote: quoteSymbol,
+        baseAsset: pair.baseAsset
+          ? {
+              id: pair.baseAsset.id,
+              name: pair.baseAsset.name,
+              symbol: pair.baseAsset.symbol,
+              slug: pair.baseAsset.slug
+            }
+          : {
+              id: null,
+              name: pair.baseAssetSymbol,
+              symbol: pair.baseAssetSymbol,
+              slug: pair.baseAssetSymbol
+            },
+        quoteAsset: pair.quoteAsset
+          ? {
+              id: pair.quoteAsset.id,
+              name: pair.quoteAsset.name,
+              symbol: pair.quoteAsset.symbol,
+              slug: pair.quoteAsset.slug
+            }
+          : {
+              id: null,
+              name: pair.quoteAssetSymbol,
+              symbol: pair.quoteAssetSymbol,
+              slug: pair.quoteAssetSymbol
+            },
+        volume: pair.volume,
+        tradeUrl: pair.tradeUrl,
+        spreadPercentage: pair.spreadPercentage,
+        lastTraded: pair.lastTraded,
+        status: pair.status,
+        isSpotTradingAllowed: pair.isSpotTradingAllowed,
+        isMarginTradingAllowed: pair.isMarginTradingAllowed,
+        isFiatPair: pair.isFiatPair,
+        fetchAt: pair.fetchAt,
+        currentPrice: pair.baseAsset?.currentPrice || null
+      };
+    });
   }
 
   async createMany(exchanges: Exchange[]): Promise<Exchange[]> {

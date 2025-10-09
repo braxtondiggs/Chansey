@@ -172,6 +172,13 @@ export class Exchange {
   })
   isScraped: boolean;
 
+  @Column({ default: 0 })
+  @ApiProperty({
+    description: 'Total count of ticker pairs available on this exchange',
+    example: 245
+  })
+  tickerPairsCount: number;
+
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;
 

@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsEnum, IsNotEmpty, IsUUID, IsNumberString, IsOptional, ValidateIf } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
 
 import { MinStringNumber } from '../../utils/decorators/min-string-number.decorator';
-import { OrderType, OrderSide } from '../order.entity';
+import { OrderSide, OrderType } from '../order.entity';
 
 export class OrderDto {
   @IsNotEmpty()
@@ -25,12 +25,20 @@ export class OrderDto {
   type: OrderType;
 
   @IsNotEmpty()
+  @IsString()
+  @ApiProperty({
+    example: '8a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f',
+    description: 'Exchange ID to execute the order on (e.g., binance_us, coinbase, gdax)'
+  })
+  exchangeId: string;
+
+  @IsNotEmpty()
   @IsUUID()
   @ApiProperty({
     example: '7a8a03ab-07fe-4c8a-9b5a-50fdfeb9828f',
-    description: 'UUID of the coin to buy/sell'
+    description: 'UUID of the base coin to buy/sell'
   })
-  coinId: string;
+  baseCoinId: string;
 
   @IsOptional()
   @IsUUID()
@@ -50,12 +58,12 @@ export class OrderDto {
   })
   quantity: string;
 
-  @ValidateIf((o) => o.type === OrderType.LIMIT || o.type === OrderType.LIMIT_MAKER)
+  @ValidateIf((o) => o.type === OrderType.LIMIT || o.type === OrderType.STOP_LIMIT)
   @IsNotEmpty()
   @IsNumberString()
   @ApiProperty({
     example: '50000.00',
-    description: 'Price per unit (required for LIMIT orders)',
+    description: 'Price per unit (required for LIMIT and STOP_LIMIT orders)',
     required: false
   })
   price?: string;

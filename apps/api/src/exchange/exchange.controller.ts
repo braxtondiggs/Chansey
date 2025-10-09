@@ -71,6 +71,30 @@ export class ExchangeController {
     return this.exchange.getExchangeById(id);
   }
 
+  @Get(':id/tickers')
+  @ApiOperation({
+    summary: 'Get exchange tickers',
+    description: 'Retrieves all available ticker pairs from a specific exchange.'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the exchange',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Exchange tickers retrieved successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Exchange not found.'
+  })
+  getExchangeTickers(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.exchange.getExchangeTickers(id);
+  }
+
   @Post()
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
   @Roles('admin')

@@ -8,7 +8,9 @@ import { catchError, map } from 'rxjs/operators';
 
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
 
-import { useAuthMutation, useAuthQuery, createQueryKeys } from '@chansey-web/app/core/query/query.utils';
+import { createQueryKeys, useAuthMutation, useAuthQuery } from '@chansey-web/app/core/query/query.utils';
+
+import { environment } from '../../../environments/environment';
 
 // Define auth query keys
 export const authKeys = createQueryKeys<{
@@ -53,7 +55,7 @@ export class AuthService {
       map(() => true),
       catchError((error) => {
         console.error('Token refresh failed:', error);
-        this.logout();
+        if (environment.production) this.logout;
         return of(false);
       })
     );

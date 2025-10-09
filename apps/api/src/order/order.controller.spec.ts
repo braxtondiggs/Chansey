@@ -56,7 +56,8 @@ describe('OrderController', () => {
     const mockOrderDto: OrderDto = {
       side: OrderSide.BUY,
       type: OrderType.MARKET,
-      coinId: 'coin-btc',
+      baseCoinId: 'coin-btc',
+      exchangeId: 'binance_us',
       quantity: '0.1'
     };
 
@@ -86,6 +87,8 @@ describe('OrderController', () => {
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: undefined,
         side: undefined,
+        orderType: undefined,
+        isManual: undefined,
         limit: 50
       });
       expect(result).toEqual(mockOrders);
@@ -100,6 +103,8 @@ describe('OrderController', () => {
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: OrderStatus.FILLED,
         side: undefined,
+        orderType: undefined,
+        isManual: undefined,
         limit: 50
       });
       expect(result).toEqual(mockOrders);
@@ -114,6 +119,8 @@ describe('OrderController', () => {
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: undefined,
         side: OrderSide.BUY,
+        orderType: undefined,
+        isManual: undefined,
         limit: 50
       });
       expect(result).toEqual(mockOrders);
@@ -123,11 +130,13 @@ describe('OrderController', () => {
       const mockOrders = [mockOrder];
       orderService.getOrders.mockResolvedValue(mockOrders);
 
-      const result = await controller.getOrders(mockUser, undefined, undefined, 25);
+      const result = await controller.getOrders(mockUser, undefined, undefined, undefined, undefined, 25);
 
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: undefined,
         side: undefined,
+        orderType: undefined,
+        isManual: undefined,
         limit: 25
       });
       expect(result).toEqual(mockOrders);
@@ -137,11 +146,13 @@ describe('OrderController', () => {
       const mockOrders = [mockOrder];
       orderService.getOrders.mockResolvedValue(mockOrders);
 
-      const result = await controller.getOrders(mockUser, OrderStatus.FILLED, OrderSide.BUY, 10);
+      const result = await controller.getOrders(mockUser, OrderStatus.FILLED, OrderSide.BUY, OrderType.MARKET, true, 10);
 
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: OrderStatus.FILLED,
         side: OrderSide.BUY,
+        orderType: OrderType.MARKET,
+        isManual: true,
         limit: 10
       });
       expect(result).toEqual(mockOrders);

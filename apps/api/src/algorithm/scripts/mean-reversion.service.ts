@@ -5,7 +5,6 @@ import { CronJob } from 'cron';
 
 import { OrderService } from './../../order/order.service';
 
-import { OrderSide, OrderType } from '../../order/order.entity';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Price } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';

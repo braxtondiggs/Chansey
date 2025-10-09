@@ -1,6 +1,6 @@
 <p-card class="user-assets-container">
   <ng-template pTemplate="header">
-    <div class="flex items-center justify-between px-4 py-5 border-b border-gray-100 dark:border-neutral-700">
+    <div class="flex items-center justify-between border-b border-gray-100 px-4 py-5 dark:border-neutral-700">
       <div class="flex items-center gap-4">
         <i class="pi pi-wallet text-primary"></i>
         <h2 class="m-0 text-xl font-semibold">Your Assets</h2>
@@ -11,7 +11,7 @@
   <!-- Loading skeleton -->
   <div *ngIf="assetsQuery.isPending()" class="mb-3 overflow-hidden">
     <!-- Skeleton for table header -->
-    <div class="flex p-3 mb-2 border-b border-gray-100 rounded-t dark:border-neutral-700">
+    <div class="mb-2 flex rounded-t border-b border-gray-100 p-3 dark:border-neutral-700">
       <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
       <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
       <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
@@ -19,8 +19,8 @@
     </div>
 
     <!-- Skeleton for table rows -->
-    <div *ngFor="let i of [1, 2, 3, 4]" class="flex p-3 mb-2 border-b border-gray-50 dark:border-neutral-700">
-      <div class="flex items-center mr-6">
+    <div *ngFor="let i of [1, 2, 3, 4]" class="mb-2 flex border-b border-gray-50 p-3 dark:border-neutral-700">
+      <div class="mr-6 flex items-center">
         <p-skeleton shape="circle" size="2.5rem" styleClass="mr-2"></p-skeleton>
         <p-skeleton width="120px" height="1.25rem"></p-skeleton>
       </div>
@@ -33,13 +33,13 @@
   <!-- Empty state -->
   <div
     *ngIf="!assetsQuery.isPending() && assets().length === 0"
-    class="flex flex-col items-center justify-center px-4 py-12 m-3 rounded-lg bg-gray-50/30 dark:bg-gray-800/20"
+    class="m-3 flex flex-col items-center justify-center rounded-lg bg-gray-50/30 px-4 py-12 dark:bg-gray-800/20"
   >
-    <div class="p-4 mb-4 rounded-full bg-primary/10">
+    <div class="bg-primary/10 mb-4 rounded-full p-4">
       <i class="text-primary pi pi-dollar !text-4xl"></i>
     </div>
     <h3 class="mb-2 text-2xl font-medium">No assets yet</h3>
-    <p class="max-w-md mb-6 text-center">
+    <p class="mb-6 max-w-md text-center">
       You haven't purchased any assets yet.<br />Start trading to build your portfolio.
     </p>
   </div>
@@ -78,10 +78,10 @@
         <tr>
           <td>
             <div class="flex items-center gap-1">
-              <p-avatar [image]="asset.image" shape="circle" size="large" class="mr-2 shadow-sm" />
+              <p-avatar [image]="asset.image" shape="circle" size="large" class="mr-2 min-w-10 shadow-sm" />
               <div class="flex flex-col">
                 <span class="font-medium">{{ asset.name }}</span>
-                <span class="text-xs text-gray-500 uppercase dark:text-gray-400">{{ asset.symbol }}</span>
+                <span class="text-xs uppercase text-gray-500 dark:text-gray-400">{{ asset.symbol }}</span>
               </div>
             </div>
           </td>

@@ -14,7 +14,7 @@
     "^@angular/(.*)$",
     "^@nestjs/(.*)$",
     "<THIRD_PARTY_MODULES>",
-    "^(crypto|fs|path|util|events|http|stream|buffer)$",
+    "^(crypto|fs|path|util|events|http|https|stream|buffer)$",
     "^@chansey/(.*)$",
     "^@chansey-api/(.*)$",
     "^@chansey-web/(.*)$",

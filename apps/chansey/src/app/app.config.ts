@@ -55,8 +55,8 @@ const providers = [
           staleTime: 1000 * 60 * 5, // 5 minutes
           gcTime: 1000 * 60 * 10, // 10 minutes
           refetchOnWindowFocus: true,
-          retry: true,
-          retryDelay: 1000,
+          retry: 2, // Reduce retry attempts from true (3) to 2
+          retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000), // Exponential backoff
           refetchOnReconnect: true,
           refetchOnMount: true
         }
