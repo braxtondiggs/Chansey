@@ -9,13 +9,15 @@ import {
   Patch,
   Post,
   UseGuards,
-  Query
+  Query,
+  Req
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 
 import { AlgorithmService } from './algorithm.service';
-import { CreateAlgorithmDto, UpdateAlgorithmDto, AlgorithmResponseDto, DeleteResponseDto } from './dto';
+import { CreateAlgorithmDto, UpdateAlgorithmDto, AlgorithmResponseDto, DeleteResponseDto, ActivateAlgorithmDto } from './dto';
 import { AlgorithmRegistry } from './registry/algorithm-registry.service';
+import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
 
 import { Roles } from '../authentication/decorator/roles.decorator';
@@ -29,6 +31,7 @@ import { RolesGuard } from '../authentication/guard/roles.guard';
 export class AlgorithmController {
   constructor(
     private readonly algorithmService: AlgorithmService,
+    private readonly algorithmActivationService: AlgorithmActivationService,
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly contextBuilder: AlgorithmContextBuilder
   ) {}
@@ -242,5 +245,86 @@ export class AlgorithmController {
   })
   async deleteAlgorithm(@Param('id', ParseUUIDPipe) algorithmId: string) {
     return await this.algorithmService.remove(algorithmId);
+  }
+
+  @Get('active')
+  @ApiOperation({
+    summary: 'Get active algorithms',
+    description: 'Retrieve all active algorithm activations for the authenticated user.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Active algorithms retrieved successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'User not authenticated.'
+  })
+  async getActiveAlgorithms(@Req() request: any) {
+    const userId = request.user.id;
+    return await this.algorithmActivationService.findUserActiveAlgorithms(userId);
+  }
+
+  @Post(':id/activate')
+  @ApiOperation({
+    summary: 'Activate an algorithm',
+    description: 'Activate an algorithm for automated trading with a specific exchange key.'
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Algorithm ID',
+    type: 'string'
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Algorithm activated successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Algorithm is already activated or exchange key not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'User not authenticated.'
+  })
+  async activateAlgorithm(
+    @Param('id', ParseUUIDPipe) algorithmId: string,
+    @Body() activateAlgorithmDto: ActivateAlgorithmDto,
+    @Req() request: any
+  ) {
+    const userId = request.user.id;
+    return await this.algorithmActivationService.activate(
+      userId,
+      algorithmId,
+      activateAlgorithmDto.exchangeKeyId,
+      activateAlgorithmDto.config
+    );
+  }
+
+  @Post(':id/deactivate')
+  @ApiOperation({
+    summary: 'Deactivate an algorithm',
+    description: 'Deactivate an active algorithm to stop automated trading.'
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Algorithm ID',
+    type: 'string'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Algorithm deactivated successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Algorithm is not active or activation not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'User not authenticated.'
+  })
+  async deactivateAlgorithm(@Param('id', ParseUUIDPipe) algorithmId: string, @Req() request: any) {
+    const userId = request.user.id;
+    return await this.algorithmActivationService.deactivate(userId, algorithmId);
   }
 }

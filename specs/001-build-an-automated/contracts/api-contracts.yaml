@@ -1,0 +1,452 @@
+openapi: 3.0.3
+info:
+  title: Automated Cryptocurrency Trading Platform API
+  description: REST API for algorithm activation, trade execution, and performance tracking
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development
+  - url: https://chansey-production.up.railway.app/api
+    description: Production
+
+tags:
+  - name: Algorithms
+    description: Algorithm activation and management endpoints
+  - name: Performance
+    description: Algorithm performance metrics and rankings
+
+paths:
+  /algorithms:
+    get:
+      tags: [Algorithms]
+      summary: List all available algorithms
+      description: Returns list of algorithms with their descriptions, categories, and status
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Algorithm'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /algorithms/active:
+    get:
+      tags: [Algorithms]
+      summary: List user's active algorithm activations
+      description: Returns algorithms currently activated by the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlgorithmActivation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /algorithms/{id}:
+    get:
+      tags: [Algorithms]
+      summary: Get algorithm details
+      description: Returns detailed information about a specific algorithm
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Algorithm'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /algorithms/{id}/activate:
+    post:
+      tags: [Algorithms]
+      summary: Activate algorithm for user
+      description: |
+        Creates an AlgorithmActivation for the authenticated user, enabling automated
+        trade execution. Requires valid exchangeKeyId.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - exchangeKeyId
+              properties:
+                exchangeKeyId:
+                  type: string
+                  format: uuid
+                  description: Exchange API key to use for trading
+                config:
+                  type: object
+                  description: User-specific algorithm configuration overrides
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Algorithm activated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlgorithmActivation'
+        '400':
+          description: Invalid request (e.g., algorithm already activated, invalid exchange key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /algorithms/{id}/deactivate:
+    post:
+      tags: [Algorithms]
+      summary: Deactivate algorithm for user
+      description: |
+        Marks AlgorithmActivation as inactive, stopping automated trade execution.
+        Historical data and performance metrics are preserved.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Algorithm deactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlgorithmActivation'
+        '400':
+          description: Algorithm not currently active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /algorithms/{id}/performance:
+    get:
+      tags: [Performance]
+      summary: Get algorithm performance metrics
+      description: |
+        Returns comprehensive performance metrics for the user's algorithm activation
+        including ROI, Sharpe ratio, max drawdown, volatility, alpha/beta.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [24h, 7d, 30d, 90d, all]
+            default: 30d
+          description: Time period for metrics calculation
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlgorithmPerformance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Algorithm not activated or no performance data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /algorithms/{id}/performance/history:
+    get:
+      tags: [Performance]
+      summary: Get historical performance data
+      description: Returns time-series performance metrics for charting
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Start date for history (defaults to 30 days ago)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: End date for history (defaults to now)
+        - name: interval
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [5m, 1h, 1d]
+            default: 1h
+          description: Data point interval
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlgorithmPerformance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /algorithms/rankings:
+    get:
+      tags: [Performance]
+      summary: Get algorithm rankings
+      description: |
+        Returns user's algorithms sorted by performance rank.
+        Used for dynamic portfolio allocation adjustment.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    algorithmActivation:
+                      $ref: '#/components/schemas/AlgorithmActivation'
+                    performance:
+                      $ref: '#/components/schemas/AlgorithmPerformance'
+                    rank:
+                      type: integer
+                      description: Ranking (1 = best performer)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Algorithm:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+          enum: [technical, fundamental, sentiment, hybrid, custom]
+        status:
+          type: string
+          enum: [active, inactive, maintenance, error]
+        evaluate:
+          type: boolean
+        cron:
+          type: string
+          description: Cron schedule for algorithm evaluation
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AlgorithmActivation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        algorithmId:
+          type: string
+          format: uuid
+        algorithm:
+          $ref: '#/components/schemas/Algorithm'
+        exchangeKeyId:
+          type: string
+          format: uuid
+        isActive:
+          type: boolean
+        allocationPercentage:
+          type: number
+          format: decimal
+          description: Percentage of portfolio per trade (dynamically adjusted by rank)
+        config:
+          type: object
+          additionalProperties: true
+          nullable: true
+        activatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deactivatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AlgorithmPerformance:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        algorithmActivationId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        roi:
+          type: number
+          format: decimal
+          description: Return on Investment (%)
+          nullable: true
+        winRate:
+          type: number
+          format: decimal
+          description: Win rate (%)
+          nullable: true
+        sharpeRatio:
+          type: number
+          format: decimal
+          description: Risk-adjusted return metric
+          nullable: true
+        maxDrawdown:
+          type: number
+          format: decimal
+          description: Maximum drawdown (%)
+          nullable: true
+        totalTrades:
+          type: integer
+          description: Total number of trades executed
+        riskAdjustedReturn:
+          type: number
+          format: decimal
+          nullable: true
+        volatility:
+          type: number
+          format: decimal
+          description: Standard deviation of returns
+          nullable: true
+        alpha:
+          type: number
+          format: decimal
+          description: Excess return vs market benchmark
+          nullable: true
+        beta:
+          type: number
+          format: decimal
+          description: Market correlation coefficient
+          nullable: true
+        rank:
+          type: integer
+          description: Ranking among user's algorithms (1 = best)
+          nullable: true
+        calculatedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          type: string
+        error:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Invalid or missing authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

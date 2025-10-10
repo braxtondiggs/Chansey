@@ -18,12 +18,10 @@
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
     "source.addMissingImports": "explicit",
-    "source.fixAll.eslint": "explicit"
+    "source.organizeImports": "always",
+    "source.fixAll": "explicit"
   },
   "vsicons.presets.angular": true,
-  "[css]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
   "tailwindCSS.experimental.classRegex": [["className=\"([^\"\\\\]*)\"", "\"([^\"]*)\""]],
   "tailwindCSS.includeLanguages": {
     "typescript": "javascript",
@@ -32,7 +30,6 @@
   "shellcheck.ignorePatterns": {
     "**/.env.example": true
   },
-  "chat.mcp.enabled": true,
   "mcp": {
     "inputs": [],
     "servers": {
@@ -46,6 +43,11 @@
   "files.associations": {
     "*.d.ts": "typescript"
   },
-  "chat.mcp.discovery.enabled": true,
+  "chat.mcp.discovery.enabled": {
+    "claude-desktop": true,
+    "windsurf": true,
+    "cursor-global": true,
+    "cursor-workspace": true
+  },
   "nxConsole.generateAiAgentRules": false
 }

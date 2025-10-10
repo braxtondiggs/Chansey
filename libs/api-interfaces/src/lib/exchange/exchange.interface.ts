@@ -26,6 +26,7 @@ export interface Exchange {
   createdAt: Date;
   updatedAt: Date;
   tickers?: TickerPair[];
+  tickerPairsCount?: number;
 }
 
 export interface ExchangeKey {

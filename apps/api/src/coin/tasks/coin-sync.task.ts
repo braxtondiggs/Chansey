@@ -155,9 +155,11 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
           let tickers = [];
 
           try {
+            const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
+
             // Get tickers from CoinGecko for this exchange
             const response = await this.gecko.exchangeIdTickers({
-              id: exchange.slug,
+              id,
               page
             });
 

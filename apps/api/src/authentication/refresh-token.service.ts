@@ -23,11 +23,14 @@ export class RefreshTokenService {
         algorithms: ['HS512']
       });
 
-      // Get user data
-      const user = await this.usersService.getById(payload.sub);
-      if (!user) {
+      // Get user data with auth profile (includes roles)
+      const baseUser = await this.usersService.getById(payload.sub);
+      if (!baseUser) {
         throw new UnauthorizedException('User not found');
       }
+
+      // Get user with full profile including roles
+      const user = await this.usersService.getWithAuthorizerProfile(baseUser);
 
       // Check if this was a "remember me" token by looking at its expiration
       const currentTime = Math.floor(Date.now() / 1000);
@@ -48,12 +51,12 @@ export class RefreshTokenService {
     }
   }
 
-  async generateAccessToken(user: User): Promise<string> {
+  async generateAccessToken(user: any): Promise<string> {
     console.log(`Generating access token for user: ${JSON.stringify(user)}`);
     const payload = {
       sub: user.id,
       email: user.email,
-      roles: (user as any).roles || ['user'], // Default to 'user' role if none assigned
+      roles: user.roles || ['user'], // Default to 'user' role if none assigned
       type: 'access'
     };
 

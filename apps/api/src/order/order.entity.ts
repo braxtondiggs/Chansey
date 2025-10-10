@@ -4,21 +4,25 @@ import { Transform } from 'class-transformer';
 import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
 import { Coin } from '../coin/coin.entity';
 import { Exchange } from '../exchange/exchange.entity';
 import { User } from '../users/users.entity';
 import { ColumnNumericTransformer } from '../utils/transformers';
 
 export enum OrderType {
-  LIMIT = 'LIMIT',
-  LIMIT_MAKER = 'LIMIT_MAKER',
-  MARKET = 'MARKET',
-  STOP = 'STOP',
-  STOP_MARKET = 'STOP_MARKET',
-  STOP_LOSS_LIMIT = 'STOP_LOSS_LIMIT',
-  TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
-  TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET',
-  TRAILING_STOP_MARKET = 'TRAILING_STOP_MARKET'
+  MARKET = 'market',
+  LIMIT = 'limit',
+  STOP_LOSS = 'stop_loss',
+  STOP_LIMIT = 'stop_limit',
+  TRAILING_STOP = 'trailing_stop',
+  TAKE_PROFIT = 'take_profit',
+  OCO = 'oco'
+}
+
+export enum TrailingType {
+  AMOUNT = 'amount',
+  PERCENTAGE = 'percentage'
 }
 
 export enum OrderSide {
@@ -294,6 +298,86 @@ export class Order {
     required: false
   })
   exchange?: Exchange;
+
+  @Column({ type: 'uuid', nullable: true })
+  @IsUUID()
+  @IsOptional()
+  @Index('IDX_order_algorithmActivationId')
+  @ApiProperty({
+    description: 'Algorithm activation that generated this order',
+    example: 'd6ee401g-1eh2-6111-2235-dfh7h9876335',
+    required: false
+  })
+  algorithmActivationId?: string;
+
+  @ManyToOne(() => AlgorithmActivation, { nullable: true, onDelete: 'SET NULL' })
+  @ApiProperty({
+    description: 'Algorithm activation that generated this order',
+    type: () => AlgorithmActivation,
+    required: false
+  })
+  algorithmActivation?: AlgorithmActivation;
+
+  @Column({ name: 'is_manual', type: 'boolean', default: false })
+  @ApiProperty({
+    description: 'Whether this order was placed manually by the user',
+    example: true,
+    default: false
+  })
+  isManual: boolean;
+
+  @Column({ name: 'exchange_key_id', type: 'uuid', nullable: true })
+  @IsUUID()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Exchange key used for this order',
+    example: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+    required: false
+  })
+  exchangeKeyId?: string;
+
+  @Column({
+    type: 'decimal',
+    name: 'trailing_amount',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Trailing amount for trailing stop orders',
+    example: 100.0,
+    required: false
+  })
+  trailingAmount?: number;
+
+  @Column({
+    type: 'enum',
+    name: 'trailing_type',
+    enum: TrailingType,
+    nullable: true
+  })
+  @IsEnum(TrailingType)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Trailing type (amount or percentage) for trailing stop orders',
+    enum: TrailingType,
+    required: false
+  })
+  trailingType?: TrailingType;
+
+  @Column({ name: 'oco_linked_order_id', type: 'uuid', nullable: true })
+  @IsUUID()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Linked order ID for OCO (One-Cancels-Other) orders',
+    example: 'b1c2d3e4-f5g6-7890-h123-i45678901234',
+    required: false
+  })
+  ocoLinkedOrderId?: string;
 
   @Column({
     type: 'varchar',
