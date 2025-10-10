@@ -159,11 +159,13 @@ export class OrderCalculationService {
     const typeMap: Record<string, OrderType> = {
       limit: OrderType.LIMIT,
       market: OrderType.MARKET,
-      stop: OrderType.STOP,
-      stop_loss: OrderType.STOP,
-      stop_loss_limit: OrderType.STOP_LOSS_LIMIT,
-      take_profit: OrderType.TAKE_PROFIT_LIMIT,
-      take_profit_limit: OrderType.TAKE_PROFIT_LIMIT
+      stop: OrderType.STOP_LOSS,
+      stop_loss: OrderType.STOP_LOSS,
+      stop_limit: OrderType.STOP_LIMIT,
+      stop_loss_limit: OrderType.STOP_LIMIT,
+      take_profit: OrderType.TAKE_PROFIT,
+      take_profit_limit: OrderType.TAKE_PROFIT,
+      trailing_stop: OrderType.TRAILING_STOP
     };
 
     return typeMap[ccxtType?.toLowerCase()] || OrderType.MARKET;

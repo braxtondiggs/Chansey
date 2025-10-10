@@ -2,7 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
@@ -11,13 +11,17 @@ import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderValidationService } from './services/order-validation.service';
 
 import { CoinService } from '../coin/coin.service';
+import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
+import { ExchangeService } from '../exchange/exchange.service';
 import { User } from '../users/users.entity';
 
 describe('OrderService', () => {
   let service: OrderService;
   let orderRepository: jest.Mocked<Repository<Order>>;
+  let exchangeService: jest.Mocked<ExchangeService>;
   let exchangeManagerService: jest.Mocked<ExchangeManagerService>;
+  let exchangeKeyService: jest.Mocked<ExchangeKeyService>;
   let coinService: jest.Mocked<CoinService>;
   let orderValidationService: jest.Mocked<OrderValidationService>;
   let orderCalculationService: jest.Mocked<OrderCalculationService>;
@@ -93,9 +97,22 @@ describe('OrderService', () => {
           }
         },
         {
+          provide: ExchangeService,
+          useValue: {
+            getExchangeById: jest.fn()
+          }
+        },
+        {
           provide: ExchangeManagerService,
           useValue: {
-            getExchangeClient: jest.fn()
+            getExchangeClient: jest.fn(),
+            formatSymbol: jest.fn()
+          }
+        },
+        {
+          provide: ExchangeKeyService,
+          useValue: {
+            findOne: jest.fn()
           }
         },
         {
@@ -122,7 +139,9 @@ describe('OrderService', () => {
 
     service = module.get<OrderService>(OrderService);
     orderRepository = module.get(getRepositoryToken(Order));
+    exchangeService = module.get(ExchangeService);
     exchangeManagerService = module.get(ExchangeManagerService);
+    exchangeKeyService = module.get(ExchangeKeyService);
     coinService = module.get(CoinService);
     orderValidationService = module.get(OrderValidationService);
     orderCalculationService = module.get(OrderCalculationService);
@@ -136,7 +155,8 @@ describe('OrderService', () => {
     const mockOrderDto: OrderDto = {
       side: OrderSide.BUY,
       type: OrderType.MARKET,
-      coinId: 'coin-btc',
+      baseCoinId: 'coin-btc',
+      exchangeId: 'binance_us',
       quantity: '0.1'
     };
 
@@ -151,7 +171,9 @@ describe('OrderService', () => {
         return Promise.resolve(null);
       });
       coinService.getCoinBySymbol.mockResolvedValue(mockQuoteCoin as any);
+      exchangeService.getExchangeById.mockResolvedValue({ slug: 'binance_us' } as any);
       exchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient as any);
+      exchangeManagerService.formatSymbol.mockReturnValue('BTC/USDT');
       orderValidationService.validateOrder.mockResolvedValue();
       mockExchangeClient.createOrder.mockResolvedValue(mockExchangeOrder);
       orderRepository.create.mockReturnValue(mockOrder);
@@ -163,19 +185,11 @@ describe('OrderService', () => {
 
       expect(coinService.getCoinById).toHaveBeenCalledWith('coin-btc');
       expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT');
+      expect(exchangeService.getExchangeById).toHaveBeenCalledWith('binance_us');
       expect(exchangeManagerService.getExchangeClient).toHaveBeenCalledWith('binance_us', mockUser);
-      expect(orderValidationService.validateOrder).toHaveBeenCalledWith(
-        mockOrderDto,
-        'BTC/USDT',
-        mockExchangeClient
-      );
-      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
-        'BTC/USDT',
-        'market',
-        'buy',
-        0.1,
-        undefined
-      );
+      expect(exchangeManagerService.formatSymbol).toHaveBeenCalledWith('binance_us', 'BTCUSDT');
+      expect(orderValidationService.validateOrder).toHaveBeenCalledWith(mockOrderDto, 'BTC/USDT', mockExchangeClient);
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith('BTC/USDT', 'market', 'buy', 0.1, undefined);
       expect(orderRepository.save).toHaveBeenCalled();
       expect(result).toEqual(mockOrder);
     });
@@ -193,13 +207,7 @@ describe('OrderService', () => {
 
       const result = await service.createOrder(sellOrderDto, mockUser);
 
-      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
-        'BTC/USDT',
-        'market',
-        'sell',
-        0.1,
-        undefined
-      );
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith('BTC/USDT', 'market', 'sell', 0.1, undefined);
       expect(result).toEqual(mockOrder);
     });
 
@@ -218,13 +226,7 @@ describe('OrderService', () => {
 
       await service.createOrder(limitOrderDto, mockUser);
 
-      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
-        'BTC/USDT',
-        'limit',
-        'buy',
-        0.1,
-        55000
-      );
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith('BTC/USDT', 'limit', 'buy', 0.1, 55000);
     });
 
     it('should use custom quote coin when provided', async () => {
@@ -239,27 +241,21 @@ describe('OrderService', () => {
         if (id === 'coin-busd') return Promise.resolve(customQuoteCoin as any);
         return Promise.resolve(null);
       });
+      exchangeManagerService.formatSymbol.mockReturnValue('BTC/BUSD');
 
       await service.createOrder(orderDtoWithQuote, mockUser);
 
       expect(coinService.getCoinById).toHaveBeenCalledWith('coin-busd');
-      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith(
-        'BTC/BUSD',
-        'market',
-        'buy',
-        0.1,
-        undefined
-      );
+      expect(exchangeManagerService.formatSymbol).toHaveBeenCalledWith('binance_us', 'BTCBUSD');
+      expect(mockExchangeClient.createOrder).toHaveBeenCalledWith('BTC/BUSD', 'market', 'buy', 0.1, undefined);
     });
 
     it('should throw BadRequestException for invalid coin ID', async () => {
       coinService.getCoinById.mockResolvedValue(null);
 
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(BadRequestException);
       await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
-        BadRequestException
-      );
-      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
-        'Invalid coin ID: coin-btc'
+        'Failed to create order: Invalid base coin ID: coin-btc'
       );
     });
 
@@ -275,23 +271,17 @@ describe('OrderService', () => {
         return Promise.resolve(null);
       });
 
-      await expect(service.createOrder(orderDtoWithInvalidQuote, mockUser)).rejects.toThrow(
-        BadRequestException
-      );
+      await expect(service.createOrder(orderDtoWithInvalidQuote, mockUser)).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException when USDT not found', async () => {
       coinService.getCoinBySymbol.mockResolvedValue(null);
 
-      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
-        'USDT not found in system'
-      );
+      await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow('USDT not found in system');
     });
 
     it('should throw BadRequestException when validation fails', async () => {
-      orderValidationService.validateOrder.mockRejectedValue(
-        new BadRequestException('Insufficient balance')
-      );
+      orderValidationService.validateOrder.mockRejectedValue(new BadRequestException('Insufficient balance'));
 
       await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(
         'Failed to create order: Insufficient balance'
@@ -315,7 +305,7 @@ describe('OrderService', () => {
 
       expect(orderRepository.find).toHaveBeenCalledWith({
         where: { user: { id: mockUser.id } },
-        relations: ['baseCoin', 'quoteCoin', 'exchange'],
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
         order: { createdAt: 'DESC' }
       });
       expect(result).toEqual([mockOrder]);
@@ -328,7 +318,7 @@ describe('OrderService', () => {
 
       expect(orderRepository.find).toHaveBeenCalledWith({
         where: { user: { id: mockUser.id }, status: OrderStatus.FILLED },
-        relations: ['baseCoin', 'quoteCoin', 'exchange'],
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
         order: { createdAt: 'DESC' }
       });
     });
@@ -340,7 +330,7 @@ describe('OrderService', () => {
 
       expect(orderRepository.find).toHaveBeenCalledWith({
         where: { user: { id: mockUser.id }, side: OrderSide.BUY },
-        relations: ['baseCoin', 'quoteCoin', 'exchange'],
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
         order: { createdAt: 'DESC' }
       });
     });
@@ -352,9 +342,69 @@ describe('OrderService', () => {
 
       expect(orderRepository.find).toHaveBeenCalledWith({
         where: { user: { id: mockUser.id } },
-        relations: ['baseCoin', 'quoteCoin', 'exchange'],
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
         order: { createdAt: 'DESC' },
         take: 10
+      });
+    });
+
+    it('should handle comma-separated status values', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
+
+      await service.getOrders(mockUser, { status: 'NEW,PARTIALLY_FILLED' });
+
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: {
+          user: { id: mockUser.id },
+          status: In([OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED])
+        },
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
+        order: { createdAt: 'DESC' }
+      });
+    });
+
+    it('should handle comma-separated side values', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
+
+      await service.getOrders(mockUser, { side: 'BUY,SELL' });
+
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: {
+          user: { id: mockUser.id },
+          side: In([OrderSide.BUY, OrderSide.SELL])
+        },
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
+        order: { createdAt: 'DESC' }
+      });
+    });
+
+    it('should handle comma-separated orderType values', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
+
+      await service.getOrders(mockUser, { orderType: 'market,limit' });
+
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: {
+          user: { id: mockUser.id },
+          type: In([OrderType.MARKET, OrderType.LIMIT])
+        },
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
+        order: { createdAt: 'DESC' }
+      });
+    });
+
+    it('should handle single status value from comma-separated string', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
+
+      await service.getOrders(mockUser, { status: 'FILLED' });
+
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: {
+          user: { id: mockUser.id },
+          status: OrderStatus.FILLED
+        },
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
+        order: { createdAt: 'DESC' }
       });
     });
   });
@@ -376,9 +426,7 @@ describe('OrderService', () => {
       orderRepository.findOne.mockResolvedValue(null);
 
       await expect(service.getOrder(mockUser, 'non-existent')).rejects.toThrow(NotFoundException);
-      await expect(service.getOrder(mockUser, 'non-existent')).rejects.toThrow(
-        'Order with ID non-existent not found'
-      );
+      await expect(service.getOrder(mockUser, 'non-existent')).rejects.toThrow('Order with ID non-existent not found');
     });
   });
 

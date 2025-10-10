@@ -21,4 +21,5 @@ export interface TickerPair {
   status: TickerPairStatus;
   isSpotTradingAllowed: boolean;
   isMarginTradingAllowed: boolean;
+  currentPrice?: number;
 }

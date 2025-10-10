@@ -1,7 +1,9 @@
-import { Injectable, forwardRef, Inject } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
+
+import * as https from 'https';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { User } from '../../users/users.entity';
@@ -64,7 +66,7 @@ export class CoinbaseService extends BaseExchangeService {
    * @param symbol Raw symbol like "BTCUSD"
    * @returns Formatted symbol
    */
-  protected formatSymbol(symbol: string): string {
+  formatSymbol(symbol: string): string {
     // Coinbase uses different symbol formatting than Coinbase Pro
     return symbol
       .replace('USDT', '/USD')
@@ -89,12 +91,18 @@ export class CoinbaseService extends BaseExchangeService {
    */
   static async validateApiKeys(apiKey: string, secretKey: string): Promise<boolean> {
     try {
+      // Create HTTP/HTTPS agents that force IPv4 only
+      const httpsAgent = new https.Agent({
+        family: 4 // Force IPv4
+      });
+
       // Create a temporary Coinbase client with the provided keys
       const client = new ccxt.coinbase({
         apiKey,
         secret: secretKey.replace(/\\n/g, '\n').trim(),
         enableRateLimit: true,
-        v3: true // Use v3 API for Coinbase Pro
+        v3: true, // Use v3 API for Coinbase Pro
+        httpsAgent
       });
 
       // Try to fetch balance - this will throw an error if the keys are invalid

@@ -1,7 +1,10 @@
-import { forwardRef, Inject, Logger, InternalServerErrorException } from '@nestjs/common';
+import { forwardRef, Inject, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
+
+import * as http from 'http';
+import * as https from 'https';
 
 import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { ExchangeService } from './exchange.service';
@@ -105,6 +108,22 @@ export abstract class BaseExchangeService {
     }
 
     return this.clients.get('default') as ccxt.Exchange;
+  }
+
+  /**
+   * Get a public-only client without API keys
+   * Only use for public endpoints (order books, tickers, market data)
+   * @returns A CCXT client without authentication
+   */
+  async getPublicClient(): Promise<ccxt.Exchange> {
+    // Create or return the public client
+    if (!this.clients.has('public')) {
+      this.logger.debug(`Creating public-only client for ${this.exchangeSlug}`);
+      const publicClient = this.createPublicClient();
+      this.clients.set('public', publicClient);
+    }
+
+    return this.clients.get('public') as ccxt.Exchange;
   }
 
   /**
@@ -217,10 +236,54 @@ export abstract class BaseExchangeService {
       throw new InternalServerErrorException(`Exchange ${this.exchangeId} not found in CCXT`);
     }
 
+    // Create HTTP/HTTPS agents that force IPv4 only
+    const httpAgent = new http.Agent({
+      family: 4 // Force IPv4
+    });
+
+    const httpsAgent = new https.Agent({
+      family: 4 // Force IPv4
+    });
+
     return new ExchangeClass({
       apiKey,
       secret: apiSecret,
       enableRateLimit: true,
+      agent: httpsAgent, // Most exchanges use HTTPS
+      httpAgent, // Fallback for HTTP
+      httpsAgent,
+      ...this.getAdditionalClientConfig()
+    });
+  }
+
+  /**
+   * Create a public-only CCXT client instance without API keys
+   * @returns A CCXT client instance for public endpoints only
+   */
+  protected createPublicClient(): ccxt.Exchange {
+    // Get the exchange class dynamically from CCXT
+    const ccxtExchanges = ccxt as unknown as Record<string, new (config: object) => ccxt.Exchange>;
+    const ExchangeClass = ccxtExchanges[this.exchangeId];
+
+    if (!ExchangeClass || typeof ExchangeClass !== 'function') {
+      throw new InternalServerErrorException(`Exchange ${this.exchangeId} not found in CCXT`);
+    }
+
+    // Create HTTP/HTTPS agents that force IPv4 only
+    const httpAgent = new http.Agent({
+      family: 4 // Force IPv4
+    });
+
+    const httpsAgent = new https.Agent({
+      family: 4 // Force IPv4
+    });
+
+    // Create client without API keys - only for public endpoints
+    return new ExchangeClass({
+      enableRateLimit: true,
+      agent: httpsAgent,
+      httpAgent,
+      httpsAgent,
       ...this.getAdditionalClientConfig()
     });
   }
@@ -231,12 +294,15 @@ export abstract class BaseExchangeService {
    * @param symbol Raw symbol like "BTCUSD" or "BTC/USDT"
    * @returns Formatted symbol
    */
-  protected formatSymbol(symbol: string): string {
+  formatSymbol(symbol: string): string {
+    // Ensure symbol is uppercase
+    symbol = symbol.toUpperCase();
+
     // If symbol already contains a slash, return as-is
     if (symbol.includes('/')) {
       return symbol;
     }
-    
+
     // Default implementation - convert BTCUSD to BTC/USD
     // Handle common patterns like BTCUSD, BTCUSDT, ETHUSDT, etc.
     if (symbol.endsWith('USDT')) {
@@ -246,7 +312,7 @@ export abstract class BaseExchangeService {
       const base = symbol.slice(0, -3); // Remove 'USD'
       return `${base}/USD`;
     }
-    
+
     // Fallback: try to split common crypto pairs
     return symbol.replace(/([A-Z]{3,4})([A-Z]{3,4})/, '$1/$2');
   }

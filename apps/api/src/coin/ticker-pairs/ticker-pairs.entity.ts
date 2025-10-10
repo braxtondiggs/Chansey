@@ -38,26 +38,28 @@ export class TickerPairs {
   @ManyToOne(() => Coin, (coin) => coin.baseAssetPairs, {
     cascade: true,
     eager: false,
-    nullable: false,
+    nullable: true,
     onDelete: 'CASCADE'
   })
   @ApiProperty({
     description: 'Base asset (first part) of the trading pair, e.g. BTC in BTC/USD',
-    type: () => Coin
+    type: () => Coin,
+    required: false
   })
-  baseAsset: Coin;
+  baseAsset?: Coin;
 
   @ManyToOne(() => Coin, (coin) => coin.quoteAssetPairs, {
     cascade: true,
     eager: false,
-    nullable: false,
+    nullable: true,
     onDelete: 'CASCADE'
   })
   @ApiProperty({
     description: 'Quote asset (second part) of the trading pair, e.g. USD in BTC/USD',
-    type: () => Coin
+    type: () => Coin,
+    required: false
   })
-  quoteAsset: Coin;
+  quoteAsset?: Coin;
 
   @Column({ length: 20, update: false })
   @Length(1, 20)
@@ -142,6 +144,31 @@ export class TickerPairs {
   })
   isMarginTradingAllowed: boolean;
 
+  @Column({ default: false })
+  @IsBoolean()
+  @ApiProperty({
+    description: 'Whether this pair involves fiat currency',
+    example: false,
+    default: false
+  })
+  isFiatPair: boolean;
+
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Base asset symbol for fiat pairs when coin record does not exist',
+    example: 'BTC',
+    required: false
+  })
+  baseAssetSymbol?: string;
+
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Quote asset symbol for fiat pairs when coin record does not exist',
+    example: 'USD',
+    required: false
+  })
+  quoteAssetSymbol?: string;
+
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;
 
@@ -158,7 +185,9 @@ export class TickerPairs {
   @BeforeInsert()
   @BeforeUpdate()
   generateSymbol() {
-    if (this.baseAsset && this.quoteAsset) {
+    if (this.isFiatPair && this.baseAssetSymbol && this.quoteAssetSymbol) {
+      this.symbol = `${this.baseAssetSymbol}${this.quoteAssetSymbol}`.toUpperCase();
+    } else if (this.baseAsset && this.quoteAsset) {
       this.symbol = `${this.baseAsset.symbol}${this.quoteAsset.symbol}`.toUpperCase();
     }
   }

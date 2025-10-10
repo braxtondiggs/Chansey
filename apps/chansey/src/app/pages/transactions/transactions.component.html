@@ -1,11 +1,11 @@
 <p-card>
   <form
     [formGroup]="filterForm"
-    class="grid gap-3 my-5"
+    class="my-5 grid gap-3"
     style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
   >
     <div>
-      <div class="w-full p-inputgroup">
+      <div class="p-inputgroup w-full">
         <p-iconfield iconPosition="left" class="ml-auto">
           <p-inputicon>
             <i class="pi pi-search"></i>
@@ -168,7 +168,7 @@
     </div>
 
     <!-- Skeleton for pagination -->
-    <div class="flex items-center justify-between p-3 border-t border-gray-200 dark:border-gray-700">
+    <div class="flex items-center justify-between border-t border-gray-200 p-3 dark:border-gray-700">
       <p-skeleton width="150px" height="1.25rem"></p-skeleton>
       <div class="flex gap-1">
         <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
@@ -232,14 +232,14 @@
                 [image]="transaction.baseCoin?.image"
                 shape="circle"
                 size="large"
-                class="border-2 border-white shadow-sm dark:border-gray-800"
+                class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
               />
               <p-avatar
                 *ngIf="transaction.quoteCoin"
                 [image]="transaction.quoteCoin.image"
                 shape="circle"
                 size="large"
-                class="border-2 border-white shadow-sm dark:border-gray-800"
+                class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
               />
             </div>
             <div class="flex flex-col">
@@ -287,7 +287,7 @@
       <tr>
         <td colspan="10" class="p-4 text-center">
           <div *ngIf="!isLoading()">
-            <i class="mb-3 text-5xl text-gray-400 pi pi-inbox"></i>
+            <i class="pi pi-inbox mb-3 text-5xl text-gray-400"></i>
             <p class="text-gray-500">No transactions found</p>
           </div>
         </td>

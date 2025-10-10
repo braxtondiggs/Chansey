@@ -4,7 +4,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
@@ -28,6 +28,7 @@ import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
 import { RiskModule } from './risk/risk.module';
 import { StorageModule } from './storage/storage.module';
+import { TradingModule } from './trading/trading.module';
 import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -116,9 +117,11 @@ const isProduction = process.env.NODE_ENV === 'production';
       { name: 'coin-queue', adapter: BullMQAdapter },
       { name: 'exchange-queue', adapter: BullMQAdapter },
       { name: 'order-queue', adapter: BullMQAdapter },
+      { name: 'performance-ranking', adapter: BullMQAdapter },
       { name: 'portfolio-queue', adapter: BullMQAdapter },
       { name: 'price-queue', adapter: BullMQAdapter },
       { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
+      { name: 'trade-execution', adapter: BullMQAdapter },
       { name: 'user-queue', adapter: BullMQAdapter }
     ),
     ThrottlerModule.forRoot([
@@ -151,7 +154,8 @@ const isProduction = process.env.NODE_ENV === 'production';
     OrderModule,
     PortfolioModule,
     PriceModule,
-    RiskModule
+    RiskModule,
+    TradingModule
   ],
   exports: [ConfigModule, HttpModule],
   controllers: [AppController],

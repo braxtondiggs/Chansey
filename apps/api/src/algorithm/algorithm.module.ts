@@ -1,13 +1,20 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AlgorithmActivation } from './algorithm-activation.entity';
+import { AlgorithmPerformanceController } from './algorithm-performance.controller';
+import { AlgorithmPerformance } from './algorithm-performance.entity';
 import { AlgorithmController } from './algorithm.controller';
 import { Algorithm } from './algorithm.entity';
 import { AlgorithmService } from './algorithm.service';
 import { AlgorithmRegistry } from './registry/algorithm-registry.service';
+import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
+import { AlgorithmPerformanceService } from './services/algorithm-performance.service';
 import { ExponentialMovingAverageStrategy } from './strategies/exponential-moving-average.strategy';
 import { MeanReversionStrategy } from './strategies/mean-reversion.strategy';
+import { PerformanceRankingTask } from './tasks/performance-ranking.task';
 
 import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
@@ -26,16 +33,19 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Algorithm, Coin, Order, Price, TickerPairs]),
+    TypeOrmModule.forFeature([Algorithm, AlgorithmActivation, AlgorithmPerformance, Coin, Order, Price, TickerPairs]),
+    BullModule.registerQueue({ name: 'performance-ranking' }),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
     forwardRef(() => UsersModule),
     forwardRef(() => PortfolioModule)
   ],
-  controllers: [AlgorithmController],
+  controllers: [AlgorithmController, AlgorithmPerformanceController],
   providers: [
     AlgorithmService,
+    AlgorithmActivationService,
+    AlgorithmPerformanceService,
     AlgorithmRegistry,
     AlgorithmContextBuilder,
     CoinService,
@@ -43,6 +53,7 @@ import { UsersModule } from '../users/users.module';
     TickerPairService,
     ExponentialMovingAverageStrategy,
     MeanReversionStrategy,
+    PerformanceRankingTask,
 
     // Strategy registration factory
     {
@@ -60,6 +71,12 @@ import { UsersModule } from '../users/users.module';
       inject: [ExponentialMovingAverageStrategy, MeanReversionStrategy, AlgorithmRegistry]
     }
   ],
-  exports: [AlgorithmService, AlgorithmRegistry, AlgorithmContextBuilder]
+  exports: [
+    AlgorithmService,
+    AlgorithmActivationService,
+    AlgorithmPerformanceService,
+    AlgorithmRegistry,
+    AlgorithmContextBuilder
+  ]
 })
 export class AlgorithmModule {}

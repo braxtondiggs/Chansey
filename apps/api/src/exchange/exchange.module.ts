@@ -17,12 +17,14 @@ import { ExchangeSyncTask } from './tasks/exchange-sync.task';
 import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
+import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 
 @Module({
   controllers: [ExchangeController],
   imports: [
     forwardRef(() => AppModule),
-    TypeOrmModule.forFeature([Coin, Exchange, ExchangeKey]),
+    TypeOrmModule.forFeature([Coin, Exchange, ExchangeKey, TickerPairs]),
     forwardRef(() => ExchangeKeyModule),
     BullModule.registerQueue({ name: 'exchange-queue' })
   ],
@@ -33,7 +35,8 @@ import { CoinService } from '../coin/coin.service';
     CoinService,
     ExchangeService,
     ExchangeSyncTask,
-    ExchangeManagerService
+    ExchangeManagerService,
+    TickerPairService
   ],
   exports: [ExchangeService, BinanceUSService, CoinbaseService, CoinbaseExchangeService, ExchangeManagerService]
 })

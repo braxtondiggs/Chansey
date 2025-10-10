@@ -29,7 +29,8 @@
     "workspace-generator": "nx workspace-generator",
     "dep-graph": "nx dep-graph",
     "prepare": "husky",
-    "analyze:site": "npx nx analyze chansey"
+    "analyze:site": "npx nx analyze chansey",
+    "redis:flush": "node tools/redis-flush.js"
   },
   "private": true,
   "dependencies": {
@@ -79,7 +80,7 @@
     "bullmq": "^4.11.0",
     "cache-manager": "^5.7.6",
     "cacheable": "^1.9.0",
-    "ccxt": "^4.4.80",
+    "ccxt": "^4.5.0",
     "chart.js": "^4.4.9",
     "chartjs-adapter-date-fns": "^3.0.0",
     "class-transformer": "^0.5.1",
@@ -102,6 +103,7 @@
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.4.0",
     "tailwindcss-primeui": "^0.6.1",
+    "technicalindicators": "^3.1.0",
     "tslib": "^2.3.0",
     "typeorm": "^0.3.12",
     "zone.js": "0.15.0"

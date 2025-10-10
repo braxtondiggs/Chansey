@@ -18,14 +18,18 @@ export enum OrderStatus {
 }
 
 export enum OrderType {
-  LIMIT = 'LIMIT',
-  MARKET = 'MARKET',
-  STOP_LOSS = 'STOP_LOSS',
-  STOP_LOSS_LIMIT = 'STOP_LOSS_LIMIT',
-  TAKE_PROFIT = 'TAKE_PROFIT',
-  TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
-  LIMIT_MAKER = 'LIMIT_MAKER',
-  STOP = 'STOP'
+  MARKET = 'market',
+  LIMIT = 'limit',
+  STOP_LOSS = 'stop_loss',
+  STOP_LIMIT = 'stop_limit',
+  TRAILING_STOP = 'trailing_stop',
+  TAKE_PROFIT = 'take_profit',
+  OCO = 'oco'
+}
+
+export enum TrailingType {
+  AMOUNT = 'amount',
+  PERCENTAGE = 'percentage'
 }
 
 export interface Order {
@@ -53,12 +57,22 @@ export interface Order {
   createdAt: Date;
   updatedAt: Date;
 
-  // New algorithmic trading fields
+  // Manual order support
+  isManual?: boolean;
+  exchangeKeyId?: string;
+
+  // Order type specific parameters
   timeInForce?: string;
   stopPrice?: number;
   triggerPrice?: number;
   takeProfitPrice?: number;
   stopLossPrice?: number;
+  trailingAmount?: number;
+  trailingType?: TrailingType;
+  ocoLinkedOrderId?: string;
+
+  // Algorithmic trading fields
+  algorithmActivationId?: string;
   remaining?: number;
   postOnly?: boolean;
   reduceOnly?: boolean;
@@ -84,6 +98,8 @@ export interface TradeExecution {
 
 export interface CreateOrderRequest {
   baseCoinId: string;
+  quoteCoinId?: string;
+  exchangeId?: string;
   quantity: string;
   price?: string;
   type?: OrderType;
@@ -96,9 +112,59 @@ export interface CreateOrderRequest {
   reduceOnly?: boolean;
 }
 
+export interface PlaceManualOrderRequest {
+  exchangeKeyId: string;
+  symbol: string;
+  orderType: OrderType;
+  side: OrderSide;
+  quantity: number;
+  price?: number;
+  stopPrice?: number;
+  trailingAmount?: number;
+  trailingType?: TrailingType;
+  takeProfitPrice?: number;
+  stopLossPrice?: number;
+  ocoLinkedOrderId?: string;
+  timeInForce?: string;
+}
+
+export interface OrderPreviewRequest {
+  exchangeKeyId: string;
+  symbol: string;
+  orderType: OrderType;
+  side: OrderSide;
+  quantity: number;
+  price?: number;
+  stopPrice?: number;
+  trailingAmount?: number;
+  trailingType?: TrailingType;
+}
+
 export interface OrderSyncStatus {
   totalOrders: number;
   ordersByStatus: Record<string, number>;
   lastSyncTime: Date | null;
   hasActiveExchangeKeys: boolean;
+}
+
+export interface OrderPreview {
+  symbol: string;
+  side: OrderSide;
+  orderType: OrderType;
+  quantity: number;
+  price?: number;
+  stopPrice?: number;
+  trailingAmount?: number;
+  trailingType?: TrailingType;
+  estimatedCost: number;
+  estimatedFee: number;
+  feeCurrency: string;
+  totalRequired: number;
+  marketPrice?: number;
+  availableBalance: number;
+  balanceCurrency: string;
+  hasSufficientBalance: boolean;
+  priceDeviation?: number;
+  warnings?: string[];
+  exchange: string;
 }
