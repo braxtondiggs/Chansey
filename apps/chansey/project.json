@@ -21,9 +21,17 @@
             "glob": "**/*",
             "input": "apps/chansey/public",
             "output": "/public"
+          },
+          {
+            "glob": "**/*",
+            "input": "node_modules/primeicons/fonts",
+            "output": "/assets/fonts/primeicons"
           }
         ],
-        "styles": ["apps/chansey/src/styles.scss"],
+        "styles": [
+          "node_modules/primeicons/primeicons.css",
+          "apps/chansey/src/styles.scss"
+        ],
         "scripts": [],
         "serviceWorker": true,
         "ngswConfigPath": "apps/chansey/ngsw-config.json"
@@ -104,7 +112,8 @@
       "options": {
         "proxyConfig": "apps/chansey/proxy.conf.json",
         "hmr": true
-      }
+      },
+      "continuous": true
     },
     "extract-i18n": {
       "executor": "@angular-devkit/build-angular:extract-i18n",
@@ -119,7 +128,8 @@
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "apps/chansey/jest.config.ts"
+        "jestConfig": "apps/chansey/jest.config.ts",
+        "tsConfig": "apps/chansey/tsconfig.spec.json"
       }
     },
     "serve-static": {

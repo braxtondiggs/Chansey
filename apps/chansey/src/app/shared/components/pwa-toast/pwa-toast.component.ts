@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 
 import { MessageService } from 'primeng/api';
@@ -11,7 +11,7 @@ import { PwaService } from '@chansey-web/app/shared/services';
 @Component({
   selector: 'app-pwa-toast',
   standalone: true,
-  imports: [CommonModule, ButtonModule, ToastModule],
+  imports: [ButtonModule, ToastModule],
   providers: [MessageService],
   template: `
     <p-toast position="top-right" key="pwa-updates">
@@ -22,14 +22,16 @@ import { PwaService } from '@chansey-web/app/shared/services';
             <span class="text-lg font-bold">{{ message.summary }}</span>
           </div>
           <p class="m-0">{{ message.detail }}</p>
-          <div class="flex justify-end gap-2" *ngIf="message.data?.type === 'update'">
-            <p-button label="Later" severity="secondary" size="small" (onClick)="dismissUpdate()" />
-            <p-button label="Update Now" size="small" (onClick)="applyUpdate()" />
-          </div>
+          @if (message.data?.type === 'update') {
+            <div class="flex justify-end gap-2">
+              <p-button label="Later" severity="secondary" size="small" (onClick)="dismissUpdate()" />
+              <p-button label="Update Now" size="small" (onClick)="applyUpdate()" />
+            </div>
+          }
         </div>
       </ng-template>
     </p-toast>
-  `
+    `
 })
 export class PwaToastComponent implements OnInit, OnDestroy {
   private readonly pwaService = inject(PwaService);

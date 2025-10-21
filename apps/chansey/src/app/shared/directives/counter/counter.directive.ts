@@ -1,10 +1,10 @@
-import { Directive, ElementRef, Input, NgZone, OnChanges, SimpleChanges } from '@angular/core';
+import { Directive, ElementRef, Input, NgZone, OnChanges, OnInit, SimpleChanges, inject } from '@angular/core';
 
 @Directive({
   selector: '[appCounter]',
   standalone: true
 })
-export class CounterDirective implements OnChanges {
+export class CounterDirective implements OnInit, OnChanges {
   @Input() appCounter: number | undefined = 0;
   @Input() duration = 1000; // animation duration in milliseconds
   @Input() formatter: (value: number) => string = (value) => {
@@ -27,10 +27,10 @@ export class CounterDirective implements OnChanges {
   private previousValue: number = 0;
   private animationFrameId: number | null = null;
 
-  constructor(
-    private el: ElementRef<HTMLElement>,
-    private zone: NgZone
-  ) {
+  private readonly el = inject(ElementRef);
+  private readonly zone = inject(NgZone);
+
+  ngOnInit(): void {
     // Add the rolling-number class for 3D perspective effect
     this.el.nativeElement.classList.add('rolling-number');
   }

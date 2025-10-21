@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
@@ -51,7 +51,6 @@ declare type SurfacesType = {
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     FormsModule,
     PanelModule,
@@ -61,7 +60,7 @@ declare type SurfacesType = {
     TabsModule,
     ToastModule,
     ToggleSwitchModule
-  ],
+],
   providers: [MessageService, ConfirmationService],
   templateUrl: './settings.component.html'
 })

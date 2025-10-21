@@ -37,39 +37,8 @@ const isProduction = process.env.NODE_ENV === 'production';
   imports: [
     LoggerModule.forRoot({
       pinoHttp: {
-        transport: isProduction
-          ? undefined
-          : {
-              target: 'pino-pretty',
-              options: {
-                colorize: true,
-                colorizeObjects: true,
-                singleLine: false,
-                translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-                ignore: 'pid,hostname,req.headers,res.headers',
-                messageFormat: '[{level}] {time} - {msg}',
-                levelFirst: true,
-                hideObject: false,
-                sync: false,
-                append: false,
-                mkdir: true
-              }
-            },
-        level: isProduction ? 'info' : 'debug',
-        autoLogging: false, // Disable automatic HTTP request logging
-        serializers: {
-          req: (req) => ({
-            method: req.method,
-            url: req.url,
-            headers: {
-              'user-agent': req.headers['user-agent'],
-              'content-type': req.headers['content-type']
-            }
-          }),
-          res: (res) => ({
-            statusCode: res.statusCode
-          })
-        }
+        autoLogging: false,
+        customProps: () => ({})
       }
     }),
     StorageModule,

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
@@ -7,7 +7,7 @@ import { DialogModule } from 'primeng/dialog';
 @Component({
   selector: 'app-timeout-warning',
   standalone: true,
-  imports: [CommonModule, DialogModule, ButtonModule],
+  imports: [DialogModule, ButtonModule],
   template: `
     <p-dialog
       [(visible)]="visible"

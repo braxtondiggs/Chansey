@@ -1,22 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
+import { EMA } from 'technicalindicators';
+
 import { OrderService } from '../../order/order.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { PriceSummary } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
  * Exponential Moving Average (EMA) Algorithm Strategy
+ * Refactored to use technicalindicators library
+ *
+ * Uses battle-tested EMA implementation instead of custom calculations
  * Generates trading signals based on EMA crossovers and price momentum
  */
 @Injectable()
 export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
   readonly id = '3916f8b1-23f5-4d17-a839-6cdecb13588f';
   readonly name = 'Exponential Moving Average';
-  readonly version = '2.0.0';
+  readonly version = '3.0.0';
   readonly description = 'Trading strategy using exponential moving averages for trend analysis and signal generation';
 
   constructor(
@@ -36,21 +42,25 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
     const chartData: { [key: string]: ChartDataPoint[] } = {};
 
     try {
+      // Get configuration with defaults
+      const fastPeriod = (context.config.fastPeriod as number) || 12;
+      const slowPeriod = (context.config.slowPeriod as number) || 26;
+
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
-        
-        if (!priceHistory || priceHistory.length < 26) {
+
+        if (!priceHistory || priceHistory.length < slowPeriod) {
           this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
-        // Calculate EMAs
-        const ema12 = this.calculateEMA(priceHistory, 12);
-        const ema26 = this.calculateEMA(priceHistory, 26);
+        // Calculate EMAs using technicalindicators library
+        const ema12 = this.calculateEMA(priceHistory, fastPeriod);
+        const ema26 = this.calculateEMA(priceHistory, slowPeriod);
 
         // Generate signals based on EMA crossover
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, ema12, ema26);
-        
+
         if (signal) {
           signals.push(signal);
         }
@@ -64,7 +74,6 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
         version: this.version,
         signalsGenerated: signals.length
       });
-
     } catch (error) {
       this.logger.error(`EMA algorithm execution failed: ${error.message}`, error.stack);
       return this.createErrorResult(error.message);
@@ -72,37 +81,24 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
   }
 
   /**
-   * Calculate Exponential Moving Average
+   * Calculate Exponential Moving Average using technicalindicators library
+   *
+   * @param prices - Array of PriceSummary objects
+   * @param period - EMA period
+   * @returns Array of EMA values (padded with NaN for alignment)
    */
   private calculateEMA(prices: PriceSummary[], period: number): number[] {
-    if (prices.length < period) {
-      throw new Error(`Insufficient data: need at least ${period} price points`);
-    }
+    // Extract average prices
+    const values = IndicatorDataTransformer.extractAveragePrices(prices);
 
-    const emaValues: number[] = [];
-    const multiplier = 2 / (period + 1);
+    // Calculate EMA using technicalindicators library
+    const emaResults = EMA.calculate({
+      period,
+      values
+    });
 
-    // Calculate initial SMA for the first EMA value
-    let sma = 0;
-    for (let i = 0; i < period; i++) {
-      sma += prices[i].avg;
-    }
-    sma /= period;
-
-    // Fill initial values with null
-    for (let i = 0; i < period - 1; i++) {
-      emaValues.push(NaN);
-    }
-    
-    emaValues.push(sma);
-
-    // Calculate EMA for remaining values
-    for (let i = period; i < prices.length; i++) {
-      const ema = (prices[i].avg - emaValues[i - 1]) * multiplier + emaValues[i - 1];
-      emaValues.push(ema);
-    }
-
-    return emaValues;
+    // Pad results to match original length
+    return IndicatorDataTransformer.padResults(emaResults, prices.length);
   }
 
   /**
@@ -178,7 +174,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
   private calculateSignalStrength(price: number, ema12: number, ema26: number): number {
     const emaSpread = Math.abs(ema12 - ema26) / Math.max(ema12, ema26);
     const pricePosition = (price - Math.min(ema12, ema26)) / Math.abs(ema12 - ema26);
-    
+
     // Strength is based on EMA spread and price position
     return Math.min(1, Math.max(0, emaSpread * 2 + pricePosition * 0.5));
   }
@@ -194,7 +190,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
   ): number {
     const recentPeriod = 5;
     const startIndex = Math.max(0, prices.length - recentPeriod);
-    
+
     let trendConfirmations = 0;
     for (let i = startIndex; i < prices.length - 1; i++) {
       if (direction === 'bullish' && ema12[i] > ema26[i]) {
@@ -269,7 +265,6 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
       // You would typically inject the context builder here
       // For now, this is a placeholder for the scheduled execution logic
       this.logger.log('EMA scheduled execution completed');
-      
     } catch (error) {
       this.logger.error(`Scheduled execution failed: ${error.message}`, error.stack);
     }

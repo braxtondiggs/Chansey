@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -10,21 +10,23 @@ import { AppTopBar } from './app.topbar';
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, AppMenu, RouterModule, AppTopBar],
+  imports: [AppMenu, RouterModule, AppTopBar],
   template: `<div class="layout-sidebar" (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
-    <div class="sidebar-header">
-      <a class="logo flex items-center" [routerLink]="['/app/dashboard']">
-        <img class="logo-image" src="/public/icon.png" alt="Cymbit Trading Logo" />
-        <span class="app-name title-h7">Cymbit Trading</span>
-      </a>
-      <button class="layout-sidebar-anchor z-2" type="button" (click)="anchor()"></button>
-    </div>
-
-    <div #menuContainer class="layout-menu-container">
-      <app-menu></app-menu>
-    </div>
-    <app-topbar *ngIf="isHorizontal()"></app-topbar>
-  </div>`
+      <div class="sidebar-header">
+        <a class="logo flex items-center" [routerLink]="['/app/dashboard']">
+          <img class="logo-image" src="/public/icon.png" alt="Cymbit Trading Logo" />
+          <span class="app-name title-h7">Cymbit Trading</span>
+        </a>
+        <button class="layout-sidebar-anchor z-2" type="button" (click)="anchor()"></button>
+      </div>
+    
+      <div #menuContainer class="layout-menu-container">
+        <app-menu></app-menu>
+      </div>
+      @if (isHorizontal()) {
+        <app-topbar></app-topbar>
+      }
+    </div>`
 })
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
