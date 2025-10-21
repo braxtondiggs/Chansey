@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -30,7 +30,6 @@ import { AlgorithmsService } from './algorithms.service';
     ButtonModule,
     CardModule,
     CheckboxModule,
-    CommonModule,
     ConfirmDialogModule,
     DialogModule,
     FloatLabelModule,
@@ -45,7 +44,7 @@ import { AlgorithmsService } from './algorithms.service';
     TagModule,
     TextareaModule,
     ToastModule
-  ],
+],
   providers: [MessageService, ConfirmationService],
   templateUrl: './algorithms.component.html'
 })

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, computed, inject, OnInit, signal, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -17,13 +17,17 @@ interface MenuItem {
 @Component({
   selector: 'app-menu',
   standalone: true,
-  imports: [CommonModule, AppMenuitem, RouterModule],
+  imports: [AppMenuitem, RouterModule],
   template: `<ul class="layout-menu">
-    <ng-container *ngFor="let item of model(); let i = index">
-      <li chansey-menuitem *ngIf="!item.separator" [item]="item" [index]="i" [root]="true"></li>
-      <li *ngIf="item.separator" class="menu-separator"></li>
-    </ng-container>
-  </ul> `
+      @for (item of model(); track item; let i = $index) {
+        @if (!item.separator) {
+          <li chansey-menuitem [item]="item" [index]="i" [root]="true"></li>
+        }
+        @if (item.separator) {
+          <li class="menu-separator"></li>
+        }
+      }
+    </ul>`
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppMenu implements OnInit {

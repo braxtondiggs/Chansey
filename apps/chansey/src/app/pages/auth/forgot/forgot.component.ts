@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -16,7 +16,6 @@ import { ForgotService } from './forgot.service';
   selector: 'app-forgot',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     FloatLabelModule,
     InputTextModule,
@@ -24,7 +23,7 @@ import { ForgotService } from './forgot.service';
     MessageModule,
     ReactiveFormsModule,
     RouterLink
-  ],
+],
   templateUrl: './forgot.component.html'
 })
 export class ForgotComponent {

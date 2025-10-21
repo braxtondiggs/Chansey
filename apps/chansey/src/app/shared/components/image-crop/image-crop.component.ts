@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { ImageCroppedEvent, ImageCropperComponent, LoadedImage } from 'ngx-image-cropper';
@@ -8,7 +8,7 @@ import { DialogModule } from 'primeng/dialog';
 @Component({
   selector: 'app-image-crop',
   standalone: true,
-  imports: [CommonModule, ImageCropperComponent, DialogModule, ButtonModule],
+  imports: [ImageCropperComponent, DialogModule, ButtonModule],
   template: `
     <p-dialog
       [(visible)]="visible"

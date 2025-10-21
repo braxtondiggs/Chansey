@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, Renderer2, ViewChild, computed } from '@angular/core';
+import { Component, OnDestroy, Renderer2, ViewChild, computed, inject } from '@angular/core';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 
 import { Subscription, filter } from 'rxjs';
@@ -59,11 +59,11 @@ export class AppLayout implements OnDestroy {
 
   @ViewChild(AppTopBar) appTopBar!: AppTopBar;
 
-  constructor(
-    public layoutService: LayoutService,
-    public renderer: Renderer2,
-    public router: Router
-  ) {
+  public layoutService: LayoutService = inject(LayoutService);
+  public renderer: Renderer2 = inject(Renderer2);
+  public router: Router = inject(Router);
+
+  constructor() {
     this.overlayMenuOpenSubscription = this.layoutService.overlayOpen$.subscribe(() => {
       if (!this.menuOutsideClickListener) {
         this.menuOutsideClickListener = this.renderer.listen('document', 'click', (event) => {

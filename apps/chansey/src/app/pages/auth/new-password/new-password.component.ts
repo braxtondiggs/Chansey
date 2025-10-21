@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, OnInit, signal, inject } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -19,7 +19,6 @@ import { NewPasswordService } from './new-password.service';
   selector: 'app-new-password',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     FloatLabelModule,
     FluidModule,
@@ -29,7 +28,7 @@ import { NewPasswordService } from './new-password.service';
     PasswordModule,
     ReactiveFormsModule,
     RouterLink
-  ],
+],
   templateUrl: './new-password.component.html'
 })
 export class NewPasswordComponent implements OnInit {

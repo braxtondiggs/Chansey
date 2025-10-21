@@ -107,6 +107,11 @@ export function useAuthMutation<TData, TVariables>(
   }
 ) {
   const queryClient = inject(QueryClient);
+  const {
+    invalidateQueries = [],
+    onSuccess: originalOnSuccess,
+    ...restOptions
+  } = options ?? {};
 
   return injectMutation(() => ({
     mutationFn: (variables: TVariables) => {
@@ -139,18 +144,20 @@ export function useAuthMutation<TData, TVariables>(
             : JSON.stringify({})
       });
     },
-    onSuccess: (data, variables, context) => {
+    onSuccess: async (data, variables, onMutateResult, context) => {
       // Invalidate specified queries on success
-      if (options?.invalidateQueries?.length) {
-        Promise.all(options.invalidateQueries.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+      if (invalidateQueries.length) {
+        await Promise.all(invalidateQueries.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
       }
 
       // Call the original onSuccess if provided
-      if (options?.onSuccess) {
-        options.onSuccess(data, variables, context);
+      if (originalOnSuccess) {
+        return originalOnSuccess(data, variables, onMutateResult, context);
       }
+
+      return undefined;
     },
-    ...options
+    ...restOptions
   }));
 }
 

@@ -2,575 +2,590 @@
   <p class="mb-4 text-600 md:mb-5">Manage your personal information and preferences</p>
 
   <!-- Loading state -->
-  <div *ngIf="isLoading()" class="py-8">
-    <!-- Profile skeleton loader -->
-    <div class="flex flex-col items-center gap-8 my-8 flex-column md:flex-row md:gap-4">
-      <div class="flex flex-col items-center w-full gap-3 md:w-1/2">
-        <p-skeleton shape="circle" size="16rem" styleClass="mb-4"></p-skeleton>
-        <p-skeleton width="10rem" height="2.5rem"></p-skeleton>
-      </div>
-
-      <div class="flex flex-col w-full max-w-full gap-4 md:w-1/2">
-        <div class="flex flex-col gap-4 md:flex-row">
-          <div class="flex flex-col w-full gap-4 md:flex-row">
-            <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
-            <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
-          </div>
+  @if (isLoading()) {
+    <div class="py-8">
+      <!-- Profile skeleton loader -->
+      <div class="flex flex-col items-center gap-8 my-8 flex-column md:flex-row md:gap-4">
+        <div class="flex flex-col items-center w-full gap-3 md:w-1/2">
+          <p-skeleton shape="circle" size="16rem" styleClass="mb-4"></p-skeleton>
+          <p-skeleton width="10rem" height="2.5rem"></p-skeleton>
         </div>
-        <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
-        <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
-        <div class="flex justify-end mt-4">
-          <p-skeleton width="10rem" height="3rem"></p-skeleton>
+        <div class="flex flex-col w-full max-w-full gap-4 md:w-1/2">
+          <div class="flex flex-col gap-4 md:flex-row">
+            <div class="flex flex-col w-full gap-4 md:flex-row">
+              <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
+              <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
+            </div>
+          </div>
+          <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
+          <p-skeleton width="100%" height="3rem" styleClass="mb-2"></p-skeleton>
+          <div class="flex justify-end mt-4">
+            <p-skeleton width="10rem" height="3rem"></p-skeleton>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  }
 
   <!-- Content state - only show when user data is loaded -->
-  <p-fluid *ngIf="user()">
-    <div class="flex flex-col items-center gap-8 my-8 flex-column md:flex-row md:gap-4">
-      <div class="flex flex-col items-center w-full gap-3 md:w-1/2">
-        <p-avatar
-          [size]="'xlarge'"
-          [image]="userProfileImage()"
-          shape="circle"
-          class="mb-8 cursor-pointer profile"
-          (click)="openFileUpload()"
-        />
-        <p-fileUpload
-          #fileUpload
-          mode="basic"
-          chooseIcon="pi pi-upload"
-          chooseLabel="Upload Profile Image"
-          class="profile-upload-button"
-          accept="image/*"
-          [auto]="true"
-          (onSelect)="onUpload($event)"
-          [maxFileSize]="2097152"
-        ></p-fileUpload>
-      </div>
-
-      <form [formGroup]="profileForm" (ngSubmit)="onSubmit()" class="flex flex-col w-full max-w-full gap-4 md:w-1/2">
-        <div class="flex flex-col">
-          @for (message of messages(); track message; let first = $first) {
-            <p-message
-              [severity]="message.severity"
-              [text]="message.content"
-              icon="pi {{ message.icon }}"
-              size="large"
-              styleClass="my-4"
+  @if (user()) {
+    <p-fluid>
+      <div class="flex flex-col items-center gap-8 my-8 flex-column md:flex-row md:gap-4">
+        <div class="flex flex-col items-center w-full gap-3 md:w-1/2">
+          <p-avatar
+            [size]="'xlarge'"
+            [image]="userProfileImage()"
+            shape="circle"
+            class="mb-8 cursor-pointer profile"
+            (click)="openFileUpload()"
             />
-          }
+          <p-fileUpload
+            #fileUpload
+            mode="basic"
+            chooseIcon="pi pi-upload"
+            chooseLabel="Upload Profile Image"
+            class="profile-upload-button"
+            accept="image/*"
+            [auto]="true"
+            (onSelect)="onUpload($event)"
+            [maxFileSize]="2097152"
+          ></p-fileUpload>
         </div>
-        <div class="flex flex-col gap-4 md:flex-row">
-          <div class="flex flex-col w-full gap-4 md:flex-row">
-            <p-floatlabel variant="on" class="flex flex-wrap w-full">
-              <input
-                id="given_name"
-                type="text"
-                pInputText
-                formControlName="given_name"
-                pSize="large"
-                autocomplete="given-name"
-              />
-              <label for="given_name">First Name</label>
-            </p-floatlabel>
-            <p-floatlabel variant="on" class="flex flex-wrap w-full">
-              <input
-                id="family_name"
-                type="text"
-                pInputText
-                formControlName="family_name"
-                pSize="large"
-                autocomplete="family-name"
-              />
-              <label for="family_name">Last Name</label>
-            </p-floatlabel>
+        <form [formGroup]="profileForm" (ngSubmit)="onSubmit()" class="flex flex-col w-full max-w-full gap-4 md:w-1/2">
+          <div class="flex flex-col">
+            @for (message of messages(); track message; let first = $first) {
+              <p-message
+                [severity]="message.severity"
+                [text]="message.content"
+                icon="pi {{ message.icon }}"
+                size="large"
+                styleClass="my-4"
+                />
+            }
           </div>
-        </div>
-        <p-floatlabel variant="on" class="flex flex-wrap mt-4">
-          <input id="email" type="email" pInputText formControlName="email" pSize="large" autocomplete="email" />
-          <label for="email">Email</label>
-        </p-floatlabel>
-
-        <p-floatlabel variant="on" class="flex flex-wrap mt-4">
-          <p-select
-            id="risk"
-            formControlName="risk"
-            [options]="risksQuery.data()"
-            [loading]="risksQuery.isLoading() || risksQuery.isPending()"
-            optionLabel="name"
-            optionValue="id"
-            placeholder="Select Risk Profile"
-            styleClass="w-full"
-            size="large"
-          />
-          <label for="risk">Risk Profile</label>
-        </p-floatlabel>
-
-        <div class="flex flex-wrap justify-end mt-8">
-          <p-button
-            type="submit"
-            label="Save Changes"
-            icon="pi pi-check"
-            size="large"
-            [loading]="updateProfileMutation.isPending()"
-            [disabled]="!profileForm.valid || (!profileForm.dirty && !uploadedFile)"
-          ></p-button>
-        </div>
-      </form>
-    </div>
-  </p-fluid>
+          <div class="flex flex-col gap-4 md:flex-row">
+            <div class="flex flex-col w-full gap-4 md:flex-row">
+              <p-floatlabel variant="on" class="flex flex-wrap w-full">
+                <input
+                  id="given_name"
+                  type="text"
+                  pInputText
+                  formControlName="given_name"
+                  pSize="large"
+                  autocomplete="given-name"
+                  />
+                <label for="given_name">First Name</label>
+              </p-floatlabel>
+              <p-floatlabel variant="on" class="flex flex-wrap w-full">
+                <input
+                  id="family_name"
+                  type="text"
+                  pInputText
+                  formControlName="family_name"
+                  pSize="large"
+                  autocomplete="family-name"
+                  />
+                <label for="family_name">Last Name</label>
+              </p-floatlabel>
+            </div>
+          </div>
+          <p-floatlabel variant="on" class="flex flex-wrap mt-4">
+            <input id="email" type="email" pInputText formControlName="email" pSize="large" autocomplete="email" />
+            <label for="email">Email</label>
+          </p-floatlabel>
+          <p-floatlabel variant="on" class="flex flex-wrap mt-4">
+            <p-select
+              id="risk"
+              formControlName="risk"
+              [options]="risksQuery.data()"
+              [loading]="risksQuery.isLoading() || risksQuery.isPending()"
+              optionLabel="name"
+              optionValue="id"
+              placeholder="Select Risk Profile"
+              styleClass="w-full"
+              size="large"
+              />
+            <label for="risk">Risk Profile</label>
+          </p-floatlabel>
+          <div class="flex flex-wrap justify-end mt-8">
+            <p-button
+              type="submit"
+              label="Save Changes"
+              icon="pi pi-check"
+              size="large"
+              [loading]="updateProfileMutation.isPending()"
+              [disabled]="!profileForm.valid || (!profileForm.dirty && !uploadedFile)"
+            ></p-button>
+          </div>
+        </form>
+      </div>
+    </p-fluid>
+  }
 </p-card>
 
 <!-- Password Change Section -->
-<p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4" *ngIf="user()">
-  <p class="mb-4 text-600 md:mb-5">Update your account password</p>
-  <p-fluid>
-    <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()" class="flex flex-col gap-4 mx-auto">
-      <p-floatlabel variant="on" class="flex flex-wrap w-full">
-        <p-password
-          formControlName="currentPassword"
-          size="large"
-          [toggleMask]="true"
-          [feedback]="false"
-          required
-          autocomplete="current-password"
-        />
-        <label for="currentPassword">Current Password</label>
-      </p-floatlabel>
-      <small *ngIf="passwordFormSubmitted && passwordForm.get('currentPassword')?.invalid" class="text-red-500">
-        Current password is required
-      </small>
-
-      <div class="flex flex-col w-full gap-4 md:flex-row">
-        <div class="flex flex-col w-full">
-          <p-floatlabel variant="on" class="flex flex-wrap w-full">
-            <p-password
-              formControlName="newPassword"
-              size="large"
-              [toggleMask]="true"
-              autocomplete="new-password"
-              required
-            >
-              <ng-template #footer>
-                <ul class="pl-2 my-0 ml-2 leading-normal">
-                  <li>At least one lowercase</li>
-                  <li>At least one uppercase</li>
-                  <li>At least one numeric</li>
-                  <li>At least one special character</li>
-                  <li>Minimum 8 characters</li>
-                </ul>
-              </ng-template>
-            </p-password>
-            <label for="newPassword">New Password</label>
-          </p-floatlabel>
-          <small *ngIf="passwordFormSubmitted && passwordForm.get('newPassword')?.invalid" class="text-red-500">
-            {{ getPasswordError('newPassword') }}
-          </small>
-        </div>
-
-        <div class="flex flex-col w-full">
-          <p-floatlabel variant="on" class="flex flex-wrap w-full">
-            <p-password
-              formControlName="confirmPassword"
-              size="large"
-              [toggleMask]="true"
-              [feedback]="false"
-              autocomplete="new-password"
-              required
+@if (user()) {
+  <p-card header="Change Password" styleClass="mt-8 max-w-4xl mx-auto p-4">
+    <p class="mb-4 text-600 md:mb-5">Update your account password</p>
+    <p-fluid>
+      <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()" class="flex flex-col gap-4 mx-auto">
+        <p-floatlabel variant="on" class="flex flex-wrap w-full">
+          <p-password
+            formControlName="currentPassword"
+            size="large"
+            [toggleMask]="true"
+            [feedback]="false"
+            required
+            autocomplete="current-password"
             />
-            <label for="confirmPassword">Confirm Password</label>
-          </p-floatlabel>
-          <small *ngIf="passwordFormSubmitted && passwordForm.get('confirmPassword')?.invalid" class="text-red-500">
-            Password confirmation is required
+          <label for="currentPassword">Current Password</label>
+        </p-floatlabel>
+        @if (passwordFormSubmitted && passwordForm.get('currentPassword')?.invalid) {
+          <small class="text-red-500">
+            Current password is required
           </small>
-          <small
-            *ngIf="
+        }
+        <div class="flex flex-col w-full gap-4 md:flex-row">
+          <div class="flex flex-col w-full">
+            <p-floatlabel variant="on" class="flex flex-wrap w-full">
+              <p-password
+                formControlName="newPassword"
+                size="large"
+                [toggleMask]="true"
+                autocomplete="new-password"
+                required
+                >
+                <ng-template #footer>
+                  <ul class="pl-2 my-0 ml-2 leading-normal">
+                    <li>At least one lowercase</li>
+                    <li>At least one uppercase</li>
+                    <li>At least one numeric</li>
+                    <li>At least one special character</li>
+                    <li>Minimum 8 characters</li>
+                  </ul>
+                </ng-template>
+              </p-password>
+              <label for="newPassword">New Password</label>
+            </p-floatlabel>
+            @if (passwordFormSubmitted && passwordForm.get('newPassword')?.invalid) {
+              <small class="text-red-500">
+                {{ getPasswordError('newPassword') }}
+              </small>
+            }
+          </div>
+          <div class="flex flex-col w-full">
+            <p-floatlabel variant="on" class="flex flex-wrap w-full">
+              <p-password
+                formControlName="confirmPassword"
+                size="large"
+                [toggleMask]="true"
+                [feedback]="false"
+                autocomplete="new-password"
+                required
+                />
+              <label for="confirmPassword">Confirm Password</label>
+            </p-floatlabel>
+            @if (passwordFormSubmitted && passwordForm.get('confirmPassword')?.invalid) {
+              <small class="text-red-500">
+                Password confirmation is required
+              </small>
+            }
+            @if (
               passwordFormSubmitted &&
               passwordForm.get('confirmPassword')?.valid &&
               passwordForm.hasError('passwordMismatch')
-            "
-            class="text-red-500"
-          >
-            Passwords do not match
-          </small>
+              ) {
+              <small
+                class="text-red-500"
+                >
+                Passwords do not match
+              </small>
+            }
+          </div>
         </div>
-      </div>
-
-      <div class="flex justify-end mt-4">
-        <p-button
-          type="submit"
-          label="Change Password"
-          icon="pi pi-key"
-          size="large"
-          [loading]="changePasswordMutation.isPending()"
-          [disabled]="!passwordForm.valid"
-        ></p-button>
-      </div>
-    </form>
-  </p-fluid>
-</p-card>
+        <div class="flex justify-end mt-4">
+          <p-button
+            type="submit"
+            label="Change Password"
+            icon="pi pi-key"
+            size="large"
+            [loading]="changePasswordMutation.isPending()"
+            [disabled]="!passwordForm.valid"
+          ></p-button>
+        </div>
+      </form>
+    </p-fluid>
+  </p-card>
+}
 
 <!-- Exchange Integrations Section -->
-<p-card
-  header="Exchange Integrations"
-  styleClass="mt-8 max-w-4xl mx-auto p-4"
-  *ngIf="user()"
-  id="exchange-integrations"
->
-  <p class="mb-4 text-600 md:mb-5">Connect your trading exchange accounts</p>
-
-  <p-message class="p-4 mb-8" severity="warn">
-    <div class="flex items-start gap-2">
-      <i class="mt-1 text-2xl text-yellow-500 pi pi-info-circle"></i>
-      <div>
-        <h4 class="m-0 text-base font-medium">Security Information</h4>
-        <p class="mt-1 mb-0 text-sm">
-          Your API keys are encrypted and stored securely. For the platform to function correctly, please use API keys
-          with trading permissions. Read-only permissions will not allow the platform to execute trades on your behalf.
-        </p>
+@if (user()) {
+  <p-card
+    header="Exchange Integrations"
+    styleClass="mt-8 max-w-4xl mx-auto p-4"
+    id="exchange-integrations"
+    >
+    <p class="mb-4 text-600 md:mb-5">Connect your trading exchange accounts</p>
+    <p-message class="p-4 mb-8" severity="warn">
+      <div class="flex items-start gap-2">
+        <i class="mt-1 text-2xl text-yellow-500 pi pi-info-circle"></i>
+        <div>
+          <h4 class="m-0 text-base font-medium">Security Information</h4>
+          <p class="mt-1 mb-0 text-sm">
+            Your API keys are encrypted and stored securely. For the platform to function correctly, please use API keys
+            with trading permissions. Read-only permissions will not allow the platform to execute trades on your behalf.
+          </p>
+        </div>
       </div>
-    </div>
-  </p-message>
-
-  @let exchanges = supportedExchangesQuery.data() || [];
-  @if (exchanges.length > 1) {
-    <p-tabs value="{{ exchanges[0].slug }}" lazy scrollable>
-      <p-tablist>
-        @for (exchange of exchanges; track exchange) {
-          <p-tab [value]="exchange.slug">
-            <p-avatar [image]="exchange.image" shape="circle" class="mr-2" />
-            {{ exchange.name }}
-          </p-tab>
-        }
-      </p-tablist>
-      <p-tabpanels>
-        @for (exchange of exchanges; track exchange) {
-          <p-tabpanel [value]="exchange.slug">
-            <p-fluid>
-              @if (exchangeForms[exchange.slug]) {
-                <form
-                  [formGroup]="exchangeForms[exchange.slug].form"
-                  (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
-                  class="flex flex-col gap-4 mx-auto mt-8"
-                >
-                  <p-message
-                    *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
-                    [severity]="isExchangeActive(exchange.id) ? 'success' : 'error'"
+    </p-message>
+    @let exchanges = supportedExchangesQuery.data() || [];
+    @if (exchanges.length > 1) {
+      <p-tabs value="{{ exchanges[0].slug }}" lazy scrollable>
+        <p-tablist>
+          @for (exchange of exchanges; track exchange) {
+            <p-tab [value]="exchange.slug">
+              <p-avatar [image]="exchange.image" shape="circle" class="mr-2" />
+              {{ exchange.name }}
+            </p-tab>
+          }
+        </p-tablist>
+        <p-tabpanels>
+          @for (exchange of exchanges; track exchange) {
+            <p-tabpanel [value]="exchange.slug">
+              <p-fluid>
+                @if (exchangeForms[exchange.slug]) {
+                  <form
+                    [formGroup]="exchangeForms[exchange.slug].form"
+                    (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
+                    class="flex flex-col gap-4 mx-auto mt-8"
+                    >
+                    @if (exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode) {
+                      <p-message
+                        [severity]="isExchangeActive(exchange.id) ? 'success' : 'error'"
                     [text]="
                       isExchangeActive(exchange.id)
                         ? 'Account connected'
                         : 'There was an issue connecting your account, please check your API keys'
                     "
-                    styleClass="my-4"
-                    [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-                  />
-                  <div class="flex flex-col w-full gap-4">
-                    <div class="flex flex-col w-full">
-                      <p-floatlabel variant="on" class="flex flex-wrap w-full">
-                        <input
-                          [id]="exchange.slug + 'ApiKey'"
-                          type="text"
-                          pInputText
-                          formControlName="apiKey"
-                          pSize="large"
-                          autocomplete="off"
+                        styleClass="my-4"
+                        [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
                         />
-                        <label [for]="exchange.slug + 'ApiKey'">API Key</label>
-                      </p-floatlabel>
-                      <small
-                        *ngIf="
+                    }
+                    <div class="flex flex-col w-full gap-4">
+                      <div class="flex flex-col w-full">
+                        <p-floatlabel variant="on" class="flex flex-wrap w-full">
+                          <input
+                            [id]="exchange.slug + 'ApiKey'"
+                            type="text"
+                            pInputText
+                            formControlName="apiKey"
+                            pSize="large"
+                            autocomplete="off"
+                            />
+                          <label [for]="exchange.slug + 'ApiKey'">API Key</label>
+                        </p-floatlabel>
+                        @if (
                           exchangeForms[exchange.slug].submitted &&
                           exchangeForms[exchange.slug].form.get('apiKey')?.invalid
-                        "
-                        class="text-red-500"
-                      >
-                        API Key is required
-                      </small>
-                    </div>
-
-                    <div class="flex flex-col w-full">
-                      <p-floatlabel variant="on" class="flex flex-wrap w-full">
-                        <input
-                          formControlName="secretKey"
-                          pSize="large"
-                          type="text"
-                          pInputText
-                          autocomplete="off"
-                          required
-                        />
-                        <label for="secretKey">Secret Key</label>
-                      </p-floatlabel>
-                      <small
-                        *ngIf="
+                          ) {
+                          <small
+                            class="text-red-500"
+                            >
+                            API Key is required
+                          </small>
+                        }
+                      </div>
+                      <div class="flex flex-col w-full">
+                        <p-floatlabel variant="on" class="flex flex-wrap w-full">
+                          <input
+                            formControlName="secretKey"
+                            pSize="large"
+                            type="text"
+                            pInputText
+                            autocomplete="off"
+                            required
+                            />
+                          <label for="secretKey">Secret Key</label>
+                        </p-floatlabel>
+                        @if (
                           exchangeForms[exchange.slug].submitted &&
                           exchangeForms[exchange.slug].form.get('secretKey')?.invalid
-                        "
-                        class="text-red-500"
-                      >
-                        Secret Key is required
-                      </small>
+                          ) {
+                          <small
+                            class="text-red-500"
+                            >
+                            Secret Key is required
+                          </small>
+                        }
+                      </div>
                     </div>
+                    <div class="flex flex-col w-full gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                      <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
+                        @if (isBinanceUs(exchange.name)) {
+                          <button
+                            pButton
+                            icon="pi pi-question-circle"
+                            label="API Key Help"
+                            class="w-full p-button-text p-button-info sm:w-auto"
+                            pTooltip="Get help with Binance US API keys"
+                            tooltipPosition="top"
+                            (click)="toggleBinanceHelp()"
+                            type="button"
+                          ></button>
+                        }
+                        @if (isCoinbase(exchange.name)) {
+                          <button
+                            pButton
+                            icon="pi pi-question-circle"
+                            label="API Key Help"
+                            class="w-full p-button-text p-button-info sm:w-auto"
+                            pTooltip="Get help with Coinbase API keys"
+                            tooltipPosition="top"
+                            (click)="toggleCoinbaseHelp()"
+                            type="button"
+                          ></button>
+                        }
+                      </div>
+                      <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
+                        @if (exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode) {
+                          <p-button
+                            type="button"
+                            label="Edit Keys"
+                            icon="pi pi-pencil"
+                            size="large"
+                            severity="success"
+                            class="w-full sm:w-auto"
+                            (click)="toggleEditExchangeKeys(exchange.slug)"
+                          ></p-button>
+                        }
+                        @if (exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode) {
+                          <p-button
+                            type="button"
+                            label="Remove Keys"
+                            icon="pi pi-trash"
+                            size="large"
+                            severity="danger"
+                            class="w-full sm:w-auto"
+                            (click)="removeExchangeKeys(exchange.slug)"
+                          ></p-button>
+                        }
+                        @if (exchangeForms[exchange.slug].editMode) {
+                          <p-button
+                            type="button"
+                            label="Cancel"
+                            icon="pi pi-times"
+                            size="large"
+                            severity="secondary"
+                            class="w-full sm:w-auto"
+                            (click)="cancelEditExchangeKeys(exchange.slug)"
+                          ></p-button>
+                        }
+                        @if (!exchangeForms[exchange.slug].connected || exchangeForms[exchange.slug].editMode) {
+                          <p-button
+                            type="submit"
+                            label="Save Keys"
+                            icon="pi pi-key"
+                            size="large"
+                            [loading]="exchangeForms[exchange.slug].loading"
+                            [disabled]="!exchangeForms[exchange.slug].form.valid"
+                            class="w-full sm:w-auto"
+                            />
+                        }
+                      </div>
+                    </div>
+                  </form>
+                } @else {
+                  <div class="py-4 text-center">
+                    <p class="text-gray-500">Loading exchange details...</p>
                   </div>
-
-                  <div class="flex flex-col w-full gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-                    <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
-                      <button
-                        *ngIf="isBinanceUs(exchange.name)"
-                        pButton
-                        icon="pi pi-question-circle"
-                        label="API Key Help"
-                        class="w-full p-button-text p-button-info sm:w-auto"
-                        pTooltip="Get help with Binance US API keys"
-                        tooltipPosition="top"
-                        (click)="toggleBinanceHelp()"
-                        type="button"
-                      ></button>
-                      <button
-                        *ngIf="isCoinbase(exchange.name)"
-                        pButton
-                        icon="pi pi-question-circle"
-                        label="API Key Help"
-                        class="w-full p-button-text p-button-info sm:w-auto"
-                        pTooltip="Get help with Coinbase API keys"
-                        tooltipPosition="top"
-                        (click)="toggleCoinbaseHelp()"
-                        type="button"
-                      ></button>
-                    </div>
-                    <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
-                      <p-button
-                        *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
-                        type="button"
-                        label="Edit Keys"
-                        icon="pi pi-pencil"
-                        size="large"
-                        severity="success"
-                        class="w-full sm:w-auto"
-                        (click)="toggleEditExchangeKeys(exchange.slug)"
-                      ></p-button>
-
-                      <p-button
-                        *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
-                        type="button"
-                        label="Remove Keys"
-                        icon="pi pi-trash"
-                        size="large"
-                        severity="danger"
-                        class="w-full sm:w-auto"
-                        (click)="removeExchangeKeys(exchange.slug)"
-                      ></p-button>
-
-                      <p-button
-                        *ngIf="exchangeForms[exchange.slug].editMode"
-                        type="button"
-                        label="Cancel"
-                        icon="pi pi-times"
-                        size="large"
-                        severity="secondary"
-                        class="w-full sm:w-auto"
-                        (click)="cancelEditExchangeKeys(exchange.slug)"
-                      ></p-button>
-
-                      <p-button
-                        *ngIf="!exchangeForms[exchange.slug].connected || exchangeForms[exchange.slug].editMode"
-                        type="submit"
-                        label="Save Keys"
-                        icon="pi pi-key"
-                        size="large"
-                        [loading]="exchangeForms[exchange.slug].loading"
-                        [disabled]="!exchangeForms[exchange.slug].form.valid"
-                        class="w-full sm:w-auto"
-                      />
-                    </div>
-                  </div>
-                </form>
-              } @else {
-                <div class="py-4 text-center">
-                  <p class="text-gray-500">Loading exchange details...</p>
-                </div>
-              }
-            </p-fluid>
-          </p-tabpanel>
-        }
-      </p-tabpanels>
-    </p-tabs>
-  } @else if (exchanges.length === 1) {
-    @let exchange = exchanges[0];
-    <p-fieldset>
-      <ng-template #header>
-        <div class="flex items-center gap-2 px-2">
-          <p-avatar [image]="exchange.image" shape="circle" class="mr-2" />
-          {{ exchange.name }}
-        </div>
-      </ng-template>
-      <p-fluid>
-        @if (exchangeForms[exchange.slug]) {
-          <form
-            [formGroup]="exchangeForms[exchange.slug].form"
-            (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
-            class="flex flex-col gap-4 mx-auto mt-8"
-          >
-            <p-message
-              *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
-              [severity]="isExchangeActive(exchange.id) ? 'success' : 'error'"
+                }
+              </p-fluid>
+            </p-tabpanel>
+          }
+        </p-tabpanels>
+      </p-tabs>
+    } @else if (exchanges.length === 1) {
+      @let exchange = exchanges[0];
+      <p-fieldset>
+        <ng-template #header>
+          <div class="flex items-center gap-2 px-2">
+            <p-avatar [image]="exchange.image" shape="circle" class="mr-2" />
+            {{ exchange.name }}
+          </div>
+        </ng-template>
+        <p-fluid>
+          @if (exchangeForms[exchange.slug]) {
+            <form
+              [formGroup]="exchangeForms[exchange.slug].form"
+              (ngSubmit)="onSaveExchangeKeys(exchange.slug)"
+              class="flex flex-col gap-4 mx-auto mt-8"
+              >
+              @if (exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode) {
+                <p-message
+                  [severity]="isExchangeActive(exchange.id) ? 'success' : 'error'"
               [text]="
                 isExchangeActive(exchange.id)
                   ? 'Account connected'
                   : 'There was an issue connecting your account, please check your API keys'
               "
-              styleClass="my-4"
-              [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
-            />
-            <div class="flex flex-col w-full gap-4">
-              <div class="flex flex-col w-full">
-                <p-floatlabel variant="on" class="flex flex-wrap w-full">
-                  <input
-                    [id]="exchange.slug + 'ApiKey'"
-                    type="text"
-                    pInputText
-                    formControlName="apiKey"
-                    pSize="large"
-                    autocomplete="off"
+                  styleClass="my-4"
+                  [icon]="isExchangeActive(exchange.id) ? 'pi pi-check-circle' : 'pi pi-times-circle'"
                   />
-                  <label [for]="exchange.slug + 'ApiKey'">API Key</label>
-                </p-floatlabel>
-                <small
-                  *ngIf="
+              }
+              <div class="flex flex-col w-full gap-4">
+                <div class="flex flex-col w-full">
+                  <p-floatlabel variant="on" class="flex flex-wrap w-full">
+                    <input
+                      [id]="exchange.slug + 'ApiKey'"
+                      type="text"
+                      pInputText
+                      formControlName="apiKey"
+                      pSize="large"
+                      autocomplete="off"
+                      />
+                    <label [for]="exchange.slug + 'ApiKey'">API Key</label>
+                  </p-floatlabel>
+                  @if (
                     exchangeForms[exchange.slug].submitted && exchangeForms[exchange.slug].form.get('apiKey')?.invalid
-                  "
-                  class="text-red-500"
-                >
-                  API Key is required
-                </small>
-              </div>
-
-              <div class="flex flex-col w-full">
-                <p-floatlabel variant="on" class="flex flex-wrap w-full">
-                  <p-password
-                    formControlName="secretKey"
-                    size="large"
-                    [toggleMask]="true"
-                    [feedback]="false"
-                    autocomplete="off"
-                    required
-                  />
-                  <label for="secretKey">Secret Key</label>
-                </p-floatlabel>
-                <small
-                  *ngIf="
+                    ) {
+                    <small
+                      class="text-red-500"
+                      >
+                      API Key is required
+                    </small>
+                  }
+                </div>
+                <div class="flex flex-col w-full">
+                  <p-floatlabel variant="on" class="flex flex-wrap w-full">
+                    <p-password
+                      formControlName="secretKey"
+                      size="large"
+                      [toggleMask]="true"
+                      [feedback]="false"
+                      autocomplete="off"
+                      required
+                      />
+                    <label for="secretKey">Secret Key</label>
+                  </p-floatlabel>
+                  @if (
                     exchangeForms[exchange.slug].submitted &&
                     exchangeForms[exchange.slug].form.get('secretKey')?.invalid
-                  "
-                  class="text-red-500"
-                >
-                  Secret Key is required
-                </small>
+                    ) {
+                    <small
+                      class="text-red-500"
+                      >
+                      Secret Key is required
+                    </small>
+                  }
+                </div>
+              </div>
+              <div class="flex flex-col w-full gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
+                  @if (isBinanceUs(exchange.name)) {
+                    <button
+                      pButton
+                      icon="pi pi-question-circle"
+                      label="API Key Help"
+                      class="w-full p-button-text p-button-info sm:w-auto"
+                      pTooltip="Get help with Binance US API keys"
+                      tooltipPosition="top"
+                      (click)="toggleBinanceHelp()"
+                      type="button"
+                    ></button>
+                  }
+                  @if (isCoinbase(exchange.name)) {
+                    <button
+                      pButton
+                      icon="pi pi-question-circle"
+                      label="API Key Help"
+                      class="w-full p-button-text p-button-info sm:w-auto"
+                      pTooltip="Get help with Coinbase API keys"
+                      tooltipPosition="top"
+                      (click)="toggleCoinbaseHelp()"
+                      type="button"
+                    ></button>
+                  }
+                </div>
+                <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
+                  @if (exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode) {
+                    <p-button
+                      type="button"
+                      label="Edit Keys"
+                      icon="pi pi-pencil"
+                      size="large"
+                      severity="success"
+                      class="w-full sm:w-auto"
+                      (click)="toggleEditExchangeKeys(exchange.slug)"
+                      />
+                  }
+                  @if (exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode) {
+                    <p-button
+                      type="button"
+                      label="Remove Keys"
+                      icon="pi pi-trash"
+                      size="large"
+                      severity="danger"
+                      class="w-full sm:w-auto"
+                      (click)="removeExchangeKeys(exchange.slug)"
+                      />
+                  }
+                  @if (exchangeForms[exchange.slug].editMode) {
+                    <p-button
+                      type="button"
+                      label="Cancel"
+                      icon="pi pi-times"
+                      size="large"
+                      severity="secondary"
+                      class="w-full sm:w-auto"
+                      (click)="cancelEditExchangeKeys(exchange.slug)"
+                      />
+                  }
+                  @if (!exchangeForms[exchange.slug].connected || exchangeForms[exchange.slug].editMode) {
+                    <p-button
+                      type="submit"
+                      label="Save Keys"
+                      icon="pi pi-key"
+                      size="large"
+                      [loading]="exchangeForms[exchange.slug].loading"
+                      [disabled]="!exchangeForms[exchange.slug].form.valid"
+                      class="w-full sm:w-auto"
+                      />
+                  }
+                </div>
+              </div>
+            </form>
+          } @else {
+            <div class="py-4 text-center">
+              <p class="text-gray-500">Loading exchange details...</p>
+            </div>
+          }
+        </p-fluid>
+      </p-fieldset>
+    } @else if (supportedExchangesQuery.isLoading() || supportedExchangesQuery.isPending()) {
+      <div class="py-8">
+        <div class="flex flex-col gap-4 p-4">
+          <p-skeleton width="40%" height="2rem" styleClass="mb-3"></p-skeleton>
+          @for (i of [1, 2, 3]; track i) {
+            <div>
+              <div class="mb-6">
+                <p-skeleton width="20%" height="1.5rem" styleClass="mb-2"></p-skeleton>
+                <div class="flex flex-wrap gap-3 md:flex-row">
+                  <p-skeleton width="15rem" height="2.5rem" styleClass="mb-1"></p-skeleton>
+                  <p-skeleton width="15rem" height="2.5rem" styleClass="mb-1"></p-skeleton>
+                </div>
+                <div class="flex justify-end mt-3">
+                  <p-skeleton width="8rem" height="2.5rem"></p-skeleton>
+                </div>
               </div>
             </div>
-
-            <div class="flex flex-col w-full gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-              <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
-                <button
-                  *ngIf="isBinanceUs(exchange.name)"
-                  pButton
-                  icon="pi pi-question-circle"
-                  label="API Key Help"
-                  class="w-full p-button-text p-button-info sm:w-auto"
-                  pTooltip="Get help with Binance US API keys"
-                  tooltipPosition="top"
-                  (click)="toggleBinanceHelp()"
-                  type="button"
-                ></button>
-                <button
-                  *ngIf="isCoinbase(exchange.name)"
-                  pButton
-                  icon="pi pi-question-circle"
-                  label="API Key Help"
-                  class="w-full p-button-text p-button-info sm:w-auto"
-                  pTooltip="Get help with Coinbase API keys"
-                  tooltipPosition="top"
-                  (click)="toggleCoinbaseHelp()"
-                  type="button"
-                ></button>
-              </div>
-              <div class="flex flex-col w-full gap-2 sm:w-auto sm:flex-row">
-                <p-button
-                  *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
-                  type="button"
-                  label="Edit Keys"
-                  icon="pi pi-pencil"
-                  size="large"
-                  severity="success"
-                  class="w-full sm:w-auto"
-                  (click)="toggleEditExchangeKeys(exchange.slug)"
-                />
-
-                <p-button
-                  *ngIf="exchangeForms[exchange.slug].connected && !exchangeForms[exchange.slug].editMode"
-                  type="button"
-                  label="Remove Keys"
-                  icon="pi pi-trash"
-                  size="large"
-                  severity="danger"
-                  class="w-full sm:w-auto"
-                  (click)="removeExchangeKeys(exchange.slug)"
-                />
-
-                <p-button
-                  *ngIf="exchangeForms[exchange.slug].editMode"
-                  type="button"
-                  label="Cancel"
-                  icon="pi pi-times"
-                  size="large"
-                  severity="secondary"
-                  class="w-full sm:w-auto"
-                  (click)="cancelEditExchangeKeys(exchange.slug)"
-                />
-
-                <p-button
-                  *ngIf="!exchangeForms[exchange.slug].connected || exchangeForms[exchange.slug].editMode"
-                  type="submit"
-                  label="Save Keys"
-                  icon="pi pi-key"
-                  size="large"
-                  [loading]="exchangeForms[exchange.slug].loading"
-                  [disabled]="!exchangeForms[exchange.slug].form.valid"
-                  class="w-full sm:w-auto"
-                />
-              </div>
-            </div>
-          </form>
-        } @else {
-          <div class="py-4 text-center">
-            <p class="text-gray-500">Loading exchange details...</p>
-          </div>
-        }
-      </p-fluid>
-    </p-fieldset>
-  } @else if (supportedExchangesQuery.isLoading() || supportedExchangesQuery.isPending()) {
-    <div class="py-8">
-      <div class="flex flex-col gap-4 p-4">
-        <p-skeleton width="40%" height="2rem" styleClass="mb-3"></p-skeleton>
-        <div *ngFor="let i of [1, 2, 3]">
-          <div class="mb-6">
-            <p-skeleton width="20%" height="1.5rem" styleClass="mb-2"></p-skeleton>
-            <div class="flex flex-wrap gap-3 md:flex-row">
-              <p-skeleton width="15rem" height="2.5rem" styleClass="mb-1"></p-skeleton>
-              <p-skeleton width="15rem" height="2.5rem" styleClass="mb-1"></p-skeleton>
-            </div>
-            <div class="flex justify-end mt-3">
-              <p-skeleton width="8rem" height="2.5rem"></p-skeleton>
-            </div>
-          </div>
+          }
         </div>
       </div>
-    </div>
-  } @else {
-    <p class="italic text-center text-gray-500">No exchange integrations are currently available.</p>
-  }
-</p-card>
+    } @else {
+      <p class="italic text-center text-gray-500">No exchange integrations are currently available.</p>
+    }
+  </p-card>
+}
 
 <p-toast></p-toast>
 <p-confirmDialog [style]="{ width: '450px' }"></p-confirmDialog>
@@ -593,7 +608,7 @@
   [style]="{ width: '90%', maxWidth: '600px' }"
   [draggable]="false"
   [resizable]="false"
->
+  >
   <div class="p-fluid">
     <p-message severity="warn" styleClass="mb-4 w-full">
       <div class="flex flex-col">
@@ -601,122 +616,122 @@
         <span
           >Do NOT use API keys generated from the Tax API page or from the mobile app. These keys will not work with our
           platform.</span
-        >
+          >
+        </div>
+      </p-message>
+
+      <h3 class="mb-2 text-lg font-semibold">Desktop Instructions</h3>
+      <ol class="mb-4 ml-6 list-decimal">
+        <li class="mb-2">
+          Log in to your
+          <a href="https://www.binance.us" target="_blank" class="text-primary hover:underline">Binance US account</a>
+        </li>
+        <li class="mb-2">
+          Go to
+          <a href="https://www.binance.us/settings/api-management" target="_blank" class="text-primary hover:underline"
+            >API Management</a
+            >
+            under your user profile
+          </li>
+          <li class="mb-2">Click on "Create API"</li>
+          <li class="mb-2">Name your API key (e.g., "Cymbit Trading")</li>
+          <li class="mb-2">Enable trading permissions</li>
+          <li class="mb-2">Complete the security verification</li>
+          <li class="mb-2">Copy both API Key and Secret Key</li>
+          <li>Paste them into the respective fields in this form</li>
+        </ol>
+
+        <h3 class="mb-2 text-lg font-semibold">Mobile Instructions</h3>
+        <p class="mb-1">API keys must be created using the desktop website, not the mobile app:</p>
+        <ol class="mb-4 ml-6 list-decimal">
+          <li class="mb-2">Open a browser on your mobile device</li>
+          <li class="mb-2">Request the desktop version of the Binance US website</li>
+          <li class="mb-2">Follow the same steps as the desktop instructions above</li>
+        </ol>
+
+        <p-divider></p-divider>
+
+        <div class="flex justify-end">
+          <p-button
+            label="Close"
+            icon="pi pi-times"
+            (click)="toggleBinanceHelp()"
+            styleClass="p-button-secondary"
+          ></p-button>
+        </div>
       </div>
-    </p-message>
+    </p-dialog>
 
-    <h3 class="mb-2 text-lg font-semibold">Desktop Instructions</h3>
-    <ol class="mb-4 ml-6 list-decimal">
-      <li class="mb-2">
-        Log in to your
-        <a href="https://www.binance.us" target="_blank" class="text-primary hover:underline">Binance US account</a>
-      </li>
-      <li class="mb-2">
-        Go to
-        <a href="https://www.binance.us/settings/api-management" target="_blank" class="text-primary hover:underline"
-          >API Management</a
-        >
-        under your user profile
-      </li>
-      <li class="mb-2">Click on "Create API"</li>
-      <li class="mb-2">Name your API key (e.g., "Cymbit Trading")</li>
-      <li class="mb-2">Enable trading permissions</li>
-      <li class="mb-2">Complete the security verification</li>
-      <li class="mb-2">Copy both API Key and Secret Key</li>
-      <li>Paste them into the respective fields in this form</li>
-    </ol>
+    <!-- Coinbase Help Dialog -->
+    <p-dialog
+      [visible]="showCoinbaseHelp()"
+      (visibleChange)="showCoinbaseHelp.set($event)"
+      [modal]="true"
+      header="Coinbase API Key Setup Guide"
+      [style]="{ width: '90%', maxWidth: '600px' }"
+      [draggable]="false"
+      [resizable]="false"
+      >
+      <div class="p-fluid">
+        <p-message severity="warn" styleClass="mb-4 w-full">
+          <div class="flex flex-col">
+            <span class="mb-1 font-bold">Important Warning:</span>
+            <span>
+              For security reasons, make sure to restrict your API key permissions to only what is necessary for trading and
+              viewing balances. Do not enable withdrawal permissions unless absolutely required.
+            </span>
+          </div>
+        </p-message>
 
-    <h3 class="mb-2 text-lg font-semibold">Mobile Instructions</h3>
-    <p class="mb-1">API keys must be created using the desktop website, not the mobile app:</p>
-    <ol class="mb-4 ml-6 list-decimal">
-      <li class="mb-2">Open a browser on your mobile device</li>
-      <li class="mb-2">Request the desktop version of the Binance US website</li>
-      <li class="mb-2">Follow the same steps as the desktop instructions above</li>
-    </ol>
+        <h3 class="mb-2 text-lg font-semibold">Desktop Instructions</h3>
+        <ol class="mb-4 ml-6 list-decimal">
+          <li class="mb-2">
+            Log in to your
+            <a href="https://www.coinbase.com" target="_blank" class="text-primary hover:underline">Coinbase account</a>
+          </li>
+          <li class="mb-2">
+            Go to your
+            <a href="https://www.coinbase.com/settings/api" target="_blank" class="text-primary hover:underline"
+              >API settings</a
+              >
+            </li>
+            <li class="mb-2">Click on "New API Key"</li>
+            <li class="mb-2">Select the accounts you want to include</li>
+            <li class="mb-2">Enable "view" and "trade" permissions</li>
+            <li class="mb-2">We recommend setting IP address restrictions for additional security</li>
+            <li class="mb-2">Complete the security verification (you may need to use two-factor authentication)</li>
+            <li class="mb-2">Copy both the API Key and Secret Key when they are displayed</li>
+            <li>Paste them into the respective fields in this form</li>
+          </ol>
 
-    <p-divider></p-divider>
+          <h3 class="mb-2 text-lg font-semibold">Mobile Instructions</h3>
+          <p class="mb-1">For the best experience and access to all necessary settings:</p>
+          <ol class="mb-4 ml-6 list-decimal">
+            <li class="mb-2">We strongly recommend using a desktop browser to create API keys</li>
+            <li class="mb-2">If using a mobile device, request the desktop version of the Coinbase website</li>
+            <li class="mb-2">Follow the same steps as listed in the desktop instructions</li>
+          </ol>
 
-    <div class="flex justify-end">
-      <p-button
-        label="Close"
-        icon="pi pi-times"
-        (click)="toggleBinanceHelp()"
-        styleClass="p-button-secondary"
-      ></p-button>
-    </div>
-  </div>
-</p-dialog>
+          <p-divider></p-divider>
 
-<!-- Coinbase Help Dialog -->
-<p-dialog
-  [visible]="showCoinbaseHelp()"
-  (visibleChange)="showCoinbaseHelp.set($event)"
-  [modal]="true"
-  header="Coinbase API Key Setup Guide"
-  [style]="{ width: '90%', maxWidth: '600px' }"
-  [draggable]="false"
-  [resizable]="false"
->
-  <div class="p-fluid">
-    <p-message severity="warn" styleClass="mb-4 w-full">
-      <div class="flex flex-col">
-        <span class="mb-1 font-bold">Important Warning:</span>
-        <span>
-          For security reasons, make sure to restrict your API key permissions to only what is necessary for trading and
-          viewing balances. Do not enable withdrawal permissions unless absolutely required.
-        </span>
-      </div>
-    </p-message>
+          <div class="flex justify-end">
+            <p-button
+              label="Close"
+              icon="pi pi-times"
+              (click)="toggleCoinbaseHelp()"
+              styleClass="p-button-secondary"
+            ></p-button>
+          </div>
+        </div>
+      </p-dialog>
 
-    <h3 class="mb-2 text-lg font-semibold">Desktop Instructions</h3>
-    <ol class="mb-4 ml-6 list-decimal">
-      <li class="mb-2">
-        Log in to your
-        <a href="https://www.coinbase.com" target="_blank" class="text-primary hover:underline">Coinbase account</a>
-      </li>
-      <li class="mb-2">
-        Go to your
-        <a href="https://www.coinbase.com/settings/api" target="_blank" class="text-primary hover:underline"
-          >API settings</a
-        >
-      </li>
-      <li class="mb-2">Click on "New API Key"</li>
-      <li class="mb-2">Select the accounts you want to include</li>
-      <li class="mb-2">Enable "view" and "trade" permissions</li>
-      <li class="mb-2">We recommend setting IP address restrictions for additional security</li>
-      <li class="mb-2">Complete the security verification (you may need to use two-factor authentication)</li>
-      <li class="mb-2">Copy both the API Key and Secret Key when they are displayed</li>
-      <li>Paste them into the respective fields in this form</li>
-    </ol>
-
-    <h3 class="mb-2 text-lg font-semibold">Mobile Instructions</h3>
-    <p class="mb-1">For the best experience and access to all necessary settings:</p>
-    <ol class="mb-4 ml-6 list-decimal">
-      <li class="mb-2">We strongly recommend using a desktop browser to create API keys</li>
-      <li class="mb-2">If using a mobile device, request the desktop version of the Coinbase website</li>
-      <li class="mb-2">Follow the same steps as listed in the desktop instructions</li>
-    </ol>
-
-    <p-divider></p-divider>
-
-    <div class="flex justify-end">
-      <p-button
-        label="Close"
-        icon="pi pi-times"
-        (click)="toggleCoinbaseHelp()"
-        styleClass="p-button-secondary"
-      ></p-button>
-    </div>
-  </div>
-</p-dialog>
-
-<style>
-  .p-avatar.profile {
-    width: 20rem;
-    height: fit-content;
-  }
-  @media (max-width: 639px) {
-    .p-avatar.profile {
+      <style>
+        .p-avatar.profile {
+        width: 20rem;
+        height: fit-content;
+      }
+      @media (max-width: 639px) {
+      .p-avatar.profile {
       width: 100%;
     }
   }

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -24,14 +24,13 @@ interface Message {
   selector: 'app-otp',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     InputOtpModule,
     LazyImageComponent,
     MessageModule,
     ReactiveFormsModule,
     RouterLink
-  ],
+],
   providers: [MessageService],
   templateUrl: './otp.component.html'
 })
