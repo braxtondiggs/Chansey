@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
+import { BollingerBands, SD, SMA } from 'technicalindicators';
+
 import { PriceSummary } from '../../price/price.entity';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
  * Mean Reversion Algorithm Strategy
+ * Refactored to use technicalindicators library
+ *
+ * Uses battle-tested SMA and StandardDeviation implementations
  * Generates trading signals based on price deviations from moving average
  * Assumes prices will revert to their mean over time
  */
@@ -14,8 +20,9 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
 export class MeanReversionStrategy extends BaseAlgorithmStrategy {
   readonly id = 'mean-reversion-v2';
   readonly name = 'Mean Reversion';
-  readonly version = '2.0.0';
-  readonly description = 'Trading strategy that identifies overbought/oversold conditions using price deviation from moving average';
+  readonly version = '3.0.0';
+  readonly description =
+    'Trading strategy that identifies overbought/oversold conditions using price deviation from moving average';
 
   constructor(schedulerRegistry: SchedulerRegistry) {
     super(schedulerRegistry);
@@ -29,20 +36,24 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
     const chartData: { [key: string]: ChartDataPoint[] } = {};
 
     try {
-      const period = 20; // 20-day moving average
-      const threshold = 2; // 2 standard deviations
+      // Get configuration with defaults
+      const period = (context.config.period as number) || 20;
+      const threshold = (context.config.threshold as number) || 2; // Standard deviations
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
-        
+
         if (!priceHistory || priceHistory.length < period + 1) {
           this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
-        // Calculate moving average and standard deviation
+        // Calculate Bollinger Bands (includes SMA + SD automatically)
+        const bollingerBands = this.calculateBollingerBands(priceHistory, period, threshold);
+
+        // Alternative: Calculate SMA and SD separately for more control
         const movingAverage = this.calculateMovingAverage(priceHistory, period);
-        const standardDeviation = this.calculateStandardDeviation(priceHistory, movingAverage, period);
+        const standardDeviation = this.calculateStandardDeviation(priceHistory, period);
 
         // Generate signals based on mean reversion
         const signal = this.generateMeanReversionSignal(
@@ -58,8 +69,14 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, movingAverage, standardDeviation, threshold);
+        // Prepare chart data with Bollinger Bands
+        chartData[coin.id] = this.prepareChartData(
+          priceHistory,
+          movingAverage,
+          standardDeviation,
+          threshold,
+          bollingerBands
+        );
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -69,7 +86,6 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
         threshold,
         signalsGenerated: signals.length
       });
-
     } catch (error) {
       this.logger.error(`Mean Reversion algorithm execution failed: ${error.message}`, error.stack);
       return this.createErrorResult(error.message);
@@ -77,41 +93,80 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
   }
 
   /**
-   * Calculate Simple Moving Average
+   * Calculate Bollinger Bands using technicalindicators library
+   * Returns upper, middle, and lower bands
+   *
+   * @param prices - Array of PriceSummary objects
+   * @param period - Period for the moving average
+   * @param stdDev - Number of standard deviations for bands
+   * @returns Array of Bollinger Bands values
    */
-  private calculateMovingAverage(prices: PriceSummary[], period: number): number[] {
-    const movingAverages: number[] = [];
-    
-    for (let i = 0; i < prices.length; i++) {
-      if (i < period - 1) {
-        movingAverages.push(NaN);
-      } else {
-        const sum = prices.slice(i - period + 1, i + 1).reduce((acc, price) => acc + price.avg, 0);
-        movingAverages.push(sum / period);
-      }
-    }
-    
-    return movingAverages;
+  private calculateBollingerBands(
+    prices: PriceSummary[],
+    period: number,
+    stdDev: number
+  ): Array<{ upper: number; middle: number; lower: number; pb?: number; bandwidth?: number }> {
+    // Extract average prices
+    const values = IndicatorDataTransformer.extractAveragePrices(prices);
+
+    // Calculate Bollinger Bands using technicalindicators library
+    const bbResults = BollingerBands.calculate({
+      period,
+      stdDev,
+      values
+    });
+
+    // Pad results to match original length
+    const paddingLength = prices.length - bbResults.length;
+    const padding = new Array(paddingLength).fill({
+      upper: NaN,
+      middle: NaN,
+      lower: NaN
+    });
+
+    return [...padding, ...bbResults];
   }
 
   /**
-   * Calculate Standard Deviation
+   * Calculate Simple Moving Average using technicalindicators library
+   *
+   * @param prices - Array of PriceSummary objects
+   * @param period - SMA period
+   * @returns Array of SMA values (padded with NaN for alignment)
    */
-  private calculateStandardDeviation(prices: PriceSummary[], movingAverage: number[], period: number): number[] {
-    const standardDeviations: number[] = [];
-    
-    for (let i = 0; i < prices.length; i++) {
-      if (i < period - 1 || isNaN(movingAverage[i])) {
-        standardDeviations.push(NaN);
-      } else {
-        const priceSlice = prices.slice(i - period + 1, i + 1);
-        const mean = movingAverage[i];
-        const variance = priceSlice.reduce((acc, price) => acc + Math.pow(price.avg - mean, 2), 0) / period;
-        standardDeviations.push(Math.sqrt(variance));
-      }
-    }
-    
-    return standardDeviations;
+  private calculateMovingAverage(prices: PriceSummary[], period: number): number[] {
+    // Extract average prices
+    const values = IndicatorDataTransformer.extractAveragePrices(prices);
+
+    // Calculate SMA using technicalindicators library
+    const smaResults = SMA.calculate({
+      period,
+      values
+    });
+
+    // Pad results to match original length
+    return IndicatorDataTransformer.padResults(smaResults, prices.length);
+  }
+
+  /**
+   * Calculate Standard Deviation using technicalindicators library
+   *
+   * @param prices - Array of PriceSummary objects
+   * @param period - Period for standard deviation calculation
+   * @returns Array of standard deviation values (padded with NaN for alignment)
+   */
+  private calculateStandardDeviation(prices: PriceSummary[], period: number): number[] {
+    // Extract average prices
+    const values = IndicatorDataTransformer.extractAveragePrices(prices);
+
+    // Calculate Standard Deviation using technicalindicators library
+    const sdResults = SD.calculate({
+      period,
+      values
+    });
+
+    // Pad results to match original length
+    return IndicatorDataTransformer.padResults(sdResults, prices.length);
   }
 
   /**
@@ -146,7 +201,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
         coinId,
         strength: Math.min(1, absZScore / threshold - 1),
         price: currentPrice,
-        confidence: Math.min(0.9, absZScore / threshold * 0.3),
+        confidence: Math.min(0.9, (absZScore / threshold) * 0.3),
         reason: `Mean reversion buy signal: Price is ${absZScore.toFixed(2)} standard deviations below moving average`,
         metadata: {
           symbol: coinSymbol,
@@ -165,7 +220,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
         coinId,
         strength: Math.min(1, absZScore / threshold - 1),
         price: currentPrice,
-        confidence: Math.min(0.9, absZScore / threshold * 0.3),
+        confidence: Math.min(0.9, (absZScore / threshold) * 0.3),
         reason: `Mean reversion sell signal: Price is ${absZScore.toFixed(2)} standard deviations above moving average`,
         metadata: {
           symbol: coinSymbol,
@@ -183,12 +238,14 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
 
   /**
    * Prepare chart data for visualization
+   * Includes Bollinger Bands for better visualization
    */
   private prepareChartData(
     prices: PriceSummary[],
     movingAverage: number[],
     standardDeviation: number[],
-    threshold: number
+    threshold: number,
+    bollingerBands: Array<{ upper: number; middle: number; lower: number }>
   ): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
@@ -196,11 +253,13 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
       metadata: {
         movingAverage: movingAverage[index],
         standardDeviation: standardDeviation[index],
-        upperBand: movingAverage[index] + (standardDeviation[index] * threshold),
-        lowerBand: movingAverage[index] - (standardDeviation[index] * threshold),
-        zScore: isNaN(movingAverage[index]) || isNaN(standardDeviation[index]) 
-          ? NaN 
-          : (price.avg - movingAverage[index]) / standardDeviation[index]
+        upperBand: bollingerBands[index]?.upper ?? movingAverage[index] + standardDeviation[index] * threshold,
+        lowerBand: bollingerBands[index]?.lower ?? movingAverage[index] - standardDeviation[index] * threshold,
+        middleBand: bollingerBands[index]?.middle ?? movingAverage[index],
+        zScore:
+          isNaN(movingAverage[index]) || isNaN(standardDeviation[index])
+            ? NaN
+            : (price.avg - movingAverage[index]) / standardDeviation[index]
       }
     }));
   }
@@ -229,7 +288,8 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
     // Check if we have sufficient price data for mean reversion calculation
     for (const coin of context.coins) {
       const priceHistory = context.priceData[coin.id];
-      if (!priceHistory || priceHistory.length < 21) { // Need at least 21 data points for 20-period calculation
+      if (!priceHistory || priceHistory.length < 21) {
+        // Need at least 21 data points for 20-period calculation
         return false;
       }
     }

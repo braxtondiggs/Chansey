@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -20,7 +20,6 @@ import { LoginService } from './login.service';
   standalone: true,
   imports: [
     CheckboxModule,
-    CommonModule,
     ButtonModule,
     FloatLabelModule,
     InputTextModule,
@@ -30,7 +29,7 @@ import { LoginService } from './login.service';
     ReactiveFormsModule,
     RouterLink,
     FluidModule
-  ],
+],
   templateUrl: './login.component.html'
 })
 export class LoginComponent {

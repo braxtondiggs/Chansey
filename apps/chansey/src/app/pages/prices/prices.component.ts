@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -14,7 +14,7 @@ import { PriceService } from './prices.service';
 @Component({
   selector: 'app-prices',
   standalone: true,
-  imports: [CommonModule, CryptoTableComponent, RouterModule, ToastModule],
+  imports: [CryptoTableComponent, RouterModule, ToastModule],
   providers: [MessageService],
   templateUrl: './prices.component.html'
 })

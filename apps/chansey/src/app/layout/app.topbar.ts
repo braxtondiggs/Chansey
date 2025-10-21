@@ -37,57 +37,59 @@ interface NotificationGroup {
   standalone: true,
   imports: [AvatarModule, AppBreadcrumb, RouterModule, StyleClassModule, CommonModule, ButtonModule, TooltipModule],
   template: `<div class="layout-topbar">
-    <div class="topbar-left">
-      <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
-        <i class="pi pi-chevron-left"></i>
-      </a>
-      <img class="horizontal-logo" src="/layout/images/logo-white.svg" alt="diamond-layout" />
-      <span class="topbar-separator"></span>
-      <app-breadcrumb></app-breadcrumb>
-      <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
-    </div>
-
-    <div class="topbar-right">
-      <ul class="topbar-menu">
-        <li class="right-sidebar-item" *ngIf="pwaService.installable$ | async">
-          <button
-            type="button"
-            class="right-sidebar-button"
-            (click)="installApp()"
-            pTooltip="Install App for faster access"
-            tooltipPosition="bottom"
-          >
-            <i class="pi pi-download"></i>
-          </button>
-        </li>
-        <li class="right-sidebar-item">
-          <a class="right-sidebar-button" (click)="toggleSearchBar()">
-            <i class="pi pi-search"></i>
-          </a>
-        </li>
-        <li class="right-sidebar-item static sm:relative">
-          <a
-            class="right-sidebar-button relative z-50"
-            pStyleClass="@next"
-            enterFromClass="hidden"
-            enterActiveClass="animate-scalein"
-            leaveActiveClass="animate-fadeout"
-            leaveToClass="hidden"
-            [hideOnOutsideClick]="true"
-          >
-            <!--<span class="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-red-500"></span>-->
-            <i class="pi pi-bell"></i>
-          </a>
-          <div
-            class="border-surface bg-surface-0 dark:bg-surface-900 absolute top-auto z-50 m-0 mt-2 hidden min-w-72 origin-top list-none overflow-hidden rounded-2xl border shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)] sm:w-[22rem]"
-            style="right: -100px"
-          >
-            <div class="border-surface flex items-center justify-between border-b p-4">
-              <span class="label-small text-surface-950 dark:text-surface-0">Notifications</span>
-              <!--<button
+      <div class="topbar-left">
+        <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
+          <i class="pi pi-chevron-left"></i>
+        </a>
+        <img class="horizontal-logo" src="/layout/images/logo-white.svg" alt="diamond-layout" />
+        <span class="topbar-separator"></span>
+        <app-breadcrumb></app-breadcrumb>
+        <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
+      </div>
+    
+      <div class="topbar-right">
+        <ul class="topbar-menu">
+          @if (pwaService.installable$ | async) {
+            <li class="right-sidebar-item">
+              <button
+                type="button"
+                class="right-sidebar-button"
+                (click)="installApp()"
+                pTooltip="Install App for faster access"
+                tooltipPosition="bottom"
+                >
+                <i class="pi pi-download"></i>
+              </button>
+            </li>
+          }
+          <li class="right-sidebar-item">
+            <a class="right-sidebar-button" (click)="toggleSearchBar()">
+              <i class="pi pi-search"></i>
+            </a>
+          </li>
+          <li class="right-sidebar-item static sm:relative">
+            <a
+              class="right-sidebar-button relative z-50"
+              pStyleClass="@next"
+              enterFromClass="hidden"
+              enterActiveClass="animate-scalein"
+              leaveActiveClass="animate-fadeout"
+              leaveToClass="hidden"
+              [hideOnOutsideClick]="true"
+              >
+              <!--<span class="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-red-500"></span>-->
+              <i class="pi pi-bell"></i>
+            </a>
+            <div
+              class="border-surface bg-surface-0 dark:bg-surface-900 absolute top-auto z-50 m-0 mt-2 hidden min-w-72 origin-top list-none overflow-hidden rounded-2xl border shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)] sm:w-[22rem]"
+              style="right: -100px"
+              >
+              <div class="border-surface flex items-center justify-between border-b p-4">
+                <span class="label-small text-surface-950 dark:text-surface-0">Notifications</span>
+                <!--<button
                 pRipple
                 class="text-surface-950 dark:text-surface-0 label-x-small hover:bg-emphasis border-surface rounded-lg border px-2 py-1 shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)] transition-all"
-              >
+                >
                 Mark all as read
               </button>-->
             </div>
@@ -97,118 +99,118 @@ interface NotificationGroup {
               <span class="label-medium text-surface-700 dark:text-surface-300">No notifications yet</span>
               <span class="label-small text-surface-500 dark:text-surface-400 mt-1"
                 >We'll notify you when something important happens</span
-              >
-            </div>
-            <!-- Hiding the navigation tabs and notification list since they're not needed for empty state -->
-            <!--
-            <div class="border-surface flex items-center border-b">
-              @for (item of notificationsBars(); track item.id; let i = $index) {
-                <button
+                >
+              </div>
+              <!-- Hiding the navigation tabs and notification list since they're not needed for empty state -->
+              <!--
+              <div class="border-surface flex items-center border-b">
+                @for (item of notificationsBars(); track item.id; let i = $index) {
+                  <button
                   [ngClass]="{
                     'border-surface-950 dark:border-surface-0': selectedNotificationBar() === item.id,
                     'border-transparent': selectedNotificationBar() !== item.id
                   }"
-                  class="inline-flex items-center gap-2 border-b px-3.5 py-2"
-                  (click)="selectedNotificationBar.set(item.id)"
-                >
-                  <span
+                    class="inline-flex items-center gap-2 border-b px-3.5 py-2"
+                    (click)="selectedNotificationBar.set(item.id)"
+                    >
+                    <span
                     [ngClass]="{
                       'text-surface-950 dark:text-surface-0': selectedNotificationBar() === item.id
                     }"
-                    class="label-small"
-                    >{{ item.label }}</span
-                  >
-                  <p-badge
-                    *ngIf="item?.badge"
-                    [value]="item.badge"
-                    severity="success"
-                    size="small"
-                    class="!rounded-md"
-                  />
-                </button>
-              }
-            </div>
-            <ul class="flex max-h-80 flex-col divide-y divide-[var(--surface-border)] overflow-auto">
-              @for (item of selectedNotificationsBarData(); track item.name; let i = $index) {
-                <li>
-                  <div class="hover:bg-emphasis flex cursor-pointer items-center gap-3 px-6 py-3.5 transition-all">
-                    <p-overlay-badge value="" severity="danger" class="inline-flex">
-                      <p-avatar size="large">
-                        <img [src]="item.image" class="rounded-lg" />
-                      </p-avatar>
-                    </p-overlay-badge>
-                    <div class="flex items-center gap-3">
-                      <div class="flex flex-col">
-                        <span class="label-small text-surface-950 dark:text-surface-0 text-left">{{ item.name }}</span>
-                        <span class="label-xsmall line-clamp-1 text-left">{{ item.description }}</span>
-                        <span class="label-xsmall text-left">{{ item.time }}</span>
+                      class="label-small"
+                      >{{ item.label }}</span
+                      >
+                      <p-badge
+                        *ngIf="item?.badge"
+                        [value]="item.badge"
+                        severity="success"
+                        size="small"
+                        class="!rounded-md"
+                        />
+                    </button>
+                  }
+                </div>
+                <ul class="flex max-h-80 flex-col divide-y divide-[var(--surface-border)] overflow-auto">
+                  @for (item of selectedNotificationsBarData(); track item.name; let i = $index) {
+                    <li>
+                      <div class="hover:bg-emphasis flex cursor-pointer items-center gap-3 px-6 py-3.5 transition-all">
+                        <p-overlay-badge value="" severity="danger" class="inline-flex">
+                          <p-avatar size="large">
+                            <img [src]="item.image" class="rounded-lg" />
+                          </p-avatar>
+                        </p-overlay-badge>
+                        <div class="flex items-center gap-3">
+                          <div class="flex flex-col">
+                            <span class="label-small text-surface-950 dark:text-surface-0 text-left">{{ item.name }}</span>
+                            <span class="label-xsmall line-clamp-1 text-left">{{ item.description }}</span>
+                            <span class="label-xsmall text-left">{{ item.time }}</span>
+                          </div>
+                          <p-badge *ngIf="item.new" value="" severity="success" />
+                        </div>
                       </div>
-                      <p-badge *ngIf="item.new" value="" severity="success" />
-                    </div>
-                  </div>
-                  <span *ngIf="i !== notifications().length - 1"></span>
-                </li>
-              }
-            </ul>
-            -->
-          </div>
-        </li>
-        <li class="profile-item static sm:relative">
-          <a
-            class="right-sidebar-button relative z-50"
-            pStyleClass="@next"
-            enterFromClass="hidden"
-            enterActiveClass="animate-scalein"
-            leaveActiveClass="animate-fadeout"
-            leaveToClass="hidden"
-            [hideOnOutsideClick]="true"
-          >
-            <p-avatar shape="square" [image]="userProfileImage()" [ariaLabel]="usersName()" />
-          </a>
-          <div
-            class="border-surface bg-surface-0 dark:bg-surface-900 absolute right-0 top-auto z-[999] m-0 mt-2 hidden w-52 origin-top list-none overflow-hidden rounded-2xl border p-2 shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)]"
-          >
-            <ul class="flex flex-col gap-1">
-              <li>
-                <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  routerLink="/app/profile"
-                  (click)="closeProfileMenu()"
+                      <span *ngIf="i !== notifications().length - 1"></span>
+                    </li>
+                  }
+                </ul>
+                -->
+              </div>
+            </li>
+            <li class="profile-item static sm:relative">
+              <a
+                class="right-sidebar-button relative z-50"
+                pStyleClass="@next"
+                enterFromClass="hidden"
+                enterActiveClass="animate-scalein"
+                leaveActiveClass="animate-fadeout"
+                leaveToClass="hidden"
+                [hideOnOutsideClick]="true"
                 >
-                  <i class="pi pi-user"></i>
-                  <span>Profile</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  routerLink="/app/settings"
-                  (click)="closeProfileMenu()"
+                <p-avatar shape="square" [image]="userProfileImage()" [ariaLabel]="usersName()" />
+              </a>
+              <div
+                class="border-surface bg-surface-0 dark:bg-surface-900 absolute right-0 top-auto z-[999] m-0 mt-2 hidden w-52 origin-top list-none overflow-hidden rounded-2xl border p-2 shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)]"
                 >
-                  <i class="pi pi-cog"></i>
-                  <span>Settings</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  (click)="logout()"
-                >
-                  <i class="pi pi-power-off"></i>
-                  <span>Log out</span>
-                </a>
-              </li>
-            </ul>
-          </div>
-        </li>
-        <li class="right-sidebar-item">
-          <a tabindex="0" class="right-sidebar-button" (click)="showRightMenu()">
-            <i class="pi pi-align-right"></i>
-          </a>
-        </li>
-      </ul>
-    </div>
-  </div>`
+                <ul class="flex flex-col gap-1">
+                  <li>
+                    <a
+                      class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                      routerLink="/app/profile"
+                      (click)="closeProfileMenu()"
+                      >
+                      <i class="pi pi-user"></i>
+                      <span>Profile</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                      routerLink="/app/settings"
+                      (click)="closeProfileMenu()"
+                      >
+                      <i class="pi pi-cog"></i>
+                      <span>Settings</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                      (click)="logout()"
+                      >
+                      <i class="pi pi-power-off"></i>
+                      <span>Log out</span>
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </li>
+            <li class="right-sidebar-item">
+              <a tabindex="0" class="right-sidebar-button" (click)="showRightMenu()">
+                <i class="pi pi-align-right"></i>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>`
 })
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix

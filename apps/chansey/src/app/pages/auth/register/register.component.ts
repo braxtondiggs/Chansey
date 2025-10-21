@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -28,7 +28,6 @@ interface Message {
   standalone: true,
   imports: [
     CheckboxModule,
-    CommonModule,
     ButtonModule,
     FloatLabelModule,
     InputTextModule,
@@ -37,7 +36,7 @@ interface Message {
     PasswordModule,
     ReactiveFormsModule,
     RouterLink
-  ],
+],
   templateUrl: './register.component.html'
 })
 export class RegisterComponent {

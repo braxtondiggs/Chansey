@@ -1,5 +1,5 @@
 <p-card styleClass="mb-4">
-  <ng-container *ngIf="balanceHistoryQuery.isPending(); else balanceContent">
+  @if (balanceHistoryQuery.isPending()) {
     <div class="p-2">
       <div class="flex justify-end mb-3">
         <div style="width: 190px; height: 32px">
@@ -14,127 +14,130 @@
         <p-skeleton height="18rem" styleClass="w-full sm:h-[20rem] md:h-[25rem] lg:h-[30rem]"></p-skeleton>
       </div>
     </div>
-  </ng-container>
-
-  <ng-template #balanceContent>
-    <div *ngIf="balanceHistoryQuery.isError()" class="p-3 text-center">
-      <p class="mb-4 text-lg text-red-500">{{ balanceHistoryQuery.error() }}</p>
-      <p-button
-        severity="info"
-        (click)="balanceHistoryQuery.refetch()"
-        label="Retry"
-        icon="pi pi-refresh"
-        [loading]="balanceHistoryQuery.isFetching()"
-        variant="outlined"
-      />
-    </div>
-
-    @let accountData = balanceHistoryQuery.data();
-    <div *ngIf="!balanceHistoryQuery.isError() && accountData">
-      <!-- Balance visibility toggle and Time period selector -->
-      <div class="flex items-center justify-end gap-3 mt-3 mb-3 mr-3 md:mr-0 md:mt-0">
-        <div class="flex items-center">
-          <p-button
-            [icon]="isBalanceHidden() ? 'pi pi-eye-slash' : 'pi pi-eye'"
-            [severity]="isBalanceHidden() ? 'secondary' : 'info'"
-            [outlined]="true"
-            [rounded]="true"
-            (click)="toggleBalanceVisibility()"
-            [pTooltip]="isBalanceHidden() ? 'Show balance' : 'Hide balance'"
-            tooltipPosition="top"
-            size="small"
-            [loading]="updatePreferencesMutation.isPending()"
+  } @else {
+    @if (balanceHistoryQuery.isError()) {
+      <div class="p-3 text-center">
+        <p class="mb-4 text-lg text-red-500">{{ balanceHistoryQuery.error() }}</p>
+        <p-button
+          severity="info"
+          (click)="balanceHistoryQuery.refetch()"
+          label="Retry"
+          icon="pi pi-refresh"
+          [loading]="balanceHistoryQuery.isFetching()"
+          variant="outlined"
           />
-        </div>
-        <form [formGroup]="timePeriodForm">
-          <p-selectButton formControlName="value" [options]="timePeriods()" optionLabel="label" optionValue="value" />
-        </form>
       </div>
-
-      <div *ngIf="accountData.history.length > 0">
-        <div class="inline-flex flex-col gap-2 mb-6 ml-4 md:-mt-12 md:ml-0">
-          <div class="text-6xl balance-value" [class.blur-md]="isBalanceHidden()">
-            <span [appCounter]="totalUsdValue()"></span>
+    }
+    @let accountData = balanceHistoryQuery.data();
+    @if (!balanceHistoryQuery.isError() && accountData) {
+      <div>
+        <!-- Balance visibility toggle and Time period selector -->
+        <div class="flex items-center justify-end gap-3 mt-3 mb-3 mr-3 md:mr-0 md:mt-0">
+          <div class="flex items-center">
+            <p-button
+              [icon]="isBalanceHidden() ? 'pi pi-eye-slash' : 'pi pi-eye'"
+              [severity]="isBalanceHidden() ? 'secondary' : 'info'"
+              [outlined]="true"
+              [rounded]="true"
+              (click)="toggleBalanceVisibility()"
+              [pTooltip]="isBalanceHidden() ? 'Show balance' : 'Hide balance'"
+              tooltipPosition="top"
+              size="small"
+              [loading]="updatePreferencesMutation.isPending()"
+              />
           </div>
-          <div
-            [ngClass]="accountData.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'"
-            class="text-2xl"
-            [class.blur-md]="isBalanceHidden()"
-          >
-            <span
-              class="pi"
+          <form [formGroup]="timePeriodForm">
+            <p-selectButton formControlName="value" [options]="timePeriods()" optionLabel="label" optionValue="value" />
+          </form>
+        </div>
+        @if (accountData.history.length > 0) {
+          <div>
+            <div class="inline-flex flex-col gap-2 mb-6 ml-4 md:-mt-12 md:ml-0">
+              <div class="text-6xl balance-value" [class.blur-md]="isBalanceHidden()">
+                <span [appCounter]="totalUsdValue()"></span>
+              </div>
+              <div
+                [ngClass]="accountData.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'"
+                class="text-2xl"
+                [class.blur-md]="isBalanceHidden()"
+                >
+                <span
+                  class="pi"
               [ngClass]="
                 accountData.changePercentage >= 0
                   ? 'pi-angle-double-up text-green-500'
                   : 'pi-angle-double-down text-red-500'
               "
-            ></span
-            >&nbsp;{{ accountData.changePercentage >= 0 ? '+' : ''
-            }}{{ accountData.changePercentage | number: '1.0-2' }}%
-          </div>
-        </div>
-
-        <!-- Chart container with relative positioning for overlay -->
-        <div class="relative">
-          <!-- Balance hidden overlay -->
-          <div
-            *ngIf="isBalanceHidden()"
-            class="absolute inset-0 z-20 flex flex-col items-center justify-center rounded"
-          >
-            <div class="text-center">
-              <i class="mb-3 text-3xl pi pi-eye-slash text-surface-400"></i>
-              <p class="mb-1 text-base font-medium text-surface-700 dark:text-surface-200">Chart Values Hidden</p>
-              <p class="text-sm text-surface-500 dark:text-surface-400">Click the eye icon above to view</p>
+                  ></span
+                  >&nbsp;{{ accountData.changePercentage >= 0 ? '+' : ''
+                  }}{{ accountData.changePercentage | number: '1.0-2' }}%
+                </div>
+              </div>
+              <!-- Chart container with relative positioning for overlay -->
+              <div class="relative">
+                <!-- Balance hidden overlay -->
+                @if (isBalanceHidden()) {
+                  <div
+                    class="absolute inset-0 z-20 flex flex-col items-center justify-center rounded"
+                    >
+                    <div class="text-center">
+                      <i class="mb-3 text-3xl pi pi-eye-slash text-surface-400"></i>
+                      <p class="mb-1 text-base font-medium text-surface-700 dark:text-surface-200">Chart Values Hidden</p>
+                      <p class="text-sm text-surface-500 dark:text-surface-400">Click the eye icon above to view</p>
+                    </div>
+                  </div>
+                }
+                <!-- Loading overlay when refetching -->
+                @if (balanceHistoryQuery.isFetching()) {
+                  <div
+                    class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded bg-white/20 backdrop-blur-sm dark:bg-black/20"
+                    >
+                    <div class="text-center">
+                      <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
+                    </div>
+                  </div>
+                }
+                <p-chart
+                  [data]="chartData"
+                  [options]="chartOptions"
+                  [plugins]="chartPlugins"
+                  type="line"
+                  class="h-[18rem] sm:h-[20rem] md:h-[25rem] lg:h-[30rem]"
+                  [class.blur-sm]="isBalanceHidden()"
+                  />
+              </div>
+              @if (lastUpdated()) {
+                <div class="text-sm text-right text-500">
+                  Last updated: {{ lastUpdated() | date: 'MMM d, y h:mm a' }}
+                  <p-button
+                    (click)="balanceHistoryQuery.refetch()"
+                    icon="pi pi-refresh"
+                    [loading]="balanceHistoryQuery.isFetching()"
+                    [rounded]="true"
+                    [text]="true"
+                    />
+                </div>
+              }
             </div>
-          </div>
-
-          <!-- Loading overlay when refetching -->
-          <div
-            *ngIf="balanceHistoryQuery.isFetching()"
-            class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded bg-white/20 backdrop-blur-sm dark:bg-black/20"
-          >
-            <div class="text-center">
-              <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
+          }
+          <!-- Show this when no data available -->
+          @if (accountData.history.length === 0) {
+            <div
+              class="flex flex-col items-center justify-center p-2 mt-4 text-center min-h-64 sm:mt-6 sm:min-h-96 sm:p-3"
+              >
+              <p class="mb-3 text-base sm:mb-4 sm:text-lg">No balance history data available for this time period</p>
+              <p-button
+                severity="info"
+                (click)="balanceHistoryQuery.refetch()"
+                label="Refresh"
+                icon="pi pi-refresh"
+                [loading]="balanceHistoryQuery.isFetching()"
+                variant="outlined"
+                />
             </div>
-          </div>
-
-          <p-chart
-            [data]="chartData"
-            [options]="chartOptions"
-            [plugins]="chartPlugins"
-            type="line"
-            class="h-[18rem] sm:h-[20rem] md:h-[25rem] lg:h-[30rem]"
-            [class.blur-sm]="isBalanceHidden()"
-          />
+          }
         </div>
+      }
+    }
 
-        <div class="text-sm text-right text-500" *ngIf="lastUpdated()">
-          Last updated: {{ lastUpdated() | date: 'MMM d, y h:mm a' }}
-          <p-button
-            (click)="balanceHistoryQuery.refetch()"
-            icon="pi pi-refresh"
-            [loading]="balanceHistoryQuery.isFetching()"
-            [rounded]="true"
-            [text]="true"
-          />
-        </div>
-      </div>
-
-      <!-- Show this when no data available -->
-      <div
-        *ngIf="accountData.history.length === 0"
-        class="flex flex-col items-center justify-center p-2 mt-4 text-center min-h-64 sm:mt-6 sm:min-h-96 sm:p-3"
-      >
-        <p class="mb-3 text-base sm:mb-4 sm:text-lg">No balance history data available for this time period</p>
-        <p-button
-          severity="info"
-          (click)="balanceHistoryQuery.refetch()"
-          label="Refresh"
-          icon="pi pi-refresh"
-          [loading]="balanceHistoryQuery.isFetching()"
-          variant="outlined"
-        />
-      </div>
-    </div>
-  </ng-template>
-</p-card>
+  </p-card>

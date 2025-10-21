@@ -138,7 +138,9 @@ export class LayoutService {
     });
 
     effect(() => {
-      this.isSidebarStateChanged() && this.reset();
+      if (this.isSidebarStateChanged()) {
+        this.reset();
+      }
     });
   }
 

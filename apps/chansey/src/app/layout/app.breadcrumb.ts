@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule } from '@angular/router';
 
 import { BehaviorSubject, filter } from 'rxjs';
@@ -15,20 +15,24 @@ interface Breadcrumb {
   imports: [CommonModule, RouterModule],
   template: `<nav class="layout-breadcrumb">
     <ol>
-      <ng-template ngFor let-item let-last="last" [ngForOf]="breadcrumbs$ | async">
+      @for (item of breadcrumbs$ | async; track item; let last = $last) {
         <li class="text-surface-950 dark:text-surface-0 title-h7 text-xl">{{ item.label }}</li>
-        <li *ngIf="!last" class="layout-breadcrumb-chevron">/</li>
-      </ng-template>
+        @if (!last) {
+          <li class="layout-breadcrumb-chevron">/</li>
+        }
+      }
     </ol>
-  </nav> `
+  </nav>`
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
-export class AppBreadcrumb {
+export class AppBreadcrumb implements OnInit {
   private readonly _breadcrumbs$ = new BehaviorSubject<Breadcrumb[]>([]);
 
   readonly breadcrumbs$ = this._breadcrumbs$.asObservable();
 
-  constructor(private router: Router) {
+  private readonly router = inject(Router);
+
+  ngOnInit(): void {
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe((event) => {
       const root = this.router.routerState.snapshot.root;
       const breadcrumbs: Breadcrumb[] = [];

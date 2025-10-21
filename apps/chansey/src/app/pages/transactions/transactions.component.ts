@@ -5,14 +5,14 @@ import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
-import { DropdownModule } from 'primeng/dropdown';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
 import { MultiSelectModule } from 'primeng/multiselect';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
-import { TableModule, Table } from 'primeng/table';
+import { Table, TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
 import { OrderSide, OrderStatus, OrderType, Transaction, TransactionsService } from './transactions.service';
@@ -25,13 +25,13 @@ import { OrderSide, OrderStatus, OrderType, Transaction, TransactionsService } f
     ButtonModule,
     CardModule,
     CommonModule,
-    DropdownModule,
     IconFieldModule,
     InputIconModule,
     InputTextModule,
     MultiSelectModule,
     ProgressSpinnerModule,
     ReactiveFormsModule,
+    SelectModule,
     SkeletonModule,
     TableModule,
     TagModule

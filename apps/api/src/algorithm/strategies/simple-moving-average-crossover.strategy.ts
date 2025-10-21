@@ -1,19 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
+import { SMA } from 'technicalindicators';
+
 import { PriceSummary } from '../../price/price.entity';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
  * Simple Moving Average Crossover Strategy
- * Example implementation showing how to create new algorithms
+ * Refactored to use technicalindicators library
+ *
+ * Uses battle-tested SMA implementation instead of custom calculations
  */
 @Injectable()
 export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy {
   readonly id = 'sma-crossover-001';
   readonly name = 'Simple Moving Average Crossover';
-  readonly version = '1.0.0';
+  readonly version = '2.0.0';
   readonly description = 'Generates signals based on simple moving average crossovers between fast and slow periods';
 
   constructor(schedulerRegistry: SchedulerRegistry) {
@@ -34,24 +39,18 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
-        
+
         if (!priceHistory || priceHistory.length < slowPeriod) {
           this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
-        // Calculate SMAs
+        // Calculate SMAs using technicalindicators library
         const fastSMA = this.calculateSMA(priceHistory, fastPeriod);
         const slowSMA = this.calculateSMA(priceHistory, slowPeriod);
 
         // Generate signal
-        const signal = this.generateCrossoverSignal(
-          coin.id,
-          coin.symbol,
-          priceHistory,
-          fastSMA,
-          slowSMA
-        );
+        const signal = this.generateCrossoverSignal(coin.id, coin.symbol, priceHistory, fastSMA, slowSMA);
 
         if (signal) {
           signals.push(signal);
@@ -67,7 +66,6 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         fastPeriod,
         slowPeriod
       });
-
     } catch (error) {
       this.logger.error(`SMA Crossover algorithm execution failed: ${error.message}`, error.stack);
       return this.createErrorResult(error.message);
@@ -75,24 +73,24 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
   }
 
   /**
-   * Calculate Simple Moving Average
+   * Calculate Simple Moving Average using technicalindicators library
+   *
+   * @param prices - Array of PriceSummary objects
+   * @param period - SMA period
+   * @returns Array of SMA values (padded with NaN for alignment)
    */
   private calculateSMA(prices: PriceSummary[], period: number): number[] {
-    const smaValues: number[] = [];
-    
-    for (let i = 0; i < prices.length; i++) {
-      if (i < period - 1) {
-        smaValues.push(NaN);
-      } else {
-        let sum = 0;
-        for (let j = i - period + 1; j <= i; j++) {
-          sum += prices[j].avg;
-        }
-        smaValues.push(sum / period);
-      }
-    }
-    
-    return smaValues;
+    // Extract average prices
+    const values = IndicatorDataTransformer.extractAveragePrices(prices);
+
+    // Calculate SMA using technicalindicators library
+    const smaResults = SMA.calculate({
+      period,
+      values
+    });
+
+    // Pad results to match original length
+    return IndicatorDataTransformer.padResults(smaResults, prices.length);
   }
 
   /**
@@ -179,24 +177,24 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
   getConfigSchema(): Record<string, unknown> {
     return {
       ...super.getConfigSchema(),
-      fastPeriod: { 
-        type: 'number', 
-        default: 10, 
-        min: 5, 
+      fastPeriod: {
+        type: 'number',
+        default: 10,
+        min: 5,
         max: 50,
         description: 'Period for fast moving average'
       },
-      slowPeriod: { 
-        type: 'number', 
-        default: 20, 
-        min: 10, 
+      slowPeriod: {
+        type: 'number',
+        default: 20,
+        min: 10,
         max: 100,
         description: 'Period for slow moving average'
       },
-      minConfidence: { 
-        type: 'number', 
-        default: 0.7, 
-        min: 0, 
+      minConfidence: {
+        type: 'number',
+        default: 0.7,
+        min: 0,
         max: 1,
         description: 'Minimum confidence level for signals'
       }
@@ -212,7 +210,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     }
 
     const slowPeriod = (context.config.slowPeriod as number) || 20;
-    
+
     // Check if we have sufficient price data
     for (const coin of context.coins) {
       const priceHistory = context.priceData[coin.id];

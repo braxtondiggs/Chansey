@@ -35,7 +35,7 @@ A modern cryptocurrency portfolio management application built with Angular and 
 
 ## 📋 Prerequisites
 
-- **Node.js** 18+ and npm
+- **Node.js** 22+ and npm
 - **PostgreSQL** 14+
 - **Redis** 6+
 - **Git**

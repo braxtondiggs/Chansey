@@ -22,7 +22,7 @@
                 [(ngModel)]="selectedPreset"
                 (ngModelChange)="onPresetChange($event)"
                 [allowEmpty]="false"
-              />
+                />
             </div>
 
             <div class="flex flex-row items-center justify-between py-3">
@@ -35,52 +35,57 @@
                 optionLabel="name"
                 optionValue="value"
                 [allowEmpty]="false"
-              />
+                />
             </div>
 
             <div class="flex flex-col items-start py-3 mb-4">
               <span class="mb-2 text-lg font-semibold">Theme Color:</span>
               <div class="flex flex-wrap max-w-full gap-2 pt-2 pr-0 md:max-w-lg md:pr-48">
-                <button
-                  *ngFor="let primaryColor of primaryColors; trackBy: trackByName"
-                  type="button"
-                  [title]="primaryColor.name"
-                  (click)="updateColors($event, 'primary', primaryColor)"
-                  class="flex items-center justify-center w-6 h-6 duration-150 rounded cursor-pointer hover:shadow-lg"
+                @for (primaryColor of primaryColors; track trackByName($index, primaryColor)) {
+                  <button
+                    type="button"
+                    [title]="primaryColor.name"
+                    (click)="updateColors($event, 'primary', primaryColor)"
+                    class="flex items-center justify-center w-6 h-6 duration-150 rounded cursor-pointer hover:shadow-lg"
                   [style]="{
                     'background-color':
                       primaryColor?.name === 'noir' ? 'var(--text-color)' : primaryColor?.palette?.['500']
                   }"
-                >
-                  <i *ngIf="primaryColor.name === selectedPrimaryColor" class="text-white pi pi-check"></i>
-                </button>
+                    >
+                    @if (primaryColor.name === selectedPrimaryColor) {
+                      <i class="text-white pi pi-check"></i>
+                    }
+                  </button>
+                }
               </div>
             </div>
 
             <div>
               <span class="mb-2 text-lg font-semibold">Surface Color:</span>
               <div class="flex flex-wrap max-w-full gap-2 pt-2 pr-0 md:max-w-lg md:pr-48">
-                <button
-                  *ngFor="let surface of surfaces; trackBy: trackByName"
-                  type="button"
-                  [title]="surface.name"
-                  (click)="updateColors($event, 'surface', surface)"
-                  class="flex items-center justify-center w-6 h-6 duration-150 rounded cursor-pointer hover:shadow-lg"
+                @for (surface of surfaces; track trackByName($index, surface)) {
+                  <button
+                    type="button"
+                    [title]="surface.name"
+                    (click)="updateColors($event, 'surface', surface)"
+                    class="flex items-center justify-center w-6 h-6 duration-150 rounded cursor-pointer hover:shadow-lg"
                   [style]="{
                     'background-color': surface?.palette?.['500']
                   }"
-                >
-                  <i
-                    *ngIf="
+                    >
+                    @if (
                       selectedSurfaceColor
-                        ? selectedSurfaceColor === surface.name
-                        : darkMode
-                          ? surface.name === 'zinc'
-                          : surface.name === 'slate'
-                    "
-                    class="text-white pi pi-check"
-                  ></i>
-                </button>
+                      ? selectedSurfaceColor === surface.name
+                      : darkMode
+                      ? surface.name === 'zinc'
+                      : surface.name === 'slate'
+                      ) {
+                      <i
+                        class="text-white pi pi-check"
+                      ></i>
+                    }
+                  </button>
+                }
               </div>
             </div>
           </div>
@@ -98,7 +103,7 @@
                 optionLabel="name"
                 optionValue="value"
                 [allowEmpty]="false"
-              />
+                />
             </div>
 
             <div class="flex flex-col justify-between py-3 md:flex-row md:items-center">
@@ -112,7 +117,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('static')"
                       inputId="static"
-                    />
+                      />
                     <label for="static">Static</label>
                   </div>
 
@@ -123,7 +128,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('overlay')"
                       inputId="overlay"
-                    />
+                      />
                     <label for="overlay">Overlay</label>
                   </div>
                 </div>
@@ -135,7 +140,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('slim')"
                       inputId="slim"
-                    />
+                      />
                     <label for="slim">Slim</label>
                   </div>
                   <div class="flex items-center w-6/12 gap-2">
@@ -145,7 +150,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('compact')"
                       inputId="compact"
-                    />
+                      />
                     <label for="compact">Compact</label>
                   </div>
                 </div>
@@ -157,7 +162,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('reveal')"
                       inputId="reveal"
-                    />
+                      />
                     <label for="reveal">Reveal</label>
                   </div>
                   <div class="flex items-center w-6/12 gap-2">
@@ -167,7 +172,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('drawer')"
                       inputId="drawer"
-                    />
+                      />
                     <label for="drawer">Drawer</label>
                   </div>
                 </div>
@@ -179,7 +184,7 @@
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('horizontal')"
                       inputId="horizontal"
-                    />
+                      />
                     <label for="horizontal">Horizontal</label>
                   </div>
                 </div>
@@ -220,7 +225,7 @@
               [(ngModel)]="twoFactorAuth"
               (onChange)="toggleTwoFactorAuth($event)"
               styleClass="mt-2 md:mt-0"
-            />
+              />
           </div>
         </p-panel>
       </p-tabpanel>

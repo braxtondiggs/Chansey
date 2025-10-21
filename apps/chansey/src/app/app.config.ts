@@ -6,7 +6,8 @@ import { provideServiceWorker } from '@angular/service-worker';
 
 import { definePreset } from '@primeng/themes';
 import Aura from '@primeng/themes/aura';
-import { QueryClient, provideTanStackQuery, withDevtools } from '@tanstack/angular-query-experimental';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { withDevtools } from '@tanstack/angular-query-experimental/devtools';
 import { providePrimeNG } from 'primeng/config';
 
 import { appRoutes } from './app.routes';

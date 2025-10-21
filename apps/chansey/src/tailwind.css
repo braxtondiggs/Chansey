@@ -1,23 +1,12 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'tailwindcss-primeui';
 
 @layer components {
   .landing-container {
-    @apply mx-auto w-full max-w-[62rem] px-6;
-  }
-  @screen md {
-    .landing-container {
-      @apply max-w-[70rem];
-    }
-  }
-  @screen xl {
-    .landing-container {
-      @apply w-[85rem];
-    }
+    @apply mx-auto w-full max-w-248 px-6;
   }
   .title-h1 {
-    @apply text-surface-900 dark:text-surface-0 text-center text-7xl font-semibold leading-tight;
+    @apply text-surface-900 dark:text-surface-0 text-center text-7xl leading-tight font-semibold;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -31,12 +20,12 @@
       'cv11' on;
   }
   .title-h2 {
-    @apply text-surface-950 dark:text-surface-0 text-center font-semibold leading-none;
+    @apply text-surface-950 dark:text-surface-0 text-center leading-none font-semibold;
     font-size: 4rem;
     font-family: 'InterDisplay', sans-serif;
   }
   .title-h3 {
-    @apply text-surface-900 dark:text-surface-0 text-center font-semibold leading-tight;
+    @apply text-surface-900 dark:text-surface-0 text-center leading-tight font-semibold;
     font-size: 3.5rem;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
@@ -51,7 +40,7 @@
       'cv11' on;
   }
   .title-h4 {
-    @apply text-surface-900 dark:text-surface-0 text-center font-semibold leading-tight;
+    @apply text-surface-900 dark:text-surface-0 text-center leading-tight font-semibold;
     font-size: 2.85rem;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
@@ -66,7 +55,7 @@
       'cv11' on;
   }
   .title-h5 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-4xl font-medium leading-snug;
+    @apply text-surface-950 dark:text-surface-0 text-center text-4xl leading-snug font-medium;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv01' on,
@@ -221,7 +210,16 @@
       'calt' off;
   }
   .badge {
-    @apply body-small border-surface-200 text-surface-950 dark:border-surface-800 dark:text-surface-0 mx-auto w-fit rounded-full border px-3.5 py-1 leading-normal;
+    @apply border-surface-200 text-surface-950 dark:border-surface-800 dark:text-surface-0 mx-auto w-fit rounded-full border px-3.5 py-1 text-center text-base leading-normal;
+    font-family: 'InterDisplay', sans-serif;
+    font-feature-settings:
+      'cv09' on,
+      'cv03' on,
+      'cv02' on,
+      'dlig' on,
+      'cv01' on,
+      'liga' off,
+      'calt' off;
   }
   .body-button {
     @apply bg-primary-600 text-surface-0 hover:bg-primary-500 rounded-lg px-3.5 py-2 text-center font-normal transition-all;
@@ -243,7 +241,7 @@
   }
 
   .button-button {
-    @apply border-surface-200 text-surface-700 hover:bg-surface-100 dark:border-surface-800 dark:text-surface-200 dark:hover:bg-surface-800 flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-center font-medium leading-normal transition-all;
+    @apply border-surface-200 text-surface-700 hover:bg-surface-100 dark:border-surface-800 dark:text-surface-200 dark:hover:bg-surface-800 flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-center leading-normal font-medium transition-all;
     font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
       'cv08' on,

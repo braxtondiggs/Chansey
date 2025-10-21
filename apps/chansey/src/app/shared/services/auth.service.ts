@@ -55,7 +55,9 @@ export class AuthService {
       map(() => true),
       catchError((error) => {
         console.error('Token refresh failed:', error);
-        if (environment.production) this.logout;
+        if (environment.production) {
+          this.logout();
+        }
         return of(false);
       })
     );

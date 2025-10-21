@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { AfterViewInit, Component, computed, signal, effect, inject, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
@@ -44,7 +44,6 @@ import { ProfileService } from './profile.service';
     AvatarModule,
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     DialogModule,
     DividerModule,
@@ -64,7 +63,7 @@ import { ProfileService } from './profile.service';
     TagModule,
     ToastModule,
     TooltipModule
-  ],
+],
   providers: [MessageService, ConfirmationService],
   templateUrl: './profile.component.html'
 })

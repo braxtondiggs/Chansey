@@ -10,7 +10,8 @@ import {
   OnInit,
   ViewChild,
   computed,
-  effect
+  effect,
+  inject
 } from '@angular/core';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 
@@ -28,32 +29,37 @@ import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
   imports: [CommonModule, RouterModule, RippleModule, TooltipModule],
   template: `
     <ng-container>
-      <div *ngIf="root && item.visible !== false" class="layout-menuitem-root-text">
-        {{ item.label }}
-      </div>
-      <a
-        *ngIf="(!item.routerLink || item.items) && item.visible !== false"
-        [attr.href]="item.url"
-        (click)="itemClick($event)"
-        (mouseenter)="onMouseEnter()"
-        [ngClass]="item.class"
-        [attr.target]="item.target"
-        tabindex="0"
-        pRipple
-        [pTooltip]="item.label"
-        [tooltipDisabled]="!(!isSlim() && !isHorizontal() && root && !active)"
-      >
-        <i [ngClass]="item.icon" class="layout-menuitem-icon"></i>
-        <span class="layout-menuitem-text">{{ item.label }}</span>
-        <i class="pi pi-fw pi-angle-down layout-submenu-toggler" *ngIf="item.items"></i>
-      </a>
-      <a
-        *ngIf="item.routerLink && !item.items && item.visible !== false"
-        (click)="itemClick($event)"
-        (mouseenter)="onMouseEnter()"
-        [ngClass]="item.class"
-        [routerLink]="item.routerLink"
-        routerLinkActive="active-route"
+      @if (root && item.visible !== false) {
+        <div class="layout-menuitem-root-text">
+          {{ item.label }}
+        </div>
+      }
+      @if ((!item.routerLink || item.items) && item.visible !== false) {
+        <a
+          [attr.href]="item.url"
+          (click)="itemClick($event)"
+          (mouseenter)="onMouseEnter()"
+          [ngClass]="item.class"
+          [attr.target]="item.target"
+          tabindex="0"
+          pRipple
+          [pTooltip]="item.label"
+          [tooltipDisabled]="!(!isSlim() && !isHorizontal() && root && !active)"
+          >
+          <i [ngClass]="item.icon" class="layout-menuitem-icon"></i>
+          <span class="layout-menuitem-text">{{ item.label }}</span>
+          @if (item.items) {
+            <i class="pi pi-fw pi-angle-down layout-submenu-toggler"></i>
+          }
+        </a>
+      }
+      @if (item.routerLink && !item.items && item.visible !== false) {
+        <a
+          (click)="itemClick($event)"
+          (mouseenter)="onMouseEnter()"
+          [ngClass]="item.class"
+          [routerLink]="item.routerLink"
+          routerLinkActive="active-route"
         [routerLinkActiveOptions]="
           item.routerLinkActiveOptions || {
             paths: 'exact',
@@ -74,24 +80,28 @@ import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
         pRipple
         [pTooltip]="item.label"
         [tooltipDisabled]="!(!isSlim() && !isHorizontal() && root)"
-      >
+        >
         <i [ngClass]="item.icon" class="layout-menuitem-icon"></i>
         <span class="layout-menuitem-text">{{ item.label }}</span>
-        <i class="pi pi-fw pi-angle-down layout-submenu-toggler" *ngIf="item.items"></i>
+        @if (item.items) {
+          <i class="pi pi-fw pi-angle-down layout-submenu-toggler"></i>
+        }
       </a>
-
+    }
+    
+    @if (item.items && item.visible !== false) {
       <ul
         #submenu
-        *ngIf="item.items && item.visible !== false"
         [@children]="submenuAnimation"
         (@children.done)="onSubmenuAnimated($event)"
-      >
-        <ng-template ngFor let-child let-i="index" [ngForOf]="item.items">
+        >
+        @for (child of item.items; track child; let i = $index) {
           <li chansey-menuitem [item]="child" [index]="i" [parentKey]="key" [class]="child['badgeClass']"></li>
-        </ng-template>
+        }
       </ul>
+    }
     </ng-container>
-  `,
+    `,
   animations: [
     trigger('children', [
       state(
@@ -171,10 +181,10 @@ export class AppMenuitem implements OnInit, OnDestroy, AfterViewChecked {
     return this.layoutService.isMobile();
   }
 
-  constructor(
-    public layoutService: LayoutService,
-    public router: Router
-  ) {
+  readonly layoutService = inject(LayoutService);
+  readonly router = inject(Router);
+
+  constructor() {
     this.menuSourceSubscription = this.layoutService.menuSource$.subscribe((value) => {
       Promise.resolve(null).then(() => {
         if (value.routeEvent) {

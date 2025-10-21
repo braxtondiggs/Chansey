@@ -1,6 +1,6 @@
 <section
   class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
->
+  >
   <div class="flex h-full gap-12">
     <div class="flex flex-col p-20 lg:min-w-[40rem]">
       <a routerLink="/" class="mb-8 flex items-center justify-center">
@@ -21,15 +21,17 @@
                 icon="pi {{ message.icon }}"
                 size="large"
                 styleClass="mt-4"
-              />
+                />
             }
           </div>
           <form [formGroup]="otpForm" (ngSubmit)="onSubmit()" class="mt-8">
             <p-inputotp formControlName="code" [length]="6" autoFocus size="large" />
 
-            <small *ngIf="formSubmitted && otpForm.get('email')?.invalid" class="text-red-500">
-              {{ otpForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
-            </small>
+            @if (formSubmitted && otpForm.get('email')?.invalid) {
+              <small class="text-red-500">
+                {{ otpForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
+              </small>
+            }
             <div class="my-8 flex items-center justify-between gap-4">
               <p-button
                 routerLink="/login"
@@ -37,7 +39,7 @@
                 [style]="{ width: '100%' }"
                 class="w-1/2"
                 severity="secondary"
-              >
+                >
                 <span>Cancel</span>
               </p-button>
               <p-button
@@ -46,7 +48,7 @@
                 [raised]="true"
                 [style]="{ width: '100%' }"
                 class="w-1/2"
-              >
+                >
                 <span>Verify</span>
               </p-button>
             </div>
@@ -57,12 +59,12 @@
     <div class="landing-container hidden h-full py-10 lg:flex">
       <div
         class="mx-auto flex h-screen w-full items-center justify-center overflow-hidden lg:max-w-[32.5rem] xl:max-w-[50rem]"
-      >
+        >
         <app-lazy-image
           className="w-auto max-h-[75vh] object-contain object-center"
           src="/public/landing/auth/forgot-welcome.png"
           alt="Auth Image"
-        />
+          />
       </div>
     </div>
   </div>

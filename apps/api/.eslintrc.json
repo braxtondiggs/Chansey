@@ -12,6 +12,9 @@
     },
     {
       "files": ["*.js", "*.jsx"],
+      "parserOptions": {
+        "project": null
+      },
       "rules": {}
     }
   ]

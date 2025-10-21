@@ -3,7 +3,7 @@
     [formGroup]="filterForm"
     class="my-5 grid gap-3"
     style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
-  >
+    >
     <div>
       <div class="p-inputgroup w-full">
         <p-iconfield iconPosition="left" class="ml-auto">
@@ -17,10 +17,12 @@
             (input)="applyGlobalFilter($event)"
             placeholder="Search Transactions..."
             fluid
-          />
-          <p-inputicon *ngIf="searchText().length > 0">
-            <i class="pi pi-times" (click)="clearSearchFilter(); searchInput.value = ''"></i>
-          </p-inputicon>
+            />
+          @if (searchText().length > 0) {
+            <p-inputicon>
+              <i class="pi pi-times" (click)="clearSearchFilter(); searchInput.value = ''"></i>
+            </p-inputicon>
+          }
         </p-iconfield>
       </div>
     </div>
@@ -37,7 +39,7 @@
         filter="false"
         [showToggleAll]="false"
         fluid
-      />
+        />
     </div>
     <div>
       <p-multiSelect
@@ -52,7 +54,7 @@
         filter="false"
         [showToggleAll]="false"
         fluid
-      />
+        />
     </div>
     <div>
       <p-multiSelect
@@ -67,117 +69,120 @@
         filter="false"
         [showToggleAll]="false"
         fluid
-      />
+        />
     </div>
   </form>
 
   <!-- PrimeNG Skeleton loader for the table -->
-  <div *ngIf="isLoading()" class="mb-4">
-    <!-- Create a proper table structure for skeleton -->
-    <div class="overflow-auto">
-      <table class="w-full border-collapse">
-        <!-- Skeleton table header -->
-        <thead>
-          <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-            <th class="p-3 text-left" style="min-width: 120px">
-              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 100px">
-              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 150px">
-              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 120px">
-              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 120px">
-              <p-skeleton width="90px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 120px">
-              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 120px">
-              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 120px">
-              <p-skeleton width="90px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 130px">
-              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-            </th>
-            <th class="p-3 text-left" style="min-width: 160px">
-              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-            </th>
-          </tr>
-        </thead>
-        <!-- Skeleton table body -->
-        <tbody>
-          <tr *ngFor="let i of [1, 2, 3, 4, 5, 6, 7, 8]" class="border-b border-gray-200 dark:border-gray-700">
-            <td class="p-3">
-              <div class="flex items-center gap-3">
-                <div class="flex -space-x-2">
-                  <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
-                  <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
-                </div>
-                <div class="flex flex-col gap-1">
-                  <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-                  <p-skeleton width="80px" height="1rem"></p-skeleton>
-                </div>
-              </div>
-            </td>
-            <td class="p-3">
-              <p-skeleton width="60px" height="2rem" styleClass="rounded-full"></p-skeleton>
-            </td>
-            <td class="p-3">
-              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-            </td>
-            <td class="p-3">
-              <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-            </td>
-            <td class="p-3">
-              <p-skeleton width="90px" height="1.25rem"></p-skeleton>
-            </td>
-            <td class="p-3">
-              <div class="flex flex-col gap-1">
-                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-                <p-skeleton width="40px" height="1rem"></p-skeleton>
-              </div>
-            </td>
-            <td class="p-3">
-              <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-            </td>
-            <td class="p-3">
-              <div class="flex items-center gap-2">
-                <p-skeleton shape="circle" size="1.5rem"></p-skeleton>
-                <p-skeleton width="70px" height="1.25rem"></p-skeleton>
-              </div>
-            </td>
-            <td class="p-3">
-              <p-skeleton width="80px" height="2rem" styleClass="rounded-full"></p-skeleton>
-            </td>
-            <td class="p-3">
-              <div class="flex flex-col gap-1">
+  @if (isLoading()) {
+    <div class="mb-4">
+      <!-- Create a proper table structure for skeleton -->
+      <div class="overflow-auto">
+        <table class="w-full border-collapse">
+          <!-- Skeleton table header -->
+          <thead>
+            <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+              <th class="p-3 text-left" style="min-width: 120px">
                 <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-                <p-skeleton width="60px" height="1rem"></p-skeleton>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Skeleton for pagination -->
-    <div class="flex items-center justify-between border-t border-gray-200 p-3 dark:border-gray-700">
-      <p-skeleton width="150px" height="1.25rem"></p-skeleton>
-      <div class="flex gap-1">
-        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
-        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
-        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
-        <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 100px">
+                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 150px">
+                <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 120px">
+                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 120px">
+                <p-skeleton width="90px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 120px">
+                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 120px">
+                <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 120px">
+                <p-skeleton width="90px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 130px">
+                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+              </th>
+              <th class="p-3 text-left" style="min-width: 160px">
+                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+              </th>
+            </tr>
+          </thead>
+          <!-- Skeleton table body -->
+          <tbody>
+            @for (i of [1, 2, 3, 4, 5, 6, 7, 8]; track i) {
+              <tr class="border-b border-gray-200 dark:border-gray-700">
+                <td class="p-3">
+                  <div class="flex items-center gap-3">
+                    <div class="flex -space-x-2">
+                      <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
+                      <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+                      <p-skeleton width="80px" height="1rem"></p-skeleton>
+                    </div>
+                  </div>
+                </td>
+                <td class="p-3">
+                  <p-skeleton width="60px" height="2rem" styleClass="rounded-full"></p-skeleton>
+                </td>
+                <td class="p-3">
+                  <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+                </td>
+                <td class="p-3">
+                  <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+                </td>
+                <td class="p-3">
+                  <p-skeleton width="90px" height="1.25rem"></p-skeleton>
+                </td>
+                <td class="p-3">
+                  <div class="flex flex-col gap-1">
+                    <p-skeleton width="80px" height="1.25rem"></p-skeleton>
+                    <p-skeleton width="40px" height="1rem"></p-skeleton>
+                  </div>
+                </td>
+                <td class="p-3">
+                  <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+                </td>
+                <td class="p-3">
+                  <div class="flex items-center gap-2">
+                    <p-skeleton shape="circle" size="1.5rem"></p-skeleton>
+                    <p-skeleton width="70px" height="1.25rem"></p-skeleton>
+                  </div>
+                </td>
+                <td class="p-3">
+                  <p-skeleton width="80px" height="2rem" styleClass="rounded-full"></p-skeleton>
+                </td>
+                <td class="p-3">
+                  <div class="flex flex-col gap-1">
+                    <p-skeleton width="100px" height="1.25rem"></p-skeleton>
+                    <p-skeleton width="60px" height="1rem"></p-skeleton>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <!-- Skeleton for pagination -->
+      <div class="flex items-center justify-between border-t border-gray-200 p-3 dark:border-gray-700">
+        <p-skeleton width="150px" height="1.25rem"></p-skeleton>
+        <div class="flex gap-1">
+          <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+          <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+          <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+          <p-skeleton width="2rem" height="2rem" styleClass="rounded"></p-skeleton>
+        </div>
       </div>
     </div>
-  </div>
+  }
 
   <p-table
     #dt
@@ -208,7 +213,7 @@
     [sortField]="'transactTime'"
     [sortOrder]="-1"
     [hidden]="isLoading()"
-  >
+    >
     <ng-template pTemplate="header">
       <tr>
         <th style="min-width: 120px">Trading Pair</th>
@@ -233,14 +238,15 @@
                 shape="circle"
                 size="large"
                 class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
-              />
-              <p-avatar
-                *ngIf="transaction.quoteCoin"
-                [image]="transaction.quoteCoin.image"
-                shape="circle"
-                size="large"
-                class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
-              />
+                />
+              @if (transaction.quoteCoin) {
+                <p-avatar
+                  [image]="transaction.quoteCoin.image"
+                  shape="circle"
+                  size="large"
+                  class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
+                  />
+              }
             </div>
             <div class="flex flex-col">
               <span class="text-lg font-medium">{{ transaction.symbol }}</span>
@@ -261,18 +267,19 @@
         </td>
         <td>${{ transaction.cost | number: '1.2-2' }} total</td>
         <td>
-          <div class="flex items-center gap-2" *ngIf="transaction.exchange; else noExchange">
-            <p-avatar
-              [image]="transaction.exchange.image"
-              shape="circle"
-              size="normal"
-              class="border border-gray-200 shadow-sm dark:border-gray-700"
-            />
-            <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
-          </div>
-          <ng-template #noExchange>
+          @if (transaction.exchange) {
+            <div class="flex items-center gap-2">
+              <p-avatar
+                [image]="transaction.exchange.image"
+                shape="circle"
+                size="normal"
+                class="border border-gray-200 shadow-sm dark:border-gray-700"
+                />
+              <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
+            </div>
+          } @else {
             <span class="text-sm text-gray-500 dark:text-gray-400">N/A</span>
-          </ng-template>
+          }
         </td>
         <td>
           <p-tag [value]="transaction.status" [severity]="getStatusSeverity(transaction.status)"></p-tag>
@@ -286,10 +293,12 @@
     <ng-template pTemplate="emptymessage">
       <tr>
         <td colspan="10" class="p-4 text-center">
-          <div *ngIf="!isLoading()">
-            <i class="pi pi-inbox mb-3 text-5xl text-gray-400"></i>
-            <p class="text-gray-500">No transactions found</p>
-          </div>
+          @if (!isLoading()) {
+            <div>
+              <i class="pi pi-inbox mb-3 text-5xl text-gray-400"></i>
+              <p class="text-gray-500">No transactions found</p>
+            </div>
+          }
         </td>
       </tr>
     </ng-template>

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, EventEmitter, inject, Input, Output, signal, ViewChild, computed } from '@angular/core';
+import { Component, computed, ElementRef, EventEmitter, inject, Input, Output, signal, ViewChild } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { MessageService } from 'primeng/api';
@@ -304,7 +304,7 @@ export class CryptoTableComponent {
     this.rowsPerPage.set(rows);
   }
 
-  getTag(change: number | undefined): string {
+  getTag(change: number | undefined): 'success' | 'danger' {
     if (change === undefined) return 'success';
     return +change >= 0 ? 'success' : 'danger';
   }

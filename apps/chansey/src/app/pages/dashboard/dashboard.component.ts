@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { Component, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -16,14 +16,13 @@ import { AuthService } from '@chansey-web/app/shared/services';
   selector: 'app-dashboard',
   standalone: true,
   imports: [
-    CommonModule,
     RouterModule,
     ButtonModule,
     CardModule,
     ExchangeBalanceComponent,
     UserAssetsComponent,
     RecentTransactionsComponent
-  ],
+],
   templateUrl: './dashboard.component.html'
 })
 export class DashboardComponent {
