@@ -1,0 +1,46 @@
+<div class="price-chart-container">
+  <!-- Period Selector Tabs -->
+  <div class="period-selector mb-4">
+    <div class="flex gap-2">
+      @for (period of periods; track period.value) {
+        <button
+          type="button"
+          class="period-tab"
+          [class.active]="selectedPeriod === period.value"
+          [attr.data-testid]="'period-tab'"
+          [attr.data-active]="selectedPeriod === period.value"
+          [attr.aria-label]="'Show ' + period.label + ' price chart'"
+          [attr.aria-selected]="selectedPeriod === period.value"
+          (click)="onPeriodChange(period.value)"
+        >
+          {{ period.label }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Chart Loading State -->
+  @if (isLoading) {
+    <div class="chart-loading-container" data-testid="chart-loading">
+      <div class="loading-spinner">
+        <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
+        <p class="mt-2">Loading chart data...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Chart No Data State -->
+  @else if (!chartData || !chartData.prices || chartData.prices.length === 0) {
+    <div class="no-data-container" data-testid="no-data-message">
+      <i class="pi pi-chart-line" style="font-size: 3rem; color: var(--text-color-secondary)"></i>
+      <p class="mt-3">No data available for this period</p>
+    </div>
+  }
+
+  <!-- Chart Display -->
+  @else {
+    <div class="chart-wrapper" role="img" [attr.aria-label]="'Price chart for ' + selectedPeriod + ' period'">
+      <p-chart type="line" [data]="data" [options]="options" [style]="chartStyle"></p-chart>
+    </div>
+  }
+</div>

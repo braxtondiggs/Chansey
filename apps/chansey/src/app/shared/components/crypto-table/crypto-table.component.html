@@ -6,7 +6,7 @@
       <!-- Skeleton for search input -->
       <div class="mb-4 flex flex-col items-end">
         <div class="w-full max-w-xs">
-          <p-skeleton width="100%" height="2.75rem" styleClass="rounded-md"></p-skeleton>
+          <p-skeleton width="100%" height="2.75rem" class="rounded-md"></p-skeleton>
         </div>
       </div>
       <!-- Skeleton table wrapper with responsive overflow -->
@@ -44,13 +44,13 @@
           <div class="flex min-w-[800px] border-b border-gray-200 p-3 md:min-w-0 dark:border-gray-700">
             <!-- Action button skeleton -->
             @if (config.showWatchlistToggle || config.showRemoveAction) {
-              <p-skeleton width="40px" height="2.5rem" styleClass="mr-4 rounded-full flex-shrink-0"> </p-skeleton>
+              <p-skeleton width="40px" height="2.5rem" class="mr-4 rounded-full flex-shrink-0"> </p-skeleton>
             }
             <!-- Coin name and image skeleton -->
             <div class="mr-6 flex min-w-48 flex-1 flex-shrink-0 items-center">
-              <p-skeleton shape="circle" size="2.5rem" styleClass="mr-3"></p-skeleton>
+              <p-skeleton shape="circle" size="2.5rem" class="mr-3"></p-skeleton>
               <div class="flex flex-col">
-                <p-skeleton width="120px" height="1.25rem" styleClass="mb-1"></p-skeleton>
+                <p-skeleton width="120px" height="1.25rem" class="mb-1"></p-skeleton>
                 <p-skeleton width="60px" height="1rem"></p-skeleton>
               </div>
             </div>
@@ -68,12 +68,12 @@
             </div>
             <!-- Circulating supply skeleton -->
             <div class="mr-6 w-44 flex-shrink-0">
-              <p-skeleton width="100%" height="1rem" styleClass="mb-1"></p-skeleton>
+              <p-skeleton width="100%" height="1rem" class="mb-1"></p-skeleton>
               <p-skeleton width="80%" height="0.5rem"></p-skeleton>
             </div>
             <!-- 24h change skeleton -->
             <div class="w-24 flex-shrink-0">
-              <p-skeleton width="100%" height="2rem" styleClass="rounded-full"></p-skeleton>
+              <p-skeleton width="100%" height="2rem" class="rounded-full"></p-skeleton>
             </div>
           </div>
         }
@@ -82,10 +82,10 @@
       <div class="mt-4 flex items-center justify-between overflow-x-hidden p-3">
         <p-skeleton width="200px" height="1.25rem"></p-skeleton>
         <div class="flex gap-2">
-          <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
-          <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
-          <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
-          <p-skeleton width="40px" height="2.5rem" styleClass="rounded-md"></p-skeleton>
+          <p-skeleton width="40px" height="2.5rem" class="rounded-md"></p-skeleton>
+          <p-skeleton width="40px" height="2.5rem" class="rounded-md"></p-skeleton>
+          <p-skeleton width="40px" height="2.5rem" class="rounded-md"></p-skeleton>
+          <p-skeleton width="40px" height="2.5rem" class="rounded-md"></p-skeleton>
         </div>
       </div>
     </div>
@@ -112,7 +112,7 @@
       <ng-template #caption>
         <div class="flex flex-col items-end">
           <p-iconfield>
-            <p-inputicon styleClass="pi pi-search" />
+            <p-inputicon class="pi pi-search" />
             <input
               pInputText
               #searchInput
@@ -178,20 +178,20 @@
             </td>
           }
           <td class="min-w-48" [class.!pl-0]="config.showWatchlistToggle || config.showRemoveAction">
-            <div class="flex items-center gap-3">
+            <a [routerLink]="['/app/coins', coin.slug]" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <p-avatar [image]="coin.image" shape="circle" size="large" class="min-w-10 shadow-sm" />
               <div class="flex flex-col">
-                <span class="text-lg font-medium">{{ coin.name }}</span>
+                <span class="text-lg font-medium text-primary-500 hover:text-primary-600">{{ coin.name }}</span>
                 <span class="text-sm uppercase text-gray-500 dark:text-gray-400">{{ coin.symbol }}</span>
               </div>
-            </div>
+            </a>
           </td>
           <td class="min-w-28 text-right font-medium">
             @if (!isLoadingPrices()(coin.slug)) {
               <span [appCounter]="getCoinPrice()(coin.slug)"></span>
             }
             @if (isLoadingPrices()(coin.slug)) {
-              <p-skeleton width="60px" height="1.25rem" styleClass="inline-block" />
+              <p-skeleton width="60px" height="1.25rem" class="inline-block" />
             }
           </td>
           <td class="min-w-32 text-right">{{ coin.marketCap | formatLargeNumber }}</td>
@@ -206,7 +206,7 @@
                 <p-progressBar
                   [value]="(coin.circulatingSupply / coin.maxSupply) * 100"
                   [showValue]="false"
-                  styleClass="!h-2"
+                  class="!h-2"
                 />
               </div>
             } @else {

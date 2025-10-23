@@ -15,7 +15,7 @@ import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
     [breakpoints]="{ '992px': '75vw', '576px': '90vw' }"
     modal
     dismissableMask
-    styleClass="w-1/2"
+    class="w-1/2"
   >
     <ng-template #headless>
       <div class="search-container">

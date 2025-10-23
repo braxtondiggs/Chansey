@@ -13,6 +13,7 @@ export interface UserAsset {
   usdValue: number; // Total USD value (quantity * price)
   image?: string; // Optional image URL for the asset
   priceChangePercentage24h?: number; // 24h price change percentage
+  slug?: string; // Coin slug for routing to detail page
 }
 
 // Create query keys for user assets

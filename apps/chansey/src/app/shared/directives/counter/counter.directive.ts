@@ -37,8 +37,8 @@ export class CounterDirective implements OnInit, OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['appCounter'] && !changes['appCounter'].firstChange) {
-      const newValue = changes['appCounter'].currentValue;
-      const oldValue = changes['appCounter'].previousValue;
+      const newValue = +changes['appCounter'].currentValue;
+      const oldValue = +changes['appCounter'].previousValue;
 
       if (newValue !== oldValue && typeof newValue === 'number') {
         // Store the previous value for color flash logic
@@ -53,7 +53,7 @@ export class CounterDirective implements OnInit, OnChanges {
         this.applyFlashEffect(newValue, oldValue);
       }
     } else if (changes['appCounter'] && changes['appCounter'].firstChange) {
-      const value = changes['appCounter'].currentValue;
+      const value = +changes['appCounter'].currentValue;
       if (typeof value === 'number') {
         this.previousValue = value;
         this.el.nativeElement.innerHTML = this.formatter(value);

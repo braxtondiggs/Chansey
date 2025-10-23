@@ -1,0 +1,155 @@
+<div class="coin-detail-container">
+  <!-- Back Button - Always visible at top -->
+  <div class="-mt-6 mb-4">
+    <p-button
+      icon="pi pi-arrow-left"
+      [outlined]="true"
+      [rounded]="true"
+      [text]="true"
+      (click)="goBack()"
+      aria-label="Go back"
+    />
+  </div>
+
+  <!-- Loading State -->
+  @if (isLoading) {
+    <div class="loading-container" data-testid="loading-skeleton">
+      <p-card>
+        <div class="header-skeleton">
+          <p-skeleton shape="circle" size="4rem"></p-skeleton>
+          <div class="ml-4 flex-1">
+            <p-skeleton width="200px" height="2rem" class="mb-2"></p-skeleton>
+            <p-skeleton width="150px" height="1.5rem"></p-skeleton>
+          </div>
+        </div>
+      </p-card>
+
+      <p-skeleton width="100%" height="400px" class="mt-4"></p-skeleton>
+      <p-skeleton width="100%" height="300px" class="mt-4"></p-skeleton>
+    </div>
+  }
+
+  <!-- Error State -->
+  @else if (error) {
+    <div class="error-container" data-testid="error-message">
+      <p-card>
+        <div class="error-content">
+          <!-- T033: Different icons/messages for 404 vs other errors -->
+          @if (is404Error()) {
+            <i class="pi pi-search" style="font-size: 3rem; color: var(--text-color-secondary)"></i>
+            <h3 class="mt-3">Coin Not Found</h3>
+            <p class="text-color-secondary mt-2">The coin "{{ slug }}" doesn't exist or has been removed.</p>
+            <div class="mt-4 flex gap-3">
+              <p-button
+                label="Return to Prices"
+                icon="pi pi-arrow-left"
+                (click)="goToPrices()"
+                [outlined]="true"
+              ></p-button>
+              <p-button label="Browse All Coins" icon="pi pi-list" (click)="goToPrices()"></p-button>
+            </div>
+          } @else {
+            <i class="pi pi-exclamation-circle" style="font-size: 3rem; color: var(--red-500)"></i>
+            <h3 class="mt-3">Failed to load coin details</h3>
+            <p class="text-color-secondary mt-2">{{ error }}</p>
+            <p-button label="Retry" icon="pi pi-refresh" (click)="retry()" class="mt-4"></p-button>
+          }
+        </div>
+      </p-card>
+    </div>
+  }
+
+  <!-- Main Content -->
+  @else if (coinDetail) {
+    <div class="coin-content" data-testid="coin-content">
+      <!-- Header Section -->
+      <p-card class="coin-header-card">
+        <div class="coin-header">
+          <img
+            [src]="coinDetail.imageUrl"
+            [alt]="coinDetail.name + ' logo'"
+            class="coin-logo"
+            data-testid="coin-logo"
+          />
+          <div class="coin-info">
+            <h1 class="coin-name" data-testid="coin-name">
+              {{ coinDetail.name }}
+              <span class="coin-symbol uppercase" data-testid="coin-symbol">({{ coinDetail.symbol }})</span>
+            </h1>
+            <!-- T037: ARIA live region for price updates -->
+            <div class="price-info" aria-live="polite" aria-atomic="true">
+              <span class="current-price" data-testid="current-price" [appCounter]="+coinDetail.currentPrice"></span>
+              <span
+                class="price-change ml-3"
+                [ngClass]="getPriceChangeClass()"
+                data-testid="price-change-24h"
+                [attr.aria-label]="'24 hour price change: ' + formatPriceChange()"
+              >
+                {{ formatPriceChange() }}
+              </span>
+              <!-- T032: Visual refresh indicator -->
+              @if (priceQuery.isFetching()) {
+                <i
+                  class="pi pi-sync pi-spin refresh-indicator ml-3"
+                  title="Updating price..."
+                  aria-label="Updating price data"
+                ></i>
+              }
+            </div>
+          </div>
+        </div>
+      </p-card>
+
+      <!-- Price Chart Section -->
+      <div class="section mt-4">
+        <h2 class="section-title">Price Chart</h2>
+        <p-card>
+          <app-price-chart
+            [chartData]="historyQuery.data()"
+            [isLoading]="historyQuery.isLoading()"
+            [selectedPeriod]="selectedPeriod()"
+            (periodChange)="onPeriodChange($event)"
+          ></app-price-chart>
+        </p-card>
+      </div>
+
+      <!-- Market Stats Section -->
+      <div class="section mt-4">
+        <h2 class="section-title">Market Statistics</h2>
+        <app-market-stats [coinDetail]="coinDetail"></app-market-stats>
+      </div>
+
+      <!-- User Holdings Section (Authenticated Only) -->
+      @if (isAuthenticated && holdings) {
+        <div class="section mt-4">
+          <h2 class="section-title">Your Holdings</h2>
+          <app-holdings-card [holdings]="holdings"></app-holdings-card>
+        </div>
+      }
+
+      <!-- Description Section -->
+      <div class="section mt-4">
+        <h2 class="section-title">About {{ coinDetail.name }}</h2>
+        <p-card>
+          <!-- T034: Handle missing description -->
+          @if (coinDetail.description) {
+            <p class="description-text" data-testid="coin-description">
+              {{ coinDetail.description }}
+            </p>
+          } @else {
+            <p class="description-text text-color-secondary" style="font-style: italic" data-testid="coin-description">
+              No description available
+            </p>
+          }
+        </p-card>
+      </div>
+
+      <!-- External Links Section -->
+      @if (coinDetail.links) {
+        <div class="section mt-4">
+          <app-external-links [links]="coinDetail.links"></app-external-links>
+        </div>
+      }
+    </div>
+  }
+</div>

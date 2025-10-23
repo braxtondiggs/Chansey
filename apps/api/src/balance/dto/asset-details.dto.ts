@@ -17,6 +17,12 @@ export class AssetDetailsDto {
   symbol: string;
 
   @ApiProperty({
+    description: 'Slug identifier for the asset',
+    example: 'bitcoin'
+  })
+  slug: string;
+
+  @ApiProperty({
     description: 'Full name of the asset',
     example: 'Bitcoin'
   })

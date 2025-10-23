@@ -28,6 +28,7 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { PriceModule } from '../price/price.module';
+import { SharedCacheModule } from '../shared-cache.module';
 import { User } from '../users/users.entity';
 import { UsersModule } from '../users/users.module';
 
@@ -49,6 +50,7 @@ import { UsersModule } from '../users/users.module';
     BullModule.registerQueue({ name: 'order-queue' }),
     BullModule.registerQueue({ name: 'backtest-queue' }),
     BullModule.registerQueue({ name: 'trade-execution' }),
+    SharedCacheModule,
     forwardRef(() => AlgorithmModule),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
