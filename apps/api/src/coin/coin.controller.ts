@@ -1,5 +1,17 @@
-import { Controller, Get, HttpStatus, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Req,
+  UseGuards
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+
+import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
@@ -7,6 +19,7 @@ import { CoinResponseDto, CoinWithPriceDto } from './dto';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { OrderService } from '../order/order.service';
 import { User } from '../users/users.entity';
 
 @ApiTags('Coin')
@@ -15,7 +28,10 @@ import { User } from '../users/users.entity';
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid credentials' })
 @Controller('coin')
 export class CoinController {
-  constructor(private readonly coin: CoinService) {}
+  constructor(
+    private readonly coin: CoinService,
+    private readonly orderService: OrderService
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all coins', description: 'Retrieve a list of all coins.' })
@@ -146,5 +162,156 @@ export class CoinController {
   })
   suggestedCoins(@GetUser() user: User) {
     return this.coin.getCoinsByRiskLevel(user);
+  }
+}
+
+/**
+ * Coin Detail Page Controller
+ * Handles endpoints for the dedicated coin detail page feature
+ * Routes: /coins/:slug (plural to differentiate from legacy /coin routes)
+ */
+@ApiTags('Coins - Detail Page')
+@Controller('coins')
+export class CoinsController {
+  constructor(
+    private readonly coinService: CoinService,
+    private readonly orderService: OrderService
+  ) {}
+
+  /**
+   * T020: GET /coins/:slug - Get comprehensive coin detail
+   * Optional authentication - returns userHoldings only if authenticated
+   */
+  @Get(':slug')
+  @ApiOperation({
+    summary: 'Get coin detail by slug',
+    description:
+      'Retrieve comprehensive coin information including market data, description, and links. ' +
+      'Optionally includes user holdings if authenticated.'
+  })
+  @ApiParam({
+    name: 'slug',
+    required: true,
+    description: 'Coin slug (e.g., "bitcoin", "ethereum")',
+    type: String,
+    example: 'bitcoin'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Coin detail retrieved successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Coin not found.'
+  })
+  async getCoinDetail(@Param('slug') slug: string, @Req() req: any): Promise<CoinDetailResponseDto> {
+    // Get base coin detail
+    const coinDetail = await this.coinService.getCoinDetailBySlug(slug);
+
+    // If user is authenticated, add holdings data
+    if (req.user) {
+      try {
+        const coin = await this.coinService.getCoinBySlug(slug);
+        if (coin) {
+          const holdings = await this.orderService.getHoldingsByCoin(req.user, coin);
+          // Only add holdings if user has any
+          if (holdings.totalAmount > 0) {
+            (coinDetail as any).userHoldings = holdings;
+          }
+        }
+      } catch (error) {
+        // If holdings fetch fails, just return coin detail without holdings
+        console.error('Failed to fetch user holdings:', error);
+      }
+    }
+
+    return coinDetail;
+  }
+
+  /**
+   * T021: GET /coins/:slug/chart - Get market chart data
+   */
+  @Get(':slug/chart')
+  @ApiOperation({
+    summary: 'Get market chart data for coin',
+    description: 'Retrieve historical price data for specified time period.'
+  })
+  @ApiParam({
+    name: 'slug',
+    required: true,
+    description: 'Coin slug (e.g., "bitcoin")',
+    type: String,
+    example: 'bitcoin'
+  })
+  @ApiQuery({
+    name: 'period',
+    required: true,
+    description: 'Time period for chart data',
+    enum: ['24h', '7d', '30d', '1y'],
+    example: '7d'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Market chart data retrieved successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Coin not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid period parameter.'
+  })
+  async getMarketChart(
+    @Param('slug') slug: string,
+    @Query('period') period: TimePeriod
+  ): Promise<MarketChartResponseDto> {
+    // Validate period
+    const validPeriods: TimePeriod[] = ['24h', '7d', '30d', '1y'];
+    if (!validPeriods.includes(period)) {
+      throw new BadRequestException(`Invalid period. Must be one of: ${validPeriods.join(', ')}`);
+    }
+
+    return this.coinService.getMarketChart(slug, period);
+  }
+
+  /**
+   * T022: GET /coins/:slug/holdings - Get user holdings for coin
+   * Requires authentication
+   */
+  @Get(':slug/holdings')
+  @UseGuards(JwtAuthenticationGuard)
+  @ApiBearerAuth('token')
+  @ApiOperation({
+    summary: 'Get user holdings for coin',
+    description:
+      "Retrieve authenticated user's holdings for a specific coin, including profit/loss and exchange breakdown."
+  })
+  @ApiParam({
+    name: 'slug',
+    required: true,
+    description: 'Coin slug (e.g., "bitcoin")',
+    type: String,
+    example: 'bitcoin'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'User holdings retrieved successfully.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Coin not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Authentication required.'
+  })
+  async getHoldings(@Param('slug') slug: string, @GetUser() user: User): Promise<UserHoldingsDto> {
+    const coin = await this.coinService.getCoinBySlug(slug);
+    if (!coin) {
+      throw new Error(`Coin with slug '${slug}' not found`);
+    }
+
+    return this.orderService.getHoldingsByCoin(user, coin);
   }
 }

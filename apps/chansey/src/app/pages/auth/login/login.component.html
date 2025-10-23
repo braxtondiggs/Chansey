@@ -1,11 +1,11 @@
 <section
   class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
-  >
+>
   <div class="flex h-full gap-12">
     <div class="flex flex-col p-20 lg:min-w-[40rem]">
       <a routerLink="/" class="mb-8 flex items-center justify-center">
         <app-lazy-image className="w-auto h-24 object-contain object-left" src="/public/icon.png" alt="Auth Image" />
-        <h5 class="title-h5 whitespace-nowrap font-normal">Cymbit Trading</h5>
+        <h5 class="title-h5 font-normal whitespace-nowrap">Cymbit Trading</h5>
       </a>
       <div class="flex flex-grow flex-col justify-center">
         <div class="mx-auto w-full max-w-md">
@@ -18,8 +18,8 @@
                 [text]="message.content"
                 icon="pi {{ message.icon }}"
                 size="large"
-                styleClass="mt-4"
-                />
+                class="mt-4"
+              />
             }
           </div>
           <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8">
@@ -32,7 +32,7 @@
                 pSize="large"
                 required
                 autocomplete="email"
-                />
+              />
               <label for="on_label">Email</label>
             </p-floatlabel>
             @if (formSubmitted && loginForm.get('email')?.invalid) {
@@ -49,14 +49,12 @@
                   [feedback]="false"
                   required
                   autocomplete="current-password"
-                  />
+                />
                 <label for="on_label">Password</label>
               </p-floatlabel>
             </p-fluid>
             @if (formSubmitted && loginForm.get('password')?.invalid) {
-              <small class="text-red-500">
-                Password is required
-              </small>
+              <small class="text-red-500"> Password is required </small>
             }
 
             <div class="my-8 flex items-center justify-between">
@@ -79,12 +77,12 @@
     <div class="landing-container hidden h-screen py-10 lg:flex">
       <div
         class="mx-auto flex h-auto w-full items-center justify-center overflow-hidden lg:max-w-[32.5rem] xl:max-w-[50rem]"
-        >
+      >
         <app-lazy-image
           className="w-auto max-h-[75vh] object-contain object-center"
           src="/public/landing/auth/login-welcome.png"
           alt="Auth Image"
-          />
+        />
       </div>
     </div>
   </div>

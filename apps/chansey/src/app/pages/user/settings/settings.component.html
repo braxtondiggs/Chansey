@@ -7,7 +7,7 @@
     </p-tablist>
     <p-tabpanels>
       <p-tabpanel value="0">
-        <p-panel header="Color Scheme" [toggleable]="true" styleClass="mt-3">
+        <p-panel header="Color Scheme" [toggleable]="true" class="mt-3">
           <div class="flex flex-col gap-4">
             <div class="flex flex-row items-center justify-between py-3">
               <span class="text-lg font-semibold">Dark Mode</span>
@@ -91,7 +91,7 @@
           </div>
         </p-panel>
 
-        <p-panel header="Menu Settings" [toggleable]="true" styleClass="mt-3">
+        <p-panel header="Menu Settings" [toggleable]="true" class="mt-3">
           <div class="flex flex-col gap-4">
             <div class="flex flex-row items-center justify-between py-3">
               <span class="text-lg font-semibold">Menu Theme</span>
@@ -205,7 +205,7 @@
                 <div class="mb-1 text-lg font-semibold text-900">Account Updates</div>
                 <div class="text-sm text-600">Receive notifications for account-related activities</div>
               </div>
-              <p-toggleswitch formControlName="pushNotifications" styleClass="mt-2 md:mt-0"></p-toggleswitch>
+              <p-toggleswitch formControlName="pushNotifications" class="mt-2 md:mt-0"></p-toggleswitch>
             </div>
           </form>
         </p-panel>
@@ -224,7 +224,7 @@
               [disabled]="true"
               [(ngModel)]="twoFactorAuth"
               (onChange)="toggleTwoFactorAuth($event)"
-              styleClass="mt-2 md:mt-0"
+              class="mt-2 md:mt-0"
               />
           </div>
         </p-panel>

@@ -574,7 +574,7 @@
                   icon="pi pi-arrow-up"
                   severity="success"
                   size="large"
-                  styleClass="w-full !text-white !font-bold !text-lg !h-14 !rounded-xl !shadow-lg hover:!shadow-xl !transition-all !duration-200"
+                  class="w-full !text-white !font-bold !text-lg !h-14 !rounded-xl !shadow-lg hover:!shadow-xl !transition-all !duration-200"
                   [disabled]="
                     buyOrderForm.invalid ||
                     createOrderMutation.isPending() ||
@@ -976,7 +976,7 @@
                   icon="pi pi-arrow-down"
                   severity="danger"
                   size="large"
-                  styleClass="w-full !text-white !font-bold !text-lg !h-14 !rounded-xl !shadow-lg hover:!shadow-xl !transition-all !duration-200"
+                  class="w-full !text-white !font-bold !text-lg !h-14 !rounded-xl !shadow-lg hover:!shadow-xl !transition-all !duration-200"
                   [disabled]="
                     sellOrderForm.invalid ||
                     createOrderMutation.isPending() ||
@@ -1113,7 +1113,7 @@
           <p-table
             [value]="activeOrdersQuery.data() || []"
             [loading]="activeOrdersQuery.isPending()"
-            styleClass="p-datatable-sm"
+            class="p-datatable-sm"
             >
             <ng-template pTemplate="header">
               <tr>

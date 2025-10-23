@@ -1,6 +1,7 @@
 # Chansey
 
-A modern cryptocurrency portfolio management application built with Angular and NestJS. Track your investments across multiple exchanges, monitor performance, and manage your crypto portfolio with real-time data synchronization.
+A modern cryptocurrency portfolio management application built with Angular and NestJS. Track your investments across
+multiple exchanges, monitor performance, and manage your crypto portfolio with real-time data synchronization.
 
 ## 🚀 Features
 
@@ -14,13 +15,15 @@ A modern cryptocurrency portfolio management application built with Angular and 
 ## 🛠 Technology Stack
 
 ### Frontend (apps/chansey)
-- **Angular 19** with standalone components
+
+- **Angular 20** with standalone components
 - **PrimeNG** UI component library
 - **TailwindCSS** for styling
 - **TanStack Query** for state management and caching
 - **PWA** with service worker support
 
 ### Backend (apps/api)
+
 - **NestJS** REST API framework
 - **TypeORM** with PostgreSQL database
 - **Redis** for caching and session storage
@@ -29,6 +32,7 @@ A modern cryptocurrency portfolio management application built with Angular and 
 - **JWT** authentication with refresh tokens
 
 ### Infrastructure
+
 - **Railway** deployment platform
 - **Minio** for file storage
 - **CoinGecko API** for price data
@@ -43,6 +47,7 @@ A modern cryptocurrency portfolio management application built with Angular and 
 ## 🔧 Quick Start
 
 ### 1. Clone and Install
+
 ```bash
 git clone https://github.com/braxtondiggs/Chansey.git
 cd Chansey
@@ -50,9 +55,11 @@ npm install
 ```
 
 ### 2. Environment Setup
+
 Create environment files for both applications:
 
 **apps/api/.env**
+
 ```env
 DATABASE_URL=postgresql://username:password@localhost:5432/chansey
 REDIS_URL=redis://localhost:6379
@@ -61,11 +68,13 @@ COINGECKO_API_KEY=your-coingecko-api-key
 ```
 
 **apps/chansey/.env**
+
 ```env
 API_URL=http://localhost:3000/api
 ```
 
 ### 3. Database Setup
+
 ```bash
 # Run database migrations
 npm run db:migrate
@@ -75,6 +84,7 @@ npm run db:seed
 ```
 
 ### 4. Start Development Servers
+
 ```bash
 # Start both API and frontend
 npm start
@@ -87,6 +97,7 @@ npm run site   # Frontend on http://localhost:4200
 ## 📜 Development Commands
 
 ### Essential Commands
+
 ```bash
 npm start           # Start both applications
 npm run build       # Build all applications
@@ -97,6 +108,7 @@ npm run e2e         # Run Cypress end-to-end tests
 ```
 
 ### Nx-Specific Commands
+
 ```bash
 nx serve api                # Serve API only
 nx serve chansey           # Serve frontend only
@@ -107,6 +119,7 @@ nx dep-graph              # View project dependency graph
 ```
 
 ### Database Operations
+
 ```bash
 npm run db:migrate         # Run database migrations
 npm run db:migration:create # Create new migration
@@ -116,6 +129,7 @@ npm run db:seed           # Seed database with initial data
 ## 🏗 Architecture Overview
 
 ### Monorepo Structure
+
 ```
 ├── apps/
 │   ├── api/              # NestJS API server
@@ -130,12 +144,14 @@ npm run db:seed           # Seed database with initial data
 ### Key Features
 
 #### Exchange Integration
+
 - Standardized exchange API interactions via CCXT library
 - Secure API key storage with encryption
 - Automated order synchronization via scheduled tasks
 - Support for multiple exchanges per user
 
 #### Background Processing
+
 - **BullMQ** job queues with Redis backend
 - Scheduled tasks for:
   - Order synchronization (hourly)
@@ -144,6 +160,7 @@ npm run db:seed           # Seed database with initial data
   - Portfolio historical data collection
 
 #### Security & Authentication
+
 - JWT-based authentication with refresh tokens
 - Role-based access control (admin/user)
 - API key encryption for exchange credentials
@@ -175,7 +192,8 @@ nx affected:test
 
 ## 🚀 Deployment
 
-The application is deployed on Railway with PostgreSQL and Redis add-ons. See deployment documentation for detailed setup instructions.
+The application is deployed on Railway with PostgreSQL and Redis add-ons. See deployment documentation for detailed
+setup instructions.
 
 ## 🤝 Contributing
 

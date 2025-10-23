@@ -1,7 +1,7 @@
 <p-toast></p-toast>
 <p-confirmDialog></p-confirmDialog>
 
-<p-card styleClass="p-0 md:p-4">
+<p-card class="p-0 md:p-4">
   <p-table
     #dt
     [value]="coins()"
@@ -18,7 +18,7 @@
     size="small"
     stripedRows
     [responsiveLayout]="'stack'"
-    styleClass="p-datatable-sm p-datatable-responsive max-w-full sm:w-auto"
+    class="p-datatable-sm p-datatable-responsive max-w-full sm:w-auto"
     breakpoint="768px"
     >
     <ng-template pTemplate="caption">
@@ -36,7 +36,7 @@
             />
         </div>
         <p-iconfield>
-          <p-inputicon styleClass="pi pi-search" />
+          <p-inputicon class="pi pi-search" />
           <input
             #searchInput
             pInputText
@@ -136,7 +136,7 @@
   [style]="{ width: '450px' }"
   header="{{ isNew() ? 'New Coin' : 'Edit Coin' }}"
   [modal]="true"
-  styleClass="p-fluid"
+  class="p-fluid"
   [closable]="!isLoading()"
   [closeOnEscape]="!isLoading()"
   >

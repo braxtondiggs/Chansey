@@ -1,6 +1,6 @@
 <p-card class="user-assets-container">
   <ng-template pTemplate="header">
-    <div class="flex items-center justify-between border-b border-gray-100 px-4 py-5 dark:border-neutral-700">
+    <div class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-neutral-700">
       <div class="flex items-center gap-4">
         <i class="pi pi-wallet text-primary"></i>
         <h2 class="m-0 text-xl font-semibold">Your Assets</h2>
@@ -13,20 +13,20 @@
     <div class="mb-3 overflow-hidden">
       <!-- Skeleton for table header -->
       <div class="mb-2 flex rounded-t border-b border-gray-100 p-3 dark:border-neutral-700">
-        <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-        <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
-        <p-skeleton width="120px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+        <p-skeleton width="120px" height="1.25rem" class="mr-6"></p-skeleton>
+        <p-skeleton width="100px" height="1.25rem" class="mr-6"></p-skeleton>
+        <p-skeleton width="120px" height="1.25rem" class="mr-6"></p-skeleton>
         <p-skeleton width="120px" height="1.25rem"></p-skeleton>
       </div>
       <!-- Skeleton for table rows -->
       @for (i of [1, 2, 3, 4]; track i) {
         <div class="mb-2 flex border-b border-gray-50 p-3 dark:border-neutral-700">
           <div class="mr-6 flex items-center">
-            <p-skeleton shape="circle" size="2.5rem" styleClass="mr-2"></p-skeleton>
+            <p-skeleton shape="circle" size="2.5rem" class="mr-2"></p-skeleton>
             <p-skeleton width="120px" height="1.25rem"></p-skeleton>
           </div>
-          <p-skeleton width="100px" height="2rem" styleClass="mr-6"></p-skeleton>
-          <p-skeleton width="100px" height="1.25rem" styleClass="mr-6"></p-skeleton>
+          <p-skeleton width="100px" height="2rem" class="mr-6"></p-skeleton>
+          <p-skeleton width="100px" height="1.25rem" class="mr-6"></p-skeleton>
           <p-skeleton width="100px" height="1.25rem"></p-skeleton>
         </div>
       }
@@ -35,11 +35,9 @@
 
   <!-- Empty state -->
   @if (!assetsQuery.isPending() && assets().length === 0) {
-    <div
-      class="m-3 flex flex-col items-center justify-center rounded-lg bg-gray-50/30 px-4 py-12 dark:bg-gray-800/20"
-      >
+    <div class="m-3 flex flex-col items-center justify-center rounded-lg bg-gray-50/30 px-4 py-12 dark:bg-gray-800/20">
       <div class="bg-primary/10 mb-4 rounded-full p-4">
-        <i class="text-primary pi pi-dollar !text-4xl"></i>
+        <i class="text-primary pi pi-dollar text-4xl!"></i>
       </div>
       <h3 class="mb-2 text-2xl font-medium">No assets yet</h3>
       <p class="mb-6 max-w-md text-center">
@@ -59,7 +57,7 @@
         icon="pi pi-refresh"
         [loading]="assetsQuery.isFetching()"
         variant="outlined"
-        />
+      />
     </div>
   }
 
@@ -72,7 +70,7 @@
         [paginator]="assets().length > limit"
         [rows]="limit"
         tableStyleClass="no-bottom-border assets-table"
-        >
+      >
         <ng-template pTemplate="header">
           <tr>
             <th style="min-width: 100px">Name</th>
@@ -84,13 +82,17 @@
         <ng-template pTemplate="body" let-asset>
           <tr>
             <td>
-              <div class="flex items-center gap-1">
+              <a
+                [routerLink]="asset.slug ? ['/app/coins', asset.slug] : null"
+                [class.pointer-events-none]="!asset.slug"
+                class="flex items-center gap-1 transition-opacity hover:opacity-80"
+              >
                 <p-avatar [image]="asset.image" shape="circle" size="large" class="mr-2 min-w-10 shadow-sm" />
                 <div class="flex flex-col">
-                  <span class="font-medium">{{ asset.name }}</span>
-                  <span class="text-xs uppercase text-gray-500 dark:text-gray-400">{{ asset.symbol }}</span>
+                  <span class="text-primary-500 hover:text-primary-600 font-medium">{{ asset.name }}</span>
+                  <span class="text-xs text-gray-500 uppercase dark:text-gray-400">{{ asset.symbol }}</span>
                 </div>
-              </div>
+              </a>
             </td>
             <td class="font-medium">${{ asset.price | number: '1.2-2' }}</td>
             <td>
@@ -124,6 +126,6 @@
 </p-card>
 <style>
   :host ::ng-deep .no-bottom-border tr:last-child > td {
-  border-bottom: none !important;
-}
+    border-bottom: none !important;
+  }
 </style>

@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -20,11 +20,12 @@ describe('OrderService', () => {
   let service: OrderService;
   let orderRepository: jest.Mocked<Repository<Order>>;
   let exchangeService: jest.Mocked<ExchangeService>;
-  let exchangeManagerService: jest.Mocked<ExchangeManagerService>;
   let exchangeKeyService: jest.Mocked<ExchangeKeyService>;
+  let exchangeManagerService: jest.Mocked<ExchangeManagerService>;
   let coinService: jest.Mocked<CoinService>;
   let orderValidationService: jest.Mocked<OrderValidationService>;
   let orderCalculationService: jest.Mocked<OrderCalculationService>;
+  let loggerErrorSpy: jest.SpyInstance;
 
   const mockUser: User = {
     id: 'user-123',
@@ -84,6 +85,9 @@ describe('OrderService', () => {
   } as Order;
 
   beforeEach(async () => {
+    // Mock Logger.error to suppress expected error logs in tests
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderService,
@@ -140,6 +144,7 @@ describe('OrderService', () => {
     service = module.get<OrderService>(OrderService);
     orderRepository = module.get(getRepositoryToken(Order));
     exchangeService = module.get(ExchangeService);
+    exchangeKeyService = module.get(ExchangeKeyService);
     exchangeManagerService = module.get(ExchangeManagerService);
     exchangeKeyService = module.get(ExchangeKeyService);
     coinService = module.get(CoinService);
@@ -149,6 +154,7 @@ describe('OrderService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    loggerErrorSpy.mockRestore();
   });
 
   describe('createOrder', () => {
@@ -443,6 +449,345 @@ describe('OrderService', () => {
       expect(mapMethod('rejected')).toBe(OrderStatus.REJECTED);
       expect(mapMethod('partial')).toBe(OrderStatus.PARTIALLY_FILLED);
       expect(mapMethod('unknown')).toBe(OrderStatus.NEW); // default case
+    });
+  });
+
+  /**
+   * T010: Holdings calculation tests
+   * Expected: These tests should FAIL because getHoldingsByCoin method doesn't exist yet
+   */
+  describe('getHoldingsByCoin() - T010', () => {
+    const mockBtcCoin = {
+      id: 'coin-btc',
+      symbol: 'BTC',
+      name: 'Bitcoin',
+      slug: 'bitcoin',
+      currentPrice: 43250.5
+    };
+
+    const mockBinanceExchange = {
+      id: 'exchange-binance',
+      name: 'Binance',
+      slug: 'binance_us'
+    };
+
+    const mockCoinbaseExchange = {
+      id: 'exchange-coinbase',
+      name: 'Coinbase',
+      slug: 'coinbase_pro'
+    };
+
+    it('should aggregate buy orders across multiple exchanges', async () => {
+      const buyOrders = [
+        {
+          ...mockOrder,
+          id: 'order-1',
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.3,
+          price: 40000,
+          cost: 12000
+        } as Order,
+        {
+          ...mockOrder,
+          id: 'order-2',
+          baseCoin: mockBtcCoin,
+          exchange: mockCoinbaseExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.2,
+          price: 45000,
+          cost: 9000
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(buyOrders);
+
+      // This will fail - getHoldingsByCoin doesn't exist yet
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      expect(result.coinSymbol).toBe('BTC');
+      expect(result.totalAmount).toBe(0.5); // 0.3 + 0.2
+      expect(result.averageBuyPrice).toBe(42000); // (12000 + 9000) / 0.5
+      expect(result.currentValue).toBe(21625.25); // 0.5 * 43250.50
+      expect(result.exchanges).toHaveLength(2);
+    });
+
+    it('should calculate weighted average buy price correctly', async () => {
+      const buyOrders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.5,
+          price: 40000,
+          cost: 20000
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.3,
+          price: 50000,
+          cost: 15000
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.2,
+          price: 45000,
+          cost: 9000
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(buyOrders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      // Weighted average: (20000 + 15000 + 9000) / (0.5 + 0.3 + 0.2) = 44000 / 1.0 = 44000
+      expect(result.averageBuyPrice).toBe(44000);
+      expect(result.totalAmount).toBe(1.0);
+    });
+
+    it('should handle sells reducing total amount', async () => {
+      const orders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 1.0,
+          price: 40000,
+          cost: 40000
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.SELL,
+          executedQuantity: 0.3,
+          price: 45000,
+          cost: 13500
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(orders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      expect(result.totalAmount).toBe(0.7); // 1.0 - 0.3
+      expect(result.averageBuyPrice).toBe(40000); // Buy price remains from original purchase
+    });
+
+    it('should handle multiple buys and sells correctly', async () => {
+      const orders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 1.0,
+          price: 40000,
+          cost: 40000
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.SELL,
+          executedQuantity: 0.5,
+          price: 50000,
+          cost: 25000
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.3,
+          price: 45000,
+          cost: 13500
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(orders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      // Net amount: 1.0 - 0.5 + 0.3 = 0.8
+      expect(result.totalAmount).toBe(0.8);
+    });
+
+    it('should handle no orders (zero holdings)', async () => {
+      orderRepository.find.mockResolvedValue([]);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      expect(result.totalAmount).toBe(0);
+      expect(result.averageBuyPrice).toBe(0);
+      expect(result.currentValue).toBe(0);
+      expect(result.profitLoss).toBe(0);
+      expect(result.profitLossPercent).toBe(0);
+      expect(result.exchanges).toHaveLength(0);
+    });
+
+    it('should calculate profit/loss correctly', async () => {
+      const buyOrders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.5,
+          price: 38000,
+          cost: 19000
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(buyOrders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      const invested = 0.5 * 38000; // 19000
+      const currentValue = 0.5 * 43250.5; // 21625.25
+      const profitLoss = currentValue - invested; // 2625.25
+      const profitLossPercent = (profitLoss / invested) * 100; // 13.82%
+
+      expect(result.currentValue).toBeCloseTo(21625.25, 2);
+      expect(result.profitLoss).toBeCloseTo(2625.25, 2);
+      expect(result.profitLossPercent).toBeCloseTo(13.82, 2);
+    });
+
+    it('should provide per-exchange breakdown', async () => {
+      const orders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.3,
+          price: 40000,
+          cost: 12000,
+          transactTime: new Date('2024-01-01')
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockCoinbaseExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.2,
+          price: 45000,
+          cost: 9000,
+          transactTime: new Date('2024-01-02')
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(orders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      expect(result.exchanges).toHaveLength(2);
+
+      const binanceHolding = result.exchanges.find((e: any) => e.exchangeName === 'Binance');
+      expect(binanceHolding).toBeDefined();
+      expect(binanceHolding.amount).toBe(0.3);
+      expect(binanceHolding.lastSynced).toEqual(new Date('2024-01-01'));
+
+      const coinbaseHolding = result.exchanges.find((e: any) => e.exchangeName === 'Coinbase');
+      expect(coinbaseHolding).toBeDefined();
+      expect(coinbaseHolding.amount).toBe(0.2);
+      expect(coinbaseHolding.lastSynced).toEqual(new Date('2024-01-02'));
+    });
+
+    it('should handle partial fills and multiple orders per exchange', async () => {
+      const orders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.3,
+          price: 40000,
+          cost: 12000,
+          transactTime: new Date('2024-01-01')
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.2,
+          price: 42000,
+          cost: 8400,
+          transactTime: new Date('2024-01-03')
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.SELL,
+          executedQuantity: 0.1,
+          price: 45000,
+          cost: 4500,
+          transactTime: new Date('2024-01-04')
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(orders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      // Net for Binance: 0.3 + 0.2 - 0.1 = 0.4
+      expect(result.totalAmount).toBe(0.4);
+
+      const binanceHolding = result.exchanges.find((e: any) => e.exchangeName === 'Binance');
+      expect(binanceHolding.amount).toBe(0.4);
+      expect(binanceHolding.lastSynced).toEqual(new Date('2024-01-04')); // Most recent transaction
+    });
+
+    it('should exclude exchanges with zero holdings', async () => {
+      const orders = [
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.5,
+          price: 40000,
+          cost: 20000
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockBinanceExchange,
+          side: OrderSide.SELL,
+          executedQuantity: 0.5,
+          price: 45000,
+          cost: 22500
+        } as Order,
+        {
+          ...mockOrder,
+          baseCoin: mockBtcCoin,
+          exchange: mockCoinbaseExchange,
+          side: OrderSide.BUY,
+          executedQuantity: 0.2,
+          price: 43000,
+          cost: 8600
+        } as Order
+      ];
+
+      orderRepository.find.mockResolvedValue(orders);
+
+      const result = await (service as any).getHoldingsByCoin(mockUser, mockBtcCoin);
+
+      // Binance has 0 net holdings, should be excluded
+      expect(result.totalAmount).toBeCloseTo(0.2, 10);
+      expect(result.exchanges).toHaveLength(1);
+      expect(result.exchanges[0].exchangeName).toBe('Coinbase');
     });
   });
 });

@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as ccxt from 'ccxt';
 import { FindManyOptions, In, Repository } from 'typeorm';
 
+import { UserHoldingsDto } from '@chansey/api-interfaces';
+
 import { ExchangeService } from '@chansey-api/exchange/exchange.service';
 
 import { OrderPreviewRequestDto } from './dto/order-preview-request.dto';
@@ -14,6 +16,7 @@ import { Order, OrderSide, OrderStatus, OrderType, TrailingType } from './order.
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderValidationService } from './services/order-validation.service';
 
+import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
@@ -921,5 +924,99 @@ export class OrderService {
     };
 
     return typeMap[orderType] || 'market';
+  }
+
+  /**
+   * T019: Get user holdings for a specific coin
+   * Calculates total holdings, average buy price, and profit/loss
+   * @param user User requesting holdings
+   * @param coin Coin to get holdings for
+   * @returns UserHoldingsDto with holdings breakdown
+   */
+  async getHoldingsByCoin(user: User, coin: Coin): Promise<UserHoldingsDto> {
+    // Query all filled orders for this user and coin
+    const orders = await this.orderRepository.find({
+      where: {
+        user: { id: user.id },
+        baseCoin: { id: coin.id },
+        status: OrderStatus.FILLED
+      },
+      relations: ['exchange', 'baseCoin'],
+      order: { transactTime: 'ASC' }
+    });
+
+    // If no orders, return zero holdings
+    if (orders.length === 0) {
+      return {
+        coinSymbol: coin.symbol,
+        totalAmount: 0,
+        averageBuyPrice: 0,
+        currentValue: 0,
+        profitLoss: 0,
+        profitLossPercent: 0,
+        exchanges: []
+      };
+    }
+
+    // Calculate total holdings and weighted average buy price
+    let totalBought = 0;
+    let totalSold = 0;
+    let totalCostBasis = 0; // Total USD spent on buys
+
+    const exchangeHoldings = new Map<
+      string,
+      { exchangeName: string; amount: number; lastSynced: Date }
+    >();
+
+    for (const order of orders) {
+      const amount = order.executedQuantity || 0;
+      const exchangeId = order.exchange?.id || 'unknown';
+      const exchangeName = order.exchange?.name || 'Unknown';
+
+      if (order.side === OrderSide.BUY) {
+        totalBought += amount;
+        totalCostBasis += order.cost || amount * (order.price || 0);
+
+        // Update exchange holdings
+        const existing = exchangeHoldings.get(exchangeId) || {
+          exchangeName,
+          amount: 0,
+          lastSynced: order.transactTime
+        };
+        existing.amount += amount;
+        existing.lastSynced = order.transactTime;
+        exchangeHoldings.set(exchangeId, existing);
+      } else if (order.side === OrderSide.SELL) {
+        totalSold += amount;
+
+        // Update exchange holdings
+        const existing = exchangeHoldings.get(exchangeId);
+        if (existing) {
+          existing.amount -= amount;
+          existing.lastSynced = order.transactTime;
+        }
+      }
+    }
+
+    const totalAmount = totalBought - totalSold;
+    const averageBuyPrice = totalBought > 0 ? totalCostBasis / totalBought : 0;
+    const currentPrice = coin.currentPrice || 0;
+    const currentValue = totalAmount * currentPrice;
+    const invested = totalAmount * averageBuyPrice;
+    const profitLoss = currentValue - invested;
+    const profitLossPercent = invested > 0 ? (profitLoss / invested) * 100 : 0;
+
+    // Filter out exchanges with zero or negative holdings
+    const exchangesList = Array.from(exchangeHoldings.values()).filter((h) => h.amount > 0);
+
+    return {
+      coinSymbol: coin.symbol,
+      totalAmount,
+      averageBuyPrice,
+      currentValue,
+      profitLoss,
+      profitLossPercent,
+      exchanges: exchangesList
+    };
   }
 }

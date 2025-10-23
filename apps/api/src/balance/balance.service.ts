@@ -801,6 +801,7 @@ export class BalanceService {
             assetMap.set(symbol, {
               image: coin?.image,
               name: coin?.name,
+              slug: coin?.slug,
               price,
               priceChangePercentage24h: coin?.priceChangePercentage24h,
               quantity,

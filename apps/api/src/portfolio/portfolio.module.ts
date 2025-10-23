@@ -10,12 +10,14 @@ import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { PriceModule } from '../price/price.module';
+import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Portfolio, Coin]),
     BullModule.registerQueue({ name: 'portfolio-queue' }),
-    forwardRef(() => PriceModule)
+    forwardRef(() => PriceModule),
+    SharedCacheModule
   ],
   controllers: [PortfolioController],
   providers: [PortfolioService, PortfolioHistoricalPriceTask, CoinService],
