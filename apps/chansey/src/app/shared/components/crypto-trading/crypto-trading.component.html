@@ -4,7 +4,7 @@
     <!-- Active Trading Status Bar -->
     <div
       class="from-primary-50 dark:from-primary-950 border-primary-100 dark:border-primary-800 flex items-center justify-between rounded-lg border bg-gradient-to-r to-blue-50 p-3 dark:to-blue-950"
-      >
+    >
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
           <div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
@@ -49,7 +49,7 @@
       optionValue="value"
       class="w-full"
       [loading]="exchangeQuery.isPending()"
-      >
+    >
       <ng-template pTemplate="selectedItem" let-option>
         @if (option) {
           <div class="flex items-center gap-3">
@@ -62,7 +62,7 @@
             </div>
             <span
               class="bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400 rounded-full px-2 py-1 text-xs"
-              >
+            >
               {{ option.pairCount }} pairs
             </span>
           </div>
@@ -85,7 +85,7 @@
           <div class="text-right">
             <div
               class="bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400 rounded-full px-3 py-1 text-xs font-medium"
-              >
+            >
               {{ option.pairCount }} pairs
             </div>
           </div>
@@ -96,9 +96,7 @@
 
   <!-- Exchange Selection Notice -->
   @if (!selectedExchangeId()) {
-    <div
-      class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950"
-      >
+    <div class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
       <div class="flex items-center gap-2 text-blue-700 dark:text-blue-300">
         <i class="pi pi-info-circle"></i>
         <span class="text-sm font-medium">Please select an exchange above to start trading</span>
@@ -156,7 +154,7 @@
         filterBy="label"
         [showClear]="true"
         [disabled]="!selectedExchangeId()"
-        >
+      >
         <ng-template pTemplate="selectedItem" let-option>
           @if (option) {
             <div class="flex items-center gap-2">
@@ -189,14 +187,14 @@
         <p-tab value="buy" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1">
           <div
             class="flex w-full items-center justify-center font-semibold transition-all duration-200 hover:bg-green-50 dark:hover:bg-green-900/20"
-            >
+          >
             <span class="text-green-700 dark:text-green-300">Buy</span>
           </div>
         </p-tab>
         <p-tab value="sell" [disabled]="!selectedPairValue() || !selectedExchangeId()" class="flex-1">
           <div
             class="flex w-full items-center justify-center font-semibold transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20"
-            >
+          >
             <span class="text-red-700 dark:text-red-300">Sell</span>
           </div>
         </p-tab>
@@ -218,7 +216,7 @@
                     optionLabel="label"
                     optionValue="value"
                     size="large"
-                    >
+                  >
                     <ng-template pTemplate="selectedItem" let-option>
                       <div class="flex items-center gap-2">
                         <i [class]="option.icon" class="text-sm"></i>
@@ -250,12 +248,11 @@
                     class="w-full"
                     [class.ng-invalid]="isFieldInvalid(buyOrderForm, 'quantity')"
                     [class.ng-dirty]="isFieldInvalid(buyOrderForm, 'quantity')"
-                    />
+                  />
                   <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                    Quantity@if (selectedPair()?.baseAsset?.symbol) {
-                    <span>
-                      ({{ selectedPair()?.baseAsset?.symbol }})</span
-                      >
+                    Quantity
+                    @if (selectedPair()?.baseAsset?.symbol) {
+                      <span> ({{ selectedPair()?.baseAsset?.symbol }})</span>
                     }
                   </label>
                 </p-floatlabel>
@@ -275,7 +272,7 @@
                     size="large"
                     [disabled]="!selectedPairValue()"
                     class="quickAmount flex w-full justify-between"
-                    />
+                  />
                 </div>
               </div>
 
@@ -292,12 +289,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(buyOrderForm, 'price')"
                       [class.ng-dirty]="isFieldInvalid(buyOrderForm, 'price')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -322,12 +318,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(buyOrderForm, 'stopPrice')"
                       [class.ng-dirty]="isFieldInvalid(buyOrderForm, 'stopPrice')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Stop Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Stop Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -338,7 +333,7 @@
                   }
                   <div
                     class="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-800 dark:bg-orange-900/20"
-                    >
+                  >
                     <i class="pi pi-info-circle mt-0.5 text-sm text-orange-600 dark:text-orange-400"></i>
                     <div class="text-sm text-orange-700 dark:text-orange-300">
                       <span class="font-medium">Trigger Condition:</span> Order will execute when price
@@ -363,7 +358,7 @@
                           class="w-full"
                           [class.ng-invalid]="isFieldInvalid(buyOrderForm, 'trailingAmount')"
                           [class.ng-dirty]="isFieldInvalid(buyOrderForm, 'trailingAmount')"
-                          />
+                        />
                         <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
                           Trailing Amount
                         </label>
@@ -383,13 +378,13 @@
                         optionLabel="label"
                         optionValue="value"
                         size="large"
-                        />
+                      />
                       <label>Type</label>
                     </p-floatlabel>
                   </div>
                   <div
                     class="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-900/20"
-                    >
+                  >
                     <i class="pi pi-info-circle mt-0.5 text-sm text-blue-600 dark:text-blue-400"></i>
                     <div class="text-sm text-blue-700 dark:text-blue-300">
                       <span class="font-medium">Dynamic Stop:</span> Stop price automatically adjusts by the trailing
@@ -412,12 +407,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(buyOrderForm, 'takeProfitPrice')"
                       [class.ng-dirty]="isFieldInvalid(buyOrderForm, 'takeProfitPrice')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Take Profit Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Take Profit Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -442,12 +436,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(buyOrderForm, 'stopLossPrice')"
                       [class.ng-dirty]="isFieldInvalid(buyOrderForm, 'stopLossPrice')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Stop Loss Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Stop Loss Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -458,11 +451,11 @@
                   }
                   <div
                     class="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-900/20"
-                    >
+                  >
                     <i class="pi pi-info-circle mt-0.5 text-sm text-purple-600 dark:text-purple-400"></i>
                     <div class="text-sm text-purple-700 dark:text-purple-300">
-                      <span class="font-medium">OCO Order:</span> Creates two linked orders - when one executes, the other
-                      is automatically canceled
+                      <span class="font-medium">OCO Order:</span> Creates two linked orders - when one executes, the
+                      other is automatically canceled
                     </div>
                   </div>
                 </div>
@@ -470,7 +463,7 @@
 
               <div
                 class="rounded-2xl border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-5 dark:border-green-800 dark:from-green-900/20 dark:to-emerald-900/20"
-                >
+              >
                 <div class="mb-4 flex items-center gap-2">
                   <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
                     <i class="pi pi-calculator text-green-600 dark:text-green-400"></i>
@@ -516,7 +509,7 @@
                         class="text-sm font-semibold"
                         [class.text-green-600]="buyOrderPreview()?.hasSufficientBalance"
                         [class.text-red-600]="!buyOrderPreview()?.hasSufficientBalance"
-                        >
+                      >
                         {{ buyOrderPreview()?.availableBalance | number: '1.2-8' }}
                         {{ buyOrderPreview()?.balanceCurrency?.toUpperCase() }}
                       </span>
@@ -525,7 +518,7 @@
                     @if (!buyOrderPreview()?.hasSufficientBalance) {
                       <div
                         class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20"
-                        >
+                      >
                         <div class="flex items-center gap-2 text-red-700 dark:text-red-300">
                           <i class="pi pi-exclamation-triangle text-sm"></i>
                           <span class="text-sm font-medium">Insufficient Balance</span>
@@ -574,7 +567,7 @@
                   icon="pi pi-arrow-up"
                   severity="success"
                   size="large"
-                  class="w-full !text-white !font-bold !text-lg !h-14 !rounded-xl !shadow-lg hover:!shadow-xl !transition-all !duration-200"
+                  class="!h-14 w-full !rounded-xl !text-lg !font-bold !text-white !shadow-lg !transition-all !duration-200 hover:!shadow-xl"
                   [disabled]="
                     buyOrderForm.invalid ||
                     createOrderMutation.isPending() ||
@@ -582,7 +575,7 @@
                     (buyOrderPreview() && !buyOrderPreview()?.hasSufficientBalance)
                   "
                   [loading]="createOrderMutation.isPending()"
-                  />
+                />
               </div>
             </form>
           </div>
@@ -603,7 +596,7 @@
                     optionLabel="label"
                     optionValue="value"
                     size="large"
-                    >
+                  >
                     <ng-template pTemplate="selectedItem" let-option>
                       <div class="flex items-center gap-2">
                         <i [class]="option.icon" class="text-sm"></i>
@@ -635,12 +628,11 @@
                     class="w-full"
                     [class.ng-invalid]="isFieldInvalid(sellOrderForm, 'quantity')"
                     [class.ng-dirty]="isFieldInvalid(sellOrderForm, 'quantity')"
-                    />
+                  />
                   <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                    Quantity@if (selectedPair()?.baseAsset?.symbol) {
-                    <span>
-                      ({{ selectedPair()?.baseAsset?.symbol }})</span
-                      >
+                    Quantity
+                    @if (selectedPair()?.baseAsset?.symbol) {
+                      <span> ({{ selectedPair()?.baseAsset?.symbol }})</span>
                     }
                   </label>
                 </p-floatlabel>
@@ -660,11 +652,11 @@
                     size="large"
                     [disabled]="!selectedPairValue()"
                     class="quickAmount flex w-full justify-between"
-                    />
+                  />
                 </div>
                 <div
                   class="bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700 mt-4 rounded-xl border p-3"
-                  >
+                >
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-surface-600 dark:text-surface-400 font-medium">Available Balance</span>
                     <span class="text-surface-900 dark:text-surface-100 font-semibold">
@@ -691,12 +683,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(sellOrderForm, 'price')"
                       [class.ng-dirty]="isFieldInvalid(sellOrderForm, 'price')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -721,12 +712,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(sellOrderForm, 'stopPrice')"
                       [class.ng-dirty]="isFieldInvalid(sellOrderForm, 'stopPrice')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Stop Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Stop Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -737,7 +727,7 @@
                   }
                   <div
                     class="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-800 dark:bg-orange-900/20"
-                    >
+                  >
                     <i class="pi pi-info-circle mt-0.5 text-sm text-orange-600 dark:text-orange-400"></i>
                     <div class="text-sm text-orange-700 dark:text-orange-300">
                       <span class="font-medium">Trigger Condition:</span> Order will execute when price
@@ -762,7 +752,7 @@
                           class="w-full"
                           [class.ng-invalid]="isFieldInvalid(sellOrderForm, 'trailingAmount')"
                           [class.ng-dirty]="isFieldInvalid(sellOrderForm, 'trailingAmount')"
-                          />
+                        />
                         <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
                           Trailing Amount
                         </label>
@@ -782,13 +772,13 @@
                         optionLabel="label"
                         optionValue="value"
                         size="large"
-                        />
+                      />
                       <label>Type</label>
                     </p-floatlabel>
                   </div>
                   <div
                     class="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-900/20"
-                    >
+                  >
                     <i class="pi pi-info-circle mt-0.5 text-sm text-blue-600 dark:text-blue-400"></i>
                     <div class="text-sm text-blue-700 dark:text-blue-300">
                       <span class="font-medium">Dynamic Stop:</span> Stop price automatically adjusts by the trailing
@@ -811,12 +801,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(sellOrderForm, 'takeProfitPrice')"
                       [class.ng-dirty]="isFieldInvalid(sellOrderForm, 'takeProfitPrice')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Take Profit Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Take Profit Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -841,12 +830,11 @@
                       class="w-full"
                       [class.ng-invalid]="isFieldInvalid(sellOrderForm, 'stopLossPrice')"
                       [class.ng-dirty]="isFieldInvalid(sellOrderForm, 'stopLossPrice')"
-                      />
+                    />
                     <label class="text-surface-900 dark:text-surface-100 text-sm font-semibold">
-                      Stop Loss Price@if (selectedPair()?.quoteAsset?.symbol) {
-                      <span>
-                        ({{ selectedPair()?.quoteAsset?.symbol }})</span
-                        >
+                      Stop Loss Price
+                      @if (selectedPair()?.quoteAsset?.symbol) {
+                        <span> ({{ selectedPair()?.quoteAsset?.symbol }})</span>
                       }
                     </label>
                   </p-floatlabel>
@@ -857,11 +845,11 @@
                   }
                   <div
                     class="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-900/20"
-                    >
+                  >
                     <i class="pi pi-info-circle mt-0.5 text-sm text-purple-600 dark:text-purple-400"></i>
                     <div class="text-sm text-purple-700 dark:text-purple-300">
-                      <span class="font-medium">OCO Order:</span> Creates two linked orders - when one executes, the other
-                      is automatically canceled
+                      <span class="font-medium">OCO Order:</span> Creates two linked orders - when one executes, the
+                      other is automatically canceled
                     </div>
                   </div>
                 </div>
@@ -869,7 +857,7 @@
 
               <div
                 class="rounded-2xl border-2 border-red-200 bg-gradient-to-br from-red-50 to-rose-50 p-5 dark:border-red-800 dark:from-red-900/20 dark:to-rose-900/20"
-                >
+              >
                 <div class="mb-4 flex items-center gap-2">
                   <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900">
                     <i class="pi pi-calculator text-red-600 dark:text-red-400"></i>
@@ -906,8 +894,8 @@
                       <span class="text-sm font-bold text-red-700 dark:text-red-300">Net Amount</span>
                       <span class="text-xl font-bold text-red-900 dark:text-red-100">
                         {{
-                        (sellOrderPreview()?.estimatedCost || 0) - (sellOrderPreview()?.estimatedFee || 0)
-                        | number: '1.2-8'
+                          (sellOrderPreview()?.estimatedCost || 0) - (sellOrderPreview()?.estimatedFee || 0)
+                            | number: '1.2-8'
                         }}
                         {{ sellOrderPreview()?.balanceCurrency?.toUpperCase() }}
                       </span>
@@ -918,7 +906,7 @@
                         class="text-sm font-semibold"
                         [class.text-green-600]="sellOrderPreview()?.hasSufficientBalance"
                         [class.text-red-600]="!sellOrderPreview()?.hasSufficientBalance"
-                        >
+                      >
                         {{ sellOrderPreview()?.availableBalance | number: '1.2-8' }}
                         {{ sellOrderPreview()?.balanceCurrency?.toUpperCase() }}
                       </span>
@@ -927,7 +915,7 @@
                     @if (!sellOrderPreview()?.hasSufficientBalance) {
                       <div
                         class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20"
-                        >
+                      >
                         <div class="flex items-center gap-2 text-red-700 dark:text-red-300">
                           <i class="pi pi-exclamation-triangle text-sm"></i>
                           <span class="text-sm font-medium">Insufficient Balance</span>
@@ -976,14 +964,14 @@
                   icon="pi pi-arrow-down"
                   severity="danger"
                   size="large"
-                  class="w-full !text-white !font-bold !text-lg !h-14 !rounded-xl !shadow-lg hover:!shadow-xl !transition-all !duration-200"
+                  class="!h-14 w-full !rounded-xl !text-lg !font-bold !text-white !shadow-lg !transition-all !duration-200 hover:!shadow-xl"
                   [disabled]="
                     sellOrderForm.invalid ||
                     createOrderMutation.isPending() ||
                     (sellOrderPreview() && !sellOrderPreview()?.hasSufficientBalance)
                   "
                   [loading]="createOrderMutation.isPending()"
-                  />
+                />
               </div>
             </form>
           </div>
@@ -1009,9 +997,7 @@
               <h4 class="mb-2 text-sm font-semibold text-red-600">Asks (Sell)</h4>
               <div class="space-y-1">
                 @for (ask of getTopAsks(); track trackByPrice($index, ask)) {
-                  <div
-                    class="flex justify-between rounded bg-red-50 p-2 text-sm dark:bg-red-950"
-                    >
+                  <div class="flex justify-between rounded bg-red-50 p-2 text-sm dark:bg-red-950">
                     <span class="text-red-600">{{ ask.price | number: '1.2-8' }}</span>
                     <span>{{ ask.quantity | number: '1.2-8' }}</span>
                   </div>
@@ -1023,9 +1009,7 @@
               <h4 class="mb-2 text-sm font-semibold text-green-600">Bids (Buy)</h4>
               <div class="space-y-1">
                 @for (bid of getTopBids(); track trackByPrice($index, bid)) {
-                  <div
-                    class="flex justify-between rounded bg-green-50 p-2 text-sm dark:bg-green-950"
-                    >
+                  <div class="flex justify-between rounded bg-green-50 p-2 text-sm dark:bg-green-950">
                     <span class="text-green-600">{{ bid.price | number: '1.2-8' }}</span>
                     <span>{{ bid.quantity | number: '1.2-8' }}</span>
                   </div>
@@ -1069,114 +1053,118 @@
           />
       </div>
     </ng-template>-->
-    <!-- Collapsible Content -->
-    @if (showActiveOrders()) {
-      <div class="px-3 pb-3">
-        <!-- Mobile-Friendly Order Cards -->
-        <div class="space-y-2 md:hidden">
-          @for (order of activeOrdersQuery.data() || []; track trackByOrderId($index, order)) {
-            <div
-              class="bg-surface-50 dark:bg-surface-800 rounded-lg border p-3"
-              >
-              <div class="mb-2 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="font-semibold">{{ order.symbol }}</span>
-                  <span [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'" class="text-sm font-medium">
-                    {{ order.side }}
-                  </span>
-                </div>
-                <span class="rounded-full px-2 py-1 text-xs font-semibold" [class]="getStatusClass(order.status)">
-                  {{ order.status }}
-                </span>
-              </div>
-              <div class="text-surface-600 dark:text-surface-400 mb-2 grid grid-cols-2 gap-2 text-sm">
-                <div><span class="font-medium">Type:</span> {{ order.type }}</div>
-                <div><span class="font-medium">Quantity:</span> {{ order.quantity | number: '1.2-6' }}</div>
-                <div><span class="font-medium">Price:</span> {{ order.price | number: '1.2-6' }}</div>
-                <div><span class="font-medium">Filled:</span> {{ order.executedQuantity | number: '1.2-6' }}</div>
-              </div>
-              <p-button
-                icon="pi pi-times"
-                label="Cancel"
-                severity="danger"
-                size="small"
-                outlined
-                (click)="cancelOrder(order.id)"
-                [disabled]="cancelOrderMutation.isPending()"
-                class="w-full"
-                />
-            </div>
-          }
-        </div>
-        <!-- Desktop Table -->
-        <div class="hidden md:block">
-          <p-table
-            [value]="activeOrdersQuery.data() || []"
-            [loading]="activeOrdersQuery.isPending()"
-            class="p-datatable-sm"
-            >
-            <ng-template pTemplate="header">
-              <tr>
-                <th class="text-xs">Symbol</th>
-                <th class="text-xs">Side</th>
-                <th class="text-xs">Type</th>
-                <th class="text-xs">Quantity</th>
-                <th class="text-xs">Price</th>
-                <th class="text-xs">Filled</th>
-                <th class="text-xs">Status</th>
-                <th class="text-xs">Actions</th>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="body" let-order>
-              <tr>
-                <td class="text-sm font-medium">{{ order.symbol }}</td>
-                <td>
-                  <span [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'" class="text-sm font-medium">
-                    {{ order.side }}
-                  </span>
-                </td>
-                <td class="text-sm">{{ order.type }}</td>
-                <td class="text-sm">{{ order.quantity | number: '1.2-6' }}</td>
-                <td class="text-sm">{{ order.price | number: '1.2-6' }}</td>
-                <td class="text-sm">{{ order.executedQuantity | number: '1.2-6' }}</td>
-                <td>
+      <!-- Collapsible Content -->
+      @if (showActiveOrders()) {
+        <div class="px-3 pb-3">
+          <!-- Mobile-Friendly Order Cards -->
+          <div class="space-y-2 md:hidden">
+            @for (order of activeOrdersQuery.data() || []; track trackByOrderId($index, order)) {
+              <div class="bg-surface-50 dark:bg-surface-800 rounded-lg border p-3">
+                <div class="mb-2 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold">{{ order.symbol }}</span>
+                    <span
+                      [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'"
+                      class="text-sm font-medium"
+                    >
+                      {{ order.side }}
+                    </span>
+                  </div>
                   <span class="rounded-full px-2 py-1 text-xs font-semibold" [class]="getStatusClass(order.status)">
                     {{ order.status }}
                   </span>
-                </td>
-                <td>
-                  <p-button
-                    icon="pi pi-times"
-                    severity="danger"
-                    size="small"
-                    text
-                    (click)="cancelOrder(order.id)"
-                    [disabled]="cancelOrderMutation.isPending()"
-                    pTooltip="Cancel Order"
+                </div>
+                <div class="text-surface-600 dark:text-surface-400 mb-2 grid grid-cols-2 gap-2 text-sm">
+                  <div><span class="font-medium">Type:</span> {{ order.type }}</div>
+                  <div><span class="font-medium">Quantity:</span> {{ order.quantity | number: '1.2-6' }}</div>
+                  <div><span class="font-medium">Price:</span> {{ order.price | number: '1.2-6' }}</div>
+                  <div><span class="font-medium">Filled:</span> {{ order.executedQuantity | number: '1.2-6' }}</div>
+                </div>
+                <p-button
+                  icon="pi pi-times"
+                  label="Cancel"
+                  severity="danger"
+                  size="small"
+                  outlined
+                  (click)="cancelOrder(order.id)"
+                  [disabled]="cancelOrderMutation.isPending()"
+                  class="w-full"
+                />
+              </div>
+            }
+          </div>
+          <!-- Desktop Table -->
+          <div class="hidden md:block">
+            <p-table
+              [value]="activeOrdersQuery.data() || []"
+              [loading]="activeOrdersQuery.isPending()"
+              class="p-datatable-sm"
+            >
+              <ng-template pTemplate="header">
+                <tr>
+                  <th class="text-xs">Symbol</th>
+                  <th class="text-xs">Side</th>
+                  <th class="text-xs">Type</th>
+                  <th class="text-xs">Quantity</th>
+                  <th class="text-xs">Price</th>
+                  <th class="text-xs">Filled</th>
+                  <th class="text-xs">Status</th>
+                  <th class="text-xs">Actions</th>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="body" let-order>
+                <tr>
+                  <td class="text-sm font-medium">{{ order.symbol }}</td>
+                  <td>
+                    <span
+                      [class]="order.side === 'BUY' ? 'text-green-600' : 'text-red-600'"
+                      class="text-sm font-medium"
+                    >
+                      {{ order.side }}
+                    </span>
+                  </td>
+                  <td class="text-sm">{{ order.type }}</td>
+                  <td class="text-sm">{{ order.quantity | number: '1.2-6' }}</td>
+                  <td class="text-sm">{{ order.price | number: '1.2-6' }}</td>
+                  <td class="text-sm">{{ order.executedQuantity | number: '1.2-6' }}</td>
+                  <td>
+                    <span class="rounded-full px-2 py-1 text-xs font-semibold" [class]="getStatusClass(order.status)">
+                      {{ order.status }}
+                    </span>
+                  </td>
+                  <td>
+                    <p-button
+                      icon="pi pi-times"
+                      severity="danger"
+                      size="small"
+                      text
+                      (click)="cancelOrder(order.id)"
+                      [disabled]="cancelOrderMutation.isPending()"
+                      pTooltip="Cancel Order"
                     />
-                </td>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="emptymessage">
-              <tr>
-                <td colspan="8" class="text-surface-600 dark:text-surface-400 py-4 text-center">
-                  <i class="pi pi-inbox mb-2 block text-2xl"></i>
-                  No active orders
-                </td>
-              </tr>
-            </ng-template>
-          </p-table>
+                  </td>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="emptymessage">
+                <tr>
+                  <td colspan="8" class="text-surface-600 dark:text-surface-400 py-4 text-center">
+                    <i class="pi pi-inbox mb-2 block text-2xl"></i>
+                    No active orders
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
         </div>
-      </div>
-    }
-  </p-card>
-}
+      }
+    </p-card>
+  }
 
-<p-toast />
+  <p-toast />
 </div>
 
 <style>
   :host ::ng-deep .quickAmount .p-togglebutton {
-  flex: 1;
-}
+    flex: 1;
+  }
 </style>

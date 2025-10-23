@@ -3,7 +3,7 @@
     [formGroup]="filterForm"
     class="my-5 grid gap-3"
     style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
-    >
+  >
     <div>
       <div class="p-inputgroup w-full">
         <p-iconfield iconPosition="left" class="ml-auto">
@@ -17,7 +17,7 @@
             (input)="applyGlobalFilter($event)"
             placeholder="Search Transactions..."
             fluid
-            />
+          />
           @if (searchText().length > 0) {
             <p-inputicon>
               <i class="pi pi-times" (click)="clearSearchFilter(); searchInput.value = ''"></i>
@@ -39,7 +39,7 @@
         filter="false"
         [showToggleAll]="false"
         fluid
-        />
+      />
     </div>
     <div>
       <p-multiSelect
@@ -54,7 +54,7 @@
         filter="false"
         [showToggleAll]="false"
         fluid
-        />
+      />
     </div>
     <div>
       <p-multiSelect
@@ -69,7 +69,7 @@
         filter="false"
         [showToggleAll]="false"
         fluid
-        />
+      />
     </div>
   </form>
 
@@ -213,7 +213,7 @@
     [sortField]="'transactTime'"
     [sortOrder]="-1"
     [hidden]="isLoading()"
-    >
+  >
     <ng-template pTemplate="header">
       <tr>
         <th style="min-width: 120px">Trading Pair</th>
@@ -234,7 +234,7 @@
           <a
             [routerLink]="transaction.baseCoin?.slug ? ['/app/coins', transaction.baseCoin.slug] : null"
             [class.pointer-events-none]="!transaction.baseCoin?.slug"
-            class="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            class="flex items-center gap-3 transition-opacity hover:opacity-80"
           >
             <div class="flex -space-x-2">
               <p-avatar
@@ -242,18 +242,18 @@
                 shape="circle"
                 size="large"
                 class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
-                />
+              />
               @if (transaction.quoteCoin) {
                 <p-avatar
                   [image]="transaction.quoteCoin.image"
                   shape="circle"
                   size="large"
                   class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
-                  />
+                />
               }
             </div>
             <div class="flex flex-col">
-              <span class="text-lg font-medium text-primary-500 hover:text-primary-600">{{ transaction.symbol }}</span>
+              <span class="text-primary-500 hover:text-primary-600 text-lg font-medium">{{ transaction.symbol }}</span>
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ transaction.baseCoin?.name }}</span>
             </div>
           </a>
@@ -278,7 +278,7 @@
                 shape="circle"
                 size="normal"
                 class="border border-gray-200 shadow-sm dark:border-gray-700"
-                />
+              />
               <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
             </div>
           } @else {

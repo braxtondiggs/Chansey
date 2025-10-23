@@ -1,6 +1,8 @@
 {
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
+  "prettier.prettierPath": "./node_modules/prettier",
+  "prettier.resolveGlobalModules": false,
   "cSpell.words": [
     "authorizerdev",
     "Backtest",
@@ -29,16 +31,6 @@
   },
   "shellcheck.ignorePatterns": {
     "**/.env.example": true
-  },
-  "mcp": {
-    "inputs": [],
-    "servers": {
-      "mcp-server-time": {
-        "command": "uvx",
-        "args": ["mcp-server-time", "--local-timezone=America/New_York"],
-        "env": {}
-      }
-    }
   },
   "files.associations": {
     "*.d.ts": "typescript"

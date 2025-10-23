@@ -64,7 +64,7 @@ declare type SurfacesType = {
       [transitionOptions]="'.3s cubic-bezier(0, 0, 0.2, 1)'"
       class="layout-config-sidebar w-80"
       header="Settings"
-      >
+    >
       <div class="flex flex-col gap-6">
         <div>
           <span class="text-muted-color text-lg font-semibold">Primary</span>
@@ -79,7 +79,7 @@ declare type SurfacesType = {
                   'background-color':
                     primaryColor?.name === 'noir' ? 'var(--text-color)' : primaryColor?.palette?.['500']
                 }"
-                >
+              >
                 @if (primaryColor.name === selectedPrimaryColor()) {
                   <i class="pi pi-check text-white"></i>
                 }
@@ -87,7 +87,7 @@ declare type SurfacesType = {
             }
           </div>
         </div>
-    
+
         <div>
           <span class="text-muted-color text-lg font-semibold">Surface</span>
           <div class="flex flex-wrap gap-2 pt-2">
@@ -100,17 +100,15 @@ declare type SurfacesType = {
                 [style]="{
                   'background-color': surface?.palette?.['500']
                 }"
-                >
+              >
                 @if (
                   selectedSurfaceColor()
-                  ? selectedSurfaceColor() === surface.name
-                  : darkTheme()
-                  ? surface.name === 'zinc'
-                  : surface.name === 'slate'
-                  ) {
-                  <i
-                    class="pi pi-check text-white"
-                  ></i>
+                    ? selectedSurfaceColor() === surface.name
+                    : darkTheme()
+                      ? surface.name === 'zinc'
+                      : surface.name === 'slate'
+                ) {
+                  <i class="pi pi-check text-white"></i>
                 }
               </button>
             }
@@ -151,10 +149,10 @@ declare type SurfacesType = {
               optionValue="value"
               [allowEmpty]="false"
               [allowEmpty]="false"
-              />
+            />
           </div>
         }
-    
+
         @if (!simple && location === 'app') {
           <div class="flex flex-col gap-2">
             <span class="text-muted-color text-lg font-semibold">Menu Theme</span>
@@ -166,10 +164,10 @@ declare type SurfacesType = {
               optionValue="value"
               [allowEmpty]="false"
               [allowEmpty]="false"
-              />
+            />
           </div>
         }
-    
+
         @if (!simple && location === 'app') {
           <div>
             <div class="flex flex-col gap-2">
@@ -183,7 +181,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('static')"
                       inputId="static"
-                      />
+                    />
                     <label for="static">Static</label>
                   </div>
                   <div class="flex w-6/12 items-center gap-2">
@@ -193,7 +191,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('overlay')"
                       inputId="overlay"
-                      />
+                    />
                     <label for="overlay">Overlay</label>
                   </div>
                 </div>
@@ -205,7 +203,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('slim')"
                       inputId="slim"
-                      />
+                    />
                     <label for="slim">Slim</label>
                   </div>
                   <div class="flex w-6/12 items-center gap-2">
@@ -215,7 +213,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('compact')"
                       inputId="compact"
-                      />
+                    />
                     <label for="compact">Compact</label>
                   </div>
                 </div>
@@ -227,7 +225,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('reveal')"
                       inputId="reveal"
-                      />
+                    />
                     <label for="reveal">Reveal</label>
                   </div>
                   <div class="flex w-6/12 items-center gap-2">
@@ -237,7 +235,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('drawer')"
                       inputId="drawer"
-                      />
+                    />
                     <label for="drawer">Drawer</label>
                   </div>
                 </div>
@@ -249,7 +247,7 @@ declare type SurfacesType = {
                       [(ngModel)]="menuMode"
                       (ngModelChange)="setMenuMode('horizontal')"
                       inputId="horizontal"
-                      />
+                    />
                     <label for="horizontal">Horizontal</label>
                   </div>
                 </div>
@@ -259,7 +257,7 @@ declare type SurfacesType = {
         }
       </div>
     </p-drawer>
-    `
+  `
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppConfigurator implements OnInit {
