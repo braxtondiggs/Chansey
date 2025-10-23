@@ -25,7 +25,7 @@ describe('CoinGecko API Contract Tests', () => {
         },
         market_data: {
           current_price: {
-            usd: 43250.50
+            usd: 43250.5
           },
           market_cap: {
             usd: 845000000000
@@ -111,9 +111,9 @@ describe('CoinGecko API Contract Tests', () => {
     it('should return market chart data with prices array', async () => {
       const mockResponse = {
         prices: [
-          [1697846400000, 42000.50],
+          [1697846400000, 42000.5],
           [1697932800000, 42500.25],
-          [1698019200000, 43250.50]
+          [1698019200000, 43250.5]
         ],
         market_caps: [
           [1697846400000, 820000000000],
@@ -132,7 +132,7 @@ describe('CoinGecko API Contract Tests', () => {
       expect(mockResponse.prices.length).toBeGreaterThan(0);
 
       // Validate each price entry has timestamp and price
-      mockResponse.prices.forEach(priceEntry => {
+      mockResponse.prices.forEach((priceEntry) => {
         expect(priceEntry).toHaveLength(2);
         expect(typeof priceEntry[0]).toBe('number'); // timestamp
         expect(typeof priceEntry[1]).toBe('number'); // price
@@ -142,13 +142,13 @@ describe('CoinGecko API Contract Tests', () => {
     it('should return data for different time periods', async () => {
       // Test days parameter: 1, 7, 30, 365
       const testCases = [
-        { days: 1, expectedPoints: 24 },   // ~24 data points for 1 day
-        { days: 7, expectedPoints: 168 },  // ~168 data points for 7 days
+        { days: 1, expectedPoints: 24 }, // ~24 data points for 1 day
+        { days: 7, expectedPoints: 168 }, // ~168 data points for 7 days
         { days: 30, expectedPoints: 720 }, // ~720 data points for 30 days
         { days: 365, expectedPoints: 365 } // ~365 data points for 1 year
       ];
 
-      testCases.forEach(testCase => {
+      testCases.forEach((testCase) => {
         // Mock would query with vs_currency=usd&days={testCase.days}
         expect(testCase.days).toBeGreaterThan(0);
         expect(testCase.expectedPoints).toBeGreaterThan(0);

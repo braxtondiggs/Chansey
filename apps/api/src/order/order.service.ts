@@ -963,10 +963,7 @@ export class OrderService {
     let totalSold = 0;
     let totalCostBasis = 0; // Total USD spent on buys
 
-    const exchangeHoldings = new Map<
-      string,
-      { exchangeName: string; amount: number; lastSynced: Date }
-    >();
+    const exchangeHoldings = new Map<string, { exchangeName: string; amount: number; lastSynced: Date }>();
 
     for (const order of orders) {
       const amount = order.executedQuantity || 0;

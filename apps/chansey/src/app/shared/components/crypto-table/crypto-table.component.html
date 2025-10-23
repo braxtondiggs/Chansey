@@ -44,7 +44,7 @@
           <div class="flex min-w-[800px] border-b border-gray-200 p-3 md:min-w-0 dark:border-gray-700">
             <!-- Action button skeleton -->
             @if (config.showWatchlistToggle || config.showRemoveAction) {
-              <p-skeleton width="40px" height="2.5rem" class="mr-4 rounded-full flex-shrink-0"> </p-skeleton>
+              <p-skeleton width="40px" height="2.5rem" class="mr-4 flex-shrink-0 rounded-full"> </p-skeleton>
             }
             <!-- Coin name and image skeleton -->
             <div class="mr-6 flex min-w-48 flex-1 flex-shrink-0 items-center">
@@ -178,11 +178,14 @@
             </td>
           }
           <td class="min-w-48" [class.!pl-0]="config.showWatchlistToggle || config.showRemoveAction">
-            <a [routerLink]="['/app/coins', coin.slug]" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <a
+              [routerLink]="['/app/coins', coin.slug]"
+              class="flex items-center gap-3 transition-opacity hover:opacity-80"
+            >
               <p-avatar [image]="coin.image" shape="circle" size="large" class="min-w-10 shadow-sm" />
               <div class="flex flex-col">
-                <span class="text-lg font-medium text-primary-500 hover:text-primary-600">{{ coin.name }}</span>
-                <span class="text-sm uppercase text-gray-500 dark:text-gray-400">{{ coin.symbol }}</span>
+                <span class="text-primary-500 hover:text-primary-600 text-lg font-medium">{{ coin.name }}</span>
+                <span class="text-sm text-gray-500 uppercase dark:text-gray-400">{{ coin.symbol }}</span>
               </div>
             </a>
           </td>

@@ -146,5 +146,4 @@ export class HoldingsCardComponent {
       'text-red-500': profit < 0
     };
   }
-
 }

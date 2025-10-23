@@ -19,7 +19,7 @@
     stripedRows
   >
     <ng-template #caption>
-      <div class="flex flex-col gap-4 m-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
+      <div class="m-4 flex flex-col gap-4 md:mx-0 md:mt-0 md:flex-row md:items-center md:justify-between">
         <div class="flex gap-4">
           <p-button
             label="New"
@@ -75,7 +75,7 @@
         </td>
         <td>{{ algorithm.name }}</td>
         <td>
-          <div class="overflow-x-hidden line-clamp-3">{{ algorithm.description || '-' }}</div>
+          <div class="line-clamp-3 overflow-x-hidden">{{ algorithm.description || '-' }}</div>
         </td>
         <td>
           <code class="text-sm">{{ algorithm.service }}</code>
@@ -164,12 +164,12 @@
           Leave empty to auto-generate from algorithm name (e.g., "MyAlgorithmService")
         </small>
 
-        <div class="flex items-center mt-6">
+        <div class="mt-6 flex items-center">
           <p-checkbox formControlName="status" inputId="status" [binary]="true"></p-checkbox>
           <label for="status" class="ml-2">Active Status</label>
         </div>
 
-        <div class="flex items-center mt-6">
+        <div class="mt-6 flex items-center">
           <p-checkbox formControlName="evaluate" inputId="evaluate" [binary]="true"></p-checkbox>
           <label for="evaluate" class="ml-2">Evaluate in TestNet</label>
         </div>

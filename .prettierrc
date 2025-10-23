@@ -10,6 +10,8 @@
   "proseWrap": "always",
   "importOrderParserPlugins": ["typescript", "decorators-legacy"],
   "plugins": ["@trivago/prettier-plugin-sort-imports", "prettier-plugin-tailwindcss"],
+  "tailwindConfig": "./apps/chansey/tailwind.config.js",
+  "tailwindFunctions": ["clsx", "tw"],
   "importOrder": [
     "^@angular/(.*)$",
     "^@nestjs/(.*)$",

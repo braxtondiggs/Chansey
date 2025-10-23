@@ -171,11 +171,10 @@
   },
   "lint-staged": {
     "*.{ts,js,scss,css}": [
-      "nx format:write --uncommitted",
-      "nx lint --files"
+      "nx affected:lint --uncommitted",
+      "nx format:write --uncommitted"
     ],
     "*.html": [
-      "prettier --write --config .prettierrc",
       "nx format:write --uncommitted"
     ]
   }

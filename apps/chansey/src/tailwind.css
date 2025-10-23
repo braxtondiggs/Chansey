@@ -2,9 +2,6 @@
 @import 'tailwindcss-primeui';
 
 @layer components {
-  .landing-container {
-    @apply mx-auto w-full max-w-248 px-6;
-  }
   .title-h1 {
     @apply text-surface-900 dark:text-surface-0 text-center text-7xl leading-tight font-semibold;
     font-family: 'InterDisplay', sans-serif;
