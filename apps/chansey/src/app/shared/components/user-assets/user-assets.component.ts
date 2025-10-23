@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, computed, Input } from '@angular/core';
+import { RouterModule } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -22,6 +23,7 @@ import { UserAssetsService } from './user-assets.service';
     CommonModule,
     PaginatorModule,
     ProgressSpinnerModule,
+    RouterModule,
     SkeletonModule,
     TableModule,
     TagModule

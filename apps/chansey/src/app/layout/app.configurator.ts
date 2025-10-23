@@ -62,7 +62,7 @@ declare type SurfacesType = {
       (onHide)="onDrawerHide()"
       position="right"
       [transitionOptions]="'.3s cubic-bezier(0, 0, 0.2, 1)'"
-      styleClass="layout-config-sidebar w-80"
+      class="layout-config-sidebar w-80"
       header="Settings"
       >
       <div class="flex flex-col gap-6">

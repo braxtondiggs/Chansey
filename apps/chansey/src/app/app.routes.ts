@@ -78,6 +78,11 @@ export const appRoutes: Route[] = [
         path: 'watchlist',
         loadComponent: () => import('./pages/watchlist').then((c) => c.WatchlistComponent),
         data: { breadcrumb: 'Watchlist' }
+      },
+      {
+        path: 'coins/:slug',
+        loadComponent: () => import('./coins/coin-detail/coin-detail.component').then((c) => c.CoinDetailComponent),
+        data: { breadcrumb: 'Coin Detail' }
       }
     ]
   },

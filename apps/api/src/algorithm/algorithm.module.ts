@@ -28,6 +28,7 @@ import { OrderModule } from '../order/order.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Price } from '../price/price.entity';
 import { PriceService } from '../price/price.service';
+import { SharedCacheModule } from '../shared-cache.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { UsersModule } from '../users/users.module';
     forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Algorithm, AlgorithmActivation, AlgorithmPerformance, Coin, Order, Price, TickerPairs]),
     BullModule.registerQueue({ name: 'performance-ranking' }),
+    SharedCacheModule,
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),

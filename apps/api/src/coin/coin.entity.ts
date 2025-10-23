@@ -339,6 +339,37 @@ export class Coin {
   })
   geckoLastUpdatedAt?: Date;
 
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  @ApiProperty({
+    description: 'External resource links (homepage, blockchain explorers, repositories, etc.)',
+    example: {
+      homepage: ['https://bitcoin.org'],
+      blockchainSite: ['https://blockchain.com', 'https://blockchair.com'],
+      officialForumUrl: ['https://bitcointalk.org'],
+      subredditUrl: 'https://reddit.com/r/bitcoin',
+      reposUrl: { github: ['https://github.com/bitcoin/bitcoin'] }
+    },
+    required: false
+  })
+  links?: {
+    homepage?: string[];
+    blockchainSite?: string[];
+    officialForumUrl?: string[];
+    subredditUrl?: string;
+    reposUrl?: {
+      github?: string[];
+    };
+  };
+
+  @Column({ type: 'timestamptz', nullable: true, default: null })
+  @ApiProperty({
+    description: 'Date when metadata (description/links) was last refreshed from CoinGecko',
+    example: '2025-10-22T00:00:00Z',
+    required: false,
+    type: Date
+  })
+  metadataLastUpdated?: Date;
+
   @CreateDateColumn({ type: 'timestamptz', select: false })
   @ApiProperty({
     description: 'Timestamp when the coin was created',

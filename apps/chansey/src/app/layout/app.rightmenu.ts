@@ -14,9 +14,11 @@ import { CryptoTradingComponent } from '../shared/components/crypto-trading/cryp
     header="Spot Trading"
     [(visible)]="rightMenuVisible"
     position="right"
-    styleClass="layout-rightmenu !w-full sm:!w-[36rem]"
+    class="layout-rightmenu !w-full sm:!w-[36rem]"
   >
-    <app-crypto-trading />
+    @if (rightMenuVisible) {
+      <app-crypto-trading />
+    }
   </p-drawer>`
 })
 

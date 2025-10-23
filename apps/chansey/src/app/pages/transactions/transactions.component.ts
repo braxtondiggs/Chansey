@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -31,6 +32,7 @@ import { OrderSide, OrderStatus, OrderType, Transaction, TransactionsService } f
     MultiSelectModule,
     ProgressSpinnerModule,
     ReactiveFormsModule,
+    RouterModule,
     SelectModule,
     SkeletonModule,
     TableModule,

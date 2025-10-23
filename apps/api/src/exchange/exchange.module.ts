@@ -19,6 +19,7 @@ import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
+import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   controllers: [ExchangeController],
@@ -26,6 +27,7 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
     forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Exchange, ExchangeKey, TickerPairs]),
     forwardRef(() => ExchangeKeyModule),
+    SharedCacheModule,
     BullModule.registerQueue({ name: 'exchange-queue' })
   ],
   providers: [

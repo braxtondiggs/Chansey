@@ -1,0 +1,471 @@
+openapi: 3.0.0
+info:
+  title: Coin Detail API
+  version: 1.0.0
+  description: API contracts for cryptocurrency detail page feature
+
+servers:
+  - url: http://localhost:3333/api
+    description: Local development server
+
+paths:
+  /coins/{slug}:
+    get:
+      summary: Get detailed information for a specific cryptocurrency
+      description: |
+        Returns comprehensive market data, metadata, and user holdings (if authenticated)
+        for a cryptocurrency identified by its URL slug.
+      operationId: getCoinDetailBySlug
+      tags:
+        - Coins
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: URL-friendly coin identifier (e.g., 'bitcoin', 'ethereum')
+          schema:
+            type: string
+            pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+            example: bitcoin
+      security:
+        - bearerAuth: []  # Optional - returns holdings if authenticated
+        - {}              # Allow unauthenticated access (no holdings)
+      responses:
+        '200':
+          description: Successful response with coin detail data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoinDetailResponse'
+              examples:
+                authenticatedUser:
+                  summary: Response for authenticated user (includes holdings)
+                  value:
+                    id: '550e8400-e29b-41d4-a716-446655440000'
+                    slug: 'bitcoin'
+                    name: 'Bitcoin'
+                    symbol: 'BTC'
+                    imageUrl: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png'
+                    currentPrice: 43250.50
+                    priceChange24h: 1250.75
+                    priceChange24hPercent: 2.98
+                    marketCap: 845000000000
+                    marketCapRank: 1
+                    volume24h: 28500000000
+                    circulatingSupply: 19500000
+                    totalSupply: 21000000
+                    maxSupply: 21000000
+                    description: 'Bitcoin is a decentralized cryptocurrency...'
+                    links:
+                      homepage: ['https://bitcoin.org']
+                      blockchainSite: ['https://blockchain.com', 'https://blockchair.com']
+                      officialForumUrl: ['https://bitcointalk.org']
+                      subredditUrl: 'https://reddit.com/r/bitcoin'
+                      repositoryUrl: ['https://github.com/bitcoin/bitcoin']
+                    userHoldings:
+                      coinSymbol: 'BTC'
+                      totalAmount: 0.5
+                      averageBuyPrice: 38000.00
+                      currentValue: 21625.25
+                      profitLoss: 2625.25
+                      profitLossPercent: 13.82
+                      exchanges:
+                        - exchangeName: 'Binance'
+                          amount: 0.3
+                          lastSynced: '2025-10-22T10:30:00Z'
+                        - exchangeName: 'Coinbase'
+                          amount: 0.2
+                          lastSynced: '2025-10-22T10:25:00Z'
+                    lastUpdated: '2025-10-22T11:00:00Z'
+                    metadataLastUpdated: '2025-10-22T00:00:00Z'
+                unauthenticatedUser:
+                  summary: Response for unauthenticated user (no holdings)
+                  value:
+                    id: '550e8400-e29b-41d4-a716-446655440000'
+                    slug: 'bitcoin'
+                    name: 'Bitcoin'
+                    symbol: 'BTC'
+                    imageUrl: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png'
+                    currentPrice: 43250.50
+                    priceChange24h: 1250.75
+                    priceChange24hPercent: 2.98
+                    marketCap: 845000000000
+                    volume24h: 28500000000
+                    circulatingSupply: 19500000
+                    description: 'Bitcoin is a decentralized cryptocurrency...'
+                    links:
+                      homepage: ['https://bitcoin.org']
+                      blockchainSite: ['https://blockchain.com']
+                      officialForumUrl: []
+                      repositoryUrl: ['https://github.com/bitcoin/bitcoin']
+                    lastUpdated: '2025-10-22T11:00:00Z'
+        '404':
+          description: Coin not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 404
+                message: "Coin with slug 'invalid-slug' not found"
+                error: 'Not Found'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /coins/{slug}/chart:
+    get:
+      summary: Get historical price chart data for a cryptocurrency
+      description: |
+        Returns time-series price data for the specified time period.
+        Data is cached for 5 minutes per coin+period combination.
+      operationId: getCoinMarketChart
+      tags:
+        - Coins
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: URL-friendly coin identifier
+          schema:
+            type: string
+            example: bitcoin
+        - name: period
+          in: query
+          required: true
+          description: Time period for historical data
+          schema:
+            type: string
+            enum: ['24h', '7d', '30d', '1y']
+            example: '7d'
+      responses:
+        '200':
+          description: Successful response with chart data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketChartResponse'
+              example:
+                coinSlug: 'bitcoin'
+                period: '7d'
+                prices:
+                  - timestamp: 1697846400000
+                    price: 42000.50
+                  - timestamp: 1697932800000
+                    price: 42500.25
+                  - timestamp: 1698019200000
+                    price: 43250.50
+                timestamps: [1697846400000, 1697932800000, 1698019200000]
+                generatedAt: '2025-10-22T11:00:00Z'
+        '404':
+          description: Coin not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /coins/{slug}/holdings:
+    get:
+      summary: Get user's holdings for a specific cryptocurrency
+      description: |
+        Returns the authenticated user's total holdings and per-exchange breakdown
+        for the specified coin. Requires authentication.
+      operationId: getUserCoinHoldings
+      tags:
+        - Coins
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: URL-friendly coin identifier
+          schema:
+            type: string
+            example: bitcoin
+      responses:
+        '200':
+          description: Successful response with user holdings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserHoldingsResponse'
+              example:
+                coinSymbol: 'BTC'
+                totalAmount: 0.5
+                averageBuyPrice: 38000.00
+                currentValue: 21625.25
+                profitLoss: 2625.25
+                profitLossPercent: 13.82
+                exchanges:
+                  - exchangeName: 'Binance'
+                    amount: 0.3
+                    lastSynced: '2025-10-22T10:30:00Z'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Coin not found or user has no holdings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CoinDetailResponse:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - symbol
+        - imageUrl
+        - currentPrice
+        - priceChange24h
+        - priceChange24hPercent
+        - marketCap
+        - volume24h
+        - circulatingSupply
+        - description
+        - links
+        - lastUpdated
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Internal coin ID
+        slug:
+          type: string
+          description: URL-friendly identifier
+        name:
+          type: string
+          description: Full coin name
+        symbol:
+          type: string
+          description: Trading symbol (e.g., BTC, ETH)
+        imageUrl:
+          type: string
+          format: uri
+          description: Coin logo URL
+        currentPrice:
+          type: number
+          format: double
+          description: Current price in USD
+        priceChange24h:
+          type: number
+          format: double
+          description: Absolute price change in last 24 hours
+        priceChange24hPercent:
+          type: number
+          format: double
+          description: Percentage price change in last 24 hours
+        marketCap:
+          type: number
+          format: double
+          description: Total market capitalization in USD
+        marketCapRank:
+          type: integer
+          nullable: true
+          description: Market cap ranking
+        volume24h:
+          type: number
+          format: double
+          description: 24-hour trading volume in USD
+        circulatingSupply:
+          type: number
+          format: double
+          description: Current circulating supply
+        totalSupply:
+          type: number
+          format: double
+          nullable: true
+          description: Total supply (if applicable)
+        maxSupply:
+          type: number
+          format: double
+          nullable: true
+          description: Maximum supply (if applicable)
+        description:
+          type: string
+          description: Cryptocurrency description
+        links:
+          $ref: '#/components/schemas/CoinLinks'
+        userHoldings:
+          $ref: '#/components/schemas/UserHoldings'
+          nullable: true
+          description: User's holdings (only present for authenticated users)
+        lastUpdated:
+          type: string
+          format: date-time
+          description: When price data was last updated
+        metadataLastUpdated:
+          type: string
+          format: date-time
+          nullable: true
+          description: When description/links were last refreshed
+
+    CoinLinks:
+      type: object
+      properties:
+        homepage:
+          type: array
+          items:
+            type: string
+            format: uri
+        blockchainSite:
+          type: array
+          items:
+            type: string
+            format: uri
+        officialForumUrl:
+          type: array
+          items:
+            type: string
+            format: uri
+        subredditUrl:
+          type: string
+          format: uri
+          nullable: true
+        repositoryUrl:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    UserHoldings:
+      type: object
+      required:
+        - coinSymbol
+        - totalAmount
+        - averageBuyPrice
+        - currentValue
+        - profitLoss
+        - profitLossPercent
+        - exchanges
+      properties:
+        coinSymbol:
+          type: string
+          description: Coin trading symbol
+        totalAmount:
+          type: number
+          format: double
+          description: Total holdings across all exchanges
+        averageBuyPrice:
+          type: number
+          format: double
+          description: Weighted average purchase price
+        currentValue:
+          type: number
+          format: double
+          description: Current value in USD
+        profitLoss:
+          type: number
+          format: double
+          description: Profit/loss in USD
+        profitLossPercent:
+          type: number
+          format: double
+          description: Profit/loss percentage
+        exchanges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExchangeHolding'
+
+    ExchangeHolding:
+      type: object
+      required:
+        - exchangeName
+        - amount
+        - lastSynced
+      properties:
+        exchangeName:
+          type: string
+          description: Exchange name (e.g., Binance, Coinbase)
+        amount:
+          type: number
+          format: double
+          description: Holdings on this exchange
+        lastSynced:
+          type: string
+          format: date-time
+          description: When this exchange was last synced
+
+    MarketChartResponse:
+      type: object
+      required:
+        - coinSlug
+        - period
+        - prices
+        - timestamps
+        - generatedAt
+      properties:
+        coinSlug:
+          type: string
+          description: Coin slug
+        period:
+          type: string
+          enum: ['24h', '7d', '30d', '1y']
+          description: Time period
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriceDataPoint'
+        timestamps:
+          type: array
+          items:
+            type: integer
+            format: int64
+            description: Unix timestamp in milliseconds
+        generatedAt:
+          type: string
+          format: date-time
+          description: When this chart data was generated
+
+    PriceDataPoint:
+      type: object
+      required:
+        - timestamp
+        - price
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds
+        price:
+          type: number
+          format: double
+          description: Price in USD at this timestamp
+
+    UserHoldingsResponse:
+      allOf:
+        - $ref: '#/components/schemas/UserHoldings'
+
+    ErrorResponse:
+      type: object
+      required:
+        - statusCode
+        - message
+        - error
+      properties:
+        statusCode:
+          type: integer
+          description: HTTP status code
+        message:
+          type: string
+          description: Error message
+        error:
+          type: string
+          description: Error type
