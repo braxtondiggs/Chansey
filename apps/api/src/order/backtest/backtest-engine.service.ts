@@ -2,8 +2,27 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
 
-import { Backtest, BacktestTrade, BacktestPerformanceSnapshot, TradeType } from './backtest.entity';
+import { BacktestStreamService } from './backtest-stream.service';
+import {
+  Backtest,
+  BacktestPerformanceSnapshot,
+  BacktestSignal,
+  BacktestTrade,
+  SignalDirection,
+  SignalType,
+  SimulatedOrderFill,
+  SimulatedOrderStatus,
+  SimulatedOrderType,
+  TradeType
+} from './backtest.entity';
+import { MarketDataSet } from './market-data-set.entity';
 
+import {
+  AlgorithmResult,
+  SignalType as AlgoSignalType,
+  TradingSignal as StrategySignal
+} from '../../algorithm/interfaces';
+import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { Price } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
@@ -30,106 +49,236 @@ export interface TradingSignal {
   action: 'BUY' | 'SELL' | 'HOLD';
   coinId: string;
   quantity?: number;
-  percentage?: number; // percentage of portfolio to allocate
+  percentage?: number;
   reason: string;
-  confidence?: number; // 0-1 scale
+  confidence?: number;
   metadata?: Record<string, any>;
 }
+
+interface ExecuteOptions {
+  dataset: MarketDataSet;
+  deterministicSeed: string;
+  telemetryEnabled?: boolean;
+}
+
+const createSeededGenerator = (seed: string) => {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+};
+
+const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
+  const action: TradingSignal['action'] =
+    signal.type === AlgoSignalType.SELL ? 'SELL' : signal.type === AlgoSignalType.BUY ? 'BUY' : 'HOLD';
+
+  return {
+    action,
+    coinId: signal.coinId,
+    quantity: signal.quantity,
+    percentage: signal.strength,
+    reason: signal.reason,
+    confidence: signal.confidence,
+    metadata: signal.metadata
+  };
+};
 
 @Injectable()
 export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
 
-  constructor(private readonly priceService: PriceService) {}
+  constructor(
+    private readonly priceService: PriceService,
+    private readonly backtestStream: BacktestStreamService,
+    private readonly algorithmRegistry: AlgorithmRegistry
+  ) {}
 
-  /**
-   * Execute a backtest with historical data
-   */
   async executeHistoricalBacktest(
     backtest: Backtest,
     coins: Coin[],
-    strategyFunction: (marketData: MarketData, portfolio: Portfolio, context: any) => Promise<TradingSignal[]>
+    options: ExecuteOptions
   ): Promise<{
     trades: Partial<BacktestTrade>[];
+    signals: Partial<BacktestSignal>[];
+    simulatedFills: Partial<SimulatedOrderFill>[];
     snapshots: Partial<BacktestPerformanceSnapshot>[];
-    finalMetrics: any;
+    finalMetrics: Record<string, unknown>;
   }> {
-    this.logger.log(`Starting historical backtest: ${backtest.name}`);
+    if (!backtest.algorithm) {
+      throw new Error('Backtest algorithm relation not loaded');
+    }
 
-    // Initialize portfolio
+    this.logger.log(
+      `Starting historical backtest: ${backtest.name} (dataset=${options.dataset.id}, seed=${options.deterministicSeed})`
+    );
+
+    const random = createSeededGenerator(options.deterministicSeed);
+
     let portfolio: Portfolio = {
       cashBalance: backtest.initialCapital,
       positions: new Map(),
       totalValue: backtest.initialCapital
     };
 
-    // Arrays to collect results
     const trades: Partial<BacktestTrade>[] = [];
+    const signals: Partial<BacktestSignal>[] = [];
+    const simulatedFills: Partial<SimulatedOrderFill>[] = [];
     const snapshots: Partial<BacktestPerformanceSnapshot>[] = [];
 
-    // Get historical price data for all coins
     const coinIds = coins.map((coin) => coin.id);
-    const historicalPrices = await this.getHistoricalPrices(coinIds, backtest.startDate, backtest.endDate);
+    const historicalPrices = await this.getHistoricalPrices(
+      coinIds,
+      options.dataset.startAt ?? backtest.startDate,
+      options.dataset.endAt ?? backtest.endDate
+    );
 
     if (historicalPrices.length === 0) {
       throw new Error('No historical price data available for the specified date range');
     }
 
-    // Group prices by timestamp for easier processing
     const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
     const timestamps = Object.keys(pricesByTimestamp).sort();
+
+    const priceHistoryByCoin = new Map<string, Price[]>();
+    const priceSummariesByCoin = new Map<
+      string,
+      { avg: number; coin: string; date: Date; high: number; low: number }[]
+    >();
+    const indexByCoin = new Map<string, number>();
+
+    for (const coinId of coinIds) {
+      const history = historicalPrices
+        .filter((price) => price.coinId === coinId)
+        .sort((a, b) => a.geckoLastUpdatedAt.getTime() - b.geckoLastUpdatedAt.getTime());
+      priceHistoryByCoin.set(coinId, history);
+      priceSummariesByCoin.set(
+        coinId,
+        history.map((price) => ({
+          avg: price.price,
+          coin: coinId,
+          date: price.geckoLastUpdatedAt,
+          high: price.price,
+          low: price.price
+        }))
+      );
+      indexByCoin.set(coinId, -1);
+    }
 
     this.logger.log(`Processing ${timestamps.length} time periods`);
 
     let peakValue = backtest.initialCapital;
     let maxDrawdown = 0;
-    const context = { trades: [], previousSignals: new Map() };
 
-    // Process each time period
     for (let i = 0; i < timestamps.length; i++) {
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
 
-      // Create market data for this timestamp
       const marketData: MarketData = {
         timestamp,
         prices: new Map(currentPrices.map((price) => [price.coinId, price.price]))
       };
 
-      // Update portfolio values with current prices
       portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
 
-      // Execute strategy to get trading signals
-      try {
-        const signals = await strategyFunction(marketData, portfolio, context);
-
-        // Execute trades based on signals
-        for (const signal of signals) {
-          const trade = await this.executeTrade(signal, portfolio, marketData, backtest.tradingFee);
-          if (trade) {
-            trades.push({
-              ...trade,
-              executedAt: timestamp,
-              backtest
-            });
-          }
+      const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
+      for (const coin of coins) {
+        const history = priceHistoryByCoin.get(coin.id) ?? [];
+        let pointer = indexByCoin.get(coin.id) ?? -1;
+        while (pointer + 1 < history.length && history[pointer + 1].geckoLastUpdatedAt <= timestamp) {
+          pointer += 1;
         }
-      } catch (error) {
-        this.logger.warn(`Strategy execution failed at ${timestamp}: ${error.message}`);
+        indexByCoin.set(coin.id, pointer);
+        if (pointer >= 0) {
+          const summaries = priceSummariesByCoin.get(coin.id) ?? [];
+          priceData[coin.id] = summaries.slice(0, pointer + 1);
+        }
       }
 
-      // Update peak value and calculate drawdown
+      const context = {
+        coins,
+        priceData,
+        timestamp,
+        config: backtest.configSnapshot?.parameters ?? {},
+        positions: Object.fromEntries(
+          [...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity])
+        ),
+        availableBalance: portfolio.cashBalance,
+        metadata: {
+          datasetId: options.dataset.id,
+          deterministicSeed: options.deterministicSeed,
+          backtestId: backtest.id
+        }
+      };
+
+      let strategySignals: TradingSignal[] = [];
+      try {
+        const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        if (result.success && result.signals?.length) {
+          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+        }
+      } catch (error) {
+        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+      }
+
+      for (const strategySignal of strategySignals) {
+        const signalRecord: Partial<BacktestSignal> = {
+          timestamp,
+          signalType:
+            strategySignal.action === 'BUY'
+              ? SignalType.ENTRY
+              : strategySignal.action === 'SELL'
+                ? SignalType.EXIT
+                : SignalType.ADJUSTMENT,
+          instrument: strategySignal.coinId,
+          direction:
+            strategySignal.action === 'HOLD'
+              ? SignalDirection.FLAT
+              : strategySignal.action === 'BUY'
+                ? SignalDirection.LONG
+                : SignalDirection.SHORT,
+          quantity: strategySignal.quantity ?? strategySignal.percentage ?? 0,
+          price: marketData.prices.get(strategySignal.coinId),
+          reason: strategySignal.reason,
+          confidence: strategySignal.confidence,
+          payload: strategySignal.metadata,
+          backtest
+        };
+        signals.push(signalRecord);
+
+        const trade = await this.executeTrade(strategySignal, portfolio, marketData, backtest.tradingFee, random);
+        if (trade) {
+          trades.push({ ...trade, executedAt: timestamp, backtest });
+          simulatedFills.push({
+            orderType: SimulatedOrderType.MARKET,
+            status: SimulatedOrderStatus.FILLED,
+            filledQuantity: trade.quantity,
+            averagePrice: trade.price,
+            fees: trade.fee,
+            slippageBps: 0,
+            executionTimestamp: timestamp,
+            instrument: strategySignal.coinId,
+            metadata: trade.metadata,
+            backtest
+          });
+        }
+      }
+
       if (portfolio.totalValue > peakValue) {
         peakValue = portfolio.totalValue;
       }
-      const currentDrawdown = (peakValue - portfolio.totalValue) / peakValue;
+      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
       if (currentDrawdown > maxDrawdown) {
         maxDrawdown = currentDrawdown;
       }
 
-      // Take snapshot every day or at significant points
       if (i % 24 === 0 || i === timestamps.length - 1) {
-        // Assuming hourly data, take snapshot daily
         snapshots.push({
           timestamp,
           portfolioValue: portfolio.totalValue,
@@ -139,23 +288,34 @@ export class BacktestEngine {
           drawdown: currentDrawdown,
           backtest
         });
+
+        if (options.telemetryEnabled) {
+          await this.backtestStream.publishMetric(backtest.id, 'portfolio_value', portfolio.totalValue, 'USD', {
+            timestamp: timestamp.toISOString()
+          });
+        }
       }
     }
 
-    // Calculate final metrics
     const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+
+    if (options.telemetryEnabled) {
+      await this.backtestStream.publishMetric(
+        backtest.id,
+        'final_value',
+        finalMetrics.finalValue ?? portfolio.totalValue,
+        'USD'
+      );
+      await this.backtestStream.publishMetric(backtest.id, 'total_return', finalMetrics.totalReturn ?? 0, 'pct');
+      await this.backtestStream.publishStatus(backtest.id, 'completed');
+    }
 
     this.logger.log(`Backtest completed: ${trades.length} trades, final value: $${portfolio.totalValue.toFixed(2)}`);
 
-    return { trades, snapshots, finalMetrics };
+    return { trades, signals, simulatedFills, snapshots, finalMetrics };
   }
 
-  /**
-   * Get historical prices for coins within date range
-   */
   private async getHistoricalPrices(coinIds: string[], startDate: Date, endDate: Date): Promise<Price[]> {
-    // This would ideally use a more efficient query that filters by date range
-    // For now, we'll use the existing price service methods
     const allPrices = await this.priceService.findAll(coinIds);
 
     return allPrices.filter((price) => {
@@ -164,9 +324,6 @@ export class BacktestEngine {
     });
   }
 
-  /**
-   * Group prices by timestamp for easier processing
-   */
   private groupPricesByTimestamp(prices: Price[]): Record<string, Price[]> {
     return prices.reduce(
       (grouped, price) => {
@@ -181,13 +338,9 @@ export class BacktestEngine {
     );
   }
 
-  /**
-   * Update portfolio values based on current market prices
-   */
   private updatePortfolioValues(portfolio: Portfolio, currentPrices: Map<string, number>): Portfolio {
     let totalValue = portfolio.cashBalance;
 
-    // Update position values
     for (const [coinId, position] of portfolio.positions) {
       const currentPrice = currentPrices.get(coinId);
       if (currentPrice) {
@@ -202,14 +355,12 @@ export class BacktestEngine {
     };
   }
 
-  /**
-   * Execute a trade based on a signal
-   */
   private async executeTrade(
     signal: TradingSignal,
     portfolio: Portfolio,
     marketData: MarketData,
-    tradingFee: number
+    tradingFee: number,
+    random: () => number
   ): Promise<Partial<BacktestTrade> | null> {
     const price = marketData.prices.get(signal.coinId);
     if (!price) {
@@ -225,243 +376,155 @@ export class BacktestEngine {
     let totalValue = 0;
 
     if (signal.action === 'BUY') {
-      // Calculate quantity based on signal
       if (signal.quantity) {
         quantity = signal.quantity;
       } else if (signal.percentage) {
         const investmentAmount = portfolio.totalValue * signal.percentage;
         quantity = investmentAmount / price;
       } else {
-        // Default to 10% of portfolio
-        const investmentAmount = portfolio.totalValue * 0.1;
+        const investmentAmount = portfolio.totalValue * Math.min(0.2, Math.max(0.05, random()));
         quantity = investmentAmount / price;
       }
 
       totalValue = quantity * price;
-      const fee = totalValue * tradingFee;
-      const totalCost = totalValue + fee;
 
-      // Check if we have enough cash
-      if (totalCost > portfolio.cashBalance) {
-        this.logger.warn(
-          `Insufficient cash for trade: need $${totalCost.toFixed(2)}, have $${portfolio.cashBalance.toFixed(2)}`
-        );
+      if (portfolio.cashBalance < totalValue) {
+        this.logger.warn('Insufficient cash balance for BUY trade');
         return null;
       }
 
-      // Execute buy
-      portfolio.cashBalance -= totalCost;
+      portfolio.cashBalance -= totalValue;
 
-      // Update or create position
-      const existingPosition = portfolio.positions.get(signal.coinId);
-      if (existingPosition) {
-        const newQuantity = existingPosition.quantity + quantity;
-        const newTotalCost = existingPosition.averagePrice * existingPosition.quantity + totalValue;
-        existingPosition.quantity = newQuantity;
-        existingPosition.averagePrice = newTotalCost / newQuantity;
-        existingPosition.totalValue = newQuantity * price;
-      } else {
-        portfolio.positions.set(signal.coinId, {
-          coinId: signal.coinId,
-          quantity,
-          averagePrice: price,
-          totalValue
-        });
-      }
-
-      return {
-        type: TradeType.BUY,
-        quantity,
-        price,
-        totalValue,
-        fee,
-        signal: signal.reason,
-        metadata: signal.metadata
+      const existingPosition = portfolio.positions.get(signal.coinId) ?? {
+        coinId: signal.coinId,
+        quantity: 0,
+        averagePrice: 0,
+        totalValue: 0
       };
+
+      const newQuantity = existingPosition.quantity + quantity;
+      existingPosition.averagePrice = existingPosition.quantity
+        ? (existingPosition.averagePrice * existingPosition.quantity + price * quantity) / newQuantity
+        : price;
+      existingPosition.quantity = newQuantity;
+      existingPosition.totalValue = existingPosition.quantity * price;
+
+      portfolio.positions.set(signal.coinId, existingPosition);
     } else if (signal.action === 'SELL') {
-      const position = portfolio.positions.get(signal.coinId);
-      if (!position || position.quantity <= 0) {
-        this.logger.warn(`No position to sell for coin ${signal.coinId}`);
+      const existingPosition = portfolio.positions.get(signal.coinId);
+      if (!existingPosition || existingPosition.quantity === 0) {
         return null;
       }
 
-      // Calculate quantity to sell
-      if (signal.quantity) {
-        quantity = Math.min(signal.quantity, position.quantity);
-      } else if (signal.percentage) {
-        quantity = position.quantity * signal.percentage;
-      } else {
-        // Default to selling entire position
-        quantity = position.quantity;
-      }
-
+      quantity = signal.quantity ?? existingPosition.quantity * Math.min(1, Math.max(0.25, random()));
+      quantity = Math.min(quantity, existingPosition.quantity);
       totalValue = quantity * price;
-      const fee = totalValue * tradingFee;
-      const netProceeds = totalValue - fee;
 
-      // Execute sell
-      portfolio.cashBalance += netProceeds;
+      existingPosition.quantity -= quantity;
+      existingPosition.totalValue = existingPosition.quantity * price;
+      portfolio.cashBalance += totalValue;
 
-      // Update position
-      position.quantity -= quantity;
-      if (position.quantity <= 0) {
+      if (existingPosition.quantity === 0) {
         portfolio.positions.delete(signal.coinId);
       } else {
-        position.totalValue = position.quantity * price;
+        portfolio.positions.set(signal.coinId, existingPosition);
       }
-
-      return {
-        type: TradeType.SELL,
-        quantity,
-        price,
-        totalValue,
-        fee,
-        signal: signal.reason,
-        metadata: signal.metadata
-      };
     }
 
-    return null;
+    const fee = totalValue * tradingFee;
+    portfolio.cashBalance -= fee;
+    portfolio.totalValue = portfolio.cashBalance + this.calculatePositionsValue(portfolio.positions, marketData.prices);
+
+    return {
+      type: signal.action === 'BUY' ? TradeType.BUY : TradeType.SELL,
+      quantity,
+      price,
+      totalValue,
+      fee,
+      metadata: {
+        reason: signal.reason,
+        confidence: signal.confidence ?? 0
+      }
+    } as Partial<BacktestTrade>;
   }
 
-  /**
-   * Convert portfolio to holdings format for snapshots
-   */
-  private portfolioToHoldings(portfolio: Portfolio, currentPrices: Map<string, number>): Record<string, any> {
-    const holdings: Record<string, any> = {};
+  private calculatePositionsValue(positions: Map<string, Position>, currentPrices: Map<string, number>): number {
+    let total = 0;
+    for (const [coinId, position] of positions) {
+      const price = currentPrices.get(coinId) ?? 0;
+      total += position.quantity * price;
+    }
+    return total;
+  }
 
+  private portfolioToHoldings(portfolio: Portfolio, prices: Map<string, number>) {
+    const holdings: Record<string, { quantity: number; value: number; price: number }> = {};
     for (const [coinId, position] of portfolio.positions) {
-      const currentPrice = currentPrices.get(coinId) || position.averagePrice;
+      const price = prices.get(coinId) ?? 0;
       holdings[coinId] = {
         quantity: position.quantity,
-        value: position.quantity * currentPrice,
-        price: currentPrice
+        value: position.quantity * price,
+        price
       };
     }
-
     return holdings;
   }
 
-  /**
-   * Calculate final performance metrics
-   */
   private calculateFinalMetrics(
     backtest: Backtest,
     portfolio: Portfolio,
     trades: Partial<BacktestTrade>[],
     snapshots: Partial<BacktestPerformanceSnapshot>[],
     maxDrawdown: number
-  ): any {
-    const totalReturn = (portfolio.totalValue - backtest.initialCapital) / backtest.initialCapital;
+  ) {
+    const finalValue = portfolio.totalValue;
+    const totalReturn = (finalValue - backtest.initialCapital) / backtest.initialCapital;
+    const totalTrades = trades.length;
+    const winningTrades = trades.filter((trade) => (trade.totalValue ?? 0) > 0).length;
 
-    // Calculate time period for annualized return
-    const startDate = dayjs(backtest.startDate);
-    const endDate = dayjs(backtest.endDate);
-    const daysDuration = endDate.diff(startDate, 'days');
-    const yearsDuration = daysDuration / 365;
+    const durationDays = dayjs(backtest.endDate).diff(dayjs(backtest.startDate), 'day');
+    const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
 
-    const annualizedReturn = yearsDuration > 0 ? Math.pow(1 + totalReturn, 1 / yearsDuration) - 1 : totalReturn;
-
-    // Calculate Sharpe ratio (simplified - using total return / volatility)
-    const returns = snapshots
-      .map((snapshot, index) => {
-        if (index === 0) return 0;
-        const prevSnapshot = snapshots[index - 1];
-        return (snapshot.portfolioValue! - prevSnapshot.portfolioValue!) / prevSnapshot.portfolioValue!;
-      })
-      .filter((_, index) => index > 0);
-
-    const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
-    const volatility = Math.sqrt(variance);
-    const sharpeRatio = volatility > 0 ? avgReturn / volatility : 0;
-
-    // Calculate win rate
-    const winningTrades = trades.filter((trade) => {
-      // This is simplified - in reality you'd track profit/loss per trade
-      return trade.type === TradeType.SELL; // Assuming sells are profitable
-    }).length;
-
-    const winRate = trades.length > 0 ? winningTrades / trades.length : 0;
+    const sharpeRatio = this.calculateSharpeRatio(snapshots, backtest.initialCapital);
 
     return {
-      finalValue: portfolio.totalValue,
+      finalValue,
       totalReturn,
       annualizedReturn,
       sharpeRatio,
       maxDrawdown,
-      totalTrades: trades.length,
+      totalTrades,
       winningTrades,
-      winRate
+      winRate: totalTrades ? winningTrades / totalTrades : 0,
+      performanceHistory: snapshots
     };
   }
 
-  /**
-   * Calculate performance metrics for comparison
-   */
-  calculatePerformanceMetrics(
-    initialCapital: number,
-    snapshots: BacktestPerformanceSnapshot[]
-  ): {
-    totalReturn: number;
-    annualizedReturn: number;
-    sharpeRatio: number;
-    maxDrawdown: number;
-    volatility: number;
-    calmarRatio: number;
-  } {
-    if (snapshots.length === 0) {
-      return {
-        totalReturn: 0,
-        annualizedReturn: 0,
-        sharpeRatio: 0,
-        maxDrawdown: 0,
-        volatility: 0,
-        calmarRatio: 0
-      };
+  private calculateSharpeRatio(snapshots: Partial<BacktestPerformanceSnapshot>[], initialCapital: number): number {
+    if (!snapshots.length) {
+      return 0;
     }
 
-    const finalValue = snapshots[snapshots.length - 1].portfolioValue;
-    const totalReturn = (finalValue - initialCapital) / initialCapital;
+    const returns: number[] = [];
+    for (let i = 1; i < snapshots.length; i++) {
+      const previous = snapshots[i - 1].portfolioValue ?? initialCapital;
+      const current = snapshots[i].portfolioValue ?? initialCapital;
+      returns.push(previous === 0 ? 0 : (current - previous) / previous);
+    }
 
-    // Calculate daily returns
-    const dailyReturns = snapshots
-      .map((snapshot, index) => {
-        if (index === 0) return 0;
-        const prevValue = snapshots[index - 1].portfolioValue;
-        return (snapshot.portfolioValue - prevValue) / prevValue;
-      })
-      .slice(1);
+    if (returns.length === 0) {
+      return 0;
+    }
 
-    // Calculate volatility (standard deviation of daily returns)
-    const avgDailyReturn = dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length;
-    const variance =
-      dailyReturns.reduce((sum, ret) => sum + Math.pow(ret - avgDailyReturn, 2), 0) / dailyReturns.length;
-    const volatility = Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
+    const average = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+    const variance = returns.reduce((sum, value) => sum + Math.pow(value - average, 2), 0) / returns.length;
+    const stdDev = Math.sqrt(variance);
 
-    // Calculate max drawdown
-    const maxDrawdown = Math.max(...snapshots.map((s) => s.drawdown));
+    if (stdDev === 0) {
+      return 0;
+    }
 
-    // Calculate annualized return
-    const startDate = dayjs(snapshots[0].timestamp);
-    const endDate = dayjs(snapshots[snapshots.length - 1].timestamp);
-    const yearsDuration = endDate.diff(startDate, 'days') / 365;
-    const annualizedReturn = yearsDuration > 0 ? Math.pow(1 + totalReturn, 1 / yearsDuration) - 1 : totalReturn;
-
-    // Calculate Sharpe ratio (assuming risk-free rate of 2%)
-    const riskFreeRate = 0.02;
-    const sharpeRatio = volatility > 0 ? (annualizedReturn - riskFreeRate) / volatility : 0;
-
-    // Calculate Calmar ratio (annualized return / max drawdown)
-    const calmarRatio = maxDrawdown > 0 ? annualizedReturn / maxDrawdown : 0;
-
-    return {
-      totalReturn,
-      annualizedReturn,
-      sharpeRatio,
-      maxDrawdown,
-      volatility,
-      calmarRatio
-    };
+    const riskFreeRate = 0.02; // 2% annualized risk-free rate (placeholder)
+    return (average - riskFreeRate / 365) / stdDev;
   }
 }

@@ -4,10 +4,21 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BacktestEngine } from './backtest/backtest-engine.service';
-import { BacktestController } from './backtest/backtest.controller';
-import { Backtest, BacktestPerformanceSnapshot, BacktestTrade } from './backtest/backtest.entity';
+import { BacktestResultService } from './backtest/backtest-result.service';
+import { BacktestStreamService } from './backtest/backtest-stream.service';
+import { backtestConfig } from './backtest/backtest.config';
+import { BacktestController, ComparisonReportController } from './backtest/backtest.controller';
+import {
+  Backtest,
+  BacktestPerformanceSnapshot,
+  BacktestSignal,
+  BacktestTrade,
+  SimulatedOrderFill
+} from './backtest/backtest.entity';
 import { BacktestProcessor } from './backtest/backtest.processor';
 import { BacktestService } from './backtest/backtest.service';
+import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-report.entity';
+import { MarketDataSet } from './backtest/market-data-set.entity';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
@@ -32,10 +43,13 @@ import { SharedCacheModule } from '../shared-cache.module';
 import { User } from '../users/users.entity';
 import { UsersModule } from '../users/users.module';
 
+const BACKTEST_DEFAULTS = backtestConfig();
+
 @Module({
-  controllers: [OrderController, BacktestController],
-  exports: [OrderService, OrderSyncTask, TradeExecutionService, BacktestService, BacktestEngine],
+  controllers: [OrderController, BacktestController, ComparisonReportController],
+  exports: [OrderService, OrderSyncTask, TradeExecutionService, BacktestService, BacktestEngine, BacktestStreamService],
   imports: [
+    ConfigModule.forFeature(backtestConfig),
     TypeOrmModule.forFeature([
       Algorithm,
       Coin,
@@ -43,10 +57,17 @@ import { UsersModule } from '../users/users.module';
       User,
       TickerPairs,
       Backtest,
+      BacktestSignal,
+      SimulatedOrderFill,
+      MarketDataSet,
       BacktestTrade,
-      BacktestPerformanceSnapshot
+      BacktestPerformanceSnapshot,
+      ComparisonReport,
+      ComparisonReportRun
     ]),
     BullModule.registerQueue({ name: 'order-queue' }),
+    BullModule.registerQueue({ name: BACKTEST_DEFAULTS.historicalQueue }),
+    BullModule.registerQueue({ name: BACKTEST_DEFAULTS.replayQueue }),
     BullModule.registerQueue({ name: 'backtest-queue' }),
     BullModule.registerQueue({ name: 'trade-execution' }),
     SharedCacheModule,
@@ -60,7 +81,11 @@ import { UsersModule } from '../users/users.module';
     AlgorithmService,
     BacktestEngine,
     BacktestProcessor,
+    LiveReplayProcessor,
     BacktestService,
+    BacktestStreamService,
+    BacktestResultService,
+    BacktestGateway,
     CoinService,
     OrderCalculationService,
     OrderService,
