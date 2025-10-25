@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+coverage/
+.tmp/
+.nx/
+out/
+apps/chansey-e2e/
+.libs/
+.docs/
+**/*.min.js

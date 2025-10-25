@@ -11,6 +11,8 @@ multiple exchanges, monitor performance, and manage your crypto portfolio with r
 - **Secure API Integration**: Encrypted storage of exchange API keys with JWT authentication
 - **Responsive PWA**: Mobile-first design with offline capabilities
 - **Admin Dashboard**: Queue management and system monitoring tools
+- **Algorithm Backtesting**: Historical + live replay simulations with telemetry, comparison dashboards, and
+  simulation-only safeties
 
 ## 🛠 Technology Stack
 
@@ -166,6 +168,13 @@ npm run db:seed           # Seed database with initial data
 - API key encryption for exchange credentials
 - Rate limiting and security headers
 - CSRF protection
+
+- **Backtesting Workflow**: Analysts launch historical runs while developers can trigger live replay simulations; both
+  modes persist signals, trades, and telemetry per run for later auditing.
+- **Simulation Safeguards**: Live replay processors intercept outbound trades and record them as `SimulatedOrderFill`
+  events so no orders reach external venues during testing.
+- **Comparison Reporting**: Completed runs can be grouped via `/comparison-reports`, exposing aligned metrics and
+  benchmark overlays that feed the Angular comparison dashboard.
 
 ## 🧪 Testing
 

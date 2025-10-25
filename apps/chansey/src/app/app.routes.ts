@@ -65,6 +65,11 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Settings' }
       },
       {
+        path: 'backtesting',
+        loadComponent: () => import('./pages/backtesting').then((c) => c.BacktestingShellComponent),
+        data: { breadcrumb: 'Backtesting' }
+      },
+      {
         path: 'transactions',
         loadComponent: () => import('./pages/transactions').then((c) => c.TransactionsComponent),
         data: { breadcrumb: 'Transactions' }
