@@ -2,7 +2,7 @@ import { Injectable, InternalServerErrorException, Logger, NotFoundException } f
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Authorizer, User as AuthUser } from '@authorizerdev/authorizer-js';
+import { Authorizer } from '@authorizerdev/authorizer-js';
 import { Repository } from 'typeorm';
 
 import { UpdateUserDto } from './dto';
@@ -13,6 +13,10 @@ import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.servic
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Risk } from '../risk/risk.entity';
+
+interface UserWithRoles extends User {
+  roles?: string[];
+}
 
 @Injectable()
 export class UsersService {
@@ -159,7 +163,7 @@ export class UsersService {
     }
   }
 
-  async getWithAuthorizerProfile(user: User) {
+  async getWithAuthorizerProfile(user: UserWithRoles) {
     try {
       const dbUser = await this.getById(user.id);
       const Authorization = user.token;
@@ -171,7 +175,7 @@ export class UsersService {
       return {
         ...data,
         ...dbUser,
-        roles: (user as any).roles,
+        roles: user.roles,
         exchanges
       };
     } catch (error) {
