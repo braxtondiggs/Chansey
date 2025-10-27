@@ -5,6 +5,10 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
+interface UserWithRoles extends User {
+  roles?: string[];
+}
+
 @Injectable()
 export class RefreshTokenService {
   constructor(
@@ -51,8 +55,7 @@ export class RefreshTokenService {
     }
   }
 
-  async generateAccessToken(user: any): Promise<string> {
-    console.log(`Generating access token for user: ${JSON.stringify(user)}`);
+  async generateAccessToken(user: UserWithRoles): Promise<string> {
     const payload = {
       sub: user.id,
       email: user.email,
@@ -67,11 +70,11 @@ export class RefreshTokenService {
     });
   }
 
-  async generateRefreshToken(user: User, rememberMe = false): Promise<string> {
+  async generateRefreshToken(user: UserWithRoles, rememberMe = false): Promise<string> {
     const payload = {
       sub: user.id,
       type: 'refresh',
-      roles: (user as any).roles || ['user'] // Include roles in refresh token to preserve them
+      roles: user.roles || ['user'] // Include roles in refresh token to preserve them
     };
 
     // Use longer expiration for remember me
@@ -91,8 +94,6 @@ export class RefreshTokenService {
     const isProduction = this.configService.get('NODE_ENV') === 'production';
     const domain = isProduction ? '.cymbit.com' : 'localhost';
     const secure = isProduction ? 'Secure; ' : '';
-
-    console.log(`Setting cookies with rememberMe=${rememberMe}, refreshExpiration=${refreshExpiration} seconds`);
 
     return [
       `chansey_access=${accessToken}; Max-Age=${accessExpiration}; Path=/; HttpOnly; ${secure}SameSite=Strict; Domain=${domain};`,
