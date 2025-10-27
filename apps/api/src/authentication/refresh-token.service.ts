@@ -5,6 +5,10 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
+interface UserWithRoles extends User {
+  roles?: string[];
+}
+
 @Injectable()
 export class RefreshTokenService {
   constructor(
@@ -37,7 +41,7 @@ export class RefreshTokenService {
       const timeUntilExpiry = payload.exp - currentTime;
       const rememberMe = timeUntilExpiry > 14 * 24 * 60 * 60; // If more than 14 days remaining, it was a remember me token
 
-      // Generate new tokens with same remember me preference
+      // Generate new tokens with same remember me preference and preserved roles
       const newAccessToken = await this.generateAccessToken(user);
       const newRefreshToken = await this.generateRefreshToken(user, rememberMe);
 
@@ -51,8 +55,7 @@ export class RefreshTokenService {
     }
   }
 
-  async generateAccessToken(user: any): Promise<string> {
-    console.log(`Generating access token for user: ${JSON.stringify(user)}`);
+  async generateAccessToken(user: UserWithRoles): Promise<string> {
     const payload = {
       sub: user.id,
       email: user.email,
@@ -67,10 +70,11 @@ export class RefreshTokenService {
     });
   }
 
-  async generateRefreshToken(user: User, rememberMe = false): Promise<string> {
+  async generateRefreshToken(user: UserWithRoles, rememberMe = false): Promise<string> {
     const payload = {
       sub: user.id,
-      type: 'refresh'
+      type: 'refresh',
+      roles: user.roles || ['user'] // Include roles in refresh token to preserve them
     };
 
     // Use longer expiration for remember me
@@ -90,8 +94,6 @@ export class RefreshTokenService {
     const isProduction = this.configService.get('NODE_ENV') === 'production';
     const domain = isProduction ? '.cymbit.com' : 'localhost';
     const secure = isProduction ? 'Secure; ' : '';
-
-    console.log(`Setting cookies with rememberMe=${rememberMe}, refreshExpiration=${refreshExpiration} seconds`);
 
     return [
       `chansey_access=${accessToken}; Max-Age=${accessExpiration}; Path=/; HttpOnly; ${secure}SameSite=Strict; Domain=${domain};`,
