@@ -1,0 +1,875 @@
+openapi: 3.1.0
+info:
+  title: Autonomous Strategy Lifecycle API
+  version: 0.1.0
+  summary: REST contracts governing strategy registration, automated validation, scoring, deployment, and monitoring.
+servers:
+  - url: https://api.chansey.local
+paths:
+  /strategies:
+    get:
+      summary: List strategies with lifecycle metadata
+      tags: [Strategies]
+      parameters:
+        - name: lifecycleState
+          in: query
+          schema:
+            $ref: '#/components/schemas/LifecycleState'
+        - name: recommendation
+          in: query
+          schema:
+            type: string
+            enum: [promote, monitor, demote, retire]
+        - name: ownerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated strategies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyCollection'
+    post:
+      summary: Register a new strategy (research role)
+      tags: [Strategies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterStrategyRequest'
+      responses:
+        '201':
+          description: Strategy registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyDetail'
+        '403':
+          description: Caller lacks research permissions
+  /strategies/{strategyId}:
+    get:
+      summary: Fetch detailed strategy profile
+      tags: [Strategies]
+      parameters:
+        - $ref: '#/components/parameters/StrategyId'
+      responses:
+        '200':
+          description: Strategy detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyDetail'
+        '404':
+          description: Strategy not found
+  /strategies/{strategyId}/versions:
+    get:
+      summary: List versions for a strategy
+      tags: [StrategyVersions]
+      parameters:
+        - $ref: '#/components/parameters/StrategyId'
+      responses:
+        '200':
+          description: Version list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyVersionCollection'
+    post:
+      summary: Submit a new strategy version
+      tags: [StrategyVersions]
+      parameters:
+        - $ref: '#/components/parameters/StrategyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitStrategyVersionRequest'
+      responses:
+        '201':
+          description: Version submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyVersionDetail'
+        '400':
+          description: Validation error
+  /strategies/{strategyId}/versions/{versionId}/approval:
+    post:
+      summary: Approve or reject a strategy version (production role)
+      tags: [StrategyVersions]
+      parameters:
+        - $ref: '#/components/parameters/StrategyId'
+        - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApprovalStatusRequest'
+      responses:
+        '200':
+          description: Approval status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyVersionDetail'
+        '409':
+          description: Version already finalized
+  /strategies/{strategyId}/parameter-configs:
+    get:
+      summary: List parameter configurations linked to a strategy
+      tags: [ParameterConfigs]
+      parameters:
+        - $ref: '#/components/parameters/StrategyId'
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [research, optimization, rollback]
+      responses:
+        '200':
+          description: Collection of parameter configurations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParameterConfigCollection'
+  /validation/triggers:
+    post:
+      summary: Manually queue validation or optimization runs
+      tags: [Automation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualTriggerRequest'
+      responses:
+        '202':
+          description: Trigger accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerReceipt'
+  /validation/runs:
+    get:
+      summary: Inspect automated validation runs (backtests, optimizations)
+      tags: [Automation]
+      parameters:
+        - name: strategyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: triggerType
+          in: query
+          schema:
+            type: string
+            enum: [new_data, regime_change, version_update, manual]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, running, completed, failed, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Paginated runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRunCollection'
+  /scorecards/latest:
+    get:
+      summary: Retrieve latest unified scorecard entries
+      tags: [Scorecards]
+      parameters:
+        - name: asOf
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: lifecycleState
+          in: query
+          schema:
+            $ref: '#/components/schemas/LifecycleState'
+      responses:
+        '200':
+          description: Latest scorecard results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScorecardCollection'
+  /deployments:
+    get:
+      summary: List live deployments and pending promotions
+      tags: [Deployments]
+      parameters:
+        - name: strategyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: activationState
+          in: query
+          schema:
+            type: string
+            enum: [pending, active, paused, rolled_back, retired]
+      responses:
+        '200':
+          description: Deployment list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentCollection'
+  /deployments/{deploymentId}/actions:
+    post:
+      summary: Execute deployment action (approve, rollback, pause, resume, capital update)
+      tags: [Deployments]
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentActionRequest'
+      responses:
+        '200':
+          description: Deployment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentDetail'
+        '409':
+          description: Action violates safety gates
+  /monitoring/incidents:
+    get:
+      summary: Browse monitoring incidents and auto-actions
+      tags: [Monitoring]
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [warning, critical]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_review, resolved, closed]
+        - name: strategyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Incident list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringIncidentCollection'
+  /monitoring/incidents/{incidentId}:
+    patch:
+      summary: Update incident status or notes
+      tags: [Monitoring]
+      parameters:
+        - $ref: '#/components/parameters/IncidentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIncidentRequest'
+      responses:
+        '200':
+          description: Incident updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringIncidentDetail'
+  /audit/events:
+    get:
+      summary: Retrieve audit trail with filtering
+      tags: [Audit]
+      parameters:
+        - name: strategyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: actorRole
+          in: query
+          schema:
+            type: string
+            enum: [research, production, risk, compliance, system]
+        - name: occurredAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: occurredBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventCollection'
+
+components:
+  parameters:
+    StrategyId:
+      name: strategyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DeploymentId:
+      name: deploymentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IncidentId:
+      name: incidentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    LifecycleState:
+      type: string
+      enum: [research, validation, staging, production, retired]
+    StrategySummary:
+      type: object
+      required: [id, code, name, lifecycleState, riskCategory, lastScore]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        lifecycleState:
+          $ref: '#/components/schemas/LifecycleState'
+        riskCategory:
+          type: string
+          enum: [low, moderate, high]
+        ownerId:
+          type: string
+          format: uuid
+        lastScore:
+          type: number
+          format: float
+        recommendation:
+          type: string
+          enum: [promote, monitor, demote, retire]
+        updatedAt:
+          type: string
+          format: date-time
+    StrategyCollection:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategySummary'
+        nextCursor:
+          type: string
+          nullable: true
+    RegisterStrategyRequest:
+      type: object
+      required: [code, name, objective, ownerId, eligibleMarkets, riskCategory, capitalGuardrails]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        objective:
+          type: string
+        ownerId:
+          type: string
+          format: uuid
+        eligibleMarkets:
+          type: array
+          items:
+            type: string
+        riskCategory:
+          type: string
+          enum: [low, moderate, high]
+        capitalGuardrails:
+          type: object
+          additionalProperties:
+            type: number
+        dependencyNotes:
+          type: string
+          nullable: true
+    StrategyDetail:
+      allOf:
+        - $ref: '#/components/schemas/StrategySummary'
+        - type: object
+          properties:
+            objective:
+              type: string
+            eligibleMarkets:
+              type: array
+              items:
+                type: string
+            capitalGuardrails:
+              type: object
+              additionalProperties:
+                type: number
+            lifecycleHistory:
+              type: array
+              items:
+                type: object
+                required: [state, changedAt, actor]
+                properties:
+                  state:
+                    $ref: '#/components/schemas/LifecycleState'
+                  changedAt:
+                    type: string
+                    format: date-time
+                  actor:
+                    type: string
+    StrategyVersionSummary:
+      type: object
+      required: [id, versionTag, approvalStatus, submittedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        versionTag:
+          type: string
+        approvalStatus:
+          type: string
+          enum: [pending, approved, rejected]
+        submittedAt:
+          type: string
+          format: date-time
+        submittedBy:
+          type: string
+          format: uuid
+        deterministicSeed:
+          type: integer
+          format: int64
+    StrategyVersionCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyVersionSummary'
+    StrategyVersionDetail:
+      allOf:
+        - $ref: '#/components/schemas/StrategyVersionSummary'
+        - type: object
+          properties:
+            changelog:
+              type: string
+            approvalMetadata:
+              type: object
+              nullable: true
+            parameterConfigs:
+              $ref: '#/components/schemas/ParameterConfigCollection'
+    SubmitStrategyVersionRequest:
+      type: object
+      required: [versionTag, changelog, deterministicSeed, parameterConfigs]
+      properties:
+        versionTag:
+          type: string
+        changelog:
+          type: string
+        deterministicSeed:
+          type: integer
+          format: int64
+        parameterConfigs:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ParameterConfigInput'
+    UpdateApprovalStatusRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approved, rejected]
+        reviewerId:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          nullable: true
+    ParameterConfigSummary:
+      type: object
+      required: [id, label, source, checksum]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        source:
+          type: string
+          enum: [research, optimization, rollback]
+        checksum:
+          type: string
+        parameters:
+          type: object
+          additionalProperties:
+            type: number
+        createdAt:
+          type: string
+          format: date-time
+    ParameterConfigCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterConfigSummary'
+    ParameterConfigInput:
+      type: object
+      required: [label, parameters]
+      properties:
+        label:
+          type: string
+        parameters:
+          type: object
+          additionalProperties:
+            type: number
+        source:
+          type: string
+          enum: [research, optimization, rollback]
+          default: research
+    ManualTriggerRequest:
+      type: object
+      required: [strategyId, triggerType]
+      properties:
+        strategyId:
+          type: string
+          format: uuid
+        triggerType:
+          type: string
+          enum: [new_data, regime_change, version_update, manual]
+        scope:
+          type: string
+          enum: [backtest, optimization, scorecard]
+          default: backtest
+        requestedBy:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          nullable: true
+    TriggerReceipt:
+      type: object
+      required: [triggerId, queuedAt]
+      properties:
+        triggerId:
+          type: string
+          format: uuid
+        queuedAt:
+          type: string
+          format: date-time
+    ValidationRunSummary:
+      type: object
+      required: [id, strategyId, strategyVersionId, triggerType, status, mode]
+      properties:
+        id:
+          type: string
+          format: uuid
+        strategyId:
+          type: string
+          format: uuid
+        strategyVersionId:
+          type: string
+          format: uuid
+        parameterConfigId:
+          type: string
+          format: uuid
+        triggerType:
+          type: string
+          enum: [new_data, regime_change, version_update, manual]
+        mode:
+          type: string
+          enum: [historical, live_replay, optimization]
+        regimeBand:
+          type: string
+          enum: [calm, neutral, turbulent]
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        metrics:
+          type: object
+          additionalProperties:
+            type: number
+    ValidationRunCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationRunSummary'
+        nextCursor:
+          type: string
+          nullable: true
+    ScorecardEntry:
+      type: object
+      required: [strategyId, strategyVersionId, evaluationDate, normalizedScore]
+      properties:
+        strategyId:
+          type: string
+          format: uuid
+        strategyVersionId:
+          type: string
+          format: uuid
+        evaluationDate:
+          type: string
+          format: date
+        normalizedScore:
+          type: number
+        recommendation:
+          type: string
+          enum: [promote, monitor, demote, retire]
+        riskAdjustedReturns:
+          type: object
+        tailRisk:
+          type: object
+        winRateStability:
+          type: object
+        driftSignals:
+          type: object
+    ScorecardCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScorecardEntry'
+    DeploymentSummary:
+      type: object
+      required: [id, strategyId, activationState, capitalAllocation]
+      properties:
+        id:
+          type: string
+          format: uuid
+        strategyId:
+          type: string
+          format: uuid
+        strategyVersionId:
+          type: string
+          format: uuid
+        parameterConfigId:
+          type: string
+          format: uuid
+        activationState:
+          type: string
+          enum: [pending, active, paused, rolled_back, retired]
+        capitalAllocation:
+          type: number
+        approvedBy:
+          type: string
+          format: uuid
+        approvedAt:
+          type: string
+          format: date-time
+    DeploymentCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeploymentSummary'
+    DeploymentDetail:
+      allOf:
+        - $ref: '#/components/schemas/DeploymentSummary'
+        - type: object
+          properties:
+            rolloutWave:
+              type: string
+              enum: [pilot, full]
+              nullable: true
+            activationStartedAt:
+              type: string
+              format: date-time
+            activationCompletedAt:
+              type: string
+              format: date-time
+              nullable: true
+            rollbackReason:
+              type: string
+              nullable: true
+            auditTrail:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditEvent'
+    DeploymentActionRequest:
+      type: object
+      required: [action, actorId]
+      properties:
+        action:
+          type: string
+          enum: [approve, rollback, pause, resume, capital_update]
+        actorId:
+          type: string
+          format: uuid
+        capitalAllocation:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+    MonitoringIncidentSummary:
+      type: object
+      required: [id, liveDeploymentId, incidentType, severity, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        liveDeploymentId:
+          type: string
+          format: uuid
+        incidentType:
+          type: string
+          enum: [benchmark_lag, drawdown, risk_threshold, regime_shift, operational]
+        severity:
+          type: string
+          enum: [warning, critical]
+        status:
+          type: string
+          enum: [open, in_review, resolved, closed]
+        detectedAt:
+          type: string
+          format: date-time
+        autoActions:
+          type: object
+          additionalProperties: true
+    MonitoringIncidentCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MonitoringIncidentSummary'
+    MonitoringIncidentDetail:
+      allOf:
+        - $ref: '#/components/schemas/MonitoringIncidentSummary'
+        - type: object
+          properties:
+            followUpRunId:
+              type: string
+              format: uuid
+              nullable: true
+            resolvedAt:
+              type: string
+              format: date-time
+              nullable: true
+            notes:
+              type: string
+              nullable: true
+    UpdateIncidentRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [in_review, resolved, closed]
+        notes:
+          type: string
+          nullable: true
+    AuditEvent:
+      type: object
+      required: [id, liveDeploymentId, action, actorRole, occurredAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        liveDeploymentId:
+          type: string
+          format: uuid
+        action:
+          type: string
+        actorId:
+          type: string
+          format: uuid
+        actorRole:
+          type: string
+          enum: [research, production, risk, compliance, system]
+        occurredAt:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties: true
+    AuditEventCollection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        nextCursor:
+          type: string
+          nullable: true

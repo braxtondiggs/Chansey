@@ -1,35 +1,35 @@
-# Implementation Plan: Algorithm Backtesting Integration
+# Implementation Plan: Autonomous Strategy Lifecycle System
 
-**Branch**: `001-algo-backtest` | **Date**: 2025-10-23 | **Spec**: specs/001-algo-backtest/spec.md
-**Input**: Feature specification from `/specs/001-algo-backtest/spec.md`
+**Branch**: `001-algo-backtest` | **Date**: 2025-10-30 | **Spec**: `specs/001-algo-backtest/spec.md`
+**Input**: Feature specification from `specs/001-algo-backtest/spec.md`
 
 ## Summary
 
-Connect existing trading algorithms to the centralized backtesting workflow so analysts can run historical and live replay simulations, capture signals/results in the shared pipeline, and compare algorithm performance without enabling live order routing.
+Deliver an end-to-end autonomous lifecycle for algorithmic trading strategies that governs registration, automated validation, unified scoring, safe deployment, and continuous monitoring within the existing Nx monorepo. The solution extends NestJS services, BullMQ workers, Angular dashboards, and shared contracts to orchestrate strategy events, automate backtesting and optimization, enforce capital controls, and expose transparent audit and oversight capabilities.
 
 ## Technical Context
 
-**Language/Version**: TypeScript (Nx monorepo targeting Angular 17+/NestJS 10+)  
-**Primary Dependencies**: Angular with PrimeNG (frontend), NestJS with TypeORM, BullMQ, Redis, Nx task runners, shared `api-interfaces` library  
-**Storage**: PostgreSQL (primary), Redis (caching/queues)  
-**Testing**: Jest unit + integration suites via Nx, contract tests for external integrations per constitution  
-**Target Platform**: Web frontend (Angular browser app) + Node.js backend services (NestJS microservices and workers)  
-**Project Type**: Nx monorepo with modular microservices (apps/api, apps/chansey, libs/api-interfaces, background processors)  
-**Performance Goals**: Backtests complete within 15 minutes for one-year datasets; replay signal latency under 5 seconds; adhere to constitution p95 API response limits (<200ms CRUD, <500ms aggregations)  
-**Constraints**: No live trade execution from backtesting flows; maintain shared data pipeline consistency; respect auditing, RBAC, and trading governance rules; deterministic historical playback  
-**Scale/Scope**: Supports multiple concurrent algorithms and replay sessions; results must cover at least five algorithms for comparison workflows
+**Language/Version**: TypeScript (Node.js 20)  
+**Primary Dependencies**: Nx 19+, NestJS 10, Angular 17 with PrimeNG, TypeORM, BullMQ, Redis, TanStack Query, Jest, Swagger  
+**Storage**: PostgreSQL (primary relational store), Redis (caching, queues, telemetry streams)  
+**Testing**: Jest unit and integration suites via Nx; contract tests for external market/exchange integrations; Cypress retained but not expanded  
+**Target Platform**: Web frontend (Angular browser app) and Node.js backend services/workers (NestJS microservices, BullMQ processors)  
+**Project Type**: Nx monorepo composed of `apps/api`, `apps/chansey`, supporting workers, and shared `libs/api-interfaces` contracts  
+**Performance Goals**: Backtest scheduling latency ≤5 minutes per trigger, unified scorecard generation ≤2 minutes for 80 strategies, live deployment activation ≤5 minutes from approval, monitoring refresh ≤60 seconds  
+**Constraints**: Compliance with Chansey constitution (strict TypeScript, PrimeNG UX, RESTful APIs), p95 API latency <200ms (<500ms for aggregations), deterministic backtests, zero live orders from validation flows, automated rollback within 2 minutes of breach  
+**Scale/Scope**: Support ≥50 concurrent strategies undergoing validation, scorecard generation for up to 80 strategies per run, multi-exchange deployment (Binance US, Coinbase), multi-role governance (research, production, risk, compliance)
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- **Code Quality**: Plan must outline maintainable updates within existing Nx structure, preserve strict typing, and document public APIs.
-- **Testing Standards**: Design must include unit + integration coverage for new backtest pipelines and contract considerations for exchange data handling.
-- **User Experience Consistency**: Frontend artifacts must rely on PrimeNG components and reflect loading/error handling for backtest operations.
-- **Architectural Consistency**: No new apps/libs; extend apps/api, apps/chansey, background BullMQ processors, and shared interfaces.
-- **Performance Requirements**: Ensure data pipeline and simulations respect response-time and throughput expectations; define caching/queue usage that aligns with existing Redis/BullMQ strategy.
+- **Code Quality**: Plan must extend existing NestJS/Angular modules without violating lint/formatting or introducing untyped code.
+- **Testing Standards**: Each new API/worker pathway requires Jest integration coverage; external exchange interactions demand contract tests.
+- **User Experience Consistency**: New dashboards must employ PrimeNG components, TanStack Query loading patterns, and WCAG 2.1 AA compliance.
+- **Architectural Consistency**: No new apps/libs; reuse `apps/api`, `apps/chansey`, BullMQ queues, and `libs/api-interfaces`. Schema changes require TypeORM migrations.
+- **Performance Requirements**: Uphold p95 API targets, enforce queue efficiency, ensure telemetry observability within 2 minutes.
 
-**Post-Phase-1 Review**: Design artifacts (data model, contracts, quickstart) maintain compliance with all gates; no exceptions requested.
+All gates are achievable with the outlined approach; proceed to research.
 
 ## Project Structure
 
@@ -42,27 +42,36 @@ specs/001-algo-backtest/
 ├── data-model.md
 ├── quickstart.md
 ├── contracts/
-└── tasks.md          # created in Phase 2 via /speckit.tasks
+└── tasks.md          # produced later via /speckit.tasks
 ```
 
 ### Source Code (repository root)
 
 ```text
 apps/
-├── api/                 # NestJS backend modules (algorithms, portfolios, exchanges)
-├── chansey/             # Angular frontend using PrimeNG
-└── chansey-e2e/         # Cypress end-to-end tests (unused per constitution change)
+├── api/                 # NestJS services, modules, BullMQ processors (strategy, backtest, deployment)
+├── chansey/             # Angular standalone components, PrimeNG dashboards, TanStack Query clients
+└── chansey-e2e/         # Cypress (unchanged)
 
 libs/
-└── api-interfaces/      # Shared TypeScript contract definitions
+└── api-interfaces/      # Shared DTOs and contracts for backtesting, strategies, monitoring
 
-tools/                   # Nx generators and utilities
-tests/                   # Centralized Jest configuration helpers
+tools/
+└── redis-flush.js       # Utility scripts (unchanged; reuse for local workflows)
 ```
 
-**Structure Decision**: Work will extend existing Nx apps (`apps/api`, `apps/chansey`) and supporting BullMQ processors/services while updating shared contracts in `libs/api-interfaces`. No new apps or libs will be introduced.
+**Structure Decision**: Continue leveraging the established Nx layout—extend `apps/api` modules for strategy governance, queue processors for automation, and `apps/chansey` for lifecycle dashboards while expanding `libs/api-interfaces` for shared contracts. No new applications or libraries introduced.
 
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
+| None | – | – |
+
+### Post-Design Constitution Check (Phase 1)
+
+- **Code Quality**: Data model and API contracts uphold strict typing, reuse existing modules, and avoid new applications—compliant.
+- **Testing Standards**: Contracts identify endpoints requiring Jest integration coverage and monitoring-driven regression tests.
+- **User Experience Consistency**: Quickstart and dashboard plan reaffirm PrimeNG + TanStack Query usage with role-based tabs.
+- **Architectural Consistency**: Plan confines changes to `apps/api`, `apps/chansey`, BullMQ processors, and `libs/api-interfaces`; no constitution violations detected.
+- **Performance Requirements**: Research clarifies latency/throughput targets (e.g., 5-minute trigger, 2-minute scorecard) consistent with spec and constitution expectations.

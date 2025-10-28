@@ -1,163 +1,165 @@
-# Tasks: Algorithm Backtesting Integration
+# Tasks: Autonomous Strategy Lifecycle System
 
-**Input**: Design documents from `/specs/001-algo-backtest/` **Prerequisites**: plan.md (required), spec.md (required
-for user stories), research.md, data-model.md, contracts/
+**Input**: Design documents from `/specs/001-algo-backtest/` **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/, quickstart.md
 
-**Tests**: Include targeted integration tests for high-risk backtesting flows.
+**Tests**: Integration tests added for automation, optimization, deployment, and monitoring flows due to financial risk profile.
 
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+**Organization**: Tasks are grouped by user story to enable independent implementation and testing for each slice.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Align environment variables and baseline configuration for historical & live replay processing.
+**Purpose**: Align environment variables, feature flags, and baseline configuration needed for autonomous lifecycle execution.
 
-- [x] T001 Update `.env.example` with `BACKTEST_HISTORICAL_QUEUE`, `BACKTEST_REPLAY_QUEUE`, `BACKTEST_TELEMETRY_STREAM`,
-      and concurrency defaults.
-- [x] T002 Create `apps/api/src/order/backtest/backtest.config.ts` exporting typed accessors for new backtesting
-      environment variables.
+- [ ] T001 Update `apps/api/.env.example` with `AUTONOMOUS_LIFECYCLE_ENABLED`, `REGIME_SERVICE_URL`, benchmark weights, and alert channel keys.
+- [ ] T002 Extend `apps/api/src/config/feature-flags.config.ts` to expose autonomous lifecycle toggles throughout the API.
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Core domain, migration, and shared contract updates required before any user story work.
+**Purpose**: Establish core entities, migrations, queue wiring, and shared contracts required by all stories.
 
-**⚠️ CRITICAL**: No user story work can begin until this phase is complete
-
-- [x] T003 Extend `apps/api/src/order/backtest/backtest.entity.ts` with config snapshot, deterministic seed, warning
-      flags, and new entities `BacktestSignal` and `SimulatedOrderFill`.
-- [x] T004 Create `apps/api/src/order/backtest/market-data-set.entity.ts` for curated historical/replay datasets with
-      integrity metadata.
-- [x] T005 Update `apps/api/src/order/order.module.ts` to register new entities/services and configure BullMQ queues for
-      `backtest-historical` and `backtest-replay` using `backtest.config`.
-- [x] T006 Generate `apps/api/src/migrations/20251023170000-algo-backtest-foundation.ts` adding tables for market data
-      sets, signals, simulated fills, comparison reports, and new columns on `backtests`.
-- [x] T007 Add shared TypeScript contracts under `libs/api-interfaces/src/lib/backtesting/` and update
-      `libs/api-interfaces/src/lib/api-interfaces.ts` exports for runs, signals, datasets, and comparison reports.
-- [x] T008 Implement Redis-backed telemetry pipeline in `apps/api/src/order/backtest/backtest-stream.service.ts` to
-      publish structured logs, metrics, and traces per run.
-- [x] T009 Add dataset ingestion script `apps/api/src/order/backtest/scripts/market-data-import.ts` plus
-      `seed-backtest-datasets` target in `apps/api/project.json` for loading replay-ready data slices.
+- [ ] T003 Create strategy governance entities in `apps/api/src/strategy/entities/strategy.entity.ts` covering Strategy, StrategyVersion, and ParameterConfig per data model.
+- [ ] T004 Implement validation run entities in `apps/api/src/strategy/entities/validation-run.entity.ts` for MarketDataSet, BacktestRun, and HyperparameterTrial.
+- [ ] T005 Add scoring and deployment entities in `apps/api/src/strategy/entities/lifecycle-metrics.entity.ts` for ScorecardEntry, LiveDeployment, MonitoringIncident, and DeploymentAudit.
+- [ ] T006 Generate TypeORM migration `apps/api/src/migrations/20251030-autonomous-lifecycle-foundation.ts` creating new tables, indexes, and enums.
+- [ ] T007 Register lifecycle module providers in `apps/api/src/strategy/strategy.module.ts` including repositories, services, and guards.
+- [ ] T008 Expand shared contracts in `libs/api-interfaces/src/lib/strategy-lifecycle/` with DTOs for strategies, runs, scorecards, deployments, incidents, and audits.
+- [ ] T009 Configure BullMQ queues in `apps/api/src/strategy/queues/lifecycle.queue.ts` for validation scheduling, optimization, scoring, deployment activation, and monitoring.
+- [ ] T010 Seed Nx targets in `apps/api/project.json` for new queue workers (`validation-scheduler`, `optimization-engine`, `deployment-activation`, `monitoring-watchdog`).
 
 ---
 
-## Phase 3: User Story 1 - Validate algorithms against historical data (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Register and govern strategies (Priority: P0) 🎯 MVP
 
-**Goal**: Analysts can launch historical backtests for approved algorithms, capture signals/trades, and review metrics
-without live execution.
+**Goal**: Research leads can register strategies, manage versions, and enforce role-based governance with immutable history.
 
-**Independent Test**: POST `/backtests` with historical mode, wait for completion, and verify signals/trades/metrics
-render in the Backtesting page using stored dataset + config snapshot.
+**Independent Test**: POST `/strategies` and `/strategies/{id}/versions`, verify history via GET, and ensure unauthorized roles receive 403.
 
-### Tests for User Story 1 ⚠️
-
-- [x] T010 [P] [US1] Add integration test `apps/api/src/order/backtest/backtest.historical.spec.ts` covering POST
-      `/backtests` → queued job + persisted run metadata.
-
-### Implementation for User Story 1
-
-- [x] T011 [US1] Refactor `apps/api/src/order/backtest/backtest.controller.ts` to expose `/backtests` list/detail plus
-      paginated `/backtests/{id}/signals` and `/backtests/{id}/trades` responses using shared DTOs.
-- [x] T012 [US1] Update `apps/api/src/order/backtest/backtest.service.ts` to snapshot algorithm parameters, bind
-      selected `MarketDataSet`, enqueue historical jobs, and surface run warnings via `BacktestStreamService`.
-- [x] T013 [US1] Enhance `apps/api/src/order/backtest/backtest.processor.ts` to execute strategy via
-      `algorithm/registry`, persist `BacktestSignal` & `SimulatedOrderFill`, and publish telemetry events.
-- [x] T014 [P] [US1] Extend `apps/api/src/order/backtest/backtest-engine.service.ts` with deterministic seeding, dataset
-      streaming helpers, and telemetry payload assembly.
-- [x] T015 [US1] Implement historical signal/trade query helpers in `apps/api/src/order/backtest/backtest.service.ts`
-      supporting pagination and filter options.
-- [x] T016 [P] [US1] Create Angular API client `apps/chansey/src/app/shared/services/backtesting.service.ts` with
-      TanStack-friendly methods for runs, signals, trades, and dataset catalog.
-- [x] T017 [P] [US1] Add backtesting query keys & adapters in `apps/chansey/src/app/core/query/query.keys.ts` and
-      related utilities for caching.
-- [x] T018 [US1] Build historical run management page
-      `apps/chansey/src/app/pages/backtesting/historical-run.component.ts` (+ template/styles) with forms for
-      algorithm/dataset selection and results table.
-- [x] T019 [US1] Update navigation via `apps/chansey/src/app/app.routes.ts` and
-      `apps/chansey/src/app/layout/app.menu.ts` to expose `/app/backtesting` route and label historical tab.
-
-**Checkpoint**: Historical backtesting can be run, observed, and audited independently.
+- [ ] T011 [US1] Implement strategy controller endpoints in `apps/api/src/strategy/strategy.controller.ts` for listing, registration, and version submission.
+- [ ] T012 [US1] Build strategy service logic in `apps/api/src/strategy/strategy.service.ts` enforcing RBAC, lifecycle transitions, and version immutability.
+- [ ] T013 [US1] Add Jest integration test `apps/api/src/strategy/strategy.controller.spec.ts` covering registration, version history, and permission failures.
+- [ ] T014 [US1] Extend Angular research tab container `apps/chansey/src/app/pages/strategy-lifecycle/research-tab.component.ts` with PrimeNG forms for registry actions.
+- [ ] T015 [P] [US1] Update API client `apps/chansey/src/app/shared/services/strategy-lifecycle.service.ts` with strategy and version methods plus TanStack Query keys.
 
 ---
 
-## Phase 4: User Story 2 - Observe algorithm behavior in simulated live replay (Priority: P2)
+## Phase 4: User Story 2 - Autonomous backtest scheduling (Priority: P1)
 
-**Goal**: Developers can replay recent market activity in live mode, watch streaming telemetry, and ensure outbound
-trades remain simulated.
+**Goal**: Automatically launch validation runs when new data, regime changes, or version updates occur.
 
-**Independent Test**: POST `/backtests` with `mode=live_replay`, subscribe to websocket feed, observe streaming signals
-within <5s latency, and confirm cancel/resume endpoints manage state without live orders.
+**Independent Test**: Simulate each trigger event, confirm corresponding validation run queued and visible via `/validation/runs`.
 
-### Tests for User Story 2 ⚠️
-
-- [x] T020 [P] [US2] Add integration test `apps/api/src/order/backtest/backtest.replay.spec.ts` verifying live replay
-      job creation and websocket broadcast envelope.
-
-### Implementation for User Story 2
-
-- [x] T021 [US2] Add `apps/api/src/order/backtest/live-replay.processor.ts` to stream recorded market data, intercept
-      outbound orders, and emit telemetry through `BacktestStreamService`.
-- [x] T022 [US2] Extend `apps/api/src/order/backtest/backtest.service.ts` to schedule live replay jobs, gate live order
-      routing, and manage resume/cancel transitions with audit history.
-- [x] T023 [P] [US2] Introduce websocket gateway `apps/api/src/order/backtest/backtest.gateway.ts` broadcasting run
-      progress, signals, and warnings to subscribed clients.
-- [x] T024 [US2] Update `apps/api/src/order/backtest/backtest.controller.ts` to wire `/backtests/{id}/cancel` and
-      `/backtests/{id}/resume` endpoints to the live replay workflow and gateway notifications.
-- [x] T025 [P] [US2] Create live replay viewer component
-      `apps/chansey/src/app/pages/backtesting/live-replay.component.ts` consuming websocket telemetry with PrimeNG
-      streaming UI.
-- [x] T026 [US2] Add UI toggle & simulation banner within
-      `apps/chansey/src/app/pages/backtesting/backtesting-shell.component.ts` to switch modes and highlight “simulation
-      only” safeguards.
-
-**Checkpoint**: Live replay mode streams telemetry with safeguards without depending on comparison workflows.
+- [ ] T016 [US2] Implement event subscribers in `apps/api/src/strategy/automation/trigger.subscriber.ts` for market data, regime, and version update signals.
+- [ ] T017 [US2] Build validation scheduler service in `apps/api/src/strategy/automation/trigger.service.ts` orchestrating queue jobs by trigger type.
+- [ ] T018 [US2] Add validation run controller endpoints in `apps/api/src/strategy/automation/validation.controller.ts` for listing runs and manual triggers.
+- [ ] T019 [P] [US2] Create integration test `apps/api/src/strategy/automation/trigger.spec.ts` verifying automatic scheduling per trigger.
+- [ ] T020 [US2] Add automation panel to Angular research tab `apps/chansey/src/app/pages/strategy-lifecycle/research-automation-panel.component.ts` displaying queued runs and restricting manual trigger controls to admin roles.
+- [ ] T021 [US2] Update `apps/chansey/src/app/pages/backtesting/index.ts` to restrict manual trigger workflow visibility to admin roles.
 
 ---
 
-## Phase 5: User Story 3 - Compare algorithm performance for decision making (Priority: P3)
+## Phase 5: User Story 3 - Hyperparameter optimization & walk-forward analysis (Priority: P1)
 
-**Goal**: Portfolio managers can assemble comparison reports across runs, filter by timeframe/regime, and export aligned
-metrics for review.
+**Goal**: Execute rolling window optimization with robustness scoring across regimes.
 
-**Independent Test**: POST `/comparison-reports` with ≥2 run IDs, retrieve `/comparison-reports/{id}`, and confirm
-Angular dashboard filters/exports operate without historical or live flows rerunning.
+**Independent Test**: POST manual optimization trigger, validate trials recorded with train/test windows and robustness scores accessible via API/UI.
 
-### Tests for User Story 3 ⚠️
-
-- [x] T027 [P] [US3] Add integration test `apps/api/src/order/backtest/backtest.comparison.spec.ts` covering comparison
-      report creation and retrieval endpoints.
-
-### Implementation for User Story 3
-
-- [x] T028 [US3] Implement comparison aggregation in `apps/api/src/order/backtest/backtest.service.ts` (or dedicated
-      service) calculating metrics, benchmarks, and notes storage.
-- [x] T029 [US3] Expose `/comparison-reports` endpoints in `apps/api/src/order/backtest/backtest.controller.ts`
-      returning shared interface payloads.
-- [x] T030 [P] [US3] Extend front-end client `apps/chansey/src/app/shared/services/backtesting.service.ts` & query
-      adapters for comparison report APIs.
-- [x] T031 [US3] Build comparison dashboard `apps/chansey/src/app/pages/backtesting/comparison-dashboard.component.ts`
-      with filters, benchmark overlays, and CSV/PDF export helper.
-
-**Checkpoint**: Comparison workflows deliver actionable reports independent of live replay execution.
+- [ ] T022 [US3] Implement optimization service in `apps/api/src/strategy/optimization/optimization.service.ts` performing Latin hypercube + Bayesian search with deterministic seeds.
+- [ ] T023 [US3] Create optimization processor `apps/api/src/strategy/optimization/optimization.processor.ts` handling BullMQ jobs and persisting HyperparameterTrial results.
+- [ ] T024 [US3] Expose optimization summaries via API in `apps/api/src/strategy/optimization/optimization.controller.ts`.
+- [ ] T025 [P] [US3] Add integration test `apps/api/src/strategy/optimization/optimization.spec.ts` covering trial execution and robustness scoring.
+- [ ] T026 [US3] Build Angular optimization view `apps/chansey/src/app/pages/strategy-lifecycle/optimization-panel.component.ts` with PrimeNG tables for trials and regime-specific results.
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 6: User Story 4 - Unified scoring and ranking (Priority: P2)
 
-**Purpose**: Observability, documentation, and finishing touches spanning all user stories.
+**Goal**: Provide consolidated strategy rankings with risk-adjusted metrics and recommendations.
 
-- [ ] T032 Instrument structured logging, metrics, and trace spans across
-      `apps/api/src/order/backtest/backtest.service.ts`, processors, and gateway leveraging `BacktestStreamService`.
-- [ ] T033 Populate `specs/001-algo-backtest/quickstart.md` with updated run, monitoring, and troubleshooting steps.
-- [ ] T034 Update root `README.md` with backtesting workflow summary, simulation safeguards, and links to comparison
-      reporting.
+**Independent Test**: Run scheduled scorecard job, confirm `/scorecards/latest` returns normalized scores and recommendations rendered in UI.
+
+- [ ] T027 [US4] Implement scorecard aggregator in `apps/api/src/strategy/scoring/scorecard.service.ts` calculating weighted metrics and recommendations.
+- [ ] T028 [US4] Add scheduled BullMQ job `apps/api/src/strategy/scoring/scorecard.scheduler.ts` to compute scorecards for eligible strategies.
+- [ ] T029 [US4] Expose scorecard API in `apps/api/src/strategy/scoring/scorecard.controller.ts` including filtering by lifecycle state.
+- [ ] T030 [P] [US4] Update Angular production tab `apps/chansey/src/app/pages/strategy-lifecycle/production-tab.component.ts` to display scorecards, weights, and recommendation badges.
+
+---
+
+## Phase 7: User Story 5 - Safe deployment and rollback (Priority: P2)
+
+**Goal**: Automate promotion with capital guardrails and swift rollback on degradation.
+
+**Independent Test**: Approve deployment via API, verify activation within SLA, simulate benchmark lag to trigger auto-rollback and audit record.
+
+- [ ] T031 [US5] Implement deployment workflow service `apps/api/src/strategy/deployment/deployment.service.ts` enforcing safety gates and capital allocation.
+- [ ] T032 [US5] Add deployment action controller `apps/api/src/strategy/deployment/deployment.controller.ts` for approve/rollback/pause/resume operations.
+- [ ] T033 [P] [US5] Create integration test `apps/api/src/strategy/deployment/deployment.spec.ts` covering capital guardrails and auto-rollback trigger.
+- [ ] T034 [US5] Extend Angular production tab template `apps/chansey/src/app/pages/strategy-lifecycle/production-tab.component.html` with deployment controls and audit snapshots.
+
+---
+
+## Phase 8: User Story 6 - Continuous monitoring and re-evaluation (Priority: P2)
+
+**Goal**: Monitor live strategies, throttle risk, and schedule re-validation when thresholds breach.
+
+**Independent Test**: Feed synthetic telemetry exceeding thresholds, verify incident creation, auto-actions, and scheduled backtest reference.
+
+- [ ] T035 [US6] Implement monitoring engine `apps/api/src/strategy/monitoring/monitoring.service.ts` aggregating live metrics, benchmark drift, and risk thresholds.
+- [ ] T036 [US6] Add monitoring controller `apps/api/src/strategy/monitoring/monitoring.controller.ts` for incident retrieval, updates, and linked follow-up runs.
+- [ ] T037 [P] [US6] Build monitoring processor `apps/api/src/strategy/monitoring/monitoring.processor.ts` executing auto throttles, rollbacks, and re-validation scheduling.
+- [ ] T038 [US6] Create Angular risk tab `apps/chansey/src/app/pages/strategy-lifecycle/risk-tab.component.ts` visualizing incidents, auto-actions, and benchmark comparisons.
+
+---
+
+## Phase 9: User Story 7 - Transparent interfaces and auditability (Priority: P3)
+
+**Goal**: Deliver APIs and UI for audit logs, promotion history, and experiment comparisons accessible to compliance.
+
+**Independent Test**: Query `/audit/events` with filters, export history, and confirm UI surfaces immutable records with download links.
+
+- [ ] T039 [US7] Implement audit controller `apps/api/src/strategy/audit/audit.controller.ts` supporting filtered retrieval and pagination.
+- [ ] T040 [US7] Add export service `apps/api/src/strategy/audit/audit-export.service.ts` generating CSV/JSON/PDF artifacts.
+- [ ] T041 [P] [US7] Integrate Angular audit panel `apps/chansey/src/app/pages/strategy-lifecycle/audit-log-panel.component.ts` with downloads and access controls.
+
+---
+
+## Phase 10: Polish & Cross-Cutting Concerns
+
+**Purpose**: Finalize observability, docs, and governance alignment across services and UI.
+
+- [ ] T042 Instrument telemetry hooks across `apps/api/src/strategy` services and processors to emit structured logs, metrics, and traces per incident/run.
+- [ ] T043 Update `specs/001-algo-backtest/quickstart.md` with lifecycle walkthrough, automation triggers, and troubleshooting additions.
+- [ ] T044 Refresh root `README.md` with autonomous lifecycle overview, safety gates, and monitoring instructions.
 
 ---
 
 ## Dependencies & Execution Order
 
-1. **Phase 1 → Phase 2**: Environment + config updates must precede domain/migration work.
-2. **Phase 2 → User Stories**: All foundational tasks (T003–T009) required before US1/US2/US3 can proceed.
+1. **Phase 1 → Phase 2**: Environment and feature flag setup must precede schema and queue provisioning.
+2. **Phase 2 → Phases 3–9**: Foundational entities, migrations, queues, and contracts required before story-specific work.
+3. **User Story Dependencies**: US1 lays governance groundwork; US2 and US3 can proceed once entities exist. US4 depends on US3 outputs. US5 requires scorecards (US4). US6 depends on deployments (US5). US7 can parallel US6 once audits exist.
+
+---
+
+## Parallel Execution Examples
+
+- US1 frontend service update (T015) can run parallel to component build after API contracts finalize.
+- US2 integration test (T019) can execute alongside automation panel (T020) once scheduler logic exists.
+- US3 optimization test (T024) may run in parallel with UI panel (T025) after service/processor land.
+- US4 production tab UI (T029) can iterate concurrently with scheduler (T027) once scoring service drafted.
+- US6 monitoring processor (T036) can be developed alongside risk tab UI (T037) after monitoring service is stubbed.
+- US7 audit panel (T040) can progress in parallel with export service (T039) due to separate files.
+
+---
+
+## Implementation Strategy
+
+1. **MVP (US1)**: Deliver strategy registry and governance APIs with corresponding research UI to unblock lifecycle metadata.
+2. **Validation Automation (US2 & US3)**: Stand up autonomous triggers and optimization workflows to populate evaluation data.
+3. **Decision & Deployment (US4 & US5)**: Produce unified scorecards feeding promotion workflows with enforced safety gates.
+4. **Risk Oversight & Transparency (US6 & US7)**: Add monitoring, incidents, and audit surfaces to close governance loop.
+5. **Polish**: Instrument telemetry, update documentation, and ensure guardrails are discoverable for operations teams.
 3. **User Story Order**: US1 (historical) unlocks dataset usage; US2 (live replay) depends on shared pipeline from US1
    but can start once Phase 2 is complete and US1 telemetry helpers (T012–T015) land. US3 (comparison) depends on
    persisted metrics from US1 but not on US2.
@@ -177,18 +179,19 @@ tasks: T016, T017
 ### User Story 2
 
 ```bash
-# Live replay backend pieces
-tasks: T021, T023
-# Frontend live UI work
-tasks: T025, T026
+# Automation backend pieces
+tasks: T016, T017, T018
+# Frontend admin controls
+tasks: T020, T021
 ```
 
 ### User Story 3
 
 ```bash
-# Comparison backend vs frontend
-backend task: T028
-frontend tasks: T030, T031
+# Optimization backend vs frontend
+backend tasks: T022, T023, T024
+frontend tasks: T026
+tests: T025
 ```
 
 ## Implementation Strategy
@@ -207,6 +210,6 @@ frontend tasks: T030, T031
 
 ### Parallel Team Strategy
 
-- Backend engineer: Phase 2 → US1 (T012–T015) → US2 processors/gateway (T021–T024).
-- Frontend engineer: US1 UI (T016–T019) → US2 live components (T025–T026) → US3 dashboard (T030–T031).
-- Platform engineer: Observability + docs (T032–T034) concurrent once APIs stabilize.
+- Backend engineer: Phase 2 → US1 (T012–T015) → US2 automation services (T016–T019).
+- Frontend engineer: US1 UI (T014–T015) → US2 admin controls (T020–T021) → US3 dashboard (T026).
+- Platform engineer: Observability + docs (T042–T044) concurrent once APIs stabilize.

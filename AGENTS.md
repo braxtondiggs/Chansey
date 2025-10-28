@@ -26,6 +26,8 @@ If the user wants help with fixing an error in their CI pipeline, use the follow
 <!-- nx configuration end-->
 
 ## Active Technologies
+- TypeScript (Node.js 20) + Nx 19+, NestJS 10, Angular 17 with PrimeNG, TypeORM, BullMQ, Redis, TanStack Query, Jest, Swagger (001-algo-backtest)
+- PostgreSQL (primary relational store), Redis (caching, queues, telemetry streams) (001-algo-backtest)
 
 - TypeScript (Nx monorepo targeting Angular 17+/NestJS 10+) + Angular with PrimeNG (frontend), NestJS with TypeORM,
   BullMQ, Redis, Nx task runners, shared `api-interfaces` library (001-algo-backtest)

@@ -1,95 +1,158 @@
-# Quickstart: Algorithm Backtesting Integration
+# Quickstart: Autonomous Strategy Lifecycle System
 
-This guide walks you through spinning up the Chansey stack, launching historical or live replay backtests, and monitoring telemetry for troubleshooting.
+This guide walks new contributors through provisioning the environment, registering a strategy, triggering automated validation, reviewing unified scoring, deploying to production, and responding to monitoring incidents.
 
-## 1. Start Required Services
+## 1. Bootstrapping the Stack
 
 ```bash
-# install deps once
 npm install
-
-# start API + frontend with Nx (uses default .env values)
+# Start backend & frontend (two terminals)
 npx nx serve api
 npx nx serve chansey
 ```
 
-Ensure PostgreSQL and Redis are running with the credentials referenced in `apps/api/.env`.
+Prerequisites:
+- PostgreSQL and Redis running with credentials from `apps/api/.env.example`
+- Feature flags `AUTONOMOUS_LIFECYCLE_ENABLED=true` and `REGIME_SERVICE_URL` configured in `apps/api/.env`
 
-## 2. Seed Market Data Sets (optional but recommended)
+Seed reference data (market datasets, initial regime bands):
 
 ```bash
-# load curated historical/replay datasets
 npx nx run api:seed-backtest-datasets
+npx nx run api:seed-regime-bands
 ```
 
-Verify datasets via `GET /api/backtests/datasets` or the Angular historical run page.
+## 2. Register a Strategy (Research Role)
 
-## 3. Launch a Historical Backtest
+```bash
+curl -X POST http://localhost:3000/api/strategies \
+  -H 'Content-Type: application/json' \
+  -H 'x-user-role: research' \
+  -d '{
+    "code": "BTC-MOMO",
+    "name": "BTC Momentum",
+    "objective": "Capture short-term upside during neutral/turbulent regimes",
+    "ownerId": "11111111-1111-1111-1111-111111111111",
+    "eligibleMarkets": ["BTC/USDT@BinanceUS", "BTC/USD@Coinbase"],
+    "riskCategory": "moderate",
+    "capitalGuardrails": {"production": 0.15, "staging": 0.05}
+  }'
+```
 
-1. Open `http://localhost:4200/app/backtesting`.
-2. Select an approved algorithm + dataset, tweak capital/fees, and submit.
-3. The API queues the job and returns a `PENDING` run with deterministic seed + config snapshot.
+Submit a version and initial parameters:
+
+```bash
+curl -X POST http://localhost:3000/api/strategies/<strategyId>/versions \
+  -H 'Content-Type: application/json' \
+  -H 'x-user-role: research' \
+  -d '{
+    "versionTag": "v2025.10.0",
+    "changelog": "Initial momentum model tuned for BTC.",
+    "deterministicSeed": 927161,
+    "parameterConfigs": [{
+      "label": "baseline",
+      "parameters": {"lookback": 24, "threshold": 1.5}
+    }]
+  }'
+```
+
+## 3. Automated Validation Flow
+
+Approved data ingestions or regime events automatically trigger runs. To queue manually during testing:
+
+```bash
+curl -X POST http://localhost:3000/api/validation/triggers \
+  -H 'Content-Type: application/json' \
+  -H 'x-user-role: research' \
+  -d '{
+    "strategyId": "<strategyId>",
+    "triggerType": "version_update",
+    "scope": "backtest",
+    "requestedBy": "11111111-1111-1111-1111-111111111111",
+    "notes": "Smoke test after parameter tweak"
+  }'
+```
+
+Monitor progress:
+
+```bash
+curl "http://localhost:3000/api/validation/runs?strategyId=<strategyId>&limit=10"
+```
+
+Runs record regime band, metrics, warnings, and telemetry pointer. Inspect Redis stream `backtest:telemetry:<runId>` for live signal output if needed.
+
+## 4. Review Scorecards & Recommendations
+
+Angular UI: `http://localhost:4200/app/strategies` provides Research, Production, and Risk tabs. Research tab lists scorecards with robust metrics and drift signals.
 
 API alternative:
 
 ```bash
-curl -X POST http://localhost:3000/api/backtests \
+curl "http://localhost:3000/api/scorecards/latest?lifecycleState=validation&limit=20"
+```
+
+Verify unified score, recommendation, and supporting breakdowns.
+
+## 5. Approve Deployment with Safety Gates
+
+1. Production approver reviews scorecard ≥ promotion threshold.
+2. Approver updates version approval:
+
+```bash
+curl -X POST http://localhost:3000/api/strategies/<strategyId>/versions/<versionId>/approval \
   -H 'Content-Type: application/json' \
-  -H 'x-api-key: <local-api-key>' \
+  -H 'x-user-role: production' \
+  -d '{"decision": "approved", "reviewerId": "<prod-user-id>", "notes": "Meets guardrails."}'
+```
+
+3. Promotion request auto-creates deployment in `pending` state.
+4. Execute approval & allocate capital:
+
+```bash
+curl -X POST http://localhost:3000/api/deployments/<deploymentId>/actions \
+  -H 'Content-Type: application/json' \
+  -H 'x-user-role: production' \
   -d '{
-    "name": "BTC Momentum Q1",
-    "type": "HISTORICAL",
-    "algorithmId": "<algo-uuid>",
-    "marketDataSetId": "<dataset-uuid>",
-    "initialCapital": 10000,
-    "startDate": "2024-01-01T00:00:00.000Z",
-    "endDate": "2024-01-31T23:59:59.000Z"
+    "action": "approve",
+    "actorId": "<prod-user-id>",
+    "capitalAllocation": 0.12,
+    "notes": "Pilot rollout"
   }'
 ```
 
-Use `GET /api/backtests` or the UI grid to watch status transitions and review metrics/signals/trades.
+Deployment moves to `active` once safety gates (benchmark, guardrails, incidents) pass. Expect activation within 5 minutes; inspect queue `deployment-activation`.
 
-## 4. Run a Live Replay Simulation
+## 6. Respond to Monitoring Incidents
 
-1. Choose a dataset flagged `replayCapable=true`.
-2. Submit with `type: "LIVE_REPLAY"`.
-3. Subscribe to telemetry in the UI (Live Replay tab) or directly via the websocket gateway:
-
-```ts
-const socket = io('/backtests');
-socket.emit('subscribe', { backtestId: '<run-id>' });
-socket.on('status', console.log);
-socket.on('metric', console.log);
-```
-
-Live replay intercepts outbound orders and records them as simulated fills only.
-
-## 5. Comparison Reports
-
-After multiple runs complete:
+Incidents appear on Risk tab or via API:
 
 ```bash
-curl -X POST http://localhost:3000/api/comparison-reports \
-  -H 'Content-Type: application/json' \
-  -H 'x-api-key: <key>' \
-  -d '{"name":"BTC Study","runIds":["run-1","run-2"]}'
+curl "http://localhost:3000/api/monitoring/incidents?status=open"
 ```
 
-Review via `/app/backtesting/comparison`.
+Critical incidents automatically apply throttles or trigger rollback. To close after remediation:
 
-## 6. Monitoring & Telemetry
+```bash
+curl -X PATCH http://localhost:3000/api/monitoring/incidents/<incidentId> \
+  -H 'Content-Type: application/json' \
+  -H 'x-user-role: risk' \
+  -d '{"status": "resolved", "notes": "Re-test passed post regime shift."}'
+```
 
-- Structured events stream to the Redis key defined by `BACKTEST_TELEMETRY_STREAM`.
-- `BacktestStreamService` mirrors events to websocket clients for real-time status/log/metric updates.
-- Use `apps/api/src/order/backtest/backtest.historical.spec.ts` / `.replay.spec.ts` for regression hints.
+Audit entries for promotions, rollbacks, and capital adjustments are accessible via:
 
-## 7. Troubleshooting
+```bash
+curl "http://localhost:3000/api/audit/events?strategyId=<strategyId>&limit=50"
+```
 
-| Symptom | What to Check |
+## 7. Troubleshooting Checklist
+
+| Symptom | Action |
 | --- | --- |
-| Run stuck in `PENDING` | BullMQ queues `backtest-historical` / `backtest-replay` running? Redis reachable? |
-| `dataset_not_replay_capable` warning | Pick a dataset with `replayCapable=true` or switch to historical mode. |
-| No signals/trades recorded | Confirm algorithm registry returns actionable signals; inspect telemetry logs for errors. |
-| Live replay tries to trade | Verify outbound order interception via `SimulatedOrderFill` records; no external exchange calls are made. |
+| Trigger accepted but no run | Confirm BullMQ workers `validation-scheduler`, `backtest-historical`, `optimization-engine` active; check Redis connectivity. |
+| Scorecard missing metrics | Inspect BacktestRun `warningFlags` for data quality issues; re-run dataset certification. |
+| Deployment approval denied | Review gate failure response—capital guardrail breach, open critical incidents, or benchmark lag >200 bps. |
+| Auto-rollback fired unexpectedly | Cross-check monitoring incident log; verify benchmark feed availability and regime band accuracy. |
+| Missing audit entries | Ensure `AUDIT_LOG_TOPIC` env set; check retention service if running locally longer than 24h. |
 
-When in doubt, review `apps/api/src/order/backtest/backtest.service.ts` logging and the Redis telemetry stream for detailed run context.
+Keep Redis and PostgreSQL logs open during testing for rapid diagnosis. PrimeNG dashboards rely on TanStack Query caches—hard refresh (`Cmd+Shift+R`) if stale data persists after backend fixes.

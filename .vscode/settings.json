@@ -40,6 +40,5 @@
     "windsurf": true,
     "cursor-global": true,
     "cursor-workspace": true
-  },
-  "nxConsole.generateAiAgentRules": false
+  }
 }
