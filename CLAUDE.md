@@ -199,3 +199,10 @@ If the user wants help with fixing an error in their CI pipeline, use the follow
 - Make sure that the problem is fixed by running the task that you passed into the `nx_cloud_fix_cipe_failure` tool
 
 <!-- nx configuration end-->
+
+## Active Technologies
+- TypeScript 5.x with Node.js 22+ + NestJS 11, TypeORM 0.3, BullMQ, PostgreSQL 15+, Redis, TanStack Query (frontend) (005-auto-backtest-orchestration)
+- PostgreSQL for persistent data (strategies, audit logs), Redis for caching and job queues, 5-year retention for audit data (005-auto-backtest-orchestration)
+
+## Recent Changes
+- 005-auto-backtest-orchestration: Added TypeScript 5.x with Node.js 22+ + NestJS 11, TypeORM 0.3, BullMQ, PostgreSQL 15+, Redis, TanStack Query (frontend)
