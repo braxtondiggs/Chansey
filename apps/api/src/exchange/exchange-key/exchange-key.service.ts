@@ -15,11 +15,11 @@ import { ExchangeService } from '../exchange.service';
 export class ExchangeKeyService {
   constructor(
     @InjectRepository(ExchangeKey)
-    private exchangeKeyRepository: Repository<ExchangeKey>,
+    private readonly exchangeKeyRepository: Repository<ExchangeKey>,
     @Inject(forwardRef(() => ExchangeService))
-    private exchangeService: ExchangeService,
+    private readonly exchangeService: ExchangeService,
     @Inject(forwardRef(() => ExchangeManagerService))
-    private exchangeManagerService: ExchangeManagerService,
+    private readonly exchangeManagerService: ExchangeManagerService,
     @InjectQueue('order-queue') private readonly orderQueue: Queue
   ) {}
 

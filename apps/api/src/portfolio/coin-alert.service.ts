@@ -10,7 +10,7 @@ export class CoinAlertService {
   private auth = {};
   constructor(
     config: ConfigService,
-    private http: HttpService
+    private readonly http: HttpService
   ) {
     this.auth = {
       auth: {

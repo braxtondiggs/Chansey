@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpStatus,
+  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -28,6 +29,8 @@ import { User } from '../users/users.entity';
 @UseGuards(JwtAuthenticationGuard)
 @Controller('order')
 export class OrderController {
+  private readonly logger = new Logger(OrderController.name);
+
   constructor(private readonly orderService: OrderService) {}
 
   @Get()
@@ -122,7 +125,7 @@ export class OrderController {
     description: 'Invalid order data or exchange connection error'
   })
   async previewOrder(@Body() orderDto: OrderDto, @GetUser() user: User) {
-    console.log('Previewing order:', orderDto);
+    this.logger.log('Previewing order:', orderDto);
     return this.orderService.previewOrder(orderDto, user);
   }
 

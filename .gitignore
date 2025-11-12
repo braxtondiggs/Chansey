@@ -48,3 +48,6 @@ docs/
 
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
+
+# Claude Code project files
+.codex/
