@@ -15,9 +15,11 @@ import {
   BacktestTrade,
   SimulatedOrderFill
 } from './backtest/backtest.entity';
+import { BacktestGateway } from './backtest/backtest.gateway';
 import { BacktestProcessor } from './backtest/backtest.processor';
 import { BacktestService } from './backtest/backtest.service';
 import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-report.entity';
+import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';

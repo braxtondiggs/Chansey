@@ -1,10 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
+import { DataSource } from 'typeorm';
+
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DataSource } from 'typeorm';
 
 import { AppModule } from '../../../app.module';
 import { MarketDataSet, MarketDataSource, MarketDataTimeframe } from '../market-data-set.entity';

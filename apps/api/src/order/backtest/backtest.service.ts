@@ -3,8 +3,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { randomUUID } from 'node:crypto';
 import { Repository, In } from 'typeorm';
+
+import { randomUUID } from 'node:crypto';
 
 import {
   BacktestRunCollection,
