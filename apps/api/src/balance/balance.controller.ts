@@ -1,5 +1,5 @@
 import { CacheTTL } from '@nestjs/cache-manager';
-import { Controller, Get, UseGuards, Query, HttpStatus, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, UseGuards, Query, HttpStatus, UseInterceptors, Logger } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { BalanceService } from './balance.service';
@@ -17,6 +17,8 @@ import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.inter
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
 @Controller('balance')
 export class BalanceController {
+  private readonly logger = new Logger(BalanceController.name);
+
   constructor(private readonly balanceService: BalanceService) {}
 
   @Get()
@@ -58,7 +60,9 @@ export class BalanceController {
     @Query('includeHistorical') includeHistorical?: boolean,
     @Query('period') period?: string | string[]
   ): Promise<BalanceResponseDto> {
-    console.log(`getBalances called for user: ${user.id}, includeHistorical: ${includeHistorical}, period: ${period}`);
+    this.logger.log(
+      `getBalances called for user: ${user.id}, includeHistorical: ${includeHistorical}, period: ${period}`
+    );
     const periods = period ? (Array.isArray(period) ? period : [period]) : [];
     return this.balanceService.getUserBalances(user, includeHistorical, periods);
   }

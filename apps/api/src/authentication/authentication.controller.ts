@@ -1,4 +1,15 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards, HttpException, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Res,
+  UseGuards,
+  HttpException,
+  Req,
+  Logger
+} from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { FastifyReply, FastifyRequest } from 'fastify';
@@ -27,6 +38,8 @@ import { AuthThrottle } from '../utils/decorators/throttle.decorator';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthenticationController {
+  private readonly logger = new Logger(AuthenticationController.name);
+
   constructor(
     private readonly authentication: AuthenticationService,
     private readonly refreshTokenService: RefreshTokenService
@@ -118,10 +131,10 @@ export class AuthenticationController {
     try {
       const { errors } = await this.authentication.auth.logout();
       if (errors && errors.length) {
-        console.warn('External auth logout warning:', errors[0]);
+        this.logger.warn(`External auth logout warning: ${errors[0]}`);
       }
     } catch (error) {
-      console.warn('External auth logout failed:', error);
+      this.logger.warn(`External auth logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

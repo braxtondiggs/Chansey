@@ -10,7 +10,7 @@ import { Risk } from './risk.entity';
 export class RiskService {
   constructor(
     @InjectRepository(Risk)
-    private riskRepository: Repository<Risk>
+    private readonly riskRepository: Repository<Risk>
   ) {}
 
   async findAll(): Promise<Risk[]> {

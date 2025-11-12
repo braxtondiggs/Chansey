@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 
 import { NestMinioModule } from 'nestjs-minio';
 
@@ -7,10 +7,8 @@ import { StorageService } from './storage.service';
 
 @Module({
   imports: [
-    ConfigModule,
     NestMinioModule.registerAsync({
       isGlobal: true,
-      imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({
         endPoint: configService.get<string>('MINIO_HOST') || 'localhost',

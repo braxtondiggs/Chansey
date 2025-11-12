@@ -36,7 +36,6 @@ import { UsersModule } from '../users/users.module';
   controllers: [OrderController, BacktestController],
   exports: [OrderService, OrderSyncTask, TradeExecutionService, BacktestService, BacktestEngine],
   imports: [
-    ConfigModule,
     TypeOrmModule.forFeature([
       Algorithm,
       Coin,

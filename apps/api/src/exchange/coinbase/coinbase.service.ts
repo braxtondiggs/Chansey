@@ -116,7 +116,7 @@ export class CoinbaseService extends BaseExchangeService {
   async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
       const client = await this.getCoinbaseClient(user);
-      console.log(`Fetching Coinbase balance for user ${user.id}...`);
+      this.logger.log(`Fetching Coinbase balance for user ${user.id}...`);
       const balances = await client.fetchBalance();
       this.logger.debug(`Fetched Coinbase balance for user ${user.id}: ${JSON.stringify(balances)}`);
 

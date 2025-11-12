@@ -94,13 +94,13 @@ export class MeanReversionService {
       const currentPrice = prices[prices.length - 1];
       continue;
       /* try {
-        console.log(
+        this.logger.debug(
           `currentPrice: ${currentPrice} mean: ${mean} Standard Deviation: ${standardDeviation} Volatility: ${volatility} ${
             mean - threshold * standardDeviation
           }`
         );
         if (currentPrice < mean - threshold * standardDeviation) {
-          console.log(`Buy MRA: ${currentPrice} < ${mean - threshold * standardDeviation}`);
+          this.logger.debug(`Buy MRA: ${currentPrice} < ${mean - threshold * standardDeviation}`);
           await this.testnet.createOrder(OrderSide.BUY, {
             coinId: coin.id,
             quantity: '1',
@@ -109,7 +109,7 @@ export class MeanReversionService {
           });
         } else if (currentPrice > mean + threshold * standardDeviation) {
           // TODO: Calculate if can sell
-          console.log(`Sell MRA: ${currentPrice} > ${mean + threshold * standardDeviation}`);
+          this.logger.debug(`Sell MRA: ${currentPrice} > ${mean + threshold * standardDeviation}`);
           await this.testnet.createOrder(OrderSide.SELL, {
             coinId: coin.id,
             quantity: '1',
@@ -118,7 +118,7 @@ export class MeanReversionService {
           });
         }
       } catch (e) {
-        console.log(e);
+        this.logger.debug(e);
       }*/
     }
   }

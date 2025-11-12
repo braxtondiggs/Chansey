@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 
@@ -17,7 +16,6 @@ import { UsersModule } from '../users/users.module';
   imports: [
     UsersModule,
     PassportModule,
-    ConfigModule,
     JwtModule.register({}) // Empty config, will use service-level config
   ],
   providers: [ApiKeyStrategy, AuthenticationService, LocalStrategy, JwtStrategy, RolesGuard, RefreshTokenService],

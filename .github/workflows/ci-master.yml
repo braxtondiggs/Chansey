@@ -32,9 +32,14 @@ jobs:
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
-      - name: Install dependencies if cache miss
+      - name: Install dependencies if cache miss (verifies lockfile integrity)
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
+        # Using 'npm ci' ensures:
+        # - package-lock.json matches package.json exactly
+        # - Reproducible builds across environments
+        # - Faster installation (skips dependency resolution)
+        # - Fails if lockfile is out of sync
       - name: Set SHAs for Nx Affected Commands
         uses: nrwl/nx-set-shas@v4
         with:
@@ -63,10 +68,16 @@ jobs:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
       - uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'master'
+
+      # NOTE: Nx Cloud DTE disabled - was causing 5x slowdown (10min vs 2min for tests)
+      # - name: Start Nx Cloud DTE agents
+      #   run: npx nx-cloud start-ci-run --distribute-on="3 linux-medium-js" --stop-agents-after="lint,test"
 
       # Run affected tests and linting first
       - name: Run affected lint and test
-        run: npx nx affected -t lint test --parallel
+        run: npx nx affected --target=lint,test --parallel=3 --configuration=ci
   deploy-frontend:
     needs: [setup, test-build]
     # Check if chansey is in the affected list AND this is the master branch

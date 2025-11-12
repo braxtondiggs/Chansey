@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Logger,
   Patch,
   Post,
   Req,
@@ -34,6 +35,8 @@ import { validateImageFile } from '../utils/file-validation.util';
 @UseGuards(JwtAuthenticationGuard)
 @UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
+  private readonly logger = new Logger(UserController.name);
+
   constructor(
     private readonly user: UsersService,
     private readonly storage: StorageService
@@ -87,14 +90,16 @@ export class UserController {
           await this.storage.deleteFile(user.picture);
         } catch (error) {
           // Log but continue even if deletion fails
-          console.error('Error deleting old profile image:', error);
+          this.logger.error(
+            `Error deleting old profile image: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
         }
       }
 
       // Update user profile with the new image URL
       return this.user.update({ picture: fileUrl }, user, true);
     } catch (error) {
-      console.error('Error processing file upload:', error);
+      this.logger.error(`Error processing file upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
   }
@@ -116,7 +121,9 @@ export class UserController {
 
       return userWithProfile;
     } catch (error) {
-      console.error('Error fetching complete user profile:', error);
+      this.logger.error(
+        `Error fetching complete user profile: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
       // Fall back to the basic user data if Authorizer fetch fails
       return user;
     }
