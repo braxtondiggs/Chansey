@@ -8,7 +8,6 @@ import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
-import { MessagesModule } from 'primeng/messages';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
@@ -27,7 +26,6 @@ import { BacktestingService } from '@chansey-web/app/shared/services/backtesting
     FloatLabelModule,
     InputTextModule,
     MessageModule,
-    MessagesModule,
     ReactiveFormsModule,
     TableModule,
     TagModule
@@ -54,7 +52,7 @@ export class ComparisonDashboardComponent {
     effect(() => {
       const runs = this.backtestsQuery.data();
       if (runs) {
-        this.backtests.set(runs);
+        this.backtests.set(runs.items ?? []);
       }
     });
 

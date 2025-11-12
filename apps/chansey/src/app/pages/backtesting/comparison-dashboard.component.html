@@ -31,7 +31,7 @@
         <td>
           <p-checkbox
             [binary]="true"
-            [ngModel]="selectedRunIds().has(run.id)"
+            [value]="selectedRunIds().has(run.id)"
             (onChange)="toggleRunSelection(run, $event.checked)"
           ></p-checkbox>
         </td>
@@ -60,7 +60,7 @@
     </div>
   </div>
 
-  <p-table [value]="comparisonResult()?.runs">
+  <p-table [value]="comparisonResult()?.runs || []">
     <ng-template pTemplate="header">
       <tr>
         <th>Run</th>

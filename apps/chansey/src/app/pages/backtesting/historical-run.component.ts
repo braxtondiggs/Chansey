@@ -60,7 +60,7 @@ export class HistoricalRunComponent {
   algorithms = signal<Algorithm[]>([]);
   datasets = signal<MarketDataSet[]>([]);
   backtests = signal<BacktestRunSummary[]>([]);
-  historicalRuns = computed(() => this.backtests().filter((run) => (run.mode ?? run.type) === BacktestType.HISTORICAL));
+  historicalRuns = computed(() => this.backtests().filter((run) => run.type === BacktestType.HISTORICAL));
 
   selectedRun = signal<BacktestRunSummary | null>(null);
 
@@ -186,7 +186,8 @@ export class HistoricalRunComponent {
     });
   }
 
-  onSelectRun(run: BacktestRunSummary): void {
+  onSelectRun(run?: BacktestRunSummary | BacktestRunSummary[]): void {
+    if (!run || Array.isArray(run)) return;
     this.selectedRun.set(run);
   }
 }

@@ -1,20 +1,62 @@
+// Re-export enums from backend entities
+export enum BacktestStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum BacktestType {
+  HISTORICAL = 'HISTORICAL',
+  LIVE_REPLAY = 'LIVE_REPLAY',
+  PAPER_TRADING = 'PAPER_TRADING',
+  STRATEGY_OPTIMIZATION = 'STRATEGY_OPTIMIZATION'
+}
+
+export enum SignalType {
+  ENTRY = 'ENTRY',
+  EXIT = 'EXIT',
+  ADJUSTMENT = 'ADJUSTMENT',
+  RISK_CONTROL = 'RISK_CONTROL'
+}
+
+export enum SignalDirection {
+  LONG = 'LONG',
+  SHORT = 'SHORT',
+  FLAT = 'FLAT'
+}
+
+export enum SimulatedOrderType {
+  MARKET = 'MARKET',
+  LIMIT = 'LIMIT',
+  STOP = 'STOP',
+  STOP_LIMIT = 'STOP_LIMIT'
+}
+
+export enum SimulatedOrderStatus {
+  FILLED = 'FILLED',
+  PARTIAL = 'PARTIAL',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum MarketDataSource {
+  EXCHANGE_STREAM = 'EXCHANGE_STREAM',
+  VENDOR_FEED = 'VENDOR_FEED',
+  INTERNAL_CAPTURE = 'INTERNAL_CAPTURE'
+}
+
+export enum MarketDataTimeframe {
+  TICK = 'TICK',
+  SECOND = 'SECOND',
+  MINUTE = 'MINUTE',
+  HOUR = 'HOUR',
+  DAY = 'DAY'
+}
+
+// Backward compatibility type alias
 export type BacktestMode = 'historical' | 'live_replay';
-
-export type BacktestStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-
-export type BacktestSignalType = 'ENTRY' | 'EXIT' | 'ADJUSTMENT' | 'RISK_CONTROL';
-
-export type BacktestSignalDirection = 'LONG' | 'SHORT' | 'FLAT';
-
-export type SimulatedOrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
-
-export type SimulatedOrderStatus = 'FILLED' | 'PARTIAL' | 'CANCELLED';
-
-export type MarketDataSource = 'EXCHANGE_STREAM' | 'VENDOR_FEED' | 'INTERNAL_CAPTURE';
-
-export type MarketDataTimeframe = 'TICK' | 'SECOND' | 'MINUTE' | 'HOUR' | 'DAY';
-
-export type BacktestType = 'HISTORICAL' | 'LIVE_REPLAY' | 'PAPER_TRADING' | 'STRATEGY_OPTIMIZATION';
 
 export interface MarketDataSet {
   id: string;
@@ -74,9 +116,9 @@ export interface BacktestSignal {
   id: string;
   backtestId: string;
   timestamp: Date;
-  signalType: BacktestSignalType;
+  signalType: SignalType;
   instrument: string;
-  direction: BacktestSignalDirection;
+  direction: SignalDirection;
   quantity: number;
   price?: number;
   reason?: string;
@@ -106,6 +148,7 @@ export interface BacktestRunSummary {
   algorithm: BacktestAlgorithmRef;
   marketDataSet?: MarketDataSet;
   mode: BacktestMode;
+  type?: BacktestType; // Added for consistency with BacktestRunDetail
   status: BacktestStatus;
   initiatedBy: BacktestUserRef;
   initiatedAt: Date;
@@ -118,7 +161,7 @@ export interface BacktestRunSummary {
 }
 
 export interface BacktestRunDetail extends BacktestRunSummary {
-  type: BacktestType | string;
+  type: BacktestType;
   initialCapital: number;
   tradingFee: number;
   startDate: Date;
@@ -237,4 +280,4 @@ export interface CreateComparisonReportRequest {
   filters?: ComparisonFilters;
 }
 
-export interface ComparisonReportResponse extends ComparisonReport {}
+export type ComparisonReportResponse = ComparisonReport;

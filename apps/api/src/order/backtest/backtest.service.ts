@@ -113,9 +113,9 @@ export class BacktestService {
     const configSnapshot = {
       algorithm: {
         id: algorithm.id,
-        name: algorithm.name,
-        version: (algorithm as Record<string, unknown>).version ?? null,
-        strategyId: (algorithm as Record<string, unknown>).strategyId ?? null
+        name: algorithm.name
+        // version: (algorithm as Record<string, unknown>).version ?? null,
+        // strategyId: (algorithm as Record<string, unknown>).strategyId ?? null
       },
       dataset: {
         id: marketDataSet.id,
@@ -415,7 +415,7 @@ export class BacktestService {
     });
 
     if (backtests.length !== ids.length) {
-      throw new NotFoundCustomException('Backtest', { ids });
+      throw new NotFoundCustomException('Backtest', { id: ids.join(', ') });
     }
 
     return backtests;
@@ -438,8 +438,8 @@ export class BacktestService {
             status: backtest.status,
             algorithm: {
               id: backtest.algorithm?.id,
-              name: backtest.algorithm?.name,
-              version: (backtest.algorithm as Record<string, unknown>)?.version ?? null
+              name: backtest.algorithm?.name
+              // version: (backtest.algorithm as Record<string, unknown>)?.version ?? null
             },
             marketDataSet: backtest.marketDataSet
               ? {
@@ -605,7 +605,7 @@ export class BacktestService {
     const backtests = await this.loadBacktestsForUser(user.id, dto.runIds);
     const report = this.comparisonReportRepository.create({
       name: dto.name,
-      filters: dto.filters,
+      filters: dto.filters as any,
       createdBy: user
     });
 
@@ -714,8 +714,8 @@ export class BacktestService {
       description: backtest.description,
       algorithm: {
         id: backtest.algorithm?.id,
-        name: backtest.algorithm?.name,
-        version: (backtest.algorithm as Record<string, unknown>)?.version as string | undefined
+        name: backtest.algorithm?.name
+        // version: (backtest.algorithm as Record<string, unknown>)?.version as string | undefined
       },
       marketDataSet: backtest.marketDataSet
         ? {
@@ -736,6 +736,7 @@ export class BacktestService {
           }
         : undefined,
       mode: this.mapRunMode(backtest.type),
+      type: backtest.type,
       status: backtest.status,
       initiatedBy: this.createUserRef(backtest.user),
       initiatedAt: backtest.createdAt,

@@ -8,7 +8,6 @@ import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
-import { MessagesModule } from 'primeng/messages';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
@@ -42,7 +41,6 @@ interface TelemetryEvent {
     InputNumberModule,
     InputTextModule,
     MessageModule,
-    MessagesModule,
     ReactiveFormsModule,
     SelectModule,
     TableModule,
@@ -66,7 +64,7 @@ export class LiveReplayComponent implements OnDestroy {
   datasets = signal<MarketDataSet[]>([]);
   backtests = signal<BacktestRunSummary[]>([]);
 
-  replayRuns = computed(() => this.backtests().filter((run) => (run.mode ?? run.type) === BacktestType.LIVE_REPLAY));
+  replayRuns = computed(() => this.backtests().filter((run) => run.type === BacktestType.LIVE_REPLAY));
   replayDatasets = computed(() => this.datasets().filter((dataset) => dataset.replayCapable));
 
   selectedRun = signal<BacktestRunSummary | null>(null);
@@ -102,7 +100,7 @@ export class LiveReplayComponent implements OnDestroy {
     effect(() => {
       const runs = this.backtestsQuery.data();
       if (runs) {
-        this.backtests.set(runs);
+        this.backtests.set(runs.items ?? []);
       }
     });
 
@@ -168,7 +166,8 @@ export class LiveReplayComponent implements OnDestroy {
     });
   }
 
-  onSelectRun(run: BacktestRunSummary): void {
+  onSelectRun(run?: BacktestRunSummary | BacktestRunSummary[]): void {
+    if (!run || Array.isArray(run)) return;
     this.selectedRun.set(run);
     this.telemetryEvents.set([]);
     this.attachTelemetry(run.id);
@@ -177,10 +176,10 @@ export class LiveReplayComponent implements OnDestroy {
   private attachTelemetry(backtestId: string): void {
     this.detachTelemetry();
     const subscription = this.backtestingService.subscribeToTelemetry(backtestId);
-    subscription.on('log', (payload) => this.pushEvent('log', payload));
-    subscription.on('metric', (payload) => this.pushEvent('metric', payload));
-    subscription.on('status', (payload) => this.pushEvent('status', payload));
-    subscription.on('trace', (payload) => this.pushEvent('trace', payload));
+    subscription.on('log', (payload) => this.pushEvent('log', payload as Record<string, unknown>));
+    subscription.on('metric', (payload) => this.pushEvent('metric', payload as Record<string, unknown>));
+    subscription.on('status', (payload) => this.pushEvent('status', payload as Record<string, unknown>));
+    subscription.on('trace', (payload) => this.pushEvent('trace', payload as Record<string, unknown>));
     this.telemetrySubscription = subscription;
   }
 

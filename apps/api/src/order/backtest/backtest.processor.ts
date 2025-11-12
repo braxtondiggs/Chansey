@@ -9,8 +9,9 @@ import { BacktestEngine } from './backtest-engine.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
-import { Backtest, BacktestStatus, MarketDataSet } from './backtest.entity';
+import { Backtest, BacktestStatus } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
+import { MarketDataSet } from './market-data-set.entity';
 
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
