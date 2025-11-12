@@ -186,7 +186,7 @@ export class CoinService {
 
   async update(coinId: string, coin: UpdateCoinDto) {
     const data = await this.getCoinById(coinId);
-    if (!data) new NotFoundCustomException('Coin', { id: coinId });
+    if (!data) throw new NotFoundCustomException('Coin', { id: coinId });
     return await this.coin.save(new Coin({ ...data, ...coin }));
   }
 
@@ -200,7 +200,7 @@ export class CoinService {
 
   async remove(coinId: string) {
     const response = await this.coin.delete(coinId);
-    if (!response.affected) new NotFoundCustomException('Coin', { id: coinId });
+    if (!response.affected) throw new NotFoundCustomException('Coin', { id: coinId });
     return response;
   }
 

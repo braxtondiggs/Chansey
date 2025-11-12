@@ -17,8 +17,11 @@ async function bootstrap(): Promise<void> {
     AppModule,
     new FastifyAdapter({
       ignoreTrailingSlash: true,
-      logger: true
-    })
+      // Disable Fastify's built-in logger since we're using Pino via nestjs-pino
+      logger: false
+    }),
+    // Use bufferLogs to ensure no logs are lost before pino is initialized
+    { bufferLogs: true }
   );
 
   await registerMiddlewares(app);
@@ -128,7 +131,13 @@ async function registerMiddlewares(app: NestFastifyApplication): Promise<void> {
   await app.register(fastifyCookie, {
     secret: process.env.COOKIE_SECRET,
     hook: 'onRequest',
-    parseOptions: { domain: '.cymbit.com' }
+    parseOptions: {
+      domain: '.cymbit.com',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/'
+    }
   });
 
   app.enableCors({

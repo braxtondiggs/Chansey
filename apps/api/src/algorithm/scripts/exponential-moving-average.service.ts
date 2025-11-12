@@ -55,7 +55,7 @@ export class ExponentialMovingAverageService {
     }
     for (const coin of coins) {
       const ema = this.calculateEMA(this.prices[coin.id], period).pop();
-      console.log(ema);
+      this.logger.debug(`EMA for ${coin.symbol}: ${ema}`);
     }
   }
 

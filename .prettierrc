@@ -8,23 +8,7 @@
   "bracketSpacing": true,
   "arrowParens": "always",
   "proseWrap": "always",
-  "importOrderParserPlugins": ["typescript", "decorators-legacy"],
-  "plugins": ["@trivago/prettier-plugin-sort-imports", "prettier-plugin-tailwindcss"],
+  "plugins": ["prettier-plugin-tailwindcss"],
   "tailwindConfig": "./apps/chansey/tailwind.config.js",
-  "tailwindFunctions": ["clsx", "tw"],
-  "importOrder": [
-    "^@angular/(.*)$",
-    "^@nestjs/(.*)$",
-    "<THIRD_PARTY_MODULES>",
-    "^(crypto|fs|path|util|events|http|https|stream|buffer)$",
-    "^@chansey/(.*)$",
-    "^@chansey-api/(.*)$",
-    "^@chansey-web/(.*)$",
-    "^\\./(.*)$",
-    "^\\.\\./(.*)$"
-  ],
-  "importOrderSeparation": true,
-  "importOrderSortSpecifiers": false,
-  "importOrderGroupNamespaceSpecifiers": false,
-  "importOrderCaseInsensitive": true
+  "tailwindFunctions": ["clsx", "tw"]
 }

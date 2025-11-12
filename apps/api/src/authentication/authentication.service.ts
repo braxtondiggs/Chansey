@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { Authorizer } from '@authorizerdev/authorizer-js';
@@ -12,6 +12,8 @@ import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthenticationService {
+  private readonly logger = new Logger(AuthenticationService.name);
+
   constructor(
     readonly config: ConfigService,
     private readonly user: UsersService
@@ -53,7 +55,7 @@ export class AuthenticationService {
         throw error;
       }
 
-      console.error('Registration error:', error);
+      this.logger.error(`Registration error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
       throw new HttpException(
         'Registration failed: ' + (error?.message || 'Unknown error occurred'),
@@ -122,7 +124,7 @@ export class AuthenticationService {
         throw new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST);
       } else {
         // Log the unexpected error and throw a generic message
-        console.error('Authentication error:', error);
+        this.logger.error(`Authentication error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         throw new HttpException(
           'Authentication failed: ' + (error?.message || 'Unknown error occurred'),
           HttpStatus.INTERNAL_SERVER_ERROR

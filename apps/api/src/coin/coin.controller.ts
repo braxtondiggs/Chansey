@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Logger,
   Param,
   ParseUUIDPipe,
   Query,
@@ -173,6 +174,8 @@ export class CoinController {
 @ApiTags('Coins - Detail Page')
 @Controller('coins')
 export class CoinsController {
+  private readonly logger = new Logger(CoinsController.name);
+
   constructor(
     private readonly coinService: CoinService,
     private readonly orderService: OrderService
@@ -221,7 +224,7 @@ export class CoinsController {
         }
       } catch (error) {
         // If holdings fetch fails, just return coin detail without holdings
-        console.error('Failed to fetch user holdings:', error);
+        this.logger.error('Failed to fetch user holdings:', error);
       }
     }
 

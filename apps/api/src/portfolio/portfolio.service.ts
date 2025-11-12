@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
@@ -15,6 +15,8 @@ import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class PortfolioService {
+  private readonly logger = new Logger(PortfolioService.name);
+
   constructor(
     @InjectRepository(Portfolio) private readonly portfolio: Repository<Portfolio>,
     private readonly portfolioHistoricalPriceTask: PortfolioHistoricalPriceTask,
@@ -56,7 +58,7 @@ export class PortfolioService {
       where: whereConditions,
       relations
     });
-    if (!portfolio) throw new NotFoundCustomException('Portfolio', { user: user.id });
+    if (!portfolio || portfolio.length === 0) throw new NotFoundCustomException('Portfolio', { user: user.id });
     return portfolio;
   }
 
@@ -95,13 +97,15 @@ export class PortfolioService {
       if (priceCount >= 100) {
         await this.portfolioHistoricalPriceTask.addHistoricalPriceJob(portfolioDto.coinId);
       } else {
-        console.log(
+        this.logger.log(
           `Skipping historical price job for coin ${portfolioDto.coinId}: only ${priceCount} prices in database (minimum 100 required)`
         );
       }
     } catch (error) {
       // Log error but don't fail the portfolio creation
-      console.error(`Failed to queue historical price job for coin ${portfolioDto.coinId}:`, error);
+      this.logger.error(
+        `Failed to queue historical price job for coin ${portfolioDto.coinId}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
 
     return savedPortfolio;
