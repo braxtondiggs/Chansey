@@ -1,4 +1,3 @@
-
 import { Component, computed, inject, OnInit, signal, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -19,15 +18,15 @@ interface MenuItem {
   standalone: true,
   imports: [AppMenuitem, RouterModule],
   template: `<ul class="layout-menu">
-      @for (item of model(); track item; let i = $index) {
-        @if (!item.separator) {
-          <li chansey-menuitem [item]="item" [index]="i" [root]="true"></li>
-        }
-        @if (item.separator) {
-          <li class="menu-separator"></li>
-        }
+    @for (item of model(); track item; let i = $index) {
+      @if (!item.separator) {
+        <li chansey-menuitem [item]="item" [index]="i" [root]="true"></li>
       }
-    </ul>`
+      @if (item.separator) {
+        <li class="menu-separator"></li>
+      }
+    }
+  </ul>`
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppMenu implements OnInit {
@@ -61,6 +60,11 @@ export class AppMenu implements OnInit {
             label: 'Transactions',
             icon: 'pi pi-fw pi-arrow-right-arrow-left',
             routerLink: ['/app/transactions']
+          },
+          {
+            label: 'Backtesting',
+            icon: 'pi pi-fw pi-chart-line',
+            routerLink: ['/app/backtesting']
           },
           {
             label: 'Prices',

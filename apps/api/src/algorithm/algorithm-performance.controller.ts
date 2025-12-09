@@ -5,7 +5,7 @@ import { AlgorithmPerformanceQueryDto, PerformancePeriod } from './dto/algorithm
 import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmPerformanceService } from './services/algorithm-performance.service';
 
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 
 /**
  * AlgorithmPerformanceController

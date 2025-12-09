@@ -123,3 +123,26 @@ export const profileKeys = createQueryKeys<{
 
 // Define detail query
 profileKeys.detail = [...profileKeys.all, 'detail'];
+
+/**
+ * Backtesting query keys
+ */
+export const backtestKeys = createQueryKeys<{
+  all: QueryKey;
+  detail: (id: string) => QueryKey;
+  signals: (id: string) => QueryKey;
+  trades: (id: string) => QueryKey;
+  datasets: QueryKey;
+}>('backtests');
+
+backtestKeys.detail = (id) => [...backtestKeys.all, 'detail', id];
+backtestKeys.signals = (id) => [...backtestKeys.detail(id), 'signals'];
+backtestKeys.trades = (id) => [...backtestKeys.detail(id), 'trades'];
+backtestKeys.datasets = [...backtestKeys.all, 'datasets'];
+
+export const comparisonKeys = createQueryKeys<{
+  all: QueryKey;
+  detail: (id: string) => QueryKey;
+}>('comparison-reports');
+
+comparisonKeys.detail = (id) => [...comparisonKeys.all, 'detail', id];

@@ -13,6 +13,7 @@ import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.servic
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Risk } from '../risk/risk.entity';
+import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
 
 interface UserWithRoles extends User {
   roles?: string[];
@@ -31,7 +32,8 @@ export class UsersService {
     private readonly portfolio: PortfolioService,
     private readonly coin: CoinService,
     private readonly config: ConfigService,
-    private readonly exchangeKeyService: ExchangeKeyService
+    private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly riskPoolMapping: RiskPoolMappingService
   ) {
     this.auth = new Authorizer({
       authorizerURL: this.config.get<string>('AUTHORIZER_URL'),
@@ -228,6 +230,110 @@ export class UsersService {
     } catch (error) {
       this.logger.error(`Failed to fetch users with active exchange keys: ${error.message}`, error.stack);
       return [];
+    }
+  }
+
+  async enrollInAlgoTrading(userId: string, capitalAllocationPercentage: number, exchangeKeyId: string): Promise<User> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId }, relations: ['risk'] });
+
+      const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, userId);
+      if (!exchangeKey) {
+        throw new NotFoundException('Exchange key not found');
+      }
+
+      user.algoTradingEnabled = true;
+      user.algoCapitalAllocationPercentage = capitalAllocationPercentage;
+      user.algoEnrolledAt = new Date();
+
+      await this.user.save(user);
+
+      this.logger.log(`User ${userId} enrolled in algo trading with ${capitalAllocationPercentage}% allocation`);
+      return user;
+    } catch (error) {
+      this.logger.error(`Failed to enroll user ${userId} in algo trading: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to enroll in algo trading');
+    }
+  }
+
+  async pauseAlgoTrading(userId: string): Promise<User> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+
+      user.algoTradingEnabled = false;
+
+      await this.user.save(user);
+
+      this.logger.log(`User ${userId} paused algo trading (positions kept open)`);
+      return user;
+    } catch (error) {
+      this.logger.error(`Failed to pause algo trading for user ${userId}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to pause algo trading');
+    }
+  }
+
+  async resumeAlgoTrading(userId: string): Promise<User> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+
+      if (!user.algoCapitalAllocationPercentage || user.algoCapitalAllocationPercentage <= 0) {
+        throw new InternalServerErrorException('No capital allocation set. Please set percentage first.');
+      }
+
+      user.algoTradingEnabled = true;
+
+      await this.user.save(user);
+
+      this.logger.log(`User ${userId} resumed algo trading`);
+      return user;
+    } catch (error) {
+      this.logger.error(`Failed to resume algo trading for user ${userId}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to resume algo trading');
+    }
+  }
+
+  async updateAlgoCapital(userId: string, newPercentage: number): Promise<User> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+
+      user.algoCapitalAllocationPercentage = newPercentage;
+
+      await this.user.save(user);
+
+      this.logger.log(`User ${userId} updated algo capital allocation to ${newPercentage}%`);
+      return user;
+    } catch (error) {
+      this.logger.error(`Failed to update algo capital for user ${userId}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to update capital allocation');
+    }
+  }
+
+  async getAlgoTradingStatus(userId: string): Promise<any> {
+    try {
+      const user = await this.user.findOneOrFail({
+        where: { id: userId },
+        relations: ['risk']
+      });
+
+      let activeStrategies = 0;
+      if (user.risk) {
+        const strategies = await this.riskPoolMapping.getActiveStrategiesForUser(user);
+        activeStrategies = strategies.length;
+      }
+
+      const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+
+      return {
+        enabled: user.algoTradingEnabled,
+        capitalAllocationPercentage: user.algoCapitalAllocationPercentage,
+        enrolledAt: user.algoEnrolledAt,
+        riskLevel: user.risk?.name || 'Not set',
+        activeStrategies,
+        exchangeKeyId: exchanges?.[0]?.id || null
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get algo trading status for user ${userId}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to get algo trading status');
     }
   }
 }

@@ -50,6 +50,22 @@ export class User {
   @Column({ default: false })
   hide_balance: boolean;
 
+  // Algorithmic trading enrollment
+  @Column({ default: false })
+  algoTradingEnabled: boolean;
+
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    comment: 'Percentage of free balance allocated to algo trading (e.g., 25.50 = 25.5%)'
+  })
+  algoCapitalAllocationPercentage?: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  algoEnrolledAt?: Date;
+
   rememberMe: boolean;
   token: string;
 
