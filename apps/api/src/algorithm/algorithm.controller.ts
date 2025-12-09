@@ -15,13 +15,19 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 
 import { AlgorithmService } from './algorithm.service';
-import { CreateAlgorithmDto, UpdateAlgorithmDto, AlgorithmResponseDto, DeleteResponseDto, ActivateAlgorithmDto } from './dto';
+import {
+  CreateAlgorithmDto,
+  UpdateAlgorithmDto,
+  AlgorithmResponseDto,
+  DeleteResponseDto,
+  ActivateAlgorithmDto
+} from './dto';
 import { AlgorithmRegistry } from './registry/algorithm-registry.service';
 import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
 
 import { Roles } from '../authentication/decorator/roles.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
 
 @ApiTags('Algorithm')

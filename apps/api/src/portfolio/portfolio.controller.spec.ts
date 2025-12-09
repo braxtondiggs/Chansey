@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { PortfolioAggregationService } from './portfolio-aggregation.service';
 import { PortfolioController } from './portfolio.controller';
 import { Portfolio } from './portfolio.entity';
 import { PortfolioService } from './portfolio.service';
 import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
 
 import { PriceService } from '../price/price.service';
+import { UserPerformanceService } from '../strategy/user-performance.service';
 
 describe('PortfolioController', () => {
   let controller: PortfolioController;
@@ -39,6 +41,21 @@ describe('PortfolioController', () => {
             getPriceByTimeframe: jest.fn(() => []),
             getLatestPrice: jest.fn(() => ({})),
             createPrice: jest.fn(() => ({}))
+          }
+        },
+        {
+          provide: PortfolioAggregationService,
+          useValue: {
+            getAggregatedPortfolio: jest.fn(() => ({})),
+            getPositionsByStrategy: jest.fn(() => []),
+            getAllocationBreakdown: jest.fn(() => ({}))
+          }
+        },
+        {
+          provide: UserPerformanceService,
+          useValue: {
+            getUserAlgoPerformance: jest.fn(() => ({})),
+            getPerformanceByStrategy: jest.fn(() => [])
           }
         }
       ]

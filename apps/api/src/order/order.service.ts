@@ -1016,4 +1016,82 @@ export class OrderService {
       exchanges: exchangesList
     };
   }
+
+  /**
+   * Place an algorithmic order for robo-advisor system.
+   * Sets isAlgorithmicTrade flag and strategyConfigId for tracking.
+   */
+  async placeAlgorithmicOrder(
+    userId: string,
+    strategyConfigId: string,
+    signal: { action: 'buy' | 'sell'; symbol: string; quantity: number; price: number },
+    exchangeKeyId: string
+  ): Promise<Order> {
+    this.logger.log(
+      `Placing algorithmic ${signal.action} order for user ${userId}, strategy ${strategyConfigId}, symbol ${signal.symbol}`
+    );
+
+    try {
+      const user = { id: userId } as User;
+      const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, userId);
+      if (!exchangeKey || !exchangeKey.exchange) {
+        throw new NotFoundException('Exchange key not found');
+      }
+
+      const exchange = await this.exchangeManager.getExchangeClient(exchangeKey.exchange.slug, user);
+      await exchange.loadMarkets();
+
+      const ccxtOrder = await exchange.createOrder(
+        signal.symbol,
+        'market',
+        signal.action,
+        signal.quantity,
+        signal.price
+      );
+
+      const [baseSymbol, quoteSymbol] = signal.symbol.split('/');
+      let baseCoin = null;
+      let quoteCoin = null;
+
+      try {
+        baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
+        quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
+      } catch (error) {
+        this.logger.warn(`Coins not found for ${signal.symbol}`);
+      }
+
+      const order = this.orderRepository.create({
+        orderId: ccxtOrder.id?.toString() || '',
+        clientOrderId: ccxtOrder.clientOrderId || ccxtOrder.id?.toString() || '',
+        symbol: signal.symbol,
+        side: signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+        type: OrderType.MARKET,
+        quantity: signal.quantity,
+        price: ccxtOrder.price || signal.price || 0,
+        executedQuantity: ccxtOrder.filled || 0,
+        cost: ccxtOrder.cost || 0,
+        fee: ccxtOrder.fee?.cost || 0,
+        feeCurrency: ccxtOrder.fee?.currency,
+        status: this.mapExchangeStatusToOrderStatus(ccxtOrder.status || 'open'),
+        transactTime: new Date(ccxtOrder.timestamp || Date.now()),
+        isManual: false,
+        isAlgorithmicTrade: true,
+        strategyConfigId,
+        exchangeKeyId,
+        user,
+        baseCoin: baseCoin || undefined,
+        quoteCoin: quoteCoin || undefined,
+        exchange: exchangeKey.exchange,
+        trades: ccxtOrder.trades,
+        info: ccxtOrder.info
+      });
+
+      const savedOrder = await this.orderRepository.save(order);
+      this.logger.log(`Algorithmic order created: ${savedOrder.id}`);
+      return savedOrder;
+    } catch (error) {
+      this.logger.error(`Algorithmic order failed: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to place algorithmic order: ${error.message}`);
+    }
+  }
 }

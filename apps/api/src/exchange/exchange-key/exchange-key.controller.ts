@@ -17,7 +17,7 @@ import { ExchangeKey } from './exchange-key.entity';
 import { ExchangeKeyService } from './exchange-key.service';
 
 import GetUser from '../../authentication/decorator/get-user.decorator';
-import JwtAuthenticationGuard from '../../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../../authentication/guard/jwt-authentication.guard';
 import { User } from '../../users/users.entity';
 
 @ApiTags('Exchange Keys')

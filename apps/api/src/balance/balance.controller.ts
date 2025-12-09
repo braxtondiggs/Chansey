@@ -6,7 +6,7 @@ import { BalanceService } from './balance.service';
 import { BalanceResponseDto, AccountValueHistoryDto, AssetDetailsDto } from './dto';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { User } from '../users/users.entity';
 import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
 import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';

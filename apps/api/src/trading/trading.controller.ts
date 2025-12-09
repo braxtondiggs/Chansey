@@ -5,7 +5,7 @@ import { OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
 import { TradingService } from './trading.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { User } from '../users/users.entity';
 
 @ApiTags('Trading')
