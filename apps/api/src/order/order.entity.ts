@@ -318,6 +318,25 @@ export class Order {
   })
   algorithmActivation?: AlgorithmActivation;
 
+  @Column({ type: 'uuid', nullable: true })
+  @IsUUID()
+  @IsOptional()
+  @Index('IDX_order_strategyConfigId')
+  @ApiProperty({
+    description: 'Strategy configuration that generated this algorithmic order (for robo-advisor)',
+    example: 'e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0',
+    required: false
+  })
+  strategyConfigId?: string;
+
+  @Column({ name: 'is_algorithmic_trade', type: 'boolean', default: false })
+  @ApiProperty({
+    description: 'Whether this order was placed by the automated algo trading system',
+    example: false,
+    default: false
+  })
+  isAlgorithmicTrade: boolean;
+
   @Column({ name: 'is_manual', type: 'boolean', default: false })
   @ApiProperty({
     description: 'Whether this order was placed manually by the user',

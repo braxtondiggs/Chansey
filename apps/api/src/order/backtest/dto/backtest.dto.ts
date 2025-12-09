@@ -3,6 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsArray,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -14,7 +15,14 @@ import {
   ValidateNested
 } from 'class-validator';
 
-import { BacktestType } from '../backtest.entity';
+import {
+  BacktestStatus,
+  BacktestType,
+  SignalDirection,
+  SignalType,
+  SimulatedOrderStatus,
+  SimulatedOrderType
+} from '../backtest.entity';
 
 export class CreateBacktestDto {
   @IsString()
@@ -50,6 +58,14 @@ export class CreateBacktestDto {
     example: '100c1721-7b0b-4d96-a18e-40904c0cc36b'
   })
   algorithmId: string;
+
+  @IsUUID('4')
+  @IsNotEmpty()
+  @ApiProperty({
+    description: 'UUID of the market data set used for the run',
+    example: '21dbce1f-9a0e-4f3b-b9f6-6b69b9d5d0f1'
+  })
+  marketDataSetId: string;
 
   @IsNumber()
   @Min(100)
@@ -102,6 +118,15 @@ export class CreateBacktestDto {
     required: false
   })
   strategyParams?: Record<string, any>;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Deterministic seed used to reproduce the run',
+    example: 'run-seed-20250101',
+    required: false
+  })
+  deterministicSeed?: string;
 }
 
 export class UpdateBacktestDto {
@@ -139,6 +164,15 @@ export class BacktestFiltersDto {
   })
   type?: BacktestType;
 
+  @IsEnum(BacktestType)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Filter by backtest mode',
+    enum: BacktestType,
+    required: false
+  })
+  mode?: BacktestType;
+
   @IsUUID('4')
   @IsOptional()
   @ApiProperty({
@@ -146,6 +180,15 @@ export class BacktestFiltersDto {
     required: false
   })
   algorithmId?: string;
+
+  @IsEnum(BacktestStatus)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Filter by run status',
+    enum: BacktestStatus,
+    required: false
+  })
+  status?: BacktestStatus;
 
   @IsDateString()
   @IsOptional()
@@ -171,23 +214,19 @@ export class BacktestFiltersDto {
   @ApiProperty({
     description: 'Number of results to return',
     minimum: 1,
-    maximum: 100,
-    default: 20,
+    maximum: 200,
+    default: 50,
     required: false
   })
-  limit?: number = 20;
+  limit?: number = 50;
 
-  @IsNumber()
-  @Min(0)
+  @IsString()
   @IsOptional()
-  @Type(() => Number)
   @ApiProperty({
-    description: 'Number of results to skip',
-    minimum: 0,
-    default: 0,
+    description: 'Opaque cursor for pagination',
     required: false
   })
-  offset?: number = 0;
+  cursor?: string;
 }
 
 export class BacktestPerformanceDto {
@@ -256,6 +295,46 @@ export class BacktestComparisonDto {
   backtestIds: string[];
 }
 
+export class ComparisonFiltersDto {
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ description: 'Timeframe filter label', required: false })
+  timeframe?: string;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ description: 'Market regime filter', required: false })
+  marketRegime?: string;
+
+  @IsArray()
+  @IsUUID('4', { each: true })
+  @IsOptional()
+  @ApiProperty({ description: 'Subset of algorithm IDs included', required: false, type: [String] })
+  algorithmIds?: string[];
+}
+
+export class CreateComparisonReportDto {
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({ description: 'Name of the comparison report' })
+  name: string;
+
+  @IsUUID('4', { each: true })
+  @IsNotEmpty()
+  @ApiProperty({
+    description: 'Run identifiers to include in the report',
+    example: ['uuid1', 'uuid2'],
+    type: [String]
+  })
+  runIds: string[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ComparisonFiltersDto)
+  @ApiProperty({ description: 'Filters captured at report creation', required: false })
+  filters?: ComparisonFiltersDto;
+}
+
 export class BacktestProgressDto {
   @ApiProperty({ description: 'Current progress percentage (0-100)' })
   progress: number;
@@ -271,4 +350,64 @@ export class BacktestProgressDto {
 
   @ApiProperty({ description: 'Number of trades executed so far', required: false })
   tradesExecuted?: number;
+}
+
+export class BacktestSignalQueryDto {
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ description: 'Opaque cursor for pagination', required: false })
+  cursor?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(10)
+  @Max(500)
+  @Type(() => Number)
+  @ApiProperty({ description: 'Number of signals to return', minimum: 10, maximum: 500, default: 100, required: false })
+  pageSize?: number = 100;
+
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ description: 'Filter by instrument symbol', required: false })
+  instrument?: string;
+
+  @IsOptional()
+  @IsEnum(SignalType)
+  @ApiProperty({ description: 'Filter by signal type', enum: SignalType, required: false })
+  signalType?: SignalType;
+
+  @IsOptional()
+  @IsEnum(SignalDirection)
+  @ApiProperty({ description: 'Filter by direction', enum: SignalDirection, required: false })
+  direction?: SignalDirection;
+}
+
+export class BacktestTradesQueryDto {
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ description: 'Opaque cursor for pagination', required: false })
+  cursor?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(10)
+  @Max(500)
+  @Type(() => Number)
+  @ApiProperty({ description: 'Number of fills to return', minimum: 10, maximum: 500, default: 100, required: false })
+  pageSize?: number = 100;
+
+  @IsOptional()
+  @IsEnum(SimulatedOrderType)
+  @ApiProperty({ description: 'Filter by simulated order type', enum: SimulatedOrderType, required: false })
+  orderType?: SimulatedOrderType;
+
+  @IsOptional()
+  @IsEnum(SimulatedOrderStatus)
+  @ApiProperty({ description: 'Filter by simulated order status', enum: SimulatedOrderStatus, required: false })
+  status?: SimulatedOrderStatus;
+
+  @IsOptional()
+  @IsString()
+  @ApiProperty({ description: 'Filter by instrument symbol', required: false })
+  instrument?: string;
 }

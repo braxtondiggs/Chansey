@@ -19,7 +19,7 @@ import { CoinService } from './coin.service';
 import { CoinResponseDto, CoinWithPriceDto } from './dto';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { OrderService } from '../order/order.service';
 import { User } from '../users/users.entity';
 

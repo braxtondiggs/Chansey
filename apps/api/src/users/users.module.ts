@@ -16,6 +16,7 @@ import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Risk } from '../risk/risk.entity';
 import { SharedCacheModule } from '../shared-cache.module';
 import { StorageModule } from '../storage/storage.module';
+import { StrategyModule } from '../strategy/strategy.module';
 
 @Module({
   controllers: [UserController],
@@ -25,6 +26,7 @@ import { StorageModule } from '../storage/storage.module';
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => PortfolioModule),
+    forwardRef(() => StrategyModule),
     SharedCacheModule,
     StorageModule,
     BullModule.registerQueue({ name: 'user-queue' })

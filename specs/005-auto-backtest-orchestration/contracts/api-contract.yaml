@@ -1,0 +1,922 @@
+openapi: 3.0.3
+info:
+  title: Automated Backtesting Orchestration API
+  description: API for managing automated strategy backtesting, scoring, and deployment
+  version: 1.0.0
+servers:
+  - url: https://api.chansey.io/v1
+    description: Production server
+  - url: http://localhost:3333/api/v1
+    description: Development server
+
+paths:
+  /strategies:
+    get:
+      summary: List all strategy configurations
+      operationId: listStrategies
+      tags:
+        - Strategies
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, testing, validated, live, deprecated]
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of strategies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyList'
+
+    post:
+      summary: Create new strategy configuration
+      operationId: createStrategy
+      tags:
+        - Strategies
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStrategyRequest'
+      responses:
+        '201':
+          description: Strategy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Strategy'
+
+  /strategies/{strategyId}:
+    get:
+      summary: Get strategy details
+      operationId: getStrategy
+      tags:
+        - Strategies
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Strategy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Strategy'
+
+    put:
+      summary: Update strategy configuration
+      operationId: updateStrategy
+      tags:
+        - Strategies
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStrategyRequest'
+      responses:
+        '200':
+          description: Strategy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Strategy'
+
+  /strategies/{strategyId}/backtest:
+    post:
+      summary: Start backtesting for a strategy
+      operationId: startBacktest
+      tags:
+        - Backtesting
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartBacktestRequest'
+      responses:
+        '202':
+          description: Backtest started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestRun'
+
+  /backtests/{backtestId}:
+    get:
+      summary: Get backtest run status and results
+      operationId: getBacktestRun
+      tags:
+        - Backtesting
+      parameters:
+        - name: backtestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Backtest run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestRunDetails'
+
+  /strategies/{strategyId}/score:
+    get:
+      summary: Get latest strategy score
+      operationId: getStrategyScore
+      tags:
+        - Scoring
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Strategy score
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyScore'
+
+    post:
+      summary: Calculate strategy score
+      operationId: calculateScore
+      tags:
+        - Scoring
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Score calculation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreCalculationResponse'
+
+  /strategies/{strategyId}/promote:
+    post:
+      summary: Promote strategy to live trading
+      operationId: promoteStrategy
+      tags:
+        - Deployment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteStrategyRequest'
+      responses:
+        '200':
+          description: Strategy promoted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '400':
+          description: Promotion gates not met
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionGateResults'
+
+  /deployments:
+    get:
+      summary: List all deployments
+      operationId: listDeployments
+      tags:
+        - Deployment
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, deactivated]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of deployments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentList'
+
+  /deployments/{deploymentId}:
+    get:
+      summary: Get deployment details
+      operationId: getDeployment
+      tags:
+        - Deployment
+      parameters:
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentDetails'
+
+    patch:
+      summary: Update deployment (pause, resume, adjust allocation)
+      operationId: updateDeployment
+      tags:
+        - Deployment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDeploymentRequest'
+      responses:
+        '200':
+          description: Deployment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+
+  /deployments/{deploymentId}/demote:
+    post:
+      summary: Demote strategy from live trading
+      operationId: demoteStrategy
+      tags:
+        - Deployment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoteStrategyRequest'
+      responses:
+        '200':
+          description: Strategy demoted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemotionResult'
+
+  /deployments/{deploymentId}/performance:
+    get:
+      summary: Get live performance metrics
+      operationId: getPerformanceMetrics
+      tags:
+        - Performance
+      parameters:
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Performance metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceMetrics'
+
+  /deployments/{deploymentId}/drift:
+    get:
+      summary: Get drift alerts for deployment
+      operationId: getDriftAlerts
+      tags:
+        - Monitoring
+      parameters:
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [warning, critical]
+        - name: acknowledged
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Drift alerts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftAlertList'
+
+  /market-regime:
+    get:
+      summary: Get current market regime
+      operationId: getCurrentMarketRegime
+      tags:
+        - Market Analysis
+      parameters:
+        - name: asset
+          in: query
+          schema:
+            type: string
+            default: BTC
+      responses:
+        '200':
+          description: Current market regime
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketRegime'
+
+  /market-regime/history:
+    get:
+      summary: Get market regime history
+      operationId: getMarketRegimeHistory
+      tags:
+        - Market Analysis
+      parameters:
+        - name: asset
+          in: query
+          schema:
+            type: string
+            default: BTC
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Market regime history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketRegimeHistory'
+
+  /audit/strategies/{strategyId}:
+    get:
+      summary: Get audit trail for strategy
+      operationId: getStrategyAuditTrail
+      tags:
+        - Audit
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: eventTypes
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Audit trail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTrail'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Strategy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        strategyType:
+          type: string
+        parameters:
+          type: object
+        version:
+          type: string
+        status:
+          type: string
+          enum: [draft, testing, validated, live, deprecated]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateStrategyRequest:
+      type: object
+      required:
+        - name
+        - strategyType
+        - parameters
+      properties:
+        name:
+          type: string
+        strategyType:
+          type: string
+        parameters:
+          type: object
+        description:
+          type: string
+
+    UpdateStrategyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        parameters:
+          type: object
+        status:
+          type: string
+
+    BacktestRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        strategyConfigId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        windowCount:
+          type: integer
+        datasetChecksum:
+          type: string
+
+    BacktestRunDetails:
+      allOf:
+        - $ref: '#/components/schemas/BacktestRun'
+        - type: object
+          properties:
+            walkForwardWindows:
+              type: array
+              items:
+                $ref: '#/components/schemas/WalkForwardWindow'
+            aggregatedMetrics:
+              $ref: '#/components/schemas/AggregatedMetrics'
+
+    WalkForwardWindow:
+      type: object
+      properties:
+        windowIndex:
+          type: integer
+        trainStartDate:
+          type: string
+          format: date
+        trainEndDate:
+          type: string
+          format: date
+        testStartDate:
+          type: string
+          format: date
+        testEndDate:
+          type: string
+          format: date
+        trainMetrics:
+          $ref: '#/components/schemas/WindowMetrics'
+        testMetrics:
+          $ref: '#/components/schemas/WindowMetrics'
+        degradation:
+          type: number
+          format: float
+
+    WindowMetrics:
+      type: object
+      properties:
+        totalReturn:
+          type: number
+        sharpeRatio:
+          type: number
+        maxDrawdown:
+          type: number
+        winRate:
+          type: number
+        tradeCount:
+          type: integer
+        volatility:
+          type: number
+
+    StrategyScore:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        strategyConfigId:
+          type: string
+          format: uuid
+        overallScore:
+          type: number
+          minimum: 0
+          maximum: 100
+        componentScores:
+          type: object
+          properties:
+            sharpeRatio:
+              type: number
+            calmarRatio:
+              type: number
+            winRate:
+              type: number
+            profitFactor:
+              type: number
+            wfaDegradation:
+              type: number
+            stability:
+              type: number
+            correlation:
+              type: number
+        percentile:
+          type: number
+        grade:
+          type: string
+          enum: [A, B, C, D, F]
+        promotionEligible:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            type: string
+        calculatedAt:
+          type: string
+          format: date-time
+
+    Deployment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        strategyConfigId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, paused, deactivated]
+        allocationPercentage:
+          type: number
+        phase:
+          type: string
+          enum: [initial, growth, full]
+        startedAt:
+          type: string
+          format: date-time
+        riskLimits:
+          $ref: '#/components/schemas/RiskLimits'
+
+    RiskLimits:
+      type: object
+      properties:
+        maxDrawdownPercent:
+          type: number
+        maxDailyLossPercent:
+          type: number
+        maxPositionSize:
+          type: number
+        maxLeverage:
+          type: number
+        stopLossPercent:
+          type: number
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        deploymentId:
+          type: string
+          format: uuid
+        metrics:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              dailyReturn:
+                type: number
+              cumulativeReturn:
+                type: number
+              sharpeRatio:
+                type: number
+              maxDrawdown:
+                type: number
+              winRate:
+                type: number
+              tradeCount:
+                type: integer
+
+    DriftAlert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          type: string
+          format: uuid
+        driftType:
+          type: string
+          enum: [sharpe, return, drawdown, winrate, volatility]
+        severity:
+          type: string
+          enum: [warning, critical]
+        expectedValue:
+          type: number
+        observedValue:
+          type: number
+        delta:
+          type: number
+        recommendedAction:
+          type: string
+          enum: [monitor, reduce_allocation, deactivate]
+        detectedAt:
+          type: string
+          format: date-time
+        acknowledged:
+          type: boolean
+
+    MarketRegime:
+      type: object
+      properties:
+        asset:
+          type: string
+        regime:
+          type: string
+          enum: [low_volatility, normal, high_volatility, extreme_volatility]
+        volatility:
+          type: number
+        percentile:
+          type: number
+        detectedAt:
+          type: string
+          format: date-time
+
+    AuditEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+        correlationId:
+          type: string
+
+    # List responses
+    StrategyList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Strategy'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    DeploymentList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Deployment'
+        total:
+          type: integer
+
+    DriftAlertList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriftAlert'
+        total:
+          type: integer
+
+    AuditTrail:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        total:
+          type: integer
+
+    # Request/Response schemas
+    StartBacktestRequest:
+      type: object
+      required:
+        - startDate
+        - endDate
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        walkForwardConfig:
+          type: object
+          properties:
+            trainDays:
+              type: integer
+              default: 180
+            testDays:
+              type: integer
+              default: 90
+            stepDays:
+              type: integer
+              default: 30
+            method:
+              type: string
+              enum: [rolling, anchored]
+              default: rolling
+
+    PromoteStrategyRequest:
+      type: object
+      properties:
+        initialAllocation:
+          type: number
+          minimum: 0.01
+          maximum: 10
+        reason:
+          type: string
+
+    UpdateDeploymentRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, paused]
+        allocationPercentage:
+          type: number
+        pausedUntil:
+          type: string
+          format: date-time
+
+    DemoteStrategyRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+        immediateUnwind:
+          type: boolean
+          default: false

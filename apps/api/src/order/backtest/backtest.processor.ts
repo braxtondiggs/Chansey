@@ -5,44 +5,43 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
-import { BacktestEngine, MarketData, TradingSignal } from './backtest-engine.service';
-import { Backtest, BacktestTrade, BacktestPerformanceSnapshot, BacktestStatus } from './backtest.entity';
+import { BacktestEngine } from './backtest-engine.service';
+import { BacktestResultService } from './backtest-result.service';
+import { BacktestStreamService } from './backtest-stream.service';
+import { backtestConfig } from './backtest.config';
+import { Backtest, BacktestStatus } from './backtest.entity';
+import { BacktestJobData } from './backtest.job-data';
+import { MarketDataSet } from './market-data-set.entity';
 
-import { AlgorithmService } from '../../algorithm/algorithm.service';
+import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
 
-interface BacktestJobData {
-  backtestId: string;
-  userId: string;
-}
+const BACKTEST_QUEUE_NAMES = backtestConfig();
 
-@Processor('backtest-queue')
 @Injectable()
+@Processor(BACKTEST_QUEUE_NAMES.historicalQueue)
 export class BacktestProcessor extends WorkerHost {
   private readonly logger = new Logger(BacktestProcessor.name);
 
   constructor(
     private readonly backtestEngine: BacktestEngine,
-    private readonly algorithmService: AlgorithmService,
     private readonly coinService: CoinService,
+    private readonly backtestStream: BacktestStreamService,
+    private readonly backtestResultService: BacktestResultService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
-    @InjectRepository(BacktestTrade) private readonly backtestTradeRepository: Repository<BacktestTrade>,
-    @InjectRepository(BacktestPerformanceSnapshot)
-    private readonly backtestSnapshotRepository: Repository<BacktestPerformanceSnapshot>
+    @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
   ) {
     super();
   }
 
   async process(job: Job<BacktestJobData>): Promise<void> {
-    const { backtestId, userId } = job.data;
-    
-    this.logger.log(`Processing backtest job: ${backtestId} for user: ${userId}`);
+    const { backtestId, userId, datasetId, deterministicSeed, algorithmId, mode } = job.data;
+    this.logger.log(`Processing historical backtest ${backtestId} for user ${userId}`);
 
     try {
-      // Get the backtest
       const backtest = await this.backtestRepository.findOne({
         where: { id: backtestId },
-        relations: ['algorithm', 'user']
+        relations: ['algorithm', 'marketDataSet', 'user']
       });
 
       if (!backtest) {
@@ -50,92 +49,73 @@ export class BacktestProcessor extends WorkerHost {
       }
 
       if (backtest.status !== BacktestStatus.PENDING) {
-        this.logger.warn(`Backtest ${backtestId} is not in PENDING status, skipping`);
+        this.logger.warn(`Backtest ${backtestId} is not pending. Current status: ${backtest.status}`);
         return;
       }
 
-      // Mark as running
+      const dataset =
+        backtest.marketDataSet ?? (await this.marketDataSetRepository.findOne({ where: { id: datasetId } }));
+      if (!dataset) {
+        throw new Error(`Market dataset ${datasetId} not found`);
+      }
+
       backtest.status = BacktestStatus.RUNNING;
       await this.backtestRepository.save(backtest);
+      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, { mode });
 
-      // Get coins for this algorithm (for now, get some popular coins)
-      // TODO: This should be configurable or based on algorithm preferences
-      const coins = await this.coinService.getPopularCoins();
-      
-      if (!coins || coins.length === 0) {
-        throw new Error('No coins available for backtesting');
+      const coins = await this.resolveCoins(dataset);
+      if (!coins.length) {
+        throw new Error('No coins resolved for dataset instrument universe');
       }
 
-      // Execute the backtest using a simple strategy
-      // TODO: Load the actual strategy function from the algorithm
-      const strategyFunction = this.createSimpleMovingAverageStrategy();
-
-      const results = await this.backtestEngine.executeHistoricalBacktest(
-        backtest,
-        coins.slice(0, 5), // Limit to first 5 coins for now
-        strategyFunction
-      );
-
-      // Save trades
-      const trades = results.trades.map(trade => ({
-        ...trade,
-        backtest
-      }));
-      
-      if (trades.length > 0) {
-        await this.backtestTradeRepository.save(trades);
-      }
-
-      // Save performance snapshots
-      const snapshots = results.snapshots.map(snapshot => ({
-        ...snapshot,
-        backtest
-      }));
-      
-      if (snapshots.length > 0) {
-        await this.backtestSnapshotRepository.save(snapshots);
-      }
-
-      // Update backtest with final results
-      Object.assign(backtest, results.finalMetrics);
-      backtest.status = BacktestStatus.COMPLETED;
-      await this.backtestRepository.save(backtest);
-
-      this.logger.log(`Backtest ${backtestId} completed successfully`);
-
-    } catch (error) {
-      this.logger.error(`Backtest ${backtestId} failed: ${error.message}`, error.stack);
-
-      // Mark as failed
-      await this.backtestRepository.update(backtestId, {
-        status: BacktestStatus.FAILED,
-        errorMessage: error.message
+      const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
+        dataset,
+        deterministicSeed,
+        telemetryEnabled: true
       });
+
+      await this.backtestResultService.persistSuccess(backtest, results);
+    } catch (error) {
+      this.logger.error(`Historical backtest ${backtestId} failed: ${error.message}`, error.stack);
+      await this.backtestResultService.markFailed(backtestId, error.message);
     }
   }
 
-  /**
-   * Simple moving average crossover strategy for demonstration
-   */
-  private createSimpleMovingAverageStrategy() {
-    return async (marketData: MarketData) => {
-      const signals: TradingSignal[] = [];
-      
-      for (const [coinId] of marketData.prices) {
-        // Simple buy signal when price is above moving average
-        // This is just a placeholder - real strategies would be much more sophisticated
-        if (Math.random() > 0.8) { // Random 20% chance to trade
-          signals.push({
-            action: Math.random() > 0.5 ? 'BUY' : 'SELL',
-            coinId,
-            percentage: 0.1, // 10% of portfolio
-            reason: `Simple MA strategy: ${Math.random() > 0.5 ? 'bullish' : 'bearish'} signal`,
-            confidence: Math.random()
-          });
+  private async resolveCoins(dataset: MarketDataSet): Promise<Coin[]> {
+    const instruments = dataset.instrumentUniverse ?? [];
+    const resolved: Coin[] = [];
+
+    for (const instrument of instruments) {
+      const symbol = instrument.toUpperCase();
+      try {
+        const direct = await this.coinService.getCoinBySymbol(symbol);
+        if (direct) {
+          resolved.push(direct);
+          continue;
+        }
+      } catch (error) {
+        this.logger.debug(`Failed to resolve symbol ${symbol}: ${error.message}`);
+      }
+
+      const baseCandidate = symbol.replace(/(USDT|USD|BTC|ETH)$/i, '');
+      if (baseCandidate && baseCandidate !== symbol) {
+        try {
+          const baseCoin = await this.coinService.getCoinBySymbol(baseCandidate);
+          if (baseCoin) {
+            resolved.push(baseCoin);
+            continue;
+          }
+        } catch (error) {
+          this.logger.debug(`Failed to resolve base symbol ${baseCandidate}: ${error.message}`);
         }
       }
-      
-      return signals;
-    };
+    }
+
+    if (!resolved.length) {
+      this.logger.warn('Falling back to popular coins for backtest due to unresolved instrument universe');
+      return (await this.coinService.getPopularCoins()).slice(0, 5);
+    }
+
+    return resolved.slice(0, 5);
   }
 }

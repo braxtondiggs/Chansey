@@ -21,7 +21,7 @@ import { OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { User } from '../users/users.entity';
 
 @ApiTags('Order')

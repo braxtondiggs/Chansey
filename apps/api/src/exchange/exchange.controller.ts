@@ -17,7 +17,7 @@ import { CreateExchangeDto, ExchangeResponseDto, UpdateExchangeDto } from './dto
 import { ExchangeService } from './exchange.service';
 
 import { Roles } from '../authentication/decorator/roles.decorator';
-import JwtAuthenticationGuard from '../authentication/guard/jwt-authentication.guard';
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
 
 @ApiTags('Exchange')

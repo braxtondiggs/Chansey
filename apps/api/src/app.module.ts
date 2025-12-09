@@ -18,6 +18,7 @@ import { join } from 'path';
 import { AlgorithmModule } from './algorithm/algorithm.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuditModule } from './audit/audit.module';
 import { AuthenticationModule } from './authentication/authentication.module';
 import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
@@ -25,11 +26,15 @@ import { CoinModule } from './coin/coin.module';
 import { validateEnv } from './config/env.validation';
 import { ExchangeModule } from './exchange/exchange.module';
 import { HealthModule } from './health/health.module';
+import { MarketRegimeModule } from './market-regime/market-regime.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
 import { RiskModule } from './risk/risk.module';
+import { ScoringModule } from './scoring/scoring.module';
 import { StorageModule } from './storage/storage.module';
+import { StrategyModule } from './strategy/strategy.module';
+import { TasksModule } from './tasks/tasks.module';
 import { TradingModule } from './trading/trading.module';
 import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
@@ -64,7 +69,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       password: process.env.PGPASSWORD,
       port: parseInt(process.env.PGPORT),
       // ssl: isProduction,
-      synchronize: true, // TODO: Fix for production !isProduction,
+      synchronize: !isProduction,
       type: 'postgres',
       username: process.env.PGUSER,
       uuidExtension: 'pgcrypto'
@@ -95,11 +100,14 @@ const isProduction = process.env.NODE_ENV === 'production';
       { name: 'backtest-queue', adapter: BullMQAdapter },
       { name: 'category-queue', adapter: BullMQAdapter },
       { name: 'coin-queue', adapter: BullMQAdapter },
+      { name: 'drift-detection-queue', adapter: BullMQAdapter },
       { name: 'exchange-queue', adapter: BullMQAdapter },
       { name: 'order-queue', adapter: BullMQAdapter },
       { name: 'performance-ranking', adapter: BullMQAdapter },
       { name: 'portfolio-queue', adapter: BullMQAdapter },
       { name: 'price-queue', adapter: BullMQAdapter },
+      { name: 'regime-check-queue', adapter: BullMQAdapter },
+      { name: 'strategy-evaluation-queue', adapter: BullMQAdapter },
       { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
       { name: 'trade-execution', adapter: BullMQAdapter },
       { name: 'user-queue', adapter: BullMQAdapter }
@@ -129,6 +137,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       validate: validateEnv // Validates env vars on startup
     }),
     AlgorithmModule,
+    AuditModule,
     AuthenticationModule,
     BalanceModule,
     CategoryModule,
@@ -136,10 +145,15 @@ const isProduction = process.env.NODE_ENV === 'production';
     ExchangeModule,
     HealthModule,
     HttpModule,
+    MarketRegimeModule,
     OrderModule,
     PortfolioModule,
     PriceModule,
     RiskModule,
+    ScoringModule,
+    StorageModule,
+    StrategyModule,
+    TasksModule,
     TradingModule
   ],
   exports: [ConfigModule, HttpModule],
