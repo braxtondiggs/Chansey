@@ -1,135 +1,154 @@
 <!--
-Sync Impact Report:
-- Version change: 1.0.2 → 1.1.0
-- Modified principles: Testing Standards (removed E2E testing requirement)
-- Added sections: None
-- Removed sections: E2E Tests requirement from Testing Standards
-- Templates requiring updates:
-  ⚠️ plan-template.md (needs alignment - remove E2E test gates)
-  ⚠️ tasks-template.md (needs alignment - remove E2E test tasks)
-- Follow-up TODOs: Update plan and task templates to remove E2E testing references
+Sync Impact Report (2025-10-28)
+==================================
+Version Change: 1.0.0 (Initial constitution)
+Modified Principles: N/A (initial creation)
+Added Sections: All sections newly defined
+Removed Sections: None
+Templates Requiring Updates:
+  ✅ plan-template.md - Constitution Check section aligned
+  ✅ spec-template.md - Scope aligns with clarity and testing principles
+  ✅ tasks-template.md - Task categorization reflects testing and architecture principles
+Follow-up TODOs:
+  - TODO(RATIFICATION_DATE): Set to today (2025-10-28) as initial ratification
+  - All placeholder tokens replaced with concrete values
 -->
 
 # Chansey Constitution
 
 ## Core Principles
 
-### I. Code Quality
+### I. Code Readability & Human-First Design
 
-Code MUST be maintainable, readable, and follow established conventions:
+Code must serve people first. Every line should be readable, predictable, and adaptable under pressure. We prioritize
+clarity over cleverness, ensuring that any developer can understand and modify the codebase quickly. This means
+comprehensive documentation, meaningful variable names, and explicit intent in implementation choices.
 
-- **Import Order**: Angular → NestJS → third-party → internal → relative (enforced by ESLint)
-- **Formatting**: Prettier with 120-character line length (automated via pre-commit hooks)
-- **Linting**: ESLint rules MUST pass before commits (no warnings or errors)
-- **Type Safety**: TypeScript strict mode enabled; no `any` types without explicit justification
-- **Documentation**: Public APIs and complex logic MUST include JSDoc comments
-- **Code Review**: All changes require PR review before merging
+### II. Type Safety & Predictability
 
-**Rationale**: Consistent code quality reduces technical debt, improves onboarding, and prevents production issues. The monorepo structure demands strict conventions to maintain clarity across frontend and backend codebases.
+Every contributor commits to maintainability through strict type safety. TypeScript's type system must be leveraged
+fully—no `any` types without documented justification. Interfaces, types, and contracts must be explicitly defined. APIs
+and services must behave predictably, with clear error states and consistent response patterns across the entire system.
 
-### II. Testing Standards
+### III. Automated Testing as Foundation
 
-Test-Driven Development principles with comprehensive coverage:
+Testing is integral, not auxiliary. Each change must prove its safety through measurable outcomes. Unit tests for
+business logic, integration tests for API contracts, and end-to-end tests for critical user paths are mandatory. Test
+coverage targets: minimum 80% for new code, with critical financial/trading logic requiring 95%+. Every bug fix must
+include a regression test.
 
-- **Unit Tests**: Jest for business logic, services, and utilities (target 80%+ coverage)
-- **Integration Tests**: API endpoints MUST have integration tests verifying request/response contracts
-- **Contract Testing**: External API integrations (CCXT, CoinGecko) MUST have contract tests
-- **Test Execution**: All tests MUST pass in CI before merging
-- **Test Maintenance**: Tests are first-class code; outdated tests MUST be updated or removed
+### IV. Clear Architectural Separation
 
-**Rationale**: Financial applications handling cryptocurrency transactions require rigorous testing. Integration tests catch issues with exchange APIs and background job processing that unit tests cannot detect. Unit tests with comprehensive mocking provide sufficient coverage for UI components.
+The monorepo exists to unify domains, not complicate them. Maintain strict boundaries: Angular frontend, NestJS backend,
+shared interfaces. No cross-domain imports except through defined interface packages. Each module must be independently
+testable and deployable. Database entities, DTOs, and frontend models must remain separate with explicit mapping layers.
 
-### III. User Experience Consistency
+### V. Automated Quality Enforcement
 
-Deliver a cohesive, accessible, and responsive user interface:
+Conventions around structure, linting, and performance are enforced automatically to protect long-term quality.
+Pre-commit hooks, CI/CD pipelines, and automated code reviews must catch violations before merge. ESLint, Prettier, and
+TypeScript strict mode are non-negotiable. Performance budgets for frontend bundle size and API response times must be
+enforced via automated checks.
 
-- **Component Library**: PrimeNG components MUST be used for consistency; custom components require design review
-- **Responsive Design**: Mobile-first approach; all features MUST work on mobile devices
-- **Accessibility**: WCAG 2.1 AA compliance for all user-facing features
-- **Loading States**: Async operations MUST show loading indicators via TanStack Query patterns
-- **Error Handling**: User-friendly error messages; technical details logged server-side only
-- **Performance**: First Contentful Paint <2s, Time to Interactive <3.5s on 3G networks
+### VI. Transparency & Observability
 
-**Rationale**: Portfolio management requires rapid decision-making. Consistent UX reduces cognitive load, while accessibility and mobile support expand the user base. PWA capabilities enable offline portfolio viewing.
+Algorithms, APIs, and interfaces must expose reasoning that users can trust. Every trading decision, price calculation,
+and portfolio metric must be auditable. Structured logging with correlation IDs, distributed tracing, and comprehensive
+error reporting are mandatory. Users must be able to understand why the system made any decision affecting their assets.
 
-### IV. Architectural Consistency
+### VII. Security & Data Protection
 
-Maintain clear separation of concerns across the Nx monorepo:
+Security is continuous, not a checklist item. API keys must be encrypted at rest and in transit. Authentication tokens
+must use secure HttpOnly cookies. Rate limiting, CSRF protection, and input validation are mandatory on all endpoints.
+Regular dependency audits and security patches must be applied within 48 hours of disclosure. User financial data
+requires audit logs for all access.
 
-- **Monorepo Structure**: Apps (api, chansey) contain application logic; libs contain shared interfaces only
-- **Frontend Architecture**: Standalone Angular components; TanStack Query for state management; no NgModules
-- **Backend Architecture**: NestJS modules organized by domain (users, exchanges, orders, portfolios); TypeORM entities co-located with modules
-- **API Design**: RESTful conventions; Swagger/OpenAPI documentation auto-generated from decorators
-- **Background Jobs**: BullMQ queues for async tasks (order sync, price updates); queue processors co-located with domain logic
-- **Database Migrations**: TypeORM migrations for schema changes; no direct schema modifications
-- **Shared Code**: api-interfaces lib ONLY for TypeScript types shared between frontend and backend
-- **Trading Execution Model**: Algorithm-based trading is backend-driven with automatic algorithm selection; the backend automatically activates/deactivates algorithms based on performance metrics and user risk preferences. Users control behavior ONLY through risk preference settings (conservative/moderate/aggressive)—they cannot manually activate/deactivate specific algorithms or modify trading signals. Frontend serves as a monitoring interface displaying active algorithms and performance reasoning. Users CAN execute manual trades separately from automated trading. All algorithmic trading logic and activation decisions reside in backend services and BullMQ processors.
+### VIII. Performance & Scalability
 
-**Brownfield Rules**:
+The system must scale gracefully under load. Background job processing via BullMQ must handle burst traffic without
+dropping tasks. Redis caching with appropriate TTLs for market data. Database queries must be optimized with proper
+indexing. Frontend must maintain sub-3 second initial load and 60fps interactions. API endpoints must respond within
+200ms p95 for reads, 500ms for writes.
 
-- **No Scaffolding**: Do NOT scaffold new apps, modules, or ORM models from scratch
-- **Existing Structure**: Integrate with the existing Nx monorepo layout (apps/api for backend, apps/chansey for frontend)
-- **Entity Location**: Backend entities live in libs/database/entities; database configured via TypeORM module
-- **Extension Only**: Only extend existing services/controllers; keep imports and providers intact
-- **Schema Changes**: Any schema change MUST produce a TypeORM migration against the existing PostgreSQL database
+### IX. Data-Driven Simplicity
 
-**Rationale**: The Nx monorepo enables code sharing but demands discipline. Domain-driven design in the backend and component-based architecture in the frontend prevent coupling. Background job isolation ensures resilience for critical financial data synchronization. Backend-driven trading execution ensures regulatory compliance, consistent strategy implementation, and prevents user error during time-sensitive market operations. Brownfield constraints prevent breaking the established architecture and ensure all changes integrate smoothly with existing infrastructure.
+Decisions should be data-driven but human-conscious. Favor simplicity, stability, and clarity over cleverness. Start
+with the simplest solution that could work, measure its effectiveness, then optimize based on real usage patterns. YAGNI
+(You Aren't Gonna Need It) applies until proven otherwise by metrics. Every complexity addition must be justified with
+measurable benefit.
 
-### V. Performance Requirements
+## Development Workflow
 
-Ensure scalability and responsiveness for real-time financial data:
+### Code Review Requirements
 
-- **API Response Time**: <200ms p95 for CRUD operations; <500ms for complex aggregations
-- **Background Job Efficiency**: Order sync MUST process 100+ orders/second per exchange
-- **Database Queries**: Queries MUST use indexes; N+1 queries are prohibited
-- **Caching Strategy**: Redis caching for exchange rate data (5-minute TTL) and user sessions
-- **Frontend Performance**: Bundle size <500KB gzipped; code splitting by route
-- **Rate Limiting**: API rate limits enforced (100 req/min standard, 20 req/min for auth/uploads)
-- **Monitoring**: Response times and error rates MUST be observable via logs and metrics
+- All code requires review before merge, no self-merging
+- Reviews must verify: type safety, test coverage, architectural boundaries
+- Security-sensitive changes require two reviewers
+- Performance-impacting changes require benchmark results
 
-**Rationale**: Cryptocurrency markets operate 24/7 with rapid price changes. Slow portfolio updates or API timeouts erode user trust. Background job efficiency ensures timely order synchronization across multiple exchanges without overwhelming external APIs.
+### Testing Gates
 
-## Development Standards
+- Pre-commit: Linting, formatting, type checking must pass
+- Pre-merge: All unit and integration tests must pass
+- Deployment: E2E tests for critical paths must pass
+- Rollback plan required for database migrations
 
-### Workflow Requirements
+### Monitoring & Alerting
 
-- **Git Branching**: Feature branches from `master`; descriptive branch names (e.g., `feat/portfolio-chart-improvements`)
-- **Commit Messages**: Conventional Commits format (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`)
-- **Pre-commit Hooks**: Linting and formatting automated via Husky and lint-staged
-- **Pull Requests**: Include description, testing notes, and screenshots for UI changes
-- **Dependency Management**: Security vulnerabilities MUST be addressed within 7 days of disclosure
+- Error rates, response times, and queue depths monitored continuously
+- Alerts for: error rate >1%, p95 latency degradation >20%, failed background jobs
+- On-call rotation with 15-minute response SLA for production issues
+- Post-mortems required for all customer-impacting incidents
 
-### Security Requirements
+## Technical Standards
 
-- **Authentication**: JWT with refresh tokens; HttpOnly cookies for token storage
-- **Authorization**: Role-based access control (admin/user) enforced at API layer
-- **API Key Storage**: Exchange API keys encrypted at rest using industry-standard algorithms
-- **Input Validation**: class-validator decorators on all DTOs; sanitize user input
-- **Security Headers**: Helmet middleware for CSRF, XSS, and clickjacking protection
-- **Secrets Management**: No secrets in code; environment variables for all credentials
+### Technology Constraints
+
+- Node.js 22+ for all services (consistency across monorepo)
+- PostgreSQL for persistent data, Redis for caching only
+- TypeORM migrations for all schema changes, no manual SQL in production
+- Angular standalone components only, no NgModules
+- PrimeNG components preferred over custom UI implementations
+
+### API Standards
+
+- RESTful design with consistent resource naming
+- OpenAPI/Swagger documentation required for all endpoints
+- Versioning via URL path (/v1, /v2) for breaking changes
+- Rate limiting: 100 req/min general, 10 req/min auth endpoints
+- Response format: `{ data: T, error?: string, metadata?: {} }`
+
+### Deployment Policies
+
+- Zero-downtime deployments via blue-green strategy
+- Feature flags for gradual rollouts of new functionality
+- Database migrations must be backward compatible
+- Canary deployments for algorithm changes affecting trading
 
 ## Governance
 
-This constitution establishes the non-negotiable standards for Chansey development. All contributors MUST adhere to these principles.
+This constitution supersedes all development practices and architectural decisions. It serves as the foundation for all
+technical choices and must be consulted before introducing new patterns, technologies, or practices.
 
 ### Amendment Process
 
-1. Proposed amendments MUST be documented in a GitHub issue with rationale
-2. Team consensus required (majority vote for MINOR changes, unanimous for MAJOR changes)
-3. Constitution version MUST be incremented using semantic versioning:
-   - **MAJOR**: Backward-incompatible principle removals or redefinitions
-   - **MINOR**: New principles or materially expanded guidance
-   - **PATCH**: Clarifications, wording fixes, non-semantic refinements
-4. All dependent templates (plan, spec, tasks) MUST be updated to reflect amendments
+- Proposed changes require RFC (Request for Comments) document
+- Minimum 3-day review period for team feedback
+- Major changes (new principles) require unanimous approval
+- Minor changes (clarifications) require simple majority
+- All amendments must include migration plan for existing code
 
-### Compliance Review
+### Compliance & Review
 
-- PRs violating constitutional principles MUST be rejected or amended
-- Complexity that deviates from principles MUST be explicitly justified in implementation plans
-- Constitution compliance is verified during code review and retrospectives
+- All pull requests must include constitution compliance checklist
+- Quarterly reviews to assess adherence and identify gaps
+- New team members must acknowledge constitution within first week
+- Violations must be addressed before next release cycle
 
-### Living Document
+### Living Agreement
 
-This constitution evolves with the project. Consult `CLAUDE.md` at repository root for runtime development guidance and common commands.
+The team treats this constitution as a living agreement: updated as we grow, enforced with empathy, and grounded in the
+principle that technical excellence enables creative freedom. Regular retrospectives will evaluate if principles still
+serve the team and users effectively.
 
-**Version**: 1.1.0 | **Ratified**: 2025-09-30 | **Last Amended**: 2025-10-09
+**Version**: 1.0.0 | **Ratified**: 2025-10-28 | **Last Amended**: 2025-10-28
