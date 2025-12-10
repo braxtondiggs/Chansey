@@ -90,6 +90,34 @@ const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
   };
 };
 
+/**
+ * Configuration for running an optimization backtest
+ */
+export interface OptimizationBacktestConfig {
+  algorithmId: string;
+  parameters: Record<string, unknown>;
+  startDate: Date;
+  endDate: Date;
+  initialCapital?: number;
+  tradingFee?: number;
+  coinIds?: string[];
+}
+
+/**
+ * Result metrics from an optimization backtest
+ */
+export interface OptimizationBacktestResult {
+  sharpeRatio: number;
+  totalReturn: number;
+  maxDrawdown: number;
+  winRate: number;
+  volatility: number;
+  profitFactor: number;
+  tradeCount: number;
+  annualizedReturn?: number;
+  finalValue?: number;
+}
+
 @Injectable()
 export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
@@ -526,5 +554,200 @@ export class BacktestEngine {
 
     const riskFreeRate = 0.02; // 2% annualized risk-free rate (placeholder)
     return (average - riskFreeRate / 365) / stdDev;
+  }
+
+  /**
+   * Execute a lightweight backtest for parameter optimization
+   * This method doesn't persist any data - it runs the simulation and returns metrics only
+   */
+  async executeOptimizationBacktest(
+    config: OptimizationBacktestConfig,
+    coins: Coin[]
+  ): Promise<OptimizationBacktestResult> {
+    const initialCapital = config.initialCapital ?? 10000;
+    const tradingFee = config.tradingFee ?? 0.001;
+    const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
+
+    this.logger.debug(
+      `Running optimization backtest: algo=${config.algorithmId}, ` +
+        `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
+    );
+
+    const random = createSeededGenerator(deterministicSeed);
+
+    let portfolio: Portfolio = {
+      cashBalance: initialCapital,
+      positions: new Map(),
+      totalValue: initialCapital
+    };
+
+    const trades: Partial<BacktestTrade>[] = [];
+    const snapshots: { portfolioValue: number; timestamp: Date }[] = [];
+
+    const coinIds = coins.map((coin) => coin.id);
+    const historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
+
+    if (historicalPrices.length === 0) {
+      // Return neutral metrics if no price data
+      return {
+        sharpeRatio: 0,
+        totalReturn: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        volatility: 0,
+        profitFactor: 1,
+        tradeCount: 0
+      };
+    }
+
+    const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
+    const timestamps = Object.keys(pricesByTimestamp).sort();
+
+    // Build price history for algorithm context
+    const priceHistoryByCoin = new Map<string, { avg: number; date: Date }[]>();
+    const indexByCoin = new Map<string, number>();
+
+    for (const coinId of coinIds) {
+      const history = historicalPrices
+        .filter((price) => price.coinId === coinId)
+        .sort((a, b) => a.geckoLastUpdatedAt.getTime() - b.geckoLastUpdatedAt.getTime())
+        .map((price) => ({
+          avg: price.price,
+          date: price.geckoLastUpdatedAt
+        }));
+      priceHistoryByCoin.set(coinId, history);
+      indexByCoin.set(coinId, -1);
+    }
+
+    let peakValue = initialCapital;
+    let maxDrawdown = 0;
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const timestamp = new Date(timestamps[i]);
+      const currentPrices = pricesByTimestamp[timestamps[i]];
+
+      const marketData: MarketData = {
+        timestamp,
+        prices: new Map(currentPrices.map((price) => [price.coinId, price.price]))
+      };
+
+      portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
+
+      // Build price data context for algorithm
+      const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
+      for (const coin of coins) {
+        const history = priceHistoryByCoin.get(coin.id) ?? [];
+        let pointer = indexByCoin.get(coin.id) ?? -1;
+        while (pointer + 1 < history.length && history[pointer + 1].date <= timestamp) {
+          pointer += 1;
+        }
+        indexByCoin.set(coin.id, pointer);
+        if (pointer >= 0) {
+          priceData[coin.id] = history.slice(0, pointer + 1).map((h) => ({
+            ...h,
+            coin: coin.id,
+            high: h.avg,
+            low: h.avg
+          }));
+        }
+      }
+
+      // Build algorithm context with optimization parameters
+      const context = {
+        coins,
+        priceData,
+        timestamp,
+        config: config.parameters, // Use optimization parameters instead of stored config
+        positions: Object.fromEntries(
+          [...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity])
+        ),
+        availableBalance: portfolio.cashBalance,
+        metadata: {
+          isOptimization: true,
+          algorithmId: config.algorithmId
+        }
+      };
+
+      let strategySignals: TradingSignal[] = [];
+      try {
+        const result = await this.algorithmRegistry.executeAlgorithm(config.algorithmId, context);
+        if (result.success && result.signals?.length) {
+          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+        }
+      } catch (error) {
+        // Log but continue - optimization should be resilient to occasional failures
+        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+      }
+
+      for (const strategySignal of strategySignals) {
+        const trade = await this.executeTrade(strategySignal, portfolio, marketData, tradingFee, random);
+        if (trade) {
+          trades.push({ ...trade, executedAt: timestamp });
+        }
+      }
+
+      // Track peak and drawdown
+      if (portfolio.totalValue > peakValue) {
+        peakValue = portfolio.totalValue;
+      }
+      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      if (currentDrawdown > maxDrawdown) {
+        maxDrawdown = currentDrawdown;
+      }
+
+      // Sample snapshots less frequently for optimization (every 24 periods)
+      if (i % 24 === 0 || i === timestamps.length - 1) {
+        snapshots.push({
+          timestamp,
+          portfolioValue: portfolio.totalValue
+        });
+      }
+    }
+
+    // Calculate final metrics
+    const finalValue = portfolio.totalValue;
+    const totalReturn = (finalValue - initialCapital) / initialCapital;
+    const totalTrades = trades.length;
+    const winningTrades = trades.filter((trade) => (trade.totalValue ?? 0) > 0).length;
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
+    const durationDays = dayjs(config.endDate).diff(dayjs(config.startDate), 'day');
+    const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
+
+    // Calculate volatility from returns
+    const returns: number[] = [];
+    for (let i = 1; i < snapshots.length; i++) {
+      const previous = snapshots[i - 1].portfolioValue;
+      const current = snapshots[i].portfolioValue;
+      returns.push(previous === 0 ? 0 : (current - previous) / previous);
+    }
+
+    const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
+    const variance =
+      returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
+    const volatility = Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
+
+    // Calculate Sharpe ratio
+    const riskFreeRate = 0.02;
+    const sharpeRatio = volatility > 0 ? (annualizedReturn - riskFreeRate) / volatility : 0;
+
+    // Calculate profit factor
+    const grossProfit = trades.filter((t) => (t.totalValue ?? 0) > 0).reduce((sum, t) => sum + (t.totalValue ?? 0), 0);
+    const grossLoss = Math.abs(
+      trades.filter((t) => (t.totalValue ?? 0) < 0).reduce((sum, t) => sum + (t.totalValue ?? 0), 0)
+    );
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 1;
+
+    return {
+      sharpeRatio,
+      totalReturn,
+      maxDrawdown: -maxDrawdown, // Convention: negative for drawdown
+      winRate,
+      volatility,
+      profitFactor: Math.min(profitFactor, 10), // Cap at 10 to avoid infinity issues
+      tradeCount: totalTrades,
+      annualizedReturn,
+      finalValue
+    };
   }
 }
