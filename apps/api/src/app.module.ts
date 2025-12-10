@@ -27,6 +27,7 @@ import { validateEnv } from './config/env.validation';
 import { ExchangeModule } from './exchange/exchange.module';
 import { HealthModule } from './health/health.module';
 import { MarketRegimeModule } from './market-regime/market-regime.module';
+import { OptimizationModule } from './optimization/optimization.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
@@ -110,7 +111,8 @@ const isProduction = process.env.NODE_ENV === 'production';
       { name: 'strategy-evaluation-queue', adapter: BullMQAdapter },
       { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
       { name: 'trade-execution', adapter: BullMQAdapter },
-      { name: 'user-queue', adapter: BullMQAdapter }
+      { name: 'user-queue', adapter: BullMQAdapter },
+      { name: 'optimization', adapter: BullMQAdapter }
     ),
     ThrottlerModule.forRoot([
       {
@@ -146,6 +148,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     HealthModule,
     HttpModule,
     MarketRegimeModule,
+    OptimizationModule,
     OrderModule,
     PortfolioModule,
     PriceModule,
