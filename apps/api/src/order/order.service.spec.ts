@@ -2,7 +2,7 @@ import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
@@ -101,6 +101,22 @@ describe('OrderService', () => {
           }
         },
         {
+          provide: DataSource,
+          useValue: {
+            createQueryRunner: jest.fn().mockReturnValue({
+              connect: jest.fn(),
+              startTransaction: jest.fn(),
+              commitTransaction: jest.fn(),
+              rollbackTransaction: jest.fn(),
+              release: jest.fn(),
+              manager: {
+                create: jest.fn(),
+                save: jest.fn()
+              }
+            })
+          }
+        },
+        {
           provide: ExchangeService,
           useValue: {
             getExchangeById: jest.fn()
@@ -123,7 +139,8 @@ describe('OrderService', () => {
           provide: CoinService,
           useValue: {
             getCoinById: jest.fn(),
-            getCoinBySymbol: jest.fn()
+            getCoinBySymbol: jest.fn(),
+            getMultipleCoinsBySymbol: jest.fn()
           }
         },
         {
