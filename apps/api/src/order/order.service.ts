@@ -2,9 +2,14 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
-import { FindManyOptions, In, Repository } from 'typeorm';
+import { DataSource, FindManyOptions, In, QueryRunner, Repository } from 'typeorm';
 
-import { UserHoldingsDto } from '@chansey/api-interfaces';
+import {
+  getExchangeOrderTypeSupport,
+  isOrderTypeSupported,
+  getSupportedOrderTypes,
+  UserHoldingsDto
+} from '@chansey/api-interfaces';
 
 import { ExchangeService } from '@chansey-api/exchange/exchange.service';
 
@@ -36,6 +41,7 @@ export class OrderService {
 
   constructor(
     @InjectRepository(Order) private readonly orderRepository: Repository<Order>,
+    private readonly dataSource: DataSource,
     private readonly exchangeService: ExchangeService,
     private readonly exchangeManager: ExchangeManagerService,
     private readonly exchangeKeyService: ExchangeKeyService,
@@ -45,7 +51,8 @@ export class OrderService {
   ) {}
 
   /**
-   * Create a new order (buy or sell)
+   * Create a new order (buy or sell) - Legacy method for coin-id based orders
+   * @deprecated Use placeManualOrder instead for better exchange integration
    */
   async createOrder(orderDto: OrderDto, user: User): Promise<Order> {
     this.logger.log(`Creating ${orderDto.side} order for user: ${user.id} on exchange: ${orderDto.exchangeId}`);
@@ -55,7 +62,6 @@ export class OrderService {
       const { baseCoin, quoteCoin } = await this.validateAndGetCoins(orderDto);
 
       // 2. Get exchange client
-
       const { slug: exchangeSlug } = await this.exchangeService.getExchangeById(orderDto.exchangeId);
       const exchange = await this.exchangeManager.getExchangeClient(exchangeSlug, user);
 
@@ -71,8 +77,16 @@ export class OrderService {
       // 5. Create order on exchange
       const exchangeOrder = await this.executeOrderOnExchange(exchange, symbol, orderDto);
 
-      // 6. Save order to database
-      const savedOrder = await this.saveOrderToDatabase(exchangeOrder, orderDto, baseCoin, quoteCoin, user);
+      // 6. Save order to database with exchange reference
+      const exchangeEntity = await this.exchangeService.getExchangeById(orderDto.exchangeId);
+      const savedOrder = await this.saveOrderToDatabase(
+        exchangeOrder,
+        orderDto,
+        baseCoin,
+        quoteCoin,
+        user,
+        exchangeEntity
+      );
 
       this.logger.log(`Order created successfully: ${savedOrder.id}`);
       return savedOrder;
@@ -100,7 +114,7 @@ export class OrderService {
       const rawSymbol = `${baseCoin.symbol.toUpperCase()}${quoteCoin.symbol.toUpperCase()}`;
       const symbol = this.exchangeManager.formatSymbol(exchangeSlug, rawSymbol);
 
-      // 5. Get current market data
+      // 4. Get current market data
       const ticker = await exchange.fetchTicker(symbol);
       const marketPrice = ticker.last || ticker.close || 0;
 
@@ -114,13 +128,8 @@ export class OrderService {
 
       const orderValue = quantity * price;
 
-      // 6. Get trading fees from exchange with fallback
-      const { feeRate, feeAmount, feePercentage } = await this.getTradingFees(
-        exchange,
-        exchangeSlug,
-        orderDto.side,
-        orderValue
-      );
+      // 6. Get trading fees with proper maker/taker determination
+      const { feeRate, feeAmount } = await this.getTradingFees(exchange, exchangeSlug, orderDto.type, orderValue);
 
       // 7. Get user balance
       const balances = await exchange.fetchBalance();
@@ -128,15 +137,14 @@ export class OrderService {
       const availableBalance = balances[balanceCurrency]?.free || 0;
 
       // 8. Calculate total cost or net amount
-      let totalCost: number | undefined;
-      let netAmount: number | undefined;
+      let totalRequired: number;
       let hasSufficientBalance = false;
 
       if (orderDto.side === OrderSide.BUY) {
-        totalCost = orderValue + feeAmount;
-        hasSufficientBalance = availableBalance >= totalCost;
+        totalRequired = orderValue + feeAmount;
+        hasSufficientBalance = availableBalance >= totalRequired;
       } else {
-        netAmount = orderValue - feeAmount;
+        totalRequired = orderValue;
         hasSufficientBalance = availableBalance >= quantity;
       }
 
@@ -147,6 +155,17 @@ export class OrderService {
         estimatedSlippage = this.calculateSlippage(orderBook, quantity, orderDto.side);
       }
 
+      // 10. Get supported order types
+      const supportedOrderTypes = this.getSupportedOrderTypesForExchange(exchangeSlug);
+
+      // 11. Build warnings
+      const warnings: string[] = [];
+      if (!hasSufficientBalance) {
+        warnings.push(
+          `Insufficient ${balanceCurrency} balance. Available: ${availableBalance.toFixed(8)}, Required: ${totalRequired.toFixed(8)}`
+        );
+      }
+
       const preview: OrderPreviewDto = {
         symbol,
         side: orderDto.side,
@@ -155,13 +174,17 @@ export class OrderService {
         price,
         estimatedCost: orderValue,
         estimatedFee: feeAmount,
+        feeRate,
         feeCurrency: balanceCurrency,
-        totalRequired: totalCost || orderValue,
+        totalRequired,
         marketPrice,
         availableBalance,
         balanceCurrency,
         hasSufficientBalance,
-        exchange: 'binance_us'
+        estimatedSlippage,
+        warnings,
+        exchange: exchangeSlug,
+        supportedOrderTypes
       };
 
       this.logger.log(`Order preview calculated for user: ${user.id}`);
@@ -281,14 +304,15 @@ export class OrderService {
   }
 
   /**
-   * Save order to database
+   * Save order to database with exchange reference
    */
   private async saveOrderToDatabase(
     exchangeOrder: any,
     orderDto: OrderDto,
-    baseCoin: any,
-    quoteCoin: any,
-    user: User
+    baseCoin: Coin,
+    quoteCoin: Coin,
+    user: User,
+    exchangeEntity?: any
   ): Promise<Order> {
     const order = this.orderRepository.create({
       orderId: exchangeOrder.id?.toString(),
@@ -307,6 +331,7 @@ export class OrderService {
       baseCoin,
       quoteCoin,
       user,
+      exchange: exchangeEntity,
       trades: exchangeOrder.trades,
       info: exchangeOrder.info
     });
@@ -333,24 +358,31 @@ export class OrderService {
   }
 
   /**
-   * Get trading fees with fallback mechanisms
+   * Get trading fees with proper maker/taker determination
+   * Maker/Taker is determined by order type, NOT by side (buy/sell)
+   * - LIMIT orders that add liquidity (not immediately matched) are maker orders
+   * - MARKET orders always take liquidity, so they're taker orders
+   * - STOP and other advanced orders typically execute as market orders (taker)
    */
   private async getTradingFees(
     exchange: ccxt.Exchange,
     exchangeSlug: string,
-    side: OrderSide,
+    orderType: OrderType,
     orderValue: number
-  ): Promise<{ feeRate: number; feeAmount: number; feePercentage: number }> {
+  ): Promise<{ feeRate: number; feeAmount: number }> {
+    // Determine if this is a maker or taker order
+    // LIMIT orders add liquidity (maker), all others typically take liquidity (taker)
+    const isMaker = orderType === OrderType.LIMIT;
+
     try {
       // Try to get trading fees from exchange API
       const tradingFees = await exchange.fetchTradingFees();
       this.logger.debug(`Trading fees from API for ${exchangeSlug}:`, tradingFees);
 
-      const feeRate = side === OrderSide.BUY ? tradingFees.taker || 0.001 : tradingFees.maker || 0.001;
+      const feeRate = isMaker ? tradingFees.maker || 0.001 : tradingFees.taker || 0.001;
       const feeAmount = orderValue * (feeRate as number);
-      const feePercentage = (feeRate as number) * 100;
 
-      return { feeRate: feeRate as number, feeAmount, feePercentage };
+      return { feeRate: feeRate as number, feeAmount };
     } catch (error) {
       this.logger.warn(`Failed to fetch trading fees from API for ${exchangeSlug}: ${error.message}`);
 
@@ -359,12 +391,11 @@ export class OrderService {
         if (exchange.markets && Object.keys(exchange.markets).length > 0) {
           // Get fee from any market as they're usually consistent across the exchange
           const firstMarket = Object.values(exchange.markets)[0];
-          const feeRate = side === OrderSide.BUY ? firstMarket.taker || 0.001 : firstMarket.maker || 0.001;
+          const feeRate = isMaker ? firstMarket.maker || 0.001 : firstMarket.taker || 0.001;
           const feeAmount = orderValue * feeRate;
-          const feePercentage = feeRate * 100;
 
-          this.logger.debug(`Using market fees for ${exchangeSlug}: ${feeRate}`);
-          return { feeRate, feeAmount, feePercentage };
+          this.logger.debug(`Using market fees for ${exchangeSlug}: ${feeRate} (${isMaker ? 'maker' : 'taker'})`);
+          return { feeRate, feeAmount };
         }
       } catch (marketError) {
         this.logger.warn(`Failed to get fees from markets for ${exchangeSlug}: ${marketError.message}`);
@@ -372,12 +403,11 @@ export class OrderService {
 
       // Fallback 2: Use exchange-specific default fees
       const defaultFees = this.getDefaultFees(exchangeSlug);
-      const feeRate = side === OrderSide.BUY ? defaultFees.taker : defaultFees.maker;
+      const feeRate = isMaker ? defaultFees.maker : defaultFees.taker;
       const feeAmount = orderValue * feeRate;
-      const feePercentage = feeRate * 100;
 
-      this.logger.debug(`Using default fees for ${exchangeSlug}: ${feeRate}`);
-      return { feeRate, feeAmount, feePercentage };
+      this.logger.debug(`Using default fees for ${exchangeSlug}: ${feeRate} (${isMaker ? 'maker' : 'taker'})`);
+      return { feeRate, feeAmount };
     }
   }
 
@@ -388,9 +418,9 @@ export class OrderService {
     const defaultFees: Record<string, { maker: number; taker: number }> = {
       binanceus: { maker: 0.001, taker: 0.001 }, // 0.1%
       binance: { maker: 0.001, taker: 0.001 }, // 0.1%
-      coinbase: { maker: 0.005, taker: 0.005 }, // 0.5%
-      coinbasepro: { maker: 0.005, taker: 0.005 }, // 0.5%
-      coinbaseexchange: { maker: 0.005, taker: 0.005 }, // 0.5%
+      coinbase: { maker: 0.004, taker: 0.006 }, // 0.4%/0.6%
+      coinbasepro: { maker: 0.004, taker: 0.006 }, // 0.4%/0.6%
+      coinbaseexchange: { maker: 0.004, taker: 0.006 }, // 0.4%/0.6%
       kraken: { maker: 0.0016, taker: 0.0026 }, // 0.16%/0.26%
       kucoin: { maker: 0.001, taker: 0.001 }, // 0.1%
       okx: { maker: 0.0008, taker: 0.001 } // 0.08%/0.1%
@@ -409,7 +439,6 @@ export class OrderService {
 
       let remainingQuantity = quantity;
       let totalCost = 0;
-      let weightedAveragePrice = 0;
 
       // Calculate weighted average price by consuming order book
       for (const [price, availableQuantity] of orders) {
@@ -421,7 +450,7 @@ export class OrderService {
       }
 
       if (quantity > 0) {
-        weightedAveragePrice = totalCost / quantity;
+        const weightedAveragePrice = totalCost / quantity;
         const marketPrice = orders[0][0]; // Best bid/ask price
         const slippage = Math.abs((weightedAveragePrice - marketPrice) / marketPrice) * 100;
         return Math.round(slippage * 100) / 100; // Round to 2 decimal places
@@ -432,6 +461,22 @@ export class OrderService {
       this.logger.warn(`Failed to calculate slippage: ${error.message}`);
       return 0;
     }
+  }
+
+  /**
+   * Get supported order types for an exchange
+   * Delegates to shared utility from api-interfaces
+   */
+  getSupportedOrderTypesForExchange(exchangeSlug: string): OrderType[] {
+    return getSupportedOrderTypes(exchangeSlug);
+  }
+
+  /**
+   * Check if an exchange supports a specific order type
+   * Delegates to shared utility from api-interfaces
+   */
+  isOrderTypeSupportedByExchange(exchangeSlug: string, orderType: OrderType): boolean {
+    return isOrderTypeSupported(exchangeSlug, orderType);
   }
 
   /**
@@ -450,8 +495,17 @@ export class OrderService {
         throw new NotFoundException('Exchange key not found');
       }
 
-      const exchange = await this.exchangeManager.getExchangeClient(exchangeKey.exchange.slug, user);
+      const exchangeSlug = exchangeKey.exchange.slug;
+      const exchange = await this.exchangeManager.getExchangeClient(exchangeSlug, user);
       await exchange.loadMarkets();
+
+      // Validate order type is supported
+      if (!this.isOrderTypeSupportedByExchange(exchangeSlug, dto.orderType)) {
+        throw new BadRequestException(
+          `Order type "${dto.orderType}" is not supported on ${exchangeKey.exchange.name}. ` +
+            `Supported types: ${this.getSupportedOrderTypesForExchange(exchangeSlug).join(', ')}`
+        );
+      }
 
       // Get market data
       const ticker = await exchange.fetchTicker(dto.symbol);
@@ -468,11 +522,12 @@ export class OrderService {
       // Calculate estimated cost
       const estimatedCost = dto.quantity * executionPrice;
 
-      // Get trading fees
+      // Get trading fees with proper maker/taker determination
       const market = exchange.markets[dto.symbol];
-      const feeRate = dto.side === OrderSide.BUY ? market?.taker || 0.001 : market?.maker || 0.001;
+      const isMaker = dto.orderType === OrderType.LIMIT;
+      const feeRate = isMaker ? market?.maker || 0.001 : market?.taker || 0.001;
       const estimatedFee = estimatedCost * feeRate;
-      const totalRequired = estimatedCost + estimatedFee;
+      const totalRequired = dto.side === OrderSide.BUY ? estimatedCost + estimatedFee : estimatedCost;
 
       // Get user balance
       const balances = await exchange.fetchBalance();
@@ -504,6 +559,23 @@ export class OrderService {
         );
       }
 
+      // Calculate slippage for market orders
+      let estimatedSlippage: number | undefined;
+      if (dto.orderType === OrderType.MARKET) {
+        try {
+          const orderBook = await exchange.fetchOrderBook(dto.symbol, 20);
+          estimatedSlippage = this.calculateSlippage(orderBook, dto.quantity, dto.side);
+          if (estimatedSlippage > 1) {
+            warnings.push(`High estimated slippage: ${estimatedSlippage.toFixed(2)}%`);
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to calculate slippage: ${error.message}`);
+        }
+      }
+
+      // Get supported order types for this exchange
+      const supportedOrderTypes = this.getSupportedOrderTypesForExchange(exchangeSlug);
+
       const preview: OrderPreviewDto = {
         symbol: dto.symbol,
         side: dto.side,
@@ -515,14 +587,17 @@ export class OrderService {
         trailingType: dto.trailingType,
         estimatedCost,
         estimatedFee,
+        feeRate,
         feeCurrency: quoteCurrency,
         totalRequired,
         marketPrice,
         availableBalance,
         balanceCurrency,
         hasSufficientBalance,
+        estimatedSlippage,
         warnings,
-        exchange: exchange.name || 'Unknown'
+        exchange: exchangeKey.exchange.name,
+        supportedOrderTypes
       };
 
       return preview;
@@ -537,9 +612,23 @@ export class OrderService {
    * @param dto Order placement data
    * @param user Authenticated user
    * @param exchange CCXT exchange instance
+   * @param exchangeSlug Exchange slug for order type validation
    * @throws BadRequestException for validation failures
    */
-  private async validateManualOrder(dto: PlaceManualOrderDto, user: User, exchange: ccxt.Exchange): Promise<void> {
+  private async validateManualOrder(
+    dto: PlaceManualOrderDto,
+    user: User,
+    exchange: ccxt.Exchange,
+    exchangeSlug: string
+  ): Promise<void> {
+    // Validate order type is supported by this exchange
+    if (!this.isOrderTypeSupportedByExchange(exchangeSlug, dto.orderType)) {
+      const supportedTypes = this.getSupportedOrderTypesForExchange(exchangeSlug);
+      throw new BadRequestException(
+        `Order type "${dto.orderType}" is not supported on this exchange. Supported types: ${supportedTypes.join(', ')}`
+      );
+    }
+
     // Validate trading pair exists on exchange
     if (!exchange.markets || !exchange.markets[dto.symbol]) {
       throw new BadRequestException(`Trading pair ${dto.symbol} is not available on this exchange`);
@@ -573,6 +662,10 @@ export class OrderService {
 
     // Validate trailing stop parameters
     if (dto.orderType === OrderType.TRAILING_STOP) {
+      const support = getExchangeOrderTypeSupport(exchangeSlug);
+      if (!support.hasTrailingStopSupport) {
+        throw new BadRequestException(`Trailing stop orders are not supported on this exchange`);
+      }
       if (!dto.trailingAmount) {
         throw new BadRequestException('Trailing amount is required for trailing stop orders');
       }
@@ -583,6 +676,10 @@ export class OrderService {
 
     // Validate OCO parameters
     if (dto.orderType === OrderType.OCO) {
+      const support = getExchangeOrderTypeSupport(exchangeSlug);
+      if (!support.hasOcoSupport) {
+        throw new BadRequestException(`OCO orders are not supported on this exchange`);
+      }
       if (!dto.takeProfitPrice) {
         throw new BadRequestException('Take profit price is required for OCO orders');
       }
@@ -591,7 +688,7 @@ export class OrderService {
       }
     }
 
-    // Check user balance
+    // Check user balance (including fees for buy orders)
     const balances = await exchange.fetchBalance();
     const [baseCurrency, quoteCurrency] = dto.symbol.split('/');
 
@@ -600,12 +697,15 @@ export class OrderService {
       const ticker = await exchange.fetchTicker(dto.symbol);
       const price = dto.price || ticker.last || ticker.close || 0;
       const cost = dto.quantity * price;
-      const feeRate = market?.taker || 0.001;
+
+      // Use proper fee determination (taker for market, maker for limit)
+      const isMaker = dto.orderType === OrderType.LIMIT;
+      const feeRate = isMaker ? market?.maker || 0.001 : market?.taker || 0.001;
       const totalRequired = cost * (1 + feeRate);
 
       if (availableQuote < totalRequired) {
         throw new BadRequestException(
-          `Insufficient ${quoteCurrency} balance. Available: ${availableQuote.toFixed(8)}, Required: ${totalRequired.toFixed(8)}`
+          `Insufficient ${quoteCurrency} balance. Available: ${availableQuote.toFixed(8)}, Required: ${totalRequired.toFixed(8)} (including ${(feeRate * 100).toFixed(2)}% fee)`
         );
       }
     } else {
@@ -619,7 +719,7 @@ export class OrderService {
   }
 
   /**
-   * Place a manual order on the exchange
+   * Place a manual order on the exchange with transaction safety
    * @param dto Order placement data
    * @param user Authenticated user
    * @returns Created order entity
@@ -627,19 +727,32 @@ export class OrderService {
   async placeManualOrder(dto: PlaceManualOrderDto, user: User): Promise<Order> {
     this.logger.log(`Placing manual ${dto.side} ${dto.orderType} order for user: ${user.id}`);
 
+    // Get exchange key and client first (outside transaction)
+    const exchangeKey = await this.exchangeKeyService.findOne(dto.exchangeKeyId, user.id);
+    if (!exchangeKey || !exchangeKey.exchange) {
+      throw new NotFoundException('Exchange key not found');
+    }
+
+    const exchangeSlug = exchangeKey.exchange.slug;
+    const exchange = await this.exchangeManager.getExchangeClient(exchangeSlug, user);
+    await exchange.loadMarkets();
+
+    // Validate order before starting transaction
+    await this.validateManualOrder(dto, user, exchange, exchangeSlug);
+
+    // Handle OCO orders separately (they need special transaction handling)
+    if (dto.orderType === OrderType.OCO) {
+      return await this.createOcoOrderWithTransaction(dto, user, exchange, exchangeKey);
+    }
+
+    // Start database transaction for order creation
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    let ccxtOrder: any = null;
+
     try {
-      // Get exchange key and client
-      const exchangeKey = await this.exchangeKeyService.findOne(dto.exchangeKeyId, user.id);
-      if (!exchangeKey || !exchangeKey.exchange) {
-        throw new NotFoundException('Exchange key not found');
-      }
-
-      const exchange = await this.exchangeManager.getExchangeClient(exchangeKey.exchange.slug, user);
-      await exchange.loadMarkets();
-
-      // Validate order
-      await this.validateManualOrder(dto, user, exchange);
-
       // Map order type to CCXT params
       const ccxtOrderType = this.mapOrderTypeToCcxt(dto.orderType);
       const params: any = {};
@@ -655,13 +768,8 @@ export class OrderService {
         params.timeInForce = dto.timeInForce;
       }
 
-      // Handle OCO orders (create two linked orders)
-      if (dto.orderType === OrderType.OCO) {
-        return await this.createOcoOrder(dto, user, exchange, exchangeKey);
-      }
-
       // Create order on exchange
-      const ccxtOrder = await exchange.createOrder(
+      ccxtOrder = await exchange.createOrder(
         dto.symbol,
         ccxtOrderType,
         dto.side.toLowerCase(),
@@ -670,25 +778,23 @@ export class OrderService {
         params
       );
 
-      // Parse symbol to get base and quote
+      // Parse symbol to get base and quote - batch fetch in single query
       const [baseSymbol, quoteSymbol] = dto.symbol.split('/');
-      let baseCoin = null;
-      let quoteCoin = null;
+      let baseCoin: Coin | null = null;
+      let quoteCoin: Coin | null = null;
 
       try {
-        baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
+        const coins = await this.coinService.getMultipleCoinsBySymbol([baseSymbol, quoteSymbol]);
+        baseCoin = coins.find((c) => c.symbol.toLowerCase() === baseSymbol.toLowerCase()) || null;
+        quoteCoin = coins.find((c) => c.symbol.toLowerCase() === quoteSymbol.toLowerCase()) || null;
+        if (!baseCoin) this.logger.warn(`Base coin ${baseSymbol} not found`);
+        if (!quoteCoin) this.logger.warn(`Quote coin ${quoteSymbol} not found`);
       } catch (error) {
-        this.logger.warn(`Base coin ${baseSymbol} not found`);
-      }
-
-      try {
-        quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
-      } catch (error) {
-        this.logger.warn(`Quote coin ${quoteSymbol} not found`);
+        this.logger.warn(`Could not find coins for order: ${error.message}`);
       }
 
       // Create order entity
-      const order = this.orderRepository.create({
+      const order = queryRunner.manager.create(Order, {
         orderId: ccxtOrder.id?.toString() || '',
         clientOrderId: ccxtOrder.clientOrderId || ccxtOrder.id?.toString() || '',
         symbol: dto.symbol,
@@ -718,115 +824,177 @@ export class OrderService {
         info: ccxtOrder.info
       });
 
-      const savedOrder = await this.orderRepository.save(order);
+      const savedOrder = await queryRunner.manager.save(order);
+
+      // Commit transaction
+      await queryRunner.commitTransaction();
+
       this.logger.log(`Manual order created successfully: ${savedOrder.id}`);
       return savedOrder;
     } catch (error) {
+      // Rollback transaction
+      await queryRunner.rollbackTransaction();
+
+      // If we created an order on the exchange but failed to save to DB, log it for manual reconciliation
+      if (ccxtOrder) {
+        this.logger.error(
+          `CRITICAL: Order created on exchange but failed to save to database. ` +
+            `Exchange order ID: ${ccxtOrder.id}, Symbol: ${dto.symbol}, Quantity: ${dto.quantity}. ` +
+            `Manual reconciliation required.`,
+          error.stack
+        );
+      }
+
       this.logger.error(`Manual order placement failed: ${error.message}`, error.stack);
-      throw error;
+      throw new BadRequestException(`Failed to place order: ${error.message}`);
+    } finally {
+      await queryRunner.release();
     }
   }
 
   /**
-   * Create OCO (One-Cancels-Other) order pair
+   * Create OCO (One-Cancels-Other) order pair with transaction safety
    * @param dto Order placement data
    * @param user Authenticated user
    * @param exchange CCXT exchange instance
    * @param exchangeKey Exchange key entity
    * @returns Created take-profit order (linked to stop-loss)
    */
-  private async createOcoOrder(
+  private async createOcoOrderWithTransaction(
     dto: PlaceManualOrderDto,
     user: User,
     exchange: ccxt.Exchange,
     exchangeKey: any
   ): Promise<Order> {
-    // Create take-profit order
-    const takeProfitOrder = await exchange.createOrder(
-      dto.symbol,
-      'limit',
-      dto.side.toLowerCase(),
-      dto.quantity,
-      dto.takeProfitPrice
-    );
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Create stop-loss order
-    const stopLossOrder = await exchange.createOrder(
-      dto.symbol,
-      'stop_loss',
-      dto.side.toLowerCase(),
-      dto.quantity,
-      undefined,
-      { stopPrice: dto.stopLossPrice }
-    );
-
-    // Save both orders to database
-    const [baseSymbol, quoteSymbol] = dto.symbol.split('/');
-    let baseCoin = null;
-    let quoteCoin = null;
+    let takeProfitExchangeOrder: any = null;
+    let stopLossExchangeOrder: any = null;
 
     try {
-      baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
-      quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
+      // Create take-profit order on exchange
+      takeProfitExchangeOrder = await exchange.createOrder(
+        dto.symbol,
+        'limit',
+        dto.side.toLowerCase(),
+        dto.quantity,
+        dto.takeProfitPrice
+      );
+
+      // Create stop-loss order on exchange
+      try {
+        stopLossExchangeOrder = await exchange.createOrder(
+          dto.symbol,
+          'stop_loss',
+          dto.side.toLowerCase(),
+          dto.quantity,
+          undefined,
+          { stopPrice: dto.stopLossPrice }
+        );
+      } catch (stopLossError) {
+        // If stop-loss fails, cancel the take-profit order
+        this.logger.warn(`Stop-loss order failed, canceling take-profit order: ${stopLossError.message}`);
+        try {
+          await exchange.cancelOrder(takeProfitExchangeOrder.id, dto.symbol);
+        } catch (cancelError) {
+          this.logger.error(`Failed to cancel take-profit order after stop-loss failure: ${cancelError.message}`);
+        }
+        throw stopLossError;
+      }
+
+      // Save both orders to database - batch fetch coins in single query
+      const [baseSymbol, quoteSymbol] = dto.symbol.split('/');
+      let baseCoin: Coin | null = null;
+      let quoteCoin: Coin | null = null;
+
+      try {
+        const coins = await this.coinService.getMultipleCoinsBySymbol([baseSymbol, quoteSymbol]);
+        baseCoin = coins.find((c) => c.symbol.toLowerCase() === baseSymbol.toLowerCase()) || null;
+        quoteCoin = coins.find((c) => c.symbol.toLowerCase() === quoteSymbol.toLowerCase()) || null;
+      } catch (error) {
+        this.logger.warn('Could not find coins for OCO order');
+      }
+
+      // Create take-profit order entity
+      const tpOrder = queryRunner.manager.create(Order, {
+        orderId: takeProfitExchangeOrder.id?.toString() || '',
+        clientOrderId: takeProfitExchangeOrder.clientOrderId || takeProfitExchangeOrder.id?.toString() || '',
+        symbol: dto.symbol,
+        side: dto.side,
+        type: OrderType.TAKE_PROFIT,
+        quantity: dto.quantity,
+        price: dto.takeProfitPrice || 0,
+        executedQuantity: 0,
+        status: OrderStatus.NEW,
+        transactTime: new Date(),
+        isManual: true,
+        exchangeKeyId: dto.exchangeKeyId,
+        takeProfitPrice: dto.takeProfitPrice,
+        user,
+        baseCoin: baseCoin || undefined,
+        quoteCoin: quoteCoin || undefined,
+        exchange: exchangeKey.exchange,
+        info: takeProfitExchangeOrder.info
+      });
+
+      const savedTpOrder = await queryRunner.manager.save(tpOrder);
+
+      // Create stop-loss order entity linked to take-profit
+      const slOrder = queryRunner.manager.create(Order, {
+        orderId: stopLossExchangeOrder.id?.toString() || '',
+        clientOrderId: stopLossExchangeOrder.clientOrderId || stopLossExchangeOrder.id?.toString() || '',
+        symbol: dto.symbol,
+        side: dto.side,
+        type: OrderType.STOP_LOSS,
+        quantity: dto.quantity,
+        price: 0,
+        executedQuantity: 0,
+        status: OrderStatus.NEW,
+        transactTime: new Date(),
+        isManual: true,
+        exchangeKeyId: dto.exchangeKeyId,
+        stopPrice: dto.stopLossPrice,
+        stopLossPrice: dto.stopLossPrice,
+        ocoLinkedOrderId: savedTpOrder.id,
+        user,
+        baseCoin: baseCoin || undefined,
+        quoteCoin: quoteCoin || undefined,
+        exchange: exchangeKey.exchange,
+        info: stopLossExchangeOrder.info
+      });
+
+      const savedSlOrder = await queryRunner.manager.save(slOrder);
+
+      // Update take-profit order with link to stop-loss
+      savedTpOrder.ocoLinkedOrderId = savedSlOrder.id;
+      await queryRunner.manager.save(savedTpOrder);
+
+      // Commit transaction
+      await queryRunner.commitTransaction();
+
+      this.logger.log(`OCO order pair created: TP=${savedTpOrder.id}, SL=${savedSlOrder.id}`);
+      return savedTpOrder;
     } catch (error) {
-      this.logger.warn('Could not find coins for OCO order');
+      // Rollback transaction
+      await queryRunner.rollbackTransaction();
+
+      // Log orphaned exchange orders for manual reconciliation
+      if (takeProfitExchangeOrder || stopLossExchangeOrder) {
+        this.logger.error(
+          `CRITICAL: OCO orders may exist on exchange but failed to save to database. ` +
+            `TP Order ID: ${takeProfitExchangeOrder?.id || 'N/A'}, SL Order ID: ${stopLossExchangeOrder?.id || 'N/A'}. ` +
+            `Manual reconciliation required.`,
+          error.stack
+        );
+      }
+
+      this.logger.error(`OCO order creation failed: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to create OCO order: ${error.message}`);
+    } finally {
+      await queryRunner.release();
     }
-
-    // Create take-profit order entity
-    const tpOrder = this.orderRepository.create({
-      orderId: takeProfitOrder.id?.toString() || '',
-      clientOrderId: takeProfitOrder.clientOrderId || takeProfitOrder.id?.toString() || '',
-      symbol: dto.symbol,
-      side: dto.side,
-      type: OrderType.TAKE_PROFIT,
-      quantity: dto.quantity,
-      price: dto.takeProfitPrice || 0,
-      executedQuantity: 0,
-      status: OrderStatus.NEW,
-      transactTime: new Date(),
-      isManual: true,
-      exchangeKeyId: dto.exchangeKeyId,
-      takeProfitPrice: dto.takeProfitPrice,
-      user,
-      baseCoin: baseCoin || undefined,
-      quoteCoin: quoteCoin || undefined,
-      exchange: exchangeKey.exchange,
-      info: takeProfitOrder.info
-    });
-
-    const savedTpOrder = await this.orderRepository.save(tpOrder);
-
-    // Create stop-loss order entity linked to take-profit
-    const slOrder = this.orderRepository.create({
-      orderId: stopLossOrder.id?.toString() || '',
-      clientOrderId: stopLossOrder.clientOrderId || stopLossOrder.id?.toString() || '',
-      symbol: dto.symbol,
-      side: dto.side,
-      type: OrderType.STOP_LOSS,
-      quantity: dto.quantity,
-      price: 0,
-      executedQuantity: 0,
-      status: OrderStatus.NEW,
-      transactTime: new Date(),
-      isManual: true,
-      exchangeKeyId: dto.exchangeKeyId,
-      stopPrice: dto.stopLossPrice,
-      stopLossPrice: dto.stopLossPrice,
-      ocoLinkedOrderId: savedTpOrder.id,
-      user,
-      baseCoin: baseCoin || undefined,
-      quoteCoin: quoteCoin || undefined,
-      exchange: exchangeKey.exchange,
-      info: stopLossOrder.info
-    });
-
-    await this.orderRepository.save(slOrder);
-
-    // Update take-profit order with link to stop-loss
-    savedTpOrder.ocoLinkedOrderId = slOrder.id;
-    await this.orderRepository.save(savedTpOrder);
-
-    return savedTpOrder;
   }
 
   /**
