@@ -19,9 +19,12 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      ignoreTrailingSlash: true,
       // Disable Fastify's built-in logger since we're using Pino via nestjs-pino
-      logger: false
+      logger: false,
+      // Router options moved here to comply with Fastify v6 (fixes FSTDEP022 warning)
+      routerOptions: {
+        ignoreTrailingSlash: true
+      }
     }),
     // Use bufferLogs to ensure no logs are lost before pino is initialized
     { bufferLogs: true }

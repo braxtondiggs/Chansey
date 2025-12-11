@@ -1,5 +1,11 @@
 # Chansey
 
+[![CI](https://github.com/braxtondiggs/Chansey/actions/workflows/ci.yml/badge.svg)](https://github.com/braxtondiggs/Chansey/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
+[![Angular](https://img.shields.io/badge/Angular-20-red.svg)](https://angular.io/)
+[![NestJS](https://img.shields.io/badge/NestJS-11-red.svg)](https://nestjs.com/)
+
 A modern cryptocurrency portfolio management application built with Angular and NestJS. Track your investments across
 multiple exchanges, monitor performance, and manage your crypto portfolio with real-time data synchronization.
 

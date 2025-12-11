@@ -2,6 +2,7 @@
   "cli": {
     "packageManager": "npm"
   },
+  "parallel": 3,
   "generators": {
     "@nx/angular:application": {
       "e2eTestRunner": "cypress",

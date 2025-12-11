@@ -1,0 +1,363 @@
+# GitHub Actions CI/CD Workflow for Nx Monorepo
+# Runs affected tests, linting, builds on pull requests and pushes
+# Deploys to Railway on master branch when affected projects change
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Cancel in-progress runs for the same workflow on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Needed for nx-set-shas and Railway deployment
+permissions:
+  actions: read
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+
+jobs:
+  # Job 1: Setup and determine affected projects
+  setup:
+    name: Setup & Affected Analysis
+    runs-on: ubuntu-latest
+    outputs:
+      affected: ${{ steps.affected.outputs.projects }}
+      has_api: ${{ steps.check.outputs.has_api }}
+      has_chansey: ${{ steps.check.outputs.has_chansey }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/nx
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+
+      - name: Set SHAs for Nx Affected Commands
+        uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'master'
+
+      - name: Get affected projects
+        id: affected
+        run: |
+          # NX_BASE and NX_HEAD are set by nx-set-shas action
+          AFFECTED_PROJECTS=$(npx nx show projects --affected --plain)
+          echo "Affected projects: $AFFECTED_PROJECTS"
+          echo "projects=$(echo $AFFECTED_PROJECTS | tr ' ' ',' | jq -cR 'split(",")')" >> $GITHUB_OUTPUT
+
+      - name: Check specific projects
+        id: check
+        run: |
+          AFFECTED="${{ steps.affected.outputs.projects }}"
+          if echo "$AFFECTED" | grep -q '"api"'; then
+            echo "has_api=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_api=false" >> $GITHUB_OUTPUT
+          fi
+          if echo "$AFFECTED" | grep -q '"chansey"'; then
+            echo "has_chansey=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_chansey=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Job 2: Lint affected projects
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Restore node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Restore Nx cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/nx
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+
+      - uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'master'
+
+      - name: Lint affected projects
+        run: npm run ci:lint
+
+  # Job 3: Test affected projects
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Restore node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Restore Nx cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/nx
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+
+      - uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'master'
+
+      - name: Test affected projects
+        run: npm run ci:test
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Job 4: Build affected projects
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Restore node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Restore Nx cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/nx
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+
+      - uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'master'
+
+      - name: Build affected projects
+        run: |
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            # On master, build all projects for production
+            npm run ci:build:all
+          else
+            # On PRs, only build affected projects
+            npm run ci:build
+          fi
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: dist/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # Job 5: Security audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # Job 6: Bundle size check (only on master push)
+  bundle-size:
+    name: Bundle Size Check
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: dist/
+
+      - name: Check frontend bundle size
+        run: |
+          if [ -d "dist/client" ]; then
+            CHANSEY_SIZE=$(du -sh dist/client | cut -f1)
+            echo "Frontend bundle size: $CHANSEY_SIZE"
+            # Warn if over 3MB (approximate check)
+            SIZE_BYTES=$(du -sb dist/client | cut -f1)
+            if [ $SIZE_BYTES -gt 3145728 ]; then
+              echo "⚠️ Bundle size ($CHANSEY_SIZE) exceeds 3MB - consider optimization"
+            else
+              echo "✅ Bundle size within limits"
+            fi
+          else
+            echo "Frontend build not found, skipping bundle size check"
+          fi
+
+  # Job 7: Deploy frontend to Railway (only on master push when affected)
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [setup, lint, test, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.setup.outputs.has_chansey == 'true'
+    runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
+    env:
+      SVC_ID: 3869b3ae-f1db-4b9d-86a5-543264e00f4d
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to Railway
+        run: railway up --service=${{ env.SVC_ID }} --detach
+
+  # Job 8: Deploy API to Railway (only on master push when affected)
+  deploy-api:
+    name: Deploy API
+    needs: [setup, lint, test, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.setup.outputs.has_api == 'true'
+    runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
+    env:
+      SVC_ID: 6a9cd43d-adac-4f7b-b4b3-368cf7b709a1
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to Railway
+        run: railway up --service=${{ env.SVC_ID }} --detach
+
+  # Status check for required jobs
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    if: always()
+    steps:
+      - name: Check job statuses
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "❌ Lint failed"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "❌ Test failed"
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "❌ Build failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed"
