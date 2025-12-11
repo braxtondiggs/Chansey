@@ -1,13 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
-import { 
-  IsNotEmpty, 
-  IsNumber, 
-  IsOptional, 
-  IsString, 
-  Matches
-} from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import {
   AfterInsert,
   AfterLoad,
@@ -57,7 +51,7 @@ export interface AlgorithmConfig {
 
 /**
  * Improved Algorithm Entity with modern features
- * 
+ *
  * Enhancements:
  * - Better type safety with enums
  * - Algorithm configuration support
@@ -287,14 +281,8 @@ export class Algorithm {
         .replace(/^-+/, '')
         .replace(/-+$/, '');
 
-      // Set strategyId from name if not provided
       if (!this.strategyId) {
         this.strategyId = this.slug;
-      }
-
-      // Legacy service name support (deprecated)
-      if (!this.service) {
-        this.service = `${this.name.replace(/\s+/g, '')}Service`;
       }
     }
 
@@ -351,7 +339,7 @@ export class Algorithm {
     }
 
     this.metrics.totalExecutions = (this.metrics.totalExecutions || 0) + 1;
-    
+
     if (success) {
       this.metrics.successfulExecutions = (this.metrics.successfulExecutions || 0) + 1;
     } else {
@@ -378,7 +366,7 @@ export class Algorithm {
     if (!this.metrics?.totalExecutions || this.metrics.totalExecutions < 10) {
       return false;
     }
-    
+
     const errorRate = ((this.metrics.failedExecutions || 0) / this.metrics.totalExecutions) * 100;
     return errorRate > 20; // More than 20% failure rate
   }

@@ -1,0 +1,125 @@
+<p-toast></p-toast>
+<p-confirmDialog></p-confirmDialog>
+
+<!-- Loading State -->
+@if (isLoading) {
+  <div class="space-y-6">
+    <!-- Header Skeleton -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <p-skeleton width="40px" height="40px" shape="circle"></p-skeleton>
+        <div>
+          <p-skeleton width="250px" height="32px"></p-skeleton>
+          <p-skeleton width="150px" height="20px" styleClass="mt-2"></p-skeleton>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <p-skeleton width="80px" height="40px"></p-skeleton>
+        <p-skeleton width="80px" height="40px"></p-skeleton>
+      </div>
+    </div>
+
+    <!-- Cards Skeleton -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <p-skeleton height="300px"></p-skeleton>
+      <p-skeleton height="300px"></p-skeleton>
+      <p-skeleton height="300px"></p-skeleton>
+      <p-skeleton height="400px"></p-skeleton>
+    </div>
+  </div>
+}
+
+<!-- Error State -->
+@else if (error) {
+  <div class="flex min-h-96 flex-col items-center justify-center">
+    @if (is404Error()) {
+      <i class="pi pi-search mb-4 text-6xl text-gray-400"></i>
+      <h2 class="mb-2 text-xl font-semibold text-gray-700 dark:text-gray-300">Algorithm Not Found</h2>
+      <p class="mb-6 text-gray-500">The algorithm you're looking for doesn't exist or has been deleted.</p>
+      <p-button label="Back to Algorithms" icon="pi pi-arrow-left" (onClick)="goToList()"></p-button>
+    } @else {
+      <i class="pi pi-exclamation-circle mb-4 text-6xl text-red-400"></i>
+      <h2 class="mb-2 text-xl font-semibold text-gray-700 dark:text-gray-300">Error Loading Algorithm</h2>
+      <p class="mb-6 text-gray-500">{{ error }}</p>
+      <div class="flex gap-4">
+        <p-button label="Try Again" icon="pi pi-refresh" (onClick)="retry()"></p-button>
+        <p-button label="Go Back" icon="pi pi-arrow-left" severity="secondary" (onClick)="goBack()"></p-button>
+      </div>
+    }
+  </div>
+}
+
+<!-- Success State -->
+@else if (algorithm) {
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-4">
+        <p-button
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          [rounded]="true"
+          [text]="true"
+          (onClick)="goBack()"
+          pTooltip="Back"
+        ></p-button>
+        <div>
+          <h1 class="m-0 text-2xl font-bold">{{ algorithm.name }}</h1>
+          <code class="text-sm text-gray-500">{{ algorithm.slug }}</code>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <p-button
+          label="Edit"
+          icon="pi pi-pencil"
+          severity="secondary"
+          [outlined]="true"
+          (onClick)="onEdit()"
+        ></p-button>
+        <p-button
+          label="Delete"
+          icon="pi pi-trash"
+          severity="danger"
+          [outlined]="true"
+          (onClick)="onDelete()"
+        ></p-button>
+      </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <!-- Algorithm Info Card -->
+      <app-algorithm-info-card [algorithm]="algorithm"></app-algorithm-info-card>
+
+      <!-- Strategy Card -->
+      <app-strategy-card [strategy]="algorithm.strategy" [hasStrategy]="algorithm.hasStrategy"></app-strategy-card>
+
+      <!-- Metrics Card -->
+      <app-metrics-card [metrics]="algorithm.metrics"></app-metrics-card>
+
+      <!-- Performance Chart -->
+      <app-performance-chart
+        [performanceHistory]="performanceHistory"
+        [isLoading]="isPerformanceLoading"
+        [selectedPeriod]="selectedPeriod()"
+        (periodChange)="onPeriodChange($event)"
+      ></app-performance-chart>
+    </div>
+
+    <!-- Execution Panel (Full Width) -->
+    <app-execution-panel
+      [canExecute]="algorithm.hasStrategy"
+      [lastExecutionResult]="lastExecutionResult()"
+      (execute)="onExecute($event)"
+    ></app-execution-panel>
+  </div>
+
+  <!-- Shared Edit Drawer -->
+  <app-algorithm-edit-drawer
+    #editDrawer
+    [algorithm]="algorithm"
+    [strategies]="strategiesData"
+    [isLoading]="isUpdatePending"
+    (save)="onDrawerSave($event)"
+  ></app-algorithm-edit-drawer>
+}

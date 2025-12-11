@@ -1,27 +1,30 @@
-
-import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, ViewChild, ElementRef, computed, effect, inject, signal, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
-import { CheckboxModule } from 'primeng/checkbox';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { DialogModule } from 'primeng/dialog';
-import { FloatLabelModule } from 'primeng/floatlabel';
-import { FluidModule } from 'primeng/fluid';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
-import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { Table, TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
-import { TextareaModule } from 'primeng/textarea';
 import { ToastModule } from 'primeng/toast';
+import { TooltipModule } from 'primeng/tooltip';
 
-import { Algorithm } from '@chansey/api-interfaces';
+import {
+  Algorithm,
+  AlgorithmCategory,
+  AlgorithmDrawerSaveEvent,
+  AlgorithmStatus,
+  AlgorithmStrategy,
+  CreateAlgorithmDto,
+  UpdateAlgorithmDto
+} from '@chansey/api-interfaces';
 
 import { AlgorithmsService } from './algorithms.service';
+import { AlgorithmEditDrawerComponent } from './components/algorithm-edit-drawer/algorithm-edit-drawer.component';
 
 @Component({
   selector: 'app-algorithms',
@@ -29,58 +32,51 @@ import { AlgorithmsService } from './algorithms.service';
   imports: [
     ButtonModule,
     CardModule,
-    CheckboxModule,
     ConfirmDialogModule,
-    DialogModule,
-    FloatLabelModule,
-    FluidModule,
-    FormsModule,
     IconFieldModule,
     InputIconModule,
-    InputNumberModule,
     InputTextModule,
-    ReactiveFormsModule,
     TableModule,
     TagModule,
-    TextareaModule,
-    ToastModule
-],
+    ToastModule,
+    TooltipModule,
+    AlgorithmEditDrawerComponent
+  ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './algorithms.component.html'
 })
-export class AlgorithmsComponent {
+export class AlgorithmsComponent implements OnInit {
   @ViewChild('dt') dt!: Table;
   @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
+  @ViewChild('editDrawer') editDrawer!: AlgorithmEditDrawerComponent;
 
   // State signals
   algorithms = signal<Algorithm[]>([]);
-  algorithmDialog = signal<boolean>(false);
-  submitted = signal<boolean>(false);
-  isNew = signal<boolean>(true);
+  strategies = signal<AlgorithmStrategy[]>([]);
   selectedAlgorithms = signal<Algorithm[]>([]);
   searchFilter = signal<string>('');
+  editingAlgorithm = signal<Algorithm | null>(null);
+  drawerVisible = signal<boolean>(false);
 
   // Dependencies
   private algorithmsService = inject(AlgorithmsService);
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
-  private fb = inject(FormBuilder);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
-  // Form
-  algorithmForm: FormGroup = this.fb.group({
-    name: ['', [Validators.required]],
-    description: [''],
-    service: [''],
-    status: [false],
-    evaluate: [true],
-    cron: [
-      '* * * * *',
-      [Validators.required, Validators.pattern(/^(\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+)$/)]
-    ]
-  });
+  // Dropdown options for display
+  categoryOptions = [
+    { label: 'Technical Analysis', value: AlgorithmCategory.TECHNICAL },
+    { label: 'Fundamental Analysis', value: AlgorithmCategory.FUNDAMENTAL },
+    { label: 'Sentiment Analysis', value: AlgorithmCategory.SENTIMENT },
+    { label: 'Hybrid', value: AlgorithmCategory.HYBRID },
+    { label: 'Custom', value: AlgorithmCategory.CUSTOM }
+  ];
 
   // TanStack Query hooks
   algorithmsQuery = this.algorithmsService.useAlgorithms();
+  strategiesQuery = this.algorithmsService.useStrategies();
   createAlgorithmMutation = this.algorithmsService.useCreateAlgorithm();
   updateAlgorithmMutation = this.algorithmsService.useUpdateAlgorithm();
   deleteAlgorithmMutation = this.algorithmsService.useDeleteAlgorithm();
@@ -88,49 +84,95 @@ export class AlgorithmsComponent {
   // Computed states
   isLoading = computed(() => this.algorithmsQuery.isPending() || this.algorithmsQuery.isFetching());
   algorithmsData = computed(() => this.algorithmsQuery.data() || []);
+  strategiesData = computed(() => this.strategiesQuery.data() || []);
   isDeletePending = computed(() => this.deleteAlgorithmMutation.isPending());
-  isCreatePending = computed(() => this.createAlgorithmMutation.isPending());
-  isUpdatePending = computed(() => this.updateAlgorithmMutation.isPending());
-  hasChanges = computed(() => this.algorithmForm?.dirty || false);
+  isSavePending = computed(() => this.createAlgorithmMutation.isPending() || this.updateAlgorithmMutation.isPending());
 
   constructor() {
     this.initializeQueries();
   }
 
+  ngOnInit(): void {
+    this.route.queryParams.subscribe((params) => {
+      const editId = params['edit'];
+      if (editId) {
+        this.handleEditQueryParam(editId);
+      }
+    });
+  }
+
+  private handleEditQueryParam(algorithmId: string): void {
+    const checkAndOpenEdit = () => {
+      const algorithms = this.algorithmsData();
+      if (algorithms.length > 0) {
+        const algorithm = algorithms.find((a) => a.id === algorithmId);
+        if (algorithm) {
+          this.openEditAlgorithmDrawer(algorithm);
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: {},
+            replaceUrl: true
+          });
+        }
+      } else {
+        setTimeout(checkAndOpenEdit, 100);
+      }
+    };
+    checkAndOpenEdit();
+  }
+
   private initializeQueries(): void {
-    // Set up an effect to update the algorithms signal when query data changes
     effect(() => {
       const data = this.algorithmsData();
       if (data && Array.isArray(data)) {
         this.algorithms.set(data);
       }
     });
+
+    effect(() => {
+      const data = this.strategiesData();
+      if (data && Array.isArray(data)) {
+        this.strategies.set(data);
+      }
+    });
   }
 
-  openNewAlgorithmDialog(): void {
-    this.isNew.set(true);
-    this.submitted.set(false);
-    this.algorithmForm.reset({
-      status: false,
-      evaluate: true,
-      cron: '* * * * *'
-    });
-    this.algorithmDialog.set(true);
+  openNewAlgorithmDrawer(): void {
+    this.editingAlgorithm.set(null);
+    this.editDrawer.openForCreate();
   }
 
-  openEditAlgorithmDialog(algorithm: Algorithm): void {
-    this.isNew.set(false);
-    this.submitted.set(false);
-    this.algorithmForm.patchValue({
-      name: algorithm.name,
-      description: algorithm.description || '',
-      service: algorithm.service || '',
-      status: algorithm.status,
-      evaluate: algorithm.evaluate,
-      cron: algorithm.cron
-    });
+  openEditAlgorithmDrawer(algorithm: Algorithm): void {
+    this.editingAlgorithm.set(algorithm);
+    this.editDrawer.openForEdit(algorithm);
+  }
 
-    this.algorithmDialog.set(true);
+  onDrawerSave(event: AlgorithmDrawerSaveEvent): void {
+    if (event.id) {
+      // Update existing
+      const updateData: UpdateAlgorithmDto = { ...event.data, id: event.id };
+      this.updateAlgorithmMutation.mutate(updateData, {
+        onSuccess: () => {
+          this.showSuccessMessage('Algorithm updated successfully');
+          this.editDrawer.hideDrawer();
+        },
+        onError: (error) => {
+          this.showErrorMessage(error.message || 'Failed to update algorithm');
+        }
+      });
+    } else {
+      // Create new
+      const createData: CreateAlgorithmDto = event.data;
+      this.createAlgorithmMutation.mutate(createData, {
+        onSuccess: () => {
+          this.showSuccessMessage('Algorithm created successfully');
+          this.editDrawer.hideDrawer();
+        },
+        onError: (error) => {
+          this.showErrorMessage(error.message || 'Failed to create algorithm');
+        }
+      });
+    }
   }
 
   confirmDeleteAlgorithm(algorithm: Algorithm): void {
@@ -144,59 +186,6 @@ export class AlgorithmsComponent {
         this.deleteAlgorithm(algorithm.id);
       }
     });
-  }
-
-  hideDialog(): void {
-    this.algorithmDialog.set(false);
-    this.submitted.set(false);
-    this.algorithmForm.reset();
-  }
-
-  saveAlgorithm(): void {
-    this.submitted.set(true);
-
-    if (this.algorithmForm.invalid) {
-      return;
-    }
-
-    const algorithmData = this.algorithmForm.value;
-
-    if (this.isNew()) {
-      this.createAlgorithmMutation.mutate(algorithmData, {
-        onSuccess: () => {
-          this.showSuccessMessage('Algorithm created successfully');
-          this.hideDialog();
-        },
-        onError: (error) => {
-          this.showErrorMessage(error.message || 'Failed to create algorithm');
-        }
-      });
-    } else {
-      // Find the algorithm we're currently editing to get its ID
-      const algorithms = this.algorithms();
-      const matchingAlgorithm = algorithms.find((a) => a.name === algorithmData.name);
-
-      if (!matchingAlgorithm) {
-        this.showErrorMessage('Could not find the algorithm to update');
-        return;
-      }
-
-      // Include the ID in the update data
-      const updateData = {
-        ...algorithmData,
-        id: matchingAlgorithm.id
-      };
-
-      this.updateAlgorithmMutation.mutate(updateData, {
-        onSuccess: () => {
-          this.showSuccessMessage('Algorithm updated successfully');
-          this.hideDialog();
-        },
-        onError: (error) => {
-          this.showErrorMessage(error.message || 'Failed to update algorithm');
-        }
-      });
-    }
   }
 
   deleteAlgorithm(id: string): void {
@@ -237,12 +226,39 @@ export class AlgorithmsComponent {
     this.dt.filterGlobal(value, 'contains');
   }
 
-  getStatusSeverity(status: boolean): 'success' | 'secondary' {
-    return status ? 'success' : 'secondary';
+  getStatusSeverity(status: AlgorithmStatus | boolean): 'success' | 'secondary' | 'warn' | 'danger' {
+    if (typeof status === 'boolean') {
+      return status ? 'success' : 'secondary';
+    }
+    switch (status) {
+      case AlgorithmStatus.ACTIVE:
+        return 'success';
+      case AlgorithmStatus.MAINTENANCE:
+        return 'warn';
+      case AlgorithmStatus.ERROR:
+        return 'danger';
+      case AlgorithmStatus.INACTIVE:
+      default:
+        return 'secondary';
+    }
   }
 
-  getEvaluateSeverity(evaluate: boolean): 'info' | 'secondary' {
-    return evaluate ? 'info' : 'secondary';
+  getStatusLabel(status: AlgorithmStatus | boolean): string {
+    if (typeof status === 'boolean') {
+      return status ? 'Active' : 'Inactive';
+    }
+    switch (status) {
+      case AlgorithmStatus.ACTIVE:
+        return 'Active';
+      case AlgorithmStatus.INACTIVE:
+        return 'Inactive';
+      case AlgorithmStatus.MAINTENANCE:
+        return 'Maintenance';
+      case AlgorithmStatus.ERROR:
+        return 'Error';
+      default:
+        return 'Unknown';
+    }
   }
 
   private showSuccessMessage(detail: string): void {
@@ -259,5 +275,14 @@ export class AlgorithmsComponent {
       summary: 'Error',
       detail
     });
+  }
+
+  viewAlgorithm(algorithm: Algorithm): void {
+    this.router.navigate(['/admin/algorithms', algorithm.id]);
+  }
+
+  getCategoryLabel(category: AlgorithmCategory): string {
+    const option = this.categoryOptions.find((o) => o.value === category);
+    return option?.label || category;
   }
 }

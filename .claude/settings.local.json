@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": ["Bash(npm run build:*)", "Bash(find:*)", "Bash(gh issue view:*)"]
-  },
-  "enableAllProjectMcpServers": true,
-  "spinnerTipsEnabled": false,
-  "outputStyle": "default"
-}

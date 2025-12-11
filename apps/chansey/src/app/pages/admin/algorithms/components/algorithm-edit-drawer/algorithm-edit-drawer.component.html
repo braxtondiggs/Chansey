@@ -1,0 +1,210 @@
+<p-drawer
+  [visible]="visible"
+  (visibleChange)="onVisibleChange($event)"
+  [position]="'right'"
+  [style]="{ width: '32rem' }"
+  [header]="drawerTitle"
+  [modal]="true"
+>
+  <form [formGroup]="algorithmForm" (ngSubmit)="saveAlgorithm()" class="flex h-full flex-col">
+    <div class="flex-1 space-y-6 overflow-y-auto">
+      <!-- Basic Info Section -->
+      <p-fieldset legend="Basic Information" [toggleable]="false">
+        <div class="space-y-4">
+          <div>
+            <label for="name" class="mb-2 block text-sm font-medium">Name <span class="text-red-500">*</span></label>
+            <input
+              pInputText
+              type="text"
+              id="name"
+              formControlName="name"
+              class="w-full"
+              placeholder="e.g., Exponential Moving Average"
+              [class.ng-invalid]="submitted() && algorithmForm.get('name')?.invalid"
+            />
+            @if (submitted() && algorithmForm.get('name')?.errors?.['required']) {
+              <small class="text-red-500">Name is required.</small>
+            }
+          </div>
+
+          <div>
+            <label for="description" class="mb-2 block text-sm font-medium">Description</label>
+            <textarea
+              pInputTextarea
+              id="description"
+              formControlName="description"
+              rows="3"
+              class="w-full"
+              placeholder="Describe what this algorithm does..."
+            ></textarea>
+          </div>
+
+          <div>
+            <label for="category" class="mb-2 block text-sm font-medium">Category</label>
+            <p-select
+              id="category"
+              formControlName="category"
+              [options]="categoryOptions"
+              optionLabel="label"
+              optionValue="value"
+              styleClass="w-full"
+              appendTo="body"
+              placeholder="Select category"
+            ></p-select>
+          </div>
+        </div>
+      </p-fieldset>
+
+      <!-- Strategy Section -->
+      <p-fieldset legend="Strategy" [toggleable]="false">
+        <div class="space-y-4">
+          <div>
+            <label for="strategyId" class="mb-2 block text-sm font-medium">Link Strategy</label>
+            <p-select
+              id="strategyId"
+              formControlName="strategyId"
+              [options]="strategies"
+              optionLabel="name"
+              optionValue="id"
+              [showClear]="true"
+              placeholder="Select a strategy to enable execution"
+              styleClass="w-full"
+              appendTo="body"
+              (onChange)="onStrategyChange($event.value)"
+            >
+              <ng-template #selectedItem let-strategy>
+                @if (strategy) {
+                  <div class="flex items-center gap-2">
+                    <span>{{ strategy.name }}</span>
+                    <span class="text-xs text-gray-500">(v{{ strategy.version }})</span>
+                  </div>
+                }
+              </ng-template>
+              <ng-template #item let-strategy>
+                <div class="flex flex-col py-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium">{{ strategy.name }}</span>
+                    <span class="text-xs text-gray-500">v{{ strategy.version }}</span>
+                  </div>
+                  @if (strategy.description) {
+                    <small class="text-gray-500">{{ strategy.description }}</small>
+                  }
+                </div>
+              </ng-template>
+            </p-select>
+            <small class="mt-1 block text-gray-500">
+              Strategies contain the trading logic. Select one to enable automatic execution.
+            </small>
+          </div>
+
+          <!-- Strategy Preview Card -->
+          @if (selectedStrategy()) {
+            <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <div class="mb-2 flex items-center gap-2">
+                <i class="pi pi-info-circle text-blue-600"></i>
+                <span class="font-semibold text-blue-800">{{ selectedStrategy()?.name }}</span>
+                <span class="text-xs text-blue-600">v{{ selectedStrategy()?.version }}</span>
+              </div>
+              <p class="text-sm text-blue-700">{{ selectedStrategy()?.description }}</p>
+            </div>
+          }
+        </div>
+      </p-fieldset>
+
+      <!-- Execution Section -->
+      <p-fieldset legend="Execution Settings" [toggleable]="false">
+        <div class="space-y-4">
+          <div>
+            <label for="status" class="mb-2 block text-sm font-medium">Status</label>
+            <p-select
+              id="status"
+              formControlName="status"
+              [options]="statusOptions"
+              optionLabel="label"
+              optionValue="value"
+              styleClass="w-full"
+              appendTo="body"
+            ></p-select>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <p-toggleswitch formControlName="evaluate" inputId="evaluate"></p-toggleswitch>
+            <label for="evaluate" class="text-sm font-medium">Evaluate in TestNet</label>
+          </div>
+
+          <div>
+            <label for="cron" class="mb-2 block text-sm font-medium">
+              Schedule <span class="text-red-500">*</span>
+            </label>
+            <input
+              pInputText
+              id="cron"
+              formControlName="cron"
+              class="w-full font-mono"
+              placeholder="0 */4 * * *"
+              [class.ng-invalid]="submitted() && algorithmForm.get('cron')?.invalid"
+            />
+            @if (submitted() && algorithmForm.get('cron')?.errors?.['required']) {
+              <small class="text-red-500">Schedule is required.</small>
+            }
+            @if (submitted() && algorithmForm.get('cron')?.errors?.['pattern']) {
+              <small class="text-red-500">Invalid cron expression.</small>
+            }
+            <small class="mt-1 block text-gray-500"> Cron format: minute hour day month weekday </small>
+          </div>
+
+          <div>
+            <label for="weight" class="mb-2 block text-sm font-medium">Weight</label>
+            <p-inputnumber
+              id="weight"
+              formControlName="weight"
+              [minFractionDigits]="1"
+              [maxFractionDigits]="2"
+              [min]="0"
+              [max]="10"
+              mode="decimal"
+              styleClass="w-full"
+            ></p-inputnumber>
+            <small class="mt-1 block text-gray-500"> Portfolio allocation weight (0-10) </small>
+          </div>
+        </div>
+      </p-fieldset>
+
+      <!-- Metadata Section (Collapsible) -->
+      <p-fieldset legend="Metadata" [toggleable]="true" [collapsed]="true">
+        <div class="space-y-4">
+          <div>
+            <label for="version" class="mb-2 block text-sm font-medium">Version</label>
+            <input
+              pInputText
+              type="text"
+              id="version"
+              formControlName="version"
+              class="w-full"
+              placeholder="e.g., 1.0.0"
+            />
+          </div>
+
+          <div>
+            <label for="author" class="mb-2 block text-sm font-medium">Author</label>
+            <input
+              pInputText
+              type="text"
+              id="author"
+              formControlName="author"
+              class="w-full"
+              placeholder="e.g., Trading Team"
+            />
+          </div>
+        </div>
+      </p-fieldset>
+    </div>
+
+    <!-- Footer Actions -->
+    <p-divider></p-divider>
+    <div class="flex justify-end gap-2 pt-4">
+      <p-button label="Cancel" icon="pi pi-times" severity="secondary" [outlined]="true" (onClick)="hideDrawer()" />
+      <p-button label="Save" icon="pi pi-check" (onClick)="saveAlgorithm()" [loading]="isLoading" />
+    </div>
+  </form>
+</p-drawer>

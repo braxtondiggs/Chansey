@@ -14,6 +14,7 @@ import { AlgorithmContextBuilder } from './services/algorithm-context-builder.se
 import { AlgorithmPerformanceService } from './services/algorithm-performance.service';
 import { ExponentialMovingAverageStrategy } from './strategies/exponential-moving-average.strategy';
 import { MeanReversionStrategy } from './strategies/mean-reversion.strategy';
+import { SimpleMovingAverageCrossoverStrategy } from './strategies/simple-moving-average-crossover.strategy';
 import { PerformanceRankingTask } from './tasks/performance-ranking.task';
 
 import { AppModule } from '../app.module';
@@ -55,6 +56,7 @@ import { UsersModule } from '../users/users.module';
     TickerPairService,
     ExponentialMovingAverageStrategy,
     MeanReversionStrategy,
+    SimpleMovingAverageCrossoverStrategy,
     PerformanceRankingTask,
 
     // Strategy registration factory
@@ -63,14 +65,21 @@ import { UsersModule } from '../users/users.module';
       useFactory: async (
         emaStrategy: ExponentialMovingAverageStrategy,
         meanReversionStrategy: MeanReversionStrategy,
+        smaCrossoverStrategy: SimpleMovingAverageCrossoverStrategy,
         registry: AlgorithmRegistry
       ) => {
         registry.registerStrategy(emaStrategy);
         registry.registerStrategy(meanReversionStrategy);
+        registry.registerStrategy(smaCrossoverStrategy);
 
-        return [emaStrategy, meanReversionStrategy];
+        return [emaStrategy, meanReversionStrategy, smaCrossoverStrategy];
       },
-      inject: [ExponentialMovingAverageStrategy, MeanReversionStrategy, AlgorithmRegistry]
+      inject: [
+        ExponentialMovingAverageStrategy,
+        MeanReversionStrategy,
+        SimpleMovingAverageCrossoverStrategy,
+        AlgorithmRegistry
+      ]
     }
   ],
   exports: [

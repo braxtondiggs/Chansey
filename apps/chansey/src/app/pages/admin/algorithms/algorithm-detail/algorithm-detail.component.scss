@@ -1,0 +1,20 @@
+:host {
+  display: block;
+}
+
+// Ensure cards have consistent height in grid
+:host ::ng-deep {
+  .p-card {
+    height: 100%;
+
+    .p-card-body {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .p-card-content {
+      flex: 1;
+    }
+  }
+}
