@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "start": "nx run-many --parallel --target=serve --projects=api,chansey",
@@ -26,6 +26,10 @@
     "affected:lint": "nx affected --target=lint",
     "affected:dep-graph": "nx affected --graph",
     "affected": "nx affected",
+    "ci:lint": "nx affected --target=lint --parallel=3",
+    "ci:test": "nx affected --target=test --parallel=3 --configuration=ci",
+    "ci:build": "nx affected --target=build --configuration=production --parallel=3",
+    "ci:build:all": "nx run-many --target=build --all --configuration=production --parallel=3",
     "format": "nx format:write --exclude ./node_modules,*.json",
     "format:check": "nx format:check --exclude ./node_modules",
     "format:tailwind": "prettier --write \"apps/chansey/src/**/*.html\" --config .prettierrc",
