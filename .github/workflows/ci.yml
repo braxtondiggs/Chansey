@@ -82,16 +82,27 @@ jobs:
         id: check
         run: |
           AFFECTED="${{ steps.affected.outputs.projects }}"
-          if echo "$AFFECTED" | grep -q '"api"'; then
+          echo "Checking affected projects: $AFFECTED"
+
+          # Match exact project names (surrounded by brackets or commas)
+          # Note: Bash double-quote expansion removes JSON quotes, so [api,chansey] not ["api","chansey"]
+          if echo "$AFFECTED" | grep -qE '[[,]api[],]'; then
+            echo "API is affected"
             echo "has_api=true" >> $GITHUB_OUTPUT
           else
+            echo "API is NOT affected"
             echo "has_api=false" >> $GITHUB_OUTPUT
           fi
-          if echo "$AFFECTED" | grep -q '"chansey"'; then
+
+          if echo "$AFFECTED" | grep -qE '[[,]chansey[],]'; then
+            echo "Chansey is affected"
             echo "has_chansey=true" >> $GITHUB_OUTPUT
           else
+            echo "Chansey is NOT affected"
             echo "has_chansey=false" >> $GITHUB_OUTPUT
           fi
+
+          echo "Outputs set: has_api=$(grep has_api $GITHUB_OUTPUT | cut -d= -f2), has_chansey=$(grep has_chansey $GITHUB_OUTPUT | cut -d= -f2)"
 
   # Job 2: Lint affected projects
   lint:
