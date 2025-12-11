@@ -14,6 +14,7 @@ import { TickerPairService } from '../../coin/ticker-pairs/ticker-pairs.service'
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { ExchangeService } from '../../exchange/exchange.service';
+import { MetricsService } from '../../metrics/metrics.service';
 import { User } from '../../users/users.entity';
 import { Order, OrderSide } from '../order.entity';
 
@@ -28,7 +29,8 @@ export class OrderSyncService {
     private readonly exchangeService: ExchangeService,
     private readonly tickerPairService: TickerPairService,
     private readonly exchangeKeyService: ExchangeKeyService,
-    private readonly exchangeManager: ExchangeManagerService
+    private readonly exchangeManager: ExchangeManagerService,
+    private readonly metricsService: MetricsService
   ) {}
 
   /**
@@ -552,46 +554,61 @@ export class OrderSyncService {
    * @returns The number of new orders synced
    */
   private async syncOrdersForExchange(user: User, exchangeName: string, client: ccxt.Exchange): Promise<number> {
-    // Get the most recent order from DB for this user and exchange
-    const mostRecentOrder = await this.orderRepository.findOne({
-      where: {
-        user: { id: user.id },
-        exchange: { name: exchangeName }
-      },
-      order: { transactTime: 'DESC' }
-    });
+    const exchangeSlug = exchangeName.toLowerCase().replace(/\s+/g, '-');
+    const endTimer = this.metricsService.startOrderSyncTimer(exchangeSlug);
 
-    let totalNewOrders = 0;
-
-    // Fetch orders using fetchOrders API
-    const newOrders = await this.fetchHistoricalOrders(client, mostRecentOrder?.transactTime);
-    this.logger.log(`Fetched ${newOrders.length} new orders from ${exchangeName} for user ${user.id}`);
-
-    if (newOrders.length > 0) {
-      totalNewOrders += await this.saveExchangeOrders(newOrders, user, exchangeName);
-    }
-
-    // Fetch trades using fetchMyTrades API to catch any missing orders
     try {
-      const newTrades = await this.fetchMyTrades(client, mostRecentOrder?.transactTime);
-      this.logger.log(`Fetched ${newTrades.length} new trades from ${exchangeName} for user ${user.id}`);
+      // Get the most recent order from DB for this user and exchange
+      const mostRecentOrder = await this.orderRepository.findOne({
+        where: {
+          user: { id: user.id },
+          exchange: { name: exchangeName }
+        },
+        order: { transactTime: 'DESC' }
+      });
 
-      if (newTrades.length > 0) {
-        // Convert trades to orders and save them
-        const syntheticOrders = this.convertTradesToOrders(newTrades);
-        this.logger.log(`Converted ${newTrades.length} trades into ${syntheticOrders.length} synthetic orders`);
+      let totalNewOrders = 0;
 
-        if (syntheticOrders.length > 0) {
-          totalNewOrders += await this.saveExchangeOrders(syntheticOrders, user, exchangeName);
-        }
+      // Fetch orders using fetchOrders API
+      const newOrders = await this.fetchHistoricalOrders(client, mostRecentOrder?.transactTime);
+      this.logger.log(`Fetched ${newOrders.length} new orders from ${exchangeName} for user ${user.id}`);
+
+      if (newOrders.length > 0) {
+        totalNewOrders += await this.saveExchangeOrders(newOrders, user, exchangeName);
       }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.warn(`Trade synchronization failed for ${exchangeName}: ${errorMessage}`);
-      // Don't throw - continue with order sync even if trade sync fails
-    }
 
-    return totalNewOrders;
+      // Fetch trades using fetchMyTrades API to catch any missing orders
+      try {
+        const newTrades = await this.fetchMyTrades(client, mostRecentOrder?.transactTime);
+        this.logger.log(`Fetched ${newTrades.length} new trades from ${exchangeName} for user ${user.id}`);
+
+        if (newTrades.length > 0) {
+          // Convert trades to orders and save them
+          const syntheticOrders = this.convertTradesToOrders(newTrades);
+          this.logger.log(`Converted ${newTrades.length} trades into ${syntheticOrders.length} synthetic orders`);
+
+          if (syntheticOrders.length > 0) {
+            totalNewOrders += await this.saveExchangeOrders(syntheticOrders, user, exchangeName);
+          }
+        }
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(`Trade synchronization failed for ${exchangeName}: ${errorMessage}`);
+        // Don't throw - continue with order sync even if trade sync fails
+      }
+
+      // Record successful sync metrics
+      this.metricsService.recordOrdersSynced(exchangeSlug, 'success', totalNewOrders);
+
+      return totalNewOrders;
+    } catch (error: unknown) {
+      const errorType = error instanceof Error ? error.constructor.name : 'UnknownError';
+      this.metricsService.recordOrderSyncError(exchangeSlug, errorType);
+      this.metricsService.recordOrdersSynced(exchangeSlug, 'failed', 0);
+      throw error;
+    } finally {
+      endTimer();
+    }
   }
 
   /**

@@ -12,7 +12,6 @@ import { FastifyAdapter } from '@bull-board/fastify';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { LoggerModule } from 'nestjs-pino';
 
-import { randomUUID } from 'crypto';
 import { join } from 'path';
 
 import { AlgorithmModule } from './algorithm/algorithm.module';
@@ -24,9 +23,11 @@ import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
 import { validateEnv } from './config/env.validation';
+import { createLoggerConfig } from './config/logger.config';
 import { ExchangeModule } from './exchange/exchange.module';
 import { HealthModule } from './health/health.module';
 import { MarketRegimeModule } from './market-regime/market-regime.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { OptimizationModule } from './optimization/optimization.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
@@ -43,21 +44,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 @Module({
   imports: [
-    LoggerModule.forRoot({
-      pinoHttp: {
-        autoLogging: {
-          ignore: (req) => req.url === '/api/health' || req.url === '/api/metrics' || req.url?.startsWith('/bull-board')
-        },
-        genReqId: (req) => req.headers['x-request-id'] || req.headers['x-correlation-id'] || randomUUID(),
-        customLogLevel: (req, res, err) => {
-          if (res.statusCode >= 500 || err) return 'error';
-          if (res.statusCode >= 400) return 'warn';
-          return 'info';
-        },
-        customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
-        customErrorMessage: (req, res, err) => `${req.method} ${req.url} ${res.statusCode} - ${err.message}`
-      }
-    }),
+    LoggerModule.forRoot(createLoggerConfig()),
     StorageModule,
     TypeOrmModule.forRoot({
       autoLoadEntities: true,
@@ -148,6 +135,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     HealthModule,
     HttpModule,
     MarketRegimeModule,
+    MetricsModule,
     OptimizationModule,
     OrderModule,
     PortfolioModule,

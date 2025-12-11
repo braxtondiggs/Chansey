@@ -1,3 +1,6 @@
+// OpenTelemetry must be initialized before any other imports
+import './instrumentation';
+
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';

@@ -15,6 +15,7 @@ import { MarketDataSet } from './market-data-set.entity';
 
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
+import { MetricsService } from '../../metrics/metrics.service';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -28,6 +29,7 @@ export class BacktestProcessor extends WorkerHost {
     private readonly coinService: CoinService,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
+    private readonly metricsService: MetricsService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
   ) {
@@ -37,6 +39,9 @@ export class BacktestProcessor extends WorkerHost {
   async process(job: Job<BacktestJobData>): Promise<void> {
     const { backtestId, userId, datasetId, deterministicSeed, algorithmId, mode } = job.data;
     this.logger.log(`Processing historical backtest ${backtestId} for user ${userId}`);
+
+    const strategyName = algorithmId ?? 'unknown';
+    const endTimer = this.metricsService.startBacktestTimer(strategyName);
 
     try {
       const backtest = await this.backtestRepository.findOne({
@@ -75,9 +80,13 @@ export class BacktestProcessor extends WorkerHost {
       });
 
       await this.backtestResultService.persistSuccess(backtest, results);
+      this.metricsService.recordBacktestCompleted(strategyName, 'success');
     } catch (error) {
       this.logger.error(`Historical backtest ${backtestId} failed: ${error.message}`, error.stack);
       await this.backtestResultService.markFailed(backtestId, error.message);
+      this.metricsService.recordBacktestCompleted(strategyName, 'failed');
+    } finally {
+      endTimer();
     }
   }
 
