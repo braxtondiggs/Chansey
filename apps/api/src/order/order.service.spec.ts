@@ -2,7 +2,7 @@ import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 
 import { OrderDto } from './dto/order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
@@ -101,6 +101,22 @@ describe('OrderService', () => {
           }
         },
         {
+          provide: DataSource,
+          useValue: {
+            createQueryRunner: jest.fn().mockReturnValue({
+              connect: jest.fn(),
+              startTransaction: jest.fn(),
+              commitTransaction: jest.fn(),
+              rollbackTransaction: jest.fn(),
+              release: jest.fn(),
+              manager: {
+                create: jest.fn(),
+                save: jest.fn()
+              }
+            })
+          }
+        },
+        {
           provide: ExchangeService,
           useValue: {
             getExchangeById: jest.fn()
@@ -123,7 +139,8 @@ describe('OrderService', () => {
           provide: CoinService,
           useValue: {
             getCoinById: jest.fn(),
-            getCoinBySymbol: jest.fn()
+            getCoinBySymbol: jest.fn(),
+            getMultipleCoinsBySymbol: jest.fn()
           }
         },
         {
@@ -413,6 +430,19 @@ describe('OrderService', () => {
         order: { createdAt: 'DESC' }
       });
     });
+
+    it('should apply manual flag and limit together', async () => {
+      orderRepository.find.mockResolvedValue([mockOrder]);
+
+      await service.getOrders(mockUser, { isManual: true, limit: 5 });
+
+      expect(orderRepository.find).toHaveBeenCalledWith({
+        where: { user: { id: mockUser.id }, isManual: true },
+        relations: ['baseCoin', 'quoteCoin', 'exchange', 'algorithmActivation'],
+        order: { createdAt: 'DESC' },
+        take: 5
+      });
+    });
   });
 
   describe('getOrder', () => {
@@ -449,6 +479,94 @@ describe('OrderService', () => {
       expect(mapMethod('rejected')).toBe(OrderStatus.REJECTED);
       expect(mapMethod('partial')).toBe(OrderStatus.PARTIALLY_FILLED);
       expect(mapMethod('unknown')).toBe(OrderStatus.NEW); // default case
+    });
+  });
+
+  describe('previewOrder', () => {
+    it('should build preview with slippage and balance warning', async () => {
+      const exchangeStub: any = {
+        fetchTicker: jest.fn().mockResolvedValue({ last: 100 }),
+        fetchBalance: jest.fn().mockResolvedValue({ USDT: { free: 50 } }),
+        fetchOrderBook: jest.fn().mockResolvedValue({
+          asks: [
+            [100, 0.4],
+            [105, 0.6]
+          ]
+        }),
+        fetchTradingFees: jest.fn().mockResolvedValue({ maker: 0.001, taker: 0.002 })
+      };
+
+      coinService.getCoinById.mockResolvedValueOnce(mockBaseCoin as any);
+      coinService.getCoinBySymbol.mockResolvedValue(mockQuoteCoin as any);
+      exchangeService.getExchangeById.mockResolvedValue({ slug: 'binance' } as any);
+      exchangeManagerService.getExchangeClient.mockResolvedValue(exchangeStub);
+      exchangeManagerService.formatSymbol.mockReturnValue('BTC/USDT');
+
+      const preview = await service.previewOrder(
+        {
+          side: OrderSide.BUY,
+          type: OrderType.MARKET,
+          baseCoinId: 'coin-btc',
+          exchangeId: 'binance',
+          quantity: '0.5'
+        },
+        mockUser
+      );
+
+      expect(preview.symbol).toBe('BTC/USDT');
+      expect(preview.estimatedSlippage).toBeGreaterThanOrEqual(1);
+      expect(preview.warnings.some((w) => w.includes('Insufficient'))).toBe(true);
+      expect(exchangeStub.fetchOrderBook).toHaveBeenCalledWith('BTC/USDT', 20);
+    });
+  });
+
+  describe('internal helpers', () => {
+    it('calculates trading fees using market fallback when API fails', async () => {
+      const exchangeStub: any = {
+        fetchTradingFees: jest.fn().mockRejectedValue(new Error('api down')),
+        markets: { BTCUSDT: { maker: 0.002, taker: 0.003 } }
+      };
+
+      const { feeRate, feeAmount } = await (service as any).getTradingFees(
+        exchangeStub,
+        'binance',
+        OrderType.LIMIT,
+        1000
+      );
+
+      expect(feeRate).toBe(0.002);
+      expect(feeAmount).toBe(2);
+    });
+
+    it('calculates trading fees using default fallback when no market data', async () => {
+      const exchangeStub: any = {
+        fetchTradingFees: jest.fn().mockRejectedValue(new Error('api down')),
+        markets: {}
+      };
+
+      const { feeRate, feeAmount } = await (service as any).getTradingFees(
+        exchangeStub,
+        'unknown',
+        OrderType.MARKET,
+        100
+      );
+
+      expect(feeRate).toBe(0.001); // default taker
+      expect(feeAmount).toBeCloseTo(0.1);
+    });
+
+    it('calculates slippage from order book', () => {
+      const orderBook = {
+        asks: [
+          [100, 0.5],
+          [110, 0.5]
+        ],
+        bids: [[99, 1]]
+      };
+      const slippage = (service as any).calculateSlippage(orderBook, 0.75, OrderSide.BUY);
+
+      expect(slippage).toBeGreaterThan(0);
+      expect(slippage).toBeLessThan(10);
     });
   });
 
