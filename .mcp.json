@@ -1,39 +1,27 @@
 {
   "mcpServers": {
-    "nx-mcp": {
-      "type": "stdio",
+    "angular-cli": {
       "command": "npx",
-      "args": [
-        "nx",
-        "mcp"
-      ]
+      "args": ["-y", "@angular/cli", "mcp"]
     },
     "executeautomation-playwright-server": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@executeautomation/playwright-mcp-server"
-      ]
+      "args": ["-y", "@executeautomation/playwright-mcp-server"]
     },
     "github": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
+      "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN_MCP}"
       }
     },
     "postgresql": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-postgres"
-      ],
-      "env": {
-        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@localhost:5432/dbname"
-      }
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://braxtondiggs:chansey_local_dev@127.0.0.1:5432/postgres"
+      ]
     }
   }
 }

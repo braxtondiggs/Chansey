@@ -57,11 +57,22 @@ export class AlgorithmController {
     const algorithms = await this.algorithmService.getAlgorithms();
     const strategies = this.algorithmRegistry.getAllStrategies();
 
-    return algorithms.map((algorithm) => ({
-      ...algorithm,
-      strategy: strategies.find((s) => s.constructor.name === algorithm.service),
-      hasStrategy: strategies.some((s) => s.constructor.name === algorithm.service)
-    }));
+    return algorithms.map((algorithm) => {
+      const strategy = strategies.find((s) => s.constructor.name === algorithm.service);
+      return {
+        ...algorithm,
+        strategy: strategy
+          ? {
+              id: strategy.id,
+              name: strategy.name,
+              version: strategy.version,
+              description: strategy.description,
+              configSchema: strategy.getConfigSchema?.()
+            }
+          : null,
+        hasStrategy: !!strategy
+      };
+    });
   }
 
   @Get('strategies')
@@ -78,6 +89,7 @@ export class AlgorithmController {
     return strategies.map((strategy) => ({
       id: strategy.id,
       name: strategy.name,
+      className: strategy.constructor.name,
       version: strategy.version,
       description: strategy.description,
       configSchema: strategy.getConfigSchema?.()
@@ -175,7 +187,8 @@ export class AlgorithmController {
   })
   async getAlgorithmById(@Param('id', ParseUUIDPipe) algorithmId: string) {
     const algorithm = await this.algorithmService.getAlgorithmById(algorithmId);
-    const strategy = this.algorithmRegistry.getStrategyForAlgorithm(algorithmId);
+    const strategies = this.algorithmRegistry.getAllStrategies();
+    const strategy = strategies.find((s) => s.constructor.name === algorithm.service);
 
     return {
       ...algorithm,

@@ -53,6 +53,7 @@ docs/
 
 # Claude Code project files
 .codex/
+.claude/settings.local.json
 
 # Codex prompts (keep these)
 .codex/*
