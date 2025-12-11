@@ -76,7 +76,19 @@ const envSchema = z.object({
   BINANCE_API_SECRET: z.string().optional(),
   COINBASE_API_KEY: z.string().optional(),
   COINBASE_API_SECRET: z.string().optional(),
-  COINBASE_API_PASSPHRASE: z.string().optional()
+  COINBASE_API_PASSPHRASE: z.string().optional(),
+
+  // Observability - Grafana Stack (Optional)
+  LOKI_ENDPOINT: z.string().url('Loki endpoint must be a valid URL').optional(),
+  LOKI_USERNAME: z.string().optional(),
+  LOKI_PASSWORD: z.string().optional(),
+  TEMPO_ENDPOINT: z.string().url('Tempo endpoint must be a valid URL').optional(),
+  TEMPO_AUTH_HEADER: z.string().optional(),
+  OTEL_SERVICE_NAME: z.string().default('chansey-api'),
+
+  // Prometheus Metrics
+  // Metrics are always exposed at /api/metrics - configure Prometheus to scrape this endpoint
+  PROMETHEUS_METRICS_PATH: z.string().default('/metrics')
 });
 
 /**
