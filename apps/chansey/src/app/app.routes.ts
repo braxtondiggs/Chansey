@@ -128,6 +128,14 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Algorithms' }
       },
       {
+        path: 'algorithms/:id',
+        loadComponent: () =>
+          import('./pages/admin/algorithms/algorithm-detail/algorithm-detail.component').then(
+            (c) => c.AlgorithmDetailComponent
+          ),
+        data: { breadcrumb: 'Algorithm Detail' }
+      },
+      {
         path: 'bull-board',
         loadComponent: () => import('./pages/admin/bull-board').then((c) => c.BullBoardComponent),
         data: { breadcrumb: 'Bull Board' }

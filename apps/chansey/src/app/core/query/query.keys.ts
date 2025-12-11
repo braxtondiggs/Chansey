@@ -102,6 +102,7 @@ export const algorithmKeys = createQueryKeys<{
   lists: {
     all: QueryKey;
   };
+  strategies: QueryKey;
   detail: (id: string) => QueryKey;
 }>('algorithms');
 
@@ -109,6 +110,9 @@ export const algorithmKeys = createQueryKeys<{
 algorithmKeys.lists = {
   all: [...algorithmKeys.all, 'list']
 };
+
+// Define strategies query
+algorithmKeys.strategies = [...algorithmKeys.all, 'strategies'];
 
 // Define detail query
 algorithmKeys.detail = (id) => [...algorithmKeys.all, 'detail', id];

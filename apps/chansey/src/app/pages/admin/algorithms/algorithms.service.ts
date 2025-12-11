@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 
-import { Algorithm, CreateAlgorithmDto, UpdateAlgorithmDto } from '@chansey/api-interfaces';
+import { Algorithm, AlgorithmStrategy, CreateAlgorithmDto, UpdateAlgorithmDto } from '@chansey/api-interfaces';
 
 import { algorithmKeys } from '../../../core/query/query.keys';
 import { useAuthQuery, useAuthMutation } from '../../../core/query/query.utils';
@@ -13,6 +13,10 @@ export class AlgorithmsService {
 
   useAlgorithms() {
     return useAuthQuery<Algorithm[]>(algorithmKeys.lists.all, this.apiUrl);
+  }
+
+  useStrategies() {
+    return useAuthQuery<AlgorithmStrategy[]>(algorithmKeys.strategies, `${this.apiUrl}/strategies`);
   }
 
   useAlgorithm() {
