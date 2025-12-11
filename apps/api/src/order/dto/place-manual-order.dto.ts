@@ -1,15 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import {
-  IsEnum,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Min,
-  ValidateIf
-} from 'class-validator';
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateIf } from 'class-validator';
 
 import { OrderSide, OrderType, TrailingType } from '../order.entity';
 
@@ -103,22 +94,22 @@ export class PlaceManualOrderDto {
   trailingType?: TrailingType;
 
   @ValidateIf((o) => o.orderType === OrderType.TAKE_PROFIT || o.orderType === OrderType.OCO)
-  @IsOptional()
+  @IsNotEmpty({ message: 'Take profit price is required for TAKE_PROFIT and OCO orders' })
   @IsNumber()
   @Min(0)
   @ApiProperty({
-    description: 'Take profit price (optional for TAKE_PROFIT, required for OCO orders)',
+    description: 'Take profit price (required for TAKE_PROFIT and OCO orders)',
     example: 55000.0,
     required: false
   })
   takeProfitPrice?: number;
 
   @ValidateIf((o) => o.orderType === OrderType.OCO)
-  @IsOptional()
+  @IsNotEmpty({ message: 'Stop loss price is required for OCO orders' })
   @IsNumber()
   @Min(0)
   @ApiProperty({
-    description: 'Stop loss price (optional for OCO orders)',
+    description: 'Stop loss price (required for OCO orders)',
     example: 45000.0,
     required: false
   })

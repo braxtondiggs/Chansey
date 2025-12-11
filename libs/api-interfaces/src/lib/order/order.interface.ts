@@ -32,6 +32,12 @@ export enum TrailingType {
   PERCENTAGE = 'percentage'
 }
 
+export enum TimeInForce {
+  GTC = 'GTC', // Good Till Canceled
+  IOC = 'IOC', // Immediate Or Cancel
+  FOK = 'FOK' // Fill Or Kill
+}
+
 export interface Order {
   id: string;
   symbol: string;
@@ -96,6 +102,34 @@ export interface TradeExecution {
   takerOrMaker?: string;
 }
 
+/**
+ * Unified order request interface for placing orders
+ * This is the single source of truth for order creation
+ */
+export interface PlaceOrderRequest {
+  // Required fields
+  exchangeKeyId: string;
+  symbol: string;
+  side: OrderSide;
+  orderType: OrderType;
+  quantity: number;
+
+  // Conditional fields based on order type
+  price?: number; // Required for LIMIT, STOP_LIMIT
+  stopPrice?: number; // Required for STOP_LOSS, STOP_LIMIT
+  trailingAmount?: number; // Required for TRAILING_STOP
+  trailingType?: TrailingType; // Required for TRAILING_STOP
+  takeProfitPrice?: number; // Required for OCO
+  stopLossPrice?: number; // Required for OCO
+
+  // Optional fields
+  timeInForce?: TimeInForce;
+}
+
+/**
+ * @deprecated Use PlaceOrderRequest instead
+ * Kept for backward compatibility during migration
+ */
 export interface CreateOrderRequest {
   baseCoinId: string;
   quoteCoinId?: string;
@@ -112,6 +146,10 @@ export interface CreateOrderRequest {
   reduceOnly?: boolean;
 }
 
+/**
+ * @deprecated Use PlaceOrderRequest instead
+ * Kept for backward compatibility during migration
+ */
 export interface PlaceManualOrderRequest {
   exchangeKeyId: string;
   symbol: string;
@@ -128,6 +166,9 @@ export interface PlaceManualOrderRequest {
   timeInForce?: string;
 }
 
+/**
+ * Unified order preview request
+ */
 export interface OrderPreviewRequest {
   exchangeKeyId: string;
   symbol: string;
@@ -158,6 +199,7 @@ export interface OrderPreview {
   trailingType?: TrailingType;
   estimatedCost: number;
   estimatedFee: number;
+  feeRate: number;
   feeCurrency: string;
   totalRequired: number;
   marketPrice?: number;
@@ -165,6 +207,19 @@ export interface OrderPreview {
   balanceCurrency: string;
   hasSufficientBalance: boolean;
   priceDeviation?: number;
-  warnings?: string[];
+  estimatedSlippage?: number;
+  warnings: string[];
   exchange: string;
+  supportedOrderTypes?: OrderType[];
+}
+
+/**
+ * Supported order types per exchange
+ */
+export interface ExchangeOrderTypeSupport {
+  exchangeSlug: string;
+  supportedTypes: OrderType[];
+  supportedTimeInForce: TimeInForce[];
+  hasOcoSupport: boolean;
+  hasTrailingStopSupport: boolean;
 }
