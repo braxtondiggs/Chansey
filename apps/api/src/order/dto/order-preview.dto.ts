@@ -70,13 +70,19 @@ export class OrderPreviewDto {
   estimatedFee: number;
 
   @ApiProperty({
+    description: 'Fee rate as decimal (e.g., 0.001 for 0.1%)',
+    example: 0.001
+  })
+  feeRate: number;
+
+  @ApiProperty({
     description: 'Fee currency symbol',
     example: 'USDT'
   })
   feeCurrency: string;
 
   @ApiProperty({
-    description: 'Total required (cost + fees)',
+    description: 'Total required (cost + fees for BUY, cost for SELL)',
     example: 5005.0
   })
   totalRequired: number;
@@ -114,16 +120,32 @@ export class OrderPreviewDto {
   priceDeviation?: number;
 
   @ApiProperty({
+    description: 'Estimated slippage for market orders (percentage)',
+    example: 0.05,
+    required: false
+  })
+  estimatedSlippage?: number;
+
+  @ApiProperty({
     description: 'Warning messages about the order',
     type: [String],
     example: ['Price is 5% above market price'],
-    required: false
+    default: []
   })
-  warnings?: string[];
+  warnings: string[];
 
   @ApiProperty({
     description: 'Exchange where the order will be executed',
     example: 'binance_us'
   })
   exchange: string;
+
+  @ApiProperty({
+    description: 'Order types supported by this exchange',
+    type: [String],
+    enum: OrderType,
+    example: [OrderType.MARKET, OrderType.LIMIT],
+    required: false
+  })
+  supportedOrderTypes?: OrderType[];
 }
