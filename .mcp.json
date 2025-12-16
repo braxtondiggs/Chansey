@@ -20,8 +20,18 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-postgres",
-        "postgresql://braxtondiggs:chansey_local_dev@127.0.0.1:5432/postgres"
+        "${DATABASE_URL}"
       ]
+    },
+    "grafana": {
+      "command": "mcp-grafana",
+      "args": [],
+      "env": {
+        "GRAFANA_URL": "${GRAFANA_URL}",
+        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "${GRAFANA_SERVICE_ACCOUNT_TOKEN}",
+        "GRAFANA_USERNAME": "${GRAFANA_USERNAME}",
+        "GRAFANA_PASSWORD": "${GRAFANA_PASSWORD}"
+      }
     }
   }
 }

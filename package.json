@@ -43,7 +43,11 @@
     "deps:circular:web": "madge --circular --ts-config ./apps/chansey/tsconfig.json --extensions ts,tsx apps/chansey/src",
     "prepare": "husky",
     "analyze:site": "nx analyze chansey",
-    "redis:flush": "node tools/redis-flush.js"
+    "redis:flush": "node tools/redis-flush.js",
+    "typeorm": "npm run build:api && tsc typeorm.config.ts --outDir dist --esModuleInterop --module commonjs && tsc apps/api/src/migrations/*.ts --outDir dist/api/migrations --esModuleInterop --module commonjs && npx typeorm -d dist/typeorm.config.js",
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:show": "npm run typeorm -- migration:show",
+    "migration:revert": "npm run typeorm -- migration:revert"
   },
   "private": true,
   "dependencies": {
