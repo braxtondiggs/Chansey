@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
-import { categoryKeys } from '@chansey-web/app/core/query/query.keys';
-import { useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
+import { injectQuery } from '@tanstack/angular-query-experimental';
+
+import { queryKeys, useAuthQuery, useAuthMutation, authenticatedFetch, STANDARD_POLICY } from '@chansey/shared';
 
 export interface Category {
   id: string;
@@ -22,38 +23,67 @@ export interface UpdateCategoryDto {
   slug?: string;
 }
 
+/**
+ * Service for managing categories in admin panel via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class CategoriesService {
-  private apiUrl = '/api/category';
+  private readonly apiUrl = '/api/category';
 
+  /**
+   * Query all categories
+   */
   useCategories() {
-    return useAuthQuery<Category[]>(categoryKeys.lists.all, this.apiUrl);
+    return useAuthQuery<Category[]>(queryKeys.categories.lists(), this.apiUrl, {
+      cachePolicy: STANDARD_POLICY
+    });
   }
 
-  useCategory() {
-    return useAuthQuery<Category, string>(
-      (id: string) => categoryKeys.detail(id),
-      (id: string) => `${this.apiUrl}/${id}`
-    );
+  /**
+   * Query a single category by ID (dynamic query)
+   *
+   * @param categoryId - Signal containing the category ID
+   */
+  useCategory(categoryId: Signal<string | null>) {
+    return injectQuery(() => {
+      const id = categoryId();
+      return {
+        queryKey: queryKeys.categories.detail(id || ''),
+        queryFn: () => authenticatedFetch<Category>(`${this.apiUrl}/${id}`),
+        ...STANDARD_POLICY,
+        enabled: !!id
+      };
+    });
   }
 
+  /**
+   * Create a new category
+   */
   useCreateCategory() {
     return useAuthMutation<Category, CreateCategoryDto>(this.apiUrl, 'POST', {
-      invalidateQueries: [categoryKeys.lists.all]
+      invalidateQueries: [queryKeys.categories.all]
     });
   }
 
+  /**
+   * Update an existing category
+   */
   useUpdateCategory() {
     return useAuthMutation<Category, UpdateCategoryDto>((variables) => `${this.apiUrl}/${variables.id}`, 'PATCH', {
-      invalidateQueries: [categoryKeys.lists.all]
+      invalidateQueries: [queryKeys.categories.all]
     });
   }
 
+  /**
+   * Delete a category
+   */
   useDeleteCategory() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [categoryKeys.lists.all]
+      invalidateQueries: [queryKeys.categories.all]
     });
   }
 }

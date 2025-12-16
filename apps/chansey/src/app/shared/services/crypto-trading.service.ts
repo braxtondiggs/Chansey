@@ -1,6 +1,6 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery, QueryKey } from '@tanstack/angular-query-experimental';
+import { injectQuery } from '@tanstack/angular-query-experimental';
 import { BehaviorSubject } from 'rxjs';
 
 import {
@@ -13,13 +13,15 @@ import {
   OrderType,
   TickerPair
 } from '@chansey/api-interfaces';
-
 import {
   authenticatedFetch,
-  createQueryKeys,
+  queryKeys,
   useAuthMutation,
-  useAuthQuery
-} from '@chansey-web/app/core/query/query.utils';
+  useAuthQuery,
+  TIME,
+  STANDARD_POLICY,
+  FREQUENT_POLICY
+} from '@chansey/shared';
 
 export interface Balance {
   coin: Coin;
@@ -49,28 +51,11 @@ export interface TradeEstimate {
   impact?: number;
 }
 
-// Create query keys for trading
-export const tradingKeys = createQueryKeys<{
-  all: string[];
-  getByExchange: (exchangeId: string | undefined) => QueryKey;
-  balances: string[];
-  orderBook: (symbol: string) => string[];
-  orders: string[];
-  activeOrders: string[];
-  orderHistory: string[];
-  estimate: string[];
-  ticker: (symbol: string) => string[];
-}>('trading');
-
-tradingKeys.getByExchange = (exchangeId) => [...tradingKeys.all, 'ticker-pair', exchangeId];
-tradingKeys.balances = [...tradingKeys.all, 'balances'];
-tradingKeys.orderBook = (symbol: string) => [...tradingKeys.all, 'orderBook', symbol];
-tradingKeys.orders = [...tradingKeys.all, 'orders'];
-tradingKeys.activeOrders = [...tradingKeys.orders, 'active'];
-tradingKeys.orderHistory = [...tradingKeys.orders, 'history'];
-tradingKeys.estimate = [...tradingKeys.all, 'estimate'];
-tradingKeys.ticker = (symbol: string) => [...tradingKeys.all, 'ticker', symbol];
-
+/**
+ * Service for crypto trading operations via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
@@ -81,8 +66,6 @@ export class CryptoTradingService {
   // Public observables
   readonly selectedPair$ = this.selectedPairSubject.asObservable();
 
-  // Query hooks using TanStack Query
-
   /**
    * Get available trading pairs for connected exchanges
    */
@@ -90,8 +73,9 @@ export class CryptoTradingService {
     return injectQuery(() => {
       const exchangeValue = exchangeId();
       return {
-        queryKey: tradingKeys.getByExchange(exchangeValue?.toString() || 'all'),
+        queryKey: queryKeys.trading.tickerPairs(exchangeValue?.toString()),
         queryFn: () => authenticatedFetch<TickerPair[]>(`/api/exchange/${exchangeValue?.toString()}/tickers`),
+        ...STANDARD_POLICY,
         enabled: !!exchangeValue
       };
     });
@@ -102,13 +86,14 @@ export class CryptoTradingService {
    */
   useBalances(exchangeId?: string) {
     const params = exchangeId ? `?exchangeId=${exchangeId}` : '';
-    return useAuthQuery<Balance[]>(tradingKeys.balances, `/api/trading/balances${params}`, {
-      staleTime: 1000 * 60, // 1 minute
-      refetchInterval: 1000 * 60, // 1 minute - reduced frequency
-      refetchOnWindowFocus: false, // Prevent excessive refetching on focus
-      refetchOnMount: false, // Don't refetch on mount since we have interval
-      retry: 2, // Limit retry attempts
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000) // Exponential backoff
+    return useAuthQuery<Balance[]>(queryKeys.trading.balances(), `/api/trading/balances${params}`, {
+      cachePolicy: {
+        ...FREQUENT_POLICY,
+        staleTime: TIME.MINUTES.m1,
+        refetchInterval: TIME.MINUTES.m1,
+        refetchOnWindowFocus: false,
+        retry: 2
+      }
     });
   }
 
@@ -125,14 +110,14 @@ export class CryptoTradingService {
       if (exchangeIdValue) params.append('exchangeId', exchangeIdValue);
 
       return {
-        queryKey: tradingKeys.orderBook(symbolValue || ''),
+        queryKey: queryKeys.trading.orderBook(symbolValue || ''),
         queryFn: () => authenticatedFetch<OrderBook>(`/api/trading/orderbook?${params}`),
-        staleTime: 1000 * 10, // 10 seconds - increased for better performance
-        refetchInterval: 1000 * 15, // 15 seconds - reduced frequency
-        refetchOnWindowFocus: false, // Prevent excessive refetching on focus
-        refetchOnMount: false, // Don't refetch on mount since we have interval
-        retry: 2, // Limit retry attempts to 2
-        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000), // Exponential backoff
+        staleTime: TIME.SECONDS.s15,
+        gcTime: TIME.MINUTES.m5,
+        refetchInterval: TIME.SECONDS.s15,
+        refetchOnWindowFocus: false,
+        retry: 2,
+        retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 10000),
         enabled: !!symbolValue
       };
     });
@@ -146,8 +131,11 @@ export class CryptoTradingService {
     if (status) params.append('status', status);
     params.append('limit', limit.toString());
 
-    return useAuthQuery<Order[]>(tradingKeys.orderHistory, `/api/order?${params}`, {
-      staleTime: 1000 * 60 // 1 minute
+    return useAuthQuery<Order[]>(queryKeys.trading.orderHistory(), `/api/order?${params}`, {
+      cachePolicy: {
+        ...STANDARD_POLICY,
+        staleTime: TIME.MINUTES.m1
+      }
     });
   }
 
@@ -155,12 +143,14 @@ export class CryptoTradingService {
    * Get active orders
    */
   useActiveOrders() {
-    return useAuthQuery<Order[]>(tradingKeys.activeOrders, '/api/order?status=NEW,PARTIALLY_FILLED', {
-      staleTime: 1000 * 30, // 30 seconds
-      refetchInterval: 1000 * 30, // 30 seconds - only refetch every 30s
-      refetchOnWindowFocus: false, // Prevent excessive refetching
-      retry: 2, // Limit retries
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000)
+    return useAuthQuery<Order[]>(queryKeys.trading.activeOrders(), '/api/order?status=NEW,PARTIALLY_FILLED', {
+      cachePolicy: {
+        ...FREQUENT_POLICY,
+        staleTime: TIME.SECONDS.s30,
+        refetchInterval: TIME.SECONDS.s30,
+        refetchOnWindowFocus: false,
+        retry: 2
+      }
     });
   }
 
@@ -188,12 +178,14 @@ export class CryptoTradingService {
     params.append('symbol', symbol);
     if (exchangeId) params.append('exchangeId', exchangeId);
 
-    return useAuthQuery<TickerPair>(tradingKeys.ticker(symbol), `/api/trading/ticker?${params}`, {
-      staleTime: 1000 * 30, // 30 seconds
-      refetchInterval: 1000 * 30, // 30 seconds
-      refetchOnWindowFocus: false, // Prevent excessive refetching
-      retry: 2,
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+    return useAuthQuery<TickerPair>(queryKeys.trading.ticker(symbol), `/api/trading/ticker?${params}`, {
+      cachePolicy: {
+        ...FREQUENT_POLICY,
+        staleTime: TIME.SECONDS.s30,
+        refetchInterval: TIME.SECONDS.s30,
+        refetchOnWindowFocus: false,
+        retry: 2
+      },
       enabled: !!symbol
     });
   }
@@ -203,7 +195,7 @@ export class CryptoTradingService {
    */
   useCreateOrder() {
     return useAuthMutation<Order, CreateOrderRequest>('/api/order', 'POST', {
-      invalidateQueries: [tradingKeys.orders, tradingKeys.activeOrders, tradingKeys.balances]
+      invalidateQueries: [queryKeys.trading.orders(), queryKeys.trading.activeOrders(), queryKeys.trading.balances()]
     });
   }
 
@@ -219,7 +211,7 @@ export class CryptoTradingService {
    */
   useCancelOrder() {
     return useAuthMutation<void, string>((orderId: string) => `/api/order/${orderId}`, 'DELETE', {
-      invalidateQueries: [tradingKeys.orders, tradingKeys.activeOrders, tradingKeys.balances]
+      invalidateQueries: [queryKeys.trading.orders(), queryKeys.trading.activeOrders(), queryKeys.trading.balances()]
     });
   }
 

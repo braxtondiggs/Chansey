@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
@@ -58,7 +58,6 @@ export class PortfolioService {
       where: whereConditions,
       relations
     });
-    if (!portfolio || portfolio.length === 0) throw new NotFoundCustomException('Portfolio', { user: user.id });
     return portfolio;
   }
 
@@ -104,7 +103,8 @@ export class PortfolioService {
     } catch (error) {
       // Log error but don't fail the portfolio creation
       this.logger.error(
-        `Failed to queue historical price job for coin ${portfolioDto.coinId}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to queue historical price job for coin ${portfolioDto.coinId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined
       );
     }
 
