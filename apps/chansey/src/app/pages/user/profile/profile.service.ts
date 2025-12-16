@@ -1,15 +1,7 @@
 import { Injectable } from '@angular/core';
 
 import { ExchangeKey, IUser } from '@chansey/api-interfaces';
-
-import { useAuthMutation } from '@chansey-web/app/core/query';
-import { authKeys } from '@chansey-web/app/shared/services/auth.service';
-
-// Define query keys for profile related data
-export const profileKeys = {
-  all: ['profile'] as const,
-  exchangeKeys: () => [...profileKeys.all, 'exchange-keys'] as const
-};
+import { queryKeys, useAuthMutation } from '@chansey/shared';
 
 export interface IUserProfileUpdate {
   given_name?: string;
@@ -31,35 +23,55 @@ export interface ChangePasswordRequest {
   confirm_new_password: string;
 }
 
+/**
+ * Service for user profile management via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class ProfileService {
+  /**
+   * Update user profile
+   */
   useUpdateProfileMutation() {
     return useAuthMutation<IUser, IUserProfileUpdate>('/api/user', 'PATCH', {
-      invalidateQueries: [authKeys.user]
+      invalidateQueries: [queryKeys.auth.user()]
     });
   }
 
+  /**
+   * Change user password
+   */
   useChangePasswordMutation() {
     return useAuthMutation<{ message: string }, ChangePasswordRequest>('/api/auth/change-password', 'POST');
   }
 
+  /**
+   * Save exchange API keys
+   */
   useSaveExchangeKeysMutation() {
-    return useAuthMutation<ExchangeKey, any>('/api/exchange-keys', 'POST', {
-      invalidateQueries: [authKeys.user]
+    return useAuthMutation<ExchangeKey, Record<string, unknown>>('/api/exchange-keys', 'POST', {
+      invalidateQueries: [queryKeys.auth.user(), queryKeys.profile.exchangeKeys()]
     });
   }
 
+  /**
+   * Delete exchange API keys
+   */
   useDeleteExchangeKeyMutation() {
     return useAuthMutation<ExchangeKey, string>((id: string) => `/api/exchange-keys/${id}`, 'DELETE', {
-      invalidateQueries: [authKeys.user]
+      invalidateQueries: [queryKeys.auth.user(), queryKeys.profile.exchangeKeys()]
     });
   }
 
+  /**
+   * Upload profile image
+   */
   useUploadProfileImageMutation() {
     return useAuthMutation<IUser, FormData>('/api/user/profile-image', 'POST', {
-      invalidateQueries: [authKeys.user]
+      invalidateQueries: [queryKeys.auth.user()]
     });
   }
 }

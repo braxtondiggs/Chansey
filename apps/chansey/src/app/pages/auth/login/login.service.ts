@@ -4,9 +4,7 @@ import { Router } from '@angular/router';
 import { QueryClient } from '@tanstack/query-core';
 
 import { ILogin, ILoginResponse } from '@chansey/api-interfaces';
-
-import { useAuthMutation } from '@chansey-web/app/core/query';
-import { authKeys } from '@chansey-web/app/shared/services/auth.service';
+import { queryKeys, useAuthMutation } from '@chansey/shared';
 
 @Injectable({
   providedIn: 'root'
@@ -24,9 +22,9 @@ export class LoginService {
           return;
         }
 
-        this.queryClient.setQueryData(authKeys.user, response.user);
+        this.queryClient.setQueryData(queryKeys.auth.user(), response.user);
       },
-      invalidateQueries: [authKeys.user]
+      invalidateQueries: [queryKeys.auth.user()]
     });
   }
 }

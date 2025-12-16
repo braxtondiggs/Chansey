@@ -1,8 +1,6 @@
 import { Injectable } from '@angular/core';
 
-import { QueryKey } from '@tanstack/angular-query-experimental';
-
-import { createQueryKeys, useAuthQuery } from '../../../core/query/query.utils';
+import { queryKeys, useAuthQuery, FREQUENT_POLICY } from '@chansey/shared';
 
 // Asset interface to match response from API
 export interface UserAsset {
@@ -16,21 +14,23 @@ export interface UserAsset {
   slug?: string; // Coin slug for routing to detail page
 }
 
-// Create query keys for user assets
-export const assetKeys = createQueryKeys<{
-  all: QueryKey;
-}>('user-assets');
-
+/**
+ * Service for user assets data via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class UserAssetsService {
   /**
-   * Get user assets with detailed information
-   * @returns Query result with user assets data
+   * Query user assets with detailed information
+   *
+   * Uses FREQUENT policy since asset values change with prices
    */
   useUserAssets() {
-    return useAuthQuery<UserAsset[]>(assetKeys.all, 'api/balance/assets', {
+    return useAuthQuery<UserAsset[]>(queryKeys.balances.assets(), 'api/balance/assets', {
+      cachePolicy: FREQUENT_POLICY,
       refetchOnWindowFocus: true
     });
   }

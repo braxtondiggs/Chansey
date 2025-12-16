@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
-import { exchangeKeys } from '@chansey-web/app/core/query/query.keys';
-import { useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
+import { injectQuery } from '@tanstack/angular-query-experimental';
+
+import { queryKeys, useAuthQuery, useAuthMutation, authenticatedFetch, STANDARD_POLICY } from '@chansey/shared';
 
 export interface Exchange {
   id: string;
@@ -26,38 +27,67 @@ export interface UpdateExchangeDto {
   supported?: boolean;
 }
 
+/**
+ * Service for managing exchanges in admin panel via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class ExchangesService {
-  private apiUrl = '/api/exchange';
+  private readonly apiUrl = '/api/exchange';
 
+  /**
+   * Query all exchanges
+   */
   useExchanges() {
-    return useAuthQuery<Exchange[]>(exchangeKeys.lists.all, this.apiUrl);
+    return useAuthQuery<Exchange[]>(queryKeys.exchanges.lists(), this.apiUrl, {
+      cachePolicy: STANDARD_POLICY
+    });
   }
 
-  useExchange() {
-    return useAuthQuery<Exchange, string>(
-      (id: string) => exchangeKeys.detail(id),
-      (id: string) => `${this.apiUrl}/${id}`
-    );
+  /**
+   * Query a single exchange by ID (dynamic query)
+   *
+   * @param exchangeId - Signal containing the exchange ID
+   */
+  useExchange(exchangeId: Signal<string | null>) {
+    return injectQuery(() => {
+      const id = exchangeId();
+      return {
+        queryKey: queryKeys.exchanges.detail(id || ''),
+        queryFn: () => authenticatedFetch<Exchange>(`${this.apiUrl}/${id}`),
+        ...STANDARD_POLICY,
+        enabled: !!id
+      };
+    });
   }
 
+  /**
+   * Create a new exchange
+   */
   useCreateExchange() {
     return useAuthMutation<Exchange, CreateExchangeDto>(this.apiUrl, 'POST', {
-      invalidateQueries: [exchangeKeys.lists.all]
+      invalidateQueries: [queryKeys.exchanges.all]
     });
   }
 
+  /**
+   * Update an existing exchange
+   */
   useUpdateExchange() {
     return useAuthMutation<Exchange, UpdateExchangeDto>((variables) => `${this.apiUrl}/${variables.id}`, 'PATCH', {
-      invalidateQueries: [exchangeKeys.lists.all]
+      invalidateQueries: [queryKeys.exchanges.all]
     });
   }
 
+  /**
+   * Delete an exchange
+   */
   useDeleteExchange() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [exchangeKeys.lists.all]
+      invalidateQueries: [queryKeys.exchanges.all]
     });
   }
 }

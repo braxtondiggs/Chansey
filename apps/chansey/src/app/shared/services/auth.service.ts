@@ -7,21 +7,15 @@ import { Observable, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
-
-import { createQueryKeys, useAuthMutation, useAuthQuery } from '@chansey-web/app/core/query/query.utils';
+import { queryKeys, useAuthMutation, useAuthQuery, STANDARD_POLICY } from '@chansey/shared';
 
 import { environment } from '../../../environments/environment';
 
-// Define auth query keys
-export const authKeys = createQueryKeys<{
-  all: string[];
-  user: string[];
-  token: string[];
-}>('auth');
-
-authKeys.user = [...authKeys.all, 'user'];
-authKeys.token = [...authKeys.all, 'token'];
-
+/**
+ * Service for authentication via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
@@ -30,16 +24,23 @@ export class AuthService {
   private readonly queryClient = inject(QueryClient);
   private readonly http = inject(HttpClient);
 
+  /**
+   * Query current user data
+   */
   useUser() {
-    return useAuthQuery<IUser>(authKeys.user, '/api/user');
+    return useAuthQuery<IUser>(queryKeys.auth.user(), '/api/user', {
+      cachePolicy: STANDARD_POLICY
+    });
   }
 
+  /**
+   * Logout mutation
+   */
   useLogoutMutation() {
     return useAuthMutation<ILogoutResponse, void>('/api/auth/logout', 'POST', {
       onSuccess: () => {
         // Clear all TanStack Query cache to ensure no stale data
         this.queryClient.clear();
-
         // Navigate to login page
         this.router.navigate(['/login']);
       },
@@ -64,12 +65,23 @@ export class AuthService {
   }
 
   /**
-   * Checks if user is authenticated by making a request to a protected endpoint
-   * This relies on the HttpOnly cookie authentication
+   * Checks if user is authenticated by checking the TanStack Query cache
+   * Falls back to making a request if no cached data exists
    */
   isAuthenticated(): Observable<boolean> {
-    return this.http.get('/api/user', { withCredentials: true }).pipe(
-      map(() => true),
+    // First check if we have cached user data
+    const cachedUser = this.queryClient.getQueryData<IUser>(queryKeys.auth.user());
+    if (cachedUser) {
+      return of(true);
+    }
+
+    // If no cache, make a request and update cache
+    return this.http.get<IUser>('/api/user', { withCredentials: true }).pipe(
+      map((user) => {
+        // Cache the user data in TanStack Query
+        this.queryClient.setQueryData(queryKeys.auth.user(), user);
+        return true;
+      }),
       catchError(() => of(false))
     );
   }

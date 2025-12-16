@@ -1,46 +1,89 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
+
+import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { Algorithm, AlgorithmStrategy, CreateAlgorithmDto, UpdateAlgorithmDto } from '@chansey/api-interfaces';
+import {
+  queryKeys,
+  useAuthQuery,
+  useAuthMutation,
+  authenticatedFetch,
+  STANDARD_POLICY,
+  STATIC_POLICY
+} from '@chansey/shared';
 
-import { algorithmKeys } from '../../../core/query/query.keys';
-import { useAuthQuery, useAuthMutation } from '../../../core/query/query.utils';
-
+/**
+ * Service for managing algorithms via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class AlgorithmsService {
-  private apiUrl = '/api/algorithm';
+  private readonly apiUrl = '/api/algorithm';
 
+  /**
+   * Query all algorithms
+   */
   useAlgorithms() {
-    return useAuthQuery<Algorithm[]>(algorithmKeys.lists.all, this.apiUrl);
+    return useAuthQuery<Algorithm[]>(queryKeys.algorithms.lists(), this.apiUrl, {
+      cachePolicy: STANDARD_POLICY
+    });
   }
 
+  /**
+   * Query available algorithm strategies
+   *
+   * Uses STATIC policy since strategies rarely change
+   */
   useStrategies() {
-    return useAuthQuery<AlgorithmStrategy[]>(algorithmKeys.strategies, `${this.apiUrl}/strategies`);
+    return useAuthQuery<AlgorithmStrategy[]>(queryKeys.algorithms.strategies(), `${this.apiUrl}/strategies`, {
+      cachePolicy: STATIC_POLICY
+    });
   }
 
-  useAlgorithm() {
-    return useAuthQuery<Algorithm, string>(
-      (id: string) => algorithmKeys.detail(id),
-      (id: string) => `${this.apiUrl}/${id}`
-    );
+  /**
+   * Query a single algorithm by ID (dynamic query)
+   *
+   * @param algorithmId - Signal containing the algorithm ID
+   */
+  useAlgorithm(algorithmId: Signal<string | null>) {
+    return injectQuery(() => {
+      const id = algorithmId();
+      return {
+        queryKey: queryKeys.algorithms.detail(id || ''),
+        queryFn: () => authenticatedFetch<Algorithm>(`${this.apiUrl}/${id}`),
+        ...STANDARD_POLICY,
+        enabled: !!id
+      };
+    });
   }
 
+  /**
+   * Create a new algorithm
+   */
   useCreateAlgorithm() {
     return useAuthMutation<Algorithm, CreateAlgorithmDto>(this.apiUrl, 'POST', {
-      invalidateQueries: [algorithmKeys.lists.all]
+      invalidateQueries: [queryKeys.algorithms.all]
     });
   }
 
+  /**
+   * Update an existing algorithm
+   */
   useUpdateAlgorithm() {
     return useAuthMutation<Algorithm, UpdateAlgorithmDto>((variables) => `${this.apiUrl}/${variables.id}`, 'PATCH', {
-      invalidateQueries: [algorithmKeys.lists.all]
+      invalidateQueries: [queryKeys.algorithms.all]
     });
   }
 
+  /**
+   * Delete an algorithm
+   */
   useDeleteAlgorithm() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [algorithmKeys.lists.all]
+      invalidateQueries: [queryKeys.algorithms.all]
     });
   }
 }

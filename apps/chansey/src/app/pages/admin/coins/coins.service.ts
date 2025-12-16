@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
-import { coinKeys } from '@chansey-web/app/core/query/query.keys';
-import { useAuthQuery, useAuthMutation } from '@chansey-web/app/core/query/query.utils';
+import { injectQuery } from '@tanstack/angular-query-experimental';
+
+import { queryKeys, useAuthQuery, useAuthMutation, authenticatedFetch, STANDARD_POLICY } from '@chansey/shared';
 
 export interface Coin {
   id: string;
@@ -21,48 +22,74 @@ export interface CreateCoinDto {
 }
 
 export interface UpdateCoinDto {
+  id: string;
   name?: string;
   symbol?: string;
   slug?: string;
   logo?: string;
 }
 
+/**
+ * Service for managing coins in admin panel via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class CoinsService {
-  private apiUrl = '/api/coin';
+  private readonly apiUrl = '/api/coin';
 
+  /**
+   * Query all coins
+   */
   useCoins() {
-    return useAuthQuery<Coin[]>(coinKeys.lists.all, this.apiUrl);
-  }
-
-  useCoin() {
-    return useAuthQuery<Coin, string>(
-      (id: string) => coinKeys.detail(id),
-      (id: string) => `${this.apiUrl}/${id}`
-    );
-  }
-
-  useCreateCoin() {
-    return useAuthMutation<Coin, CreateCoinDto>(this.apiUrl, 'POST', {
-      invalidateQueries: [coinKeys.lists.all]
+    return useAuthQuery<Coin[]>(queryKeys.coins.lists(), this.apiUrl, {
+      cachePolicy: STANDARD_POLICY
     });
   }
 
-  useUpdateCoin() {
-    return useAuthMutation<Coin, { id: string } & UpdateCoinDto>(
-      (variables) => `${this.apiUrl}/${variables.id}`,
-      'PATCH',
-      {
-        invalidateQueries: [coinKeys.lists.all]
-      }
-    );
+  /**
+   * Query a single coin by ID (dynamic query)
+   *
+   * @param coinId - Signal containing the coin ID
+   */
+  useCoin(coinId: Signal<string | null>) {
+    return injectQuery(() => {
+      const id = coinId();
+      return {
+        queryKey: queryKeys.coins.detail(id || ''),
+        queryFn: () => authenticatedFetch<Coin>(`${this.apiUrl}/${id}`),
+        ...STANDARD_POLICY,
+        enabled: !!id
+      };
+    });
   }
 
+  /**
+   * Create a new coin
+   */
+  useCreateCoin() {
+    return useAuthMutation<Coin, CreateCoinDto>(this.apiUrl, 'POST', {
+      invalidateQueries: [queryKeys.coins.all]
+    });
+  }
+
+  /**
+   * Update an existing coin
+   */
+  useUpdateCoin() {
+    return useAuthMutation<Coin, UpdateCoinDto>((variables) => `${this.apiUrl}/${variables.id}`, 'PATCH', {
+      invalidateQueries: [queryKeys.coins.all]
+    });
+  }
+
+  /**
+   * Delete a coin
+   */
   useDeleteCoin() {
     return useAuthMutation<void, string>((id: string) => `${this.apiUrl}/${id}`, 'DELETE', {
-      invalidateQueries: [coinKeys.lists.all]
+      invalidateQueries: [queryKeys.coins.all]
     });
   }
 }
