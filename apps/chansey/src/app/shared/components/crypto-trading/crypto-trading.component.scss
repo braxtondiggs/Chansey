@@ -1,0 +1,157 @@
+:host {
+  display: block;
+
+  // Trading tabs - Buy/Sell toggle style
+  ::ng-deep {
+    .trading-tabs {
+      .p-tablist {
+        background: transparent;
+        border: 1px solid var(--p-surface-200);
+        border-radius: 0.5rem;
+        padding: 0.25rem;
+        overflow: hidden;
+
+        .p-tablist-tab-list {
+          background: transparent;
+          border: none;
+          gap: 0.25rem;
+          width: 100%;
+          display: flex;
+        }
+
+        .p-tab {
+          flex: 1;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 0.625rem 1rem;
+          border: none;
+          background: transparent;
+          margin: 0;
+          border-radius: 0.375rem;
+          font-weight: 600;
+          font-size: 0.875rem;
+          transition: all 0.15s ease;
+          color: var(--p-surface-500);
+
+          &:hover:not(.p-disabled):not(.p-tab-active) {
+            background: var(--p-surface-100);
+            color: var(--p-surface-700);
+          }
+
+          &.p-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+
+          &:focus,
+          &:focus-visible {
+            outline: none;
+            box-shadow: none;
+          }
+        }
+
+        // Hide the default active bar
+        .p-tablist-active-bar {
+          display: none;
+        }
+      }
+
+      // Buy active state - green theme
+      &.buy-active {
+        .p-tablist .p-tab {
+          &[data-p-active='true'],
+          &.p-tab-active {
+            background: #22c55e;
+            color: white;
+
+            &:hover {
+              background: #16a34a;
+            }
+          }
+        }
+      }
+
+      // Sell active state - red theme
+      &.sell-active {
+        .p-tablist .p-tab {
+          &[data-p-active='true'],
+          &.p-tab-active {
+            background: #ef4444;
+            color: white;
+
+            &:hover {
+              background: #dc2626;
+            }
+          }
+        }
+      }
+
+      // Tab panels
+      .p-tabpanels {
+        padding: 0;
+        background: transparent;
+      }
+    }
+
+    // Quick amount buttons
+    .p-selectbutton {
+      display: flex;
+      width: 100%;
+
+      .p-togglebutton {
+        flex: 1;
+        justify-content: center;
+      }
+    }
+  }
+}
+
+// Dark mode adjustments
+.dark :host,
+:host-context(.dark) {
+  ::ng-deep {
+    .trading-tabs {
+      .p-tablist {
+        border-color: var(--p-surface-700);
+
+        .p-tab {
+          color: var(--p-surface-400);
+
+          &:hover:not(.p-disabled):not(.p-tab-active) {
+            background: var(--p-surface-800);
+            color: var(--p-surface-200);
+          }
+        }
+      }
+
+      &.buy-active {
+        .p-tablist .p-tab {
+          &[data-p-active='true'],
+          &.p-tab-active {
+            background: #22c55e;
+            color: white;
+
+            &:hover {
+              background: #16a34a;
+            }
+          }
+        }
+      }
+
+      &.sell-active {
+        .p-tablist .p-tab {
+          &[data-p-active='true'],
+          &.p-tab-active {
+            background: #ef4444;
+            color: white;
+
+            &:hover {
+              background: #dc2626;
+            }
+          }
+        }
+      }
+    }
+  }
+}

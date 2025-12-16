@@ -5,13 +5,15 @@ import { BehaviorSubject } from 'rxjs';
 
 import {
   Coin,
-  CreateOrderRequest,
+  getExchangeOrderTypeSupport,
   Order,
   OrderPreview,
   OrderSide,
   OrderStatus,
   OrderType,
-  TickerPair
+  PlaceOrderRequest,
+  TickerPair,
+  TrailingType
 } from '@chansey/api-interfaces';
 import {
   authenticatedFetch,
@@ -191,19 +193,21 @@ export class CryptoTradingService {
   }
 
   /**
-   * Create a new order
+   * Create a new order using the manual order endpoint
+   * This is the unified order creation method that uses exchangeKeyId and symbol
    */
   useCreateOrder() {
-    return useAuthMutation<Order, CreateOrderRequest>('/api/order', 'POST', {
+    return useAuthMutation<Order, PlaceOrderRequest>('/api/order/manual', 'POST', {
       invalidateQueries: [queryKeys.trading.orders(), queryKeys.trading.activeOrders(), queryKeys.trading.balances()]
     });
   }
 
   /**
    * Preview an order to calculate fees and validate
+   * Uses the manual preview endpoint for accurate fee calculations
    */
   usePreviewOrder() {
-    return useAuthMutation<OrderPreview, CreateOrderRequest>('/api/order/preview', 'POST');
+    return useAuthMutation<OrderPreview, PlaceOrderRequest>('/api/order/manual/preview', 'POST');
   }
 
   /**
@@ -281,35 +285,141 @@ export class CryptoTradingService {
   // Validation helpers
 
   /**
-   * Validate order parameters
+   * Get supported order types for an exchange using shared configuration
+   * @param exchangeSlug The exchange slug (e.g., 'binanceus', 'coinbase')
    */
-  validateOrder(order: CreateOrderRequest, balance: Balance): { valid: boolean; errors: string[] } {
+  getExchangeSupport(exchangeSlug: string) {
+    return getExchangeOrderTypeSupport(exchangeSlug);
+  }
+
+  /**
+   * Validate order parameters before submission
+   * Returns validation errors if any
+   */
+  validateOrder(
+    order: PlaceOrderRequest,
+    balance: Balance,
+    supportedOrderTypes?: OrderType[]
+  ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    // Check if user has sufficient balance
-    const requiredBalance = parseFloat(order.quantity) * (parseFloat(order.price || '0') || 0);
-
-    if (order.side === OrderSide.BUY && balance.available < requiredBalance) {
-      errors.push('Insufficient balance for buy order');
+    // Check if order type is supported
+    if (supportedOrderTypes && !supportedOrderTypes.includes(order.orderType)) {
+      errors.push(`Order type "${order.orderType}" is not supported on this exchange`);
     }
 
-    if (order.side === OrderSide.SELL && balance.available < parseFloat(order.quantity)) {
-      errors.push('Insufficient balance for sell order');
-    }
-
-    // Check minimum order size
-    if (parseFloat(order.quantity) <= 0) {
+    // Check minimum quantity
+    if (order.quantity <= 0) {
       errors.push('Order quantity must be greater than 0');
     }
 
     // Check price for limit orders
-    if (order.type === OrderType.LIMIT && (!order.price || parseFloat(order.price) <= 0)) {
+    if (
+      (order.orderType === OrderType.LIMIT || order.orderType === OrderType.STOP_LIMIT) &&
+      (!order.price || order.price <= 0)
+    ) {
       errors.push('Price must be specified and greater than 0 for limit orders');
+    }
+
+    // Check stop price for stop orders
+    if (
+      (order.orderType === OrderType.STOP_LOSS || order.orderType === OrderType.STOP_LIMIT) &&
+      (!order.stopPrice || order.stopPrice <= 0)
+    ) {
+      errors.push('Stop price must be specified for stop orders');
+    }
+
+    // Check trailing parameters for trailing stop
+    if (order.orderType === OrderType.TRAILING_STOP) {
+      if (!order.trailingAmount || order.trailingAmount <= 0) {
+        errors.push('Trailing amount must be specified for trailing stop orders');
+      }
+      if (!order.trailingType) {
+        errors.push('Trailing type must be specified for trailing stop orders');
+      }
+    }
+
+    // Check OCO parameters
+    if (order.orderType === OrderType.OCO) {
+      if (!order.takeProfitPrice || order.takeProfitPrice <= 0) {
+        errors.push('Take profit price must be specified for OCO orders');
+      }
+      if (!order.stopLossPrice || order.stopLossPrice <= 0) {
+        errors.push('Stop loss price must be specified for OCO orders');
+      }
+    }
+
+    // Check balance for buy orders (rough estimate - server will do precise check)
+    if (order.side === OrderSide.BUY && balance) {
+      const estimatedCost = order.quantity * (order.price || 0);
+      if (estimatedCost > 0 && balance.available < estimatedCost) {
+        errors.push('Insufficient balance for buy order');
+      }
+    }
+
+    // Check balance for sell orders
+    if (order.side === OrderSide.SELL && balance) {
+      if (balance.available < order.quantity) {
+        errors.push('Insufficient balance for sell order');
+      }
     }
 
     return {
       valid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * Build a PlaceOrderRequest from form data
+   */
+  buildOrderRequest(
+    exchangeKeyId: string,
+    symbol: string,
+    side: OrderSide,
+    orderType: OrderType,
+    quantity: number,
+    options?: {
+      price?: number;
+      stopPrice?: number;
+      trailingAmount?: number;
+      trailingType?: TrailingType;
+      takeProfitPrice?: number;
+      stopLossPrice?: number;
+      timeInForce?: 'GTC' | 'IOC' | 'FOK';
+    }
+  ): PlaceOrderRequest {
+    const request: PlaceOrderRequest = {
+      exchangeKeyId,
+      symbol,
+      side,
+      orderType,
+      quantity
+    };
+
+    // Add conditional fields based on order type
+    if (options?.price !== undefined) {
+      request.price = options.price;
+    }
+    if (options?.stopPrice !== undefined) {
+      request.stopPrice = options.stopPrice;
+    }
+    if (options?.trailingAmount !== undefined) {
+      request.trailingAmount = options.trailingAmount;
+    }
+    if (options?.trailingType !== undefined) {
+      request.trailingType = options.trailingType;
+    }
+    if (options?.takeProfitPrice !== undefined) {
+      request.takeProfitPrice = options.takeProfitPrice;
+    }
+    if (options?.stopLossPrice !== undefined) {
+      request.stopLossPrice = options.stopLossPrice;
+    }
+    if (options?.timeInForce !== undefined) {
+      request.timeInForce = options.timeInForce as any;
+    }
+
+    return request;
   }
 }

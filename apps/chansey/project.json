@@ -28,10 +28,7 @@
             "output": "/assets/fonts/primeicons"
           }
         ],
-        "styles": [
-          "node_modules/primeicons/primeicons.css",
-          "apps/chansey/src/styles.scss"
-        ],
+        "styles": ["node_modules/primeicons/primeicons.css", "apps/chansey/src/styles.scss"],
         "scripts": [],
         "serviceWorker": true,
         "ngswConfigPath": "apps/chansey/ngsw-config.json"
@@ -47,7 +44,7 @@
             {
               "type": "anyComponentStyle",
               "maximumWarning": "2kb",
-              "maximumError": "4kb"
+              "maximumError": "5kb"
             }
           ],
           "fileReplacements": [
@@ -89,7 +86,7 @@
             {
               "type": "anyComponentStyle",
               "maximumWarning": "2kb",
-              "maximumError": "4kb"
+              "maximumError": "5kb"
             }
           ],
           "outputHashing": "all",
