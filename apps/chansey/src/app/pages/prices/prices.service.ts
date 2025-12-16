@@ -3,9 +3,15 @@ import { Injectable, Signal } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { Coin } from '@chansey/api-interfaces';
-
-import { coinKeys } from '@chansey-web/app/core/query/query.keys';
-import { useAuthQuery, useAuthMutation, authenticatedFetch } from '@chansey-web/app/core/query/query.utils';
+import {
+  queryKeys,
+  useAuthQuery,
+  useAuthMutation,
+  authenticatedFetch,
+  STANDARD_POLICY,
+  FREQUENT_POLICY,
+  TIME
+} from '@chansey/shared';
 
 // Portfolio DTO interface for creating portfolio items
 interface CreatePortfolioDto {
@@ -22,44 +28,71 @@ interface PortfolioItem {
   updatedAt: string;
 }
 
+/**
+ * Service for prices page data via TanStack Query
+ *
+ * Provides queries for coin listings, watchlist, and price data.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class PriceService {
+  /**
+   * Query all coins for price listing
+   */
   useCoins() {
-    return useAuthQuery<Coin[]>(coinKeys.lists.all, '/api/coin');
+    return useAuthQuery<Coin[]>(queryKeys.coins.lists(), '/api/coin', {
+      cachePolicy: STANDARD_POLICY
+    });
   }
 
+  /**
+   * Query user's watchlist
+   */
   useWatchlist() {
-    return useAuthQuery<PortfolioItem[]>(coinKeys.lists.watchlist, '/api/portfolio?type=MANUAL');
+    return useAuthQuery<PortfolioItem[]>(queryKeys.coins.watchlist(), '/api/portfolio?type=MANUAL', {
+      cachePolicy: FREQUENT_POLICY
+    });
   }
 
+  /**
+   * Query real-time prices for specific coins
+   *
+   * Uses a reactive signal for coin IDs to enable dynamic refetching
+   */
   usePrices(coins: Signal<string>) {
     return injectQuery(() => {
       const coinValue = coins();
       return {
-        queryKey: coinKeys.price.byCoinId(coinValue.toString()),
+        queryKey: queryKeys.prices.byIds(coinValue),
         queryFn: () =>
-          authenticatedFetch<any>(
-            `/api/simple/price?ids=${coinValue.toString()}&vs_currencies=usd&include_24hr_vol=false&include_market_cap=false&include_24hr_change=false&include_last_updated_at=false`
+          authenticatedFetch<Record<string, { usd: number }>>(
+            `/api/simple/price?ids=${coinValue}&vs_currencies=usd&include_24hr_vol=false&include_market_cap=false&include_24hr_change=false&include_last_updated_at=false`
           ),
+        staleTime: TIME.MINUTES.m1,
+        gcTime: TIME.MINUTES.m5,
+        refetchInterval: TIME.MINUTES.m1,
         refetchOnWindowFocus: true,
-        staleTime: 60 * 1000,
-        refetchInterval: 60 * 1000,
         enabled: !!coinValue
       };
     });
   }
 
+  /**
+   * Add a coin to watchlist
+   */
   useAddToWatchlist() {
     return useAuthMutation<{ id: string }, CreatePortfolioDto>('/api/portfolio', 'POST', {
-      invalidateQueries: [coinKeys.lists.watchlist]
+      invalidateQueries: [queryKeys.coins.watchlist()]
     });
   }
 
+  /**
+   * Remove a coin from watchlist
+   */
   useRemoveFromWatchlist() {
     return useAuthMutation<void, string>((portfolioId: string) => `/api/portfolio/${portfolioId}`, 'DELETE', {
-      invalidateQueries: [coinKeys.lists.watchlist]
+      invalidateQueries: [queryKeys.coins.watchlist()]
     });
   }
 }

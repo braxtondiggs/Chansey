@@ -17,7 +17,9 @@
     "paths": {
       "@chansey-api/*": ["apps/api/src/*"],
       "@chansey-web/*": ["apps/chansey/src/*"],
-      "@chansey/api-interfaces": ["libs/api-interfaces/src/index.ts"]
+      "@chansey/api-interfaces": ["libs/api-interfaces/src/index.ts"],
+      "@chansey/shared": ["libs/shared/src/index.ts"],
+      "@chansey/shared/*": ["libs/shared/src/lib/*"]
     }
   },
   "exclude": ["node_modules", "tmp"]

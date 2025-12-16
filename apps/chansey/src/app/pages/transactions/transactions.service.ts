@@ -1,8 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
-import { QueryKey } from '@tanstack/angular-query-experimental';
+import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { createQueryKeys, useAuthQuery } from '@chansey-web/app/core/query/query.utils';
+import { queryKeys, useAuthQuery, authenticatedFetch, STANDARD_POLICY, FREQUENT_POLICY } from '@chansey/shared';
 
 // Order types from the backend
 export enum OrderType {
@@ -72,48 +72,51 @@ export interface Transaction {
   updatedAt: Date;
 }
 
-// Create query keys for transaction related queries
-export const transactionKeys = createQueryKeys<{
-  all: QueryKey;
-  detail: (id: string) => QueryKey;
-  open: QueryKey;
-}>('transactions');
-
-// Define specific query keys
-transactionKeys.detail = (id) => [...transactionKeys.all, 'detail', id];
-transactionKeys.open = [...transactionKeys.all, 'open'];
-
+/**
+ * Service for transactions/orders data via TanStack Query
+ *
+ * Uses centralized query keys and standardized caching policies.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class TransactionsService {
-  private apiUrl = '/api/order';
+  private readonly apiUrl = '/api/order';
 
   /**
-   * Get all transactions using TanStack Query
-   * @returns Query result with transactions data
+   * Query all transactions
    */
   useTransactions() {
-    return useAuthQuery<Transaction[]>(transactionKeys.all, this.apiUrl);
+    return useAuthQuery<Transaction[]>(queryKeys.transactions.lists(), this.apiUrl, {
+      cachePolicy: STANDARD_POLICY
+    });
   }
 
   /**
-   * Get a specific transaction by ID
-   * @param id The transaction ID
-   * @returns Query result with transaction data
+   * Query a specific transaction by ID (dynamic query)
+   *
+   * @param transactionId - Signal containing the transaction ID
    */
-  useTransaction() {
-    return useAuthQuery<Transaction, string>(
-      (id: string) => transactionKeys.detail(id),
-      (id: string) => `${this.apiUrl}/${id}`
-    );
+  useTransaction(transactionId: Signal<string | null>) {
+    return injectQuery(() => {
+      const id = transactionId();
+      return {
+        queryKey: queryKeys.transactions.detail(id || ''),
+        queryFn: () => authenticatedFetch<Transaction>(`${this.apiUrl}/${id}`),
+        ...STANDARD_POLICY,
+        enabled: !!id
+      };
+    });
   }
 
   /**
-   * Get all open transactions
-   * @returns Query result with open transactions data
+   * Query all open transactions
+   *
+   * Uses FREQUENT policy since open orders may change often
    */
   useOpenTransactions() {
-    return useAuthQuery<Transaction[]>(transactionKeys.open, `${this.apiUrl}/open`);
+    return useAuthQuery<Transaction[]>(queryKeys.transactions.open(), `${this.apiUrl}/open`, {
+      cachePolicy: FREQUENT_POLICY
+    });
   }
 }

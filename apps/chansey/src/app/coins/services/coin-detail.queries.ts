@@ -1,243 +1,126 @@
-import { HttpClient } from '@angular/common/http';
-import { inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-import { CreateQueryOptions, injectQueryClient } from '@tanstack/angular-query-experimental';
-import { lastValueFrom } from 'rxjs';
+import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
-
-type CoinQueryOptions<TData, TKey extends readonly unknown[]> = Omit<
-  CreateQueryOptions<TData, Error, TData, TKey>,
-  'staleTime' | 'gcTime' | 'refetchInterval' | 'refetchIntervalInBackground' | 'enabled' | 'retry' | 'retryDelay'
-> & {
-  staleTime?: number;
-  gcTime?: number;
-  refetchInterval?: number | false;
-  refetchIntervalInBackground?: boolean;
-  enabled?: boolean;
-  retry?: number | boolean;
-  retryDelay?: number | ((attemptIndex: number, error: Error) => number);
-};
+import {
+  queryKeys,
+  authenticatedFetch,
+  STANDARD_POLICY,
+  REALTIME_POLICY,
+  STABLE_POLICY,
+  FREQUENT_POLICY,
+  TIME,
+  mergeCachePolicy,
+  type CachePolicy
+} from '@chansey/shared';
 
 /**
- * T024: TanStack Query hooks for coin detail page
+ * TanStack Query configuration for coin detail pages
  *
- * These hooks manage data fetching, caching, and auto-refresh for the coin detail page.
- * Uses TanStack Query (Angular) for optimal performance and UX.
+ * Provides query configurations for fetching coin data with appropriate
+ * caching strategies for different types of data.
  */
+@Injectable({
+  providedIn: 'root'
+})
 export class CoinDetailQueries {
-  private http = inject(HttpClient);
   private queryClient = injectQueryClient();
 
-  private getCoinDetailQueryFn(slug: string) {
-    return () => lastValueFrom(this.http.get<CoinDetailResponseDto>(`/api/coins/${slug}`));
-  }
-
-  private getCoinPriceQueryFn(slug: string) {
-    return () => lastValueFrom(this.http.get<CoinDetailResponseDto>(`/api/coins/${slug}`));
-  }
-
-  private getCoinHistoryQueryFn(slug: string, period: TimePeriod) {
-    return () => lastValueFrom(this.http.get<MarketChartResponseDto>(`/api/coins/${slug}/chart?period=${period}`));
-  }
-
-  private getUserHoldingsQueryFn(slug: string) {
-    return () => lastValueFrom(this.http.get<UserHoldingsDto>(`/api/coins/${slug}/holdings`));
-  }
-
   /**
-   * Fetch comprehensive coin detail by slug
+   * Query config for fetching comprehensive coin detail
    *
-   * Includes: market data, description, links
-   * Optionally includes userHoldings if authenticated
-   *
-   * @param slug Coin slug (e.g., 'bitcoin')
-   * @param options Additional query options
-   * @returns Query result with CoinDetailResponseDto
-   *
-   * Caching strategy:
-   * - Stale time: 1 minute (data considered fresh for 1min)
-   * - Cache time: 5 minutes (unused data kept for 5min)
-   * - Refetch on window focus: yes
+   * Uses STANDARD policy - data changes moderately often
    */
-  useCoinDetailQuery(
-    slug: string,
-    options?: {
-      enabled?: boolean;
-      staleTime?: number;
-      gcTime?: number;
-      retry?: number | boolean;
-      retryDelay?: number | ((attemptIndex: number, error: Error) => number);
-    }
-  ): CoinQueryOptions<CoinDetailResponseDto, ['coin-detail', string]> {
+  useCoinDetailQuery(slug: string, options?: { enabled?: boolean }) {
     return {
-      queryKey: ['coin-detail', slug],
-      queryFn: this.getCoinDetailQueryFn(slug),
-      staleTime: options?.staleTime ?? 60000, // 1 minute
-      gcTime: options?.gcTime ?? 300000, // 5 minutes
-      enabled: options?.enabled ?? true,
-      retry: options?.retry ?? 1,
-      retryDelay: options?.retryDelay ?? ((attemptIndex) => Math.min(500 * 2 ** attemptIndex, 2000))
+      queryKey: queryKeys.coins.detail(slug),
+      queryFn: () => authenticatedFetch<CoinDetailResponseDto>(`/api/coins/${slug}`),
+      ...STANDARD_POLICY,
+      enabled: options?.enabled ?? !!slug
     };
   }
 
   /**
-   * Fetch current price data with auto-refresh
+   * Query config for live price data with auto-refresh
    *
-   * This query aggressively refetches to keep prices up-to-date.
-   * Used for the price display that updates every 30-60 seconds.
-   *
-   * @param slug Coin slug (e.g., 'bitcoin')
-   * @param options Additional query options
-   * @returns Query result with price data subset
-   *
-   * Caching strategy:
-   * - Stale time: 30 seconds (data stale after 30s)
-   * - Refetch interval: 45 seconds (auto-refetch every 45s)
-   * - Refetch in background: yes (continues updating when tab not focused)
+   * Uses REALTIME policy - prices need frequent updates
    */
-  useCoinPriceQuery(
-    slug: string,
-    options?: {
-      enabled?: boolean;
-      staleTime?: number;
-      refetchInterval?: number | false;
-      refetchIntervalInBackground?: boolean;
-      gcTime?: number;
-      retry?: number | boolean;
-      retryDelay?: number | ((attemptIndex: number, error: Error) => number);
-    }
-  ): CoinQueryOptions<CoinDetailResponseDto, ['coin-price', string]> {
+  useCoinPriceQuery(slug: string, options?: { enabled?: boolean }) {
     return {
-      queryKey: ['coin-price', slug],
-      queryFn: this.getCoinPriceQueryFn(slug),
-      staleTime: options?.staleTime ?? 30000, // 30 seconds
-      refetchInterval: options?.refetchInterval ?? 45000, // 45 seconds
-      refetchIntervalInBackground: options?.refetchIntervalInBackground ?? true,
-      gcTime: options?.gcTime ?? 120000, // 2 minutes
-      enabled: options?.enabled ?? !!slug,
-      retry: options?.retry ?? 1,
-      retryDelay: options?.retryDelay ?? ((attemptIndex) => Math.min(500 * 2 ** attemptIndex, 2000))
+      queryKey: queryKeys.coins.price(slug),
+      queryFn: () => authenticatedFetch<CoinDetailResponseDto>(`/api/coins/${slug}`),
+      ...REALTIME_POLICY,
+      enabled: options?.enabled ?? !!slug
     };
   }
 
   /**
-   * Fetch historical price chart data for specified period
+   * Query config for historical chart data
    *
-   * Each period (24h, 7d, 30d, 1y) is cached separately.
-   * Historical data doesn't change frequently, so longer stale time.
-   *
-   * @param slug Coin slug (e.g., 'bitcoin')
-   * @param period Time period ('24h', '7d', '30d', '1y')
-   * @param options Additional query options
-   * @returns Query result with MarketChartResponseDto
-   *
-   * Caching strategy:
-   * - Stale time: 5 minutes (historical data stable)
-   * - Cache time: 15 minutes
-   * - Separate cache per period
+   * Uses STABLE policy - historical data rarely changes
    */
-  useCoinHistoryQuery(
-    slug: string,
-    period: TimePeriod,
-    options?: {
-      enabled?: boolean;
-      staleTime?: number;
-      gcTime?: number;
-      retry?: number | boolean;
-      retryDelay?: number | ((attemptIndex: number, error: Error) => number);
-    }
-  ): CoinQueryOptions<MarketChartResponseDto, ['coin-history', string, TimePeriod]> {
+  useCoinHistoryQuery(slug: string, period: TimePeriod, options?: { enabled?: boolean }) {
     return {
-      queryKey: ['coin-history', slug, period],
-      queryFn: this.getCoinHistoryQueryFn(slug, period),
-      staleTime: options?.staleTime ?? 300000, // 5 minutes
-      gcTime: options?.gcTime ?? 900000, // 15 minutes
-      enabled: options?.enabled ?? !!slug,
-      retry: options?.retry ?? 1,
-      retryDelay: options?.retryDelay ?? ((attemptIndex) => Math.min(500 * 2 ** attemptIndex, 2000))
+      queryKey: queryKeys.coins.chart(slug, period),
+      queryFn: () => authenticatedFetch<MarketChartResponseDto>(`/api/coins/${slug}/chart?period=${period}`),
+      ...STABLE_POLICY,
+      gcTime: TIME.MINUTES.m15,
+      enabled: options?.enabled ?? !!slug
     };
   }
 
   /**
-   * Fetch user holdings for a specific coin
+   * Query config for user holdings
    *
-   * Only runs when user is authenticated (enabled=false otherwise).
-   * Updates periodically to reflect recent trades.
-   *
-   * @param slug Coin slug (e.g., 'bitcoin')
-   * @param isAuthenticated Whether user is logged in
-   * @returns Query result with UserHoldingsDto
-   *
-   * Caching strategy:
-   * - Enabled: only when authenticated
-   * - Stale time: 2 minutes
-   * - Refetch interval: 5 minutes (to catch new trades)
-   * - Cache time: 10 minutes
+   * Uses FREQUENT policy - holdings may change with trades
+   * Only enabled when user is authenticated
    */
-  useUserHoldingsQuery(
-    slug: string,
-    isAuthenticated: boolean,
-    options?: {
-      staleTime?: number;
-      refetchInterval?: number | false;
-      gcTime?: number;
-      retry?: number | boolean;
-      retryDelay?: number | ((attemptIndex: number, error: Error) => number);
-    }
-  ): CoinQueryOptions<UserHoldingsDto, ['user-holdings', string]> {
-    if (!isAuthenticated) {
-      return {
-        queryKey: ['user-holdings', slug],
-        queryFn: () => Promise.reject(new Error('User not authenticated')),
-        enabled: false,
-        staleTime: options?.staleTime ?? 120000,
-        refetchInterval: options?.refetchInterval ?? false,
-        gcTime: options?.gcTime ?? 600000,
-        retry: options?.retry ?? 0,
-        retryDelay: options?.retryDelay ?? 0
-      };
-    }
+  useUserHoldingsQuery(slug: string, isAuthenticated: boolean) {
+    const policy: CachePolicy = isAuthenticated
+      ? mergeCachePolicy(FREQUENT_POLICY, {
+          staleTime: TIME.MINUTES.m2,
+          refetchInterval: TIME.MINUTES.m5,
+          gcTime: TIME.MINUTES.m10
+        })
+      : { ...FREQUENT_POLICY, retry: 0 };
 
     return {
-      queryKey: ['user-holdings', slug],
-      queryFn: this.getUserHoldingsQueryFn(slug),
-      enabled: true,
-      staleTime: options?.staleTime ?? 120000, // 2 minutes
-      refetchInterval: options?.refetchInterval ?? 300000, // 5 minutes
-      gcTime: options?.gcTime ?? 600000, // 10 minutes
-      retry: options?.retry ?? 0,
-      retryDelay: options?.retryDelay ?? 0
+      queryKey: queryKeys.coins.holdings(slug),
+      queryFn: isAuthenticated
+        ? () => authenticatedFetch<UserHoldingsDto>(`/api/coins/${slug}/holdings`)
+        : () => Promise.reject(new Error('User not authenticated')),
+      ...policy,
+      enabled: isAuthenticated && !!slug
     };
   }
 
   /**
-   * Prefetch coin detail data
-   *
-   * Used for optimistic loading when hovering over coin links.
-   * Warms the cache before user navigates.
-   *
-   * @param slug Coin slug to prefetch
+   * Prefetch coin detail data for optimistic loading
    */
   prefetchCoinDetail(slug: string): Promise<void> {
     return this.queryClient.prefetchQuery({
-      queryKey: ['coin-detail', slug],
-      queryFn: () => lastValueFrom(this.http.get<CoinDetailResponseDto>(`/api/coins/${slug}`)),
-      staleTime: 60000
+      queryKey: queryKeys.coins.detail(slug),
+      queryFn: () => authenticatedFetch<CoinDetailResponseDto>(`/api/coins/${slug}`),
+      staleTime: STANDARD_POLICY.staleTime
     });
   }
 
   /**
    * Invalidate all queries for a specific coin
-   *
-   * Forces refetch of all data for the coin (detail, price, history, holdings).
-   * Useful after user makes a trade or when data needs to be refreshed.
-   *
-   * @param slug Coin slug to invalidate
    */
   invalidateCoinQueries(slug: string): Promise<void> {
     return this.queryClient.invalidateQueries({
-      queryKey: ['coin-detail', slug]
+      queryKey: queryKeys.coins.detail(slug)
+    });
+  }
+
+  /**
+   * Invalidate all coin-related queries
+   */
+  invalidateAllCoinQueries(): Promise<void> {
+    return this.queryClient.invalidateQueries({
+      queryKey: queryKeys.coins.all
     });
   }
 }

@@ -1,8 +1,7 @@
 import { Injectable } from '@angular/core';
 
 import { ILoginResponse, IOtpResponse, IVerifyOtpRequest } from '@chansey/api-interfaces';
-
-import { useAuthMutation } from '@chansey-web/app/core/query/query.utils';
+import { useAuthMutation } from '@chansey/shared';
 
 @Injectable({
   providedIn: 'root'
