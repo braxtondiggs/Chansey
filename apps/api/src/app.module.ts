@@ -54,10 +54,11 @@ const isProduction = process.env.NODE_ENV === 'production';
       logging: !isProduction,
       migrations: [join(__dirname, './migrations/*.{ts,js}')],
       migrationsTableName: 'migration',
+      migrationsRun: isProduction, // Auto-run migrations on startup in production
       password: process.env.PGPASSWORD,
       port: parseInt(process.env.PGPORT),
       // ssl: isProduction,
-      synchronize: !isProduction,
+      synchronize: !isProduction, // Only sync in development, use migrations in production
       type: 'postgres',
       username: process.env.PGUSER,
       uuidExtension: 'pgcrypto'

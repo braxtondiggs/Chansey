@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateRiskTable implements MigrationInterface {
+export class CreateRiskTable1728400000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Create risk table entries
     await queryRunner.query(`
