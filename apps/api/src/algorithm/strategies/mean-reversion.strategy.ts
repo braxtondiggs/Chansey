@@ -1,31 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { BollingerBands, SD, SMA } from 'technicalindicators';
-
 import { PriceSummary } from '../../price/price.entity';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
+import { BollingerBandsResult, IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
-import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
  * Mean Reversion Algorithm Strategy
- * Refactored to use technicalindicators library
  *
- * Uses battle-tested SMA and StandardDeviation implementations
- * Generates trading signals based on price deviations from moving average
- * Assumes prices will revert to their mean over time
+ * Uses centralized IndicatorService for SMA, SD, and Bollinger Bands calculations with caching.
+ * Generates trading signals based on price deviations from moving average.
+ * Assumes prices will revert to their mean over time.
+ *
+ * Implements IIndicatorProvider for potential custom calculator overrides.
  */
 @Injectable()
-export class MeanReversionStrategy extends BaseAlgorithmStrategy {
-  readonly id = 'mean-reversion-v2';
-  readonly name = 'Mean Reversion';
-  readonly version = '3.0.0';
-  readonly description =
-    'Trading strategy that identifies overbought/oversold conditions using price deviation from moving average';
+export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
+  readonly id = 'f206b716-6be3-499f-8186-2581e9755a98';
 
-  constructor(schedulerRegistry: SchedulerRegistry) {
+  constructor(
+    schedulerRegistry: SchedulerRegistry,
+    private readonly indicatorService: IndicatorService
+  ) {
     super(schedulerRegistry);
+  }
+
+  /**
+   * Optional: Provide custom calculator override for specific indicators
+   * Return undefined to use default library implementation
+   */
+  getCustomCalculator<T extends keyof IndicatorCalculatorMap>(
+    _indicatorType: T
+  ): IndicatorCalculatorMap[T] | undefined {
+    // Use default calculators - override here if needed
+    return undefined;
   }
 
   /**
@@ -48,12 +57,24 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
           continue;
         }
 
-        // Calculate Bollinger Bands (includes SMA + SD automatically)
-        const bollingerBands = this.calculateBollingerBands(priceHistory, period, threshold);
+        // Calculate Bollinger Bands (includes SMA + SD automatically) using IndicatorService
+        const bollingerBandsResult = await this.indicatorService.calculateBollingerBands(
+          { coinId: coin.id, prices: priceHistory, period, stdDev: threshold },
+          this // Pass this strategy as IIndicatorProvider for custom override support
+        );
 
         // Alternative: Calculate SMA and SD separately for more control
-        const movingAverage = this.calculateMovingAverage(priceHistory, period);
-        const standardDeviation = this.calculateStandardDeviation(priceHistory, period);
+        const movingAverageResult = await this.indicatorService.calculateSMA(
+          { coinId: coin.id, prices: priceHistory, period },
+          this
+        );
+        const standardDeviationResult = await this.indicatorService.calculateSD(
+          { coinId: coin.id, prices: priceHistory, period },
+          this
+        );
+
+        const movingAverage = movingAverageResult.values;
+        const standardDeviation = standardDeviationResult.values;
 
         // Generate signals based on mean reversion
         const signal = this.generateMeanReversionSignal(
@@ -75,7 +96,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
           movingAverage,
           standardDeviation,
           threshold,
-          bollingerBands
+          bollingerBandsResult
         );
       }
 
@@ -90,83 +111,6 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
       this.logger.error(`Mean Reversion algorithm execution failed: ${error.message}`, error.stack);
       return this.createErrorResult(error.message);
     }
-  }
-
-  /**
-   * Calculate Bollinger Bands using technicalindicators library
-   * Returns upper, middle, and lower bands
-   *
-   * @param prices - Array of PriceSummary objects
-   * @param period - Period for the moving average
-   * @param stdDev - Number of standard deviations for bands
-   * @returns Array of Bollinger Bands values
-   */
-  private calculateBollingerBands(
-    prices: PriceSummary[],
-    period: number,
-    stdDev: number
-  ): Array<{ upper: number; middle: number; lower: number; pb?: number; bandwidth?: number }> {
-    // Extract average prices
-    const values = IndicatorDataTransformer.extractAveragePrices(prices);
-
-    // Calculate Bollinger Bands using technicalindicators library
-    const bbResults = BollingerBands.calculate({
-      period,
-      stdDev,
-      values
-    });
-
-    // Pad results to match original length
-    const paddingLength = prices.length - bbResults.length;
-    const padding = new Array(paddingLength).fill({
-      upper: NaN,
-      middle: NaN,
-      lower: NaN
-    });
-
-    return [...padding, ...bbResults];
-  }
-
-  /**
-   * Calculate Simple Moving Average using technicalindicators library
-   *
-   * @param prices - Array of PriceSummary objects
-   * @param period - SMA period
-   * @returns Array of SMA values (padded with NaN for alignment)
-   */
-  private calculateMovingAverage(prices: PriceSummary[], period: number): number[] {
-    // Extract average prices
-    const values = IndicatorDataTransformer.extractAveragePrices(prices);
-
-    // Calculate SMA using technicalindicators library
-    const smaResults = SMA.calculate({
-      period,
-      values
-    });
-
-    // Pad results to match original length
-    return IndicatorDataTransformer.padResults(smaResults, prices.length);
-  }
-
-  /**
-   * Calculate Standard Deviation using technicalindicators library
-   *
-   * @param prices - Array of PriceSummary objects
-   * @param period - Period for standard deviation calculation
-   * @returns Array of standard deviation values (padded with NaN for alignment)
-   */
-  private calculateStandardDeviation(prices: PriceSummary[], period: number): number[] {
-    // Extract average prices
-    const values = IndicatorDataTransformer.extractAveragePrices(prices);
-
-    // Calculate Standard Deviation using technicalindicators library
-    const sdResults = SD.calculate({
-      period,
-      values
-    });
-
-    // Pad results to match original length
-    return IndicatorDataTransformer.padResults(sdResults, prices.length);
   }
 
   /**
@@ -245,7 +189,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
     movingAverage: number[],
     standardDeviation: number[],
     threshold: number,
-    bollingerBands: Array<{ upper: number; middle: number; lower: number }>
+    bollingerBands: BollingerBandsResult
   ): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
@@ -253,9 +197,9 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy {
       metadata: {
         movingAverage: movingAverage[index],
         standardDeviation: standardDeviation[index],
-        upperBand: bollingerBands[index]?.upper ?? movingAverage[index] + standardDeviation[index] * threshold,
-        lowerBand: bollingerBands[index]?.lower ?? movingAverage[index] - standardDeviation[index] * threshold,
-        middleBand: bollingerBands[index]?.middle ?? movingAverage[index],
+        upperBand: bollingerBands.upper[index] ?? movingAverage[index] + standardDeviation[index] * threshold,
+        lowerBand: bollingerBands.lower[index] ?? movingAverage[index] - standardDeviation[index] * threshold,
+        middleBand: bollingerBands.middle[index] ?? movingAverage[index],
         zScore:
           isNaN(movingAverage[index]) || isNaN(standardDeviation[index])
             ? NaN

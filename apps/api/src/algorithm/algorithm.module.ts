@@ -8,6 +8,7 @@ import { AlgorithmPerformance } from './algorithm-performance.entity';
 import { AlgorithmController } from './algorithm.controller';
 import { Algorithm } from './algorithm.entity';
 import { AlgorithmService } from './algorithm.service';
+import { IndicatorModule } from './indicators';
 import { AlgorithmRegistry } from './registry/algorithm-registry.service';
 import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
@@ -38,6 +39,7 @@ import { UsersModule } from '../users/users.module';
     TypeOrmModule.forFeature([Algorithm, AlgorithmActivation, AlgorithmPerformance, Coin, Order, Price, TickerPairs]),
     BullModule.registerQueue({ name: 'performance-ranking' }),
     SharedCacheModule,
+    IndicatorModule,
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
