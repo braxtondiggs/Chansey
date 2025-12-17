@@ -1,37 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { EMA } from 'technicalindicators';
-
-import { OrderService } from '../../order/order.service';
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { PriceSummary } from '../../price/price.entity';
-import { PriceService } from '../../price/price.service';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
-import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
  * Exponential Moving Average (EMA) Algorithm Strategy
- * Refactored to use technicalindicators library
  *
- * Uses battle-tested EMA implementation instead of custom calculations
- * Generates trading signals based on EMA crossovers and price momentum
+ * Uses centralized IndicatorService for EMA calculations with caching.
+ * Generates trading signals based on EMA crossovers and price momentum.
+ *
+ * Implements IIndicatorProvider for potential custom calculator overrides.
  */
 @Injectable()
-export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
+export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = '3916f8b1-23f5-4d17-a839-6cdecb13588f';
-  readonly name = 'Exponential Moving Average';
-  readonly version = '3.0.0';
-  readonly description = 'Trading strategy using exponential moving averages for trend analysis and signal generation';
 
   constructor(
     schedulerRegistry: SchedulerRegistry,
-    private readonly portfolioService: PortfolioService,
-    private readonly priceService: PriceService,
-    private readonly orderService: OrderService
+    private readonly indicatorService: IndicatorService
   ) {
     super(schedulerRegistry);
+  }
+
+  /**
+   * Optional: Provide custom calculator override for specific indicators
+   * Return undefined to use default library implementation
+   */
+  getCustomCalculator<T extends keyof IndicatorCalculatorMap>(
+    _indicatorType: T
+  ): IndicatorCalculatorMap[T] | undefined {
+    // Use default calculators - override here if needed
+    return undefined;
   }
 
   /**
@@ -54,9 +56,18 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
           continue;
         }
 
-        // Calculate EMAs using technicalindicators library
-        const ema12 = this.calculateEMA(priceHistory, fastPeriod);
-        const ema26 = this.calculateEMA(priceHistory, slowPeriod);
+        // Calculate EMAs using IndicatorService (with caching)
+        const ema12Result = await this.indicatorService.calculateEMA(
+          { coinId: coin.id, prices: priceHistory, period: fastPeriod },
+          this // Pass this strategy as IIndicatorProvider for custom override support
+        );
+        const ema26Result = await this.indicatorService.calculateEMA(
+          { coinId: coin.id, prices: priceHistory, period: slowPeriod },
+          this
+        );
+
+        const ema12 = ema12Result.values;
+        const ema26 = ema26Result.values;
 
         // Generate signals based on EMA crossover
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, ema12, ema26);
@@ -78,27 +89,6 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy {
       this.logger.error(`EMA algorithm execution failed: ${error.message}`, error.stack);
       return this.createErrorResult(error.message);
     }
-  }
-
-  /**
-   * Calculate Exponential Moving Average using technicalindicators library
-   *
-   * @param prices - Array of PriceSummary objects
-   * @param period - EMA period
-   * @returns Array of EMA values (padded with NaN for alignment)
-   */
-  private calculateEMA(prices: PriceSummary[], period: number): number[] {
-    // Extract average prices
-    const values = IndicatorDataTransformer.extractAveragePrices(prices);
-
-    // Calculate EMA using technicalindicators library
-    const emaResults = EMA.calculate({
-      period,
-      values
-    });
-
-    // Pad results to match original length
-    return IndicatorDataTransformer.padResults(emaResults, prices.length);
   }
 
   /**
