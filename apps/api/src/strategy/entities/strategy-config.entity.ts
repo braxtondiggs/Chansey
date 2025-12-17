@@ -1,12 +1,12 @@
 import {
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
   Entity,
-  PrimaryGeneratedColumn,
-  ManyToOne,
+  Index,
   JoinColumn,
-  Index
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn
 } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
@@ -23,6 +23,8 @@ import { User } from '../../users/users.entity';
 @Entity('strategy_configs')
 @Index(['status'])
 @Index(['algorithmId'])
+@Index(['status', 'lastHeartbeat'])
+@Index(['heartbeatFailures'])
 export class StrategyConfig {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -104,6 +106,36 @@ export class StrategyConfig {
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'createdBy' })
   creator?: User | null;
+
+  // Heartbeat tracking for health monitoring
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    comment: 'Last time this strategy sent a heartbeat signal (for health monitoring)'
+  })
+  lastHeartbeat?: Date | null;
+
+  @Column({
+    type: 'int',
+    default: 0,
+    comment: 'Number of consecutive heartbeat failures (resets on success)'
+  })
+  heartbeatFailures: number;
+
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+    comment: 'Last error message from strategy execution'
+  })
+  lastError?: string | null;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    comment: 'Timestamp of last error occurrence'
+  })
+  lastErrorAt?: Date | null;
 
   @CreateDateColumn({
     type: 'timestamptz'

@@ -244,4 +244,42 @@ export class StrategyEvaluationTask {
       failed: jobCounts.failed
     };
   }
+
+  /**
+   * Update heartbeat metrics for Prometheus
+   * Runs every minute to keep metrics fresh
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async updateHeartbeatMetrics() {
+    try {
+      await this.strategyService.updateHeartbeatMetrics();
+    } catch (error) {
+      this.logger.error(`Failed to update heartbeat metrics: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check for stale strategies and log warnings
+   * Runs every 5 minutes to detect unresponsive strategies
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async checkStaleStrategies() {
+    try {
+      const staleStrategies = await this.strategyService.getStrategiesWithStaleHeartbeats(10);
+      if (staleStrategies.length > 0) {
+        this.logger.warn(
+          `Found ${staleStrategies.length} strategies with stale heartbeats: ${staleStrategies.map((s) => s.name).join(', ')}`
+        );
+      }
+
+      const failingStrategies = await this.strategyService.getStrategiesWithHeartbeatFailures(3);
+      if (failingStrategies.length > 0) {
+        this.logger.error(
+          `Found ${failingStrategies.length} strategies with multiple heartbeat failures: ${failingStrategies.map((s) => `${s.name} (${s.heartbeatFailures} failures)`).join(', ')}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(`Failed to check stale strategies: ${error.message}`);
+    }
+  }
 }
