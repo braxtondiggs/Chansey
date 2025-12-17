@@ -16,10 +16,20 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   protected algorithm: Algorithm;
   protected cronJob?: CronJob;
 
+  /** Strategy ID - must match strategyId in the Algorithm database record */
   abstract readonly id: string;
-  abstract readonly name: string;
-  abstract readonly version: string;
-  abstract readonly description: string;
+
+  get name(): string {
+    return this.algorithm?.name ?? this.constructor.name;
+  }
+
+  get version(): string {
+    return this.algorithm?.version ?? '1.0.0';
+  }
+
+  get description(): string {
+    return this.algorithm?.description ?? '';
+  }
 
   constructor(protected readonly schedulerRegistry: SchedulerRegistry) {
     this.logger = new Logger(this.constructor.name);
@@ -31,7 +41,7 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   async onInit(algorithm: Algorithm): Promise<void> {
     this.algorithm = algorithm;
     this.logger.log(`Algorithm "${algorithm.name}" initialized successfully`);
-    
+
     if (this.shouldStartCronJob()) {
       await this.startCronJob();
     }
@@ -46,12 +56,7 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
    * Default implementation of canExecute
    */
   canExecute(context: AlgorithmContext): boolean {
-    return (
-      context.coins && 
-      context.coins.length > 0 && 
-      context.priceData && 
-      Object.keys(context.priceData).length > 0
-    );
+    return context.coins && context.coins.length > 0 && context.priceData && Object.keys(context.priceData).length > 0;
   }
 
   /**
@@ -92,7 +97,7 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
    */
   async safeExecute(context: AlgorithmContext): Promise<AlgorithmResult> {
     const startTime = Date.now();
-    
+
     try {
       if (!this.canExecute(context)) {
         return this.createErrorResult('Algorithm cannot execute with provided context');
@@ -123,17 +128,11 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
     if (!this.algorithm?.cron) return;
 
     try {
-      this.cronJob = new CronJob(
-        this.algorithm.cron,
-        () => this.scheduledExecution(),
-        null,
-        false,
-        'America/New_York'
-      );
+      this.cronJob = new CronJob(this.algorithm.cron, () => this.scheduledExecution(), null, false, 'America/New_York');
 
       this.schedulerRegistry.addCronJob(`${this.algorithm.name}_${this.id}`, this.cronJob);
       this.cronJob.start();
-      
+
       this.logger.log(`Cron job started with schedule: ${this.algorithm.cron}`);
     } catch (error) {
       this.logger.error(`Failed to start cron job: ${error.message}`);

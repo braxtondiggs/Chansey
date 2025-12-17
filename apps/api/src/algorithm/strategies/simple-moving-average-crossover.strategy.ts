@@ -1,28 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { SMA } from 'technicalindicators';
-
 import { PriceSummary } from '../../price/price.entity';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
+import { IndicatorService, IIndicatorProvider, IndicatorCalculatorMap } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
-import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
  * Simple Moving Average Crossover Strategy
- * Refactored to use technicalindicators library
  *
- * Uses battle-tested SMA implementation instead of custom calculations
+ * Uses centralized IndicatorService for SMA calculations with caching.
+ * Generates signals based on simple moving average crossovers between fast and slow periods.
+ *
+ * Implements IIndicatorProvider for potential custom calculator overrides.
  */
 @Injectable()
-export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy {
+export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'sma-crossover-001';
-  readonly name = 'Simple Moving Average Crossover';
-  readonly version = '2.0.0';
-  readonly description = 'Generates signals based on simple moving average crossovers between fast and slow periods';
 
-  constructor(schedulerRegistry: SchedulerRegistry) {
+  constructor(
+    schedulerRegistry: SchedulerRegistry,
+    private readonly indicatorService: IndicatorService
+  ) {
     super(schedulerRegistry);
+  }
+
+  /**
+   * Optional: Provide custom calculator override for specific indicators
+   * Return undefined to use default library implementation
+   */
+  getCustomCalculator<T extends keyof IndicatorCalculatorMap>(
+    _indicatorType: T
+  ): IndicatorCalculatorMap[T] | undefined {
+    // Use default calculators - override here if needed
+    return undefined;
   }
 
   /**
@@ -45,9 +56,18 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           continue;
         }
 
-        // Calculate SMAs using technicalindicators library
-        const fastSMA = this.calculateSMA(priceHistory, fastPeriod);
-        const slowSMA = this.calculateSMA(priceHistory, slowPeriod);
+        // Calculate SMAs using IndicatorService (with caching)
+        const fastSMAResult = await this.indicatorService.calculateSMA(
+          { coinId: coin.id, prices: priceHistory, period: fastPeriod },
+          this // Pass this strategy as IIndicatorProvider for custom override support
+        );
+        const slowSMAResult = await this.indicatorService.calculateSMA(
+          { coinId: coin.id, prices: priceHistory, period: slowPeriod },
+          this
+        );
+
+        const fastSMA = fastSMAResult.values;
+        const slowSMA = slowSMAResult.values;
 
         // Generate signal
         const signal = this.generateCrossoverSignal(coin.id, coin.symbol, priceHistory, fastSMA, slowSMA);
@@ -70,27 +90,6 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       this.logger.error(`SMA Crossover algorithm execution failed: ${error.message}`, error.stack);
       return this.createErrorResult(error.message);
     }
-  }
-
-  /**
-   * Calculate Simple Moving Average using technicalindicators library
-   *
-   * @param prices - Array of PriceSummary objects
-   * @param period - SMA period
-   * @returns Array of SMA values (padded with NaN for alignment)
-   */
-  private calculateSMA(prices: PriceSummary[], period: number): number[] {
-    // Extract average prices
-    const values = IndicatorDataTransformer.extractAveragePrices(prices);
-
-    // Calculate SMA using technicalindicators library
-    const smaResults = SMA.calculate({
-      period,
-      values
-    });
-
-    // Pad results to match original length
-    return IndicatorDataTransformer.padResults(smaResults, prices.length);
   }
 
   /**
