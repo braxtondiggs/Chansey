@@ -31,7 +31,8 @@ export class PortfolioService {
 
   async getPortfolioCoins(): Promise<Coin[]> {
     const portfolios = await this.getPortfolio();
-    return [...new Set(portfolios.map(({ coin }) => coin))];
+    const coinMap = new Map(portfolios.map(({ coin }) => [coin.id, coin]));
+    return [...coinMap.values()];
   }
 
   async getPortfolioById(portfolioId: string, userId: string): Promise<Portfolio> {
