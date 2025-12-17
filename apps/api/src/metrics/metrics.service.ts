@@ -90,7 +90,17 @@ export class MetricsService {
     @InjectMetric('chansey_strategy_deployments_active')
     private readonly strategyDeploymentsActive: Gauge<string>,
     @InjectMetric('chansey_strategy_signals_total')
-    private readonly strategySignalsTotal: Counter<string>
+    private readonly strategySignalsTotal: Counter<string>,
+
+    // Strategy Heartbeat Metrics
+    @InjectMetric('chansey_strategy_heartbeat_age_seconds')
+    private readonly strategyHeartbeatAge: Gauge<string>,
+    @InjectMetric('chansey_strategy_heartbeat_total')
+    private readonly strategyHeartbeatTotal: Counter<string>,
+    @InjectMetric('chansey_strategy_heartbeat_failures')
+    private readonly strategyHeartbeatFailures: Gauge<string>,
+    @InjectMetric('chansey_strategy_health_score')
+    private readonly strategyHealthScore: Gauge<string>
   ) {}
 
   // ===================
@@ -281,5 +291,73 @@ export class MetricsService {
    */
   recordStrategySignal(strategy: string, signalType: 'buy' | 'sell' | 'hold'): void {
     this.strategySignalsTotal.inc({ strategy, signal_type: signalType });
+  }
+
+  // ===================
+  // Strategy Heartbeat Metrics
+  // ===================
+
+  /**
+   * Record a strategy heartbeat
+   */
+  recordStrategyHeartbeat(strategy: string, status: 'success' | 'failed'): void {
+    this.strategyHeartbeatTotal.inc({ strategy, status });
+  }
+
+  /**
+   * Set the age of a strategy's last heartbeat in seconds
+   */
+  setStrategyHeartbeatAge(strategy: string, shadowStatus: string, ageSeconds: number): void {
+    this.strategyHeartbeatAge.set({ strategy, shadow_status: shadowStatus }, ageSeconds);
+  }
+
+  /**
+   * Set the number of consecutive heartbeat failures for a strategy
+   */
+  setStrategyHeartbeatFailures(strategy: string, failures: number): void {
+    this.strategyHeartbeatFailures.set({ strategy }, failures);
+  }
+
+  /**
+   * Set the health score of a strategy (0-100)
+   * Health score is calculated based on:
+   * - Heartbeat age (newer is better)
+   * - Failure count (fewer is better)
+   * - Recent signal activity
+   */
+  setStrategyHealthScore(strategy: string, shadowStatus: string, score: number): void {
+    this.strategyHealthScore.set({ strategy, shadow_status: shadowStatus }, Math.max(0, Math.min(100, score)));
+  }
+
+  /**
+   * Calculate and set health score based on heartbeat metrics
+   * @param strategy Strategy name
+   * @param shadowStatus Shadow status of the strategy
+   * @param heartbeatAgeSeconds Age of last heartbeat in seconds
+   * @param failures Number of consecutive failures
+   * @param maxHeartbeatAge Maximum expected heartbeat age (e.g., 300 for 5 min interval)
+   */
+  calculateAndSetHealthScore(
+    strategy: string,
+    shadowStatus: string,
+    heartbeatAgeSeconds: number,
+    failures: number,
+    maxHeartbeatAge = 300
+  ): void {
+    // Base score starts at 100
+    let score = 100;
+
+    // Deduct points for heartbeat age (max 40 points)
+    // If heartbeat is older than maxHeartbeatAge, deduct proportionally
+    if (heartbeatAgeSeconds > maxHeartbeatAge) {
+      const ageRatio = Math.min(heartbeatAgeSeconds / (maxHeartbeatAge * 3), 1);
+      score -= ageRatio * 40;
+    }
+
+    // Deduct points for failures (max 60 points)
+    // Each failure deducts 15 points
+    score -= Math.min(failures * 15, 60);
+
+    this.setStrategyHealthScore(strategy, shadowStatus, score);
   }
 }
