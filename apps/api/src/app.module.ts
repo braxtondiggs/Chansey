@@ -34,6 +34,8 @@ import { PortfolioModule } from './portfolio/portfolio.module';
 import { PriceModule } from './price/price.module';
 import { RiskModule } from './risk/risk.module';
 import { ScoringModule } from './scoring/scoring.module';
+import { QUEUE_NAMES } from './shutdown/queue-names.constant';
+import { ShutdownModule } from './shutdown/shutdown.module';
 import { StorageModule } from './storage/storage.module';
 import { StrategyModule } from './strategy/strategy.module';
 import { TasksModule } from './tasks/tasks.module';
@@ -84,24 +86,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       route: '/bull-board',
       adapter: FastifyAdapter
     }),
-    BullBoardModule.forFeature(
-      { name: 'balance-queue', adapter: BullMQAdapter },
-      { name: 'backtest-queue', adapter: BullMQAdapter },
-      { name: 'category-queue', adapter: BullMQAdapter },
-      { name: 'coin-queue', adapter: BullMQAdapter },
-      { name: 'drift-detection-queue', adapter: BullMQAdapter },
-      { name: 'exchange-queue', adapter: BullMQAdapter },
-      { name: 'order-queue', adapter: BullMQAdapter },
-      { name: 'performance-ranking', adapter: BullMQAdapter },
-      { name: 'portfolio-queue', adapter: BullMQAdapter },
-      { name: 'price-queue', adapter: BullMQAdapter },
-      { name: 'regime-check-queue', adapter: BullMQAdapter },
-      { name: 'strategy-evaluation-queue', adapter: BullMQAdapter },
-      { name: 'ticker-pairs-queue', adapter: BullMQAdapter },
-      { name: 'trade-execution', adapter: BullMQAdapter },
-      { name: 'user-queue', adapter: BullMQAdapter },
-      { name: 'optimization', adapter: BullMQAdapter }
-    ),
+    BullBoardModule.forFeature(...QUEUE_NAMES.map((name) => ({ name, adapter: BullMQAdapter }))),
     ThrottlerModule.forRoot([
       {
         name: 'short',
@@ -143,6 +128,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     PriceModule,
     RiskModule,
     ScoringModule,
+    ShutdownModule,
     StorageModule,
     StrategyModule,
     TasksModule,
