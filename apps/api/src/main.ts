@@ -222,6 +222,9 @@ async function startServer(app: NestFastifyApplication): Promise<void> {
   const port = parseInt(process.env.PORT, 10) || 3000;
   const host = process.env.HOST || '0.0.0.0';
 
+  // Enable shutdown hooks so NestJS calls onApplicationShutdown lifecycle hooks
+  app.enableShutdownHooks();
+
   try {
     await app.listen(port, host);
     app.get(Logger).log(`🚀 Application is running on: http://${host}:${port}/api`);
@@ -232,17 +235,29 @@ async function startServer(app: NestFastifyApplication): Promise<void> {
     process.exit(1);
   }
 
-  process.on('SIGINT', async () => {
-    app.get(Logger).log('Received SIGINT. Shutting down gracefully...');
-    await app.close();
-    process.exit(0);
-  });
+  const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
 
-  process.on('SIGTERM', async () => {
-    app.get(Logger).log('Received SIGTERM. Shutting down gracefully...');
-    await app.close();
+  const gracefulShutdown = async (signal: string) => {
+    const logger = app.get(Logger);
+    logger.log(`Received ${signal}. Starting graceful shutdown...`);
+
+    const shutdownPromise = app.close();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Shutdown timeout exceeded')), SHUTDOWN_TIMEOUT)
+    );
+
+    try {
+      await Promise.race([shutdownPromise, timeoutPromise]);
+      logger.log('Graceful shutdown completed successfully.');
+    } catch (error) {
+      logger.warn(`Forced shutdown after timeout: ${error.message}`);
+    }
+
     process.exit(0);
-  });
+  };
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }
 
 bootstrap();
