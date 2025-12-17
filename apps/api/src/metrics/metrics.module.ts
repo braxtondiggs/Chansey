@@ -197,6 +197,31 @@ import { MetricsService } from './metrics.service';
       labelNames: ['strategy', 'signal_type']
     }),
 
+    // Strategy Heartbeat Metrics
+    makeGaugeProvider({
+      name: 'chansey_strategy_heartbeat_age_seconds',
+      help: 'Age of the last heartbeat in seconds (time since last heartbeat)',
+      labelNames: ['strategy', 'shadow_status']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_strategy_heartbeat_total',
+      help: 'Total number of heartbeats received',
+      labelNames: ['strategy', 'status']
+    }),
+
+    makeGaugeProvider({
+      name: 'chansey_strategy_heartbeat_failures',
+      help: 'Number of consecutive heartbeat failures',
+      labelNames: ['strategy']
+    }),
+
+    makeGaugeProvider({
+      name: 'chansey_strategy_health_score',
+      help: 'Health score of strategy (0-100)',
+      labelNames: ['strategy', 'shadow_status']
+    }),
+
     MetricsService
   ],
   exports: [PrometheusModule, MetricsService]
