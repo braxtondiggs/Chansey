@@ -13,9 +13,18 @@ import { AlgorithmRegistry } from './registry/algorithm-registry.service';
 import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
 import { AlgorithmPerformanceService } from './services/algorithm-performance.service';
+import { ATRTrailingStopStrategy } from './strategies/atr-trailing-stop.strategy';
+import { BollingerBandSqueezeStrategy } from './strategies/bollinger-band-squeeze.strategy';
+import { BollingerBandsBreakoutStrategy } from './strategies/bollinger-bands-breakout.strategy';
+import { EMARSIFilterStrategy } from './strategies/ema-rsi-filter.strategy';
 import { ExponentialMovingAverageStrategy } from './strategies/exponential-moving-average.strategy';
+import { MACDStrategy } from './strategies/macd.strategy';
 import { MeanReversionStrategy } from './strategies/mean-reversion.strategy';
+import { RSIDivergenceStrategy } from './strategies/rsi-divergence.strategy';
+import { RSIMACDComboStrategy } from './strategies/rsi-macd-combo.strategy';
+import { RSIStrategy } from './strategies/rsi.strategy';
 import { SimpleMovingAverageCrossoverStrategy } from './strategies/simple-moving-average-crossover.strategy';
+import { TripleEMAStrategy } from './strategies/triple-ema.strategy';
 import { PerformanceRankingTask } from './tasks/performance-ranking.task';
 
 import { AppModule } from '../app.module';
@@ -59,6 +68,15 @@ import { UsersModule } from '../users/users.module';
     ExponentialMovingAverageStrategy,
     MeanReversionStrategy,
     SimpleMovingAverageCrossoverStrategy,
+    RSIStrategy,
+    MACDStrategy,
+    BollingerBandsBreakoutStrategy,
+    RSIMACDComboStrategy,
+    ATRTrailingStopStrategy,
+    RSIDivergenceStrategy,
+    BollingerBandSqueezeStrategy,
+    TripleEMAStrategy,
+    EMARSIFilterStrategy,
     PerformanceRankingTask,
 
     // Strategy registration factory
@@ -68,18 +86,58 @@ import { UsersModule } from '../users/users.module';
         emaStrategy: ExponentialMovingAverageStrategy,
         meanReversionStrategy: MeanReversionStrategy,
         smaCrossoverStrategy: SimpleMovingAverageCrossoverStrategy,
+        rsiStrategy: RSIStrategy,
+        macdStrategy: MACDStrategy,
+        bbBreakoutStrategy: BollingerBandsBreakoutStrategy,
+        rsiMacdComboStrategy: RSIMACDComboStrategy,
+        atrTrailingStopStrategy: ATRTrailingStopStrategy,
+        rsiDivergenceStrategy: RSIDivergenceStrategy,
+        bbSqueezeStrategy: BollingerBandSqueezeStrategy,
+        tripleEmaStrategy: TripleEMAStrategy,
+        emaRsiFilterStrategy: EMARSIFilterStrategy,
         registry: AlgorithmRegistry
       ) => {
         registry.registerStrategy(emaStrategy);
         registry.registerStrategy(meanReversionStrategy);
         registry.registerStrategy(smaCrossoverStrategy);
+        registry.registerStrategy(rsiStrategy);
+        registry.registerStrategy(macdStrategy);
+        registry.registerStrategy(bbBreakoutStrategy);
+        registry.registerStrategy(rsiMacdComboStrategy);
+        registry.registerStrategy(atrTrailingStopStrategy);
+        registry.registerStrategy(rsiDivergenceStrategy);
+        registry.registerStrategy(bbSqueezeStrategy);
+        registry.registerStrategy(tripleEmaStrategy);
+        registry.registerStrategy(emaRsiFilterStrategy);
 
-        return [emaStrategy, meanReversionStrategy, smaCrossoverStrategy];
+        return [
+          emaStrategy,
+          meanReversionStrategy,
+          smaCrossoverStrategy,
+          rsiStrategy,
+          macdStrategy,
+          bbBreakoutStrategy,
+          rsiMacdComboStrategy,
+          atrTrailingStopStrategy,
+          rsiDivergenceStrategy,
+          bbSqueezeStrategy,
+          tripleEmaStrategy,
+          emaRsiFilterStrategy
+        ];
       },
       inject: [
         ExponentialMovingAverageStrategy,
         MeanReversionStrategy,
         SimpleMovingAverageCrossoverStrategy,
+        RSIStrategy,
+        MACDStrategy,
+        BollingerBandsBreakoutStrategy,
+        RSIMACDComboStrategy,
+        ATRTrailingStopStrategy,
+        RSIDivergenceStrategy,
+        BollingerBandSqueezeStrategy,
+        TripleEMAStrategy,
+        EMARSIFilterStrategy,
         AlgorithmRegistry
       ]
     }
