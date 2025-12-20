@@ -16,7 +16,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
  */
 @Injectable()
 export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
-  readonly id = '3916f8b1-23f5-4d17-a839-6cdecb13588f';
+  readonly id = 'ema-crossover-001';
 
   constructor(
     schedulerRegistry: SchedulerRegistry,
