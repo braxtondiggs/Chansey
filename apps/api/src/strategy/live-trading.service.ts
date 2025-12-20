@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -7,20 +7,31 @@ import { Repository } from 'typeorm';
 import { CapitalAllocationService } from './capital-allocation.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
-import { StrategyExecutorService, TradingSignal } from './strategy-executor.service';
+import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-executor.service';
 
 import { BalanceService } from '../balance/balance.service';
+import { ExchangeBalanceDto } from '../balance/dto';
+import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { OrderService } from '../order/order.service';
+import { PriceService } from '../price/price.service';
+import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
+import { DistributedLockService } from '../shared/distributed-lock.service';
 import { User } from '../users/users.entity';
+
+/** Maximum consecutive errors before disabling algo trading for a user */
+const MAX_ERROR_STRIKES = 3;
 
 /**
  * Orchestrates live trading for all enrolled robo-advisor users.
  * Runs strategies every 2 minutes and places orders on user exchanges.
  */
 @Injectable()
-export class LiveTradingService {
+export class LiveTradingService implements OnApplicationShutdown {
   private readonly logger = new Logger(LiveTradingService.name);
-  private isRunning = false;
+  private currentLockId: string | null = null;
+  /** Tracks consecutive error count per user for strike-based disabling */
+  private readonly userErrorStrikes = new Map<string, number>();
 
   constructor(
     @InjectRepository(User)
@@ -30,17 +41,25 @@ export class LiveTradingService {
     private readonly positionTracking: PositionTrackingService,
     private readonly strategyExecutor: StrategyExecutorService,
     private readonly orderService: OrderService,
-    private readonly balanceService: BalanceService
+    private readonly balanceService: BalanceService,
+    private readonly lockService: DistributedLockService,
+    private readonly priceService: PriceService,
+    private readonly exchangeManager: ExchangeManagerService
   ) {}
 
   @Cron('*/2 * * * *')
   async executeLiveTrading(): Promise<void> {
-    if (this.isRunning) {
-      this.logger.debug('Live trading already running, skipping this cycle');
+    const lockResult = await this.lockService.acquire({
+      key: LOCK_KEYS.LIVE_TRADING,
+      ttlMs: LOCK_DEFAULTS.LIVE_TRADING_TTL_MS
+    });
+
+    if (!lockResult.acquired) {
+      this.logger.debug('Live trading already running on another instance, skipping this cycle');
       return;
     }
 
-    this.isRunning = true;
+    this.currentLockId = lockResult.lockId;
 
     try {
       const enrolledUsers = await this.userRepo.find({
@@ -50,7 +69,6 @@ export class LiveTradingService {
 
       if (enrolledUsers.length === 0) {
         this.logger.debug('No users enrolled in algo trading');
-        this.isRunning = false;
         return;
       }
 
@@ -59,6 +77,8 @@ export class LiveTradingService {
       for (const user of enrolledUsers) {
         try {
           await this.executeUserStrategies(user);
+          // Clear error strikes on successful execution
+          this.userErrorStrikes.delete(user.id);
         } catch (error) {
           this.logger.error(`Failed to execute strategies for user ${user.id}: ${error.message}`);
           await this.handleUserError(user, error);
@@ -67,7 +87,8 @@ export class LiveTradingService {
     } catch (error) {
       this.logger.error(`Live trading cycle failed: ${error.message}`, error.stack);
     } finally {
-      this.isRunning = false;
+      await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockId);
+      this.currentLockId = null;
     }
   }
 
@@ -141,9 +162,9 @@ export class LiveTradingService {
 
   private async placeOrder(user: User, strategyConfigId: string, signal: TradingSignal): Promise<void> {
     try {
-      const exchangeKey = user.exchanges[0];
+      const exchangeKey = this.selectBestExchange(user.exchanges, signal.symbol);
       if (!exchangeKey) {
-        this.logger.error(`No exchange key found for user ${user.id}`);
+        this.logger.error(`No suitable exchange key found for user ${user.id} and symbol ${signal.symbol}`);
         return;
       }
 
@@ -163,7 +184,8 @@ export class LiveTradingService {
       );
 
       this.logger.log(
-        `Order placed for user ${user.id}: ${signal.action} ${signal.quantity} ${signal.symbol} (Order ID: ${order.id})`
+        `Order placed for user ${user.id}: ${signal.action} ${signal.quantity} ${signal.symbol} ` +
+          `on ${exchangeKey.name} (Order ID: ${order.id})`
       );
 
       await this.positionTracking.updatePosition(
@@ -180,18 +202,97 @@ export class LiveTradingService {
     }
   }
 
-  private async fetchMarketData(): Promise<any[]> {
-    return [];
+  /**
+   * Select the best exchange for a given trading symbol.
+   * Prioritizes active exchanges that support the symbol.
+   */
+  private selectBestExchange(exchanges: ExchangeKey[], symbol: string): ExchangeKey | null {
+    if (!exchanges || exchanges.length === 0) {
+      return null;
+    }
+
+    // Filter to only active exchanges
+    const activeExchanges = exchanges.filter((ex) => ex.isActive);
+
+    if (activeExchanges.length === 0) {
+      this.logger.warn('No active exchanges found');
+      return null;
+    }
+
+    // For BTC pairs, prefer Binance US for better liquidity
+    // For other pairs, use the first active exchange
+    const baseCurrency = symbol.split('/')[0];
+    if (baseCurrency === 'BTC' || baseCurrency === 'ETH') {
+      const binance = activeExchanges.find((ex) => ex.slug === 'binance_us');
+      if (binance) {
+        return binance;
+      }
+    }
+
+    // Default to first active exchange
+    return activeExchanges[0];
   }
 
-  private async handleUserError(user: User, error: Error): Promise<void> {
-    this.logger.error(`Pausing algo trading for user ${user.id} due to error: ${error.message}`);
+  /**
+   * Fetch current market data for common trading pairs.
+   * Uses the exchange manager to get real-time prices from connected exchanges.
+   */
+  private async fetchMarketData(): Promise<MarketData[]> {
+    const marketData: MarketData[] = [];
+    const tradingPairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT'];
 
     try {
-      user.algoTradingEnabled = false;
-      await this.userRepo.save(user);
-    } catch (saveError) {
-      this.logger.error(`Failed to pause algo trading for user ${user.id}: ${saveError.message}`);
+      // Use Binance US as the default price source for consistency
+      const exchangeSlug = 'binance_us';
+
+      for (const symbol of tradingPairs) {
+        try {
+          const priceData = await this.exchangeManager.getPrice(exchangeSlug, symbol);
+          marketData.push({
+            symbol,
+            price: parseFloat(priceData.price),
+            timestamp: new Date(priceData.timestamp),
+            volume: undefined // Volume not available from basic price endpoint
+          });
+        } catch (error) {
+          this.logger.debug(`Failed to fetch price for ${symbol}: ${error.message}`);
+          // Continue with other pairs even if one fails
+        }
+      }
+
+      this.logger.debug(`Fetched market data for ${marketData.length} trading pairs`);
+    } catch (error) {
+      this.logger.warn(`Failed to fetch market data: ${error.message}`);
+    }
+
+    return marketData;
+  }
+
+  /**
+   * Handle user execution errors with strike-based disabling.
+   * Users get MAX_ERROR_STRIKES chances before algo trading is disabled.
+   */
+  private async handleUserError(user: User, error: Error): Promise<void> {
+    const currentStrikes = (this.userErrorStrikes.get(user.id) || 0) + 1;
+    this.userErrorStrikes.set(user.id, currentStrikes);
+
+    if (currentStrikes >= MAX_ERROR_STRIKES) {
+      this.logger.error(
+        `Disabling algo trading for user ${user.id} after ${currentStrikes} consecutive errors: ${error.message}`
+      );
+
+      try {
+        user.algoTradingEnabled = false;
+        await this.userRepo.save(user);
+        this.userErrorStrikes.delete(user.id);
+      } catch (saveError) {
+        this.logger.error(`Failed to disable algo trading for user ${user.id}: ${saveError.message}`);
+      }
+    } else {
+      this.logger.warn(
+        `User ${user.id} error strike ${currentStrikes}/${MAX_ERROR_STRIKES}: ${error.message}. ` +
+          `Algo trading will be disabled after ${MAX_ERROR_STRIKES - currentStrikes} more errors.`
+      );
     }
   }
 
@@ -199,7 +300,7 @@ export class LiveTradingService {
    * Calculate total free (available) USD value across all exchanges.
    * Free balance = balance.free (not locked in orders).
    */
-  private calculateFreeUsdValue(exchanges: any[]): number {
+  private calculateFreeUsdValue(exchanges: ExchangeBalanceDto[]): number {
     let totalFree = 0;
 
     for (const exchange of exchanges) {
@@ -219,14 +320,24 @@ export class LiveTradingService {
     return totalFree;
   }
 
-  async getStatus(): Promise<{ running: boolean; enrolledUsers: number }> {
-    const enrolledCount = await this.userRepo.count({
-      where: { algoTradingEnabled: true }
-    });
+  async getStatus(): Promise<{ running: boolean; enrolledUsers: number; instanceId?: string }> {
+    const [lockInfo, enrolledCount] = await Promise.all([
+      this.lockService.getLockInfo(LOCK_KEYS.LIVE_TRADING),
+      this.userRepo.count({ where: { algoTradingEnabled: true } })
+    ]);
 
     return {
-      running: this.isRunning,
-      enrolledUsers: enrolledCount
+      running: lockInfo.exists,
+      enrolledUsers: enrolledCount,
+      instanceId: lockInfo.lockId ?? undefined
     };
+  }
+
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    if (this.currentLockId) {
+      this.logger.log(`Releasing live trading lock on shutdown (signal: ${signal})`);
+      await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockId);
+      this.currentLockId = null;
+    }
   }
 }
