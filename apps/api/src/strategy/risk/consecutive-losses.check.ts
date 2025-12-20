@@ -9,31 +9,33 @@ import { PerformanceMetric } from '../entities/performance-metric.entity';
  * ConsecutiveLossesCheck
  *
  * Risk Check 3: Consecutive Loss Days
- * Triggers if strategy has 10+ consecutive losing days.
+ * - Warning: 10+ consecutive losing days
+ * - Critical + Auto-Demote: 15+ consecutive losing days
  *
- * Rationale: Extended losing streaks indicate the strategy may no longer
- * be effective in the current market conditions.
+ * Rationale: 10 days is concerning but recoverable. 15+ consecutive losses
+ * suggests the strategy is fundamentally broken in current market conditions.
  */
 @Injectable()
 export class ConsecutiveLossesCheck implements IRiskCheck {
   readonly name = 'consecutive-losses';
-  readonly description = 'Detect extended losing streaks (10+ days)';
+  readonly description = 'Detect extended losing streaks (warns at 10+ days, auto-demotes at 15+)';
   readonly priority = 3;
-  readonly autoDemote = false; // Warning only, manual review
+  readonly autoDemote = true; // Auto-demotes at critical threshold (15+ days)
 
-  private readonly CONSECUTIVE_LOSS_THRESHOLD = 10;
+  private readonly WARNING_THRESHOLD = 10;
+  private readonly CRITICAL_THRESHOLD = 15;
 
   async evaluate(
     deployment: Deployment,
     latestMetric: PerformanceMetric | null,
     historicalMetrics?: PerformanceMetric[]
   ): Promise<RiskCheckResult> {
-    if (!historicalMetrics || historicalMetrics.length < this.CONSECUTIVE_LOSS_THRESHOLD) {
+    if (!historicalMetrics || historicalMetrics.length < this.WARNING_THRESHOLD) {
       return {
         checkName: this.name,
         passed: true,
         actualValue: 'N/A',
-        threshold: `${this.CONSECUTIVE_LOSS_THRESHOLD} days`,
+        threshold: `< ${this.WARNING_THRESHOLD} days (critical at ${this.CRITICAL_THRESHOLD}+)`,
         severity: 'low',
         message: 'Insufficient historical data for consecutive loss detection'
       };
@@ -50,25 +52,34 @@ export class ConsecutiveLossesCheck implements IRiskCheck {
       }
     }
 
-    const passed = consecutiveLosses < this.CONSECUTIVE_LOSS_THRESHOLD;
+    const passed = consecutiveLosses < this.WARNING_THRESHOLD;
+    const isCritical = consecutiveLosses >= this.CRITICAL_THRESHOLD;
 
     let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
-    if (consecutiveLosses >= this.CONSECUTIVE_LOSS_THRESHOLD + 5) severity = 'critical';
-    else if (consecutiveLosses >= this.CONSECUTIVE_LOSS_THRESHOLD) severity = 'high';
-    else if (consecutiveLosses >= this.CONSECUTIVE_LOSS_THRESHOLD - 3) severity = 'medium';
+    if (isCritical) severity = 'critical';
+    else if (consecutiveLosses >= this.WARNING_THRESHOLD) severity = 'high';
+    else if (consecutiveLosses >= this.WARNING_THRESHOLD - 3) severity = 'medium';
 
     return {
       checkName: this.name,
       passed,
       actualValue: `${consecutiveLosses} days`,
-      threshold: `< ${this.CONSECUTIVE_LOSS_THRESHOLD} days`,
+      threshold: `< ${this.WARNING_THRESHOLD} days (critical at ${this.CRITICAL_THRESHOLD}+)`,
       severity,
-      message: passed
-        ? `${consecutiveLosses} consecutive losses within acceptable range`
-        : `WARNING: ${consecutiveLosses} consecutive losing days detected`,
-      recommendedAction: passed ? undefined : 'Review strategy parameters and market conditions',
+      message: isCritical
+        ? `CRITICAL: ${consecutiveLosses} consecutive losing days - automatic demotion triggered`
+        : passed
+          ? `${consecutiveLosses} consecutive losses within acceptable range`
+          : `WARNING: ${consecutiveLosses} consecutive losing days detected`,
+      recommendedAction: isCritical
+        ? 'Strategy auto-demoted due to extended losing streak'
+        : passed
+          ? undefined
+          : 'Review strategy parameters and market conditions',
       metadata: {
         consecutiveLosses,
+        warningThreshold: this.WARNING_THRESHOLD,
+        criticalThreshold: this.CRITICAL_THRESHOLD,
         totalDaysReviewed: historicalMetrics.length,
         averageLossPerDay: this.calculateAverageLoss(historicalMetrics.slice(-consecutiveLosses))
       }
