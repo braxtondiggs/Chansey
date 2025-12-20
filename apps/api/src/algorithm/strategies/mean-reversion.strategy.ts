@@ -17,7 +17,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
  */
 @Injectable()
 export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
-  readonly id = 'f206b716-6be3-499f-8186-2581e9755a98';
+  readonly id = 'mean-reversion-001';
 
   constructor(
     schedulerRegistry: SchedulerRegistry,
