@@ -16,6 +16,7 @@ import { AlgorithmPerformanceService } from './services/algorithm-performance.se
 import { ATRTrailingStopStrategy } from './strategies/atr-trailing-stop.strategy';
 import { BollingerBandSqueezeStrategy } from './strategies/bollinger-band-squeeze.strategy';
 import { BollingerBandsBreakoutStrategy } from './strategies/bollinger-bands-breakout.strategy';
+import { ConfluenceStrategy } from './strategies/confluence.strategy';
 import { EMARSIFilterStrategy } from './strategies/ema-rsi-filter.strategy';
 import { ExponentialMovingAverageStrategy } from './strategies/exponential-moving-average.strategy';
 import { MACDStrategy } from './strategies/macd.strategy';
@@ -77,6 +78,7 @@ import { UsersModule } from '../users/users.module';
     BollingerBandSqueezeStrategy,
     TripleEMAStrategy,
     EMARSIFilterStrategy,
+    ConfluenceStrategy,
     PerformanceRankingTask,
 
     // Strategy registration factory
@@ -95,6 +97,7 @@ import { UsersModule } from '../users/users.module';
         bbSqueezeStrategy: BollingerBandSqueezeStrategy,
         tripleEmaStrategy: TripleEMAStrategy,
         emaRsiFilterStrategy: EMARSIFilterStrategy,
+        confluenceStrategy: ConfluenceStrategy,
         registry: AlgorithmRegistry
       ) => {
         registry.registerStrategy(emaStrategy);
@@ -109,6 +112,7 @@ import { UsersModule } from '../users/users.module';
         registry.registerStrategy(bbSqueezeStrategy);
         registry.registerStrategy(tripleEmaStrategy);
         registry.registerStrategy(emaRsiFilterStrategy);
+        registry.registerStrategy(confluenceStrategy);
 
         return [
           emaStrategy,
@@ -122,7 +126,8 @@ import { UsersModule } from '../users/users.module';
           rsiDivergenceStrategy,
           bbSqueezeStrategy,
           tripleEmaStrategy,
-          emaRsiFilterStrategy
+          emaRsiFilterStrategy,
+          confluenceStrategy
         ];
       },
       inject: [
@@ -138,6 +143,7 @@ import { UsersModule } from '../users/users.module';
         BollingerBandSqueezeStrategy,
         TripleEMAStrategy,
         EMARSIFilterStrategy,
+        ConfluenceStrategy,
         AlgorithmRegistry
       ]
     }
