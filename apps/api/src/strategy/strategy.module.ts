@@ -39,10 +39,12 @@ import { UserPerformanceService } from './user-performance.service';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { BalanceModule } from '../balance/balance.module';
+import { ExchangeModule } from '../exchange/exchange.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
+import { PriceModule } from '../price/price.module';
 import { Risk } from '../risk/risk.entity';
 import { TasksModule } from '../tasks/tasks.module';
 import { User } from '../users/users.entity';
@@ -64,9 +66,11 @@ import { User } from '../users/users.entity';
     forwardRef(() => AlgorithmModule),
     AuditModule,
     forwardRef(() => BalanceModule),
+    forwardRef(() => ExchangeModule),
     forwardRef(() => MarketRegimeModule),
     MetricsModule,
     forwardRef(() => OrderModule),
+    forwardRef(() => PriceModule),
     forwardRef(() => TasksModule)
   ],
   providers: [
