@@ -5,6 +5,7 @@ import { OrderDto } from './dto/order.dto';
 import { OrderController } from './order.controller';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
+import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
 import { User } from '../users/users.entity';
 
@@ -39,6 +40,16 @@ describe('OrderController', () => {
             createOrder: jest.fn(),
             getOrders: jest.fn(),
             getOrder: jest.fn()
+          }
+        },
+        {
+          provide: SlippageAnalysisService,
+          useValue: {
+            getSlippageSummary: jest.fn(),
+            getSlippageBySymbol: jest.fn(),
+            getSlippageTrends: jest.fn(),
+            getHighSlippagePairs: jest.fn(),
+            getSlippageForSymbol: jest.fn()
           }
         }
       ]
@@ -146,7 +157,14 @@ describe('OrderController', () => {
       const mockOrders = [mockOrder];
       orderService.getOrders.mockResolvedValue(mockOrders);
 
-      const result = await controller.getOrders(mockUser, OrderStatus.FILLED, OrderSide.BUY, OrderType.MARKET, true, 10);
+      const result = await controller.getOrders(
+        mockUser,
+        OrderStatus.FILLED,
+        OrderSide.BUY,
+        OrderType.MARKET,
+        true,
+        10
+      );
 
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: OrderStatus.FILLED,

@@ -13,12 +13,20 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { OrderDto, OrderResponseDto } from './dto';
+import {
+  OrderDto,
+  OrderResponseDto,
+  SlippageQueryDto,
+  SlippageStatsDto,
+  SlippageSummaryDto,
+  SlippageTrendDto
+} from './dto';
 import { OrderPreviewRequestDto } from './dto/order-preview-request.dto';
 import { OrderPreviewDto } from './dto/order-preview.dto';
 import { PlaceManualOrderDto } from './dto/place-manual-order.dto';
 import { OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
+import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
@@ -31,7 +39,10 @@ import { User } from '../users/users.entity';
 export class OrderController {
   private readonly logger = new Logger(OrderController.name);
 
-  constructor(private readonly orderService: OrderService) {}
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly slippageAnalysisService: SlippageAnalysisService
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get user orders with optional filtering' })
@@ -209,5 +220,77 @@ export class OrderController {
   })
   async cancelOrder(@Param('id', new ParseUUIDPipe()) id: string, @GetUser() user: User) {
     return this.orderService.cancelManualOrder(id, user);
+  }
+
+  // ==================== SLIPPAGE ANALYTICS ENDPOINTS ====================
+
+  @Get('analytics/slippage')
+  @ApiOperation({
+    summary: 'Get slippage summary statistics',
+    description:
+      'Returns overall slippage statistics for the authenticated user including average, max, and cost impact'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Slippage summary statistics',
+    type: SlippageSummaryDto
+  })
+  async getSlippageSummary(@GetUser() user: User): Promise<SlippageSummaryDto> {
+    return this.slippageAnalysisService.getSlippageSummary(user.id);
+  }
+
+  @Get('analytics/slippage/by-symbol')
+  @ApiOperation({
+    summary: 'Get slippage statistics grouped by trading pair',
+    description: 'Returns slippage analysis for each trading pair the user has traded'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Slippage statistics by symbol',
+    type: [SlippageStatsDto]
+  })
+  async getSlippageBySymbol(@GetUser() user: User): Promise<SlippageStatsDto[]> {
+    return this.slippageAnalysisService.getSlippageBySymbol(user.id);
+  }
+
+  @Get('analytics/slippage/trends')
+  @ApiOperation({
+    summary: 'Get slippage trends over time',
+    description: 'Returns daily average slippage for the specified time period'
+  })
+  @ApiQuery({
+    name: 'period',
+    enum: ['7d', '30d', '90d'],
+    required: false,
+    description: 'Time period for trend analysis (default: 30d)'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Daily slippage trends',
+    type: [SlippageTrendDto]
+  })
+  async getSlippageTrends(@GetUser() user: User, @Query() query: SlippageQueryDto): Promise<SlippageTrendDto[]> {
+    const period = query.period as '7d' | '30d' | '90d';
+    return this.slippageAnalysisService.getSlippageTrends(user.id, period);
+  }
+
+  @Get('analytics/slippage/high-slippage-pairs')
+  @ApiOperation({
+    summary: 'Get trading pairs with high average slippage',
+    description: 'Returns symbols where average slippage exceeds the specified threshold'
+  })
+  @ApiQuery({
+    name: 'thresholdBps',
+    type: Number,
+    required: false,
+    description: 'Slippage threshold in basis points (default: 50)'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of high-slippage trading pairs',
+    type: [String]
+  })
+  async getHighSlippagePairs(@Query() query: SlippageQueryDto): Promise<string[]> {
+    return this.slippageAnalysisService.getHighSlippagePairs(query.thresholdBps);
   }
 }
