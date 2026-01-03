@@ -21,12 +21,14 @@ import { BacktestService } from './backtest/backtest.service';
 import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-report.entity';
 import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataSet } from './backtest/market-data-set.entity';
+import { slippageLimitsConfig } from './config/slippage-limits.config';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
+import { SlippageAnalysisService } from './services/slippage-analysis.service';
 import { TradeExecutionService } from './services/trade-execution.service';
 import { OrderSyncTask } from './tasks/order-sync.task';
 import { TradeExecutionTask } from './tasks/trade-execution.task';
@@ -50,9 +52,18 @@ const BACKTEST_DEFAULTS = backtestConfig();
 
 @Module({
   controllers: [OrderController, BacktestController, ComparisonReportController],
-  exports: [OrderService, OrderSyncTask, TradeExecutionService, BacktestService, BacktestEngine, BacktestStreamService],
+  exports: [
+    OrderService,
+    OrderSyncTask,
+    TradeExecutionService,
+    BacktestService,
+    BacktestEngine,
+    BacktestStreamService,
+    SlippageAnalysisService
+  ],
   imports: [
     ConfigModule.forFeature(backtestConfig),
+    ConfigModule.forFeature(slippageLimitsConfig),
     TypeOrmModule.forFeature([
       Algorithm,
       Coin,
@@ -96,6 +107,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OrderSyncService,
     OrderSyncTask,
     OrderValidationService,
+    SlippageAnalysisService,
     TradeExecutionService,
     TradeExecutionTask,
     TickerPairService

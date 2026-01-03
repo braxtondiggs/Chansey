@@ -40,6 +40,23 @@ export enum OrderStatus {
   REJECTED = 'REJECTED'
 }
 
+/**
+ * Individual trade execution data from exchange
+ */
+export interface TradeExecution {
+  id: string;
+  timestamp: number;
+  price: number;
+  amount: number;
+  cost: number;
+  fee?: {
+    cost: number;
+    currency: string;
+  };
+  side?: string;
+  takerOrMaker?: string;
+}
+
 @Entity()
 @Index('IDX_order_userId', ['user'])
 @Index('IDX_order_baseCoinId', ['baseCoin'])
@@ -223,6 +240,41 @@ export class Order {
     required: false
   })
   averagePrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true,
+    default: null
+  })
+  @IsNumber()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Expected execution price captured before order submission (for slippage calculation)',
+    example: 35000.5,
+    required: false
+  })
+  expectedPrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 4,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true,
+    default: null
+  })
+  @IsNumber()
+  @IsOptional()
+  @ApiProperty({
+    description:
+      'Actual slippage in basis points (positive = unfavorable, paid more for buy or received less for sell)',
+    example: 15.5,
+    required: false
+  })
+  actualSlippageBps?: number;
 
   @Column({
     type: 'enum',
@@ -569,7 +621,7 @@ export class Order {
     ],
     required: false
   })
-  trades?: any[];
+  trades?: TradeExecution[];
 
   @Column({
     type: 'jsonb',
@@ -588,7 +640,7 @@ export class Order {
     },
     required: false
   })
-  info?: any;
+  info?: Record<string, unknown>;
 
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({

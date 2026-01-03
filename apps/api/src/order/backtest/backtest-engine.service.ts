@@ -16,6 +16,13 @@ import {
   TradeType
 } from './backtest.entity';
 import { MarketDataSet } from './market-data-set.entity';
+import {
+  applySlippage,
+  calculateSimulatedSlippage,
+  DEFAULT_SLIPPAGE_CONFIG,
+  SlippageModelConfig,
+  SlippageModelType
+} from './slippage-model';
 
 import {
   AlgorithmResult,
@@ -201,6 +208,17 @@ export class BacktestEngine {
 
     this.logger.log(`Processing ${timestamps.length} time periods`);
 
+    // Build slippage config from backtest configSnapshot
+    const slippageSnapshot = backtest.configSnapshot?.slippage;
+    const slippageConfig: SlippageModelConfig = slippageSnapshot
+      ? {
+          type: (slippageSnapshot.model as SlippageModelType) ?? SlippageModelType.FIXED,
+          fixedBps: slippageSnapshot.fixedBps ?? 5,
+          baseSlippageBps: slippageSnapshot.baseBps ?? 5,
+          volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
+        }
+      : DEFAULT_SLIPPAGE_CONFIG;
+
     let peakValue = backtest.initialCapital;
     let maxDrawdown = 0;
 
@@ -280,8 +298,16 @@ export class BacktestEngine {
         };
         signals.push(signalRecord);
 
-        const trade = await this.executeTrade(strategySignal, portfolio, marketData, backtest.tradingFee, random);
-        if (trade) {
+        const tradeResult = await this.executeTrade(
+          strategySignal,
+          portfolio,
+          marketData,
+          backtest.tradingFee,
+          random,
+          slippageConfig
+        );
+        if (tradeResult) {
+          const { trade, slippageBps } = tradeResult;
           trades.push({ ...trade, executedAt: timestamp, backtest });
           simulatedFills.push({
             orderType: SimulatedOrderType.MARKET,
@@ -289,7 +315,7 @@ export class BacktestEngine {
             filledQuantity: trade.quantity,
             averagePrice: trade.price,
             fees: trade.fee,
-            slippageBps: 0,
+            slippageBps,
             executionTimestamp: timestamp,
             instrument: strategySignal.coinId,
             metadata: trade.metadata,
@@ -388,10 +414,11 @@ export class BacktestEngine {
     portfolio: Portfolio,
     marketData: MarketData,
     tradingFee: number,
-    random: () => number
-  ): Promise<Partial<BacktestTrade> | null> {
-    const price = marketData.prices.get(signal.coinId);
-    if (!price) {
+    random: () => number,
+    slippageConfig: SlippageModelConfig = DEFAULT_SLIPPAGE_CONFIG
+  ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
+    const basePrice = marketData.prices.get(signal.coinId);
+    if (!basePrice) {
       this.logger.warn(`No price data available for coin ${signal.coinId}`);
       return null;
     }
@@ -400,10 +427,18 @@ export class BacktestEngine {
       return null;
     }
 
+    const isBuy = signal.action === 'BUY';
     let quantity = 0;
     let totalValue = 0;
 
-    if (signal.action === 'BUY') {
+    // Calculate slippage based on estimated order size
+    const estimatedQuantity = signal.quantity ?? (portfolio.totalValue * 0.1) / basePrice;
+    const slippageBps = calculateSimulatedSlippage(slippageConfig, estimatedQuantity, basePrice);
+
+    // Apply slippage to get execution price
+    const price = applySlippage(basePrice, slippageBps, isBuy);
+
+    if (isBuy) {
       if (signal.quantity) {
         quantity = signal.quantity;
       } else if (signal.percentage) {
@@ -464,16 +499,21 @@ export class BacktestEngine {
     portfolio.totalValue = portfolio.cashBalance + this.calculatePositionsValue(portfolio.positions, marketData.prices);
 
     return {
-      type: signal.action === 'BUY' ? TradeType.BUY : TradeType.SELL,
-      quantity,
-      price,
-      totalValue,
-      fee,
-      metadata: {
-        reason: signal.reason,
-        confidence: signal.confidence ?? 0
-      }
-    } as Partial<BacktestTrade>;
+      trade: {
+        type: signal.action === 'BUY' ? TradeType.BUY : TradeType.SELL,
+        quantity,
+        price,
+        totalValue,
+        fee,
+        metadata: {
+          reason: signal.reason,
+          confidence: signal.confidence ?? 0,
+          basePrice, // Original price before slippage
+          slippageBps // Simulated slippage applied
+        }
+      } as Partial<BacktestTrade>,
+      slippageBps
+    };
   }
 
   private calculatePositionsValue(positions: Map<string, Position>, currentPrices: Map<string, number>): number {
@@ -680,9 +720,9 @@ export class BacktestEngine {
       }
 
       for (const strategySignal of strategySignals) {
-        const trade = await this.executeTrade(strategySignal, portfolio, marketData, tradingFee, random);
-        if (trade) {
-          trades.push({ ...trade, executedAt: timestamp });
+        const tradeResult = await this.executeTrade(strategySignal, portfolio, marketData, tradingFee, random);
+        if (tradeResult) {
+          trades.push({ ...tradeResult.trade, executedAt: timestamp });
         }
       }
 
