@@ -1,6 +1,7 @@
 # Algorithm Module
 
-The Algorithm module provides a framework for implementing and executing cryptocurrency trading algorithms. It analyzes market data and generates trading signals based on various technical analysis strategies.
+The Algorithm module provides a framework for implementing and executing cryptocurrency trading algorithms. It analyzes
+market data and generates trading signals based on various technical analysis strategies.
 
 ## What It Does
 
@@ -8,7 +9,8 @@ The Algorithm module:
 
 - **Analyzes Market Data**: Processes price history, volume, and market trends for supported cryptocurrencies
 - **Generates Trading Signals**: Produces buy/sell/hold recommendations based on algorithmic analysis
-- **Provides Multiple Strategies**: Supports various trading algorithms including moving averages, mean reversion, and momentum indicators
+- **Provides Multiple Strategies**: Supports various trading algorithms including moving averages, mean reversion, and
+  momentum indicators
 - **Executes Automated Analysis**: Runs algorithms on schedules or on-demand to provide real-time trading insights
 - **Tracks Performance**: Monitors algorithm execution metrics and success rates
 
@@ -48,22 +50,143 @@ The Algorithm module:
 ## Available Algorithms
 
 ### 1. Simple Moving Average Crossover
+
 - **Purpose**: Identifies trend changes using fast and slow moving averages
-- **How it works**: Generates buy signals when the fast MA crosses above the slow MA, and sell signals when it crosses below
+- **How it works**: Generates buy signals when the fast MA crosses above the slow MA, and sell signals when it crosses
+  below
 - **Configuration**: Customize fast period (default: 12) and slow period (default: 26)
 - **Best for**: Trending markets with clear directional momentum
 
 ### 2. Exponential Moving Average Strategy
+
 - **Purpose**: Uses exponentially weighted averages for more responsive trend detection
 - **How it works**: Analyzes price relationship to EMA and detects slope changes for signal generation
 - **Configuration**: Adjustable EMA period and sensitivity thresholds
 - **Best for**: Markets with frequent price changes requiring faster response times
 
 ### 3. Mean Reversion Strategy
+
 - **Purpose**: Identifies overbought/oversold conditions for contrarian trading opportunities
 - **How it works**: Compares current price to historical average and generates signals when deviation exceeds thresholds
 - **Configuration**: Customizable lookback period and deviation multipliers
 - **Best for**: Range-bound markets with predictable price oscillations
+
+### 4. RSI Strategy
+
+- **Purpose**: Uses Relative Strength Index to identify momentum shifts and overbought/oversold conditions
+- **How it works**: Generates buy signals when RSI falls below oversold threshold, sell signals when above overbought
+  threshold
+- **Configuration**: Adjustable RSI period, overbought/oversold thresholds
+- **Best for**: Markets with clear momentum reversals
+
+### 5. MACD Strategy
+
+- **Purpose**: Identifies trend changes using Moving Average Convergence Divergence
+- **How it works**: Analyzes MACD line crossovers with signal line and histogram momentum
+- **Configuration**: Fast period, slow period, and signal period settings
+- **Best for**: Trending markets with sustained momentum
+
+### 6. Bollinger Bands Breakout Strategy
+
+- **Purpose**: Detects volatility breakouts and potential trend reversals
+- **How it works**: Generates signals when price breaks above/below Bollinger Bands with volume confirmation
+- **Configuration**: Band period, standard deviation multiplier, breakout sensitivity
+- **Best for**: Markets experiencing volatility expansion
+
+### 7. RSI-MACD Combo Strategy
+
+- **Purpose**: Combines RSI momentum with MACD trend confirmation for higher accuracy signals
+- **How it works**: Only generates signals when both RSI and MACD indicators agree on direction
+- **Configuration**: Individual settings for both RSI and MACD components
+- **Best for**: Reducing false signals through multi-indicator confirmation
+
+### 8. ATR Trailing Stop Strategy
+
+- **Purpose**: Uses Average True Range for dynamic stop-loss positioning and trend following
+- **How it works**: Generates signals based on ATR-based trailing stops and trend direction
+- **Configuration**: ATR period, multiplier for stop distance
+- **Best for**: Trending markets where dynamic stop placement improves exits
+
+### 9. RSI Divergence Strategy
+
+- **Purpose**: Identifies divergences between price and RSI for early reversal signals
+- **How it works**: Detects when price makes new highs/lows but RSI doesn't confirm
+- **Configuration**: RSI period, divergence lookback period, minimum divergence threshold
+- **Best for**: Catching trend reversals before they happen
+
+### 10. Bollinger Band Squeeze Strategy
+
+- **Purpose**: Identifies low volatility periods that often precede large moves
+- **How it works**: Detects when Bollinger Bands narrow significantly, signaling potential breakout
+- **Configuration**: Squeeze threshold, breakout confirmation settings
+- **Best for**: Anticipating volatility expansion after consolidation
+
+### 11. Triple EMA Strategy
+
+- **Purpose**: Uses three EMAs for enhanced trend detection and confirmation
+- **How it works**: Analyzes relationships between short, medium, and long-term EMAs
+- **Configuration**: Three EMA periods (short, medium, long)
+- **Best for**: Strong trending markets with clear directional bias
+
+### 12. EMA-RSI Filter Strategy
+
+- **Purpose**: Combines EMA trend direction with RSI momentum filtering
+- **How it works**: Uses EMA for trend direction and RSI to filter entry timing
+- **Configuration**: EMA period, RSI period, RSI thresholds
+- **Best for**: Following trends with momentum-based entry timing
+
+### 13. Multi-Indicator Confluence Strategy
+
+- **Purpose**: Reduces false positives by requiring multiple indicators to agree before generating signals
+- **How it works**: Combines 5 indicator families (EMA trend, RSI momentum, MACD oscillator, ATR volatility filter,
+  Bollinger Bands mean reversion) and only generates signals when a configurable minimum number of indicators agree on
+  direction
+- **Configuration**: Minimum confluence count, individual indicator enable/disable, custom thresholds for each indicator
+- **Best for**: Conservative traders seeking high-confidence signals with reduced noise
+
+#### Signal Logic
+
+**BUY Signal** (when configured minimum indicators agree):
+
+- **EMA**: EMA12 > EMA26 (bullish trend)
+- **RSI**: RSI < 40 (oversold, room to run up)
+- **MACD**: Histogram positive with upward momentum
+- **ATR**: Volatility within normal range (filter, not directional)
+- **Bollinger Bands**: %B < 0.2 (price near lower band, mean reversion opportunity)
+
+**SELL Signal** (when configured minimum indicators agree):
+
+- **EMA**: EMA12 < EMA26 (bearish trend)
+- **RSI**: RSI > 60 (overbought, room to fall)
+- **MACD**: Histogram negative with downward momentum
+- **ATR**: Volatility within normal range (filter, not directional)
+- **Bollinger Bands**: %B > 0.8 (price near upper band, mean reversion opportunity)
+
+#### Configuration Options
+
+| Option                    | Type    | Default | Description                                     |
+| ------------------------- | ------- | ------- | ----------------------------------------------- |
+| `minConfluence`           | number  | 3       | Number of indicators that must agree (2-5)      |
+| `minConfidence`           | number  | 0.65    | Minimum confidence threshold to generate signal |
+| `emaEnabled`              | boolean | true    | Enable EMA trend indicator                      |
+| `emaFastPeriod`           | number  | 12      | Fast EMA period                                 |
+| `emaSlowPeriod`           | number  | 26      | Slow EMA period                                 |
+| `rsiEnabled`              | boolean | true    | Enable RSI momentum indicator                   |
+| `rsiPeriod`               | number  | 14      | RSI calculation period                          |
+| `rsiBuyThreshold`         | number  | 40      | RSI threshold for bullish signal                |
+| `rsiSellThreshold`        | number  | 60      | RSI threshold for bearish signal                |
+| `macdEnabled`             | boolean | true    | Enable MACD oscillator                          |
+| `macdFastPeriod`          | number  | 12      | MACD fast EMA period                            |
+| `macdSlowPeriod`          | number  | 26      | MACD slow EMA period                            |
+| `macdSignalPeriod`        | number  | 9       | MACD signal line period                         |
+| `atrEnabled`              | boolean | true    | Enable ATR volatility filter                    |
+| `atrPeriod`               | number  | 14      | ATR calculation period                          |
+| `atrVolatilityMultiplier` | number  | 1.5     | Max ATR multiplier before filtering signals     |
+| `bbEnabled`               | boolean | true    | Enable Bollinger Bands mean reversion           |
+| `bbPeriod`                | number  | 20      | Bollinger Bands calculation period              |
+| `bbStdDev`                | number  | 2       | Standard deviation multiplier                   |
+| `bbBuyThreshold`          | number  | 0.2     | %B threshold for bullish signal                 |
+| `bbSellThreshold`         | number  | 0.8     | %B threshold for bearish signal                 |
 
 ## How Algorithms Work
 
@@ -117,7 +240,8 @@ curl -X POST http://localhost:3000/api/algorithm/simple-moving-average-crossover
 ```
 
 **Response:**
-```json
+
+````json
 {
   "success": true,
   "signals": [
@@ -141,7 +265,7 @@ curl -X POST http://localhost:3000/api/algorithm/simple-moving-average-crossover
 ### Signal Types
 
 - **BUY**: Algorithm recommends purchasing the asset
-- **SELL**: Algorithm recommends selling the asset  
+- **SELL**: Algorithm recommends selling the asset
 - **HOLD**: Algorithm recommends maintaining current position
 
 ### Signal Properties
@@ -155,7 +279,7 @@ curl -X POST http://localhost:3000/api/algorithm/simple-moving-average-crossover
   "timestamp": "2024-01-01T12:00:00Z",  // Signal generation time
   "reason": "Fast MA crossed above slow MA"  // Human-readable explanation
 }
-```
+````
 
 ### Interpreting Confidence Levels
 
@@ -170,6 +294,7 @@ curl -X POST http://localhost:3000/api/algorithm/simple-moving-average-crossover
 To add a new trading algorithm:
 
 1. **Extend BaseAlgorithmStrategy**:
+
    ```typescript
    @Injectable()
    export class MyCustomStrategy extends BaseAlgorithmStrategy {
@@ -184,17 +309,17 @@ To add a new trading algorithm:
    ```typescript
    async execute(context: AlgorithmContext): Promise<AlgorithmResult> {
      const signals: TradingSignal[] = [];
-     
+
      // Analyze market data from context
      for (const coin of context.coins) {
        const priceHistory = context.priceData[coin.id];
        // Apply your algorithm logic here
-       
+
        if (/* buy condition */) {
          signals.push(this.createBuySignal(coin, confidence));
        }
      }
-     
+
      return this.createSuccessResult(signals);
    }
    ```
@@ -206,30 +331,33 @@ To add a new trading algorithm:
 Each algorithm can be configured with specific parameters:
 
 #### Simple Moving Average Crossover
+
 ```json
 {
-  "fastPeriod": 12,        // Fast moving average period (days)
-  "slowPeriod": 26,        // Slow moving average period (days)
-  "enabled": true,         // Enable/disable algorithm
-  "weight": 1.0           // Signal weight (0-10)
+  "fastPeriod": 12, // Fast moving average period (days)
+  "slowPeriod": 26, // Slow moving average period (days)
+  "enabled": true, // Enable/disable algorithm
+  "weight": 1.0 // Signal weight (0-10)
 }
 ```
 
 #### Exponential Moving Average
+
 ```json
 {
-  "period": 21,           // EMA calculation period
-  "threshold": 0.02,      // Price deviation threshold (2%)
+  "period": 21, // EMA calculation period
+  "threshold": 0.02, // Price deviation threshold (2%)
   "enabled": true,
   "weight": 1.5
 }
 ```
 
 #### Mean Reversion
+
 ```json
 {
-  "lookbackPeriod": 20,   // Historical data period for mean calculation
-  "deviationMultiplier": 2.0,  // Standard deviation multiplier
+  "lookbackPeriod": 20, // Historical data period for mean calculation
+  "deviationMultiplier": 2.0, // Standard deviation multiplier
   "enabled": true,
   "weight": 0.8
 }
@@ -240,6 +368,7 @@ Each algorithm can be configured with specific parameters:
 - **Risk Level**: Set overall risk tolerance (low/medium/high)
 - **Execution Frequency**: Configure how often algorithms run
 - **Data Retention**: Specify how long to keep historical results
+
 ```
 
 ## Best Practices
@@ -315,8 +444,9 @@ Each algorithm can be configured with specific parameters:
 ### Recommended Limits
 
 - **Execution Time**: Maximum 30 seconds per algorithm run
-- **Memory Usage**: Limit to 512MB per algorithm instance  
+- **Memory Usage**: Limit to 512MB per algorithm instance
 - **API Rate Limits**: Maximum 100 requests per minute per user
 - **Data Retention**: Keep algorithm results for 90 days by default
 
 This architecture provides a robust foundation for cryptocurrency trading algorithms while ensuring scalability, reliability, and maintainability for production environments.
+```
