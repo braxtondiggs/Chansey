@@ -2,16 +2,16 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Type } from 'class-transformer';
 import {
-  IsDateString,
   IsArray,
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
-  Min,
   Max,
+  Min,
   ValidateNested
 } from 'class-validator';
 
@@ -23,6 +23,7 @@ import {
   SimulatedOrderStatus,
   SimulatedOrderType
 } from '../backtest.entity';
+import { SlippageModelType } from '../slippage-model';
 
 export class CreateBacktestDto {
   @IsString()
@@ -89,6 +90,58 @@ export class CreateBacktestDto {
     required: false
   })
   tradingFee?: number;
+
+  @IsEnum(SlippageModelType)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Slippage simulation model to use',
+    enum: SlippageModelType,
+    default: SlippageModelType.FIXED,
+    required: false
+  })
+  slippageModel?: SlippageModelType = SlippageModelType.FIXED;
+
+  @IsNumber()
+  @Min(0)
+  @Max(500)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Fixed slippage in basis points (used when slippageModel is "fixed")',
+    example: 10,
+    default: 5,
+    minimum: 0,
+    maximum: 500,
+    required: false
+  })
+  slippageFixedBps?: number = 5;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Base slippage for volume-based model in basis points',
+    example: 5,
+    default: 5,
+    minimum: 0,
+    maximum: 100,
+    required: false
+  })
+  slippageBaseBps?: number = 5;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Volume impact factor for volume-based slippage model',
+    example: 100,
+    default: 100,
+    minimum: 0,
+    maximum: 1000,
+    required: false
+  })
+  slippageVolumeImpactFactor?: number = 100;
 
   @IsDateString()
   @IsNotEmpty()

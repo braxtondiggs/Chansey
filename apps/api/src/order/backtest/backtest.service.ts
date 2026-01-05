@@ -1,9 +1,9 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { Repository, In } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { randomUUID } from 'node:crypto';
 
@@ -31,15 +31,15 @@ import {
 import { BacktestJobData } from './backtest.job-data';
 import { ComparisonReport, ComparisonReportRun } from './comparison-report.entity';
 import {
-  CreateBacktestDto,
-  UpdateBacktestDto,
+  BacktestComparisonDto,
   BacktestFiltersDto,
   BacktestPerformanceDto,
-  BacktestComparisonDto,
   BacktestProgressDto,
-  CreateComparisonReportDto,
   BacktestSignalQueryDto,
-  BacktestTradesQueryDto
+  BacktestTradesQueryDto,
+  CreateBacktestDto,
+  CreateComparisonReportDto,
+  UpdateBacktestDto
 } from './dto/backtest.dto';
 import { MarketDataSet } from './market-data-set.entity';
 
@@ -129,6 +129,12 @@ export class BacktestService {
           tradingFee: createBacktestDto.tradingFee || 0.001,
           startDate: createBacktestDto.startDate,
           endDate: createBacktestDto.endDate
+        },
+        slippage: {
+          model: createBacktestDto.slippageModel || 'fixed',
+          fixedBps: createBacktestDto.slippageFixedBps ?? 5,
+          baseBps: createBacktestDto.slippageBaseBps ?? 5,
+          volumeImpactFactor: createBacktestDto.slippageVolumeImpactFactor ?? 100
         },
         parameters: createBacktestDto.strategyParams ?? {}
       };
