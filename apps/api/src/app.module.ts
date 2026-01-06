@@ -14,6 +14,7 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { join } from 'path';
 
+import { AdminModule } from './admin/admin.module';
 import { AlgorithmModule } from './algorithm/algorithm.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -112,6 +113,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       cache: true,
       validate: validateEnv // Validates env vars on startup
     }),
+    AdminModule,
     AlgorithmModule,
     AuditModule,
     AuthenticationModule,

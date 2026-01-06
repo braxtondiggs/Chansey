@@ -1,4 +1,5 @@
 export * from './lib/api-interfaces';
+export * from './lib/admin/trading-state.interface';
 export * from './lib/auth';
 export * from './lib/user';
 export * from './lib/exchange/exchange.interface';

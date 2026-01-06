@@ -36,6 +36,7 @@ import { StrategyController } from './strategy.controller';
 import { StrategyService } from './strategy.service';
 import { UserPerformanceService } from './user-performance.service';
 
+import { AdminModule } from '../admin/admin.module';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { BalanceModule } from '../balance/balance.module';
@@ -63,6 +64,7 @@ import { User } from '../users/users.entity';
       User,
       Order
     ]),
+    forwardRef(() => AdminModule),
     forwardRef(() => AlgorithmModule),
     AuditModule,
     forwardRef(() => BalanceModule),
