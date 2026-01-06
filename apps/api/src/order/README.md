@@ -57,3 +57,280 @@ Additional exchanges can be added by:
 2. Implementing the exchange client method
 3. Adding exchange identification logic in `saveExchangeOrders`
 ```
+
+---
+
+# Automated Exit Rules (Stop-Loss / Take-Profit)
+
+This feature provides automated position exit management including stop-loss, take-profit, trailing stops, and OCO
+(one-cancels-other) order linking.
+
+## Overview
+
+Exit rules can be attached to entry orders to automatically manage position exits. The system supports:
+
+- **Stop-Loss Orders**: Limit downside risk with fixed, percentage, or ATR-based stops
+- **Take-Profit Orders**: Lock in gains at target prices
+- **Trailing Stops**: Dynamic stops that follow favorable price movement
+- **OCO Linking**: Automatic cancellation of the other leg when SL or TP fills
+
+## Exit Configuration
+
+Exit rules are configured via the `ExitConfig` interface:
+
+```typescript
+interface ExitConfig {
+  // Stop-Loss Configuration
+  enableStopLoss: boolean;
+  stopLossType: 'fixed' | 'percentage' | 'atr';
+  stopLossValue: number;
+
+  // Take-Profit Configuration
+  enableTakeProfit: boolean;
+  takeProfitType: 'fixed' | 'percentage' | 'risk_reward';
+  takeProfitValue: number;
+
+  // ATR Settings (for ATR-based stops)
+  atrPeriod?: number; // Default: 14
+  atrMultiplier?: number; // Default: 2.0
+
+  // Trailing Stop Configuration
+  enableTrailingStop: boolean;
+  trailingType: 'amount' | 'percentage' | 'atr';
+  trailingValue: number;
+  trailingActivation: 'immediate' | 'price' | 'percentage';
+  trailingActivationValue?: number;
+
+  // OCO Configuration
+  useOco: boolean;
+}
+```
+
+### Stop-Loss Types
+
+| Type         | Description             | Example            |
+| ------------ | ----------------------- | ------------------ |
+| `fixed`      | Absolute price level    | Stop at $45,000    |
+| `percentage` | Percentage from entry   | 2% below entry     |
+| `atr`        | ATR multiplier distance | 2x ATR below entry |
+
+### Take-Profit Types
+
+| Type          | Description             | Example         |
+| ------------- | ----------------------- | --------------- |
+| `fixed`       | Absolute price level    | Exit at $55,000 |
+| `percentage`  | Percentage from entry   | 5% above entry  |
+| `risk_reward` | Multiple of SL distance | 2:1 R:R ratio   |
+
+### Trailing Stop Activation
+
+| Activation   | Description                             |
+| ------------ | --------------------------------------- |
+| `immediate`  | Trailing starts immediately after entry |
+| `price`      | Activates when price reaches target     |
+| `percentage` | Activates after X% gain from entry      |
+
+## Architecture
+
+### Key Files
+
+| File                                      | Purpose                                  |
+| ----------------------------------------- | ---------------------------------------- |
+| `interfaces/exit-config.interface.ts`     | Exit configuration types and enums       |
+| `entities/position-exit.entity.ts`        | Tracks exit orders and trailing state    |
+| `services/position-management.service.ts` | Core exit order placement and management |
+| `tasks/position-monitor.task.ts`          | BullMQ task for trailing stop monitoring |
+
+### Position Exit Entity
+
+Tracks the lifecycle of exit orders:
+
+```typescript
+enum PositionExitStatus {
+  PENDING = 'pending', // Exit orders not yet placed
+  ACTIVE = 'active', // Exit orders live on exchange
+  SL_TRIGGERED = 'sl_triggered', // Stop-loss filled
+  TP_TRIGGERED = 'tp_triggered', // Take-profit filled
+  TRAILING_TRIGGERED = 'trailing_triggered',
+  CANCELLED = 'cancelled',
+  ERROR = 'error'
+}
+```
+
+### Exit Price Calculation
+
+The `PositionManagementService.calculateExitPrices()` method computes exit prices:
+
+```typescript
+// For LONG positions (side = 'BUY'):
+// - Stop-Loss: entry - distance
+// - Take-Profit: entry + distance
+
+// For SHORT positions (side = 'SELL'):
+// - Stop-Loss: entry + distance
+// - Take-Profit: entry - distance
+
+// Risk:Reward take-profit uses SL distance:
+takeProfitPrice = entryPrice + slDistance * riskRewardMultiplier;
+```
+
+## Position Monitoring Task
+
+The `PositionMonitorTask` runs every 60 seconds to manage trailing stops:
+
+### What It Does
+
+1. Fetches all active positions with trailing stops enabled
+2. Groups positions by exchange for batched price fetches
+3. Updates trailing stop prices as price moves favorably (ratchet mechanism)
+4. Triggers stop orders when price reverses past the trailing stop
+
+### Trailing Stop Logic
+
+```typescript
+// For LONG positions:
+if (currentPrice > highWaterMark) {
+  highWaterMark = currentPrice;
+  newStopPrice = currentPrice - trailingDistance;
+  // Only raise stop (never lower)
+  if (newStopPrice > currentStopPrice) {
+    updateStopOrder(newStopPrice);
+  }
+}
+
+// Trigger if price falls below trailing stop
+if (currentPrice <= currentStopPrice) {
+  triggerExit();
+}
+```
+
+### Configuration
+
+Disable in development by setting environment variable:
+
+```bash
+DISABLE_POSITION_MONITOR=true
+```
+
+Or automatically disabled when `NODE_ENV=development`.
+
+## OCO Order Handling
+
+One-Cancels-Other (OCO) orders ensure only one exit triggers:
+
+### Exchange Support
+
+| Exchange   | OCO Support                       |
+| ---------- | --------------------------------- |
+| Binance US | Native OCO orders                 |
+| Coinbase   | Simulated via position monitoring |
+
+### How It Works
+
+1. When SL or TP fills, the order sync task detects the fill
+2. `handleOcoFill()` cancels the linked order
+3. Position status updated to reflect which exit triggered
+
+## Usage Examples
+
+### Attaching Exit Rules to an Entry Order
+
+```typescript
+const exitConfig: ExitConfig = {
+  enableStopLoss: true,
+  stopLossType: StopLossType.PERCENTAGE,
+  stopLossValue: 2.0, // 2% stop-loss
+
+  enableTakeProfit: true,
+  takeProfitType: TakeProfitType.RISK_REWARD,
+  takeProfitValue: 2.0, // 2:1 risk-reward
+
+  enableTrailingStop: false,
+  useOco: true
+};
+
+await positionManagementService.attachExitOrders(entryOrder, exitConfig);
+```
+
+### Trailing Stop with Percentage Activation
+
+```typescript
+const exitConfig: ExitConfig = {
+  enableStopLoss: false,
+  enableTakeProfit: false,
+
+  enableTrailingStop: true,
+  trailingType: TrailingType.PERCENTAGE,
+  trailingValue: 1.5, // Trail 1.5% behind high
+  trailingActivation: TrailingActivationType.PERCENTAGE,
+  trailingActivationValue: 3.0, // Activate after 3% gain
+
+  useOco: false
+};
+```
+
+### ATR-Based Dynamic Stop
+
+```typescript
+const exitConfig: ExitConfig = {
+  enableStopLoss: true,
+  stopLossType: StopLossType.ATR,
+  stopLossValue: 2.0, // 2x ATR
+  atrPeriod: 14,
+  atrMultiplier: 2.0,
+
+  enableTakeProfit: true,
+  takeProfitType: TakeProfitType.RISK_REWARD,
+  takeProfitValue: 3.0, // 3:1 R:R
+
+  enableTrailingStop: false,
+  useOco: true
+};
+
+// ATR value fetched automatically from price history
+await positionManagementService.attachExitOrders(entryOrder, exitConfig, priceData);
+```
+
+## Database Schema
+
+The `position_exits` table stores exit order state:
+
+| Column                        | Type    | Description                   |
+| ----------------------------- | ------- | ----------------------------- |
+| `id`                          | uuid    | Primary key                   |
+| `entry_order_id`              | uuid    | FK to orders table            |
+| `user_id`                     | uuid    | FK to users table             |
+| `status`                      | enum    | Current exit status           |
+| `exit_config`                 | jsonb   | Full exit configuration       |
+| `calculated_sl_price`         | decimal | Computed stop-loss price      |
+| `calculated_tp_price`         | decimal | Computed take-profit price    |
+| `sl_order_id`                 | varchar | Exchange stop-loss order ID   |
+| `tp_order_id`                 | varchar | Exchange take-profit order ID |
+| `trailing_activated`          | boolean | Whether trailing is active    |
+| `trailing_high_water_mark`    | decimal | Highest price for longs       |
+| `trailing_low_water_mark`     | decimal | Lowest price for shorts       |
+| `current_trailing_stop_price` | decimal | Current trailing stop level   |
+
+## Error Handling
+
+Exit order failures are logged but don't fail the entry order:
+
+- Exchange API errors are caught and logged
+- Position status set to `ERROR` with error details
+- Manual intervention may be required for failed exits
+
+## Testing
+
+Unit tests cover:
+
+- Exit price calculations for all types
+- Trailing stop activation logic
+- OCO order linking
+- Position status transitions
+
+Run tests:
+
+```bash
+nx test api --testPathPattern=position-management
+nx test api --testPathPattern=position-monitor
+```

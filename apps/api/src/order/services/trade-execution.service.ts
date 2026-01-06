@@ -1,9 +1,11 @@
-import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
 import { Repository } from 'typeorm';
+
+import { PositionManagementService } from './position-management.service';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { Coin } from '../../coin/coin.entity';
@@ -11,8 +13,10 @@ import { CoinService } from '../../coin/coin.service';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { Exchange } from '../../exchange/exchange.entity';
+import { PriceSummary } from '../../price/price.entity';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
+import { ExitConfig } from '../interfaces/exit-config.interface';
 import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
 
 /**
@@ -25,6 +29,16 @@ export interface TradeSignal {
   action: 'BUY' | 'SELL';
   symbol: string;
   quantity: number;
+}
+
+/**
+ * Extended trade signal with exit configuration
+ */
+export interface TradeSignalWithExit extends TradeSignal {
+  /** Exit configuration for automatic SL/TP/trailing stop placement */
+  exitConfig?: Partial<ExitConfig>;
+  /** Historical price data for ATR-based exit calculations */
+  priceData?: PriceSummary[];
 }
 
 /**
@@ -47,6 +61,9 @@ export class TradeExecutionService {
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,
     @Optional()
+    @Inject(forwardRef(() => PositionManagementService))
+    private readonly positionManagementService?: PositionManagementService,
+    @Optional()
     @Inject(slippageLimitsConfig.KEY)
     slippageLimitsConfigValue?: ConfigType<typeof slippageLimitsConfig>
   ) {
@@ -62,11 +79,11 @@ export class TradeExecutionService {
 
   /**
    * Execute a trade signal from an algorithm
-   * @param signal - Trade signal with algorithm activation, action, symbol, quantity
+   * @param signal - Trade signal with algorithm activation, action, symbol, quantity, and optional exit config
    * @returns Created Order entity
    * @throws BadRequestException if validation fails
    */
-  async executeTradeSignal(signal: TradeSignal): Promise<Order> {
+  async executeTradeSignal(signal: TradeSignalWithExit): Promise<Order> {
     this.logger.log(
       `Executing trade signal: ${signal.action} ${signal.quantity} ${signal.symbol} for activation ${signal.algorithmActivationId}`
     );
@@ -165,6 +182,40 @@ export class TradeExecutionService {
           `Order ${ccxtOrder.id} executed: ${ccxtOrder.filled}/${ccxtOrder.amount} filled ` +
             `(${((ccxtOrder.filled / ccxtOrder.amount) * 100).toFixed(2)}%), slippage: ${actualSlippageBps.toFixed(2)} bps`
         );
+      }
+
+      // ATTACH EXIT ORDERS if exit config is provided
+      if (signal.exitConfig && this.positionManagementService) {
+        const hasExitEnabled =
+          signal.exitConfig.enableStopLoss ||
+          signal.exitConfig.enableTakeProfit ||
+          signal.exitConfig.enableTrailingStop;
+
+        if (hasExitEnabled) {
+          try {
+            const exitResult = await this.positionManagementService.attachExitOrders(
+              order,
+              signal.exitConfig,
+              signal.priceData
+            );
+
+            this.logger.log(
+              `Exit orders attached to entry ${order.id}: SL=${exitResult.stopLossOrderId || 'none'}, ` +
+                `TP=${exitResult.takeProfitOrderId || 'none'}, OCO=${exitResult.ocoLinked}`
+            );
+
+            if (exitResult.warnings && exitResult.warnings.length > 0) {
+              this.logger.warn(`Exit order warnings: ${exitResult.warnings.join(', ')}`);
+            }
+          } catch (exitError) {
+            // Entry succeeded - log exit failure but don't fail the trade
+            this.logger.error(
+              `Failed to attach exit orders to entry ${order.id}: ${exitError.message}. ` +
+                `Entry order succeeded - manual exit order placement may be required.`,
+              exitError.stack
+            );
+          }
+        }
       }
 
       return order;
