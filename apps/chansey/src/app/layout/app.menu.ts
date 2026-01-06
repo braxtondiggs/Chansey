@@ -117,6 +117,11 @@ export class AppMenu implements OnInit {
             label: 'Bull Board',
             icon: 'pi pi-fw pi-server',
             routerLink: ['/admin/bull-board']
+          },
+          {
+            label: 'Trading State',
+            icon: 'pi pi-fw pi-power-off',
+            routerLink: ['/admin/trading-state']
           }
         ]
       });

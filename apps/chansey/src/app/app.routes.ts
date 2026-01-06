@@ -139,6 +139,12 @@ export const appRoutes: Route[] = [
         path: 'bull-board',
         loadComponent: () => import('./pages/admin/bull-board').then((c) => c.BullBoardComponent),
         data: { breadcrumb: 'Bull Board' }
+      },
+      {
+        path: 'trading-state',
+        loadComponent: () =>
+          import('./pages/admin/trading-state/trading-state.component').then((c) => c.TradingStateComponent),
+        data: { breadcrumb: 'Trading State' }
       }
     ]
   },
