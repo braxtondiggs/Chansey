@@ -9,6 +9,7 @@ import { PositionTrackingService } from './position-tracking.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { StrategyExecutorService, TradingSignal } from './strategy-executor.service';
 
+import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { OrderService } from '../order/order.service';
@@ -41,6 +42,7 @@ describe('LiveTradingService', () => {
   let balanceService: jest.Mocked<BalanceService>;
   let priceService: jest.Mocked<any>;
   let exchangeManager: jest.Mocked<any>;
+  let tradingStateService: jest.Mocked<TradingStateService>;
 
   beforeEach(async () => {
     userRepo = {
@@ -91,6 +93,10 @@ describe('LiveTradingService', () => {
       getPrice: jest.fn()
     } as unknown as jest.Mocked<any>;
 
+    tradingStateService = {
+      isTradingEnabled: jest.fn().mockReturnValue(true)
+    } as unknown as jest.Mocked<TradingStateService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LiveTradingService,
@@ -103,7 +109,8 @@ describe('LiveTradingService', () => {
         { provide: BalanceService, useValue: balanceService },
         { provide: DistributedLockService, useValue: lockService },
         { provide: PriceService, useValue: priceService },
-        { provide: ExchangeManagerService, useValue: exchangeManager }
+        { provide: ExchangeManagerService, useValue: exchangeManager },
+        { provide: TradingStateService, useValue: tradingStateService }
       ]
     }).compile();
 
