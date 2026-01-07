@@ -1,8 +1,6 @@
 import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Authorizer } from '@authorizerdev/authorizer-js';
 import { Repository } from 'typeorm';
 
 import { UpdateUserDto } from './dto';
@@ -15,14 +13,9 @@ import { PortfolioService } from '../portfolio/portfolio.service';
 import { Risk } from '../risk/risk.entity';
 import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
 
-interface UserWithRoles extends User {
-  roles?: string[];
-}
-
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
-  private auth: Authorizer;
 
   constructor(
     @InjectRepository(User)
@@ -31,16 +24,9 @@ export class UsersService {
     private readonly risk: Repository<Risk>,
     private readonly portfolio: PortfolioService,
     private readonly coin: CoinService,
-    private readonly config: ConfigService,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly riskPoolMapping: RiskPoolMappingService
-  ) {
-    this.auth = new Authorizer({
-      authorizerURL: this.config.get<string>('AUTHORIZER_URL'),
-      clientID: this.config.get<string>('AUTHORIZER_CLIENT_ID'),
-      redirectURL: this.config.get<string>('AUTHORIZER_REDIRECT_URL')
-    });
-  }
+  ) {}
 
   async create(user: Partial<User>) {
     try {
@@ -71,13 +57,10 @@ export class UsersService {
     }
   }
 
-  async update(updateUserDto: UpdateUserDto, user: User, updateAuthorizer = true) {
+  async update(updateUserDto: UpdateUserDto, user: User) {
     try {
       const updatedUser = await this.updateLocalProfile(updateUserDto, user);
-
-      if (updateAuthorizer) await this.updateAuthorizerProfile(updateUserDto, user.token);
-
-      return this.getWithAuthorizerProfile(updatedUser);
+      return this.getProfile(updatedUser);
     } catch (error) {
       this.logger.error(`Failed to update user with ID: ${user.id}`, error.stack);
       throw new InternalServerErrorException('Failed to update user');
@@ -109,37 +92,6 @@ export class UsersService {
     }
   }
 
-  async updateAuthorizerProfile(updateUserDto: UpdateUserDto, authorizationToken: string): Promise<void> {
-    const authorizerData = {
-      email: updateUserDto.email,
-      given_name: updateUserDto.given_name,
-      family_name: updateUserDto.family_name,
-      middle_name: updateUserDto.middle_name,
-      nickname: updateUserDto.nickname,
-      birthdate: updateUserDto.birthdate,
-      picture: updateUserDto.picture
-    };
-
-    try {
-      const filteredData = Object.fromEntries(Object.entries(authorizerData).filter(([_, v]) => v !== undefined));
-
-      if (Object.keys(filteredData).length > 0) {
-        const Authorization = authorizationToken;
-        const { errors } = await this.auth.updateProfile(filteredData, { Authorization });
-
-        if (errors.length > 0) {
-          this.logger.error(`Failed to update Authorizer profile`, errors);
-          throw new InternalServerErrorException('Failed to update Authorizer profile');
-        }
-
-        this.logger.debug(`Authorizer profile updated successfully`);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to update Authorizer profile`, error.stack);
-      throw new InternalServerErrorException('Failed to update Authorizer profile');
-    }
-  }
-
   async getById(id: string, top_level = false): Promise<User> {
     try {
       const user = await this.user.findOneOrFail({ where: { id } });
@@ -156,6 +108,14 @@ export class UsersService {
     }
   }
 
+  /**
+   * Get exchange keys for a user without fetching user data
+   * Useful when caller already has user data and just needs exchange info
+   */
+  async getExchangeKeysForUser(userId: string): Promise<any[]> {
+    return this.exchangeKeyService.hasSupportedExchangeKeys(userId);
+  }
+
   async findAll() {
     try {
       return await this.user.find();
@@ -165,24 +125,21 @@ export class UsersService {
     }
   }
 
-  async getWithAuthorizerProfile(user: UserWithRoles) {
+  async getProfile(user: User) {
     try {
       const dbUser = await this.getById(user.id);
-      const Authorization = user.token;
-      const { data } = await this.auth.getProfile({ Authorization });
 
       // Get supported exchange keys information
       const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
 
       return {
-        ...data,
         ...dbUser,
-        roles: user.roles,
+        roles: user.roles || dbUser.roles || ['user'],
         exchanges
       };
     } catch (error) {
-      this.logger.error(`Failed to get user with Authorizer profile: ${user.id}`, error.stack);
-      throw new InternalServerErrorException('Failed to retrieve user with Authorizer profile');
+      this.logger.error(`Failed to get user profile: ${user.id}`, error.stack);
+      throw new InternalServerErrorException('Failed to retrieve user profile');
     }
   }
 

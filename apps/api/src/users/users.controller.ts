@@ -103,7 +103,7 @@ export class UserController {
       }
 
       // Update user profile with the new image URL
-      return this.user.update({ picture: fileUrl }, user, true);
+      return this.user.update({ picture: fileUrl }, user);
     } catch (error) {
       this.logger.error(`Error processing file upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
@@ -112,25 +112,19 @@ export class UserController {
 
   @Get()
   @ApiOperation({
-    summary: 'Get user info with Authorizer profile',
-    description: 'Retrieves information about the authenticated user, including Authorizer profile information.'
+    summary: 'Get user profile',
+    description: 'Retrieves information about the authenticated user.'
   })
   @ApiOkResponse({
     description: 'User information retrieved successfully.',
     type: UserResponseDto
   })
   async get(@GetUser() user: User) {
-    // Get a fresh copy of the user profile from Authorizer
     try {
-      // Get user with full Authorizer profile
-      const userWithProfile = await this.user.getWithAuthorizerProfile(user);
-
-      return userWithProfile;
+      return await this.user.getProfile(user);
     } catch (error) {
-      this.logger.error(
-        `Error fetching complete user profile: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-      // Fall back to the basic user data if Authorizer fetch fails
+      this.logger.error(`Error fetching user profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fall back to the basic user data if fetch fails
       return user;
     }
   }

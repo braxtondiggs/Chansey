@@ -1,4 +1,3 @@
-
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -23,14 +22,7 @@ interface Message {
 @Component({
   selector: 'app-otp',
   standalone: true,
-  imports: [
-    ButtonModule,
-    InputOtpModule,
-    LazyImageComponent,
-    MessageModule,
-    ReactiveFormsModule,
-    RouterLink
-],
+  imports: [ButtonModule, InputOtpModule, LazyImageComponent, MessageModule, ReactiveFormsModule, RouterLink],
   providers: [MessageService],
   templateUrl: './otp.component.html'
 })
@@ -70,7 +62,7 @@ export class OtpComponent implements OnInit {
         { otp: code, email: this.email },
         {
           onSuccess: (response: ILoginResponse) => {
-            if (response.access_token) {
+            if (response.user) {
               // Clear the OTP email from session storage
               sessionStorage.removeItem('otpEmail');
 

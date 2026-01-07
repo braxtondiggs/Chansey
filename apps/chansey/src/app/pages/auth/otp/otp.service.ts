@@ -12,6 +12,6 @@ export class OtpService {
   }
 
   useResendOtpMutation() {
-    return useAuthMutation<IOtpResponse, { email: string }>('/api/auth/otp/resend', 'POST');
+    return useAuthMutation<IOtpResponse, { email: string }>('/api/auth/resend-otp', 'POST');
   }
 }

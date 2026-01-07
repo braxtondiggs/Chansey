@@ -15,9 +15,9 @@ export class LoginService {
 
   useLogin() {
     return useAuthMutation<ILoginResponse, ILogin>('/api/auth/login', 'POST', {
-      onSuccess: (response) => {
+      onSuccess: (response, variables) => {
         if (response.should_show_email_otp_screen) {
-          sessionStorage.setItem('otpEmail', response.user.email);
+          sessionStorage.setItem('otpEmail', variables.email);
           this.router.navigate(['/auth/otp']);
           return;
         }
