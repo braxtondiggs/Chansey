@@ -23,9 +23,11 @@ import {
 } from './dto';
 import { OrderPreviewRequestDto } from './dto/order-preview-request.dto';
 import { OrderPreviewDto } from './dto/order-preview.dto';
+import { OrderHistoryResponseDto } from './dto/order-status-history.dto';
 import { PlaceManualOrderDto } from './dto/place-manual-order.dto';
 import { OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
+import { OrderStateMachineService } from './services/order-state-machine.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -41,7 +43,8 @@ export class OrderController {
 
   constructor(
     private readonly orderService: OrderService,
-    private readonly slippageAnalysisService: SlippageAnalysisService
+    private readonly slippageAnalysisService: SlippageAnalysisService,
+    private readonly stateMachineService: OrderStateMachineService
   ) {}
 
   @Get()
@@ -107,6 +110,42 @@ export class OrderController {
   })
   getOrder(@Param('id', new ParseUUIDPipe()) id: string, @GetUser() user: User) {
     return this.orderService.getOrder(user, id);
+  }
+
+  @Get(':id/history')
+  @ApiOperation({
+    summary: 'Get order status history',
+    description: 'Returns chronological status transitions for an order with reasons and metadata'
+  })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'UUID of the order',
+    type: String,
+    example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Order status history with summary',
+    type: OrderHistoryResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Order not found'
+  })
+  async getOrderHistory(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @GetUser() user: User
+  ): Promise<OrderHistoryResponseDto> {
+    const order = await this.orderService.getOrder(user, id);
+    const transitions = await this.stateMachineService.getOrderHistory(id);
+
+    return {
+      orderId: id,
+      currentStatus: order.status,
+      transitionCount: transitions.length,
+      transitions
+    };
   }
 
   @Post()

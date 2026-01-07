@@ -2,6 +2,7 @@ import { BadRequestException, Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { OrderStateMachineService } from './order-state-machine.service';
 import { TradeExecutionService } from './trade-execution.service';
 
 import { CoinService } from '../../coin/coin.service';
@@ -18,6 +19,7 @@ describe('TradeExecutionService', () => {
   let mockExchangeManagerService: any;
   let mockCoinService: any;
   let mockUserRepository: any;
+  let mockStateMachineService: any;
   let loggerWarnSpy: jest.SpyInstance;
 
   describe('constructor validation', () => {
@@ -31,6 +33,7 @@ describe('TradeExecutionService', () => {
             { provide: ExchangeKeyService, useValue: {} },
             { provide: ExchangeManagerService, useValue: {} },
             { provide: CoinService, useValue: {} },
+            { provide: OrderStateMachineService, useValue: {} },
             {
               provide: slippageLimitsConfig.KEY,
               useValue: {
@@ -55,6 +58,7 @@ describe('TradeExecutionService', () => {
             { provide: ExchangeKeyService, useValue: {} },
             { provide: ExchangeManagerService, useValue: {} },
             { provide: CoinService, useValue: {} },
+            { provide: OrderStateMachineService, useValue: {} },
             {
               provide: slippageLimitsConfig.KEY,
               useValue: {
@@ -91,6 +95,18 @@ describe('TradeExecutionService', () => {
       getCoinBySymbol: jest.fn()
     };
 
+    mockStateMachineService = {
+      transitionStatus: jest.fn().mockResolvedValue({
+        valid: true,
+        fromStatus: null,
+        toStatus: 'FILLED',
+        reason: 'trade_execution'
+      }),
+      getOrderHistory: jest.fn().mockResolvedValue([]),
+      isValidTransition: jest.fn().mockReturnValue(true),
+      isTerminalState: jest.fn().mockReturnValue(false)
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeExecutionService,
@@ -113,6 +129,10 @@ describe('TradeExecutionService', () => {
         {
           provide: CoinService,
           useValue: mockCoinService
+        },
+        {
+          provide: OrderStateMachineService,
+          useValue: mockStateMachineService
         },
         {
           provide: slippageLimitsConfig.KEY,

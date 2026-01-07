@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as ccxt from 'ccxt';
 import { Repository } from 'typeorm';
 
+import { OrderStateMachineService } from './order-state-machine.service';
+
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
@@ -13,6 +15,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 import { Exchange } from '../../exchange/exchange.entity';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
+import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
 
 /**
@@ -46,6 +49,7 @@ export class TradeExecutionService {
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,
+    private readonly stateMachineService: OrderStateMachineService,
     @Optional()
     @Inject(slippageLimitsConfig.KEY)
     slippageLimitsConfigValue?: ConfigType<typeof slippageLimitsConfig>
@@ -329,7 +333,28 @@ export class TradeExecutionService {
       info: ccxtOrder.info
     });
 
-    return await this.orderRepository.save(order);
+    const savedOrder = await this.orderRepository.save(order);
+
+    // Record initial status in order history
+    await this.stateMachineService.transitionStatus(
+      savedOrder.id,
+      null,
+      savedOrder.status,
+      OrderTransitionReason.TRADE_EXECUTION,
+      {
+        algorithmActivationId,
+        expectedPrice,
+        actualSlippageBps,
+        exchangeOrderId: ccxtOrder.id,
+        symbol: ccxtOrder.symbol,
+        side: ccxtOrder.side,
+        type: ccxtOrder.type,
+        filled: ccxtOrder.filled,
+        amount: ccxtOrder.amount
+      }
+    );
+
+    return savedOrder;
   }
 
   /**
