@@ -22,10 +22,12 @@ import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-rep
 import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
+import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
 import { OrderCalculationService } from './services/order-calculation.service';
+import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
@@ -59,7 +61,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestService,
     BacktestEngine,
     BacktestStreamService,
-    SlippageAnalysisService
+    SlippageAnalysisService,
+    OrderStateMachineService
   ],
   imports: [
     ConfigModule.forFeature(backtestConfig),
@@ -68,6 +71,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
       Algorithm,
       Coin,
       Order,
+      OrderStatusHistory,
       User,
       TickerPairs,
       Backtest,
@@ -104,6 +108,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     CoinService,
     OrderCalculationService,
     OrderService,
+    OrderStateMachineService,
     OrderSyncService,
     OrderSyncTask,
     OrderValidationService,
