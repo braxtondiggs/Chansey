@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { Exchange } from '@chansey/api-interfaces';
 
 import { OrderCalculationService } from './order-calculation.service';
+import { OrderStateMachineService } from './order-state-machine.service';
 
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
@@ -16,6 +17,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 import { ExchangeService } from '../../exchange/exchange.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { User } from '../../users/users.entity';
+import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide } from '../order.entity';
 
 @Injectable()
@@ -30,7 +32,8 @@ export class OrderSyncService {
     private readonly tickerPairService: TickerPairService,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManager: ExchangeManagerService,
-    private readonly metricsService: MetricsService
+    private readonly metricsService: MetricsService,
+    private readonly stateMachineService: OrderStateMachineService
   ) {}
 
   /**
@@ -249,7 +252,21 @@ export class OrderSyncService {
     const updateData: Partial<Order> = {};
     let hasChanges = false;
 
+    // Use state machine for status transitions with validation and history tracking
     if (existingOrder.status !== newStatus) {
+      await this.stateMachineService.transitionStatus(
+        existingOrder.id,
+        existingOrder.status,
+        newStatus,
+        OrderTransitionReason.EXCHANGE_SYNC,
+        {
+          exchangeOrderId: exchangeOrder.id,
+          exchangeStatus: exchangeOrder.status,
+          previousExecutedQuantity: existingOrder.executedQuantity,
+          newExecutedQuantity,
+          syncTimestamp: new Date().toISOString()
+        }
+      );
       updateData.status = newStatus;
       hasChanges = true;
     }

@@ -5,6 +5,7 @@ import { OrderDto } from './dto/order.dto';
 import { OrderController } from './order.controller';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
+import { OrderStateMachineService } from './services/order-state-machine.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
 import { User } from '../users/users.entity';
@@ -50,6 +51,15 @@ describe('OrderController', () => {
             getSlippageTrends: jest.fn(),
             getHighSlippagePairs: jest.fn(),
             getSlippageForSymbol: jest.fn()
+          }
+        },
+        {
+          provide: OrderStateMachineService,
+          useValue: {
+            getOrderHistory: jest.fn().mockResolvedValue([]),
+            transitionStatus: jest.fn().mockResolvedValue({ valid: true }),
+            isValidTransition: jest.fn().mockReturnValue(true),
+            isTerminalState: jest.fn().mockReturnValue(false)
           }
         }
       ]
@@ -199,6 +209,52 @@ describe('OrderController', () => {
       orderService.getOrder.mockRejectedValue(new BadRequestException('Invalid UUID'));
 
       await expect(controller.getOrder('invalid-uuid', mockUser)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getOrderHistory', () => {
+    it('should return order history with summary', async () => {
+      const mockTransitions = [
+        {
+          id: 'history-1',
+          orderId: 'order-123',
+          fromStatus: null,
+          toStatus: OrderStatus.NEW,
+          transitionedAt: new Date(),
+          reason: 'trade_execution',
+          metadata: {}
+        },
+        {
+          id: 'history-2',
+          orderId: 'order-123',
+          fromStatus: OrderStatus.NEW,
+          toStatus: OrderStatus.FILLED,
+          transitionedAt: new Date(),
+          reason: 'exchange_sync',
+          metadata: {}
+        }
+      ];
+
+      orderService.getOrder.mockResolvedValue(mockOrder);
+      const stateMachineService = (controller as any).stateMachineService;
+      stateMachineService.getOrderHistory.mockResolvedValue(mockTransitions);
+
+      const result = await controller.getOrderHistory('order-123', mockUser);
+
+      expect(orderService.getOrder).toHaveBeenCalledWith(mockUser, 'order-123');
+      expect(stateMachineService.getOrderHistory).toHaveBeenCalledWith('order-123');
+      expect(result).toEqual({
+        orderId: 'order-123',
+        currentStatus: OrderStatus.FILLED,
+        transitionCount: 2,
+        transitions: mockTransitions
+      });
+    });
+
+    it('should throw NotFoundException when order not found', async () => {
+      orderService.getOrder.mockRejectedValue(new NotFoundException('Order not found'));
+
+      await expect(controller.getOrderHistory('non-existent', mockUser)).rejects.toThrow(NotFoundException);
     });
   });
 });
