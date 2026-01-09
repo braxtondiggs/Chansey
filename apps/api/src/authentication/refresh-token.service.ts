@@ -5,10 +5,6 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
-interface UserWithRoles extends User {
-  roles?: string[];
-}
-
 @Injectable()
 export class RefreshTokenService {
   constructor(
@@ -34,7 +30,7 @@ export class RefreshTokenService {
       }
 
       // Get user with full profile including roles
-      const user = await this.usersService.getWithAuthorizerProfile(baseUser);
+      const user = await this.usersService.getProfile(baseUser);
 
       // Check if this was a "remember me" token by looking at its expiration
       const currentTime = Math.floor(Date.now() / 1000);
@@ -55,7 +51,7 @@ export class RefreshTokenService {
     }
   }
 
-  async generateAccessToken(user: UserWithRoles): Promise<string> {
+  async generateAccessToken(user: User): Promise<string> {
     const payload = {
       sub: user.id,
       email: user.email,
@@ -70,7 +66,7 @@ export class RefreshTokenService {
     });
   }
 
-  async generateRefreshToken(user: UserWithRoles, rememberMe = false): Promise<string> {
+  async generateRefreshToken(user: User, rememberMe = false): Promise<string> {
     const payload = {
       sub: user.id,
       type: 'refresh',

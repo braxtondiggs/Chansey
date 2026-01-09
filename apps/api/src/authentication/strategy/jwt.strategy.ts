@@ -8,16 +8,12 @@ import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
 
 interface AccessTokenPayload {
-  aud: string; // Audience (who the token is for)
+  sub: string; // User ID
+  email: string; // User email
+  roles: string[]; // Roles assigned to user
+  type: string; // Token type ('access' or 'refresh')
   exp: number; // Expiration time (in seconds since epoch)
   iat: number; // Issued at time (in seconds since epoch)
-  iss: string; // Issuer (auth server URL)
-  login_method: string; // How user logged in (e.g., "basic_auth", "google", etc.)
-  nonce: string; // Random value to link request/response
-  roles: string[]; // Roles assigned to user
-  scope: string[]; // Scopes like 'openid', 'email', 'profile'
-  sub: string; // Subject (unique user ID)
-  token_type: string; // Usually "access_token"
 }
 
 @Injectable()
@@ -43,10 +39,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const userId = payload.sub;
     // Pass true for top_level parameter to include decrypted API keys
     const user = await this.userService.getById(userId, true);
-    // Include all Authorizer profile fields in the user object
+    // Merge roles from JWT payload with user data
     return new User({
       ...user,
-      ...payload
+      roles: payload.roles || user.roles || ['user']
     });
   }
 }

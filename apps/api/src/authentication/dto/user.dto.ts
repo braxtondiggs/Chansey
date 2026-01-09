@@ -24,7 +24,7 @@ export class UserDto implements IUser {
     example: true
   })
   @Expose()
-  email_verified = false;
+  emailVerified = false;
 
   @ApiProperty({
     description: 'Given name (first name)',
@@ -59,27 +59,12 @@ export class UserDto implements IUser {
   nickname: string | null = null;
 
   @ApiProperty({
-    description: 'Preferred username',
-    example: 'braxtondiggs@gmail.com',
-    nullable: true
-  })
-  @Expose()
-  preferred_username: string | null = null;
-
-  @ApiProperty({
     description: 'Profile picture URL',
     example: null,
     nullable: true
   })
   @Expose()
   picture: string | null = null;
-
-  @ApiProperty({
-    description: 'Signup methods used',
-    example: 'basic_auth'
-  })
-  @Expose()
-  signup_methods = '';
 
   @ApiProperty({
     description: 'Gender',
@@ -106,13 +91,6 @@ export class UserDto implements IUser {
   phone_number: string | null = null;
 
   @ApiProperty({
-    description: 'Whether the phone number is verified',
-    example: false
-  })
-  @Expose()
-  phone_number_verified = false;
-
-  @ApiProperty({
     description: 'Roles assigned to the user',
     example: ['admin'],
     isArray: true,
@@ -122,34 +100,19 @@ export class UserDto implements IUser {
   roles: string[] = [];
 
   @ApiProperty({
-    description: 'Account creation timestamp (Unix epoch)',
-    example: 1688761193
+    description: 'Whether OTP/2FA is enabled',
+    example: false
   })
   @Expose()
-  created_at = 0;
+  otpEnabled = false;
 
   @ApiProperty({
-    description: 'Account last updated timestamp (Unix epoch)',
-    example: 1688762890
-  })
-  @Expose()
-  updated_at = 0;
-
-  @ApiProperty({
-    description: 'Whether multi-factor authentication is enabled',
-    example: null,
+    description: 'Last login timestamp',
+    example: '2024-01-15T12:00:00.000Z',
     nullable: true
   })
   @Expose()
-  is_multi_factor_auth_enabled: boolean | null = null;
-
-  @ApiProperty({
-    description: 'Application-specific data',
-    example: {},
-    type: Object
-  })
-  @Expose()
-  app_data: Record<string, any> = {};
+  lastLoginAt: Date | null = null;
 
   @ApiProperty({
     description: 'Exchanges associated with the user',
@@ -158,6 +121,38 @@ export class UserDto implements IUser {
   })
   @Expose()
   exchanges: ExchangeKey[] = [];
+
+  @ApiProperty({
+    description: 'Whether to hide portfolio balance',
+    example: false,
+    required: false
+  })
+  @Expose()
+  hide_balance?: boolean;
+
+  @ApiProperty({
+    description: 'Whether algorithmic trading is enabled',
+    example: false,
+    required: false
+  })
+  @Expose()
+  algoTradingEnabled?: boolean;
+
+  @ApiProperty({
+    description: 'Percentage of capital allocated to algo trading',
+    example: 50,
+    required: false
+  })
+  @Expose()
+  algoCapitalAllocationPercentage?: number;
+
+  @ApiProperty({
+    description: 'When user enrolled in algo trading',
+    example: '2024-01-15T12:00:00.000Z',
+    required: false
+  })
+  @Expose()
+  algoEnrolledAt?: Date;
 
   constructor(partial: Partial<UserDto>) {
     Object.assign(this, partial);

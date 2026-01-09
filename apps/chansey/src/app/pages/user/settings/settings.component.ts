@@ -1,5 +1,4 @@
-
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { $t, updatePreset, updateSurfacePalette } from '@primeng/themes';
@@ -10,14 +9,20 @@ import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
+import { DialogModule } from 'primeng/dialog';
+import { FloatLabelModule } from 'primeng/floatlabel';
 import { PanelModule } from 'primeng/panel';
+import { PasswordModule } from 'primeng/password';
 import { RadioButtonModule } from 'primeng/radiobutton';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
+import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
+
+import { SettingsService } from './settings.service';
 
 const presets = {
   Aura,
@@ -52,15 +57,18 @@ declare type SurfacesType = {
     ButtonModule,
     CardModule,
     ConfirmDialogModule,
+    DialogModule,
+    FloatLabelModule,
     FormsModule,
     PanelModule,
+    PasswordModule,
     RadioButtonModule,
     ReactiveFormsModule,
     SelectButtonModule,
     TabsModule,
     ToastModule,
     ToggleSwitchModule
-],
+  ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './settings.component.html'
 })
@@ -68,18 +76,31 @@ export class SettingsComponent implements OnInit {
   private layoutService = inject(LayoutService);
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
+  private settingsService = inject(SettingsService);
+  private authService = inject(AuthService);
   private fb = inject(FormBuilder);
+
+  // TanStack Query
+  readonly userQuery = this.authService.useUser();
+  readonly enableOtpMutation = this.settingsService.useEnableOtpMutation();
+  readonly disableOtpMutation = this.settingsService.useDisableOtpMutation();
 
   darkMode = this.layoutService.isDarkTheme();
   compactMode = false;
   emailNotifications = true;
-  twoFactorAuth = false;
-  loading = false;
   activeTab = 0;
+
+  // Password dialog for disabling 2FA
+  showPasswordDialog = signal(false);
+  disablePassword = '';
 
   // Form groups
   notificationForm: FormGroup = this.fb.group({
     pushNotifications: new FormControl(false)
+  });
+
+  securityForm: FormGroup = this.fb.group({
+    twoFactorAuth: new FormControl({ value: false, disabled: false })
   });
 
   // Theme related properties
@@ -242,6 +263,11 @@ export class SettingsComponent implements OnInit {
   primaryColors: SurfacesType[] = [];
 
   ngOnInit(): void {
+    const userData = this.userQuery.data();
+    if (userData) {
+      this.securityForm.patchValue({ twoFactorAuth: userData.otpEnabled });
+    }
+
     this.checkNotificationPermission();
     this.notificationForm.get('pushNotifications')?.valueChanges.subscribe(() => {
       this.requestPushNotificationPermission();
@@ -562,42 +588,95 @@ export class SettingsComponent implements OnInit {
   }
 
   toggleTwoFactorAuth(event: { checked: boolean }): void {
+    const twoFactorControl = this.securityForm.get('twoFactorAuth');
+
     if (event.checked) {
       this.confirmationService.confirm({
         header: 'Enable Two-Factor Authentication',
         message:
           'This will add an extra layer of security to your account. You will need to verify your identity using an additional method when logging in. Continue?',
         icon: 'pi pi-lock',
+        acceptButtonProps: {
+          label: 'Enable 2FA',
+          severity: 'primary'
+        },
+        rejectButtonProps: {
+          label: 'Cancel',
+          severity: 'secondary'
+        },
         accept: () => {
-          this.twoFactorAuth = true;
-          this.messageService.add({
-            severity: 'info',
-            summary: '2FA Enabled',
-            detail: 'Two-factor authentication has been enabled'
+          this.enableOtpMutation.mutate(undefined, {
+            onSuccess: () => {
+              this.securityForm.patchValue({ twoFactorAuth: true });
+              this.messageService.add({
+                severity: 'success',
+                summary: '2FA Enabled',
+                detail: 'Two-factor authentication has been enabled'
+              });
+            },
+            onError: (error: Error) => {
+              twoFactorControl?.setValue(false, { emitEvent: false });
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: error?.message || 'Failed to enable 2FA'
+              });
+            }
           });
         },
         reject: () => {
-          this.twoFactorAuth = false;
+          twoFactorControl?.setValue(false, { emitEvent: false });
         }
       });
     } else {
-      this.confirmationService.confirm({
-        header: 'Disable Two-Factor Authentication',
-        message: 'This will reduce the security of your account. Are you sure you want to continue?',
-        icon: 'pi pi-exclamation-triangle',
-        acceptButtonStyleClass: 'p-button-danger',
-        accept: () => {
-          this.twoFactorAuth = false;
+      // Reset toggle to ON before showing dialog
+      twoFactorControl?.setValue(true, { emitEvent: false });
+
+      // Show password dialog for disabling 2FA
+      this.disablePassword = '';
+      this.showPasswordDialog.set(true);
+    }
+  }
+
+  confirmDisable2FA(): void {
+    if (!this.disablePassword) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Password Required',
+        detail: 'Please enter your password to disable 2FA'
+      });
+      return;
+    }
+
+    const twoFactorControl = this.securityForm.get('twoFactorAuth');
+
+    this.disableOtpMutation.mutate(
+      { password: this.disablePassword },
+      {
+        onSuccess: () => {
+          this.showPasswordDialog.set(false);
+          this.disablePassword = '';
+          this.securityForm.get('twoFactorAuth')?.setValue(false);
           this.messageService.add({
             severity: 'warn',
             summary: '2FA Disabled',
             detail: 'Two-factor authentication has been disabled'
           });
         },
-        reject: () => {
-          this.twoFactorAuth = true;
+        onError: (error: Error) => {
+          twoFactorControl?.setValue(true, { emitEvent: false });
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error?.message || 'Failed to disable 2FA. Check your password.'
+          });
         }
-      });
-    }
+      }
+    );
+  }
+
+  cancelDisable2FA(): void {
+    this.showPasswordDialog.set(false);
+    this.disablePassword = '';
   }
 }
