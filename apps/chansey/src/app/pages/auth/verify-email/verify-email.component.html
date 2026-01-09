@@ -1,0 +1,57 @@
+<section
+  class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
+>
+  <div class="flex h-full w-full gap-12 lg:gap-0">
+    <div class="flex flex-col p-20 lg:w-1/2 lg:min-w-160">
+      <a routerLink="/" class="mb-8 flex items-center justify-center">
+        <app-lazy-image className="w-auto h-24 object-contain object-left" src="/public/icon.png" alt="Auth Image" />
+        <h5 class="title-h5 font-normal whitespace-nowrap">Cymbit Trading</h5>
+      </a>
+      <div class="flex grow flex-col justify-center">
+        <div class="mx-auto w-full max-w-md text-center">
+          <h5 class="title-h5">Email Verification</h5>
+
+          @if (isVerifying()) {
+            <div class="mt-8 flex flex-col items-center">
+              <p-progressSpinner strokeWidth="4" [style]="{ width: '50px', height: '50px' }" />
+              <p class="body-small mt-4">Verifying your email address...</p>
+            </div>
+          }
+
+          <div class="flex flex-col">
+            @for (message of messages(); track message) {
+              <p-message
+                [severity]="message.severity"
+                [text]="message.content"
+                icon="pi {{ message.icon }}"
+                size="large"
+                class="mt-4"
+              />
+            }
+          </div>
+
+          @if (isSuccess()) {
+            <p class="body-small text-surface-500 mt-4">Redirecting to login page...</p>
+          }
+
+          <div class="body-small mt-8">
+            @if (!isVerifying()) {
+              <p-button routerLink="/login" [raised]="true" class="mt-4">
+                <span>Go to Login</span>
+              </p-button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="landing-container hidden h-screen w-full py-10 lg:flex lg:w-1/2 lg:items-center lg:justify-center">
+      <div class="flex h-full w-full items-center justify-center overflow-hidden">
+        <app-lazy-image
+          className="w-auto max-h-[75vh] object-contain object-center"
+          src="/public/landing/auth/forgot-welcome.png"
+          alt="Auth Image"
+        />
+      </div>
+    </div>
+  </div>
+</section>

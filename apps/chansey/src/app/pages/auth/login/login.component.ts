@@ -1,4 +1,3 @@
-
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -29,7 +28,7 @@ import { LoginService } from './login.service';
     ReactiveFormsModule,
     RouterLink,
     FluidModule
-],
+  ],
   templateUrl: './login.component.html'
 })
 export class LoginComponent {
@@ -37,8 +36,10 @@ export class LoginComponent {
   private readonly loginService = inject(LoginService);
   private readonly router = inject(Router);
   readonly loginMutation = this.loginService.useLogin();
+  readonly resendVerificationMutation = this.loginService.useResendVerificationEmail();
 
   messages = signal<any[]>([]);
+  showResendVerification = signal(false);
   formSubmitted = false;
   loginForm = this.fb.group({
     email: ['', Validators.compose([Validators.required, Validators.email])],
@@ -48,6 +49,8 @@ export class LoginComponent {
 
   onSubmit() {
     this.formSubmitted = true;
+    this.showResendVerification.set(false);
+
     if (this.loginForm.valid) {
       const { email, password, remember } = this.loginForm.value;
       if (!email || !password) return;
@@ -81,9 +84,13 @@ export class LoginComponent {
             }
           },
           onError: (error) => {
+            const errorMessage = error?.message || 'Login failed. Please check your credentials.';
+            const isEmailVerificationRequired = errorMessage.toLowerCase().includes('verify your email');
+
+            this.showResendVerification.set(isEmailVerificationRequired);
             this.messages.set([
               {
-                content: error?.message || 'Login failed. Please check your credentials.',
+                content: errorMessage,
                 severity: 'error',
                 icon: 'pi-exclamation-circle'
               }
@@ -93,5 +100,35 @@ export class LoginComponent {
         }
       );
     }
+  }
+
+  resendVerificationEmail() {
+    const email = this.loginForm.value.email;
+    if (!email) return;
+
+    this.resendVerificationMutation.mutate(
+      { email },
+      {
+        onSuccess: () => {
+          this.showResendVerification.set(false);
+          this.messages.set([
+            {
+              content: 'Verification email sent! Please check your inbox and verify your email before logging in.',
+              severity: 'success',
+              icon: 'pi-check-circle'
+            }
+          ]);
+        },
+        onError: (error) => {
+          this.messages.set([
+            {
+              content: error?.message || 'Failed to send verification email. Please try again.',
+              severity: 'error',
+              icon: 'pi-exclamation-circle'
+            }
+          ]);
+        }
+      }
+    );
   }
 }

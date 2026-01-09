@@ -49,10 +49,10 @@ const envSchema = z.object({
   JWT_EXPIRATION_TIME: z.string().default('15m'),
   JWT_REFRESH_EXPIRATION_TIME: z.string().default('7d'),
 
-  // Authorizer Configuration
-  AUTHORIZER_URL: z.string().url('Authorizer URL must be a valid URL').optional(),
-  AUTHORIZER_CLIENT_ID: z.string().optional(),
-  AUTHORIZER_REDIRECT_URL: z.string().url('Authorizer redirect URL must be a valid URL').optional(),
+  // Email Configuration (Resend)
+  RESEND_API_KEY: z.string().min(1, 'Resend API key is required for email functionality'),
+  RESEND_FROM_EMAIL: z.string().email().default('noreply@cymbit.com'),
+  FRONTEND_URL: z.string().url().default('https://cymbit.com'),
 
   // Storage Configuration (MinIO/S3)
   MINIO_HOST: z.string().optional(),

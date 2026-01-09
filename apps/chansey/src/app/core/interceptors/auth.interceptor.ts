@@ -9,6 +9,9 @@ import { AuthService } from '../../shared/services/auth.service';
 
 let isRefreshing = false;
 
+// URLs that should not trigger 401 redirect (auth check endpoints)
+const SKIP_401_REDIRECT_URLS = ['/api/user', '/api/auth/refresh'];
+
 export const AuthInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const router = inject(Router);
@@ -21,8 +24,11 @@ export const AuthInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(secureReq).pipe(
     catchError((error: HttpErrorResponse) => {
+      // Skip 401 handling for auth check endpoints to prevent redirect loops
+      const shouldSkip = SKIP_401_REDIRECT_URLS.some((url) => req.url.includes(url));
+
       // Handle 401 Unauthorized responses
-      if (error.status === 401 && !isRefreshing) {
+      if (error.status === 401 && !isRefreshing && !shouldSkip) {
         return handle401Error(secureReq, next, authService, router);
       }
 
