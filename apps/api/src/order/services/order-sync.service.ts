@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
@@ -8,6 +8,7 @@ import { Exchange } from '@chansey/api-interfaces';
 
 import { OrderCalculationService } from './order-calculation.service';
 import { OrderStateMachineService } from './order-state-machine.service';
+import { PositionManagementService } from './position-management.service';
 
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
@@ -18,7 +19,7 @@ import { ExchangeService } from '../../exchange/exchange.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { User } from '../../users/users.entity';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
-import { Order, OrderSide } from '../order.entity';
+import { Order, OrderSide, OrderStatus } from '../order.entity';
 
 @Injectable()
 export class OrderSyncService {
@@ -33,7 +34,9 @@ export class OrderSyncService {
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManager: ExchangeManagerService,
     private readonly metricsService: MetricsService,
-    private readonly stateMachineService: OrderStateMachineService
+    private readonly stateMachineService: OrderStateMachineService,
+    @Inject(forwardRef(() => PositionManagementService))
+    private readonly positionManagementService: PositionManagementService
   ) {}
 
   /**
@@ -251,6 +254,7 @@ export class OrderSyncService {
 
     const updateData: Partial<Order> = {};
     let hasChanges = false;
+    const previousStatus = existingOrder.status;
 
     // Use state machine for status transitions with validation and history tracking
     if (existingOrder.status !== newStatus) {
@@ -305,6 +309,18 @@ export class OrderSyncService {
 
     if (hasChanges) {
       await this.orderRepository.update(existingOrder.id, updateData);
+
+      // Handle OCO fill detection: when an exit order fills, cancel the linked order
+      if (previousStatus !== OrderStatus.FILLED && newStatus === OrderStatus.FILLED && this.positionManagementService) {
+        try {
+          await this.positionManagementService.handleOcoFill(existingOrder.id);
+          this.logger.debug(`Processed OCO fill for order ${existingOrder.id}`);
+        } catch (ocoError) {
+          // Log but don't fail the sync - OCO handling is a secondary concern
+          this.logger.warn(`Failed to process OCO fill for order ${existingOrder.id}: ${ocoError.message}`);
+        }
+      }
+
       return true;
     }
 

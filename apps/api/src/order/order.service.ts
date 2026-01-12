@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
@@ -20,6 +20,7 @@ import { PlaceManualOrderDto } from './dto/place-manual-order.dto';
 import { Order, OrderSide, OrderStatus, OrderType, TrailingType } from './order.entity';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderValidationService } from './services/order-validation.service';
+import { PositionManagementService } from './services/position-management.service';
 
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
@@ -56,7 +57,9 @@ export class OrderService {
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly coinService: CoinService,
     private readonly orderValidationService: OrderValidationService,
-    private readonly orderCalculationService: OrderCalculationService
+    private readonly orderCalculationService: OrderCalculationService,
+    @Inject(forwardRef(() => PositionManagementService))
+    private readonly positionManagementService: PositionManagementService
   ) {}
 
   /**
@@ -839,6 +842,26 @@ export class OrderService {
       await queryRunner.commitTransaction();
 
       this.logger.log(`Manual order created successfully: ${savedOrder.id}`);
+
+      // Attach exit orders if exitConfig is provided (after transaction commits)
+      if (dto.exitConfig && this.positionManagementService) {
+        const hasExitEnabled =
+          dto.exitConfig.enableStopLoss || dto.exitConfig.enableTakeProfit || dto.exitConfig.enableTrailingStop;
+
+        if (hasExitEnabled) {
+          try {
+            await this.positionManagementService.attachExitOrders(savedOrder, dto.exitConfig);
+            this.logger.log(`Exit orders attached for manual order ${savedOrder.id}`);
+          } catch (exitError) {
+            // Log but don't fail the order - the entry order was successful
+            this.logger.warn(
+              `Failed to attach exit orders for manual order ${savedOrder.id}: ${exitError.message}. ` +
+                `Manual intervention may be required.`
+            );
+          }
+        }
+      }
+
       return savedOrder;
     } catch (error) {
       // Rollback transaction
