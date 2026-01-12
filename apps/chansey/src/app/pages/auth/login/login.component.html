@@ -21,6 +21,17 @@
                 class="mt-4"
               />
             }
+            @if (showResendVerification()) {
+              <p-button
+                type="button"
+                [text]="true"
+                [loading]="resendVerificationMutation.isPending()"
+                (click)="resendVerificationEmail()"
+                class="mt-2"
+              >
+                <span class="text-primary-500 hover:underline">Resend verification email</span>
+              </p-button>
+            }
           </div>
           <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8">
             <p-floatlabel variant="on" class="mt-4">

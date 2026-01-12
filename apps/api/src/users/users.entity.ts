@@ -47,6 +47,60 @@ export class User {
   @Column({ nullable: true })
   picture?: string;
 
+  // Native Authentication Fields
+  @Column({ nullable: true, select: false })
+  @Exclude()
+  passwordHash?: string;
+
+  @Column({ default: false })
+  emailVerified: boolean;
+
+  @Column({ nullable: true, select: false })
+  @Exclude()
+  emailVerificationToken?: string;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  @Exclude()
+  emailVerificationTokenExpiresAt?: Date;
+
+  // OTP/2FA Fields
+  @Column({ nullable: true, select: false })
+  @Exclude()
+  otpHash?: string;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  @Exclude()
+  otpExpiresAt?: Date;
+
+  @Column({ default: false })
+  otpEnabled: boolean;
+
+  @Column({ default: 0 })
+  otpFailedAttempts: number;
+
+  // Password Reset Fields
+  @Column({ nullable: true, select: false })
+  @Exclude()
+  passwordResetToken?: string;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  @Exclude()
+  passwordResetTokenExpiresAt?: Date;
+
+  // Roles (moved from Authorizer to local)
+  @Column({ type: 'simple-array', default: 'user' })
+  roles: string[];
+
+  // Account Security
+  @Column({ default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lockedUntil?: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastLoginAt?: Date;
+
   @Column({ default: false })
   hide_balance: boolean;
 
@@ -66,14 +120,9 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   algoEnrolledAt?: Date;
 
+  // Runtime-only fields (not persisted to database)
   rememberMe: boolean;
   token: string;
-
-  @Exclude()
-  id_token: string;
-
-  @Exclude()
-  expires_in: number;
 
   @CreateDateColumn({ select: false, type: 'timestamptz' })
   createdAt: Date;

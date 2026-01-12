@@ -2,13 +2,13 @@ import {
   Body,
   Controller,
   HttpCode,
-  HttpStatus,
-  Post,
-  Res,
-  UseGuards,
   HttpException,
+  HttpStatus,
+  Logger,
+  Post,
   Req,
-  Logger
+  Res,
+  UseGuards
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
@@ -16,17 +16,27 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 
 import { AuthenticationService } from './authentication.service';
 import {
+  AuthenticationResult,
+  ChangePasswordDto,
+  ChangePasswordResponseDto,
+  DisableOtpDto,
+  DisableOtpResponseDto,
+  EnableOtpResponseDto,
   ForgotPasswordDto,
+  isOtpRequired,
   LoginResponseDto,
   LogoutResponseDto,
   OtpResponseDto,
   RegisterResponseDto,
+  ResendEmailDto,
+  ResendEmailResponseDto,
   ResetPasswordDto,
   ResetPasswordResponseDto,
-  VerifyOtpDto,
-  ChangePasswordDto,
-  ChangePasswordResponseDto
+  VerifyEmailDto,
+  VerifyEmailResponseDto,
+  VerifyOtpDto
 } from './dto';
+import { JwtAuthenticationGuard } from './guard/jwt-authentication.guard';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
 import { RefreshTokenService } from './refresh-token.service';
 
@@ -49,20 +59,62 @@ export class AuthenticationController {
   @AuthThrottle()
   @ApiOperation({
     summary: 'Register a new user',
-    description: 'Registers a new user with the provided details.'
+    description: 'Registers a new user with the provided details. A verification email will be sent.'
   })
   @ApiBody({ type: CreateUserDto })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'The user has been successfully registered.',
+    description: 'The user has been successfully registered. Verification email sent.',
     type: RegisterResponseDto
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid input data.'
   })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'User with this email already exists.'
+  })
   async register(@Body() user: CreateUserDto) {
     return this.authentication.register(user);
+  }
+
+  @Post('verify-email')
+  @AuthThrottle()
+  @ApiOperation({
+    summary: 'Verify email address',
+    description: 'Verifies user email using the token from the verification email'
+  })
+  @ApiBody({ type: VerifyEmailDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Email verified successfully',
+    type: VerifyEmailResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid or expired verification token'
+  })
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    return this.authentication.verifyEmail(verifyEmailDto.token);
+  }
+
+  @Post('resend-verification')
+  @AuthThrottle()
+  @ApiOperation({
+    summary: 'Resend verification email',
+    description: 'Resends the email verification link to the specified email address'
+  })
+  @ApiBody({ type: ResendEmailDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Verification email sent if account exists',
+    type: ResendEmailResponseDto
+  })
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(@Body() resendEmailDto: ResendEmailDto) {
+    return this.authentication.resendVerificationEmail(resendEmailDto.email);
   }
 
   @Post('login')
@@ -80,14 +132,27 @@ export class AuthenticationController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'Invalid credentials.'
   })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Email not verified.'
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Account locked due to too many failed attempts.'
+  })
   @HttpCode(HttpStatus.OK)
   @UseGuards(LocalAuthenticationGuard)
-  async logIn(@GetUser() user: User, @Res() response: FastifyReply) {
-    const rememberMe = user.rememberMe || false;
+  async logIn(@GetUser() authResult: AuthenticationResult, @Res() response: FastifyReply) {
+    if (isOtpRequired(authResult)) {
+      return response.send(authResult);
+    }
+
+    const userData = authResult.user;
+    const rememberMe = userData.rememberMe || false;
 
     // Generate new secure tokens
-    const accessToken = await this.refreshTokenService.generateAccessToken((user as any).user);
-    const refreshToken = await this.refreshTokenService.generateRefreshToken((user as any).user, rememberMe);
+    const accessToken = await this.refreshTokenService.generateAccessToken(userData);
+    const refreshToken = await this.refreshTokenService.generateRefreshToken(userData, rememberMe);
 
     // Set secure HttpOnly cookies with appropriate expiration
     const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, refreshToken, rememberMe);
@@ -95,7 +160,7 @@ export class AuthenticationController {
 
     // Return user data with remember me preference
     return response.send({
-      ...user,
+      user: userData,
       rememberMe: rememberMe
     });
   }
@@ -110,12 +175,8 @@ export class AuthenticationController {
     description: 'User logged out successfully.',
     type: LogoutResponseDto
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Invalid credentials.'
-  })
   async logOut(@Res() response: FastifyReply) {
-    // Clear the new secure cookies
+    // Clear the secure cookies
     const cookies = this.refreshTokenService.getCookiesForLogOut();
     cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
 
@@ -126,20 +187,11 @@ export class AuthenticationController {
       .clearCookie('chansey_auth')
       .status(HttpStatus.OK)
       .send(new LogoutResponseDto('Logout successful'));
-
-    // Call external auth service logout
-    try {
-      const { errors } = await this.authentication.auth.logout();
-      if (errors && errors.length) {
-        this.logger.warn(`External auth logout warning: ${errors[0]}`);
-      }
-    } catch (error) {
-      this.logger.warn(`External auth logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
   }
 
   @Post('change-password')
   @AuthThrottle()
+  @UseGuards(JwtAuthenticationGuard)
   @ApiOperation({
     summary: 'Change user password',
     description: 'Allows authenticated users to change their password'
@@ -177,14 +229,9 @@ export class AuthenticationController {
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid email address.'
   })
+  @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() { email }: ForgotPasswordDto) {
-    const { data } = await this.authentication.auth.forgotPassword({ email });
-    return (
-      data || {
-        message: 'Please check your inbox! We have sent a password reset link.',
-        should_show_mobile_otp_screen: null
-      }
-    );
+    return this.authentication.forgotPassword(email);
   }
 
   @Post('reset-password')
@@ -203,18 +250,13 @@ export class AuthenticationController {
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid token or password.'
   })
+  @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() resetPasswordData: ResetPasswordDto) {
-    const { data, errors } = await this.authentication.auth.resetPassword({
-      token: resetPasswordData.token,
-      password: resetPasswordData.password,
-      confirm_password: resetPasswordData.confirm_password
-    });
-
-    if (errors && errors.length) {
-      throw new HttpException(errors[0], HttpStatus.BAD_REQUEST);
-    }
-
-    return data || new ResetPasswordResponseDto();
+    return this.authentication.resetPassword(
+      resetPasswordData.token,
+      resetPasswordData.password,
+      resetPasswordData.confirm_password
+    );
   }
 
   @Post('verify-otp')
@@ -237,13 +279,14 @@ export class AuthenticationController {
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto, @Res() response: FastifyReply) {
     const authResult = await this.authentication.verifyOtp(verifyOtpDto);
 
-    if (authResult.user && authResult.access_token) {
+    if (authResult.user) {
       // Create user object for token generation
       const user = {
         id: authResult.user.id,
         email: authResult.user.email,
         given_name: authResult.user.given_name,
-        family_name: authResult.user.family_name
+        family_name: authResult.user.family_name,
+        roles: authResult.user.roles
       } as User;
 
       const rememberMe = false; // OTP usually doesn't have remember me context
@@ -266,6 +309,7 @@ export class AuthenticationController {
     summary: 'Resend OTP',
     description: 'Resend the one-time password (OTP) code to the user'
   })
+  @ApiBody({ type: ResendEmailDto })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'OTP resent successfully',
@@ -276,9 +320,54 @@ export class AuthenticationController {
     description: 'Failed to resend OTP'
   })
   @HttpCode(HttpStatus.OK)
-  async resendOtp(@Body() { email }: { email: string }) {
-    const result = await this.authentication.resendOtp(email);
+  async resendOtp(@Body() resendEmailDto: ResendEmailDto) {
+    const result = await this.authentication.resendOtp(resendEmailDto.email);
     return new OtpResponseDto(result.message);
+  }
+
+  @Post('enable-otp')
+  @UseGuards(JwtAuthenticationGuard)
+  @ApiOperation({
+    summary: 'Enable OTP/2FA',
+    description: 'Enables email-based OTP for the authenticated user'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'OTP enabled successfully',
+    type: EnableOtpResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'User not authenticated'
+  })
+  @HttpCode(HttpStatus.OK)
+  async enableOtp(@GetUser() user: User) {
+    return this.authentication.enableOtp(user.id);
+  }
+
+  @Post('disable-otp')
+  @UseGuards(JwtAuthenticationGuard)
+  @ApiOperation({
+    summary: 'Disable OTP/2FA',
+    description: 'Disables email-based OTP for the authenticated user. Requires password confirmation.'
+  })
+  @ApiBody({ type: DisableOtpDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'OTP disabled successfully',
+    type: DisableOtpResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid password'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'User not authenticated'
+  })
+  @HttpCode(HttpStatus.OK)
+  async disableOtp(@GetUser() user: User, @Body() disableOtpDto: DisableOtpDto) {
+    return this.authentication.disableOtp(user.id, disableOtpDto.password);
   }
 
   @Post('refresh')

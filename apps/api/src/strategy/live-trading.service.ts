@@ -9,6 +9,7 @@ import { PositionTrackingService } from './position-tracking.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-executor.service';
 
+import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeBalanceDto } from '../balance/dto';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
@@ -44,11 +45,18 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly balanceService: BalanceService,
     private readonly lockService: DistributedLockService,
     private readonly priceService: PriceService,
-    private readonly exchangeManager: ExchangeManagerService
+    private readonly exchangeManager: ExchangeManagerService,
+    private readonly tradingStateService: TradingStateService
   ) {}
 
   @Cron('*/2 * * * *')
   async executeLiveTrading(): Promise<void> {
+    // KILL SWITCH CHECK - must be first before any trading activity
+    if (!this.tradingStateService.isTradingEnabled()) {
+      this.logger.warn('Live trading is globally halted - skipping execution cycle');
+      return;
+    }
+
     const lockResult = await this.lockService.acquire({
       key: LOCK_KEYS.LIVE_TRADING,
       ttlMs: LOCK_DEFAULTS.LIVE_TRADING_TTL_MS

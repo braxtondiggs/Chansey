@@ -53,6 +53,17 @@
               </p-button>
             </div>
           </form>
+          <div class="body-small mt-4 text-center">
+            Didn't receive the code?
+            <button
+              type="button"
+              class="text-primary-500 hover:underline"
+              [disabled]="resendOtpMutation.isPending()"
+              (click)="resendOtp()"
+            >
+              {{ resendOtpMutation.isPending() ? 'Sending...' : 'Resend Code' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>

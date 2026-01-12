@@ -1,0 +1,221 @@
+<p-toast />
+<p-confirmDialog />
+
+<p-card>
+  <ng-template #header>
+    <div class="flex items-center justify-between p-4">
+      <div class="flex items-center gap-3">
+        <i class="pi pi-power-off text-2xl"></i>
+        <span class="text-xl font-semibold">Trading State Control</span>
+      </div>
+      <p-button
+        icon="pi pi-refresh"
+        [rounded]="true"
+        [text]="true"
+        severity="secondary"
+        (onClick)="refreshState()"
+        [loading]="isLoading()"
+      />
+    </div>
+  </ng-template>
+
+  @if (isLoading() && !tradingState()) {
+    <div class="flex justify-center py-8">
+      <p-progressSpinner />
+    </div>
+  } @else if (tradingState(); as state) {
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <!-- Main Status -->
+      <div class="surface-card border-round p-4">
+        <div class="flex flex-col gap-4">
+          <div class="flex items-center gap-3">
+            <span class="text-color-secondary text-lg font-medium">Current Status</span>
+            <p-tag [value]="statusLabel()" [severity]="statusSeverity()" />
+          </div>
+
+          @if (!tradingEnabled()) {
+            <div class="surface-100 border-round p-3">
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center gap-2">
+                  <i class="pi pi-clock text-orange-500"></i>
+                  <span class="text-color-secondary">Halted Duration:</span>
+                  <span class="font-semibold">{{ haltDuration() || 'N/A' }}</span>
+                </div>
+                @if (state.haltReason) {
+                  <div class="flex items-start gap-2">
+                    <i class="pi pi-info-circle mt-1 text-orange-500"></i>
+                    <span class="text-color-secondary">Reason:</span>
+                    <span class="font-medium">{{ state.haltReason }}</span>
+                  </div>
+                }
+                @if (state.haltedAt) {
+                  <div class="flex items-center gap-2">
+                    <i class="pi pi-calendar text-orange-500"></i>
+                    <span class="text-color-secondary">Halted At:</span>
+                    <span>{{ state.haltedAt | date: 'medium' }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          <div class="flex flex-col gap-2 text-sm">
+            <div class="flex items-center gap-2">
+              <span class="text-color-secondary">Total Halts:</span>
+              <span class="font-semibold">{{ state.haltCount }}</span>
+            </div>
+            @if (state.resumedAt) {
+              <div class="flex items-center gap-2">
+                <span class="text-color-secondary">Last Resumed:</span>
+                <span>{{ state.resumedAt | date: 'medium' }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="surface-card border-round p-4">
+        <div class="flex h-full flex-col gap-4">
+          <span class="text-color-secondary text-lg font-medium">Actions</span>
+
+          <div class="flex flex-col gap-3">
+            @if (tradingEnabled()) {
+              <p-button
+                label="Halt All Trading"
+                icon="pi pi-stop-circle"
+                severity="danger"
+                styleClass="w-full"
+                (onClick)="openHaltDialog()"
+              />
+            } @else {
+              <p-button
+                label="Resume Trading"
+                icon="pi pi-play-circle"
+                severity="success"
+                styleClass="w-full"
+                (onClick)="openResumeDialog()"
+                [loading]="isResumePending()"
+              />
+            }
+
+            <p-button
+              label="Cancel All Open Orders"
+              icon="pi pi-times-circle"
+              severity="warn"
+              [outlined]="true"
+              styleClass="w-full"
+              (onClick)="confirmCancelAllOrders()"
+              [loading]="isCancelAllOrdersPending()"
+            />
+          </div>
+
+          <div class="text-color-secondary mt-auto text-sm">
+            <i class="pi pi-info-circle mr-1"></i>
+            Use these controls during emergencies only. All actions are logged in the audit trail.
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</p-card>
+
+<!-- Halt Trading Dialog -->
+<p-dialog
+  header="Halt All Trading"
+  [(visible)]="haltDialogVisible"
+  [modal]="true"
+  [style]="{ width: '500px' }"
+  [closable]="true"
+>
+  <div class="flex flex-col gap-4">
+    <div class="surface-100 border-round p-3">
+      <div class="flex items-start gap-2">
+        <i class="pi pi-exclamation-triangle mt-1 text-xl text-red-500"></i>
+        <div>
+          <div class="font-semibold text-red-500">Warning</div>
+          <div class="text-color-secondary text-sm">
+            This will immediately halt all algorithmic trading across the entire system. No new trades will be executed
+            until trading is resumed.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <form [formGroup]="haltForm" class="flex flex-col gap-4">
+      <p-floatlabel variant="on">
+        <textarea pTextarea id="reason" formControlName="reason" rows="3" class="w-full"></textarea>
+        <label for="reason">Reason for halt (required, min 10 characters)</label>
+      </p-floatlabel>
+      @if (haltForm.get('reason')?.invalid && haltForm.get('reason')?.touched) {
+        <small class="p-error">Please provide a reason (minimum 10 characters)</small>
+      }
+
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="pauseDeployments" formControlName="pauseDeployments" />
+          <label for="pauseDeployments" class="cursor-pointer">Also pause all active deployments</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="cancelOpenOrders" formControlName="cancelOpenOrders" />
+          <label for="cancelOpenOrders" class="cursor-pointer">Also cancel all open orders</label>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <ng-template #footer>
+    <div class="flex justify-end gap-2">
+      <p-button label="Cancel" severity="secondary" [text]="true" (onClick)="haltDialogVisible.set(false)" />
+      <p-button
+        label="Halt Trading"
+        severity="danger"
+        icon="pi pi-stop-circle"
+        (onClick)="confirmHalt()"
+        [loading]="isHaltPending()"
+        [disabled]="haltForm.invalid"
+      />
+    </div>
+  </ng-template>
+</p-dialog>
+
+<!-- Resume Trading Dialog -->
+<p-dialog
+  header="Resume Trading"
+  [(visible)]="resumeDialogVisible"
+  [modal]="true"
+  [style]="{ width: '450px' }"
+  [closable]="true"
+>
+  <div class="flex flex-col gap-4">
+    <div class="surface-100 border-round p-3">
+      <div class="flex items-start gap-2">
+        <i class="pi pi-info-circle mt-1 text-xl text-blue-500"></i>
+        <div class="text-color-secondary text-sm">
+          This will re-enable algorithmic trading. Note: Paused deployments will NOT be automatically resumed - they
+          must be resumed individually.
+        </div>
+      </div>
+    </div>
+
+    <form [formGroup]="resumeForm">
+      <p-floatlabel variant="on">
+        <textarea pTextarea id="resumeReason" formControlName="reason" rows="3" class="w-full"></textarea>
+        <label for="resumeReason">Reason/notes (optional)</label>
+      </p-floatlabel>
+    </form>
+  </div>
+
+  <ng-template #footer>
+    <div class="flex justify-end gap-2">
+      <p-button label="Cancel" severity="secondary" [text]="true" (onClick)="resumeDialogVisible.set(false)" />
+      <p-button
+        label="Resume Trading"
+        severity="success"
+        icon="pi pi-play-circle"
+        (onClick)="confirmResume()"
+        [loading]="isResumePending()"
+      />
+    </div>
+  </ng-template>
+</p-dialog>

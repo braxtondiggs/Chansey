@@ -13,7 +13,7 @@ describe('RefreshTokenService', () => {
   let configStore: Record<string, any>;
   let configService: { get: jest.Mock };
   let jwtService: { signAsync: jest.Mock; verifyAsync: jest.Mock };
-  let usersService: { getById: jest.Mock; getWithAuthorizerProfile: jest.Mock };
+  let usersService: { getById: jest.Mock; getProfile: jest.Mock };
   let service: RefreshTokenService;
 
   beforeEach(() => {
@@ -36,7 +36,7 @@ describe('RefreshTokenService', () => {
 
     usersService = {
       getById: jest.fn(),
-      getWithAuthorizerProfile: jest.fn()
+      getProfile: jest.fn()
     };
 
     service = new RefreshTokenService(
@@ -58,7 +58,7 @@ describe('RefreshTokenService', () => {
 
     jwtService.verifyAsync.mockResolvedValue(payload);
     usersService.getById.mockResolvedValue(baseUser);
-    usersService.getWithAuthorizerProfile.mockResolvedValue(fullUser);
+    usersService.getProfile.mockResolvedValue(fullUser);
     jwtService.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
 
     const result = await service.refreshAccessToken('existing-refresh');
@@ -73,7 +73,7 @@ describe('RefreshTokenService', () => {
       expect.objectContaining({ secret: 'refresh-secret', algorithms: ['HS512'] })
     );
     expect(usersService.getById).toHaveBeenCalledWith(payload.sub);
-    expect(usersService.getWithAuthorizerProfile).toHaveBeenCalledWith(baseUser);
+    expect(usersService.getProfile).toHaveBeenCalledWith(baseUser);
     expect(jwtService.signAsync).toHaveBeenCalledTimes(2);
 
     dateNowSpy.mockRestore();
@@ -87,7 +87,7 @@ describe('RefreshTokenService', () => {
 
     jwtService.verifyAsync.mockResolvedValue(payload);
     usersService.getById.mockResolvedValue(baseUser);
-    usersService.getWithAuthorizerProfile.mockResolvedValue(fullUser);
+    usersService.getProfile.mockResolvedValue(fullUser);
     jwtService.signAsync.mockResolvedValueOnce('another-access-token').mockResolvedValueOnce('another-refresh-token');
 
     const result = await service.refreshAccessToken('long-lived-token');

@@ -30,8 +30,12 @@ export const appRoutes: Route[] = [
         loadComponent: () => import('./pages/auth/forgot').then((c) => c.ForgotComponent)
       },
       {
-        path: 'auth/callback',
+        path: 'auth/reset-password',
         loadComponent: () => import('./pages/auth/new-password').then((c) => c.NewPasswordComponent)
+      },
+      {
+        path: 'auth/verify-email',
+        loadComponent: () => import('./pages/auth/verify-email').then((c) => c.VerifyEmailComponent)
       },
       {
         path: 'auth/otp',
@@ -139,6 +143,12 @@ export const appRoutes: Route[] = [
         path: 'bull-board',
         loadComponent: () => import('./pages/admin/bull-board').then((c) => c.BullBoardComponent),
         data: { breadcrumb: 'Bull Board' }
+      },
+      {
+        path: 'trading-state',
+        loadComponent: () =>
+          import('./pages/admin/trading-state/trading-state.component').then((c) => c.TradingStateComponent),
+        data: { breadcrumb: 'Trading State' }
       }
     ]
   },

@@ -3,19 +3,7 @@
   "editor.formatOnSave": true,
   "prettier.prettierPath": "./node_modules/prettier",
   "prettier.resolveGlobalModules": false,
-  "cSpell.words": [
-    "authorizerdev",
-    "Backtest",
-    "bullmq",
-    "chansey",
-    "cymbit",
-    "devkit",
-    "fastify",
-    "nestjs",
-    "nrwl",
-    "pino",
-    "typeorm"
-  ],
+  "cSpell.words": ["Backtest", "bullmq", "chansey", "cymbit", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
   "editor.formatOnPaste": false,
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {

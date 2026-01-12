@@ -182,6 +182,14 @@ export const queryKeys = {
     orderHistory: () => [...queryKeys.trading.orders(), 'history'] as const,
     estimate: () => [...queryKeys.trading.all, 'estimate'] as const,
     ticker: (symbol: string) => [...queryKeys.trading.all, 'ticker', symbol] as const
+  },
+
+  // --------------------------------------------------------------------------
+  // Admin Domain
+  // --------------------------------------------------------------------------
+  admin: {
+    all: ['admin'] as const,
+    tradingState: () => [...queryKeys.admin.all, 'trading-state'] as const
   }
 } as const;
 
@@ -210,3 +218,4 @@ export type BacktestsQueryKeys = (typeof queryKeys)['backtests'];
 export type ComparisonReportsQueryKeys = (typeof queryKeys)['comparisonReports'];
 export type PricesQueryKeys = (typeof queryKeys)['prices'];
 export type TradingQueryKeys = (typeof queryKeys)['trading'];
+export type AdminQueryKeys = (typeof queryKeys)['admin'];
