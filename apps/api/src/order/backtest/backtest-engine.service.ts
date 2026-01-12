@@ -31,6 +31,7 @@ import {
 } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
+import { CoinService } from '../../coin/coin.service';
 import { Price } from '../../price/price.entity';
 import { PriceService } from '../../price/price.service';
 
@@ -132,7 +133,8 @@ export class BacktestEngine {
   constructor(
     private readonly priceService: PriceService,
     private readonly backtestStream: BacktestStreamService,
-    private readonly algorithmRegistry: AlgorithmRegistry
+    private readonly algorithmRegistry: AlgorithmRegistry,
+    private readonly coinService: CoinService
   ) {}
 
   async executeHistoricalBacktest(
@@ -168,6 +170,13 @@ export class BacktestEngine {
     const snapshots: Partial<BacktestPerformanceSnapshot>[] = [];
 
     const coinIds = coins.map((coin) => coin.id);
+    const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
+    const quoteCoin = await this.coinService.getCoinBySymbol('USD');
+
+    if (!quoteCoin) {
+      throw new Error('USD coin not found in database. Please ensure the USD coin exists before running backtests.');
+    }
+
     const historicalPrices = await this.getHistoricalPrices(
       coinIds,
       options.dataset.startAt ?? backtest.startDate,
@@ -308,7 +317,15 @@ export class BacktestEngine {
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
-          trades.push({ ...trade, executedAt: timestamp, backtest });
+
+          const baseCoin = coinMap.get(strategySignal.coinId);
+          if (!baseCoin) {
+            throw new Error(
+              `baseCoin not found for coinId ${strategySignal.coinId}. Ensure all coins referenced by the algorithm are included in the backtest.`
+            );
+          }
+
+          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
           simulatedFills.push({
             orderType: SimulatedOrderType.MARKET,
             status: SimulatedOrderStatus.FILLED,
