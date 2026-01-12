@@ -161,107 +161,73 @@ describe('PositionMonitorTask', () => {
 
   describe('calculateTrailingStopPrice', () => {
     it('should calculate amount-based trailing stop for long', () => {
-      const position = {
-        side: 'BUY',
-        exitConfig: {
-          trailingType: TrailingType.AMOUNT,
-          trailingValue: 500 // $500 trailing
-        }
-      } as PositionExit;
+      const config = {
+        trailingType: TrailingType.AMOUNT,
+        trailingValue: 500 // $500 trailing
+      };
 
-      const result = (task as any).calculateTrailingStopPrice(52000, position);
+      const result = (task as any).calculateTrailingStopPrice(52000, config, 'BUY');
 
       // 52000 - 500 = 51500
       expect(result).toBe(51500);
     });
 
     it('should calculate amount-based trailing stop for short', () => {
-      const position = {
-        side: 'SELL',
-        exitConfig: {
-          trailingType: TrailingType.AMOUNT,
-          trailingValue: 500
-        }
-      } as PositionExit;
+      const config = {
+        trailingType: TrailingType.AMOUNT,
+        trailingValue: 500
+      };
 
-      const result = (task as any).calculateTrailingStopPrice(48000, position);
+      const result = (task as any).calculateTrailingStopPrice(48000, config, 'SELL');
 
       // 48000 + 500 = 48500
       expect(result).toBe(48500);
     });
 
     it('should calculate percentage-based trailing stop for long', () => {
-      const position = {
-        side: 'BUY',
-        exitConfig: {
-          trailingType: TrailingType.PERCENTAGE,
-          trailingValue: 2 // 2%
-        }
-      } as PositionExit;
+      const config = {
+        trailingType: TrailingType.PERCENTAGE,
+        trailingValue: 2 // 2%
+      };
 
-      const result = (task as any).calculateTrailingStopPrice(52000, position);
+      const result = (task as any).calculateTrailingStopPrice(52000, config, 'BUY');
 
       // 52000 - (52000 * 0.02) = 52000 - 1040 = 50960
       expect(result).toBe(50960);
     });
 
     it('should calculate percentage-based trailing stop for short', () => {
-      const position = {
-        side: 'SELL',
-        exitConfig: {
-          trailingType: TrailingType.PERCENTAGE,
-          trailingValue: 2
-        }
-      } as PositionExit;
+      const config = {
+        trailingType: TrailingType.PERCENTAGE,
+        trailingValue: 2
+      };
 
-      const result = (task as any).calculateTrailingStopPrice(48000, position);
+      const result = (task as any).calculateTrailingStopPrice(48000, config, 'SELL');
 
       // 48000 + (48000 * 0.02) = 48000 + 960 = 48960
       expect(result).toBe(48960);
     });
 
-    it('should calculate ATR-based trailing stop using stored entryAtr', () => {
-      const position = {
-        side: 'BUY',
-        entryAtr: 1000, // ATR value stored at entry
-        exitConfig: {
-          trailingType: TrailingType.ATR,
-          trailingValue: 2 // 2x ATR multiplier for trailing
-        }
-      } as PositionExit;
+    it('should calculate ATR-based trailing stop', () => {
+      const config = {
+        trailingType: TrailingType.ATR,
+        trailingValue: 2, // 2x ATR
+        atrMultiplier: 1000 // ATR value stored
+      };
 
-      const result = (task as any).calculateTrailingStopPrice(52000, position);
+      const result = (task as any).calculateTrailingStopPrice(52000, config, 'BUY');
 
       // 52000 - (1000 * 2) = 50000
       expect(result).toBe(50000);
     });
 
-    it('should fallback to 2% for ATR trailing when entryAtr is missing', () => {
-      const position = {
-        side: 'BUY',
-        entryAtr: undefined, // No ATR stored
-        exitConfig: {
-          trailingType: TrailingType.ATR,
-          trailingValue: 2
-        }
-      } as PositionExit;
-
-      const result = (task as any).calculateTrailingStopPrice(50000, position);
-
-      // Fallback 2%: 50000 - (50000 * 0.02) = 49000
-      expect(result).toBe(49000);
-    });
-
     it('should use default 2% for unknown trailing type', () => {
-      const position = {
-        side: 'BUY',
-        exitConfig: {
-          trailingType: 'unknown' as TrailingType,
-          trailingValue: 1
-        }
-      } as PositionExit;
+      const config = {
+        trailingType: 'unknown' as TrailingType,
+        trailingValue: 1
+      };
 
-      const result = (task as any).calculateTrailingStopPrice(50000, position);
+      const result = (task as any).calculateTrailingStopPrice(50000, config, 'BUY');
 
       // Default 2%: 50000 - (50000 * 0.02) = 49000
       expect(result).toBe(49000);

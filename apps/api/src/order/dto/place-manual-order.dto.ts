@@ -10,6 +10,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
   Min,
   ValidateIf,
   ValidateNested
@@ -51,6 +52,7 @@ export class ExitConfigDto {
   @IsNotEmpty({ message: 'Stop loss value is required when stop loss is enabled' })
   @IsNumber()
   @Min(0)
+  @Max(10_000_000, { message: 'Stop loss value cannot exceed 10,000,000' })
   @ApiProperty({
     description: 'Stop loss value (price, percentage, or ATR multiplier depending on type)',
     example: 2.5,
@@ -82,6 +84,7 @@ export class ExitConfigDto {
   @IsNotEmpty({ message: 'Take profit value is required when take profit is enabled' })
   @IsNumber()
   @Min(0)
+  @Max(100_000_000, { message: 'Take profit value cannot exceed 100,000,000' })
   @ApiProperty({
     description: 'Take profit value (price, percentage, or risk:reward ratio depending on type)',
     example: 5.0,
@@ -93,6 +96,7 @@ export class ExitConfigDto {
   @IsNotEmpty({ message: 'ATR period is required when using ATR-based stop loss' })
   @IsNumber()
   @Min(1)
+  @Max(200, { message: 'ATR period cannot exceed 200' })
   @ApiProperty({
     description: 'ATR period for ATR-based calculations',
     example: 14,
@@ -104,6 +108,7 @@ export class ExitConfigDto {
   @IsNotEmpty({ message: 'ATR multiplier is required when using ATR-based stop loss' })
   @IsNumber()
   @Min(0.1)
+  @Max(10, { message: 'ATR multiplier cannot exceed 10' })
   @ApiProperty({
     description: 'ATR multiplier for ATR-based stop loss',
     example: 2.0,
@@ -135,6 +140,7 @@ export class ExitConfigDto {
   @IsNotEmpty({ message: 'Trailing value is required when trailing stop is enabled' })
   @IsNumber()
   @Min(0)
+  @Max(10_000_000, { message: 'Trailing value cannot exceed 10,000,000' })
   @ApiProperty({
     description: 'Trailing stop value',
     example: 1.5,
@@ -159,6 +165,8 @@ export class ExitConfigDto {
   )
   @IsNotEmpty({ message: 'Trailing activation value is required for non-immediate activation types' })
   @IsNumber()
+  @Min(0)
+  @Max(100_000_000, { message: 'Trailing activation value cannot exceed 100,000,000' })
   @ApiProperty({
     description: 'Trailing activation value (price or percentage depending on activation type)',
     example: 5.0,

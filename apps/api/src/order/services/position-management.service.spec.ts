@@ -1127,4 +1127,212 @@ describe('PositionManagementService', () => {
       expect(result.actualNotional).toBe(200);
     });
   });
+
+  describe('validateExitConfigInputs', () => {
+    // Access private method through type assertion
+    const callValidateInputs = (config: ExitConfig) => {
+      return (
+        service as unknown as { validateExitConfigInputs: (config: ExitConfig) => void }
+      ).validateExitConfigInputs(config);
+    };
+
+    const makeConfig = (overrides: Partial<ExitConfig>): ExitConfig => ({
+      ...DEFAULT_EXIT_CONFIG,
+      ...overrides
+    });
+
+    const expectInvalid = (overrides: Partial<ExitConfig>, message: RegExp) => {
+      expect(() => callValidateInputs(makeConfig(overrides))).toThrow(message);
+    };
+
+    it.each([
+      [
+        'valid percentage stop loss',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.PERCENTAGE,
+          stopLossValue: 5
+        }
+      ],
+      [
+        'valid fixed stop loss',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.FIXED,
+          stopLossValue: 45000
+        }
+      ]
+    ])('should pass with %s', (_label, overrides) => {
+      expect(() => callValidateInputs(makeConfig(overrides))).not.toThrow();
+    });
+
+    it.each([
+      [
+        'NaN stop loss value',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.PERCENTAGE,
+          stopLossValue: NaN
+        },
+        /stopLossValue must be a finite number/
+      ],
+      [
+        'Infinity stop loss value',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.PERCENTAGE,
+          stopLossValue: Infinity
+        },
+        /stopLossValue must be a finite number/
+      ],
+      [
+        'negative stop loss value',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.PERCENTAGE,
+          stopLossValue: -5
+        },
+        /stopLossValue must be non-negative/
+      ],
+      [
+        'percentage stop loss exceeding 100%',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.PERCENTAGE,
+          stopLossValue: 150
+        },
+        /stopLossValue exceeds maximum allowed value of 100/
+      ],
+      [
+        'FIXED stop loss exceeding 10 million',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.FIXED,
+          stopLossValue: 15_000_000
+        },
+        /stopLossValue exceeds maximum allowed value of 10000000/
+      ],
+      [
+        'ATR multiplier exceeding 10',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.ATR,
+          stopLossValue: 15
+        },
+        /stopLossValue exceeds maximum allowed value of 10/
+      ],
+      [
+        'NaN take profit value',
+        {
+          enableTakeProfit: true,
+          takeProfitType: TakeProfitType.PERCENTAGE,
+          takeProfitValue: NaN
+        },
+        /takeProfitValue must be a finite number/
+      ],
+      [
+        'percentage take profit exceeding 1000%',
+        {
+          enableTakeProfit: true,
+          takeProfitType: TakeProfitType.PERCENTAGE,
+          takeProfitValue: 1500
+        },
+        /takeProfitValue exceeds maximum allowed value of 1000/
+      ],
+      [
+        'FIXED take profit exceeding 100 million',
+        {
+          enableTakeProfit: true,
+          takeProfitType: TakeProfitType.FIXED,
+          takeProfitValue: 150_000_000
+        },
+        /takeProfitValue exceeds maximum allowed value of 100000000/
+      ],
+      [
+        'trailing value with NaN',
+        {
+          enableTrailingStop: true,
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: NaN
+        },
+        /trailingValue must be a finite number/
+      ],
+      [
+        'percentage trailing value exceeding 100%',
+        {
+          enableTrailingStop: true,
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: 150
+        },
+        /trailingValue exceeds maximum allowed value of 100/
+      ],
+      [
+        'invalid ATR period',
+        {
+          enableStopLoss: true,
+          stopLossType: StopLossType.ATR,
+          stopLossValue: 2,
+          atrPeriod: 300
+        },
+        /atrPeriod exceeds maximum allowed value of 200/
+      ],
+      [
+        'invalid trailing activation value for PRICE type',
+        {
+          enableTrailingStop: true,
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: 1.5,
+          trailingActivation: TrailingActivationType.PRICE,
+          trailingActivationValue: Infinity
+        },
+        /trailingActivationValue must be a finite number/
+      ]
+    ])('should reject %s', (_label, overrides, message) => {
+      expectInvalid(overrides, message);
+    });
+
+    it('should report multiple invalid fields together', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: NaN,
+        enableTrailingStop: true,
+        trailingType: TrailingType.PERCENTAGE,
+        trailingValue: 150
+      });
+
+      expect(() => callValidateInputs(config)).toThrow(/stopLossValue must be a finite number/);
+      expect(() => callValidateInputs(config)).toThrow(/trailingValue exceeds maximum allowed value of 100/);
+    });
+
+    it('should pass with all valid values', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 2,
+        enableTakeProfit: true,
+        takeProfitType: TakeProfitType.RISK_REWARD,
+        takeProfitValue: 3,
+        enableTrailingStop: true,
+        trailingType: TrailingType.PERCENTAGE,
+        trailingValue: 1.5,
+        trailingActivation: TrailingActivationType.PERCENTAGE,
+        trailingActivationValue: 5
+      });
+
+      expect(() => callValidateInputs(config)).not.toThrow();
+    });
+
+    it('should skip validation for disabled features', () => {
+      const config = makeConfig({
+        enableStopLoss: false,
+        stopLossValue: NaN, // Should be ignored since stopLoss is disabled
+        enableTakeProfit: false,
+        takeProfitValue: Infinity, // Should be ignored since takeProfit is disabled
+        enableTrailingStop: false
+      });
+
+      expect(() => callValidateInputs(config)).not.toThrow();
+    });
+  });
 });

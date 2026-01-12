@@ -9,7 +9,12 @@ import { Repository } from 'typeorm';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { PositionExit } from '../entities/position-exit.entity';
-import { PositionExitStatus, TrailingActivationType, TrailingType } from '../interfaces/exit-config.interface';
+import {
+  ExitConfig,
+  PositionExitStatus,
+  TrailingActivationType,
+  TrailingType
+} from '../interfaces/exit-config.interface';
 import { PositionManagementService } from '../services/position-management.service';
 
 /**
@@ -279,7 +284,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           position.trailingHighWaterMark = currentPrice;
 
           // Calculate new stop price
-          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, position);
+          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, config, side);
 
           // Only update if new stop is higher (ratchet mechanism)
           if (newStopPrice > (position.currentTrailingStopPrice || 0)) {
@@ -315,7 +320,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           position.trailingLowWaterMark = currentPrice;
 
           // Calculate new stop price
-          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, position);
+          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, config, side);
 
           // Only update if new stop is lower (ratchet mechanism for shorts)
           if (newStopPrice < (position.currentTrailingStopPrice || Infinity)) {
@@ -387,14 +392,8 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
 
   /**
    * Calculate trailing stop price from current price
-   *
-   * @param currentPrice - Current market price
-   * @param position - Position exit entity containing stored ATR and config
-   * @returns Calculated trailing stop price
    */
-  private calculateTrailingStopPrice(currentPrice: number, position: PositionExit): number {
-    const config = position.exitConfig;
-    const side = position.side;
+  private calculateTrailingStopPrice(currentPrice: number, config: ExitConfig, side: 'BUY' | 'SELL'): number {
     let trailingDistance: number;
 
     switch (config.trailingType) {
@@ -407,14 +406,10 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
         break;
 
       case TrailingType.ATR: {
-        // Use the stored ATR at entry, multiplied by trailingValue (the ATR multiplier for trailing stops)
-        const entryAtr = position.entryAtr;
-        if (!entryAtr || isNaN(entryAtr)) {
-          // Fallback to 2% if ATR not available
-          trailingDistance = currentPrice * 0.02;
-        } else {
-          trailingDistance = entryAtr * config.trailingValue;
-        }
+        // For ATR-based trailing, we use the stored ATR value
+        // config.trailingValue is the ATR multiplier
+        const atrValue = config.atrMultiplier || 2.0;
+        trailingDistance = atrValue * config.trailingValue;
         break;
       }
 

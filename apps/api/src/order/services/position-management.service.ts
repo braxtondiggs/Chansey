@@ -155,6 +155,10 @@ export class PositionManagementService {
       throw new BadRequestException('At least one exit type must be enabled');
     }
 
+    // Input sanitization: validate numeric config values are finite and non-negative
+    // This is defense-in-depth against NaN/Infinity/negative values that could bypass validation
+    this.validateExitConfigInputs(config);
+
     // Get entry price (use average or executed price)
     const entryPrice = entryOrder.averagePrice || entryOrder.price || 0;
     if (entryPrice <= 0) {
@@ -603,6 +607,97 @@ export class PositionManagementService {
     }
 
     return errors;
+  }
+
+  /**
+   * Validate exit config input values for sanity (defense-in-depth)
+   *
+   * Checks all numeric config values are:
+   * - Finite (not NaN or Infinity)
+   * - Non-negative
+   * - Within reasonable bounds for their type
+   *
+   * This validation runs BEFORE price calculation to catch malformed inputs early.
+   *
+   * @throws BadRequestException if any input value is invalid
+   */
+  private validateExitConfigInputs(config: ExitConfig): void {
+    const errors: string[] = [];
+
+    // Helper to validate a numeric value
+    const validateNumeric = (value: number | undefined, fieldName: string, maxValue?: number): void => {
+      if (value === undefined) return;
+
+      if (!Number.isFinite(value)) {
+        errors.push(`${fieldName} must be a finite number (got ${value})`);
+        return;
+      }
+
+      if (value < 0) {
+        errors.push(`${fieldName} must be non-negative (got ${value})`);
+      }
+
+      if (maxValue !== undefined && value > maxValue) {
+        errors.push(`${fieldName} exceeds maximum allowed value of ${maxValue} (got ${value})`);
+      }
+    };
+
+    // Validate stop loss inputs
+    if (config.enableStopLoss) {
+      if (config.stopLossType === StopLossType.FIXED) {
+        // FIXED type: absolute price, cap at reasonable maximum (10 million)
+        validateNumeric(config.stopLossValue, 'stopLossValue', 10_000_000);
+      } else if (config.stopLossType === StopLossType.PERCENTAGE) {
+        // Percentage type: must be between 0 and 100 (will be further validated against limits)
+        validateNumeric(config.stopLossValue, 'stopLossValue', 100);
+      } else if (config.stopLossType === StopLossType.ATR) {
+        // ATR multiplier: reasonable range 0.1 to 10
+        validateNumeric(config.stopLossValue, 'stopLossValue', 10);
+      }
+    }
+
+    // Validate take profit inputs
+    if (config.enableTakeProfit) {
+      if (config.takeProfitType === TakeProfitType.FIXED) {
+        // FIXED type: absolute price, cap at reasonable maximum (100 million)
+        validateNumeric(config.takeProfitValue, 'takeProfitValue', 100_000_000);
+      } else if (config.takeProfitType === TakeProfitType.PERCENTAGE) {
+        // Percentage type: must be between 0 and 1000 (up to 10x)
+        validateNumeric(config.takeProfitValue, 'takeProfitValue', 1000);
+      } else if (config.takeProfitType === TakeProfitType.RISK_REWARD) {
+        // Risk:reward ratio: reasonable range 0.1 to 100
+        validateNumeric(config.takeProfitValue, 'takeProfitValue', 100);
+      }
+    }
+
+    // Validate trailing stop inputs
+    if (config.enableTrailingStop) {
+      if (config.trailingType === TrailingType.AMOUNT) {
+        // Amount type: absolute value, cap at reasonable maximum
+        validateNumeric(config.trailingValue, 'trailingValue', 10_000_000);
+      } else if (config.trailingType === TrailingType.PERCENTAGE) {
+        // Percentage type: must be between 0 and 100
+        validateNumeric(config.trailingValue, 'trailingValue', 100);
+      } else if (config.trailingType === TrailingType.ATR) {
+        // ATR multiplier: reasonable range 0.1 to 10
+        validateNumeric(config.trailingValue, 'trailingValue', 10);
+      }
+
+      // Validate activation value if not immediate
+      if (config.trailingActivation === TrailingActivationType.PRICE) {
+        validateNumeric(config.trailingActivationValue, 'trailingActivationValue', 100_000_000);
+      } else if (config.trailingActivation === TrailingActivationType.PERCENTAGE) {
+        validateNumeric(config.trailingActivationValue, 'trailingActivationValue', 1000);
+      }
+    }
+
+    // Validate ATR settings
+    validateNumeric(config.atrPeriod, 'atrPeriod', 200);
+    validateNumeric(config.atrMultiplier, 'atrMultiplier', 10);
+
+    if (errors.length > 0) {
+      throw new BadRequestException(`Invalid exit config values: ${errors.join('; ')}`);
+    }
   }
 
   /**
