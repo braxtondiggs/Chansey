@@ -1,8 +1,188 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Min, ValidateIf } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  Min,
+  ValidateIf,
+  ValidateNested
+} from 'class-validator';
 
+import {
+  TrailingType as ExitTrailingType,
+  StopLossType,
+  TakeProfitType,
+  TrailingActivationType
+} from '../interfaces/exit-config.interface';
 import { OrderSide, OrderType, TrailingType } from '../order.entity';
+
+/**
+ * DTO for exit configuration when placing manual orders
+ */
+export class ExitConfigDto {
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({
+    description: 'Enable stop loss for this order',
+    example: true,
+    required: false
+  })
+  enableStopLoss?: boolean;
+
+  @ValidateIf((o) => o.enableStopLoss === true)
+  @IsNotEmpty({ message: 'Stop loss type is required when stop loss is enabled' })
+  @IsEnum(StopLossType)
+  @ApiProperty({
+    enum: StopLossType,
+    description: 'Stop loss type',
+    example: StopLossType.PERCENTAGE,
+    required: false
+  })
+  stopLossType?: StopLossType;
+
+  @ValidateIf((o) => o.enableStopLoss === true)
+  @IsNotEmpty({ message: 'Stop loss value is required when stop loss is enabled' })
+  @IsNumber()
+  @Min(0)
+  @Max(10_000_000, { message: 'Stop loss value cannot exceed 10,000,000' })
+  @ApiProperty({
+    description: 'Stop loss value (price, percentage, or ATR multiplier depending on type)',
+    example: 2.5,
+    required: false
+  })
+  stopLossValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({
+    description: 'Enable take profit for this order',
+    example: true,
+    required: false
+  })
+  enableTakeProfit?: boolean;
+
+  @ValidateIf((o) => o.enableTakeProfit === true)
+  @IsNotEmpty({ message: 'Take profit type is required when take profit is enabled' })
+  @IsEnum(TakeProfitType)
+  @ApiProperty({
+    enum: TakeProfitType,
+    description: 'Take profit type',
+    example: TakeProfitType.PERCENTAGE,
+    required: false
+  })
+  takeProfitType?: TakeProfitType;
+
+  @ValidateIf((o) => o.enableTakeProfit === true)
+  @IsNotEmpty({ message: 'Take profit value is required when take profit is enabled' })
+  @IsNumber()
+  @Min(0)
+  @Max(100_000_000, { message: 'Take profit value cannot exceed 100,000,000' })
+  @ApiProperty({
+    description: 'Take profit value (price, percentage, or risk:reward ratio depending on type)',
+    example: 5.0,
+    required: false
+  })
+  takeProfitValue?: number;
+
+  @ValidateIf((o) => o.stopLossType === StopLossType.ATR)
+  @IsNotEmpty({ message: 'ATR period is required when using ATR-based stop loss' })
+  @IsNumber()
+  @Min(1)
+  @Max(200, { message: 'ATR period cannot exceed 200' })
+  @ApiProperty({
+    description: 'ATR period for ATR-based calculations',
+    example: 14,
+    required: false
+  })
+  atrPeriod?: number;
+
+  @ValidateIf((o) => o.stopLossType === StopLossType.ATR)
+  @IsNotEmpty({ message: 'ATR multiplier is required when using ATR-based stop loss' })
+  @IsNumber()
+  @Min(0.1)
+  @Max(10, { message: 'ATR multiplier cannot exceed 10' })
+  @ApiProperty({
+    description: 'ATR multiplier for ATR-based stop loss',
+    example: 2.0,
+    required: false
+  })
+  atrMultiplier?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({
+    description: 'Enable trailing stop for this order',
+    example: false,
+    required: false
+  })
+  enableTrailingStop?: boolean;
+
+  @ValidateIf((o) => o.enableTrailingStop === true)
+  @IsNotEmpty({ message: 'Trailing type is required when trailing stop is enabled' })
+  @IsEnum(ExitTrailingType)
+  @ApiProperty({
+    enum: ExitTrailingType,
+    description: 'Trailing stop type',
+    example: ExitTrailingType.PERCENTAGE,
+    required: false
+  })
+  trailingType?: ExitTrailingType;
+
+  @ValidateIf((o) => o.enableTrailingStop === true)
+  @IsNotEmpty({ message: 'Trailing value is required when trailing stop is enabled' })
+  @IsNumber()
+  @Min(0)
+  @Max(10_000_000, { message: 'Trailing value cannot exceed 10,000,000' })
+  @ApiProperty({
+    description: 'Trailing stop value',
+    example: 1.5,
+    required: false
+  })
+  trailingValue?: number;
+
+  @ValidateIf((o) => o.enableTrailingStop === true)
+  @IsNotEmpty({ message: 'Trailing activation type is required when trailing stop is enabled' })
+  @IsEnum(TrailingActivationType)
+  @ApiProperty({
+    enum: TrailingActivationType,
+    description: 'When to activate trailing stop',
+    example: TrailingActivationType.IMMEDIATE,
+    required: false
+  })
+  trailingActivation?: TrailingActivationType;
+
+  @ValidateIf(
+    (o) =>
+      o.enableTrailingStop === true && o.trailingActivation && o.trailingActivation !== TrailingActivationType.IMMEDIATE
+  )
+  @IsNotEmpty({ message: 'Trailing activation value is required for non-immediate activation types' })
+  @IsNumber()
+  @Min(0)
+  @Max(100_000_000, { message: 'Trailing activation value cannot exceed 100,000,000' })
+  @ApiProperty({
+    description: 'Trailing activation value (price or percentage depending on activation type)',
+    example: 5.0,
+    required: false
+  })
+  trailingActivationValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({
+    description: 'Use OCO (one-cancels-other) for SL/TP orders',
+    example: true,
+    required: false
+  })
+  useOco?: boolean;
+}
 
 export class PlaceManualOrderDto {
   @IsNotEmpty()
@@ -135,4 +315,14 @@ export class PlaceManualOrderDto {
     required: false
   })
   timeInForce?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExitConfigDto)
+  @ApiProperty({
+    description: 'Exit configuration for automated SL/TP orders',
+    type: ExitConfigDto,
+    required: false
+  })
+  exitConfig?: ExitConfigDto;
 }

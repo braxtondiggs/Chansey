@@ -9,6 +9,7 @@ import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderValidationService } from './services/order-validation.service';
+import { PositionManagementService } from './services/position-management.service';
 
 import { CoinService } from '../coin/coin.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
@@ -153,6 +154,12 @@ describe('OrderService', () => {
           provide: OrderCalculationService,
           useValue: {
             mapCcxtStatusToOrderStatus: jest.fn()
+          }
+        },
+        {
+          provide: PositionManagementService,
+          useValue: {
+            attachExitOrders: jest.fn()
           }
         }
       ]
