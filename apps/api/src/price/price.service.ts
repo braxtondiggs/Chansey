@@ -140,4 +140,34 @@ export class PriceService {
   async getPriceCount(): Promise<number> {
     return await this.price.count();
   }
+
+  /**
+   * Get all unique coin IDs that have price data
+   */
+  async getCoinsWithPriceData(): Promise<string[]> {
+    const result = await this.price.createQueryBuilder('price').select('DISTINCT price.coinId', 'coinId').getRawMany();
+
+    return result.map((row) => row.coinId).filter(Boolean);
+  }
+
+  /**
+   * Get the date range of available price data
+   * @returns Object with start and end dates, or null if no data exists
+   */
+  async getPriceDataDateRange(): Promise<{ start: Date; end: Date } | null> {
+    const result = await this.price
+      .createQueryBuilder('price')
+      .select('MIN(price.geckoLastUpdatedAt)', 'minDate')
+      .addSelect('MAX(price.geckoLastUpdatedAt)', 'maxDate')
+      .getRawOne();
+
+    if (!result?.minDate || !result?.maxDate) {
+      return null;
+    }
+
+    return {
+      start: new Date(result.minDate),
+      end: new Date(result.maxDate)
+    };
+  }
 }
