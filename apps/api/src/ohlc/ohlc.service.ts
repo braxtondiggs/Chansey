@@ -184,6 +184,39 @@ export class OHLCService {
     return this.ohlcRepository.count({ where });
   }
 
+  /**
+   * Get all unique coin IDs that have candle data
+   */
+  async getCoinsWithCandleData(): Promise<string[]> {
+    const result = await this.ohlcRepository
+      .createQueryBuilder('candle')
+      .select('DISTINCT candle.coinId', 'coinId')
+      .getRawMany();
+
+    return result.map((row) => row.coinId).filter(Boolean);
+  }
+
+  /**
+   * Get the date range of available candle data
+   * @returns Object with start and end dates, or null if no data exists
+   */
+  async getCandleDataDateRange(): Promise<{ start: Date; end: Date } | null> {
+    const result = await this.ohlcRepository
+      .createQueryBuilder('candle')
+      .select('MIN(candle.timestamp)', 'minDate')
+      .addSelect('MAX(candle.timestamp)', 'maxDate')
+      .getRawOne();
+
+    if (!result?.minDate || !result?.maxDate) {
+      return null;
+    }
+
+    return {
+      start: new Date(result.minDate),
+      end: new Date(result.maxDate)
+    };
+  }
+
   // ==================== Gap Detection ====================
 
   /**

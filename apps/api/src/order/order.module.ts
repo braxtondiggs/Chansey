@@ -20,6 +20,7 @@ import { BacktestProcessor } from './backtest/backtest.processor';
 import { BacktestService } from './backtest/backtest.service';
 import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-report.entity';
 import { LiveReplayProcessor } from './backtest/live-replay.processor';
+import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
@@ -51,6 +52,7 @@ import { ExchangeModule } from '../exchange/exchange.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 import { SharedCacheModule } from '../shared-cache.module';
+import { StorageModule } from '../storage/storage.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
 import { UsersModule } from '../users/users.module';
@@ -104,7 +106,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     forwardRef(() => OHLCModule),
     forwardRef(() => UsersModule),
     IndicatorModule,
-    MetricsModule
+    MetricsModule,
+    StorageModule
   ],
   providers: [
     AlgorithmService,
@@ -116,6 +119,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestResultService,
     BacktestGateway,
     CoinService,
+    MarketDataReaderService,
     OrderCalculationService,
     OrderService,
     OrderStateMachineService,
