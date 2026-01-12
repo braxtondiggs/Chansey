@@ -466,7 +466,7 @@ export class BacktestService {
                 }
               : undefined,
             initiatedAt: backtest.createdAt,
-            completedAt: backtest.updatedAt
+            completedAt: backtest.completedAt
           },
           metrics: {
             totalReturn: backtest.totalReturn ?? 0,
@@ -767,9 +767,7 @@ export class BacktestService {
   }
 
   private mapRunSummary(backtest: Backtest): BacktestRunSummary {
-    const completedAt =
-      (backtest as { completedAt?: Date }).completedAt ??
-      (backtest.status === BacktestStatus.COMPLETED ? backtest.updatedAt : undefined);
+    const completedAt = backtest.completedAt;
 
     return {
       id: backtest.id,

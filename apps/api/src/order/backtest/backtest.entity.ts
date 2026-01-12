@@ -171,6 +171,10 @@ export class Backtest {
   @ApiProperty({ description: 'When the backtest was last updated' })
   updatedAt: Date;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'When the backtest completed', required: false })
+  completedAt?: Date;
+
   @Index('backtest_userId_index')
   @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn()
