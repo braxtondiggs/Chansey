@@ -215,3 +215,114 @@ export interface AttachExitOrdersResult {
   /** Any warnings during exit order placement */
   warnings?: string[];
 }
+
+/**
+ * Validation limits for exit prices (sanity checks)
+ * Prevents price manipulation and unreasonable exit levels
+ */
+export interface ExitPriceValidationLimits {
+  /** Max stop loss distance from entry as percentage (default: 50%) */
+  maxStopLossPercentage: number;
+  /** Min stop loss distance from entry as percentage (default: 0.1%) */
+  minStopLossPercentage: number;
+  /** Max take profit distance from entry as percentage (default: 500%) */
+  maxTakeProfitPercentage: number;
+  /** Min take profit distance from entry as percentage (default: 0.1%) */
+  minTakeProfitPercentage: number;
+  /** Max trailing stop distance from entry as percentage (default: 50%) */
+  maxTrailingStopPercentage: number;
+  /** Min trailing stop distance from entry as percentage (default: 0.1%) */
+  minTrailingStopPercentage: number;
+}
+
+/**
+ * Default validation limits
+ */
+export const DEFAULT_EXIT_PRICE_VALIDATION_LIMITS: ExitPriceValidationLimits = {
+  maxStopLossPercentage: 50, // Reject stop loss >50% away from entry
+  minStopLossPercentage: 0.1, // Reject stop loss <0.1% away (likely error)
+  maxTakeProfitPercentage: 500, // Reject take profit >500% away
+  minTakeProfitPercentage: 0.1, // Reject take profit <0.1% away
+  maxTrailingStopPercentage: 50, // Reject trailing stop >50% away
+  minTrailingStopPercentage: 0.1 // Reject trailing stop <0.1% away
+};
+
+/**
+ * Individual validation error for exit price
+ */
+export interface ExitPriceValidationError {
+  /** Type of exit (stopLoss, takeProfit, trailingStop) */
+  exitType: 'stopLoss' | 'takeProfit' | 'trailingStop';
+  /** Error code for programmatic handling */
+  code: ExitPriceValidationErrorCode;
+  /** Human-readable error message */
+  message: string;
+  /** Calculated price that failed validation */
+  calculatedPrice: number;
+  /** Entry price used for reference */
+  entryPrice: number;
+  /** Distance percentage from entry */
+  distancePercentage: number;
+}
+
+/**
+ * Error codes for exit price validation
+ */
+export enum ExitPriceValidationErrorCode {
+  /** Price is on wrong side of entry */
+  WRONG_SIDE = 'wrong_side',
+  /** Distance exceeds maximum allowed */
+  EXCEEDS_MAX_DISTANCE = 'exceeds_max_distance',
+  /** Distance is below minimum allowed */
+  BELOW_MIN_DISTANCE = 'below_min_distance',
+  /** Price is negative or zero */
+  INVALID_PRICE = 'invalid_price'
+}
+
+/**
+ * Result of exit price validation
+ */
+export interface ExitPriceValidationResult {
+  /** Whether all prices passed validation */
+  isValid: boolean;
+  /** List of validation errors (empty if valid) */
+  errors: ExitPriceValidationError[];
+}
+
+/**
+ * Quantity validation result for exit orders
+ */
+export interface QuantityValidationResult {
+  /** Whether quantity is valid for exchange */
+  isValid: boolean;
+  /** Original quantity requested */
+  originalQuantity: number;
+  /** Adjusted quantity (aligned to step size) */
+  adjustedQuantity: number;
+  /** Minimum allowed quantity */
+  minQuantity: number;
+  /** Minimum notional value required */
+  minNotional: number;
+  /** Actual notional value */
+  actualNotional: number;
+  /** Error message if invalid */
+  error?: string;
+}
+
+/**
+ * Exchange market limits for quantity validation
+ */
+export interface ExchangeMarketLimits {
+  /** Minimum order quantity */
+  minAmount: number;
+  /** Maximum order quantity */
+  maxAmount: number;
+  /** Quantity step size (precision) */
+  amountStep: number;
+  /** Minimum order value (notional) in quote currency */
+  minCost: number;
+  /** Price precision */
+  pricePrecision: number;
+  /** Amount precision (decimal places) */
+  amountPrecision: number;
+}

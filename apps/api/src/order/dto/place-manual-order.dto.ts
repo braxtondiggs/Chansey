@@ -36,7 +36,8 @@ export class ExitConfigDto {
   })
   enableStopLoss?: boolean;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableStopLoss === true)
+  @IsNotEmpty({ message: 'Stop loss type is required when stop loss is enabled' })
   @IsEnum(StopLossType)
   @ApiProperty({
     enum: StopLossType,
@@ -46,7 +47,8 @@ export class ExitConfigDto {
   })
   stopLossType?: StopLossType;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableStopLoss === true)
+  @IsNotEmpty({ message: 'Stop loss value is required when stop loss is enabled' })
   @IsNumber()
   @Min(0)
   @ApiProperty({
@@ -65,7 +67,8 @@ export class ExitConfigDto {
   })
   enableTakeProfit?: boolean;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableTakeProfit === true)
+  @IsNotEmpty({ message: 'Take profit type is required when take profit is enabled' })
   @IsEnum(TakeProfitType)
   @ApiProperty({
     enum: TakeProfitType,
@@ -75,7 +78,8 @@ export class ExitConfigDto {
   })
   takeProfitType?: TakeProfitType;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableTakeProfit === true)
+  @IsNotEmpty({ message: 'Take profit value is required when take profit is enabled' })
   @IsNumber()
   @Min(0)
   @ApiProperty({
@@ -85,7 +89,8 @@ export class ExitConfigDto {
   })
   takeProfitValue?: number;
 
-  @IsOptional()
+  @ValidateIf((o) => o.stopLossType === StopLossType.ATR)
+  @IsNotEmpty({ message: 'ATR period is required when using ATR-based stop loss' })
   @IsNumber()
   @Min(1)
   @ApiProperty({
@@ -95,7 +100,8 @@ export class ExitConfigDto {
   })
   atrPeriod?: number;
 
-  @IsOptional()
+  @ValidateIf((o) => o.stopLossType === StopLossType.ATR)
+  @IsNotEmpty({ message: 'ATR multiplier is required when using ATR-based stop loss' })
   @IsNumber()
   @Min(0.1)
   @ApiProperty({
@@ -114,7 +120,8 @@ export class ExitConfigDto {
   })
   enableTrailingStop?: boolean;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableTrailingStop === true)
+  @IsNotEmpty({ message: 'Trailing type is required when trailing stop is enabled' })
   @IsEnum(ExitTrailingType)
   @ApiProperty({
     enum: ExitTrailingType,
@@ -124,7 +131,8 @@ export class ExitConfigDto {
   })
   trailingType?: ExitTrailingType;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableTrailingStop === true)
+  @IsNotEmpty({ message: 'Trailing value is required when trailing stop is enabled' })
   @IsNumber()
   @Min(0)
   @ApiProperty({
@@ -134,7 +142,8 @@ export class ExitConfigDto {
   })
   trailingValue?: number;
 
-  @IsOptional()
+  @ValidateIf((o) => o.enableTrailingStop === true)
+  @IsNotEmpty({ message: 'Trailing activation type is required when trailing stop is enabled' })
   @IsEnum(TrailingActivationType)
   @ApiProperty({
     enum: TrailingActivationType,
@@ -144,7 +153,11 @@ export class ExitConfigDto {
   })
   trailingActivation?: TrailingActivationType;
 
-  @IsOptional()
+  @ValidateIf(
+    (o) =>
+      o.enableTrailingStop === true && o.trailingActivation && o.trailingActivation !== TrailingActivationType.IMMEDIATE
+  )
+  @IsNotEmpty({ message: 'Trailing activation value is required for non-immediate activation types' })
   @IsNumber()
   @ApiProperty({
     description: 'Trailing activation value (price or percentage depending on activation type)',

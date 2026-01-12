@@ -36,6 +36,7 @@ import { PriceModule } from './price/price.module';
 import { RiskModule } from './risk/risk.module';
 import { ScoringModule } from './scoring/scoring.module';
 import { SharedLockModule } from './shared/shared-lock.module';
+import { SharedResilienceModule } from './shared/shared-resilience.module';
 import { QUEUE_NAMES } from './shutdown/queue-names.constant';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { StorageModule } from './storage/storage.module';
@@ -132,6 +133,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     RiskModule,
     ScoringModule,
     SharedLockModule,
+    SharedResilienceModule,
     ShutdownModule,
     StrategyModule,
     TasksModule,

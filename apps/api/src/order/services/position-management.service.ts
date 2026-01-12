@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as ccxt from 'ccxt';
 import { DataSource, QueryRunner, Repository } from 'typeorm';
 
+import { randomUUID } from 'crypto';
+
 import { IndicatorService } from '../../algorithm/indicators/indicator.service';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
@@ -11,15 +13,24 @@ import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { PriceSummary } from '../../price/price.entity';
+import { CircuitBreakerService, CircuitOpenError } from '../../shared/circuit-breaker.service';
+import { isTransientError, withRetry } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
   AttachExitOrdersResult,
   CalculatedExitPrices,
   DEFAULT_EXIT_CONFIG,
+  DEFAULT_EXIT_PRICE_VALIDATION_LIMITS,
+  ExchangeMarketLimits,
   ExitConfig,
+  ExitPriceValidationError,
+  ExitPriceValidationErrorCode,
+  ExitPriceValidationLimits,
+  ExitPriceValidationResult,
   PlaceExitOrderParams,
   PositionExitStatus,
+  QuantityValidationResult,
   StopLossType,
   TakeProfitType,
   TrailingActivationType,
@@ -69,8 +80,57 @@ export class PositionManagementService {
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,
     private readonly indicatorService: IndicatorService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly circuitBreaker: CircuitBreakerService
   ) {}
+
+  /**
+   * Execute an exchange operation with circuit breaker and retry protection
+   *
+   * @param exchangeSlug - Exchange identifier for circuit breaker tracking
+   * @param operation - Async operation to execute
+   * @param operationName - Name for logging
+   * @returns Operation result
+   * @throws CircuitOpenError if circuit is open
+   * @throws Original error if all retries fail
+   */
+  private async executeWithResilience<T>(
+    exchangeSlug: string,
+    operation: () => Promise<T>,
+    operationName: string
+  ): Promise<T> {
+    const circuitKey = `exchange:${exchangeSlug}`;
+
+    // Check circuit breaker first (fail-fast)
+    try {
+      this.circuitBreaker.checkCircuit(circuitKey);
+    } catch (error) {
+      if (error instanceof CircuitOpenError) {
+        this.logger.warn(`${operationName} blocked by circuit breaker for ${exchangeSlug}: ${error.message}`);
+      }
+      throw error;
+    }
+
+    // Execute with retry
+    const result = await withRetry(operation, {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      maxDelayMs: 10000,
+      backoffMultiplier: 2,
+      isRetryable: isTransientError,
+      logger: this.logger,
+      operationName: `${operationName} (${exchangeSlug})`
+    });
+
+    if (result.success) {
+      this.circuitBreaker.recordSuccess(circuitKey);
+      return result.result as T;
+    }
+
+    // Record failure and throw
+    this.circuitBreaker.recordFailure(circuitKey);
+    throw result.error;
+  }
 
   /**
    * Attach exit orders to a newly created entry order
@@ -139,6 +199,14 @@ export class PositionManagementService {
     const side = entryOrder.side as 'BUY' | 'SELL';
     const calculatedPrices = this.calculateExitPrices(entryPrice, side, config, currentAtr);
 
+    // Validate exit prices for sanity (price manipulation protection)
+    const validationResult = this.validateExitPrices(calculatedPrices, side);
+    if (!validationResult.isValid) {
+      const errorMessages = validationResult.errors.map((e) => e.message).join('; ');
+      this.logger.error(`Exit price validation failed: ${errorMessages}`);
+      throw new BadRequestException(`Invalid exit prices: ${errorMessages}`);
+    }
+
     // Start transaction for exit order creation
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -150,21 +218,80 @@ export class PositionManagementService {
     let ocoLinked = false;
 
     try {
-      // Get exchange client if available
+      // Get exchange client if available (with resilience)
       let exchangeClient: ccxt.Exchange | null = null;
       let exchangeSlug: string | undefined;
+      let marketLimits: ExchangeMarketLimits | null = null;
 
       if (exchangeKey?.exchange) {
         exchangeSlug = exchangeKey.exchange.slug;
-        exchangeClient = await this.exchangeManagerService.getExchangeClient(exchangeSlug, user);
-        await exchangeClient.loadMarkets();
+        try {
+          exchangeClient = await this.executeWithResilience(
+            exchangeSlug,
+            () => this.exchangeManagerService.getExchangeClient(exchangeSlug!, user),
+            'getExchangeClient'
+          );
+          await this.executeWithResilience(exchangeSlug, () => exchangeClient!.loadMarkets(), 'loadMarkets');
+          // Get market limits for quantity validation
+          marketLimits = this.getMarketLimits(exchangeClient, entryOrder.symbol);
+        } catch (clientError) {
+          // Log but continue - we can still create tracking orders without exchange
+          if (clientError instanceof CircuitOpenError) {
+            warnings.push(`Exchange ${exchangeSlug} circuit open - orders will be tracked locally`);
+          } else {
+            warnings.push(`Exchange client initialization failed: ${clientError.message}`);
+          }
+          this.logger.warn(`Exchange client unavailable for ${exchangeSlug}: ${clientError.message}`);
+          exchangeClient = null;
+        }
       }
 
       // Determine exit order side (opposite of entry)
       const exitSide: 'BUY' | 'SELL' = side === 'BUY' ? 'SELL' : 'BUY';
 
-      // Place stop loss order
+      // Get raw quantity from entry order
+      const rawQuantity = entryOrder.executedQuantity || entryOrder.quantity;
+
+      // Validate quantity for stop loss
+      let stopLossQuantity = rawQuantity;
       if (config.enableStopLoss && calculatedPrices.stopLossPrice) {
+        const slValidation = this.validateExitOrderQuantity(rawQuantity, calculatedPrices.stopLossPrice, marketLimits);
+        if (!slValidation.isValid) {
+          warnings.push(`Stop loss quantity invalid: ${slValidation.error}`);
+          this.logger.warn(`Stop loss quantity validation failed: ${slValidation.error}`);
+        } else {
+          stopLossQuantity = slValidation.adjustedQuantity;
+          if (slValidation.adjustedQuantity !== slValidation.originalQuantity) {
+            this.logger.debug(
+              `Stop loss quantity adjusted from ${slValidation.originalQuantity} to ${slValidation.adjustedQuantity}`
+            );
+          }
+        }
+      }
+
+      // Validate quantity for take profit
+      let takeProfitQuantity = rawQuantity;
+      if (config.enableTakeProfit && calculatedPrices.takeProfitPrice) {
+        const tpValidation = this.validateExitOrderQuantity(
+          rawQuantity,
+          calculatedPrices.takeProfitPrice,
+          marketLimits
+        );
+        if (!tpValidation.isValid) {
+          warnings.push(`Take profit quantity invalid: ${tpValidation.error}`);
+          this.logger.warn(`Take profit quantity validation failed: ${tpValidation.error}`);
+        } else {
+          takeProfitQuantity = tpValidation.adjustedQuantity;
+          if (tpValidation.adjustedQuantity !== tpValidation.originalQuantity) {
+            this.logger.debug(
+              `Take profit quantity adjusted from ${tpValidation.originalQuantity} to ${tpValidation.adjustedQuantity}`
+            );
+          }
+        }
+      }
+
+      // Place stop loss order (using validated quantity)
+      if (config.enableStopLoss && calculatedPrices.stopLossPrice && stopLossQuantity > 0) {
         try {
           stopLossOrder = await this.placeStopLossOrder(
             {
@@ -172,7 +299,7 @@ export class PositionManagementService {
               exchangeKeyId: entryOrder.exchangeKeyId || '',
               symbol: entryOrder.symbol,
               side: exitSide,
-              quantity: entryOrder.executedQuantity || entryOrder.quantity,
+              quantity: stopLossQuantity,
               price: calculatedPrices.stopLossPrice,
               orderType: 'stop_loss',
               stopPrice: calculatedPrices.stopLossPrice
@@ -180,7 +307,8 @@ export class PositionManagementService {
             exchangeClient,
             user,
             exchangeKey,
-            queryRunner
+            queryRunner,
+            exchangeSlug
           );
         } catch (slError) {
           warnings.push(`Stop loss placement failed: ${slError.message}`);
@@ -188,8 +316,8 @@ export class PositionManagementService {
         }
       }
 
-      // Place take profit order
-      if (config.enableTakeProfit && calculatedPrices.takeProfitPrice) {
+      // Place take profit order (using validated quantity)
+      if (config.enableTakeProfit && calculatedPrices.takeProfitPrice && takeProfitQuantity > 0) {
         try {
           takeProfitOrder = await this.placeTakeProfitOrder(
             {
@@ -197,14 +325,15 @@ export class PositionManagementService {
               exchangeKeyId: entryOrder.exchangeKeyId || '',
               symbol: entryOrder.symbol,
               side: exitSide,
-              quantity: entryOrder.executedQuantity || entryOrder.quantity,
+              quantity: takeProfitQuantity,
               price: calculatedPrices.takeProfitPrice,
               orderType: 'take_profit'
             },
             exchangeClient,
             user,
             exchangeKey,
-            queryRunner
+            queryRunner,
+            exchangeSlug
           );
         } catch (tpError) {
           warnings.push(`Take profit placement failed: ${tpError.message}`);
@@ -328,6 +457,255 @@ export class PositionManagementService {
     }
 
     return result;
+  }
+
+  /**
+   * Validate calculated exit prices for sanity (price manipulation protection)
+   *
+   * Checks:
+   * - Prices are on correct side of entry (SL below for long, above for short, etc.)
+   * - Prices are within reasonable distance from entry (not >50% for SL, etc.)
+   * - Prices are not too close to entry (not <0.1%, likely an error)
+   * - Prices are positive and non-zero
+   *
+   * @param calculatedPrices - The calculated exit prices to validate
+   * @param side - Position side (BUY = long, SELL = short)
+   * @param limits - Validation limits (uses defaults if not provided)
+   * @returns Validation result with any errors
+   */
+  validateExitPrices(
+    calculatedPrices: CalculatedExitPrices,
+    side: 'BUY' | 'SELL',
+    limits: ExitPriceValidationLimits = DEFAULT_EXIT_PRICE_VALIDATION_LIMITS
+  ): ExitPriceValidationResult {
+    const errors: ExitPriceValidationError[] = [];
+    const { entryPrice, stopLossPrice, takeProfitPrice, trailingStopPrice } = calculatedPrices;
+
+    // Validate stop loss
+    if (stopLossPrice !== undefined) {
+      const slErrors = this.validateSingleExitPrice(
+        'stopLoss',
+        stopLossPrice,
+        entryPrice,
+        side,
+        limits.minStopLossPercentage,
+        limits.maxStopLossPercentage,
+        // For stop loss: long expects below entry, short expects above
+        side === 'BUY' ? 'below' : 'above'
+      );
+      errors.push(...slErrors);
+    }
+
+    // Validate take profit
+    if (takeProfitPrice !== undefined) {
+      const tpErrors = this.validateSingleExitPrice(
+        'takeProfit',
+        takeProfitPrice,
+        entryPrice,
+        side,
+        limits.minTakeProfitPercentage,
+        limits.maxTakeProfitPercentage,
+        // For take profit: long expects above entry, short expects below
+        side === 'BUY' ? 'above' : 'below'
+      );
+      errors.push(...tpErrors);
+    }
+
+    // Validate trailing stop
+    if (trailingStopPrice !== undefined) {
+      const tsErrors = this.validateSingleExitPrice(
+        'trailingStop',
+        trailingStopPrice,
+        entryPrice,
+        side,
+        limits.minTrailingStopPercentage,
+        limits.maxTrailingStopPercentage,
+        // For trailing stop initial price: same as stop loss logic
+        side === 'BUY' ? 'below' : 'above'
+      );
+      errors.push(...tsErrors);
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Validate a single exit price
+   */
+  private validateSingleExitPrice(
+    exitType: 'stopLoss' | 'takeProfit' | 'trailingStop',
+    price: number,
+    entryPrice: number,
+    side: 'BUY' | 'SELL',
+    minPercentage: number,
+    maxPercentage: number,
+    expectedSide: 'above' | 'below'
+  ): ExitPriceValidationError[] {
+    const errors: ExitPriceValidationError[] = [];
+    const distancePercentage = Math.abs((price - entryPrice) / entryPrice) * 100;
+
+    // Check for invalid price (zero or negative)
+    if (price <= 0) {
+      errors.push({
+        exitType,
+        code: ExitPriceValidationErrorCode.INVALID_PRICE,
+        message: `${exitType} price must be positive (got ${price})`,
+        calculatedPrice: price,
+        entryPrice,
+        distancePercentage: 0
+      });
+      return errors; // Early return, no point checking other validations
+    }
+
+    // Check price is on correct side
+    const isAbove = price > entryPrice;
+    const isBelow = price < entryPrice;
+    const isOnCorrectSide = expectedSide === 'above' ? isAbove : isBelow;
+
+    if (!isOnCorrectSide && price !== entryPrice) {
+      const sideDescription = side === 'BUY' ? 'long' : 'short';
+      const expectedDescription = expectedSide === 'above' ? 'above' : 'below';
+      errors.push({
+        exitType,
+        code: ExitPriceValidationErrorCode.WRONG_SIDE,
+        message: `${exitType} price (${price}) must be ${expectedDescription} entry price (${entryPrice}) for ${sideDescription} position`,
+        calculatedPrice: price,
+        entryPrice,
+        distancePercentage
+      });
+    }
+
+    // Check minimum distance (too close suggests an error)
+    if (distancePercentage < minPercentage && price !== entryPrice) {
+      errors.push({
+        exitType,
+        code: ExitPriceValidationErrorCode.BELOW_MIN_DISTANCE,
+        message: `${exitType} is only ${distancePercentage.toFixed(2)}% from entry, minimum is ${minPercentage}%`,
+        calculatedPrice: price,
+        entryPrice,
+        distancePercentage
+      });
+    }
+
+    // Check maximum distance (too far suggests manipulation or error)
+    if (distancePercentage > maxPercentage) {
+      errors.push({
+        exitType,
+        code: ExitPriceValidationErrorCode.EXCEEDS_MAX_DISTANCE,
+        message: `${exitType} is ${distancePercentage.toFixed(2)}% from entry, maximum allowed is ${maxPercentage}%`,
+        calculatedPrice: price,
+        entryPrice,
+        distancePercentage
+      });
+    }
+
+    return errors;
+  }
+
+  /**
+   * Get market limits from exchange client
+   * Extracts minimum order size, step size, and notional requirements
+   */
+  private getMarketLimits(exchangeClient: ccxt.Exchange, symbol: string): ExchangeMarketLimits | null {
+    try {
+      const market = exchangeClient.markets?.[symbol];
+      if (!market) {
+        this.logger.warn(`Market ${symbol} not found in exchange markets`);
+        return null;
+      }
+
+      return {
+        minAmount: market.limits?.amount?.min ?? 0,
+        maxAmount: market.limits?.amount?.max ?? Number.MAX_SAFE_INTEGER,
+        amountStep: market.precision?.amount ?? 8,
+        minCost: market.limits?.cost?.min ?? 0,
+        pricePrecision: market.precision?.price ?? 8,
+        amountPrecision: market.precision?.amount ?? 8
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to get market limits for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Validate and adjust exit order quantity against exchange requirements
+   *
+   * Checks:
+   * - Quantity is above minimum order size
+   * - Quantity meets minimum notional value (quantity × price)
+   * - Quantity is aligned to step size precision
+   *
+   * @param quantity - Requested quantity
+   * @param price - Order price (for notional calculation)
+   * @param limits - Exchange market limits
+   * @returns Validation result with adjusted quantity
+   */
+  validateExitOrderQuantity(
+    quantity: number,
+    price: number,
+    limits: ExchangeMarketLimits | null
+  ): QuantityValidationResult {
+    // If no limits available, accept the quantity as-is
+    if (!limits) {
+      return {
+        isValid: true,
+        originalQuantity: quantity,
+        adjustedQuantity: quantity,
+        minQuantity: 0,
+        minNotional: 0,
+        actualNotional: quantity * price
+      };
+    }
+
+    const { minAmount, amountStep, minCost, amountPrecision } = limits;
+
+    // Align quantity to step size (floor to avoid exceeding available balance)
+    const precision = typeof amountPrecision === 'number' ? amountPrecision : 8;
+    const step = typeof amountStep === 'number' ? Math.pow(10, -amountStep) : amountStep;
+    const adjustedQuantity = Number((Math.floor(quantity / step) * step).toFixed(precision));
+
+    // Calculate notional value
+    const actualNotional = adjustedQuantity * price;
+
+    // Check minimum quantity
+    if (adjustedQuantity < minAmount) {
+      return {
+        isValid: false,
+        originalQuantity: quantity,
+        adjustedQuantity,
+        minQuantity: minAmount,
+        minNotional: minCost,
+        actualNotional,
+        error: `Quantity ${adjustedQuantity} is below minimum ${minAmount} for this market`
+      };
+    }
+
+    // Check minimum notional value
+    if (actualNotional < minCost && minCost > 0) {
+      const requiredQuantity = Math.ceil(minCost / price / step) * step;
+      return {
+        isValid: false,
+        originalQuantity: quantity,
+        adjustedQuantity,
+        minQuantity: minAmount,
+        minNotional: minCost,
+        actualNotional,
+        error: `Order value ${actualNotional.toFixed(2)} is below minimum ${minCost}. Need at least ${requiredQuantity} units.`
+      };
+    }
+
+    return {
+      isValid: true,
+      originalQuantity: quantity,
+      adjustedQuantity,
+      minQuantity: minAmount,
+      minNotional: minCost,
+      actualNotional
+    };
   }
 
   /**
@@ -521,26 +899,32 @@ export class PositionManagementService {
   }
 
   /**
-   * Place stop loss order on exchange
+   * Place stop loss order on exchange (with resilience)
    */
   private async placeStopLossOrder(
     params: PlaceExitOrderParams,
     exchangeClient: ccxt.Exchange | null,
     user: User,
     exchangeKey: ExchangeKey | null,
-    queryRunner: QueryRunner
+    queryRunner: QueryRunner,
+    exchangeSlug?: string
   ): Promise<Order> {
     let ccxtOrder: ccxt.Order | null = null;
 
-    if (exchangeClient) {
+    if (exchangeClient && exchangeSlug) {
       try {
-        ccxtOrder = await exchangeClient.createOrder(
-          params.symbol,
-          'stop_loss',
-          params.side.toLowerCase(),
-          params.quantity,
-          undefined, // No limit price for market stop
-          { stopPrice: params.stopPrice }
+        ccxtOrder = await this.executeWithResilience(
+          exchangeSlug,
+          () =>
+            exchangeClient!.createOrder(
+              params.symbol,
+              'stop_loss',
+              params.side.toLowerCase(),
+              params.quantity,
+              undefined, // No limit price for market stop
+              { stopPrice: params.stopPrice }
+            ),
+          'createStopLossOrder'
         );
       } catch (exchangeError) {
         this.logger.warn(`Exchange stop loss creation failed: ${exchangeError.message}`);
@@ -553,8 +937,8 @@ export class PositionManagementService {
 
     // Create order entity
     const order = queryRunner.manager.create(Order, {
-      orderId: ccxtOrder?.id?.toString() || `sl_pending_${Date.now()}`,
-      clientOrderId: ccxtOrder?.clientOrderId || `sl_pending_${Date.now()}`,
+      orderId: ccxtOrder?.id?.toString() || `sl_pending_${randomUUID()}`,
+      clientOrderId: ccxtOrder?.clientOrderId || `sl_pending_${randomUUID()}`,
       symbol: params.symbol,
       side: params.side as OrderSide,
       type: OrderType.STOP_LOSS,
@@ -578,26 +962,32 @@ export class PositionManagementService {
   }
 
   /**
-   * Place take profit order on exchange
+   * Place take profit order on exchange (with resilience)
    */
   private async placeTakeProfitOrder(
     params: PlaceExitOrderParams,
     exchangeClient: ccxt.Exchange | null,
     user: User,
     exchangeKey: ExchangeKey | null,
-    queryRunner: QueryRunner
+    queryRunner: QueryRunner,
+    exchangeSlug?: string
   ): Promise<Order> {
     let ccxtOrder: ccxt.Order | null = null;
 
-    if (exchangeClient) {
+    if (exchangeClient && exchangeSlug) {
       try {
         // Take profit is typically a limit order
-        ccxtOrder = await exchangeClient.createOrder(
-          params.symbol,
-          'limit',
-          params.side.toLowerCase(),
-          params.quantity,
-          params.price
+        ccxtOrder = await this.executeWithResilience(
+          exchangeSlug,
+          () =>
+            exchangeClient!.createOrder(
+              params.symbol,
+              'limit',
+              params.side.toLowerCase(),
+              params.quantity,
+              params.price
+            ),
+          'createTakeProfitOrder'
         );
       } catch (exchangeError) {
         this.logger.warn(`Exchange take profit creation failed: ${exchangeError.message}`);
@@ -609,8 +999,8 @@ export class PositionManagementService {
 
     // Create order entity
     const order = queryRunner.manager.create(Order, {
-      orderId: ccxtOrder?.id?.toString() || `tp_pending_${Date.now()}`,
-      clientOrderId: ccxtOrder?.clientOrderId || `tp_pending_${Date.now()}`,
+      orderId: ccxtOrder?.id?.toString() || `tp_pending_${randomUUID()}`,
+      clientOrderId: ccxtOrder?.clientOrderId || `tp_pending_${randomUUID()}`,
       symbol: params.symbol,
       side: params.side as OrderSide,
       type: OrderType.TAKE_PROFIT,
@@ -701,7 +1091,7 @@ export class PositionManagementService {
   }
 
   /**
-   * Cancel an order by ID
+   * Cancel an order by ID (with resilience)
    */
   private async cancelOrderById(orderId: string, user: User): Promise<void> {
     try {
@@ -715,13 +1105,22 @@ export class PositionManagementService {
         return;
       }
 
-      // Try to cancel on exchange if we have exchange key
+      // Try to cancel on exchange if we have exchange key (with resilience)
       if (order.exchangeKeyId && order.exchange) {
+        const exchangeSlug = order.exchange.slug;
         try {
           const exchangeKey = await this.exchangeKeyService.findOne(order.exchangeKeyId, user.id);
           if (exchangeKey) {
-            const exchangeClient = await this.exchangeManagerService.getExchangeClient(order.exchange.slug, user);
-            await exchangeClient.cancelOrder(order.orderId, order.symbol);
+            const exchangeClient = await this.executeWithResilience(
+              exchangeSlug,
+              () => this.exchangeManagerService.getExchangeClient(exchangeSlug, user),
+              'getExchangeClient'
+            );
+            await this.executeWithResilience(
+              exchangeSlug,
+              () => exchangeClient.cancelOrder(order.orderId, order.symbol),
+              'cancelOrder'
+            );
           }
         } catch (cancelError) {
           this.logger.warn(`Exchange order cancellation failed: ${cancelError.message}`);

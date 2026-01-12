@@ -44,6 +44,7 @@ The sync frequency can be modified by changing the cron expressions in `order.ta
 async syncAllUsersOrders() {
   // ...
 }
+```
 
 ## Supported Exchanges
 
@@ -53,10 +54,10 @@ Currently supports:
 - **Coinbase**: Complete order sync with commission tracking and price calculation
 
 Additional exchanges can be added by:
+
 1. Adding the exchange service to the `exchangeConfigs` array in `syncOrdersForUser`
 2. Implementing the exchange client method
 3. Adding exchange identification logic in `saveExchangeOrders`
-```
 
 ---
 
@@ -147,13 +148,12 @@ Tracks the lifecycle of exit orders:
 
 ```typescript
 enum PositionExitStatus {
-  PENDING = 'pending', // Exit orders not yet placed
   ACTIVE = 'active', // Exit orders live on exchange
-  SL_TRIGGERED = 'sl_triggered', // Stop-loss filled
-  TP_TRIGGERED = 'tp_triggered', // Take-profit filled
-  TRAILING_TRIGGERED = 'trailing_triggered',
-  CANCELLED = 'cancelled',
-  ERROR = 'error'
+  STOP_LOSS_TRIGGERED = 'sl_triggered', // Stop-loss filled
+  TAKE_PROFIT_TRIGGERED = 'tp_triggered', // Take-profit filled
+  TRAILING_TRIGGERED = 'trailing_triggered', // Trailing stop filled
+  CANCELLED = 'cancelled', // Exit orders manually cancelled
+  EXPIRED = 'expired' // Exit orders expired (position closed manually)
 }
 ```
 
@@ -295,21 +295,37 @@ await positionManagementService.attachExitOrders(entryOrder, exitConfig, priceDa
 
 The `position_exits` table stores exit order state:
 
-| Column                        | Type    | Description                   |
-| ----------------------------- | ------- | ----------------------------- |
-| `id`                          | uuid    | Primary key                   |
-| `entry_order_id`              | uuid    | FK to orders table            |
-| `user_id`                     | uuid    | FK to users table             |
-| `status`                      | enum    | Current exit status           |
-| `exit_config`                 | jsonb   | Full exit configuration       |
-| `calculated_sl_price`         | decimal | Computed stop-loss price      |
-| `calculated_tp_price`         | decimal | Computed take-profit price    |
-| `sl_order_id`                 | varchar | Exchange stop-loss order ID   |
-| `tp_order_id`                 | varchar | Exchange take-profit order ID |
-| `trailing_activated`          | boolean | Whether trailing is active    |
-| `trailing_high_water_mark`    | decimal | Highest price for longs       |
-| `trailing_low_water_mark`     | decimal | Lowest price for shorts       |
-| `current_trailing_stop_price` | decimal | Current trailing stop level   |
+| Column                     | Type          | Description                             |
+| -------------------------- | ------------- | --------------------------------------- |
+| `id`                       | uuid          | Primary key                             |
+| `positionId`               | uuid          | FK to UserStrategyPosition (nullable)   |
+| `entry_order_id`           | uuid          | FK to orders table                      |
+| `stop_loss_order_id`       | uuid          | FK to stop-loss order (nullable)        |
+| `take_profit_order_id`     | uuid          | FK to take-profit order (nullable)      |
+| `trailing_stop_order_id`   | uuid          | FK to trailing stop order (nullable)    |
+| `user_id`                  | uuid          | FK to users table                       |
+| `strategy_config_id`       | uuid          | FK to strategy_configs (nullable)       |
+| `exchangeKeyId`            | uuid          | Exchange key used (nullable)            |
+| `status`                   | enum          | Current exit status                     |
+| `symbol`                   | varchar(20)   | Trading pair (e.g., BTC/USDT)           |
+| `quantity`                 | decimal(20,8) | Position quantity                       |
+| `side`                     | varchar(4)    | Position side (BUY/SELL)                |
+| `exitConfig`               | jsonb         | Full exit configuration                 |
+| `entryPrice`               | decimal(20,8) | Entry price for calculations            |
+| `stopLossPrice`            | decimal(20,8) | Calculated stop-loss price (nullable)   |
+| `takeProfitPrice`          | decimal(20,8) | Calculated take-profit price (nullable) |
+| `currentTrailingStopPrice` | decimal(20,8) | Current trailing stop level (nullable)  |
+| `trailingHighWaterMark`    | decimal(20,8) | Highest price for longs (nullable)      |
+| `trailingLowWaterMark`     | decimal(20,8) | Lowest price for shorts (nullable)      |
+| `trailingActivated`        | boolean       | Whether trailing is active              |
+| `ocoLinked`                | boolean       | Whether SL/TP are OCO linked            |
+| `entryAtr`                 | decimal(20,8) | ATR at time of entry (nullable)         |
+| `triggeredAt`              | timestamptz   | When exit was triggered (nullable)      |
+| `exitPrice`                | decimal(20,8) | Exit price when triggered (nullable)    |
+| `realizedPnL`              | decimal(20,8) | P&L from exit (nullable)                |
+| `warnings`                 | jsonb         | Placement warnings (nullable)           |
+| `createdAt`                | timestamptz   | Created timestamp                       |
+| `updatedAt`                | timestamptz   | Updated timestamp                       |
 
 ## Error Handling
 

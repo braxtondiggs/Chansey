@@ -9,11 +9,15 @@ import { IndicatorService } from '../../algorithm/indicators/indicator.service';
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { User } from '../../users/users.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
+  CalculatedExitPrices,
   DEFAULT_EXIT_CONFIG,
+  DEFAULT_EXIT_PRICE_VALIDATION_LIMITS,
   ExitConfig,
+  ExitPriceValidationErrorCode,
   PositionExitStatus,
   StopLossType,
   TakeProfitType,
@@ -67,6 +71,15 @@ describe('PositionManagementService', () => {
     createQueryRunner: jest.fn()
   };
 
+  const mockCircuitBreakerService = {
+    checkCircuit: jest.fn(), // Does not throw by default (circuit closed)
+    recordSuccess: jest.fn(),
+    recordFailure: jest.fn(),
+    isOpen: jest.fn().mockReturnValue(false),
+    getState: jest.fn().mockReturnValue('closed'),
+    reset: jest.fn()
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,7 +91,8 @@ describe('PositionManagementService', () => {
         { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
         { provide: CoinService, useValue: mockCoinService },
         { provide: IndicatorService, useValue: mockIndicatorService },
-        { provide: DataSource, useValue: mockDataSource }
+        { provide: DataSource, useValue: mockDataSource },
+        { provide: CircuitBreakerService, useValue: mockCircuitBreakerService }
       ]
     }).compile();
 
@@ -420,6 +434,21 @@ describe('PositionManagementService', () => {
         expect(result.trailingStopPrice).toBe(49500);
       });
 
+      it('should fallback to 1% trailing stop when trailing type is unknown', () => {
+        const config: ExitConfig = {
+          ...DEFAULT_EXIT_CONFIG,
+          enableTrailingStop: true,
+          trailingType: 'unknown' as TrailingType,
+          trailingValue: 2,
+          trailingActivation: TrailingActivationType.IMMEDIATE
+        };
+
+        const result = service.calculateExitPrices(entryPrice, 'BUY', config);
+
+        // Default 1%: 50000 - (50000 * 0.01) = 49500
+        expect(result.trailingStopPrice).toBe(49500);
+      });
+
       it('should calculate trailing activation price for percentage activation', () => {
         const config: ExitConfig = {
           ...DEFAULT_EXIT_CONFIG,
@@ -436,6 +465,22 @@ describe('PositionManagementService', () => {
         expect(result.trailingActivationPrice).toBe(51000);
       });
 
+      it('should calculate trailing activation price for percentage activation on short position', () => {
+        const config: ExitConfig = {
+          ...DEFAULT_EXIT_CONFIG,
+          enableTrailingStop: true,
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: 1,
+          trailingActivation: TrailingActivationType.PERCENTAGE,
+          trailingActivationValue: 2
+        };
+
+        const result = service.calculateExitPrices(entryPrice, 'SELL', config);
+
+        // Activation: 50000 - (50000 * 0.02) = 49000
+        expect(result.trailingActivationPrice).toBe(49000);
+      });
+
       it('should return fixed activation price', () => {
         const config: ExitConfig = {
           ...DEFAULT_EXIT_CONFIG,
@@ -449,6 +494,35 @@ describe('PositionManagementService', () => {
         const result = service.calculateExitPrices(entryPrice, 'BUY', config);
 
         expect(result.trailingActivationPrice).toBe(52000);
+      });
+
+      it('should default activation price to entry when fixed price is not provided', () => {
+        const config: ExitConfig = {
+          ...DEFAULT_EXIT_CONFIG,
+          enableTrailingStop: true,
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: 1,
+          trailingActivation: TrailingActivationType.PRICE
+        };
+
+        const result = service.calculateExitPrices(entryPrice, 'BUY', config);
+
+        expect(result.trailingActivationPrice).toBe(50000);
+      });
+
+      it('should default activation percentage to 1% when not provided', () => {
+        const config: ExitConfig = {
+          ...DEFAULT_EXIT_CONFIG,
+          enableTrailingStop: true,
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: 1,
+          trailingActivation: TrailingActivationType.PERCENTAGE
+        };
+
+        const result = service.calculateExitPrices(entryPrice, 'BUY', config);
+
+        // Activation: 50000 + (50000 * 0.01) = 50500
+        expect(result.trailingActivationPrice).toBe(50500);
       });
 
       it('should not set activation price when activation is immediate', () => {
@@ -483,6 +557,339 @@ describe('PositionManagementService', () => {
         expect(result.entryPrice).toBe(50000);
         expect(result.stopLossPrice).toBe(49000); // 50000 - 2%
         expect(result.takeProfitPrice).toBe(52000); // 50000 + 4%
+      });
+    });
+  });
+
+  describe('validateExitPrices', () => {
+    const entryPrice = 50000;
+
+    describe('Valid prices', () => {
+      it('should return valid for reasonable long position exit prices', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 47500, // 5% below - valid
+          takeProfitPrice: 55000 // 10% above - valid
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('should return valid for reasonable short position exit prices', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 52500, // 5% above - valid for short
+          takeProfitPrice: 45000 // 10% below - valid for short
+        };
+
+        const result = service.validateExitPrices(prices, 'SELL');
+
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('should return valid when only stop loss is provided', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 47500
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+    });
+
+    describe('Stop loss on wrong side', () => {
+      it('should reject stop loss above entry for long position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 52000 // Above entry - wrong for long
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.WRONG_SIDE
+        );
+        expect(error).toBeDefined();
+        expect(error?.message).toContain('must be below entry price');
+      });
+
+      it('should reject stop loss below entry for short position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 48000 // Below entry - wrong for short
+        };
+
+        const result = service.validateExitPrices(prices, 'SELL');
+
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.WRONG_SIDE
+        );
+        expect(error).toBeDefined();
+        expect(error?.message).toContain('must be above entry price');
+      });
+    });
+
+    describe('Take profit on wrong side', () => {
+      it('should reject take profit below entry for long position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          takeProfitPrice: 48000 // Below entry - wrong for long
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'takeProfit' && entry.code === ExitPriceValidationErrorCode.WRONG_SIDE
+        );
+        expect(error).toBeDefined();
+      });
+
+      it('should reject take profit above entry for short position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          takeProfitPrice: 52000 // Above entry - wrong for short
+        };
+
+        const result = service.validateExitPrices(prices, 'SELL');
+
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'takeProfit' && entry.code === ExitPriceValidationErrorCode.WRONG_SIDE
+        );
+        expect(error).toBeDefined();
+      });
+    });
+
+    describe('Stop loss exceeds max distance (50%)', () => {
+      it('should reject stop loss more than 50% below entry for long position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 20000 // 60% below entry - exceeds 50% max
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.EXCEEDS_MAX_DISTANCE
+        );
+        expect(error).toBeDefined();
+        expect(error?.distancePercentage).toBe(60);
+      });
+
+      it('should reject stop loss more than 50% above entry for short position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 80000 // 60% above entry - exceeds 50% max
+        };
+
+        const result = service.validateExitPrices(prices, 'SELL');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.EXCEEDS_MAX_DISTANCE
+        );
+        expect(error).toBeDefined();
+      });
+
+      it('should accept stop loss at exactly 50%', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 25000 // Exactly 50% below
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(true);
+      });
+    });
+
+    describe('Take profit exceeds max distance (500%)', () => {
+      it('should reject take profit more than 500% above entry for long position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          takeProfitPrice: 350000 // 600% above entry - exceeds 500% max
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'takeProfit' && entry.code === ExitPriceValidationErrorCode.EXCEEDS_MAX_DISTANCE
+        );
+        expect(error).toBeDefined();
+        expect(error?.distancePercentage).toBe(600);
+      });
+    });
+
+    describe('Prices too close to entry (below minimum 0.1%)', () => {
+      it('should reject stop loss less than 0.1% from entry', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 49980 // 0.04% below - too close
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.BELOW_MIN_DISTANCE
+        );
+        expect(error).toBeDefined();
+      });
+
+      it('should reject take profit less than 0.1% from entry', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          takeProfitPrice: 50020 // 0.04% above - too close
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'takeProfit' && entry.code === ExitPriceValidationErrorCode.BELOW_MIN_DISTANCE
+        );
+        expect(error).toBeDefined();
+      });
+    });
+
+    describe('Invalid prices (zero or negative)', () => {
+      it('should reject zero stop loss price', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 0
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.INVALID_PRICE
+        );
+        expect(error).toBeDefined();
+      });
+
+      it('should reject negative take profit price', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          takeProfitPrice: -100
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'takeProfit' && entry.code === ExitPriceValidationErrorCode.INVALID_PRICE
+        );
+        expect(error).toBeDefined();
+      });
+    });
+
+    describe('Trailing stop validation', () => {
+      it('should validate trailing stop is on correct side for long', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          trailingStopPrice: 52000 // Above entry - wrong for long
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'trailingStop' && entry.code === ExitPriceValidationErrorCode.WRONG_SIDE
+        );
+        expect(error).toBeDefined();
+      });
+
+      it('should accept valid trailing stop for long position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          trailingStopPrice: 49000 // 2% below - valid
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(true);
+      });
+
+      it('should reject trailing stop below entry for short position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          trailingStopPrice: 48000 // Below entry - wrong for short
+        };
+
+        const result = service.validateExitPrices(prices, 'SELL');
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'trailingStop' && entry.code === ExitPriceValidationErrorCode.WRONG_SIDE
+        );
+        expect(error).toBeDefined();
+      });
+
+      it('should accept valid trailing stop for short position', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          trailingStopPrice: 51000 // 2% above - valid
+        };
+
+        const result = service.validateExitPrices(prices, 'SELL');
+
+        expect(result.isValid).toBe(true);
+      });
+    });
+
+    describe('Multiple errors', () => {
+      it('should return multiple errors when multiple prices are invalid', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 60000, // Wrong side for long
+          takeProfitPrice: 40000 // Wrong side for long
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY');
+
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toHaveLength(2);
+        expect(result.errors.some((e) => e.exitType === 'stopLoss')).toBe(true);
+        expect(result.errors.some((e) => e.exitType === 'takeProfit')).toBe(true);
+      });
+    });
+
+    describe('Custom validation limits', () => {
+      it('should respect custom max stop loss percentage', () => {
+        const prices: CalculatedExitPrices = {
+          entryPrice,
+          stopLossPrice: 40000 // 20% below
+        };
+
+        const customLimits = {
+          ...DEFAULT_EXIT_PRICE_VALIDATION_LIMITS,
+          maxStopLossPercentage: 10 // Only allow 10%
+        };
+
+        const result = service.validateExitPrices(prices, 'BUY', customLimits);
+
+        expect(result.isValid).toBe(false);
+        const error = result.errors.find(
+          (entry) => entry.exitType === 'stopLoss' && entry.code === ExitPriceValidationErrorCode.EXCEEDS_MAX_DISTANCE
+        );
+        expect(error).toBeDefined();
       });
     });
   });
@@ -636,6 +1043,88 @@ describe('PositionManagementService', () => {
         trailingHighWaterMark: highWaterMark,
         trailingActivated: true
       });
+    });
+  });
+
+  describe('validateExitOrderQuantity', () => {
+    const mockMarketLimits = {
+      minAmount: 0.001,
+      maxAmount: 1000,
+      amountStep: 8,
+      minCost: 10,
+      pricePrecision: 2,
+      amountPrecision: 8
+    };
+
+    it('should accept valid quantity above minimums', () => {
+      const result = service.validateExitOrderQuantity(0.5, 50000, mockMarketLimits);
+
+      expect(result.isValid).toBe(true);
+      expect(result.adjustedQuantity).toBe(0.5);
+      expect(result.actualNotional).toBe(25000);
+    });
+
+    it('should reject quantity below minimum amount', () => {
+      const result = service.validateExitOrderQuantity(0.0001, 50000, mockMarketLimits);
+
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain('below minimum');
+      expect(result.minQuantity).toBe(0.001);
+    });
+
+    it('should accept quantity at minimum amount and notional thresholds', () => {
+      const result = service.validateExitOrderQuantity(0.001, 10000, mockMarketLimits);
+
+      expect(result.isValid).toBe(true);
+      expect(result.adjustedQuantity).toBe(0.001);
+      expect(result.actualNotional).toBe(10);
+    });
+
+    it('should reject quantity below minimum notional value', () => {
+      const result = service.validateExitOrderQuantity(0.001, 50, mockMarketLimits);
+
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain('below minimum');
+      expect(result.minNotional).toBe(10);
+    });
+
+    it('should reject after step alignment drops below minimum amount', () => {
+      const limits = { ...mockMarketLimits, minAmount: 0.011, amountStep: 2, amountPrecision: 2 };
+      const result = service.validateExitOrderQuantity(0.011, 50000, limits);
+
+      expect(result.isValid).toBe(false);
+      expect(result.adjustedQuantity).toBe(0.01);
+      expect(result.minQuantity).toBe(0.011);
+    });
+
+    it('should reject after step alignment drops below minimum notional', () => {
+      const limits = { ...mockMarketLimits, amountStep: 2, amountPrecision: 2 };
+      const result = service.validateExitOrderQuantity(0.102, 99, limits);
+
+      expect(result.isValid).toBe(false);
+      expect(result.actualNotional).toBeCloseTo(9.9, 5);
+      expect(result.minNotional).toBe(10);
+    });
+
+    it('should accept quantity when no limits provided', () => {
+      const result = service.validateExitOrderQuantity(0.0001, 50000, null);
+
+      expect(result.isValid).toBe(true);
+      expect(result.adjustedQuantity).toBe(0.0001);
+    });
+
+    it('should align quantity to step size precision', () => {
+      const limits = { ...mockMarketLimits, amountStep: 3, amountPrecision: 3 };
+      const result = service.validateExitOrderQuantity(0.123456789, 50000, limits);
+
+      expect(result.isValid).toBe(true);
+      expect(result.adjustedQuantity).toBe(0.123);
+    });
+
+    it('should calculate correct notional value', () => {
+      const result = service.validateExitOrderQuantity(2, 100, mockMarketLimits);
+
+      expect(result.actualNotional).toBe(200);
     });
   });
 });
