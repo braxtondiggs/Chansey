@@ -13,7 +13,7 @@ import {
   UseGuards,
   ValidationPipe
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import {
   BacktestRunCollection,
@@ -25,23 +25,24 @@ import {
 import { Backtest } from './backtest.entity';
 import { BacktestService } from './backtest.service';
 import {
-  CreateBacktestDto,
-  UpdateBacktestDto,
+  BacktestComparisonDto,
   BacktestFiltersDto,
   BacktestPerformanceDto,
-  BacktestComparisonDto,
   BacktestProgressDto,
-  CreateComparisonReportDto,
   BacktestSignalQueryDto,
-  BacktestTradesQueryDto
+  BacktestTradesQueryDto,
+  CreateBacktestDto,
+  CreateComparisonReportDto,
+  UpdateBacktestDto
 } from './dto/backtest.dto';
 
-import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
+import GetUser from '../../authentication/decorator/get-user.decorator';
+import { JwtAuthenticationGuard } from '../../authentication/guard/jwt-authentication.guard';
 import { User } from '../../users/users.entity';
 
 @ApiTags('Backtests')
-@UseGuards(APIAuthenticationGuard)
-@ApiSecurity('api-key')
+@ApiBearerAuth('token')
+@UseGuards(JwtAuthenticationGuard)
 @Controller('backtests')
 export class BacktestController {
   constructor(private readonly backtestService: BacktestService) {}
@@ -55,28 +56,26 @@ export class BacktestController {
   @ApiResponse({ status: HttpStatus.ACCEPTED })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid backtest parameters' })
   async createBacktest(
+    @GetUser() user: User,
     @Body(new ValidationPipe({ transform: true })) createBacktestDto: CreateBacktestDto
   ): Promise<BacktestRunDetail> {
-    // TODO: Add user context when authentication decorator is available
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.createBacktest(mockUser, createBacktestDto);
+    return this.backtestService.createBacktest(user, createBacktestDto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all backtests with optional filtering' })
   @ApiResponse({ status: HttpStatus.OK })
   async getBacktests(
+    @GetUser() user: User,
     @Query(new ValidationPipe({ transform: true })) filters: BacktestFiltersDto
   ): Promise<BacktestRunCollection> {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getBacktests(mockUser, filters);
+    return this.backtestService.getBacktests(user, filters);
   }
 
   @Get('datasets')
   @ApiOperation({ summary: 'List available market data sets for backtesting' })
-  async getDatasets() {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getDatasets(mockUser);
+  async getDatasets(@GetUser() user: User) {
+    return this.backtestService.getDatasets(user);
   }
 
   @Get(':id')
@@ -84,31 +83,33 @@ export class BacktestController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: HttpStatus.OK })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Backtest not found' })
-  async getBacktest(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<BacktestRunDetail> {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getBacktest(mockUser, id);
+  async getBacktest(
+    @GetUser() user: User,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string
+  ): Promise<BacktestRunDetail> {
+    return this.backtestService.getBacktest(user, id);
   }
 
   @Get(':id/signals')
   @ApiOperation({ summary: 'Get signals emitted during a backtest run' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   async getBacktestSignals(
+    @GetUser() user: User,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Query(new ValidationPipe({ transform: true })) query: BacktestSignalQueryDto
   ): Promise<BacktestSignalCollection> {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getBacktestSignals(mockUser, id, query);
+    return this.backtestService.getBacktestSignals(user, id, query);
   }
 
   @Get(':id/trades')
   @ApiOperation({ summary: 'Get simulated order fills for a backtest run' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   async getBacktestTrades(
+    @GetUser() user: User,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Query(new ValidationPipe({ transform: true })) query: BacktestTradesQueryDto
   ): Promise<SimulatedOrderFillCollection> {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getBacktestTrades(mockUser, id, query);
+    return this.backtestService.getBacktestTrades(user, id, query);
   }
 
   @Put(':id')
@@ -117,21 +118,21 @@ export class BacktestController {
   @ApiResponse({ status: HttpStatus.OK, type: Backtest })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Backtest not found' })
   async updateBacktest(
+    @GetUser() user: User,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body(new ValidationPipe({ transform: true })) updateBacktestDto: UpdateBacktestDto
   ) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.updateBacktest(mockUser, id, updateBacktestDto);
+    return this.backtestService.updateBacktest(user, id, updateBacktestDto);
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a backtest' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: HttpStatus.NO_CONTENT })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Backtest not found' })
-  async deleteBacktest(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const mockUser = { id: 'test-user-id' } as User;
-    await this.backtestService.deleteBacktest(mockUser, id);
+  async deleteBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.backtestService.deleteBacktest(user, id);
   }
 
   @Get(':id/performance')
@@ -139,65 +140,64 @@ export class BacktestController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: HttpStatus.OK, type: BacktestPerformanceDto })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Backtest not found' })
-  async getBacktestPerformance(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getBacktestPerformance(mockUser, id);
+  async getBacktestPerformance(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.backtestService.getBacktestPerformance(user, id);
   }
 
   @Post('compare')
   @ApiOperation({ summary: 'Compare multiple backtests' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Comparison results' })
-  async compareBacktests(@Body(new ValidationPipe({ transform: true })) comparisonDto: BacktestComparisonDto) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.compareBacktests(mockUser, comparisonDto);
+  async compareBacktests(
+    @GetUser() user: User,
+    @Body(new ValidationPipe({ transform: true })) comparisonDto: BacktestComparisonDto
+  ) {
+    return this.backtestService.compareBacktests(user, comparisonDto);
   }
 
   @Get(':id/progress')
   @ApiOperation({ summary: 'Get progress of a running backtest' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: HttpStatus.OK, type: BacktestProgressDto })
-  async getBacktestProgress(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getBacktestProgress(mockUser, id);
+  async getBacktestProgress(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.backtestService.getBacktestProgress(user, id);
   }
 
   @Post(':id/cancel')
   @ApiOperation({ summary: 'Cancel a running backtest' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Backtest cancelled' })
-  async cancelBacktest(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const mockUser = { id: 'test-user-id' } as User;
-    await this.backtestService.cancelBacktest(mockUser, id);
+  async cancelBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.backtestService.cancelBacktest(user, id);
     return { message: 'Backtest cancelled successfully' };
   }
 
   @Post(':id/resume')
   @ApiOperation({ summary: 'Resume a paused backtest' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  async resumeBacktest(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.resumeBacktest(mockUser, id);
+  async resumeBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.backtestService.resumeBacktest(user, id);
   }
 }
 
 @ApiTags('Comparison Reports')
-@UseGuards(APIAuthenticationGuard)
-@ApiSecurity('api-key')
+@ApiBearerAuth('token')
+@UseGuards(JwtAuthenticationGuard)
 @Controller('comparison-reports')
 export class ComparisonReportController {
   constructor(private readonly backtestService: BacktestService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a comparison report' })
-  async createReport(@Body(new ValidationPipe({ transform: true })) dto: CreateComparisonReportDto) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.createComparisonReport(mockUser, dto);
+  async createReport(
+    @GetUser() user: User,
+    @Body(new ValidationPipe({ transform: true })) dto: CreateComparisonReportDto
+  ) {
+    return this.backtestService.createComparisonReport(user, dto);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve a comparison report' })
-  async getReport(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const mockUser = { id: 'test-user-id' } as User;
-    return this.backtestService.getComparisonReport(mockUser, id);
+  async getReport(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.backtestService.getComparisonReport(user, id);
   }
 }

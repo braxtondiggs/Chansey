@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket } from '@nestjs/websockets';
+import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 
 import { Server, Socket } from 'socket.io';
 
@@ -11,18 +11,24 @@ export class BacktestGateway {
   @SubscribeMessage('subscribe')
   handleSubscribe(@ConnectedSocket() client: Socket, @MessageBody() payload: { backtestId: string }) {
     if (!payload?.backtestId) {
+      client.emit('error', { message: 'Backtest ID is required' });
       return;
     }
+
     client.join(this.room(payload.backtestId));
     this.logger.debug(`Client ${client.id} subscribed to backtest ${payload.backtestId}`);
+    client.emit('subscribed', { backtestId: payload.backtestId });
   }
 
   @SubscribeMessage('unsubscribe')
   handleUnsubscribe(@ConnectedSocket() client: Socket, @MessageBody() payload: { backtestId: string }) {
     if (!payload?.backtestId) {
+      client.emit('error', { message: 'Backtest ID is required' });
       return;
     }
     client.leave(this.room(payload.backtestId));
+    this.logger.debug(`Client ${client.id} unsubscribed from backtest ${payload.backtestId}`);
+    client.emit('unsubscribed', { backtestId: payload.backtestId });
   }
 
   emit(runId: string, event: string, data: unknown) {

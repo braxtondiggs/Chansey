@@ -1,4 +1,5 @@
 import { getQueueToken } from '@nestjs/bullmq';
+import { ExecutionContext } from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -24,9 +25,16 @@ import { ComparisonReport, ComparisonReportRun } from './comparison-report.entit
 import { MarketDataSet } from './market-data-set.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
-import { APIAuthenticationGuard } from '../../authentication/guard/api-authentication.guard';
+import { JwtAuthenticationGuard } from '../../authentication/guard/jwt-authentication.guard';
 import { CoinService } from '../../coin/coin.service';
 import { PriceService } from '../../price/price.service';
+import { User } from '../../users/users.entity';
+
+const mockUser: Partial<User> = {
+  id: 'test-user-id',
+  email: 'test@example.com',
+  roles: ['user']
+};
 
 const queueConfig = backtestConfig();
 
@@ -105,8 +113,14 @@ describe('BacktestController (live replay integration)', () => {
         { provide: getQueueToken(queueConfig.replayQueue), useValue: { add: queueAddReplayMock } }
       ]
     })
-      .overrideGuard(APIAuthenticationGuard)
-      .useValue({ canActivate: () => true })
+      .overrideGuard(JwtAuthenticationGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          const request = context.switchToHttp().getRequest();
+          request.user = mockUser;
+          return true;
+        }
+      })
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -203,15 +217,33 @@ describe('BacktestController (live replay integration)', () => {
       })
       .expect(202);
 
+    expect(algorithmServiceMock.getAlgorithmById).toHaveBeenCalledWith(algorithmId);
+    expect(marketDataSetRepoMock.findOne).toHaveBeenCalledWith({ where: { id: datasetId } });
+    expect(backtestSaveMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Live Replay Test',
+        description: 'Replay yesterday order flow',
+        type: BacktestType.LIVE_REPLAY,
+        status: BacktestStatus.PENDING,
+        initialCapital: 5000,
+        tradingFee: 0.0005,
+        startDate: new Date('2024-04-01T00:00:00.000Z'),
+        endDate: new Date('2024-04-02T00:00:00.000Z')
+      })
+    );
+
     expect(queueAddReplayMock).toHaveBeenCalledWith(
       'execute-backtest',
       expect.objectContaining({
         backtestId: backtestId,
+        userId: mockUser.id,
         datasetId: datasetId,
         mode: BacktestType.LIVE_REPLAY
       }),
       { jobId: backtestId, removeOnComplete: true }
     );
+    expect(queueAddReplayMock).toHaveBeenCalledTimes(1);
+    expect(queueAddHistoricalMock).not.toHaveBeenCalled();
 
     expect(response.body).toMatchObject({
       id: backtestId,
