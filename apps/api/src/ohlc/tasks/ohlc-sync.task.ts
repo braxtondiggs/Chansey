@@ -6,23 +6,26 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 
 import { CoinService } from '../../coin/coin.service';
+import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
+import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
 
-@Processor('ohlc-queue')
+@Processor('ohlc-sync-queue')
 @Injectable()
 export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OHLCSyncTask.name);
   private jobScheduled = false;
 
   constructor(
-    @InjectQueue('ohlc-queue') private readonly ohlcQueue: Queue,
+    @InjectQueue('ohlc-sync-queue') private readonly ohlcQueue: Queue,
     private readonly ohlcService: OHLCService,
     private readonly exchangeOHLC: ExchangeOHLCService,
     @Inject(forwardRef(() => CoinService))
     private readonly coinService: CoinService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly lockService: DistributedLockService
   ) {
     super();
   }
@@ -48,51 +51,65 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Schedule the recurring job for OHLC synchronization
+   * Schedule the recurring job for OHLC synchronization.
+   * Uses distributed locking to prevent race conditions in multi-instance deployments.
    */
   private async scheduleOHLCSyncJob() {
-    // Check if there's already a scheduled job with the same name
-    const repeatedJobs = await this.ohlcQueue.getRepeatableJobs();
-    const existingJob = repeatedJobs.find((job) => job.name === 'ohlc-sync');
+    // Acquire a distributed lock to prevent race conditions when multiple instances start simultaneously
+    const lock = await this.lockService.acquire({
+      key: LOCK_KEYS.OHLC_SYNC_SCHEDULE,
+      ttlMs: LOCK_DEFAULTS.SCHEDULE_LOCK_TTL_MS,
+      maxRetries: 2,
+      retryDelayMs: 500
+    });
 
-    if (existingJob) {
-      this.logger.log(`OHLC sync job already scheduled with pattern: ${existingJob.pattern}`);
+    if (!lock.acquired) {
+      this.logger.log('Another instance is scheduling OHLC sync job, skipping');
       return;
     }
 
-    // Get cron pattern from config or use default (every hour at minute 5)
-    const cronPattern = this.configService.get('OHLC_SYNC_CRON') || CronExpression.EVERY_HOUR;
+    try {
+      // Check if there's already a scheduled job with the same name
+      const repeatedJobs = await this.ohlcQueue.getRepeatableJobs();
+      const existingJob = repeatedJobs.find((job) => job.name === 'ohlc-sync');
 
-    await this.ohlcQueue.add(
-      'ohlc-sync',
-      {
-        timestamp: new Date().toISOString(),
-        description: 'Scheduled OHLC sync job'
-      },
-      {
-        repeat: { pattern: cronPattern },
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000
-        },
-        removeOnComplete: 100,
-        removeOnFail: 50
+      if (existingJob) {
+        this.logger.log(`OHLC sync job already scheduled with pattern: ${existingJob.pattern}`);
+        return;
       }
-    );
 
-    this.logger.log(`OHLC sync job scheduled with pattern: ${cronPattern}`);
+      // Get cron pattern from config or use default (every hour at minute 5)
+      const cronPattern = this.configService.get('OHLC_SYNC_CRON') || CronExpression.EVERY_HOUR;
+
+      await this.ohlcQueue.add(
+        'ohlc-sync',
+        {
+          timestamp: new Date().toISOString(),
+          description: 'Scheduled OHLC sync job'
+        },
+        {
+          repeat: { pattern: cronPattern },
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000
+          },
+          removeOnComplete: 100,
+          removeOnFail: 50
+        }
+      );
+
+      this.logger.log(`OHLC sync job scheduled with pattern: ${cronPattern}`);
+    } finally {
+      await this.lockService.release(LOCK_KEYS.OHLC_SYNC_SCHEDULE, lock.lockId);
+    }
   }
 
-  // BullMQ: process and route incoming jobs
+  // BullMQ: process incoming jobs
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
     try {
-      if (job.name === 'ohlc-sync') {
-        return await this.handleOHLCSync(job);
-      } else {
-        throw new Error(`Unknown job name: ${job.name}`);
-      }
+      return await this.handleOHLCSync(job);
     } catch (error) {
       this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
       throw error;

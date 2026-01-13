@@ -118,7 +118,7 @@ describe('OHLCBackfillService', () => {
     expect(updateSpy).toHaveBeenCalledWith('btc', { status: 'cancelled' });
   });
 
-  it('backfillHotCoins starts backfill for popular coins', async () => {
+  it('backfillHotCoins starts backfill for popular coins in batches', async () => {
     const coins = [
       { id: 'btc', symbol: 'BTC' },
       { id: 'eth', symbol: 'ETH' }
@@ -130,9 +130,11 @@ describe('OHLCBackfillService', () => {
     jest.spyOn(service as any, 'sleep').mockResolvedValue(undefined);
     const startSpy = jest.spyOn(service, 'startBackfill').mockResolvedValue('job');
 
-    await service.backfillHotCoins(2);
+    const result = await service.backfillHotCoins();
 
+    expect(coinService.getPopularCoins).toHaveBeenCalled();
     expect(ohlcService.upsertSymbolMap).toHaveBeenCalledTimes(2);
     expect(startSpy).toHaveBeenCalledTimes(2);
+    expect(result).toBe(2);
   });
 });

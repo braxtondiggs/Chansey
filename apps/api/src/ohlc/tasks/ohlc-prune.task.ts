@@ -6,7 +6,7 @@ import { Job, Queue } from 'bullmq';
 
 import { OHLCService } from '../ohlc.service';
 
-@Processor('ohlc-queue')
+@Processor('ohlc-prune-queue')
 @Injectable()
 export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OHLCPruneTask.name);
@@ -14,7 +14,7 @@ export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
   private readonly DEFAULT_RETENTION_DAYS = 365; // 1 year
 
   constructor(
-    @InjectQueue('ohlc-queue') private readonly ohlcQueue: Queue,
+    @InjectQueue('ohlc-prune-queue') private readonly ohlcQueue: Queue,
     private readonly ohlcService: OHLCService,
     private readonly configService: ConfigService
   ) {
@@ -79,15 +79,11 @@ export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
     this.logger.log(`OHLC prune job scheduled to run daily at 3:00 AM`);
   }
 
-  // BullMQ: process and route incoming jobs
+  // BullMQ: process incoming jobs
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
     try {
-      if (job.name === 'ohlc-prune') {
-        return await this.handlePrune(job);
-      }
-      // If job name doesn't match, let other processors handle it
-      return null;
+      return await this.handlePrune(job);
     } catch (error) {
       this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
       throw error;

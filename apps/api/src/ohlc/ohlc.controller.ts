@@ -1,7 +1,8 @@
 import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
-import { BackfillHotCoinsQueryDto, CoinIdParamDto, GetCandlesQueryDto } from './dto';
+import { CoinIdParamDto, GetCandlesQueryDto } from './dto';
 import { OHLCService } from './ohlc.service';
 import { OHLCBackfillService } from './services/ohlc-backfill.service';
 
@@ -87,6 +88,7 @@ export class OHLCController {
    */
   @Get('status')
   @ApiOperation({ summary: 'Get detailed OHLC sync status' })
+  @Throttle({ medium: { ttl: 60000, limit: 10 } })
   async getSyncStatus() {
     const [syncStatus, staleCoins, gapSummary] = await Promise.all([
       this.ohlcService.getSyncStatus(),
@@ -142,6 +144,7 @@ export class OHLCController {
   @Post('backfill/:coinId')
   @ApiOperation({ summary: 'Start historical data backfill for a coin' })
   @ApiParam({ name: 'coinId', description: 'Coin UUID' })
+  @Throttle({ medium: { ttl: 60000, limit: 5 } })
   async startBackfill(@Param() params: CoinIdParamDto) {
     const { coinId } = params;
     const jobId = await this.backfillService.startBackfill(coinId);
@@ -190,12 +193,13 @@ export class OHLCController {
    */
   @Post('backfill/hot-coins')
   @ApiOperation({ summary: 'Start backfill for top coins by market cap' })
-  async backfillHotCoins(@Query() query: BackfillHotCoinsQueryDto) {
-    await this.backfillService.backfillHotCoins(query.limit);
+  @Throttle({ medium: { ttl: 60000, limit: 1 } })
+  async backfillHotCoins() {
+    const coinsQueued = await this.backfillService.backfillHotCoins();
 
     return {
       success: true,
-      message: `Backfill started for top ${query.limit || 150} coins`
+      message: `Backfill started for ${coinsQueued} coins`
     };
   }
 
@@ -219,6 +223,7 @@ export class OHLCController {
   @Get('candles/:coinId')
   @ApiOperation({ summary: 'Get OHLC candles for a coin' })
   @ApiParam({ name: 'coinId', description: 'Coin UUID' })
+  @Throttle({ medium: { ttl: 60000, limit: 30 } })
   async getCandles(@Param() params: CoinIdParamDto, @Query() query: GetCandlesQueryDto) {
     const { coinId } = params;
     const startDate = new Date(query.start);

@@ -157,13 +157,14 @@ describe('OHLCController', () => {
     expect(result.success).toBe(true);
   });
 
-  it('backfillHotCoins parses limit', async () => {
-    backfillService.backfillHotCoins.mockResolvedValue(undefined);
+  it('backfillHotCoins starts backfill', async () => {
+    backfillService.backfillHotCoins.mockResolvedValue(25);
 
-    const result = await controller.backfillHotCoins({ limit: 5 });
+    const result = await controller.backfillHotCoins();
 
-    expect(backfillService.backfillHotCoins).toHaveBeenCalledWith(5);
+    expect(backfillService.backfillHotCoins).toHaveBeenCalled();
     expect(result.success).toBe(true);
+    expect(result.message).toContain('25');
   });
 
   it('getAllBackfillProgress returns active jobs count', async () => {

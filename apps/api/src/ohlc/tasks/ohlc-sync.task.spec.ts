@@ -14,6 +14,7 @@ describe('OHLCSyncTask', () => {
   let exchangeOHLC: jest.Mocked<ExchangeOHLCService>;
   let coinService: jest.Mocked<CoinService>;
   let configService: { get: jest.Mock };
+  let lockService: { acquire: jest.Mock; release: jest.Mock };
 
   const originalEnv = process.env;
 
@@ -42,7 +43,19 @@ describe('OHLCSyncTask', () => {
 
     configService = { get: jest.fn() };
 
-    task = new OHLCSyncTask(queue as any, ohlcService, exchangeOHLC, coinService, configService as any);
+    lockService = {
+      acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test-lock' }),
+      release: jest.fn().mockResolvedValue(undefined)
+    };
+
+    task = new OHLCSyncTask(
+      queue as any,
+      ohlcService,
+      exchangeOHLC,
+      coinService,
+      configService as any,
+      lockService as any
+    );
   });
 
   afterEach(() => {
@@ -105,9 +118,18 @@ describe('OHLCSyncTask', () => {
     expect(result.successCount).toBe(1);
   });
 
-  it('process throws for unknown job names', async () => {
-    const job = { name: 'other', id: 'job-1' } as Job;
+  it('process calls handleOHLCSync', async () => {
+    const handleSpy = jest.spyOn(task, 'handleOHLCSync').mockResolvedValue({
+      totalMappings: 0,
+      totalCoins: 0,
+      processed: 0,
+      successCount: 0,
+      errorCount: 0
+    });
+    const job = { name: 'ohlc-sync', id: 'job-1' } as Job;
 
-    await expect(task.process(job)).rejects.toThrow('Unknown job name');
+    await task.process(job);
+
+    expect(handleSpy).toHaveBeenCalledWith(job);
   });
 });

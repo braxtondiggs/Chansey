@@ -24,6 +24,7 @@ import { WFAConsistencyGate } from './gates/wfa-consistency.gate';
 import { LiveTradingService } from './live-trading.service';
 import { PoolStatisticsService } from './pool-statistics.service';
 import { PositionTrackingService } from './position-tracking.service';
+// eslint-disable-next-line import/order
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { ConsecutiveLossesCheck } from './risk/consecutive-losses.check';
 import { DailyLossLimitCheck } from './risk/daily-loss-limit.check';

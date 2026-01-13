@@ -20,7 +20,8 @@ import { SharedCacheModule } from '../shared-cache.module';
   imports: [
     SharedCacheModule,
     TypeOrmModule.forFeature([OHLCCandle, ExchangeSymbolMap]),
-    BullModule.registerQueue({ name: 'ohlc-queue' }),
+    BullModule.registerQueue({ name: 'ohlc-sync-queue' }),
+    BullModule.registerQueue({ name: 'ohlc-prune-queue' }),
     forwardRef(() => CoinModule),
     forwardRef(() => ExchangeModule)
   ],

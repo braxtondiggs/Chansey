@@ -58,11 +58,18 @@ describe('OHLCPruneTask', () => {
     expect(result.candlesAfter).toBe(60);
   });
 
-  it('process returns null for unknown jobs', async () => {
-    const job = { name: 'other', id: 'job-1' } as Job;
+  it('process calls handlePrune', async () => {
+    const handleSpy = jest.spyOn(task, 'handlePrune').mockResolvedValue({
+      retentionDays: 365,
+      candlesBefore: 100,
+      candlesAfter: 100,
+      candlesDeleted: 0,
+      prunedAt: new Date().toISOString()
+    });
+    const job = { name: 'ohlc-prune', id: 'job-1' } as Job;
 
-    const result = await task.process(job);
+    await task.process(job);
 
-    expect(result).toBeNull();
+    expect(handleSpy).toHaveBeenCalledWith(job);
   });
 });

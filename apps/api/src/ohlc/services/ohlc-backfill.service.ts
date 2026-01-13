@@ -171,15 +171,17 @@ export class OHLCBackfillService {
   }
 
   /**
-   * Backfill hot coins (top coins by market cap)
+   * Backfill hot coins (top coins by market cap).
+   * Processes coins in batches to avoid rate limiting.
+   * @returns Number of coins queued for backfill
    */
-  async backfillHotCoins(limit?: number): Promise<void> {
-    const coinLimit = limit || parseInt(this.configService.get('OHLC_HOT_COINS_LIMIT') || '150', 10);
+  async backfillHotCoins(): Promise<number> {
+    const BATCH_SIZE = 3; // Process 3 coins concurrently to avoid rate limits
 
-    this.logger.log(`Starting backfill for top ${coinLimit} coins`);
+    this.logger.log('Starting backfill for popular coins');
 
-    // Get popular coins
-    const coins = await this.coinService.getPopularCoins(coinLimit);
+    // Get popular coins (uses default limit of 50)
+    const coins = await this.coinService.getPopularCoins();
 
     // Get primary exchange for symbol mapping
     const exchanges = await this.exchangeService.getExchanges({ supported: true });
@@ -189,28 +191,40 @@ export class OHLCBackfillService {
       throw new Error('No supported exchange found for backfill');
     }
 
-    for (const coin of coins) {
-      try {
-        // Create symbol mapping if it doesn't exist
-        await this.ohlcService.upsertSymbolMap({
-          coinId: coin.id,
-          exchangeId: primaryExchange.id,
-          symbol: `${coin.symbol.toUpperCase()}/USD`,
-          isActive: true,
-          priority: 0
-        });
+    this.logger.log(`Found ${coins.length} coins to backfill`);
 
-        // Start backfill
-        await this.startBackfill(coin.id);
+    // Process coins in batches to avoid rate limiting
+    for (let i = 0; i < coins.length; i += BATCH_SIZE) {
+      const batch = coins.slice(i, i + BATCH_SIZE);
 
-        // Small delay between starting backfills
-        await this.sleep(500);
-      } catch (error) {
-        this.logger.error(`Failed to start backfill for ${coin.symbol}: ${error.message}`);
+      await Promise.all(
+        batch.map(async (coin) => {
+          try {
+            // Create symbol mapping if it doesn't exist
+            await this.ohlcService.upsertSymbolMap({
+              coinId: coin.id,
+              exchangeId: primaryExchange.id,
+              symbol: `${coin.symbol.toUpperCase()}/USD`,
+              isActive: true,
+              priority: 0
+            });
+
+            // Start backfill
+            await this.startBackfill(coin.id);
+          } catch (error) {
+            this.logger.error(`Failed to start backfill for ${coin.symbol}: ${error.message}`);
+          }
+        })
+      );
+
+      // Delay between batches to avoid overwhelming the exchange
+      if (i + BATCH_SIZE < coins.length) {
+        await this.sleep(1000);
       }
     }
 
     this.logger.log(`Started backfill for ${coins.length} coins`);
+    return coins.length;
   }
 
   /**

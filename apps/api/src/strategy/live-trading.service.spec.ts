@@ -3,8 +3,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { LiveTradingService } from './live-trading.service';
 import { CapitalAllocationService } from './capital-allocation.service';
+import { LiveTradingService } from './live-trading.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { StrategyExecutorService, TradingSignal } from './strategy-executor.service';
