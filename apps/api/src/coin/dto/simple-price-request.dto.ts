@@ -86,3 +86,5 @@ export class SimplePriceRequestDto {
       .filter((id) => id);
   }
 }
+
+export type SimplePriceResponseDto = Record<string, Record<string, number>>;

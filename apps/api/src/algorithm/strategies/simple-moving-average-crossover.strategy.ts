@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../price/price.entity';
+import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IndicatorService, IIndicatorProvider, IndicatorCalculatorMap } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 /**

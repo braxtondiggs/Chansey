@@ -10,7 +10,7 @@ import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price
 
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
-import { PriceModule } from '../price/price.module';
+import { OHLCModule } from '../ohlc/ohlc.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { StrategyModule } from '../strategy/strategy.module';
 
@@ -18,7 +18,7 @@ import { StrategyModule } from '../strategy/strategy.module';
   imports: [
     TypeOrmModule.forFeature([Portfolio, Coin]),
     BullModule.registerQueue({ name: 'portfolio-queue' }),
-    forwardRef(() => PriceModule),
+    forwardRef(() => OHLCModule),
     forwardRef(() => StrategyModule),
     SharedCacheModule
   ],

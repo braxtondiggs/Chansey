@@ -9,7 +9,7 @@ import { Portfolio, PortfolioRelations } from './portfolio.entity';
 import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
 
 import { Coin } from '../coin/coin.entity';
-import { PriceService } from '../price/price.service';
+import { OHLCService } from '../ohlc/ohlc.service';
 import { User } from '../users/users.entity';
 import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
@@ -20,7 +20,7 @@ export class PortfolioService {
   constructor(
     @InjectRepository(Portfolio) private readonly portfolio: Repository<Portfolio>,
     private readonly portfolioHistoricalPriceTask: PortfolioHistoricalPriceTask,
-    @Inject(forwardRef(() => PriceService)) private readonly priceService: PriceService
+    @Inject(forwardRef(() => OHLCService)) private readonly ohlcService: OHLCService
   ) {}
 
   async getPortfolio(): Promise<Portfolio[]> {
@@ -89,16 +89,16 @@ export class PortfolioService {
 
     const savedPortfolio = await this.portfolio.save(newPortfolio);
 
-    // Trigger historical price data fetching for the new portfolio item
+    // Trigger historical OHLC data fetching for the new portfolio item
     // This happens asynchronously in the background via BullMQ
     try {
-      // Check if there are at least 100 prices in the database before queuing job
-      const priceCount = await this.priceService.getPriceCount();
-      if (priceCount >= 100) {
+      // Check if there is OHLC data in the database before queuing job
+      const candleCount = await this.ohlcService.getCandleCount();
+      if (candleCount >= 100) {
         await this.portfolioHistoricalPriceTask.addHistoricalPriceJob(portfolioDto.coinId);
       } else {
         this.logger.log(
-          `Skipping historical price job for coin ${portfolioDto.coinId}: only ${priceCount} prices in database (minimum 100 required)`
+          `Skipping historical price job for coin ${portfolioDto.coinId}: only ${candleCount} OHLC candles in database (minimum 100 required)`
         );
       }
     } catch (error) {

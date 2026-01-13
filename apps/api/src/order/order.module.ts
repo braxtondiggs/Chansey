@@ -49,7 +49,7 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { MetricsModule } from '../metrics/metrics.module';
-import { PriceModule } from '../price/price.module';
+import { OHLCModule } from '../ohlc/ohlc.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
@@ -101,7 +101,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     forwardRef(() => AlgorithmModule),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
-    forwardRef(() => PriceModule),
+    forwardRef(() => OHLCModule),
     forwardRef(() => UsersModule),
     IndicatorModule,
     MetricsModule

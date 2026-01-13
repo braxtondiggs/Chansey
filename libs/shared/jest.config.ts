@@ -18,5 +18,6 @@ export default {
     'jest-preset-angular/build/serializers/ng-snapshot',
     'jest-preset-angular/build/serializers/html-comment'
   ],
-  moduleFileExtensions: ['ts', 'js', 'mjs', 'html']
+  moduleFileExtensions: ['ts', 'js', 'mjs', 'html'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.spec.ts', '!src/test-setup.ts']
 };

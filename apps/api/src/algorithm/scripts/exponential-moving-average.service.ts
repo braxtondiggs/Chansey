@@ -5,10 +5,9 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
-import { OrderService } from '../../order/order.service';
+import { PriceSummary, PriceSummaryByDay } from '../../ohlc/ohlc-candle.entity';
+import { OHLCService } from '../../ohlc/ohlc.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
-import { PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
-import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
 
 @Injectable()
@@ -20,9 +19,8 @@ export class ExponentialMovingAverageService {
   private readonly logger = new Logger(ExponentialMovingAverageService.name);
   constructor(
     private readonly portfolio: PortfolioService,
-    private readonly price: PriceService,
-    private readonly schedulerRegistry: SchedulerRegistry,
-    private readonly orderService: OrderService
+    private readonly ohlcService: OHLCService,
+    private readonly schedulerRegistry: SchedulerRegistry
   ) {}
 
   async onInit(algorithm: Algorithm) {
@@ -50,7 +48,7 @@ export class ExponentialMovingAverageService {
     const coins = await this.portfolio.getPortfolioCoins();
     // if prices is empty or last fetch is more than 15 minute ago
     if (!this.prices || this.lastFetch.getTime() - new Date().getTime() > 900000) {
-      this.prices = await this.price.findAllByDay(coins.map(({ id }) => id));
+      this.prices = await this.ohlcService.findAllByDay(coins.map(({ id }) => id));
       this.lastFetch = new Date();
     }
     for (const coin of coins) {

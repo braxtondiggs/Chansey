@@ -126,7 +126,8 @@
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
         "jestConfig": "apps/chansey/jest.config.ts",
-        "tsConfig": "apps/chansey/tsconfig.spec.json"
+        "tsConfig": "apps/chansey/tsconfig.spec.json",
+        "coverageReporters": ["text", "html", "lcov"]
       }
     },
     "serve-static": {

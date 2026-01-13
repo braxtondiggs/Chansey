@@ -24,13 +24,13 @@ import { WFAConsistencyGate } from './gates/wfa-consistency.gate';
 import { LiveTradingService } from './live-trading.service';
 import { PoolStatisticsService } from './pool-statistics.service';
 import { PositionTrackingService } from './position-tracking.service';
+import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { ConsecutiveLossesCheck } from './risk/consecutive-losses.check';
 import { DailyLossLimitCheck } from './risk/daily-loss-limit.check';
 import { DrawdownBreachCheck } from './risk/drawdown-breach.check';
 import { RiskManagementService } from './risk/risk-management.service';
 import { SharpeDegradationCheck } from './risk/sharpe-degradation.check';
 import { VolatilitySpikeCheck } from './risk/volatility-spike.check';
-import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { StrategyExecutorService } from './strategy-executor.service';
 import { StrategyController } from './strategy.controller';
 import { StrategyService } from './strategy.service';
@@ -45,7 +45,6 @@ import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
-import { PriceModule } from '../price/price.module';
 import { Risk } from '../risk/risk.entity';
 import { TasksModule } from '../tasks/tasks.module';
 import { User } from '../users/users.entity';
@@ -72,7 +71,6 @@ import { User } from '../users/users.entity';
     forwardRef(() => MarketRegimeModule),
     MetricsModule,
     forwardRef(() => OrderModule),
-    forwardRef(() => PriceModule),
     forwardRef(() => TasksModule)
   ],
   providers: [
