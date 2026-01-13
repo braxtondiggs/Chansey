@@ -42,7 +42,15 @@ jobs:
 
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
-            Please review this pull request and provide feedback on:
+            Please review this pull request. If this is a follow-up review (synchronize event),
+            check for existing review comments and only comment on:
+            - NEW issues not previously mentioned
+            - Issues that were NOT addressed by recent commits
+
+            Do NOT repeat feedback that has already been addressed in subsequent commits.
+            Before commenting on an issue, verify it still exists in the latest code.
+
+            Review criteria:
             - Code quality and best practices
             - Potential bugs or issues
             - Performance considerations
