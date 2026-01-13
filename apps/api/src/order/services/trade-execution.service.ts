@@ -1,4 +1,4 @@
-import { BadRequestException, forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -11,6 +11,14 @@ import { PositionManagementService } from './position-management.service';
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
+import {
+  AppException,
+  ExchangeKeyNotFoundException,
+  InsufficientBalanceException,
+  InvalidSymbolException,
+  SlippageExceededException,
+  UserNotFoundException
+} from '../../common/exceptions';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { Exchange } from '../../exchange/exchange.entity';
@@ -95,13 +103,13 @@ export class TradeExecutionService {
       // Fetch exchange key and validate
       const exchangeKey = await this.exchangeKeyService.findOne(signal.exchangeKeyId, signal.userId);
       if (!exchangeKey || !exchangeKey.exchange) {
-        throw new BadRequestException('Exchange key not found or invalid');
+        throw new ExchangeKeyNotFoundException(signal.exchangeKeyId);
       }
 
       // Fetch user
       const user = await this.userRepository.findOneBy({ id: signal.userId });
       if (!user) {
-        throw new BadRequestException('User not found');
+        throw new UserNotFoundException(signal.userId);
       }
 
       // Initialize CCXT exchange client
@@ -112,7 +120,7 @@ export class TradeExecutionService {
 
       // Verify symbol exists
       if (!exchangeClient.markets[signal.symbol]) {
-        throw new BadRequestException(`Symbol ${signal.symbol} not available on ${exchangeKey.exchange.name}`);
+        throw new InvalidSymbolException(signal.symbol, exchangeKey.exchange.name);
       }
 
       // Verify funds (optional - can be skipped for faster execution)
@@ -137,9 +145,9 @@ export class TradeExecutionService {
         );
 
         if (estimatedSlippageBps > this.slippageLimits.maxSlippageBps) {
-          throw new BadRequestException(
-            `Estimated slippage ${estimatedSlippageBps.toFixed(2)} bps exceeds maximum allowed ` +
-              `(${this.slippageLimits.maxSlippageBps} bps) for ${signal.symbol}`
+          throw new SlippageExceededException(
+            Math.round(estimatedSlippageBps * 100) / 100,
+            this.slippageLimits.maxSlippageBps
           );
         }
 
@@ -267,18 +275,18 @@ export class TradeExecutionService {
         const available = balance[quoteCurrency]?.free || 0;
 
         if (available < requiredAmount) {
-          throw new BadRequestException(`Insufficient ${quoteCurrency} balance: ${available} < ${requiredAmount}`);
+          throw new InsufficientBalanceException(quoteCurrency, available, requiredAmount);
         }
       } else {
         // Check base currency balance (e.g., BTC for BTC/USDT sell)
         const available = balance[baseCurrency]?.free || 0;
 
         if (available < signal.quantity) {
-          throw new BadRequestException(`Insufficient ${baseCurrency} balance: ${available} < ${signal.quantity}`);
+          throw new InsufficientBalanceException(baseCurrency, available, signal.quantity);
         }
       }
     } catch (error) {
-      if (error instanceof BadRequestException) {
+      if (error instanceof AppException) {
         throw error;
       }
       this.logger.warn(`Failed to verify funds: ${error.message}`);

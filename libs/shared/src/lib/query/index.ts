@@ -58,3 +58,7 @@ export {
   batchInvalidate
 } from './query-utils';
 export type { BaseQueryOptions, MutationOptions } from './query-utils';
+
+// API Error Handling
+export { ApiError, ErrorCodes, isApiError, extractErrorInfo } from './api-error';
+export type { ApiErrorResponse } from './api-error';
