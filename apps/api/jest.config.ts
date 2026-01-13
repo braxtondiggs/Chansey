@@ -12,5 +12,6 @@ export default {
     ]
   },
   moduleFileExtensions: ['ts', 'js', 'html'],
-  coverageDirectory: '../../coverage/apps/api'
+  coverageDirectory: '../../coverage/apps/api',
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.spec.ts', '!src/**/*.module.ts', '!src/main.ts', '!src/migrations/**']
 };

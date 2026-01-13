@@ -14,7 +14,7 @@ import { CoinService } from '../../coin/coin.service';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { Exchange } from '../../exchange/exchange.entity';
-import { PriceSummary } from '../../price/price.entity';
+import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';

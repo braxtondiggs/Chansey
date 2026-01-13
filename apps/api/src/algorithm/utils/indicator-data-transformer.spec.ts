@@ -1,6 +1,6 @@
 import { IndicatorDataTransformer } from './indicator-data-transformer';
 
-import { PriceSummary } from '../../price/price.entity';
+import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 
 describe('IndicatorDataTransformer', () => {
   // Sample test data
@@ -24,6 +24,14 @@ describe('IndicatorDataTransformer', () => {
       const result = IndicatorDataTransformer.extractAveragePrices([]);
 
       expect(result).toEqual([]);
+    });
+
+    it('should not mutate the source array', () => {
+      const source = [...mockPrices];
+
+      IndicatorDataTransformer.extractAveragePrices(source);
+
+      expect(source).toEqual(mockPrices);
     });
   });
 
@@ -71,6 +79,12 @@ describe('IndicatorDataTransformer', () => {
         { open: 108, high: 113, low: 103, close: 108 }
       ]);
     });
+
+    it('should return empty array for empty input', () => {
+      const result = IndicatorDataTransformer.toOHLC([]);
+
+      expect(result).toEqual([]);
+    });
   });
 
   describe('toHLC', () => {
@@ -85,6 +99,12 @@ describe('IndicatorDataTransformer', () => {
         { high: 113, low: 103, close: 108 }
       ]);
     });
+
+    it('should return empty array for empty input', () => {
+      const result = IndicatorDataTransformer.toHLC([]);
+
+      expect(result).toEqual([]);
+    });
   });
 
   describe('padResults', () => {
@@ -95,6 +115,8 @@ describe('IndicatorDataTransformer', () => {
       const result = IndicatorDataTransformer.padResults(indicatorResults, originalLength);
 
       expect(result).toEqual([NaN, NaN, 10, 20, 30]);
+      expect(Number.isNaN(result[0])).toBe(true);
+      expect(Number.isNaN(result[1])).toBe(true);
       expect(result.length).toBe(originalLength);
     });
 
@@ -123,6 +145,10 @@ describe('IndicatorDataTransformer', () => {
       expect(IndicatorDataTransformer.getRequiredDataPoints(20, 1.5)).toBe(30);
       expect(IndicatorDataTransformer.getRequiredDataPoints(26, 2)).toBe(52);
     });
+
+    it('should round up for fractional multipliers', () => {
+      expect(IndicatorDataTransformer.getRequiredDataPoints(3, 1.1)).toBe(4);
+    });
   });
 
   describe('hasMinimumDataPoints', () => {
@@ -143,6 +169,12 @@ describe('IndicatorDataTransformer', () => {
 
       expect(result).toBe(false); // needs 3 * 2 = 6, but only has 5
     });
+
+    it('should use rounded required data points when multiplier is fractional', () => {
+      const result = IndicatorDataTransformer.hasMinimumDataPoints(mockPrices.slice(0, 4), 3, 1.1);
+
+      expect(result).toBe(true);
+    });
   });
 
   describe('getLatestValue', () => {
@@ -152,6 +184,14 @@ describe('IndicatorDataTransformer', () => {
       const result = IndicatorDataTransformer.getLatestValue(values);
 
       expect(result).toBe(30);
+    });
+
+    it('should skip trailing NaN values', () => {
+      const values = [10, 20, NaN, NaN];
+
+      const result = IndicatorDataTransformer.getLatestValue(values);
+
+      expect(result).toBe(20);
     });
 
     it('should return null if all values are NaN', () => {
@@ -172,6 +212,14 @@ describe('IndicatorDataTransformer', () => {
   describe('getPreviousValue', () => {
     it('should return the value before the latest', () => {
       const values = [NaN, NaN, 10, 20, 30];
+
+      const result = IndicatorDataTransformer.getPreviousValue(values);
+
+      expect(result).toBe(20);
+    });
+
+    it('should skip trailing NaN values and return previous non-NaN', () => {
+      const values = [10, 20, 30, NaN, NaN];
 
       const result = IndicatorDataTransformer.getPreviousValue(values);
 
@@ -220,6 +268,17 @@ describe('IndicatorDataTransformer', () => {
       const result = IndicatorDataTransformer.detectCrossover(
         105, // line1 current (above)
         110, // line1 previous (above)
+        100, // line2 current
+        100 // line2 previous
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null if current values are equal', () => {
+      const result = IndicatorDataTransformer.detectCrossover(
+        100, // line1 current (equal)
+        95, // line1 previous (below)
         100, // line2 current
         100 // line2 previous
       );

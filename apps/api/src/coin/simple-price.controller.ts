@@ -1,27 +1,26 @@
 import { CacheTTL } from '@nestjs/cache-manager';
 import {
+  BadRequestException,
   Controller,
   Get,
-  Query,
-  Logger,
-  BadRequestException,
   InternalServerErrorException,
+  Logger,
+  Query,
   UseInterceptors
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
-import { SimplePriceRequestDto } from './dto/simple-price-request.dto';
-import { SimplePriceResponseDto } from './dto/simple-price-response.dto';
+import { SimplePriceRequestDto, SimplePriceResponseDto } from './dto/simple-price-request.dto';
 
 import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
 import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Price')
 @Controller('simple')
-export class PriceController {
-  private readonly logger = new Logger(PriceController.name);
+export class SimplePriceController {
+  private readonly logger = new Logger(SimplePriceController.name);
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly MAX_COINS_PER_REQUEST = 50; // CoinGecko's documented limit
 

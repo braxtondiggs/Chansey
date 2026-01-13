@@ -8,6 +8,7 @@ import { CoinbaseExchangeService } from './coinbase-exchange/coinbase-exchange.s
 // eslint-disable-next-line import/order
 import { CoinbaseService } from './coinbase/coinbase.service';
 import { ExchangeService } from './exchange.service';
+import { KrakenService } from './kraken/kraken.service';
 
 import { User } from '../users/users.entity';
 
@@ -23,6 +24,7 @@ export class ExchangeManagerService {
     private readonly binanceUSService: BinanceUSService,
     private readonly coinbaseService: CoinbaseService,
     private readonly coinbaseExchangeService: CoinbaseExchangeService,
+    private readonly krakenService: KrakenService,
     @Inject(forwardRef(() => ExchangeService))
     private readonly exchangeService: ExchangeService
   ) {}
@@ -40,6 +42,8 @@ export class ExchangeManagerService {
         return this.coinbaseService;
       case 'gdax':
         return this.coinbaseExchangeService;
+      case 'kraken':
+        return this.krakenService;
       default:
         throw new Error(`Exchange service not found for: ${exchangeSlug}`);
     }

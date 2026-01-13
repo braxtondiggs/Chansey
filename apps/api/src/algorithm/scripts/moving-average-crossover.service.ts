@@ -5,10 +5,9 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
-import { OrderService } from '../../order/order.service';
+import { PriceSummary, PriceSummaryByDay } from '../../ohlc/ohlc-candle.entity';
+import { OHLCService } from '../../ohlc/ohlc.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
-import { Price, PriceSummary, PriceSummaryByDay } from '../../price/price.entity';
-import { PriceService } from '../../price/price.service';
 import { Algorithm } from '../algorithm.entity';
 
 @Injectable()
@@ -20,9 +19,8 @@ export class MovingAverageCrossoverService {
   private readonly logger = new Logger(MovingAverageCrossoverService.name);
   constructor(
     private readonly portfolio: PortfolioService,
-    private readonly price: PriceService,
-    private readonly schedulerRegistry: SchedulerRegistry,
-    private readonly orderService: OrderService
+    private readonly ohlcService: OHLCService,
+    private readonly schedulerRegistry: SchedulerRegistry
   ) {}
 
   async onInit(algorithm: Algorithm) {
@@ -49,11 +47,12 @@ export class MovingAverageCrossoverService {
     const coins = await this.portfolio.getPortfolioCoins();
     // if prices is empty or last fetch is more than 15 minute ago
     if (!this.prices || this.lastFetch.getTime() - new Date().getTime() > 900000) {
-      this.prices = await this.price.findAllByDay(coins.map(({ id }) => id));
+      this.prices = await this.ohlcService.findAllByDay(coins.map(({ id }) => id));
       this.lastFetch = new Date();
     }
     for (const coin of coins) {
-      const { price: latestPrice } = (await this.price.getLatestPrice(coin.id)) as Price;
+      const latestCandle = await this.ohlcService.getLatestCandle(coin.id);
+      const latestPrice = latestCandle?.close ?? 0;
       for (const term of Object.values(this.SMAStrategy)) {
         if (this.prices[coin.id].length < term.sma) continue;
         const fastMA = this.calculateMovingAverage(this.prices[coin.id], term.fma).pop();
@@ -62,23 +61,10 @@ export class MovingAverageCrossoverService {
 
         const threshold = (fastMA / slowMA) * 50;
         if (Math.abs(fastMA - slowMA) >= threshold) continue;
-        /* if (latestPrice < fastMA) {
-          // TODO: fast & slow average minus actual coin price. You can figure out the quality or quantity of the trade. Bigger difference means bigger trade.
-          // TODO: once more data is considered maybe should only trade best SMAStrategy vs all
-          await this.testnet.createOrder(OrderSide.BUY, {
-            coinId: coin.id,
-            quantity: '1',
-            algorithm: this.id,
-            type: OrderType.MARKET
-          });
-        } else if (latestPrice > fastMA) {
-          await this.testnet.createOrder(OrderSide.SELL, {
-            coinId: coin.id,
-            quantity: '1',
-            algorithm: this.id,
-            type: OrderType.MARKET
-          });
-        }*/
+
+        this.logger.debug(
+          `${coin.symbol}: price=${latestPrice.toFixed(2)} fastMA=${fastMA.toFixed(2)} slowMA=${slowMA.toFixed(2)}`
+        );
       }
     }
   }
