@@ -29,10 +29,10 @@ import { ExchangeModule } from './exchange/exchange.module';
 import { HealthModule } from './health/health.module';
 import { MarketRegimeModule } from './market-regime/market-regime.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { OHLCModule } from './ohlc/ohlc.module';
 import { OptimizationModule } from './optimization/optimization.module';
 import { OrderModule } from './order/order.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
-import { PriceModule } from './price/price.module';
 import { RiskModule } from './risk/risk.module';
 import { ScoringModule } from './scoring/scoring.module';
 import { SharedLockModule } from './shared/shared-lock.module';
@@ -126,10 +126,10 @@ const isProduction = process.env.NODE_ENV === 'production';
     HttpModule,
     MarketRegimeModule,
     MetricsModule,
+    OHLCModule,
     OptimizationModule,
     OrderModule,
     PortfolioModule,
-    PriceModule,
     RiskModule,
     ScoringModule,
     SharedLockModule,

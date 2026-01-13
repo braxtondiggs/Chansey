@@ -78,6 +78,15 @@ const envSchema = z.object({
   COINBASE_API_SECRET: z.string().optional(),
   COINBASE_API_PASSPHRASE: z.string().optional(),
 
+  // OHLC Data Sync Configuration
+  OHLC_SYNC_ENABLED: z
+    .string()
+    .optional()
+    .transform((val) => val !== 'false'),
+  OHLC_SYNC_CRON: z.string().optional(),
+  OHLC_RETENTION_DAYS: z.coerce.number().min(1).default(365),
+  OHLC_EXCHANGE_PRIORITY: z.string().default('binance_us,gdax,kraken'),
+
   // Observability - Grafana Stack (Optional)
   LOKI_ENDPOINT: z.string().url('Loki endpoint must be a valid URL').optional(),
   LOKI_USERNAME: z.string().optional(),

@@ -1,6 +1,6 @@
 import { Coin } from '../../coin/coin.entity';
+import { PriceSummaryByDay } from '../../ohlc/ohlc-candle.entity';
 import { Order } from '../../order/order.entity';
-import { PriceSummaryByDay } from '../../price/price.entity';
 
 /**
  * Context object containing all the data and services needed for algorithm execution

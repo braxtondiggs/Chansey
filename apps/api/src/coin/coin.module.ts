@@ -2,11 +2,10 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { PriceModule } from '@chansey-api/price/price.module';
-
 import { CoinController, CoinsController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
+import { SimplePriceController } from './simple-price.controller';
 import { CoinSyncTask } from './tasks/coin-sync.task';
 import { TickerPairSyncTask } from './ticker-pairs/tasks/ticker-pairs-sync.task';
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
@@ -20,14 +19,13 @@ import { Portfolio } from '../portfolio/portfolio.entity';
 import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
-  controllers: [CoinController, CoinsController],
+  controllers: [CoinController, CoinsController, SimplePriceController],
   exports: [CoinService, TickerPairService, TickerPairSyncTask],
   imports: [
     forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Portfolio, TickerPairs]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
-    forwardRef(() => PriceModule),
     forwardRef(() => OrderModule),
     SharedCacheModule,
     BullModule.registerQueue({ name: 'coin-queue' }),

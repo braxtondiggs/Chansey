@@ -45,7 +45,6 @@ import { MarketDataSet } from './market-data-set.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { CoinService } from '../../coin/coin.service';
-import { PriceService } from '../../price/price.service';
 import { User } from '../../users/users.entity';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 
@@ -58,7 +57,6 @@ export class BacktestService {
   constructor(
     private readonly algorithmService: AlgorithmService,
     private readonly coinService: CoinService,
-    private readonly priceService: PriceService,
     private readonly backtestEngine: BacktestEngine,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,

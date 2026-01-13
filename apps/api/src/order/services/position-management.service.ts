@@ -12,7 +12,7 @@ import { CoinService } from '../../coin/coin.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
-import { PriceSummary } from '../../price/price.entity';
+import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { CircuitBreakerService, CircuitOpenError } from '../../shared/circuit-breaker.service';
 import { isTransientError, withRetry } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
@@ -74,8 +74,6 @@ export class PositionManagementService {
     private readonly positionExitRepo: Repository<PositionExit>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
-    @InjectRepository(User)
-    private readonly userRepo: Repository<User>,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,

@@ -4,7 +4,6 @@ import { CreateCoinDto } from './create-coin.dto';
 
 import { OrderResponseDto } from '../../order/dto';
 import { PortfolioResponseDto } from '../../portfolio/dto/portfolio-response.dto';
-import { CreatePriceDto } from '../../price/dto/create-price.dto';
 
 export class CoinResponseDto {
   @ApiProperty({
@@ -231,14 +230,6 @@ export class CoinResponseDto {
     required: false
   })
   portfolios: PortfolioResponseDto[];
-
-  @ApiProperty({
-    description: 'List of prices for the coin',
-    type: () => CreatePriceDto,
-    isArray: true,
-    required: false
-  })
-  prices: CreatePriceDto[];
 
   constructor(coin: Partial<CreateCoinDto>) {
     Object.assign(this, coin);

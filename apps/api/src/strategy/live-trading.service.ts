@@ -15,7 +15,6 @@ import { ExchangeBalanceDto } from '../balance/dto';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { OrderService } from '../order/order.service';
-import { PriceService } from '../price/price.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
 import { User } from '../users/users.entity';
@@ -44,7 +43,6 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly orderService: OrderService,
     private readonly balanceService: BalanceService,
     private readonly lockService: DistributedLockService,
-    private readonly priceService: PriceService,
     private readonly exchangeManager: ExchangeManagerService,
     private readonly tradingStateService: TradingStateService
   ) {}

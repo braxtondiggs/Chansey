@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
 
@@ -32,8 +32,8 @@ import {
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
-import { Price } from '../../price/price.entity';
-import { PriceService } from '../../price/price.service';
+import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { OHLCService } from '../../ohlc/ohlc.service';
 
 export interface MarketData {
   timestamp: Date;
@@ -131,10 +131,11 @@ export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
 
   constructor(
-    private readonly priceService: PriceService,
     private readonly backtestStream: BacktestStreamService,
     private readonly algorithmRegistry: AlgorithmRegistry,
-    private readonly coinService: CoinService
+    private readonly coinService: CoinService,
+    @Inject(forwardRef(() => OHLCService))
+    private readonly ohlcService: OHLCService
   ) {}
 
   async executeHistoricalBacktest(
@@ -190,7 +191,7 @@ export class BacktestEngine {
     const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
-    const priceHistoryByCoin = new Map<string, Price[]>();
+    const priceHistoryByCoin = new Map<string, OHLCCandle[]>();
     const priceSummariesByCoin = new Map<
       string,
       { avg: number; coin: string; date: Date; high: number; low: number }[]
@@ -200,17 +201,11 @@ export class BacktestEngine {
     for (const coinId of coinIds) {
       const history = historicalPrices
         .filter((price) => price.coinId === coinId)
-        .sort((a, b) => a.geckoLastUpdatedAt.getTime() - b.geckoLastUpdatedAt.getTime());
+        .sort((a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime());
       priceHistoryByCoin.set(coinId, history);
       priceSummariesByCoin.set(
         coinId,
-        history.map((price) => ({
-          avg: price.price,
-          coin: coinId,
-          date: price.geckoLastUpdatedAt,
-          high: price.price,
-          low: price.price
-        }))
+        history.map((price) => this.buildPriceSummary(price))
       );
       indexByCoin.set(coinId, -1);
     }
@@ -237,7 +232,7 @@ export class BacktestEngine {
 
       const marketData: MarketData = {
         timestamp,
-        prices: new Map(currentPrices.map((price) => [price.coinId, price.price]))
+        prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
       portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
@@ -246,7 +241,7 @@ export class BacktestEngine {
       for (const coin of coins) {
         const history = priceHistoryByCoin.get(coin.id) ?? [];
         let pointer = indexByCoin.get(coin.id) ?? -1;
-        while (pointer + 1 < history.length && history[pointer + 1].geckoLastUpdatedAt <= timestamp) {
+        while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
           pointer += 1;
         }
         indexByCoin.set(coin.id, pointer);
@@ -386,26 +381,51 @@ export class BacktestEngine {
     return { trades, signals, simulatedFills, snapshots, finalMetrics };
   }
 
-  private async getHistoricalPrices(coinIds: string[], startDate: Date, endDate: Date): Promise<Price[]> {
-    const allPrices = await this.priceService.findAll(coinIds);
-
-    return allPrices.filter((price) => {
-      const priceDate = new Date(price.geckoLastUpdatedAt);
-      return priceDate >= startDate && priceDate <= endDate;
-    });
+  /**
+   * Get historical OHLC candle data for backtesting
+   */
+  private async getHistoricalPrices(coinIds: string[], startDate: Date, endDate: Date): Promise<OHLCCandle[]> {
+    return this.ohlcService.getCandlesByDateRange(coinIds, startDate, endDate);
   }
 
-  private groupPricesByTimestamp(prices: Price[]): Record<string, Price[]> {
-    return prices.reduce(
-      (grouped, price) => {
-        const timestamp = price.geckoLastUpdatedAt.toISOString();
+  /**
+   * Get timestamp from OHLC candle
+   */
+  private getPriceTimestamp(candle: OHLCCandle): Date {
+    return candle.timestamp;
+  }
+
+  /**
+   * Get price value from OHLC candle (uses close price)
+   */
+  private getPriceValue(candle: OHLCCandle): number {
+    return candle.close;
+  }
+
+  /**
+   * Build price summary from OHLC candle
+   */
+  private buildPriceSummary(candle: OHLCCandle): { avg: number; coin: string; date: Date; high: number; low: number } {
+    return {
+      avg: candle.close,
+      coin: candle.coinId,
+      date: candle.timestamp,
+      high: candle.high,
+      low: candle.low
+    };
+  }
+
+  private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {
+    return candles.reduce(
+      (grouped, candle) => {
+        const timestamp = candle.timestamp.toISOString();
         if (!grouped[timestamp]) {
           grouped[timestamp] = [];
         }
-        grouped[timestamp].push(price);
+        grouped[timestamp].push(candle);
         return grouped;
       },
-      {} as Record<string, Price[]>
+      {} as Record<string, OHLCCandle[]>
     );
   }
 
@@ -661,17 +681,22 @@ export class BacktestEngine {
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
     // Build price history for algorithm context
-    const priceHistoryByCoin = new Map<string, { avg: number; date: Date }[]>();
+    const priceHistoryByCoin = new Map<string, { avg: number; date: Date; high: number; low: number }[]>();
     const indexByCoin = new Map<string, number>();
 
     for (const coinId of coinIds) {
       const history = historicalPrices
         .filter((price) => price.coinId === coinId)
-        .sort((a, b) => a.geckoLastUpdatedAt.getTime() - b.geckoLastUpdatedAt.getTime())
-        .map((price) => ({
-          avg: price.price,
-          date: price.geckoLastUpdatedAt
-        }));
+        .sort((a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime())
+        .map((price) => {
+          const summary = this.buildPriceSummary(price);
+          return {
+            avg: summary.avg,
+            date: summary.date,
+            high: summary.high,
+            low: summary.low
+          };
+        });
       priceHistoryByCoin.set(coinId, history);
       indexByCoin.set(coinId, -1);
     }
@@ -685,7 +710,7 @@ export class BacktestEngine {
 
       const marketData: MarketData = {
         timestamp,
-        prices: new Map(currentPrices.map((price) => [price.coinId, price.price]))
+        prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
       portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
@@ -702,9 +727,7 @@ export class BacktestEngine {
         if (pointer >= 0) {
           priceData[coin.id] = history.slice(0, pointer + 1).map((h) => ({
             ...h,
-            coin: coin.id,
-            high: h.avg,
-            low: h.avg
+            coin: coin.id
           }));
         }
       }

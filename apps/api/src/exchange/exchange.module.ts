@@ -12,6 +12,7 @@ import { ExchangeManagerService } from './exchange-manager.service';
 import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
+import { KrakenService } from './kraken/kraken.service';
 import { ExchangeSyncTask } from './tasks/exchange-sync.task';
 
 import { AppModule } from '../app.module';
@@ -34,12 +35,20 @@ import { SharedCacheModule } from '../shared-cache.module';
     BinanceUSService,
     CoinbaseService,
     CoinbaseExchangeService,
+    KrakenService,
     CoinService,
     ExchangeService,
     ExchangeSyncTask,
     ExchangeManagerService,
     TickerPairService
   ],
-  exports: [ExchangeService, BinanceUSService, CoinbaseService, CoinbaseExchangeService, ExchangeManagerService]
+  exports: [
+    ExchangeService,
+    BinanceUSService,
+    CoinbaseService,
+    CoinbaseExchangeService,
+    KrakenService,
+    ExchangeManagerService
+  ]
 })
 export class ExchangeModule {}

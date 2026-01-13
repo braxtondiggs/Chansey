@@ -30,7 +30,7 @@ import {
 } from './indicator.interface';
 import { INDICATOR_CACHE_CONFIG, IndicatorType } from './indicator.types';
 
-import { PriceSummary } from '../../price/price.entity';
+import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**

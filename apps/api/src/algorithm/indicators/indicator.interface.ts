@@ -1,4 +1,4 @@
-import { PriceSummary } from '../../price/price.entity';
+import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Base indicator calculator interface

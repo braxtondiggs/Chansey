@@ -9,6 +9,7 @@ export const QUEUE_NAMES = [
   'coin-queue',
   'drift-detection-queue',
   'exchange-queue',
+  'ohlc-queue',
   'order-queue',
   'performance-ranking',
   'portfolio-queue',
