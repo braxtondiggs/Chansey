@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import * as ccxt from 'ccxt';
 
+import {
+  InvalidSymbolException,
+  OrderSizeException,
+  TradingSuspendedException,
+  ValidationException
+} from '../../common/exceptions';
 import { OrderDto } from '../dto/order.dto';
 import { OrderType } from '../order.entity';
 
@@ -110,10 +116,10 @@ export class OrderValidationService {
    */
   validateSymbolStatus(symbol: { status: string; permissions?: string[] }): void {
     if (symbol.status !== 'TRADING') {
-      throw new BadRequestException('Trading is currently suspended for this symbol');
+      throw new TradingSuspendedException();
     }
     if (!symbol.permissions?.includes('SPOT')) {
-      throw new BadRequestException('Spot trading is not available for this symbol');
+      throw new ValidationException('Spot trading is not available for this symbol');
     }
   }
 
@@ -126,13 +132,13 @@ export class OrderValidationService {
     const maxPriceFloat = parseFloat(maxPrice);
 
     if (price < minPriceFloat) {
-      throw new BadRequestException(`Price ${price} is below minimum allowed ${minPrice}`);
+      throw new OrderSizeException('min', price, minPriceFloat, 'price');
     }
     if (price > maxPriceFloat) {
-      throw new BadRequestException(`Price ${price} exceeds maximum allowed ${maxPrice}`);
+      throw new OrderSizeException('max', price, maxPriceFloat, 'price');
     }
     if (!this.isValidTickSize(price, tickSize)) {
-      throw new BadRequestException(`Price ${price} does not match tick size ${tickSize}`);
+      throw new ValidationException(`Price ${price} does not match tick size ${tickSize}`);
     }
   }
 
@@ -147,10 +153,10 @@ export class OrderValidationService {
     const maxValidQuantity = this.calculateMaxQuantity(quantity, stepSize);
 
     if (maxValidQuantity < minQtyFloat) {
-      throw new BadRequestException(`Adjusted quantity ${maxValidQuantity} is below minimum allowed ${minQty}`);
+      throw new OrderSizeException('min', maxValidQuantity, minQtyFloat, 'quantity');
     }
     if (maxValidQuantity > maxQtyFloat) {
-      throw new BadRequestException(`Quantity ${maxValidQuantity} exceeds maximum allowed ${maxQty}`);
+      throw new OrderSizeException('max', maxValidQuantity, maxQtyFloat, 'quantity');
     }
 
     return maxValidQuantity.toFixed(precision);
@@ -163,42 +169,42 @@ export class OrderValidationService {
     // Get market info from exchange
     const markets = await exchange.fetchMarkets();
     const market = markets.find((m: any) => m.symbol === symbol);
-    
+
     if (!market) {
-      throw new BadRequestException(`Trading pair ${symbol} not found on exchange`);
+      throw new InvalidSymbolException(symbol);
     }
 
     if (!market.active) {
-      throw new BadRequestException(`Trading is suspended for ${symbol}`);
+      throw new TradingSuspendedException(symbol);
     }
 
     const quantity = parseFloat(orderDto.quantity);
-    
+
     // Validate quantity limits
     if (market.limits?.amount?.min && quantity < market.limits.amount.min) {
-      throw new BadRequestException(`Quantity ${quantity} is below minimum ${market.limits.amount.min}`);
+      throw new OrderSizeException('min', quantity, market.limits.amount.min, 'quantity');
     }
-    
+
     if (market.limits?.amount?.max && quantity > market.limits.amount.max) {
-      throw new BadRequestException(`Quantity ${quantity} exceeds maximum ${market.limits.amount.max}`);
+      throw new OrderSizeException('max', quantity, market.limits.amount.max, 'quantity');
     }
 
     // Validate price for limit orders
     if (orderDto.price) {
       const price = parseFloat(orderDto.price);
-      
+
       if (market.limits?.price?.min && price < market.limits.price.min) {
-        throw new BadRequestException(`Price ${price} is below minimum ${market.limits.price.min}`);
+        throw new OrderSizeException('min', price, market.limits.price.min, 'price');
       }
-      
+
       if (market.limits?.price?.max && price > market.limits.price.max) {
-        throw new BadRequestException(`Price ${price} exceeds maximum ${market.limits.price.max}`);
+        throw new OrderSizeException('max', price, market.limits.price.max, 'price');
       }
 
       // Check minimum notional value
       const notional = quantity * price;
       if (market.limits?.cost?.min && notional < market.limits.cost.min) {
-        throw new BadRequestException(`Order value ${notional} is below minimum ${market.limits.cost.min}`);
+        throw new OrderSizeException('min', notional, market.limits.cost.min, 'order value');
       }
     }
   }
@@ -219,7 +225,7 @@ export class OrderValidationService {
       const minNotional = parseFloat(filters.minNotionalFilter.minNotional);
       const notionalValue = quantity * price;
       if (notionalValue < minNotional) {
-        throw new BadRequestException(`Order value ${notionalValue} is below minimum allowed ${minNotional}`);
+        throw new OrderSizeException('min', notionalValue, minNotional, 'order value');
       }
     }
 

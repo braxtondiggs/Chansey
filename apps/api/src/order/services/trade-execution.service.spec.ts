@@ -1,4 +1,4 @@
-import { BadRequestException, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -6,6 +6,8 @@ import { OrderStateMachineService } from './order-state-machine.service';
 import { TradeExecutionService } from './trade-execution.service';
 
 import { CoinService } from '../../coin/coin.service';
+import { InvalidSymbolException, SlippageExceededException } from '../../common/exceptions/order';
+import { ExchangeKeyNotFoundException, UserNotFoundException } from '../../common/exceptions/resource';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { User } from '../../users/users.entity';
@@ -207,14 +209,14 @@ describe('TradeExecutionService', () => {
     it('should throw when exchange key is missing', async () => {
       mockExchangeKeyService.findOne.mockResolvedValue(null);
 
-      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(ExchangeKeyNotFoundException);
       expect(mockExchangeManagerService.getExchangeClient).not.toHaveBeenCalled();
     });
 
     it('should throw when user is missing', async () => {
       mockUserRepository.findOneBy.mockResolvedValue(null);
 
-      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(UserNotFoundException);
       expect(mockExchangeManagerService.getExchangeClient).not.toHaveBeenCalled();
     });
 
@@ -222,7 +224,7 @@ describe('TradeExecutionService', () => {
       const mockExchangeClient = buildExchangeClient({ markets: {} });
       mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
 
-      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(InvalidSymbolException);
       expect(mockExchangeClient.createMarketOrder).not.toHaveBeenCalled();
     });
 
@@ -232,7 +234,7 @@ describe('TradeExecutionService', () => {
 
       jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(200);
 
-      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.executeTradeSignal(baseSignal)).rejects.toBeInstanceOf(SlippageExceededException);
       expect(mockExchangeClient.createMarketOrder).not.toHaveBeenCalled();
     });
 

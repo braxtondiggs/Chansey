@@ -33,7 +33,7 @@ export class PositionExit {
    * Reference to UserStrategyPosition.id (if from strategy)
    * Can be null for manual orders without strategy
    */
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', name: 'position_id', nullable: true })
   positionId?: string;
 
   /**

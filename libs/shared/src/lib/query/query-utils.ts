@@ -10,6 +10,7 @@ import {
   injectQueryClient
 } from '@tanstack/angular-query-experimental';
 
+import { ApiError, type ApiErrorResponse } from './api-error';
 import { STANDARD_POLICY, type CachePolicy, mergeCachePolicy } from './cache-policies';
 
 // ============================================================================
@@ -59,7 +60,7 @@ export interface MutationOptions<TData, TVariables, TError = Error> {
  * @param url - The URL to fetch
  * @param options - Fetch options
  * @returns Promise resolving to the response data
- * @throws Error if the request fails
+ * @throws ApiError if the request fails
  */
 export async function authenticatedFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
@@ -79,12 +80,29 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Authentication required');
+    // Parse error response from backend
+    const errorData = await response.json().catch(() => ({}) as Partial<ApiErrorResponse>);
+
+    // Special case for 401 with default message
+    if (response.status === 401 && !errorData.code) {
+      throw new ApiError({
+        statusCode: 401,
+        code: 'AUTH.INVALID_CREDENTIALS',
+        message: 'Authentication required',
+        path: url,
+        timestamp: new Date().toISOString()
+      });
     }
 
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
+    // Create ApiError with full response structure
+    throw new ApiError({
+      statusCode: errorData.statusCode || response.status,
+      code: errorData.code || `HTTP_${response.status}`,
+      message: errorData.message || `Error ${response.status}: ${response.statusText}`,
+      path: errorData.path || url,
+      timestamp: errorData.timestamp || new Date().toISOString(),
+      context: errorData.context
+    });
   }
 
   // Handle 204 No Content responses

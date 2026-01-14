@@ -18,6 +18,7 @@
     "test": "nx affected --target=test --parallel=3",
     "test:all": "nx run-many --target=test --all",
     "lint": "nx affected --target=lint --parallel=3",
+    "lint:fix": "nx affected --target=lint --parallel=3 --fix",
     "lint:all": "nx run-many --target=lint --all",
     "test:coverage": "nx run-many --target=test --all --codeCoverage",
     "affected:apps": "nx show projects --affected --type app",
