@@ -7,8 +7,8 @@ import { Portfolio } from './portfolio.entity';
 import { PortfolioService } from './portfolio.service';
 import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
 
+import { PortfolioNotFoundException } from '../common/exceptions';
 import { OHLCService } from '../ohlc/ohlc.service';
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 describe('PortfolioService', () => {
   let service: PortfolioService;
@@ -70,7 +70,7 @@ describe('PortfolioService', () => {
       portfolioRepo.findOne.mockResolvedValue(null);
 
       await expect(service.getPortfolioById('portfolio-1', mockUser.id)).rejects.toBeInstanceOf(
-        NotFoundCustomException
+        PortfolioNotFoundException
       );
     });
 
@@ -171,7 +171,7 @@ describe('PortfolioService', () => {
       portfolioRepo.delete.mockResolvedValue({ affected: 0 });
 
       await expect(service.deletePortfolioItem('portfolio-1', mockUser.id)).rejects.toBeInstanceOf(
-        NotFoundCustomException
+        PortfolioNotFoundException
       );
     });
 

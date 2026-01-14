@@ -1,5 +1,5 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Cache } from 'cache-manager';
@@ -11,8 +11,9 @@ import { CoinDetailResponseDto, CoinLinksDto, MarketChartResponseDto, TimePeriod
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
+import { ErrorCode, ValidationException } from '../common/exceptions';
+import { CoinNotFoundException } from '../common/exceptions/resource';
 import { User } from '../users/users.entity';
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 interface HistoricalDataPoint {
   timestamp: number;
@@ -62,7 +63,7 @@ export class CoinService {
 
   async getCoinById(coinId: string, relations?: CoinRelations[]): Promise<Coin> {
     const coin = await this.coin.findOne({ where: { id: coinId }, relations });
-    if (!coin) throw new NotFoundCustomException('Coin', { id: coinId });
+    if (!coin) throw new CoinNotFoundException(coinId);
     Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
   }
@@ -117,7 +118,7 @@ export class CoinService {
       where: { symbol: symbol.toLowerCase() },
       relations
     });
-    if (!coin && fail) throw new NotFoundCustomException('Coin', { symbol });
+    if (!coin && fail) throw new CoinNotFoundException(symbol, 'symbol');
     Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
     return coin;
   }
@@ -209,7 +210,7 @@ export class CoinService {
 
   async update(coinId: string, coin: UpdateCoinDto) {
     const data = await this.getCoinById(coinId);
-    if (!data) throw new NotFoundCustomException('Coin', { id: coinId });
+    if (!data) throw new CoinNotFoundException(coinId);
     return await this.coin.save(new Coin({ ...data, ...coin }));
   }
 
@@ -223,7 +224,7 @@ export class CoinService {
 
   async remove(coinId: string) {
     const response = await this.coin.delete(coinId);
-    if (!response.affected) throw new NotFoundCustomException('Coin', { id: coinId });
+    if (!response.affected) throw new CoinNotFoundException(coinId);
     return response;
   }
 
@@ -251,10 +252,7 @@ export class CoinService {
         }));
       }
     } catch (error) {
-      throw new NotFoundCustomException('Historical data', {
-        id: coinId,
-        message: error
-      });
+      throw new CoinNotFoundException(coinId);
     }
   }
 
@@ -407,7 +405,7 @@ export class CoinService {
 
       // Handle 404 - coin not found
       if (error?.response?.status === 404) {
-        throw new NotFoundCustomException('CoinGecko coin', { id: coinGeckoId });
+        throw new CoinNotFoundException(coinGeckoId, 'slug');
       }
 
       throw error;
@@ -505,7 +503,7 @@ export class CoinService {
     // Query coin from database
     const coin = await this.coin.findOne({ where: { slug } });
     if (!coin) {
-      throw new NotFoundException(`Coin with slug '${slug}' not found`);
+      throw new CoinNotFoundException(slug, 'slug');
     }
 
     // Check if metadata is stale (older than 24 hours)
@@ -615,7 +613,7 @@ export class CoinService {
     // Query coin from database
     const coin = await this.coin.findOne({ where: { slug } });
     if (!coin) {
-      throw new NotFoundException(`Coin with slug '${slug}' not found`);
+      throw new CoinNotFoundException(slug, 'slug');
     }
 
     // Map period to days
@@ -628,7 +626,7 @@ export class CoinService {
 
     const days = periodDaysMap[period];
     if (!days) {
-      throw new BadRequestException(`Invalid period: ${period}`);
+      throw new ValidationException(`Invalid period: ${period}`, ErrorCode.VALIDATION_INVALID_INPUT, { period });
     }
 
     let chartData: CoinGeckoMarketChart;

@@ -9,9 +9,9 @@ import { Portfolio, PortfolioRelations } from './portfolio.entity';
 import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
 
 import { Coin } from '../coin/coin.entity';
+import { PortfolioNotFoundException } from '../common/exceptions';
 import { OHLCService } from '../ohlc/ohlc.service';
 import { User } from '../users/users.entity';
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
 
 @Injectable()
 export class PortfolioService {
@@ -40,7 +40,7 @@ export class PortfolioService {
       where: { id: portfolioId, user: { id: userId } },
       relations: ['coin']
     });
-    if (!portfolio) throw new NotFoundCustomException('Portfolio', { id: portfolioId });
+    if (!portfolio) throw new PortfolioNotFoundException(portfolioId);
     return portfolio;
   }
 
@@ -114,7 +114,7 @@ export class PortfolioService {
 
   async updatePortfolioItem(portfolioId: string, userId: string, dto: UpdatePortfolioDto): Promise<Portfolio> {
     const data = await this.getPortfolioById(portfolioId, userId);
-    if (!data) throw new NotFoundCustomException('Portfolio', { id: portfolioId });
+    if (!data) throw new PortfolioNotFoundException(portfolioId);
     return await this.portfolio.save(new Portfolio({ ...data, ...dto }));
   }
 
@@ -125,7 +125,7 @@ export class PortfolioService {
         id: userId
       }
     });
-    if (!response.affected) throw new NotFoundCustomException('Portfolio', { id: portfolioId });
+    if (!response.affected) throw new PortfolioNotFoundException(portfolioId);
     return response;
   }
 }

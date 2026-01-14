@@ -45,9 +45,15 @@ import { MarketDataSet, MarketDataSource, MarketDataTimeframe } from './market-d
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { CoinService } from '../../coin/coin.service';
+import { NotFoundException } from '../../common/exceptions';
+import {
+  AlgorithmNotFoundException,
+  BacktestNotFoundException,
+  ComparisonReportNotFoundException,
+  MarketDataSetNotFoundException
+} from '../../common/exceptions/resource';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { User } from '../../users/users.entity';
-import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -94,7 +100,7 @@ export class BacktestService implements OnModuleInit {
       // Validate algorithm exists
       const algorithm = await this.algorithmService.getAlgorithmById(createBacktestDto.algorithmId);
       if (!algorithm) {
-        throw new NotFoundCustomException('Algorithm', { id: createBacktestDto.algorithmId });
+        throw new AlgorithmNotFoundException(createBacktestDto.algorithmId);
       }
 
       const marketDataSet = await this.marketDataSetRepository.findOne({
@@ -102,7 +108,7 @@ export class BacktestService implements OnModuleInit {
       });
 
       if (!marketDataSet) {
-        throw new NotFoundCustomException('MarketDataSet', { id: createBacktestDto.marketDataSetId });
+        throw new MarketDataSetNotFoundException(createBacktestDto.marketDataSetId);
       }
 
       const deterministicSeed = createBacktestDto.deterministicSeed ?? randomUUID();
@@ -192,7 +198,7 @@ export class BacktestService implements OnModuleInit {
 
       return this.mapRunDetail(savedBacktest);
     } catch (error) {
-      if (error instanceof NotFoundCustomException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       this.logger.error(`Failed to create backtest: ${error.message}`, error.stack);
@@ -531,7 +537,7 @@ export class BacktestService implements OnModuleInit {
       where: { id: backtestId, user: { id: user.id } }
     });
     if (!exists) {
-      throw new NotFoundCustomException('Backtest', { id: backtestId });
+      throw new BacktestNotFoundException(backtestId);
     }
   }
 
@@ -542,7 +548,7 @@ export class BacktestService implements OnModuleInit {
     });
 
     if (!backtest) {
-      throw new NotFoundCustomException('Backtest', { id: backtestId });
+      throw new BacktestNotFoundException(backtestId);
     }
 
     return backtest;
@@ -559,7 +565,9 @@ export class BacktestService implements OnModuleInit {
     });
 
     if (backtests.length !== ids.length) {
-      throw new NotFoundCustomException('Backtest', { id: ids.join(', ') });
+      const foundIds = backtests.map((b) => b.id);
+      const missingIds = ids.filter((id) => !foundIds.includes(id));
+      throw new BacktestNotFoundException(missingIds[0]);
     }
 
     return backtests;
@@ -665,7 +673,7 @@ export class BacktestService implements OnModuleInit {
       Object.assign(backtest, updateDto);
       return this.backtestRepository.save(backtest);
     } catch (error) {
-      if (error instanceof NotFoundCustomException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       this.logger.error(`Failed to update backtest ${backtestId}: ${error.message}`, error.stack);
@@ -686,7 +694,7 @@ export class BacktestService implements OnModuleInit {
 
       await this.backtestRepository.remove(backtest);
     } catch (error) {
-      if (error instanceof NotFoundCustomException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       this.logger.error(`Failed to delete backtest ${backtestId}: ${error.message}`, error.stack);
@@ -749,7 +757,7 @@ export class BacktestService implements OnModuleInit {
         }))
       };
     } catch (error) {
-      if (error instanceof NotFoundCustomException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       this.logger.error(`Failed to get backtest performance ${backtestId}: ${error.message}`, error.stack);
@@ -796,7 +804,7 @@ export class BacktestService implements OnModuleInit {
     });
 
     if (!report) {
-      throw new NotFoundCustomException('ComparisonReport', { id: reportId });
+      throw new ComparisonReportNotFoundException(reportId);
     }
 
     const runIds = report.runs?.map((run) => run.backtestId) ?? [];
@@ -849,7 +857,7 @@ export class BacktestService implements OnModuleInit {
 
       await this.backtestResultService.markCancelled(backtest, 'User requested cancellation');
     } catch (error) {
-      if (error instanceof NotFoundCustomException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       this.logger.error(`Failed to cancel backtest ${backtestId}: ${error.message}`, error.stack);
@@ -885,7 +893,7 @@ export class BacktestService implements OnModuleInit {
 
       return backtest;
     } catch (error) {
-      if (error instanceof NotFoundCustomException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       this.logger.error(`Failed to resume backtest ${backtestId}: ${error.message}`, error.stack);

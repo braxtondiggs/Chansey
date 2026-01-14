@@ -23,6 +23,7 @@ import { AuthenticationModule } from './authentication/authentication.module';
 import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { validateEnv } from './config/env.validation';
 import { createLoggerConfig } from './config/logger.config';
 import { ExchangeModule } from './exchange/exchange.module';
@@ -43,7 +44,6 @@ import { StorageModule } from './storage/storage.module';
 import { StrategyModule } from './strategy/strategy.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TradingModule } from './trading/trading.module';
-import { HttpExceptionFilter } from './utils/filters/http-exception.filter';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -145,7 +145,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     AppService,
     {
       provide: 'APP_FILTER',
-      useClass: HttpExceptionFilter
+      useClass: GlobalExceptionFilter
     },
     {
       provide: APP_GUARD,

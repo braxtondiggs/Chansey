@@ -8,7 +8,7 @@ import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
 
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { NotFoundCustomException } from '../utils/filters/not-found.exception';
+import { ExchangeNotFoundException } from '../common/exceptions/resource';
 
 @Injectable()
 export class ExchangeService {
@@ -21,13 +21,13 @@ export class ExchangeService {
 
   async findOne(id: string): Promise<Exchange> {
     const exchange = await this.exchange.findOne({ where: { id } });
-    if (!exchange) throw new NotFoundCustomException('Exchange', { id });
+    if (!exchange) throw new ExchangeNotFoundException(id);
     return exchange;
   }
 
   async findBySlug(slug: string): Promise<Exchange> {
     const exchange = await this.exchange.findOne({ where: { slug } });
-    if (!exchange) throw new NotFoundCustomException('Exchange', { slug });
+    if (!exchange) throw new ExchangeNotFoundException(slug, 'slug');
     return exchange;
   }
 
@@ -42,13 +42,13 @@ export class ExchangeService {
 
   async getExchangeById(exchangeId: string): Promise<Exchange> {
     const exchange = await this.exchange.findOne({ where: { id: exchangeId } });
-    if (!exchange) throw new NotFoundCustomException('Exchange', { id: exchangeId });
+    if (!exchange) throw new ExchangeNotFoundException(exchangeId);
     return exchange;
   }
 
   async getExchangeByName(name: string): Promise<Exchange> {
     const exchange = await this.exchange.findOne({ where: { name } });
-    if (!exchange) throw new NotFoundCustomException('Exchange', { name });
+    if (!exchange) throw new ExchangeNotFoundException(name, 'name');
     return exchange;
   }
 
@@ -59,13 +59,13 @@ export class ExchangeService {
 
   async updateExchange(exchangeSlug: string, dto: UpdateExchangeDto): Promise<Exchange> {
     const data = await this.getExchangeById(exchangeSlug);
-    if (!data) throw new NotFoundCustomException('Exchange', { slug: exchangeSlug });
+    if (!data) throw new ExchangeNotFoundException(exchangeSlug, 'slug');
     return await this.exchange.save(new Exchange({ ...data, ...dto }));
   }
 
   async deleteExchange(exchangeId: string) {
     const response = await this.exchange.delete(exchangeId);
-    if (!response.affected) throw new NotFoundCustomException('Exchange', { id: exchangeId });
+    if (!response.affected) throw new ExchangeNotFoundException(exchangeId);
     return response;
   }
 

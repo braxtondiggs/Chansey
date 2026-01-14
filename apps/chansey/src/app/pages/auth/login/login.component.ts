@@ -10,6 +10,8 @@ import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 
+import { ErrorCodes, isApiError } from '@chansey/shared';
+
 import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
 
 import { LoginService } from './login.service';
@@ -85,7 +87,11 @@ export class LoginComponent {
           },
           onError: (error) => {
             const errorMessage = error?.message || 'Login failed. Please check your credentials.';
-            const isEmailVerificationRequired = errorMessage.toLowerCase().includes('verify your email');
+
+            // Check for email verification required using error code (preferred) or fallback to string matching
+            const isEmailVerificationRequired = isApiError(error)
+              ? error.hasCode(ErrorCodes.AUTH_EMAIL_NOT_VERIFIED)
+              : errorMessage.toLowerCase().includes('verify your email');
 
             this.showResendVerification.set(isEmailVerificationRequired);
             this.messages.set([
