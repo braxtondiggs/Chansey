@@ -21,6 +21,7 @@ import { MarketDataSet } from './market-data-set.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { CoinService } from '../../coin/coin.service';
+import { OHLCService } from '../../ohlc/ohlc.service';
 
 const queueConfig = backtestConfig();
 
@@ -49,6 +50,14 @@ describe('BacktestService (live replay)', () => {
         BacktestService,
         { provide: AlgorithmService, useValue: { getAlgorithmById: jest.fn() } },
         { provide: CoinService, useValue: {} },
+        {
+          provide: OHLCService,
+          useValue: {
+            getCoinsWithCandleData: jest.fn().mockResolvedValue([]),
+            getCandleDataDateRange: jest.fn().mockResolvedValue(null),
+            getCandleCount: jest.fn().mockResolvedValue(0)
+          }
+        },
         { provide: BacktestEngine, useValue: {} },
         { provide: BacktestStreamService, useValue: { publishStatus: jest.fn(), publishLog: jest.fn() } },
         { provide: BacktestResultService, useValue: {} },

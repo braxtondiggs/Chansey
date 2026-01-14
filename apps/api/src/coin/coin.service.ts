@@ -67,6 +67,29 @@ export class CoinService {
     return coin;
   }
 
+  /**
+   * Get multiple coins by their IDs
+   * @param coinIds - Array of coin IDs to fetch (duplicates are automatically removed)
+   * @param relations - Optional relations to include
+   * @returns Array of coins found (may be fewer than requested if some IDs don't exist)
+   */
+  async getCoinsByIds(coinIds: string[], relations?: CoinRelations[]): Promise<Coin[]> {
+    if (coinIds.length === 0) return [];
+
+    // Deduplicate and filter out empty/invalid IDs
+    const uniqueIds = [...new Set(coinIds.filter((id) => id && typeof id === 'string' && id.trim().length > 0))];
+    if (uniqueIds.length === 0) return [];
+
+    const coins = await this.coin.find({
+      where: { id: In(uniqueIds) },
+      relations
+    });
+    return coins.map((coin) => {
+      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+      return coin;
+    });
+  }
+
   async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin> {
     // Handle USD as a special case
     if (symbol.toLowerCase() === 'usd') {

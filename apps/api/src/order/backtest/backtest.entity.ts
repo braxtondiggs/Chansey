@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsArray, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min, Max } from 'class-validator';
+import { IsArray, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import {
   Column,
   CreateDateColumn,
@@ -270,6 +270,24 @@ export class BacktestTrade {
   @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Trading fee paid' })
   fee: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Realized profit/loss in quote currency (only for SELL trades)', required: false })
+  realizedPnL?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Realized P&L as percentage (e.g., 0.05 = 5% gain)', required: false })
+  realizedPnLPercent?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Average cost basis at time of trade (entry price for position)', required: false })
+  costBasis?: number;
 
   @Column({ type: 'timestamptz' })
   @ApiProperty({ description: 'When the trade was executed' })

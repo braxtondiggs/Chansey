@@ -142,4 +142,88 @@ export class StorageService implements OnModuleInit {
   getMinioEndpoint(): string {
     return this.minioHost;
   }
+
+  /**
+   * Get a file from MinIO storage
+   * @param objectPath - Path to the object within the bucket (e.g., 'datasets/btc-hourly.csv')
+   * @returns Buffer containing the file contents
+   */
+  async getFile(objectPath: string): Promise<Buffer> {
+    if (!this.isConnected) {
+      throw new Error('Storage service is not available');
+    }
+
+    try {
+      const dataStream = await this.minioClient.getObject(this.bucketName, objectPath);
+      const chunks: Buffer[] = [];
+
+      return new Promise((resolve, reject) => {
+        dataStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        dataStream.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          this.logger.debug(`File retrieved successfully: ${objectPath} (${buffer.length} bytes)`);
+          resolve(buffer);
+        });
+        dataStream.on('error', (error) => {
+          this.logger.error(`Error reading file stream: ${error.message}`, error.stack);
+          reject(error);
+        });
+      });
+    } catch (error) {
+      this.logger.error(`Error getting file from storage: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a file exists in MinIO storage
+   * @param objectPath - Path to the object within the bucket
+   * @returns true if file exists, false otherwise
+   */
+  async fileExists(objectPath: string): Promise<boolean> {
+    if (!this.isConnected) {
+      return false;
+    }
+
+    try {
+      await this.minioClient.statObject(this.bucketName, objectPath);
+      return true;
+    } catch (error) {
+      if (error.code === 'NotFound') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get file statistics from MinIO storage
+   * @param objectPath - Path to the object within the bucket
+   * @returns File stats including size, or null if file doesn't exist
+   */
+  async getFileStats(objectPath: string): Promise<{ size: number; lastModified: Date } | null> {
+    if (!this.isConnected) {
+      return null;
+    }
+
+    try {
+      const stat = await this.minioClient.statObject(this.bucketName, objectPath);
+      return {
+        size: stat.size,
+        lastModified: stat.lastModified
+      };
+    } catch (error) {
+      if (error.code === 'NotFound') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get the default bucket name
+   */
+  getBucketName(): string {
+    return this.bucketName;
+  }
 }

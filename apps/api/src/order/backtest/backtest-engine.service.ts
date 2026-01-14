@@ -15,6 +15,7 @@ import {
   SimulatedOrderType,
   TradeType
 } from './backtest.entity';
+import { MarketDataReaderService, OHLCVData } from './market-data-reader.service';
 import { MarketDataSet } from './market-data-set.entity';
 import {
   applySlippage,
@@ -135,7 +136,8 @@ export class BacktestEngine {
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly coinService: CoinService,
     @Inject(forwardRef(() => OHLCService))
-    private readonly ohlcService: OHLCService
+    private readonly ohlcService: OHLCService,
+    private readonly marketDataReader: MarketDataReaderService
   ) {}
 
   async executeHistoricalBacktest(
@@ -178,11 +180,24 @@ export class BacktestEngine {
       throw new Error('USD coin not found in database. Please ensure the USD coin exists before running backtests.');
     }
 
-    const historicalPrices = await this.getHistoricalPrices(
-      coinIds,
-      options.dataset.startAt ?? backtest.startDate,
-      options.dataset.endAt ?? backtest.endDate
-    );
+    // Determine data source: storage file (CSV) or database (Price table)
+    const startDate = options.dataset.startAt ?? backtest.startDate;
+    const endDate = options.dataset.endAt ?? backtest.endDate;
+
+    let historicalPrices: OHLCCandle[];
+
+    if (this.marketDataReader.hasStorageLocation(options.dataset)) {
+      // Use CSV data from MinIO storage
+      this.logger.log(`Reading market data from storage: ${options.dataset.storageLocation}`);
+      const marketDataResult = await this.marketDataReader.readMarketData(options.dataset, startDate, endDate);
+      historicalPrices = this.convertOHLCVToCandles(marketDataResult.data);
+      this.logger.log(
+        `Loaded ${historicalPrices.length} candle records from storage (${marketDataResult.dateRange.start.toISOString()} to ${marketDataResult.dateRange.end.toISOString()})`
+      );
+    } else {
+      // Fall back to database OHLC table
+      historicalPrices = await this.getHistoricalPrices(coinIds, startDate, endDate);
+    }
 
     if (historicalPrices.length === 0) {
       throw new Error('No historical price data available for the specified date range');
@@ -389,6 +404,25 @@ export class BacktestEngine {
   }
 
   /**
+   * Convert OHLCV data from storage to OHLCCandle format for compatibility
+   * with backtest logic
+   */
+  private convertOHLCVToCandles(ohlcvData: OHLCVData[]): OHLCCandle[] {
+    return ohlcvData.map(
+      (data) =>
+        new OHLCCandle({
+          coinId: data.coinId,
+          timestamp: data.timestamp,
+          open: data.open,
+          high: data.high,
+          low: data.low,
+          close: data.close,
+          volume: data.volume
+        })
+    );
+  }
+
+  /**
    * Get timestamp from OHLC candle
    */
   private getPriceTimestamp(candle: OHLCCandle): Date {
@@ -510,15 +544,32 @@ export class BacktestEngine {
       existingPosition.totalValue = existingPosition.quantity * price;
 
       portfolio.positions.set(signal.coinId, existingPosition);
-    } else if (signal.action === 'SELL') {
+    }
+
+    // Variables to track P&L for SELL trades
+    let realizedPnL: number | undefined;
+    let realizedPnLPercent: number | undefined;
+    let costBasis: number | undefined;
+
+    if (signal.action === 'SELL') {
       const existingPosition = portfolio.positions.get(signal.coinId);
       if (!existingPosition || existingPosition.quantity === 0) {
         return null;
       }
 
+      // Capture cost basis BEFORE modifying position
+      costBasis = existingPosition.averagePrice;
+
       quantity = signal.quantity ?? existingPosition.quantity * Math.min(1, Math.max(0.25, random()));
       quantity = Math.min(quantity, existingPosition.quantity);
       totalValue = quantity * price;
+
+      // Calculate realized P&L: (sell price - cost basis) * quantity
+      // Fee will be subtracted separately below
+      const grossPnL = (price - costBasis) * quantity;
+      const fee = totalValue * tradingFee;
+      realizedPnL = grossPnL - fee;
+      realizedPnLPercent = costBasis > 0 ? (price - costBasis) / costBasis : 0;
 
       existingPosition.quantity -= quantity;
       existingPosition.totalValue = existingPosition.quantity * price;
@@ -542,6 +593,9 @@ export class BacktestEngine {
         price,
         totalValue,
         fee,
+        realizedPnL,
+        realizedPnLPercent,
+        costBasis,
         metadata: {
           reason: signal.reason,
           confidence: signal.confidence ?? 0,
@@ -585,7 +639,12 @@ export class BacktestEngine {
     const finalValue = portfolio.totalValue;
     const totalReturn = (finalValue - backtest.initialCapital) / backtest.initialCapital;
     const totalTrades = trades.length;
-    const winningTrades = trades.filter((trade) => (trade.totalValue ?? 0) > 0).length;
+
+    // Win rate is based on SELL trades with positive realized P&L
+    // Only SELL trades have P&L calculated (they close positions)
+    const sellTrades = trades.filter((t) => t.type === TradeType.SELL);
+    const winningTrades = sellTrades.filter((t) => (t.realizedPnL ?? 0) > 0).length;
+    const sellTradeCount = sellTrades.length;
 
     const durationDays = dayjs(backtest.endDate).diff(dayjs(backtest.startDate), 'day');
     const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
@@ -600,7 +659,7 @@ export class BacktestEngine {
       maxDrawdown,
       totalTrades,
       winningTrades,
-      winRate: totalTrades ? winningTrades / totalTrades : 0,
+      winRate: sellTradeCount > 0 ? winningTrades / sellTradeCount : 0,
       performanceHistory: snapshots
     };
   }
@@ -788,8 +847,12 @@ export class BacktestEngine {
     const finalValue = portfolio.totalValue;
     const totalReturn = (finalValue - initialCapital) / initialCapital;
     const totalTrades = trades.length;
-    const winningTrades = trades.filter((trade) => (trade.totalValue ?? 0) > 0).length;
-    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
+    // Win rate is based on SELL trades with positive realized P&L
+    const sellTrades = trades.filter((t) => t.type === TradeType.SELL);
+    const winningTrades = sellTrades.filter((t) => (t.realizedPnL ?? 0) > 0).length;
+    const sellTradeCount = sellTrades.length;
+    const winRate = sellTradeCount > 0 ? winningTrades / sellTradeCount : 0;
 
     const durationDays = dayjs(config.endDate).diff(dayjs(config.startDate), 'day');
     const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
@@ -811,10 +874,12 @@ export class BacktestEngine {
     const riskFreeRate = 0.02;
     const sharpeRatio = volatility > 0 ? (annualizedReturn - riskFreeRate) / volatility : 0;
 
-    // Calculate profit factor
-    const grossProfit = trades.filter((t) => (t.totalValue ?? 0) > 0).reduce((sum, t) => sum + (t.totalValue ?? 0), 0);
+    // Calculate profit factor based on realized P&L from SELL trades
+    const grossProfit = sellTrades
+      .filter((t) => (t.realizedPnL ?? 0) > 0)
+      .reduce((sum, t) => sum + (t.realizedPnL ?? 0), 0);
     const grossLoss = Math.abs(
-      trades.filter((t) => (t.totalValue ?? 0) < 0).reduce((sum, t) => sum + (t.totalValue ?? 0), 0)
+      sellTrades.filter((t) => (t.realizedPnL ?? 0) < 0).reduce((sum, t) => sum + (t.realizedPnL ?? 0), 0)
     );
     const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 1;
 

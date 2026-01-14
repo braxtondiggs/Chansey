@@ -266,13 +266,88 @@ const jobId = await backfillService.startBackfill(coinId);
 ### Check Gap Coverage
 
 ```typescript
-const gaps = await ohlcService.detectGaps(
-  coinId,
-  new Date('2024-01-01'),
-  new Date('2024-12-31')
-);
+const gaps = await ohlcService.detectGaps(coinId, new Date('2024-01-01'), new Date('2024-12-31'));
 // Returns array of { start: Date, end: Date } for missing periods
 ```
+
+## CSV Import Format for Backtesting
+
+The `MarketDataReaderService` can read historical market data from CSV files stored in MinIO/S3 for backtesting. This
+allows importing data from external sources or using custom datasets.
+
+### Required Columns
+
+| Column    | Aliases                    | Description                                    |
+| --------- | -------------------------- | ---------------------------------------------- |
+| timestamp | `time`, `date`, `datetime` | Candle timestamp (see supported formats below) |
+| close     | `c`, `price`               | Closing price                                  |
+
+### Optional Columns
+
+| Column | Aliases                   | Default                             | Description    |
+| ------ | ------------------------- | ----------------------------------- | -------------- |
+| open   | `o`                       | Same as close                       | Opening price  |
+| high   | `h`                       | Same as close                       | Highest price  |
+| low    | `l`                       | Same as close                       | Lowest price   |
+| volume | `vol`, `v`                | 0                                   | Trading volume |
+| symbol | `coin`, `asset`, `ticker` | First in dataset instrumentUniverse | Asset symbol   |
+
+### Supported Timestamp Formats
+
+- **ISO 8601**: `2024-01-01T00:00:00Z` or `2024-01-01T00:00:00.000Z`
+- **Unix seconds**: `1704067200` (integers between years 2000-2100)
+- **Unix milliseconds**: `1704067200000` (integers > year 2000 in ms)
+
+### Example CSV Files
+
+**Minimal (close prices only):**
+
+```csv
+timestamp,close
+2024-01-01T00:00:00Z,42000.50
+2024-01-01T01:00:00Z,42100.00
+2024-01-01T02:00:00Z,41950.25
+```
+
+**Full OHLCV with symbol:**
+
+```csv
+timestamp,open,high,low,close,volume,symbol
+2024-01-01T00:00:00Z,42000.50,42150.00,41900.00,42100.00,1500.5,BTC
+2024-01-01T01:00:00Z,42100.00,42200.00,42000.00,42150.00,1200.0,BTC
+2024-01-01T00:00:00Z,2200.00,2220.00,2180.00,2210.00,8500.0,ETH
+2024-01-01T01:00:00Z,2210.00,2230.00,2200.00,2225.00,7200.0,ETH
+```
+
+**Unix timestamps:**
+
+```csv
+time,price,vol
+1704067200,42000.50,1500
+1704070800,42100.00,1200
+1704074400,41950.25,1800
+```
+
+### Storage Location Formats
+
+CSV files can be referenced using any of these formats in `MarketDataSet.storageLocation`:
+
+| Format      | Example                                         |
+| ----------- | ----------------------------------------------- |
+| Direct path | `datasets/btc-hourly-2024.csv`                  |
+| S3 URL      | `s3://bucket-name/datasets/btc-hourly-2024.csv` |
+| HTTP URL    | `http://minio:9000/bucket/datasets/file.csv`    |
+
+### File Size Limits
+
+- Maximum file size: **100 MB**
+- For larger datasets, split into multiple files by date range
+
+### Error Handling
+
+- Rows with invalid timestamps or prices are skipped
+- Warning logged if >10% of rows have parse errors
+- Error thrown if no valid rows are found
 
 ## Dependencies
 

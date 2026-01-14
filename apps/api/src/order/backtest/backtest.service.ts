@@ -1,11 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
 import { In, Repository } from 'typeorm';
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   BacktestRunCollection,
@@ -41,22 +41,24 @@ import {
   CreateComparisonReportDto,
   UpdateBacktestDto
 } from './dto/backtest.dto';
-import { MarketDataSet } from './market-data-set.entity';
+import { MarketDataSet, MarketDataSource, MarketDataTimeframe } from './market-data-set.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { CoinService } from '../../coin/coin.service';
+import { OHLCService } from '../../ohlc/ohlc.service';
 import { User } from '../../users/users.entity';
 import { NotFoundCustomException } from '../../utils/filters/not-found.exception';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 @Injectable()
-export class BacktestService {
+export class BacktestService implements OnModuleInit {
   private readonly logger = new Logger(BacktestService.name);
 
   constructor(
     private readonly algorithmService: AlgorithmService,
     private readonly coinService: CoinService,
+    private readonly ohlcService: OHLCService,
     private readonly backtestEngine: BacktestEngine,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
@@ -74,6 +76,13 @@ export class BacktestService {
     @InjectQueue(BACKTEST_QUEUE_NAMES.historicalQueue) private readonly historicalQueue: Queue,
     @InjectQueue(BACKTEST_QUEUE_NAMES.replayQueue) private readonly replayQueue: Queue
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    // Create/update default dataset on startup (non-blocking)
+    this.ensureDefaultDatasetExists().catch((err) => {
+      this.logger.warn(`Failed to initialize default dataset on startup: ${err.message}`);
+    });
+  }
 
   /**
    * Create a new backtest
@@ -249,8 +258,128 @@ export class BacktestService {
   }
 
   async getDatasets(user: User): Promise<MarketDataSet[]> {
+    // Ensure default dataset exists before returning
+    await this.ensureDefaultDatasetExists();
+
     // TODO: restrict datasets by user governance; currently returning all approved sets
     return this.marketDataSetRepository.find({ order: { createdAt: 'DESC' } });
+  }
+
+  /**
+   * Default dataset ID - used for auto-generated dataset from price data
+   */
+  private readonly DEFAULT_DATASET_ID = 'default-historical-data';
+
+  /**
+   * Cache for default dataset to reduce repeated DB queries
+   * TTL: 5 minutes
+   */
+  private defaultDatasetCache: { dataset: MarketDataSet; checksum: string; expiresAt: number } | null = null;
+  private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+  /**
+   * Ensure the default dataset exists, creating or updating it if necessary.
+   * Uses upsert pattern to prevent race conditions and caching to reduce DB load.
+   *
+   * This method is designed to be resilient and never throw - it returns null on failure
+   * to allow the application to continue operating even if dataset creation fails.
+   * This is intentional for startup safety (called from onModuleInit).
+   *
+   * @returns The default dataset if successfully created/updated, or null if:
+   *   - No price data exists in the database
+   *   - No valid coins found for the instrument universe
+   *   - Database operation fails (logged as error)
+   */
+  async ensureDefaultDatasetExists(): Promise<MarketDataSet | null> {
+    try {
+      // Check if we have OHLC candle data
+      const [coinIds, dateRange] = await Promise.all([
+        this.ohlcService.getCoinsWithCandleData(),
+        this.ohlcService.getCandleDataDateRange()
+      ]);
+
+      if (coinIds.length === 0 || !dateRange) {
+        this.logger.debug('No OHLC data available - skipping default dataset creation');
+        return null;
+      }
+
+      // Get coin symbols for the instrument universe
+      const coins = await this.coinService.getCoinsByIds(coinIds);
+      const instrumentUniverse = coins.map((c) => c.symbol).filter(Boolean);
+
+      if (instrumentUniverse.length === 0) {
+        this.logger.debug('No valid coins found - skipping default dataset creation');
+        return null;
+      }
+
+      // Generate checksum based on data characteristics
+      const checksumData = `${instrumentUniverse.sort().join(',')}-${dateRange.start.toISOString()}-${dateRange.end.toISOString()}`;
+      const checksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
+
+      // Check cache first - return cached dataset if checksum matches and not expired
+      const now = Date.now();
+      if (
+        this.defaultDatasetCache &&
+        this.defaultDatasetCache.checksum === checksum &&
+        this.defaultDatasetCache.expiresAt > now
+      ) {
+        return this.defaultDatasetCache.dataset;
+      }
+
+      // Build dataset data for upsert
+      const candleCount = await this.ohlcService.getCandleCount();
+      const metadata = {
+        autoGenerated: true,
+        lastUpdated: new Date().toISOString(),
+        coinCount: instrumentUniverse.length,
+        dataPointCount: candleCount
+      };
+
+      // Use upsert to atomically create or update - prevents race conditions
+      // Cast to any to work around TypeORM's strict typing for JSONB columns
+      await this.marketDataSetRepository.upsert(
+        {
+          id: this.DEFAULT_DATASET_ID,
+          label: 'Available Historical Data',
+          source: MarketDataSource.INTERNAL_CAPTURE,
+          instrumentUniverse,
+          timeframe: MarketDataTimeframe.HOUR,
+          startAt: dateRange.start,
+          endAt: dateRange.end,
+          integrityScore: 90,
+          checksum,
+          storageLocation: '', // Empty string = use database OHLC table (see MarketDataReaderService.hasStorageLocation)
+          replayCapable: false,
+          metadata: metadata as any
+        },
+        ['id']
+      );
+
+      // Fetch the result to get full entity with all fields
+      const dataset = await this.marketDataSetRepository.findOne({
+        where: { id: this.DEFAULT_DATASET_ID }
+      });
+
+      if (dataset) {
+        // Update cache
+        this.defaultDatasetCache = {
+          dataset,
+          checksum,
+          expiresAt: now + this.CACHE_TTL_MS
+        };
+
+        this.logger.log(
+          `Upserted default dataset: ${instrumentUniverse.length} coins, ${dateRange.start.toISOString()} to ${dateRange.end.toISOString()}`
+        );
+      }
+
+      return dataset;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to ensure default dataset exists: ${message}`, stack);
+      return null;
+    }
   }
 
   /**
