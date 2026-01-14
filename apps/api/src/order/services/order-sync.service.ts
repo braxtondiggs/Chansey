@@ -535,8 +535,8 @@ export class OrderSyncService {
     try {
       this.logger.log(`Syncing orders for user: ${user.id}`);
 
-      // Get exchange keys for the user
-      const exchangeKeys = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id, true);
+      // Get exchange keys for the user (with secrets for API authentication)
+      const exchangeKeys = await this.exchangeKeyService.getSupportedExchangeKeys(user.id, true);
       if (!exchangeKeys || exchangeKeys.length === 0) {
         this.logger.debug(`No active exchange keys found for user: ${user.id}`);
         return 0;

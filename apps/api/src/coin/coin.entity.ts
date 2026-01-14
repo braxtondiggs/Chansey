@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Relation,
+  UpdateDateColumn
+} from 'typeorm';
 
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 
@@ -385,50 +393,50 @@ export class Coin {
   })
   updatedAt: Date;
 
-  @OneToMany(() => Order, (order) => order.baseCoin)
+  @OneToMany('Order', 'baseCoin')
   @ApiProperty({
     description: 'List of orders where this coin is the base coin',
     type: () => Order,
     isArray: true,
     required: false
   })
-  baseOrders: Order[];
+  baseOrders: Relation<Order[]>;
 
-  @OneToMany(() => Order, (order) => order.quoteCoin)
+  @OneToMany('Order', 'quoteCoin')
   @ApiProperty({
     description: 'List of orders where this coin is the quote coin',
     type: () => Order,
     isArray: true,
     required: false
   })
-  quoteOrders: Order[];
+  quoteOrders: Relation<Order[]>;
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.coin)
+  @OneToMany('Portfolio', 'coin')
   @ApiProperty({
     description: 'List of portfolios associated with the coin',
     type: () => Portfolio,
     isArray: true,
     required: false
   })
-  portfolios: Portfolio[];
+  portfolios: Relation<Portfolio[]>;
 
-  @OneToMany(() => TickerPairs, (pair) => pair.baseAsset)
+  @OneToMany('TickerPairs', 'baseAsset')
   @ApiProperty({
     description: 'Trading pairs where this coin is the base asset',
     type: () => TickerPairs,
     isArray: true,
     required: false
   })
-  baseAssetPairs: TickerPairs[];
+  baseAssetPairs: Relation<TickerPairs[]>;
 
-  @OneToMany(() => TickerPairs, (pair) => pair.quoteAsset)
+  @OneToMany('TickerPairs', 'quoteAsset')
   @ApiProperty({
     description: 'Trading pairs where this coin is the quote asset',
     type: () => TickerPairs,
     isArray: true,
     required: false
   })
-  quoteAssetPairs: TickerPairs[];
+  quoteAssetPairs: Relation<TickerPairs[]>;
 
   constructor(partial: Partial<Coin>) {
     Object.assign(this, partial);

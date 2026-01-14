@@ -1,4 +1,3 @@
-import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -123,7 +122,6 @@ const isProduction = process.env.NODE_ENV === 'production';
     CoinModule,
     ExchangeModule,
     HealthModule,
-    HttpModule,
     MarketRegimeModule,
     MetricsModule,
     OHLCModule,
@@ -139,7 +137,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     TasksModule,
     TradingModule
   ],
-  exports: [ConfigModule, HttpModule],
+  exports: [ConfigModule],
   controllers: [AppController],
   providers: [
     AppService,

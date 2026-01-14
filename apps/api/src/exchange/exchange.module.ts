@@ -12,10 +12,10 @@ import { ExchangeManagerService } from './exchange-manager.service';
 import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
+import { EXCHANGE_MANAGER_SERVICE, EXCHANGE_SERVICE } from './interfaces';
 import { KrakenService } from './kraken/kraken.service';
 import { ExchangeSyncTask } from './tasks/exchange-sync.task';
 
-import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
@@ -25,7 +25,6 @@ import { SharedCacheModule } from '../shared-cache.module';
 @Module({
   controllers: [ExchangeController],
   imports: [
-    forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Exchange, ExchangeKey, TickerPairs]),
     forwardRef(() => ExchangeKeyModule),
     SharedCacheModule,
@@ -38,17 +37,27 @@ import { SharedCacheModule } from '../shared-cache.module';
     KrakenService,
     CoinService,
     ExchangeService,
+    {
+      provide: EXCHANGE_SERVICE,
+      useExisting: ExchangeService
+    },
     ExchangeSyncTask,
     ExchangeManagerService,
+    {
+      provide: EXCHANGE_MANAGER_SERVICE,
+      useExisting: ExchangeManagerService
+    },
     TickerPairService
   ],
   exports: [
     ExchangeService,
+    EXCHANGE_SERVICE,
     BinanceUSService,
     CoinbaseService,
     CoinbaseExchangeService,
     KrakenService,
-    ExchangeManagerService
+    ExchangeManagerService,
+    EXCHANGE_MANAGER_SERVICE
   ]
 })
 export class ExchangeModule {}

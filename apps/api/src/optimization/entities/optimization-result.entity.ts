@@ -1,6 +1,15 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Relation
+} from 'typeorm';
 
-import { OptimizationRun } from './optimization-run.entity';
+import type { OptimizationRun } from './optimization-run.entity';
 
 /**
  * Window result within an optimization result
@@ -31,9 +40,9 @@ export class OptimizationResult {
   @Column({ type: 'uuid' })
   optimizationRunId: string;
 
-  @ManyToOne(() => OptimizationRun, (run) => run.results, { onDelete: 'CASCADE' })
+  @ManyToOne('OptimizationRun', 'results', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'optimizationRunId' })
-  optimizationRun: OptimizationRun;
+  optimizationRun: Relation<OptimizationRun>;
 
   @Column({ type: 'int' })
   combinationIndex: number;

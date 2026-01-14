@@ -1,18 +1,19 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { forwardRef, Inject, Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 
-import { CreateExchangeKeyDto } from './dto';
+import { CreateExchangeKeyDto, SupportedExchangeKeyDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 
 import { ExchangeManagerService } from '../exchange-manager.service';
 import { ExchangeService } from '../exchange.service';
+import { IExchangeKeyService } from '../interfaces';
 
 @Injectable()
-export class ExchangeKeyService {
+export class ExchangeKeyService implements IExchangeKeyService {
   constructor(
     @InjectRepository(ExchangeKey)
     private readonly exchangeKeyRepository: Repository<ExchangeKey>,
@@ -31,36 +32,27 @@ export class ExchangeKeyService {
   }
 
   /**
-   * Checks if a user has any active keys for supported exchanges and returns exchange details
-   * @param userId - The ID of the user to check
-   * @returns An object containing a boolean flag and the list of supported exchanges with active keys
+   * Gets the user's exchange keys for supported exchanges with exchange details.
+   * Returns a deduplicated list of supported exchange keys with their exchange information.
+   *
+   * @param userId - The ID of the user
+   * @param includeSecrets - Whether to include decrypted API keys (for internal use only)
+   * @returns List of supported exchange keys with exchange details
    */
-  async hasSupportedExchangeKeys(userId: string, top_level = false): Promise<ExchangeKey[]> {
+  async getSupportedExchangeKeys(userId: string, includeSecrets = false): Promise<SupportedExchangeKeyDto[]> {
     const keys = await this.exchangeKeyRepository.find({
-      where: {
-        userId
-      },
+      where: { userId },
       relations: ['exchange']
     });
 
     const supportedExchangeKeys = keys.filter((key) => key.exchange?.supported === true);
 
     // Create a map to deduplicate exchanges (user might have multiple keys for same exchange)
-    const exchangeMap = new Map<string, any>();
+    const exchangeMap = new Map<string, SupportedExchangeKeyDto>();
 
-    supportedExchangeKeys.forEach((key) => {
+    for (const key of supportedExchangeKeys) {
       if (key.exchange) {
-        interface ExchangeKeyData {
-          id: string;
-          exchangeId: string;
-          isActive: boolean;
-          name: string;
-          slug: string;
-          decryptedApiKey?: string;
-          decryptedSecretKey?: string;
-        }
-
-        const keyData: ExchangeKeyData = {
+        const keyDto: SupportedExchangeKeyDto = {
           id: key.id,
           exchangeId: key.exchange.id,
           isActive: key.isActive,
@@ -68,20 +60,18 @@ export class ExchangeKeyService {
           slug: key.exchange.slug
         };
 
-        // Include decrypted API keys when top_level is true
-        // This will make them available for internal services without exposing them externally
-        if (top_level) {
-          keyData.decryptedApiKey = key.decryptedApiKey;
-          keyData.decryptedSecretKey = key.decryptedSecretKey;
+        // Include decrypted API keys when includeSecrets is true
+        // This makes them available for internal services without exposing them externally
+        if (includeSecrets) {
+          keyDto.decryptedApiKey = key.decryptedApiKey;
+          keyDto.decryptedSecretKey = key.decryptedSecretKey;
         }
 
-        exchangeMap.set(key.exchange.id, keyData);
+        exchangeMap.set(key.exchange.id, keyDto);
       }
-    });
+    }
 
-    const exchanges = Array.from(exchangeMap.values());
-
-    return exchanges;
+    return Array.from(exchangeMap.values());
   }
 
   async findOne(id: string, userId: string): Promise<ExchangeKey> {

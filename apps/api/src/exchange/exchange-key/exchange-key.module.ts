@@ -8,6 +8,7 @@ import { ExchangeKeyService } from './exchange-key.service';
 
 import { User } from '../../users/users.entity';
 import { ExchangeModule } from '../exchange.module';
+import { EXCHANGE_KEY_SERVICE } from '../interfaces';
 
 @Module({
   imports: [
@@ -16,7 +17,13 @@ import { ExchangeModule } from '../exchange.module';
     BullModule.registerQueue({ name: 'order-queue' })
   ],
   controllers: [ExchangeKeyController],
-  providers: [ExchangeKeyService],
-  exports: [ExchangeKeyService]
+  providers: [
+    ExchangeKeyService,
+    {
+      provide: EXCHANGE_KEY_SERVICE,
+      useExisting: ExchangeKeyService
+    }
+  ],
+  exports: [ExchangeKeyService, EXCHANGE_KEY_SERVICE]
 })
 export class ExchangeKeyModule {}

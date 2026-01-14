@@ -28,7 +28,6 @@ import { SimpleMovingAverageCrossoverStrategy } from './strategies/simple-moving
 import { TripleEMAStrategy } from './strategies/triple-ema.strategy';
 import { PerformanceRankingTask } from './tasks/performance-ranking.task';
 
-import { AppModule } from '../app.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
@@ -44,7 +43,6 @@ import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Algorithm, AlgorithmActivation, AlgorithmPerformance, Coin, Order, TickerPairs]),
     BullModule.registerQueue({ name: 'performance-ranking' }),
     SharedCacheModule,

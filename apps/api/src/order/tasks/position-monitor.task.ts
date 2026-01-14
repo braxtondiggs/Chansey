@@ -227,7 +227,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
     return this.positionExitRepo
       .createQueryBuilder('pe')
       .where('pe.status = :status', { status: PositionExitStatus.ACTIVE })
-      .andWhere("pe.exitConfig->>'enableTrailingStop' = :enabled", { enabled: 'true' })
+      .andWhere('pe."exitConfig"->>\'enableTrailingStop\' = :enabled', { enabled: 'true' })
       .leftJoinAndSelect('pe.user', 'user')
       .leftJoinAndSelect('pe.entryOrder', 'entryOrder')
       .getMany();

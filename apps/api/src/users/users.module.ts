@@ -9,7 +9,6 @@ import { UserController } from './users.controller';
 import { User } from './users.entity';
 import { UsersService } from './users.service';
 
-import { AppModule } from '../app.module';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
@@ -21,7 +20,6 @@ import { StrategyModule } from '../strategy/strategy.module';
 @Module({
   controllers: [UserController],
   imports: [
-    forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Risk, User]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
