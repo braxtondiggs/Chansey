@@ -33,6 +33,7 @@ import {
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
+import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 
@@ -289,6 +290,9 @@ export class BacktestEngine {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
       } catch (error) {
+        if (error instanceof AlgorithmNotRegisteredException) {
+          throw error;
+        }
         this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
       }
 
@@ -814,6 +818,9 @@ export class BacktestEngine {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
       } catch (error) {
+        if (error instanceof AlgorithmNotRegisteredException) {
+          throw error;
+        }
         // Log but continue - optimization should be resilient to occasional failures
         this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
       }

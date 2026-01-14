@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 
+import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { AlgorithmService } from '../algorithm.service';
 import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy } from '../interfaces';
 
@@ -63,19 +64,15 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
    */
   async executeAlgorithm(algorithmId: string, context: AlgorithmContext): Promise<AlgorithmResult> {
     const strategy = this.getStrategyForAlgorithm(algorithmId);
-    
+
     if (!strategy) {
-      return {
-        success: false,
-        error: `No strategy found for algorithm ${algorithmId}`,
-        signals: [],
-        timestamp: new Date(),
-        metrics: { executionTime: 0, signalsGenerated: 0, confidence: 0 }
-      };
+      throw new AlgorithmNotRegisteredException(algorithmId);
     }
 
     if ('safeExecute' in strategy && typeof strategy.safeExecute === 'function') {
-      return await (strategy as unknown as { safeExecute(context: AlgorithmContext): Promise<AlgorithmResult> }).safeExecute(context);
+      return await (
+        strategy as unknown as { safeExecute(context: AlgorithmContext): Promise<AlgorithmResult> }
+      ).safeExecute(context);
     }
 
     return await strategy.execute(context);
@@ -86,7 +83,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
    */
   async getHealthStatus(): Promise<Record<string, boolean>> {
     const status: Record<string, boolean> = {};
-    
+
     for (const [id, strategy] of this.strategies.entries()) {
       try {
         status[id] = strategy.healthCheck ? await strategy.healthCheck() : true;
@@ -95,7 +92,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
         status[id] = false;
       }
     }
-    
+
     return status;
   }
 
@@ -114,10 +111,10 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
   private async initializeActiveAlgorithms(): Promise<void> {
     try {
       const algorithms = await this.algorithmService.getActiveAlgorithms();
-      
+
       for (const algorithm of algorithms) {
         const strategy = this.findStrategyByService(algorithm.service);
-        
+
         if (strategy) {
           await strategy.onInit(algorithm);
           this.algorithmToStrategy.set(algorithm.id, strategy.id);
