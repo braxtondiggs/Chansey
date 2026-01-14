@@ -1,10 +1,18 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Relation,
+  UpdateDateColumn
+} from 'typeorm';
 
 import { Risk as RiskInterface } from '@chansey/api-interfaces';
 
-import { User } from '../users/users.entity';
+import type { User } from '../users/users.entity';
 
 @Entity()
 export class Risk implements RiskInterface {
@@ -44,6 +52,6 @@ export class Risk implements RiskInterface {
   })
   updatedAt: Date;
 
-  @OneToMany(() => User, (user) => user.risk)
-  users: User[];
+  @OneToMany('User', 'risk')
+  users: Relation<User[]>;
 }

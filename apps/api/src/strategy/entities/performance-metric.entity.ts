@@ -1,6 +1,15 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Index } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Relation
+} from 'typeorm';
 
-import { Deployment } from './deployment.entity';
+import type { Deployment } from './deployment.entity';
 
 /**
  * PerformanceMetric Entity
@@ -21,9 +30,9 @@ export class PerformanceMetric {
   @Column({ type: 'uuid', comment: 'FK to deployments' })
   deploymentId: string;
 
-  @ManyToOne(() => Deployment, (deployment) => deployment.performanceMetrics, { onDelete: 'CASCADE' })
+  @ManyToOne('Deployment', 'performanceMetrics', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'deploymentId' })
-  deployment: Deployment;
+  deployment: Relation<Deployment>;
 
   // Time Period
   @Column({ type: 'date', comment: 'Date for this metric snapshot (YYYY-MM-DD)' })

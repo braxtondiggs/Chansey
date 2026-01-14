@@ -1,7 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
-import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Relation,
+  UpdateDateColumn
+} from 'typeorm';
 
 import { Backtest } from './backtest.entity';
 
@@ -89,7 +98,7 @@ export class MarketDataSet {
   @ApiProperty({ description: 'Last time dataset metadata was updated' })
   updatedAt: Date;
 
-  @OneToMany(() => Backtest, (backtest) => backtest.marketDataSet)
+  @OneToMany('Backtest', 'marketDataSet')
   @ApiProperty({ description: 'Backtests referencing this dataset', type: () => [Backtest] })
-  backtests: Backtest[];
+  backtests: Relation<Backtest[]>;
 }

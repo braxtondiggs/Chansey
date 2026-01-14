@@ -2,7 +2,16 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Transform } from 'class-transformer';
 import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
-import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Relation,
+  UpdateDateColumn
+} from 'typeorm';
 
 import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
 import { Coin } from '../coin/coin.entity';
@@ -312,7 +321,7 @@ export class Order {
   })
   type: OrderType;
 
-  @ManyToOne(() => User, (user) => user.orders, {
+  @ManyToOne('User', 'orders', {
     nullable: false,
     onDelete: 'CASCADE'
   })
@@ -320,9 +329,9 @@ export class Order {
     description: 'User who placed the order',
     type: () => User
   })
-  user: User;
+  user: Relation<User>;
 
-  @ManyToOne(() => Coin, (coin) => coin.baseOrders, {
+  @ManyToOne('Coin', 'baseOrders', {
     nullable: true,
     onDelete: 'SET NULL'
   })
@@ -331,9 +340,9 @@ export class Order {
     type: () => Coin,
     required: false
   })
-  baseCoin?: Coin;
+  baseCoin?: Relation<Coin>;
 
-  @ManyToOne(() => Coin, (coin) => coin.quoteOrders, {
+  @ManyToOne('Coin', 'quoteOrders', {
     nullable: true,
     onDelete: 'SET NULL'
   })
@@ -342,15 +351,15 @@ export class Order {
     type: () => Coin,
     required: false
   })
-  quoteCoin?: Coin;
+  quoteCoin?: Relation<Coin>;
 
-  @ManyToOne(() => Exchange, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne('Exchange', { nullable: true, onDelete: 'SET NULL' })
   @ApiProperty({
     description: 'Exchange where the order was placed',
     type: () => Exchange,
     required: false
   })
-  exchange?: Exchange;
+  exchange?: Relation<Exchange>;
 
   @Column({ type: 'uuid', nullable: true })
   @IsUUID()
@@ -363,13 +372,13 @@ export class Order {
   })
   algorithmActivationId?: string;
 
-  @ManyToOne(() => AlgorithmActivation, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne('AlgorithmActivation', { nullable: true, onDelete: 'SET NULL' })
   @ApiProperty({
     description: 'Algorithm activation that generated this order',
     type: () => AlgorithmActivation,
     required: false
   })
-  algorithmActivation?: AlgorithmActivation;
+  algorithmActivation?: Relation<AlgorithmActivation>;
 
   @Column({ type: 'uuid', nullable: true })
   @IsUUID()

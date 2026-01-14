@@ -1,71 +1,90 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { ExchangeController } from './exchange.controller';
-import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
-
-import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 
 describe('ExchangeController', () => {
   let controller: ExchangeController;
+  let exchangeService: {
+    getExchanges: jest.Mock;
+    getExchangeById: jest.Mock;
+    getExchangeTickers: jest.Mock;
+    createExchange: jest.Mock;
+    updateExchange: jest.Mock;
+    deleteExchange: jest.Mock;
+  };
 
   beforeEach(async () => {
+    exchangeService = {
+      getExchanges: jest.fn(),
+      getExchangeById: jest.fn(),
+      getExchangeTickers: jest.fn(),
+      createExchange: jest.fn(),
+      updateExchange: jest.fn(),
+      deleteExchange: jest.fn()
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ExchangeController],
-      providers: [
-        ExchangeService,
-        {
-          provide: getRepositoryToken(Exchange),
-          useValue: {
-            find: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            save: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            delete: jest.fn(() => ({}))
-          }
-        },
-        {
-          provide: ExchangeKeyService,
-          useValue: {
-            findAll: jest.fn(() => []),
-            findOne: jest.fn(() => ({})),
-            findByExchange: jest.fn(() => []),
-            create: jest.fn(() => ({})),
-            update: jest.fn(() => ({})),
-            remove: jest.fn(() => ({}))
-          }
-        },
-        {
-          provide: TickerPairService,
-          useValue: {
-            getTickerPairs: jest.fn(() => []),
-            getTickerPairsByExchange: jest.fn(() => []),
-            getTickerPairBySymbol: jest.fn(() => ({})),
-            getBasePairsBySymbol: jest.fn(() => []),
-            getQuotePairsBySymbol: jest.fn(() => []),
-            getBasePairsById: jest.fn(() => ({})),
-            createTickerPair: jest.fn(() => ({})),
-            removeTickerPair: jest.fn(),
-            saveTickerPair: jest.fn(() => [])
-          }
-        },
-        {
-          provide: 'BullQueue_exchange-queue',
-          useValue: {
-            add: jest.fn(),
-            getRepeatableJobs: jest.fn()
-            // Add other methods as needed for your tests
-          }
-        }
-      ]
+      providers: [{ provide: ExchangeService, useValue: exchangeService }]
     }).compile();
 
     controller = module.get<ExchangeController>(ExchangeController);
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
+  describe('getExchanges', () => {
+    it.each([
+      ['true', true],
+      ['false', false],
+      [undefined, undefined],
+      ['maybe', undefined]
+    ])('passes supported=%s as %s', async (supported, expected) => {
+      exchangeService.getExchanges.mockResolvedValueOnce([]);
+
+      await controller.getExchanges(supported);
+
+      expect(exchangeService.getExchanges).toHaveBeenCalledWith({ supported: expected });
+    });
+  });
+
+  it('gets exchange by id', () => {
+    const id = 'a3bb189e-8bf9-3888-9912-ace4e6543002';
+
+    controller.getExchangeById(id);
+
+    expect(exchangeService.getExchangeById).toHaveBeenCalledWith(id);
+  });
+
+  it('gets exchange tickers by id', () => {
+    const id = 'a3bb189e-8bf9-3888-9912-ace4e6543002';
+
+    controller.getExchangeTickers(id);
+
+    expect(exchangeService.getExchangeTickers).toHaveBeenCalledWith(id);
+  });
+
+  it('creates exchange', async () => {
+    const dto = { name: 'Binance', supported: true, url: 'https://binance.com' };
+
+    await controller.createExchangeItem(dto);
+
+    expect(exchangeService.createExchange).toHaveBeenCalledWith(dto);
+  });
+
+  it('updates exchange', async () => {
+    const id = 'a3bb189e-8bf9-3888-9912-ace4e6543002';
+    const dto = { name: 'Kraken', supported: false };
+
+    await controller.updateExchangeItem(id, dto);
+
+    expect(exchangeService.updateExchange).toHaveBeenCalledWith(id, dto);
+  });
+
+  it('deletes exchange', async () => {
+    const id = 'a3bb189e-8bf9-3888-9912-ace4e6543002';
+
+    await controller.deleteExchangeItem(id);
+
+    expect(exchangeService.deleteExchange).toHaveBeenCalledWith(id);
   });
 });

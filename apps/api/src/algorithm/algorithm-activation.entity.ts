@@ -8,13 +8,15 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Relation,
   UpdateDateColumn
 } from 'typeorm';
 
-import { Algorithm, AlgorithmConfig } from './algorithm.entity';
+import type { Algorithm } from './algorithm.entity';
+import { AlgorithmConfig } from './algorithm.entity';
 
-import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
-import { User } from '../users/users.entity';
+import type { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import type { User } from '../users/users.entity';
 
 /**
  * AlgorithmActivation Entity
@@ -41,12 +43,12 @@ export class AlgorithmActivation {
   })
   userId: string;
 
-  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('User', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   @ApiProperty({
     description: 'User who activated the algorithm'
   })
-  user: User;
+  user: Relation<User>;
 
   @Column({ type: 'uuid' })
   @ApiProperty({
@@ -55,12 +57,12 @@ export class AlgorithmActivation {
   })
   algorithmId: string;
 
-  @ManyToOne(() => Algorithm, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('Algorithm', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'algorithmId' })
   @ApiProperty({
     description: 'Algorithm that is activated'
   })
-  algorithm: Algorithm;
+  algorithm: Relation<Algorithm>;
 
   @Column({ type: 'uuid' })
   @ApiProperty({
@@ -69,12 +71,12 @@ export class AlgorithmActivation {
   })
   exchangeKeyId: string;
 
-  @ManyToOne(() => ExchangeKey, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('ExchangeKey', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'exchangeKeyId' })
   @ApiProperty({
     description: 'Exchange key to use for trading'
   })
-  exchangeKey: ExchangeKey;
+  exchangeKey: Relation<ExchangeKey>;
 
   @Column({ type: 'boolean', default: false })
   @ApiProperty({
@@ -88,7 +90,7 @@ export class AlgorithmActivation {
     description: 'Percentage of portfolio per trade (dynamically adjusted by ranking)',
     example: 1.5,
     minimum: 0.01,
-    maximum: 100.00
+    maximum: 100.0
   })
   allocationPercentage: number;
 
