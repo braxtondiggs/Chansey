@@ -10,6 +10,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Relation,
   UpdateDateColumn
 } from 'typeorm';
 
@@ -176,22 +177,22 @@ export class Backtest {
   completedAt?: Date;
 
   @Index('backtest_userId_index')
-  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('User', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn()
   @ApiProperty({ description: 'User who created the backtest' })
-  user: User;
+  user: Relation<User>;
 
   @Index('backtest_algorithmId_index')
-  @ManyToOne(() => Algorithm, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('Algorithm', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn()
   @ApiProperty({ description: 'Algorithm used for the backtest' })
-  algorithm: Algorithm;
+  algorithm: Relation<Algorithm>;
 
   @IsOptional()
-  @ManyToOne(() => MarketDataSet, (dataset) => dataset.backtests, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne('MarketDataSet', 'backtests', { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn()
   @ApiProperty({ description: 'Market data set leveraged for the run', required: false, type: () => MarketDataSet })
-  marketDataSet?: MarketDataSet;
+  marketDataSet?: Relation<MarketDataSet>;
 
   @OneToMany(() => BacktestTrade, (trade) => trade.backtest, { cascade: true })
   @ApiProperty({ description: 'Trades executed during the backtest', type: () => [BacktestTrade] })
@@ -308,15 +309,15 @@ export class BacktestTrade {
   @ApiProperty({ description: 'Backtest this trade belongs to' })
   backtest: Backtest;
 
-  @ManyToOne(() => Coin, { nullable: false })
+  @ManyToOne('Coin', { nullable: false })
   @JoinColumn()
   @ApiProperty({ description: 'Base coin being traded' })
-  baseCoin: Coin;
+  baseCoin: Relation<Coin>;
 
-  @ManyToOne(() => Coin, { nullable: false })
+  @ManyToOne('Coin', { nullable: false })
   @JoinColumn()
   @ApiProperty({ description: 'Quote coin (usually USD/USDT)' })
-  quoteCoin: Coin;
+  quoteCoin: Relation<Coin>;
 
   constructor(partial: Partial<BacktestTrade>) {
     Object.assign(this, partial);

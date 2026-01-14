@@ -6,8 +6,11 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
-  PrimaryGeneratedColumn
+  PrimaryGeneratedColumn,
+  Relation
 } from 'typeorm';
+
+import type { OptimizationResult } from './optimization-result.entity';
 
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { OptimizationConfig, ParameterSpace } from '../interfaces';
@@ -135,5 +138,5 @@ export class OptimizationRun {
   completedAt: Date;
 
   @OneToMany('OptimizationResult', 'optimizationRun')
-  results: import('./optimization-result.entity').OptimizationResult[];
+  results: Relation<OptimizationResult[]>;
 }

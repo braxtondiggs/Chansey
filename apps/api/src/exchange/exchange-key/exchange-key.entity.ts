@@ -9,14 +9,15 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Relation,
   UpdateDateColumn
 } from 'typeorm';
 
 import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'crypto';
 import { promisify } from 'util';
 
-import { User } from '../../users/users.entity';
-import { Exchange } from '../exchange.entity';
+import type { User } from '../../users/users.entity';
+import type { Exchange } from '../exchange.entity';
 
 @Entity()
 export class ExchangeKey {
@@ -27,22 +28,22 @@ export class ExchangeKey {
   })
   id: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne('User', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   @ApiProperty({
     description: 'User that owns this exchange key'
   })
-  user: User;
+  user: Relation<User>;
 
   @Column()
   userId: string;
 
-  @ManyToOne(() => Exchange, { onDelete: 'CASCADE' })
+  @ManyToOne('Exchange', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'exchangeId' })
   @ApiProperty({
-    description: 'Exchange this key belongs o'
+    description: 'Exchange this key belongs to'
   })
-  exchange: Exchange;
+  exchange: Relation<Exchange>;
 
   @Column({ nullable: true })
   exchangeId: string;

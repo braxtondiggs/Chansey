@@ -11,7 +11,6 @@ import { TickerPairSyncTask } from './ticker-pairs/tasks/ticker-pairs-sync.task'
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs/ticker-pairs.service';
 
-import { AppModule } from '../app.module';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { OrderModule } from '../order/order.module';
@@ -22,7 +21,6 @@ import { SharedCacheModule } from '../shared-cache.module';
   controllers: [CoinController, CoinsController, SimplePriceController],
   exports: [CoinService, TickerPairService, TickerPairSyncTask],
   imports: [
-    forwardRef(() => AppModule),
     TypeOrmModule.forFeature([Coin, Portfolio, TickerPairs]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),

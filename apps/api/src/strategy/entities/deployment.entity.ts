@@ -6,13 +6,14 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Relation,
   UpdateDateColumn
 } from 'typeorm';
 
 import { DeploymentStatus } from '@chansey/api-interfaces';
 
-import { PerformanceMetric } from './performance-metric.entity';
-import { StrategyConfig } from './strategy-config.entity';
+import type { PerformanceMetric } from './performance-metric.entity';
+import type { StrategyConfig } from './strategy-config.entity';
 
 /**
  * Deployment Entity
@@ -35,12 +36,12 @@ export class Deployment {
   @Column({ type: 'uuid', comment: 'FK to strategy_configs' })
   strategyConfigId: string;
 
-  @ManyToOne(() => StrategyConfig, { eager: true, onDelete: 'CASCADE' })
+  @ManyToOne('StrategyConfig', { eager: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'strategyConfigId' })
-  strategyConfig: StrategyConfig;
+  strategyConfig: Relation<StrategyConfig>;
 
-  @OneToMany(() => PerformanceMetric, (metric) => metric.deployment, { cascade: true })
-  performanceMetrics: PerformanceMetric[];
+  @OneToMany('PerformanceMetric', 'deployment', { cascade: true })
+  performanceMetrics: Relation<PerformanceMetric[]>;
 
   // Deployment Configuration
   @Column({

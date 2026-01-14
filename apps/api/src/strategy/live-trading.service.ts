@@ -12,7 +12,7 @@ import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-e
 import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeBalanceDto } from '../balance/dto';
-import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { OrderService } from '../order/order.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
@@ -212,7 +212,7 @@ export class LiveTradingService implements OnApplicationShutdown {
    * Select the best exchange for a given trading symbol.
    * Prioritizes active exchanges that support the symbol.
    */
-  private selectBestExchange(exchanges: ExchangeKey[], symbol: string): ExchangeKey | null {
+  private selectBestExchange(exchanges: SupportedExchangeKeyDto[], symbol: string): SupportedExchangeKeyDto | null {
     if (!exchanges || exchanges.length === 0) {
       return null;
     }

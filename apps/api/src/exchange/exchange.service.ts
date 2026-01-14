@@ -1,21 +1,21 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { In, Repository } from 'typeorm';
 
 import { CreateExchangeDto, UpdateExchangeDto } from './dto';
-import { ExchangeKeyService } from './exchange-key/exchange-key.service';
 import { Exchange } from './exchange.entity';
+import { EXCHANGE_KEY_SERVICE, IExchangeKeyService, IExchangeService } from './interfaces';
 
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeNotFoundException } from '../common/exceptions/resource';
 
 @Injectable()
-export class ExchangeService {
+export class ExchangeService implements IExchangeService {
   constructor(
     @InjectRepository(Exchange) private readonly exchange: Repository<Exchange>,
-    @Inject(forwardRef(() => ExchangeKeyService))
-    private readonly exchangeKeyService: ExchangeKeyService,
+    @Inject(EXCHANGE_KEY_SERVICE)
+    private readonly exchangeKeyService: IExchangeKeyService,
     private readonly tickerPairService: TickerPairService
   ) {}
 

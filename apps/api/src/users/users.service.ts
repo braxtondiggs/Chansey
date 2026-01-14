@@ -95,7 +95,7 @@ export class UsersService {
   async getById(id: string, top_level = false): Promise<User> {
     try {
       const user = await this.user.findOneOrFail({ where: { id } });
-      const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id, top_level);
+      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id, top_level);
 
       this.logger.debug(`User retrieved with ID: ${id}`);
       return {
@@ -112,8 +112,8 @@ export class UsersService {
    * Get exchange keys for a user without fetching user data
    * Useful when caller already has user data and just needs exchange info
    */
-  async getExchangeKeysForUser(userId: string): Promise<any[]> {
-    return this.exchangeKeyService.hasSupportedExchangeKeys(userId);
+  async getExchangeKeysForUser(userId: string) {
+    return this.exchangeKeyService.getSupportedExchangeKeys(userId);
   }
 
   async findAll() {
@@ -130,7 +130,7 @@ export class UsersService {
       const dbUser = await this.getById(user.id);
 
       // Get supported exchange keys information
-      const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
 
       return {
         ...dbUser,
@@ -278,7 +278,7 @@ export class UsersService {
         activeStrategies = strategies.length;
       }
 
-      const exchanges = await this.exchangeKeyService.hasSupportedExchangeKeys(user.id);
+      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
 
       return {
         enabled: user.algoTradingEnabled,

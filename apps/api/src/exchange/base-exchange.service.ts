@@ -1,4 +1,4 @@
-import { forwardRef, Inject, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Inject, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
@@ -6,8 +6,7 @@ import * as ccxt from 'ccxt';
 import * as http from 'http';
 import * as https from 'https';
 
-import { ExchangeKeyService } from './exchange-key/exchange-key.service';
-import { ExchangeService } from './exchange.service';
+import { EXCHANGE_KEY_SERVICE, EXCHANGE_SERVICE, IExchangeKeyService, IExchangeService } from './interfaces';
 
 import { AssetBalanceDto } from '../balance/dto/balance-response.dto';
 import { User } from '../users/users.entity';
@@ -26,10 +25,10 @@ export abstract class BaseExchangeService {
 
   constructor(
     protected readonly configService?: ConfigService,
-    @Inject(forwardRef(() => ExchangeKeyService))
-    protected readonly exchangeKeyService?: ExchangeKeyService,
-    @Inject(forwardRef(() => ExchangeService))
-    protected readonly exchangeService?: ExchangeService
+    @Inject(EXCHANGE_KEY_SERVICE)
+    protected readonly exchangeKeyService?: IExchangeKeyService,
+    @Inject(EXCHANGE_SERVICE)
+    protected readonly exchangeService?: IExchangeService
   ) {}
 
   /**

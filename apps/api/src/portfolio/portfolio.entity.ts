@@ -1,6 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Relation,
+  UpdateDateColumn
+} from 'typeorm';
 
 import { PortfolioType } from './portfolio-type.enum';
 
@@ -37,7 +46,7 @@ export class Portfolio {
   updatedAt: Date;
 
   @Index('portfolio_coinId_index')
-  @ManyToOne(() => Coin, (coin) => coin.portfolios, {
+  @ManyToOne('Coin', 'portfolios', {
     nullable: false,
     onDelete: 'CASCADE',
     eager: true
@@ -46,10 +55,10 @@ export class Portfolio {
     description: 'Coin associated with this portfolio item',
     type: () => Coin
   })
-  coin: Coin;
+  coin: Relation<Coin>;
 
   @Index('portfolio_userId_index')
-  @ManyToOne(() => User, (user) => user.portfolios, {
+  @ManyToOne('User', 'portfolios', {
     nullable: false,
     onDelete: 'CASCADE',
     eager: true
@@ -58,7 +67,7 @@ export class Portfolio {
     description: 'User who owns this portfolio item',
     type: () => User
   })
-  user: User;
+  user: Relation<User>;
 
   constructor(partial: Partial<Portfolio>) {
     Object.assign(this, partial);

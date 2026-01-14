@@ -10,6 +10,7 @@ import {
   Index,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Relation,
   Unique,
   UpdateDateColumn
 } from 'typeorm';
@@ -35,7 +36,7 @@ export class TickerPairs {
   id: string;
 
   @Index('ticker_pair_baseAssetId_index')
-  @ManyToOne(() => Coin, (coin) => coin.baseAssetPairs, {
+  @ManyToOne('Coin', 'baseAssetPairs', {
     cascade: true,
     eager: false,
     nullable: true,
@@ -46,9 +47,9 @@ export class TickerPairs {
     type: () => Coin,
     required: false
   })
-  baseAsset?: Coin;
+  baseAsset?: Relation<Coin>;
 
-  @ManyToOne(() => Coin, (coin) => coin.quoteAssetPairs, {
+  @ManyToOne('Coin', 'quoteAssetPairs', {
     cascade: true,
     eager: false,
     nullable: true,
@@ -59,7 +60,7 @@ export class TickerPairs {
     type: () => Coin,
     required: false
   })
-  quoteAsset?: Coin;
+  quoteAsset?: Relation<Coin>;
 
   @Column({ length: 20, update: false })
   @Length(1, 20)
@@ -176,11 +177,11 @@ export class TickerPairs {
   updatedAt: Date;
 
   @Index('ticker_pair_exchangeId_index')
-  @ManyToOne(() => Exchange, (exchange) => exchange.ticker, {
+  @ManyToOne('Exchange', 'ticker', {
     onDelete: 'CASCADE',
     eager: true
   })
-  exchange: Exchange;
+  exchange: Relation<Exchange>;
 
   @BeforeInsert()
   @BeforeUpdate()

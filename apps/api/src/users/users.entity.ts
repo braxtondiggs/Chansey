@@ -7,13 +7,14 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryColumn,
+  Relation,
   UpdateDateColumn
 } from 'typeorm';
 
-import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
-import { Order } from '../order/order.entity';
-import { Portfolio } from '../portfolio/portfolio.entity';
-import { Risk } from '../risk/risk.entity';
+import type { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
+import type { Order } from '../order/order.entity';
+import type { Portfolio } from '../portfolio/portfolio.entity';
+import type { Risk } from '../risk/risk.entity';
 
 @Entity()
 export class User {
@@ -130,21 +131,21 @@ export class User {
   @UpdateDateColumn({ select: false, type: 'timestamptz' })
   updatedAt: Date;
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, {
+  @OneToMany('Portfolio', 'user', {
     cascade: true
   })
-  portfolios: Portfolio[];
+  portfolios: Relation<Portfolio[]>;
 
-  @OneToMany(() => Order, (order) => order.user, { cascade: true })
-  orders: Order[];
+  @OneToMany('Order', 'user', { cascade: true })
+  orders: Relation<Order[]>;
 
-  @ManyToOne(() => Risk, (risk) => risk.users, {
+  @ManyToOne('Risk', 'users', {
     eager: true
   })
   @JoinColumn({ name: 'risk' })
-  risk: Risk;
+  risk: Relation<Risk>;
 
-  exchanges: ExchangeKey[];
+  exchanges: SupportedExchangeKeyDto[];
 
   constructor(partial: Partial<User>) {
     Object.assign(this, partial);

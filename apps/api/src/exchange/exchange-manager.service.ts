@@ -1,23 +1,22 @@
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as ccxt from 'ccxt';
 
-import { BaseExchangeService } from './base-exchange.service';
 import { BinanceUSService } from './binance/binance-us.service';
 import { CoinbaseExchangeService } from './coinbase-exchange/coinbase-exchange.service';
 // eslint-disable-next-line import/order
 import { CoinbaseService } from './coinbase/coinbase.service';
-import { ExchangeService } from './exchange.service';
+import { EXCHANGE_SERVICE, IBaseExchangeService, IExchangeManagerService, IExchangeService } from './interfaces';
 import { KrakenService } from './kraken/kraken.service';
 
-import { User } from '../users/users.entity';
+import type { User } from '../users/users.entity';
 
 /**
  * Centralized exchange manager that provides access to all exchange services
  * Leverages the existing BaseExchangeService implementations without duplicating functionality
  */
 @Injectable()
-export class ExchangeManagerService {
+export class ExchangeManagerService implements IExchangeManagerService {
   private readonly logger = new Logger(ExchangeManagerService.name);
 
   constructor(
@@ -25,8 +24,8 @@ export class ExchangeManagerService {
     private readonly coinbaseService: CoinbaseService,
     private readonly coinbaseExchangeService: CoinbaseExchangeService,
     private readonly krakenService: KrakenService,
-    @Inject(forwardRef(() => ExchangeService))
-    private readonly exchangeService: ExchangeService
+    @Inject(EXCHANGE_SERVICE)
+    private readonly exchangeService: IExchangeService
   ) {}
 
   /**
@@ -34,7 +33,7 @@ export class ExchangeManagerService {
    * @param exchangeSlug The exchange identifier
    * @returns The exchange service instance
    */
-  getExchangeService(exchangeSlug: string): BaseExchangeService {
+  getExchangeService(exchangeSlug: string): IBaseExchangeService {
     switch (exchangeSlug) {
       case 'binance_us':
         return this.binanceUSService;
