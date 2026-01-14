@@ -2,29 +2,31 @@ import { Injectable } from '@nestjs/common';
 
 /**
  * Win Rate Calculator
- * Calculates percentage of winning trades
+ * Calculates win rate as decimal (0.0 to 1.0)
  */
 @Injectable()
 export class WinRateCalculator {
   /**
    * Calculate win rate from trade results
    * @param trades Array of trade P&L values
+   * @returns Win rate as decimal (0.0 to 1.0), e.g., 0.65 = 65% win rate
    */
   calculate(trades: number[]): number {
     if (trades.length === 0) return 0;
 
     const winningTrades = trades.filter((trade) => trade > 0).length;
-    return (winningTrades / trades.length) * 100;
+    return winningTrades / trades.length;
   }
 
   /**
    * Calculate win rate with separate wins/losses counts
+   * @returns Win rate as decimal (0.0 to 1.0)
    */
   calculateFromCounts(wins: number, losses: number): number {
     const total = wins + losses;
     if (total === 0) return 0;
 
-    return (wins / total) * 100;
+    return wins / total;
   }
 
   /**
@@ -58,16 +60,17 @@ export class WinRateCalculator {
 
   /**
    * Interpret win rate quality
+   * @param winRate Win rate as decimal (0.0 to 1.0)
    */
   interpret(winRate: number): {
     grade: 'excellent' | 'good' | 'acceptable' | 'poor';
     description: string;
   } {
-    if (winRate >= 60) {
+    if (winRate >= 0.6) {
       return { grade: 'excellent', description: 'Excellent win rate - highly consistent' };
-    } else if (winRate >= 50) {
+    } else if (winRate >= 0.5) {
       return { grade: 'good', description: 'Good win rate - above breakeven' };
-    } else if (winRate >= 45) {
+    } else if (winRate >= 0.45) {
       return { grade: 'acceptable', description: 'Acceptable win rate - needs strong win/loss ratio' };
     } else {
       return { grade: 'poor', description: 'Low win rate - requires exceptional win/loss ratio' };

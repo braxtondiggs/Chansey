@@ -1,14 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  JoinColumn,
-  ManyToOne,
-  PrimaryGeneratedColumn
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 import { AlgorithmActivation } from './algorithm-activation.entity';
 
@@ -80,13 +72,13 @@ export class AlgorithmPerformance {
   @Column({
     type: 'decimal',
     precision: 5,
-    scale: 2,
+    scale: 4,
     transformer: new ColumnNumericTransformer(),
     nullable: true
   })
   @ApiProperty({
-    description: 'Win rate (%)',
-    example: 65.5,
+    description: 'Win rate as decimal (0.0-1.0), e.g., 0.65 = 65%',
+    example: 0.65,
     required: false
   })
   winRate?: number;
@@ -184,7 +176,7 @@ export class AlgorithmPerformance {
 
   @Column({ type: 'integer', nullable: true })
   @ApiProperty({
-    description: 'Ranking among user\'s algorithms (1 = best)',
+    description: "Ranking among user's algorithms (1 = best)",
     example: 1,
     required: false
   })
@@ -217,13 +209,10 @@ export class AlgorithmPerformance {
 
   /**
    * Check if performance metrics meet minimum thresholds
+   * Win rate threshold: 50% (0.5 in decimal format)
    */
   meetsPerformanceThreshold(): boolean {
-    return (
-      this.totalTrades >= 10 &&
-      (this.roi ?? 0) > 0 &&
-      (this.winRate ?? 0) >= 50
-    );
+    return this.totalTrades >= 10 && (this.roi ?? 0) > 0 && (this.winRate ?? 0) >= 0.5;
   }
 
   /**
@@ -236,12 +225,8 @@ export class AlgorithmPerformance {
 
     const normalizedRoi = Math.min((this.roi ?? 0) / 100, 1);
     const normalizedSharpe = Math.min((this.sharpeRatio ?? 0) / 3, 1);
-    const normalizedWinRate = (this.winRate ?? 0) / 100;
+    const normalizedWinRate = Math.min(this.winRate ?? 0, 1);
 
-    return (
-      normalizedRoi * roiWeight +
-      normalizedSharpe * sharpeWeight +
-      normalizedWinRate * winRateWeight
-    );
+    return normalizedRoi * roiWeight + normalizedSharpe * sharpeWeight + normalizedWinRate * winRateWeight;
   }
 }

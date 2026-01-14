@@ -129,7 +129,7 @@ export class Backtest {
 
   @IsNumber()
   @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Win rate percentage', required: false })
+  @ApiProperty({ description: 'Win rate as decimal (0.0-1.0), e.g., 0.65 = 65%', required: false })
   winRate?: number;
 
   @IsString()
