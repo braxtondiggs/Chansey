@@ -58,6 +58,50 @@ export interface MarketDataResult {
   };
 }
 
+/**
+ * Service for reading and parsing market data CSV files from MinIO/S3 storage.
+ *
+ * This service provides the data layer for backtesting by reading historical OHLCV
+ * (Open, High, Low, Close, Volume) data from CSV files stored in object storage.
+ * It handles multiple storage location formats, CSV parsing, and date filtering.
+ *
+ * ## Supported CSV Format
+ *
+ * The CSV must include a header row with the following columns:
+ *
+ * | Column      | Required | Aliases                              | Description                    |
+ * |-------------|----------|--------------------------------------|--------------------------------|
+ * | timestamp   | Yes      | `time`, `date`, `datetime`           | Candle timestamp               |
+ * | close       | Yes      | `c`, `price`                         | Closing price                  |
+ * | open        | No       | `o`                                  | Opening price (defaults to close) |
+ * | high        | No       | `h`                                  | High price (defaults to close) |
+ * | low         | No       | `l`                                  | Low price (defaults to close)  |
+ * | volume      | No       | `vol`, `v`                           | Trading volume (defaults to 0) |
+ * | symbol      | No       | `coin`, `asset`, `ticker`            | Asset symbol (defaults to first in instrumentUniverse) |
+ *
+ * ## Supported Timestamp Formats
+ *
+ * - ISO 8601: `2024-01-01T00:00:00Z`
+ * - Unix seconds: `1704067200` (valid range: 2000-2100)
+ * - Unix milliseconds: `1704067200000` (valid if > year 2000)
+ *
+ * ## Example CSV
+ *
+ * ```csv
+ * timestamp,open,high,low,close,volume,symbol
+ * 2024-01-01T00:00:00Z,42000.50,42150.00,41900.00,42100.00,1500.5,BTC
+ * 2024-01-01T01:00:00Z,42100.00,42200.00,42000.00,42150.00,1200.0,BTC
+ * ```
+ *
+ * ## Storage Location Formats
+ *
+ * - Direct path: `datasets/btc-hourly.csv`
+ * - S3 URL: `s3://bucket/datasets/btc-hourly.csv`
+ * - HTTP URL: `http://minio:9000/bucket/datasets/btc-hourly.csv`
+ *
+ * @see {@link StorageService} for underlying MinIO operations
+ * @see {@link MarketDataSet} for dataset configuration entity
+ */
 @Injectable()
 export class MarketDataReaderService {
   private readonly logger = new Logger(MarketDataReaderService.name);
@@ -198,6 +242,12 @@ export class MarketDataReaderService {
    * @throws Error if path contains traversal sequences or is invalid
    */
   private sanitizeObjectPath(objectPath: string): string {
+    // Reject explicit traversal segments before normalization
+    const pathSegments = objectPath.split('/').filter((segment) => segment.length > 0);
+    if (pathSegments.some((segment) => segment === '..')) {
+      throw new Error('Invalid storage path: path traversal not allowed');
+    }
+
     // Normalize path to resolve any . or .. components
     const normalized = path.posix.normalize(objectPath);
 
@@ -371,20 +421,17 @@ export class MarketDataReaderService {
       return isoDate;
     }
 
-    // Try Unix timestamp (seconds) - valid range: 2000-2100
-    const unixSeconds = parseInt(trimmed, 10);
-    if (
-      !isNaN(unixSeconds) &&
-      unixSeconds > UNIX_TIMESTAMP_BOUNDS.MIN_SECONDS &&
-      unixSeconds < UNIX_TIMESTAMP_BOUNDS.MAX_SECONDS
-    ) {
-      return new Date(unixSeconds * 1000);
-    }
-
-    // Try Unix timestamp (milliseconds) - valid if > year 2000
-    const unixMs = parseInt(trimmed, 10);
-    if (!isNaN(unixMs) && unixMs > UNIX_TIMESTAMP_BOUNDS.MIN_MILLISECONDS) {
-      return new Date(unixMs);
+    // Try Unix timestamp - parse once, check both seconds and milliseconds ranges
+    const unixValue = parseInt(trimmed, 10);
+    if (!isNaN(unixValue)) {
+      // Check if it's Unix seconds (valid range: 2000-2100)
+      if (unixValue > UNIX_TIMESTAMP_BOUNDS.MIN_SECONDS && unixValue < UNIX_TIMESTAMP_BOUNDS.MAX_SECONDS) {
+        return new Date(unixValue * 1000);
+      }
+      // Check if it's Unix milliseconds (valid if > year 2000)
+      if (unixValue > UNIX_TIMESTAMP_BOUNDS.MIN_MILLISECONDS) {
+        return new Date(unixValue);
+      }
     }
 
     return null;
