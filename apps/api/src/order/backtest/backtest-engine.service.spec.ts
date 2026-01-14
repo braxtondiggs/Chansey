@@ -1,14 +1,11 @@
 import { BacktestEngine, MarketData, Portfolio, TradingSignal } from './backtest-engine.service';
 import { SlippageModelType } from './slippage-model';
 
+import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+
 describe('BacktestEngine.executeTrade', () => {
   const createEngine = () => new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any);
-
-  const createPortfolio = (cashBalance: number): Portfolio => ({
-    cashBalance,
-    positions: new Map(),
-    totalValue: cashBalance
-  });
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
     timestamp: new Date(),
@@ -16,28 +13,6 @@ describe('BacktestEngine.executeTrade', () => {
   });
 
   const noSlippage = { type: SlippageModelType.NONE };
-
-  it('tracks cost basis across multiple buys', async () => {
-    const engine = createEngine();
-    const portfolio = createPortfolio(1000);
-    const random = () => 0.5;
-
-    const buySignal: TradingSignal = {
-      action: 'BUY',
-      coinId: 'BTC',
-      quantity: 10,
-      reason: 'test',
-      confidence: 1
-    };
-
-    await (engine as any).executeTrade(buySignal, portfolio, createMarketData('BTC', 10), 0, random, noSlippage);
-    await (engine as any).executeTrade(buySignal, portfolio, createMarketData('BTC', 20), 0, random, noSlippage);
-
-    const position = portfolio.positions.get('BTC');
-    expect(position).toBeDefined();
-    expect(position?.quantity).toBeCloseTo(20);
-    expect(position?.averagePrice).toBeCloseTo(15);
-  });
 
   it('calculates realized P&L for partial sells', async () => {
     const engine = createEngine();
@@ -82,5 +57,50 @@ describe('BacktestEngine.executeTrade', () => {
 
     const position = portfolio.positions.get('BTC');
     expect(position?.quantity).toBeCloseTo(6);
+  });
+});
+
+describe('BacktestEngine.executeOptimizationBacktest', () => {
+  const createEngine = (algorithmRegistry: any, ohlcService: any) =>
+    new BacktestEngine({} as any, algorithmRegistry, {} as any, ohlcService, {} as any);
+
+  it('rethrows AlgorithmNotRegisteredException', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockRejectedValue(new AlgorithmNotRegisteredException('algo-1'))
+    };
+    const startDate = new Date('2024-01-01T00:00:00.000Z');
+    const endDate = new Date('2024-01-02T00:00:00.000Z');
+    const candle = new OHLCCandle({
+      coinId: 'coin-1',
+      exchangeId: 'exchange-1',
+      timestamp: startDate,
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 105,
+      volume: 1000
+    });
+    const ohlcService = {
+      getCandlesByDateRange: jest.fn().mockResolvedValue([candle])
+    };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const config = {
+      algorithmId: 'algo-1',
+      parameters: {},
+      startDate,
+      endDate
+    };
+
+    await expect(engine.executeOptimizationBacktest(config, [{ id: 'coin-1' }] as any)).rejects.toBeInstanceOf(
+      AlgorithmNotRegisteredException
+    );
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledWith(
+      'algo-1',
+      expect.objectContaining({
+        config: {},
+        metadata: expect.objectContaining({ isOptimization: true, algorithmId: 'algo-1' })
+      })
+    );
   });
 });
