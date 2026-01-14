@@ -18,6 +18,7 @@ import {
 import { BacktestGateway } from './backtest/backtest.gateway';
 import { BacktestProcessor } from './backtest/backtest.processor';
 import { BacktestService } from './backtest/backtest.service';
+import { CoinResolverService } from './backtest/coin-resolver.service';
 import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-report.entity';
 import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataReaderService } from './backtest/market-data-reader.service';
@@ -118,6 +119,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestStreamService,
     BacktestResultService,
     BacktestGateway,
+    CoinResolverService,
     CoinService,
     MarketDataReaderService,
     OrderCalculationService,
