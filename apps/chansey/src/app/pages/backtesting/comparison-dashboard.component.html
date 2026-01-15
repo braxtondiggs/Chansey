@@ -76,7 +76,7 @@
         <td>{{ item.run.algorithm?.name }}</td>
         <td>{{ item.metrics?.totalReturn | percent: '1.0-2' }}</td>
         <td>{{ item.metrics?.sharpeRatio | number: '1.2-2' }}</td>
-        <td>{{ item.metrics?.maxDrawdown | percent: '1.0-2' }}</td>
+        <td>{{ item.metrics?.maxDrawdown ? '-' + (item.metrics.maxDrawdown | percent: '1.0-2') : '-' }}</td>
       </tr>
     </ng-template>
   </p-table>

@@ -893,7 +893,7 @@ export class BacktestEngine {
     return {
       sharpeRatio,
       totalReturn,
-      maxDrawdown: -maxDrawdown, // Convention: negative for drawdown
+      maxDrawdown,
       winRate,
       volatility,
       profitFactor: Math.min(profitFactor, 10), // Cap at 10 to avoid infinity issues
