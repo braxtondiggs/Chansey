@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import {
   Column,
   CreateDateColumn,
@@ -85,6 +85,20 @@ export class MarketDataSet {
   @Column({ default: false })
   @ApiProperty({ description: 'Flag indicating suitability for live replay streaming', default: false })
   replayCapable: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  @Column({ type: 'int', nullable: true, default: 50 })
+  @ApiProperty({
+    description: 'Maximum number of instruments to include in backtest (default: 50)',
+    minimum: 1,
+    maximum: 200,
+    default: 50,
+    required: false
+  })
+  maxInstruments?: number;
 
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Supplemental metadata or documentation references', required: false })
