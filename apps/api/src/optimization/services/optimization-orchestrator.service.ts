@@ -401,7 +401,7 @@ export class OptimizationOrchestratorService {
     const volatility = 0.1 + Math.random() * 0.2;
     const sharpeRatio = baseReturn / volatility;
     const maxDrawdown = -(0.05 + Math.random() * 0.15);
-    const winRate = 45 + Math.random() * 20;
+    const winRate = 0.45 + Math.random() * 0.2; // Decimal scale (0.0-1.0)
     const profitFactor = 1 + Math.random() * 1.5;
 
     return {
@@ -472,7 +472,7 @@ export class OptimizationOrchestratorService {
     const normalizedCalmar = Math.max(0, Math.min(1, calmarRatio / 3)); // 0 to 3 -> 0 to 1
     const normalizedPF = Math.max(0, Math.min(1, ((metrics.profitFactor || 1) - 0.5) / 2.5)); // 0.5 to 3 -> 0 to 1
     const normalizedDD = Math.max(0, Math.min(1, 1 + metrics.maxDrawdown)); // -1 to 0 -> 0 to 1
-    const normalizedWR = metrics.winRate / 100; // 0 to 100 -> 0 to 1
+    const normalizedWR = Math.max(0, Math.min(1, metrics.winRate)); // Already decimal (0.0-1.0)
 
     return (
       normalizedSharpe * (w.sharpeRatio || 0) +
