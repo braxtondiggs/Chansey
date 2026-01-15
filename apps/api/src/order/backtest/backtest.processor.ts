@@ -67,7 +67,16 @@ export class BacktestProcessor extends WorkerHost {
       await this.backtestRepository.save(backtest);
       await this.backtestStream.publishStatus(backtest.id, 'running', undefined, { mode });
 
-      const coins = await this.coinResolver.resolveCoins(dataset);
+      const { coins, warnings } = await this.coinResolver.resolveCoins(dataset);
+
+      // Merge warnings from coin resolution with existing backtest warnings
+      if (warnings.length) {
+        backtest.warningFlags = [...(backtest.warningFlags ?? []), ...warnings];
+        await this.backtestRepository.save(backtest);
+        for (const warning of warnings) {
+          this.backtestStream.publishLog(backtest.id, 'warn', `Warning: ${warning}`);
+        }
+      }
 
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,

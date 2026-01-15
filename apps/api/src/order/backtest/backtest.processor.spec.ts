@@ -60,7 +60,7 @@ describe('BacktestProcessor', () => {
     const backtestStream = { publishStatus: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
     const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue({}) };
-    const coinResolver = { resolveCoins: jest.fn().mockResolvedValue([{ id: 'BTC' }]) };
+    const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
