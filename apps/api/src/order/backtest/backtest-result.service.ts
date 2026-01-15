@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { BacktestStreamService } from './backtest-stream.service';
 import {
@@ -13,15 +13,24 @@ import {
   SimulatedOrderFill
 } from './backtest.entity';
 
+export interface BacktestFinalMetrics {
+  finalValue: number;
+  totalReturn: number;
+  annualizedReturn: number;
+  sharpeRatio: number;
+  maxDrawdown: number;
+  totalTrades: number;
+  winningTrades: number;
+  winRate: number;
+}
+
 @Injectable()
 export class BacktestResultService {
+  private readonly logger = new Logger(BacktestResultService.name);
+
   constructor(
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
-    @InjectRepository(BacktestTrade) private readonly backtestTradeRepository: Repository<BacktestTrade>,
-    @InjectRepository(BacktestSignal) private readonly backtestSignalRepository: Repository<BacktestSignal>,
-    @InjectRepository(SimulatedOrderFill) private readonly simulatedFillRepository: Repository<SimulatedOrderFill>,
-    @InjectRepository(BacktestPerformanceSnapshot)
-    private readonly backtestSnapshotRepository: Repository<BacktestPerformanceSnapshot>,
+    private readonly dataSource: DataSource,
     private readonly backtestStream: BacktestStreamService
   ) {}
 
@@ -32,39 +41,56 @@ export class BacktestResultService {
       signals: Partial<BacktestSignal>[];
       simulatedFills: Partial<SimulatedOrderFill>[];
       snapshots: Partial<BacktestPerformanceSnapshot>[];
-      finalMetrics: Record<string, unknown>;
+      finalMetrics: BacktestFinalMetrics;
     }
   ): Promise<void> {
-    if (results.signals?.length) {
-      await this.backtestSignalRepository.save(results.signals);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      if (results.signals?.length) {
+        await queryRunner.manager.save(BacktestSignal, results.signals);
+      }
+
+      if (results.simulatedFills?.length) {
+        await queryRunner.manager.save(SimulatedOrderFill, results.simulatedFills);
+      }
+
+      if (results.trades?.length) {
+        await queryRunner.manager.save(BacktestTrade, results.trades);
+      }
+
+      if (results.snapshots?.length) {
+        await queryRunner.manager.save(BacktestPerformanceSnapshot, results.snapshots);
+      }
+
+      Object.assign(backtest, {
+        finalValue: results.finalMetrics.finalValue,
+        totalReturn: results.finalMetrics.totalReturn,
+        annualizedReturn: results.finalMetrics.annualizedReturn,
+        sharpeRatio: results.finalMetrics.sharpeRatio,
+        maxDrawdown: results.finalMetrics.maxDrawdown,
+        totalTrades: results.finalMetrics.totalTrades,
+        winningTrades: results.finalMetrics.winningTrades,
+        winRate: results.finalMetrics.winRate,
+        status: BacktestStatus.COMPLETED,
+        completedAt: new Date()
+      });
+
+      await queryRunner.manager.save(Backtest, backtest);
+
+      await queryRunner.commitTransaction();
+      this.logger.log(`Backtest ${backtest.id} results persisted successfully`);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Failed to persist backtest ${backtest.id} results: ${error.message}`, error.stack);
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
 
-    if (results.simulatedFills?.length) {
-      await this.simulatedFillRepository.save(results.simulatedFills);
-    }
-
-    if (results.trades?.length) {
-      await this.backtestTradeRepository.save(results.trades);
-    }
-
-    if (results.snapshots?.length) {
-      await this.backtestSnapshotRepository.save(results.snapshots);
-    }
-
-    Object.assign(backtest, {
-      finalValue: results.finalMetrics.finalValue,
-      totalReturn: results.finalMetrics.totalReturn,
-      annualizedReturn: results.finalMetrics.annualizedReturn,
-      sharpeRatio: results.finalMetrics.sharpeRatio,
-      maxDrawdown: results.finalMetrics.maxDrawdown,
-      totalTrades: results.finalMetrics.totalTrades,
-      winningTrades: results.finalMetrics.winningTrades,
-      winRate: results.finalMetrics.winRate,
-      status: BacktestStatus.COMPLETED,
-      completedAt: new Date()
-    });
-
-    await this.backtestRepository.save(backtest);
+    // Publish status AFTER transaction commits to ensure consistency
     await this.backtestStream.publishStatus(backtest.id, 'completed');
   }
 

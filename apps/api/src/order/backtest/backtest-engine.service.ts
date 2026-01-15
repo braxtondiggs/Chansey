@@ -2,6 +2,7 @@ import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
 
+import { BacktestFinalMetrics } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import {
   Backtest,
@@ -150,7 +151,7 @@ export class BacktestEngine {
     signals: Partial<BacktestSignal>[];
     simulatedFills: Partial<SimulatedOrderFill>[];
     snapshots: Partial<BacktestPerformanceSnapshot>[];
-    finalMetrics: Record<string, unknown>;
+    finalMetrics: BacktestFinalMetrics;
   }> {
     if (!backtest.algorithm) {
       throw new Error('Backtest algorithm relation not loaded');
@@ -639,7 +640,7 @@ export class BacktestEngine {
     trades: Partial<BacktestTrade>[],
     snapshots: Partial<BacktestPerformanceSnapshot>[],
     maxDrawdown: number
-  ) {
+  ): BacktestFinalMetrics {
     const finalValue = portfolio.totalValue;
     const totalReturn = (finalValue - backtest.initialCapital) / backtest.initialCapital;
     const totalTrades = trades.length;
@@ -663,8 +664,7 @@ export class BacktestEngine {
       maxDrawdown,
       totalTrades,
       winningTrades,
-      winRate: sellTradeCount > 0 ? winningTrades / sellTradeCount : 0,
-      performanceHistory: snapshots
+      winRate: sellTradeCount > 0 ? winningTrades / sellTradeCount : 0
     };
   }
 
