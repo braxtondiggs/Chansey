@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { BacktestCheckpointState, DEFAULT_CHECKPOINT_CONFIG } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
@@ -63,9 +64,37 @@ export class BacktestProcessor extends WorkerHost {
         throw new Error(`Market dataset ${datasetId} not found`);
       }
 
+      // Check for existing checkpoint to resume from
+      let resumeFrom: BacktestCheckpointState | undefined;
+      if (backtest.checkpointState) {
+        this.logger.log(
+          `Found checkpoint at index ${backtest.checkpointState.lastProcessedIndex} for backtest ${backtestId}`
+        );
+
+        // Clean up any orphaned results that may exist beyond the checkpoint
+        const { deleted } = await this.backtestResultService.cleanupOrphanedResults(
+          backtestId,
+          backtest.checkpointState.persistedCounts
+        );
+
+        if (deleted.trades || deleted.signals || deleted.fills || deleted.snapshots) {
+          this.backtestStream.publishLog(
+            backtest.id,
+            'warn',
+            `Cleaned up ${deleted.trades + deleted.signals + deleted.fills + deleted.snapshots} orphaned records from previous run`
+          );
+        }
+
+        resumeFrom = backtest.checkpointState;
+      }
+
       backtest.status = BacktestStatus.RUNNING;
       await this.backtestRepository.save(backtest);
-      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, { mode });
+      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, {
+        mode,
+        resuming: !!resumeFrom,
+        resumeIndex: resumeFrom?.lastProcessedIndex
+      });
 
       const { coins, warnings } = await this.coinResolver.resolveCoins(dataset);
 
@@ -78,11 +107,49 @@ export class BacktestProcessor extends WorkerHost {
         }
       }
 
+      // Define checkpoint callback for incremental persistence
+      const onCheckpoint = async (
+        state: BacktestCheckpointState,
+        results: {
+          trades: any[];
+          signals: any[];
+          simulatedFills: any[];
+          snapshots: any[];
+        }
+      ) => {
+        // Persist the incremental results first
+        await this.backtestResultService.persistIncremental(backtest, results);
+
+        // Then save the checkpoint state
+        await this.backtestResultService.saveCheckpoint(
+          backtestId,
+          state,
+          state.lastProcessedIndex + 1,
+          backtest.totalTimestampCount || state.lastProcessedIndex + 1
+        );
+
+        // Publish progress update
+        const progress = backtest.totalTimestampCount
+          ? ((state.lastProcessedIndex + 1) / backtest.totalTimestampCount) * 100
+          : 50;
+        await this.backtestStream.publishStatus(backtest.id, 'running', undefined, {
+          progress: Math.round(progress),
+          checkpointIndex: state.lastProcessedIndex,
+          currentTimestamp: state.lastProcessedTimestamp
+        });
+      };
+
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
-        telemetryEnabled: true
+        telemetryEnabled: true,
+        checkpointInterval: DEFAULT_CHECKPOINT_CONFIG.checkpointInterval,
+        onCheckpoint,
+        resumeFrom
       });
+
+      // Clear checkpoint on successful completion
+      await this.backtestResultService.clearCheckpoint(backtestId);
 
       await this.backtestResultService.persistSuccess(backtest, results);
       this.metricsService.recordBacktestCompleted(strategyName, 'success');

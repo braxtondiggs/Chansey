@@ -15,6 +15,7 @@ import {
   SimulatedOrderFillCollection
 } from '@chansey/api-interfaces';
 
+import { DEFAULT_CHECKPOINT_CONFIG } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
@@ -820,20 +821,66 @@ export class BacktestService implements OnModuleInit {
   async getBacktestProgress(user: User, backtestId: string): Promise<BacktestProgressDto> {
     const backtest = await this.fetchBacktestEntity(user, backtestId, ['user', 'algorithm', 'marketDataSet']);
 
-    // For now, return a simple progress based on status
+    // Calculate actual progress from checkpoint data if available
+    const hasProgress = backtest.processedTimestampCount > 0 && backtest.totalTimestampCount > 0;
+    const actualProgress = hasProgress
+      ? Math.round((backtest.processedTimestampCount / backtest.totalTimestampCount) * 100)
+      : 0;
+
+    // Get current date from checkpoint if available
+    const currentDate = backtest.checkpointState?.lastProcessedTimestamp
+      ? new Date(backtest.checkpointState.lastProcessedTimestamp)
+      : undefined;
+
+    // Get trade count from checkpoint if available
+    const tradesExecuted = backtest.checkpointState?.persistedCounts?.trades;
+
     switch (backtest.status) {
       case BacktestStatus.PENDING:
-        return { progress: 0, message: 'Backtest queued for processing' };
+        return {
+          progress: hasProgress ? actualProgress : 0,
+          message: hasProgress
+            ? `Backtest queued for processing (resuming from ${actualProgress}%)`
+            : 'Backtest queued for processing'
+        };
       case BacktestStatus.RUNNING:
-        return { progress: 50, message: 'Backtest in progress...' };
+        return {
+          progress: hasProgress ? actualProgress : 50,
+          message: hasProgress
+            ? `Processing... ${backtest.processedTimestampCount.toLocaleString()} of ${backtest.totalTimestampCount.toLocaleString()} timestamps`
+            : 'Backtest in progress...',
+          currentDate,
+          tradesExecuted
+        };
       case BacktestStatus.PAUSED:
-        return { progress: 50, message: 'Backtest paused. Resume when ready.' };
+        return {
+          progress: hasProgress ? actualProgress : 50,
+          message: hasProgress
+            ? `Paused at ${actualProgress}%. Resume when ready.`
+            : 'Backtest paused. Resume when ready.',
+          currentDate,
+          tradesExecuted
+        };
       case BacktestStatus.COMPLETED:
-        return { progress: 100, message: 'Backtest completed successfully' };
+        return {
+          progress: 100,
+          message: 'Backtest completed successfully',
+          tradesExecuted: backtest.totalTrades
+        };
       case BacktestStatus.FAILED:
-        return { progress: 0, message: `Backtest failed: ${backtest.errorMessage || 'Unknown error'}` };
+        return {
+          progress: hasProgress ? actualProgress : 0,
+          message: `Backtest failed: ${backtest.errorMessage || 'Unknown error'}`,
+          currentDate,
+          tradesExecuted
+        };
       case BacktestStatus.CANCELLED:
-        return { progress: 0, message: 'Backtest was cancelled' };
+        return {
+          progress: hasProgress ? actualProgress : 0,
+          message: hasProgress ? `Cancelled at ${actualProgress}%` : 'Backtest was cancelled',
+          currentDate,
+          tradesExecuted
+        };
       default:
         return { progress: 0, message: 'Unknown status' };
     }
@@ -870,8 +917,36 @@ export class BacktestService implements OnModuleInit {
     try {
       const backtest = await this.fetchBacktestEntity(user, backtestId, ['algorithm', 'marketDataSet', 'user']);
 
-      if (backtest.status !== BacktestStatus.PAUSED && backtest.status !== BacktestStatus.CANCELLED) {
-        throw new BadRequestException('Only paused or cancelled backtests can be resumed');
+      // Allow resume from PAUSED, CANCELLED, or FAILED status
+      const resumableStatuses = [BacktestStatus.PAUSED, BacktestStatus.CANCELLED, BacktestStatus.FAILED];
+      if (!resumableStatuses.includes(backtest.status)) {
+        throw new BadRequestException(
+          `Only paused, cancelled, or failed backtests can be resumed. Current status: ${backtest.status}`
+        );
+      }
+
+      // Check for existing checkpoint
+      let hasValidCheckpoint = false;
+      if (backtest.checkpointState && backtest.lastCheckpointAt) {
+        const checkpointAge = Date.now() - new Date(backtest.lastCheckpointAt).getTime();
+
+        if (checkpointAge > DEFAULT_CHECKPOINT_CONFIG.maxCheckpointAge) {
+          // Checkpoint is too old - clear it and start fresh
+          this.logger.warn(
+            `Clearing stale checkpoint for backtest ${backtestId} (age: ${Math.round(checkpointAge / 1000 / 60 / 60)}h)`
+          );
+          backtest.checkpointState = null;
+          backtest.lastCheckpointAt = null;
+          backtest.processedTimestampCount = 0;
+        } else {
+          hasValidCheckpoint = true;
+          const progress = backtest.totalTimestampCount
+            ? Math.round((backtest.processedTimestampCount / backtest.totalTimestampCount) * 100)
+            : 0;
+          this.logger.log(
+            `Resuming backtest ${backtestId} from checkpoint at index ${backtest.checkpointState.lastProcessedIndex} (${progress}% complete)`
+          );
+        }
       }
 
       backtest.status = BacktestStatus.PENDING;
@@ -887,7 +962,11 @@ export class BacktestService implements OnModuleInit {
       await queue.add('execute-backtest', payload, { jobId: backtest.id, removeOnComplete: true });
 
       try {
-        await this.backtestStream.publishStatus(backtest.id, 'queued', undefined, { resumed: true });
+        await this.backtestStream.publishStatus(backtest.id, 'queued', undefined, {
+          resumed: true,
+          hasCheckpoint: hasValidCheckpoint,
+          checkpointIndex: hasValidCheckpoint ? backtest.checkpointState?.lastProcessedIndex : undefined
+        });
       } catch (streamError) {
         this.logger.warn(`Failed to publish resume status for backtest ${backtestId}: ${streamError.message}`);
       }

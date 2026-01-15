@@ -58,7 +58,14 @@ describe('BacktestProcessor', () => {
 
     const backtestRepository = { findOne: jest.fn().mockResolvedValue(backtest), save: jest.fn() };
     const backtestStream = { publishStatus: jest.fn() };
-    const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
+    const backtestResultService = {
+      persistSuccess: jest.fn(),
+      markFailed: jest.fn(),
+      clearCheckpoint: jest.fn(),
+      cleanupOrphanedResults: jest
+        .fn()
+        .mockResolvedValue({ deleted: { trades: 0, signals: 0, fills: 0, snapshots: 0 } })
+    };
     const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue({}) };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const metricsTimer = jest.fn();
@@ -89,7 +96,9 @@ describe('BacktestProcessor', () => {
 
     expect(backtestRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: BacktestStatus.RUNNING }));
     expect(backtestStream.publishStatus).toHaveBeenCalledWith(backtest.id, 'running', undefined, {
-      mode: BacktestType.HISTORICAL
+      mode: BacktestType.HISTORICAL,
+      resuming: false,
+      resumeIndex: undefined
     });
     expect(coinResolver.resolveCoins).toHaveBeenCalledWith(dataset);
     expect(backtestEngine.executeHistoricalBacktest).toHaveBeenCalledWith(
@@ -98,9 +107,13 @@ describe('BacktestProcessor', () => {
       expect.objectContaining({
         dataset,
         deterministicSeed: 'seed-1',
-        telemetryEnabled: true
+        telemetryEnabled: true,
+        checkpointInterval: 500,
+        onCheckpoint: expect.any(Function),
+        resumeFrom: undefined
       })
     );
+    expect(backtestResultService.clearCheckpoint).toHaveBeenCalledWith(backtest.id);
     expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(backtest, {});
     expect(metricsService.recordBacktestCompleted).toHaveBeenCalledWith('algo-1', 'success');
     expect(metricsTimer).toHaveBeenCalled();
