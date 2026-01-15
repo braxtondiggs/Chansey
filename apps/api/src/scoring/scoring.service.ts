@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { ComponentScores, StrategyGrade, GRADE_RANGES } from '@chansey/api-interfaces';
+import { ComponentScores, GRADE_RANGES, StrategyGrade } from '@chansey/api-interfaces';
 
 import { CalmarRatioCalculator } from './metrics/calmar-ratio.calculator';
 import { ProfitFactorCalculator } from './metrics/profit-factor.calculator';
@@ -111,11 +111,11 @@ export class ScoringService {
       poor: 0
     });
 
-    // Win Rate (10% weight)
+    // Win Rate (10% weight) - expects decimal (0.0-1.0)
     const winRateScore = this.scoreMetric(results.winRate, {
-      excellent: 60,
-      good: 50,
-      acceptable: 45,
+      excellent: 0.6,
+      good: 0.5,
+      acceptable: 0.45,
       poor: 0
     });
 
@@ -310,7 +310,7 @@ export class ScoringService {
       warnings.push('High walk-forward degradation suggests overfitting');
     }
 
-    if (results.winRate < 45) {
+    if (results.winRate < 0.45) {
       warnings.push('Low win rate below 45% threshold');
     }
 

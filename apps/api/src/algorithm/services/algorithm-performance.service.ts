@@ -85,7 +85,7 @@ export class AlgorithmPerformanceService {
       algorithmActivationId: activationId,
       userId: activation.userId,
       roi: Number(roi.toFixed(2)),
-      winRate: Number(winRate.toFixed(2)),
+      winRate: Number(winRate.toFixed(4)), // Decimal format (0.0-1.0)
       sharpeRatio: Number(sharpeRatio.toFixed(4)),
       maxDrawdown: Number(maxDrawdown.toFixed(2)),
       totalTrades,
@@ -139,16 +139,16 @@ export class AlgorithmPerformanceService {
   }
 
   /**
-   * Calculate win rate (percentage of profitable trades)
+   * Calculate win rate (ratio of profitable trades)
    * @param orders - Array of orders
-   * @returns Win rate percentage
+   * @returns Win rate as decimal (0.0-1.0), e.g., 0.65 = 65% win rate
    */
   private calculateWinRate(orders: Order[]): number {
     if (orders.length === 0) return 0;
 
     const profitableTrades = orders.filter((order) => order.gainLoss && order.gainLoss > 0).length;
 
-    return (profitableTrades / orders.length) * 100;
+    return profitableTrades / orders.length;
   }
 
   /**

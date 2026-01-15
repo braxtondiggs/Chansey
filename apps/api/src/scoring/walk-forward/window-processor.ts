@@ -105,8 +105,8 @@ export class WindowProcessor {
       return true;
     }
 
-    // Win rate drops more than 20 percentage points
-    if (trainMetrics.winRate - testMetrics.winRate > 20) {
+    // Win rate drops more than 20 percentage points (0.20 in decimal scale)
+    if (trainMetrics.winRate - testMetrics.winRate > 0.2) {
       return true;
     }
 

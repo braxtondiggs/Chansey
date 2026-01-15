@@ -232,9 +232,9 @@ export class UserPerformanceService {
   }
 
   /**
-   * Calculate win rate from orders (% of profitable trades).
+   * Calculate win rate from orders (ratio of profitable trades).
    * Uses the gainLoss field on sell orders to determine profitability.
-   * Win rate = (profitable sell orders / total sell orders) * 100
+   * @returns Win rate as decimal (0.0-1.0), e.g., 0.65 = 65% win rate
    */
   private calculateWinRate(orders: Order[]): number {
     // Filter to only filled sell orders (where we can determine profit/loss)
@@ -247,7 +247,7 @@ export class UserPerformanceService {
       (o) => o.gainLoss !== null && o.gainLoss !== undefined && Number(o.gainLoss) > 0
     ).length;
 
-    return (profitableTrades / filledSellOrders.length) * 100;
+    return profitableTrades / filledSellOrders.length;
   }
 
   /**
@@ -341,6 +341,7 @@ export interface AlgoPerformanceMetrics {
   totalReturnPct: number;
   monthlyReturnPct: number;
   weeklyReturnPct: number;
+  /** Win rate as decimal (0.0-1.0), e.g., 0.65 = 65% win rate */
   winRate: number;
   totalTrades: number;
   activePositions: number;

@@ -75,6 +75,7 @@ export interface WindowMetrics {
   totalReturn: number;
   sharpeRatio: number;
   maxDrawdown: number;
+  /** Win rate as decimal (0.0 to 1.0), e.g., 0.65 = 65% win rate */
   winRate: number;
   tradeCount: number;
   profitFactor: number;
