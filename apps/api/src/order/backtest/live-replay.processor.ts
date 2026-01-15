@@ -11,10 +11,9 @@ import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
+import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
-import { Coin } from '../../coin/coin.entity';
-import { CoinService } from '../../coin/coin.service';
 import { MetricsService } from '../../metrics/metrics.service';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
@@ -26,7 +25,7 @@ export class LiveReplayProcessor extends WorkerHost {
 
   constructor(
     private readonly backtestEngine: BacktestEngine,
-    private readonly coinService: CoinService,
+    private readonly coinResolver: CoinResolverService,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
     private readonly metricsService: MetricsService,
@@ -77,10 +76,7 @@ export class LiveReplayProcessor extends WorkerHost {
       await this.backtestRepository.save(backtest);
       await this.backtestStream.publishStatus(backtest.id, 'running', undefined, { mode });
 
-      const coins = await this.resolveCoins(dataset);
-      if (!coins.length) {
-        throw new Error('No coins resolved for dataset instrument universe');
-      }
+      const coins = await this.coinResolver.resolveCoins(dataset);
 
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,
@@ -97,43 +93,5 @@ export class LiveReplayProcessor extends WorkerHost {
     } finally {
       endTimer();
     }
-  }
-
-  private async resolveCoins(dataset: MarketDataSet): Promise<Coin[]> {
-    const instruments = dataset.instrumentUniverse ?? [];
-    const resolved: Coin[] = [];
-
-    for (const instrument of instruments) {
-      const symbol = instrument.toUpperCase();
-      try {
-        const direct = await this.coinService.getCoinBySymbol(symbol);
-        if (direct) {
-          resolved.push(direct);
-          continue;
-        }
-      } catch (error) {
-        this.logger.debug(`Failed to resolve symbol ${symbol}: ${error.message}`);
-      }
-
-      const baseCandidate = symbol.replace(/(USDT|USD|BTC|ETH)$/i, '');
-      if (baseCandidate && baseCandidate !== symbol) {
-        try {
-          const baseCoin = await this.coinService.getCoinBySymbol(baseCandidate);
-          if (baseCoin) {
-            resolved.push(baseCoin);
-            continue;
-          }
-        } catch (error) {
-          this.logger.debug(`Failed to resolve base symbol ${baseCandidate}: ${error.message}`);
-        }
-      }
-    }
-
-    if (!resolved.length) {
-      this.logger.warn('Falling back to popular coins for live replay due to unresolved instrument universe');
-      return (await this.coinService.getPopularCoins()).slice(0, 5);
-    }
-
-    return resolved.slice(0, 5);
   }
 }
