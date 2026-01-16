@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { BacktestCheckpointState, DEFAULT_CHECKPOINT_CONFIG } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
@@ -63,9 +64,45 @@ export class BacktestProcessor extends WorkerHost {
         throw new Error(`Market dataset ${datasetId} not found`);
       }
 
+      // Check for existing checkpoint to resume from
+      let resumeFrom: BacktestCheckpointState | undefined;
+      if (backtest.checkpointState) {
+        this.logger.log(
+          `Found checkpoint at index ${backtest.checkpointState.lastProcessedIndex} for backtest ${backtestId}`
+        );
+
+        // Record checkpoint resume metric
+        this.metricsService.recordCheckpointResumed(strategyName);
+
+        // Clean up any orphaned results that may exist beyond the checkpoint
+        const { deleted } = await this.backtestResultService.cleanupOrphanedResults(
+          backtestId,
+          backtest.checkpointState.persistedCounts
+        );
+
+        if (deleted.trades || deleted.signals || deleted.fills || deleted.snapshots) {
+          this.backtestStream.publishLog(
+            backtest.id,
+            'warn',
+            `Cleaned up ${deleted.trades + deleted.signals + deleted.fills + deleted.snapshots} orphaned records from previous run`
+          );
+        }
+
+        resumeFrom = backtest.checkpointState;
+      }
+
       backtest.status = BacktestStatus.RUNNING;
       await this.backtestRepository.save(backtest);
-      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, { mode });
+
+      // Record backtest started and increment active count
+      this.metricsService.recordBacktestStarted(mode ?? 'historical', strategyName, !!resumeFrom);
+      this.metricsService.incrementActiveBacktests(mode ?? 'historical');
+
+      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, {
+        mode,
+        resuming: !!resumeFrom,
+        resumeIndex: resumeFrom?.lastProcessedIndex
+      });
 
       const { coins, warnings } = await this.coinResolver.resolveCoins(dataset);
 
@@ -78,20 +115,123 @@ export class BacktestProcessor extends WorkerHost {
         }
       }
 
+      // Define checkpoint callback for incremental persistence
+      const onCheckpoint = async (
+        state: BacktestCheckpointState,
+        results: {
+          trades: any[];
+          signals: any[];
+          simulatedFills: any[];
+          snapshots: any[];
+        },
+        totalTimestamps: number
+      ) => {
+        // Persist the incremental results first
+        await this.backtestResultService.persistIncremental(backtest, results);
+
+        // Then save the checkpoint state with accurate total count from engine
+        await this.backtestResultService.saveCheckpoint(
+          backtestId,
+          state,
+          state.lastProcessedIndex + 1,
+          totalTimestamps
+        );
+
+        // Record checkpoint saved metric
+        this.metricsService.recordCheckpointSaved(strategyName);
+
+        // Publish progress update with accurate progress calculation
+        const progress = ((state.lastProcessedIndex + 1) / totalTimestamps) * 100;
+        await this.backtestStream.publishStatus(backtest.id, 'running', undefined, {
+          progress: Math.round(progress),
+          checkpointIndex: state.lastProcessedIndex,
+          currentTimestamp: state.lastProcessedTimestamp
+        });
+
+        // Update progress metric
+        this.metricsService.setCheckpointProgress(backtestId, strategyName, Math.round(progress));
+      };
+
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
-        telemetryEnabled: true
+        telemetryEnabled: true,
+        checkpointInterval: DEFAULT_CHECKPOINT_CONFIG.checkpointInterval,
+        onCheckpoint,
+        resumeFrom
       });
+
+      // Clear checkpoint on successful completion
+      await this.backtestResultService.clearCheckpoint(backtestId);
+
+      // Clear progress metric on completion
+      this.metricsService.clearCheckpointProgress(backtestId, strategyName);
 
       await this.backtestResultService.persistSuccess(backtest, results);
       this.metricsService.recordBacktestCompleted(strategyName, 'success');
+
+      // Record final metrics distribution
+      this.metricsService.recordBacktestFinalMetrics(strategyName, {
+        totalReturn: results.finalMetrics.totalReturn,
+        sharpeRatio: results.finalMetrics.sharpeRatio,
+        maxDrawdown: results.finalMetrics.maxDrawdown,
+        tradeCount: results.finalMetrics.totalTrades
+      });
     } catch (error) {
       this.logger.error(`Historical backtest ${backtestId} failed: ${error.message}`, error.stack);
       await this.backtestResultService.markFailed(backtestId, error.message);
       this.metricsService.recordBacktestCompleted(strategyName, 'failed');
+
+      // Categorize error type for metrics
+      const errorType = this.categorizeError(error);
+      this.metricsService.recordBacktestError(strategyName, errorType);
+
+      // Clear progress metric on failure
+      this.metricsService.clearCheckpointProgress(backtestId, strategyName);
     } finally {
+      // Decrement active backtest count
+      this.metricsService.decrementActiveBacktests(mode ?? 'historical');
       endTimer();
     }
+  }
+
+  /**
+   * Categorize error for metrics tracking
+   */
+  private categorizeError(
+    error: Error
+  ):
+    | 'algorithm_not_found'
+    | 'data_load_failed'
+    | 'persistence_failed'
+    | 'coin_resolution_failed'
+    | 'quote_currency_failed'
+    | 'execution_error'
+    | 'unknown' {
+    const message = error.message?.toLowerCase() ?? '';
+
+    if (message.includes('algorithm') && (message.includes('not found') || message.includes('not registered'))) {
+      return 'algorithm_not_found';
+    }
+    if (message.includes('price data') || message.includes('market data') || message.includes('no historical')) {
+      return 'data_load_failed';
+    }
+    if (message.includes('persist') || message.includes('save') || message.includes('transaction')) {
+      return 'persistence_failed';
+    }
+    if (
+      message.includes('coin') &&
+      (message.includes('resolution') || message.includes('not found') || message.includes('resolve'))
+    ) {
+      return 'coin_resolution_failed';
+    }
+    if (message.includes('quote currency') || message.includes('stablecoin')) {
+      return 'quote_currency_failed';
+    }
+    if (message.includes('execution') || message.includes('simulate') || message.includes('trade')) {
+      return 'execution_error';
+    }
+
+    return 'unknown';
   }
 }

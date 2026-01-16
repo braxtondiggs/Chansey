@@ -15,6 +15,7 @@ import {
 } from 'typeorm';
 
 import { ColumnNumericTransformer } from './../../utils/transformers';
+import { BacktestCheckpointState } from './backtest-checkpoint.interface';
 import { MarketDataSet } from './market-data-set.entity';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
@@ -175,6 +176,24 @@ export class Backtest {
   @Column({ type: 'timestamptz', nullable: true })
   @ApiProperty({ description: 'When the backtest completed', required: false })
   completedAt?: Date;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: 'Checkpoint state for resume capability', required: false })
+  checkpointState?: BacktestCheckpointState;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'When the last checkpoint was saved', required: false })
+  lastCheckpointAt?: Date;
+
+  @IsNumber()
+  @Column({ type: 'integer', default: 0 })
+  @ApiProperty({ description: 'Number of timestamps processed so far', default: 0 })
+  processedTimestampCount: number;
+
+  @IsNumber()
+  @Column({ type: 'integer', default: 0 })
+  @ApiProperty({ description: 'Total number of timestamps to process', default: 0 })
+  totalTimestampCount: number;
 
   @Index('backtest_userId_index')
   @ManyToOne('User', { nullable: false, onDelete: 'CASCADE' })

@@ -219,3 +219,92 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
     expect(algorithmRegistry.executeAlgorithm).not.toHaveBeenCalled();
   });
 });
+
+describe('BacktestEngine checkpointing', () => {
+  const createEngine = () =>
+    new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any, new SharpeRatioCalculator(), {} as any);
+
+  const createCheckpoint = (engine: BacktestEngine) => {
+    const portfolio: Portfolio = {
+      cashBalance: 1000,
+      totalValue: 1200,
+      positions: new Map([
+        [
+          'BTC',
+          {
+            coinId: 'BTC',
+            quantity: 2,
+            averagePrice: 100,
+            totalValue: 200
+          }
+        ]
+      ])
+    };
+
+    return (engine as any).buildCheckpointState(1, '2024-01-02T00:00:00.000Z', portfolio, 1250, 0.1, 12345, 2, 3, 4, 5);
+  };
+
+  it('validates checkpoints with matching checksum', () => {
+    const engine = createEngine();
+    const checkpoint = createCheckpoint(engine);
+
+    const result = engine.validateCheckpoint(checkpoint, [
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-02T00:00:00.000Z',
+      '2024-01-03T00:00:00.000Z'
+    ]);
+
+    expect(result).toEqual({ valid: true });
+  });
+
+  it('detects corrupted checkpoints via checksum', () => {
+    const engine = createEngine();
+    const checkpoint = createCheckpoint(engine);
+    checkpoint.portfolio.cashBalance += 10;
+
+    const result = engine.validateCheckpoint(checkpoint, ['2024-01-01T00:00:00.000Z', '2024-01-02T00:00:00.000Z']);
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('checksum');
+  });
+
+  it('rejects checkpoints with timestamp mismatches', () => {
+    const engine = createEngine();
+    const checkpoint = createCheckpoint(engine);
+
+    const result = engine.validateCheckpoint(checkpoint, ['2024-01-01T00:00:00.000Z', '2024-01-04T00:00:00.000Z']);
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('Timestamp mismatch');
+  });
+
+  it('rejects checkpoints that are out of bounds', () => {
+    const engine = createEngine();
+    const checkpoint = createCheckpoint(engine);
+    checkpoint.lastProcessedIndex = 5;
+
+    const result = engine.validateCheckpoint(checkpoint, ['2024-01-01T00:00:00.000Z']);
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('out of bounds');
+  });
+
+  it('restores portfolio state from checkpoint data', () => {
+    const engine = createEngine();
+    const checkpoint = createCheckpoint(engine);
+
+    const restored = (engine as any).restorePortfolio(checkpoint.portfolio, 1000);
+
+    expect(restored.cashBalance).toBe(1000);
+    expect(restored.positions.size).toBe(1);
+    expect(restored.positions.get('BTC')).toEqual(
+      expect.objectContaining({
+        coinId: 'BTC',
+        quantity: 2,
+        averagePrice: 100,
+        totalValue: 200
+      })
+    );
+    expect(restored.totalValue).toBe(1200);
+  });
+});
