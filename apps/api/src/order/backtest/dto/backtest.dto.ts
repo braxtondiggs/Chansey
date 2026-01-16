@@ -180,6 +180,16 @@ export class CreateBacktestDto {
     required: false
   })
   deterministicSeed?: string;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Quote currency symbol for trades (e.g., USDT, USDC). Defaults to USDT.',
+    example: 'USDT',
+    default: 'USDT',
+    required: false
+  })
+  quoteCurrency?: string;
 }
 
 export class UpdateBacktestDto {

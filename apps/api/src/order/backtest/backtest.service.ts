@@ -141,7 +141,8 @@ export class BacktestService implements OnModuleInit {
           initialCapital: createBacktestDto.initialCapital,
           tradingFee: createBacktestDto.tradingFee || 0.001,
           startDate: createBacktestDto.startDate,
-          endDate: createBacktestDto.endDate
+          endDate: createBacktestDto.endDate,
+          quoteCurrency: createBacktestDto.quoteCurrency || 'USDT'
         },
         slippage: {
           model: createBacktestDto.slippageModel || 'fixed',

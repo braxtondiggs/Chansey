@@ -7,7 +7,7 @@ import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 
 describe('BacktestEngine.executeTrade', () => {
   const createEngine = () =>
-    new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any, new SharpeRatioCalculator());
+    new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any, new SharpeRatioCalculator(), {} as any);
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
     timestamp: new Date(),
@@ -60,11 +60,91 @@ describe('BacktestEngine.executeTrade', () => {
     const position = portfolio.positions.get('BTC');
     expect(position?.quantity).toBeCloseTo(6);
   });
+
+  it('applies slippage and trading fees to BUY trades', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 200,
+      totalValue: 200,
+      positions: new Map()
+    };
+
+    const buySignal: TradingSignal = {
+      action: 'BUY',
+      coinId: 'BTC',
+      quantity: 1,
+      reason: 'entry',
+      confidence: 0.8
+    };
+
+    const result = await (engine as any).executeTrade(
+      buySignal,
+      portfolio,
+      createMarketData('BTC', 100),
+      0.01,
+      { next: () => 0.5 },
+      { type: SlippageModelType.FIXED, fixedBps: 100 }
+    );
+
+    expect(result?.trade.price).toBeCloseTo(101);
+    expect(result?.trade.fee).toBeCloseTo(1.01);
+    expect(result?.trade.metadata?.basePrice).toBe(100);
+    expect(result?.trade.metadata?.slippageBps).toBe(100);
+    expect(portfolio.cashBalance).toBeCloseTo(97.99);
+  });
+
+  it('uses slippage-adjusted price for SELL realized P&L', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 0,
+      totalValue: 80,
+      positions: new Map([
+        [
+          'BTC',
+          {
+            coinId: 'BTC',
+            quantity: 1,
+            averagePrice: 80,
+            totalValue: 80
+          }
+        ]
+      ])
+    };
+
+    const sellSignal: TradingSignal = {
+      action: 'SELL',
+      coinId: 'BTC',
+      quantity: 1,
+      reason: 'exit',
+      confidence: 1
+    };
+
+    const result = await (engine as any).executeTrade(
+      sellSignal,
+      portfolio,
+      createMarketData('BTC', 100),
+      0.01,
+      { next: () => 0.5 },
+      { type: SlippageModelType.FIXED, fixedBps: 100 }
+    );
+
+    expect(result?.trade.price).toBeCloseTo(99);
+    expect(result?.trade.realizedPnL).toBeCloseTo(18.01);
+    expect(result?.trade.costBasis).toBeCloseTo(80);
+  });
 });
 
 describe('BacktestEngine.executeOptimizationBacktest', () => {
   const createEngine = (algorithmRegistry: any, ohlcService: any) =>
-    new BacktestEngine({} as any, algorithmRegistry, {} as any, ohlcService, {} as any, new SharpeRatioCalculator());
+    new BacktestEngine(
+      {} as any,
+      algorithmRegistry,
+      {} as any,
+      ohlcService,
+      {} as any,
+      new SharpeRatioCalculator(),
+      {} as any
+    );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
     const algorithmRegistry = {
@@ -104,5 +184,38 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
         metadata: expect.objectContaining({ isOptimization: true, algorithmId: 'algo-1' })
       })
     );
+  });
+
+  it('returns neutral metrics when there is no price data', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn()
+    };
+    const ohlcService = {
+      getCandlesByDateRange: jest.fn().mockResolvedValue([])
+    };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeOptimizationBacktest(
+      {
+        algorithmId: 'algo-1',
+        parameters: {},
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-02T00:00:00.000Z')
+      },
+      [{ id: 'coin-1' }] as any
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        sharpeRatio: 0,
+        totalReturn: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        volatility: 0,
+        profitFactor: 1,
+        tradeCount: 0
+      })
+    );
+    expect(algorithmRegistry.executeAlgorithm).not.toHaveBeenCalled();
   });
 });

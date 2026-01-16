@@ -146,6 +146,12 @@ import { MetricsService } from './metrics.service';
       buckets: [1, 5, 10, 30, 60, 120, 300]
     }),
 
+    makeCounterProvider({
+      name: 'chansey_backtest_quote_currency_fallback_total',
+      help: 'Total number of quote currency fallbacks during backtest initialization',
+      labelNames: ['preferred', 'actual']
+    }),
+
     // Queue Metrics
     makeGaugeProvider({
       name: 'chansey_queue_jobs_waiting',
