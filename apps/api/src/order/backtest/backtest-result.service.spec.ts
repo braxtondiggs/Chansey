@@ -1,0 +1,201 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+
+import { DataSource } from 'typeorm';
+
+import { BacktestFinalMetrics, BacktestResultService } from './backtest-result.service';
+import { BacktestStreamService } from './backtest-stream.service';
+import {
+  Backtest,
+  BacktestPerformanceSnapshot,
+  BacktestSignal,
+  BacktestStatus,
+  BacktestTrade,
+  SimulatedOrderFill
+} from './backtest.entity';
+
+describe('BacktestResultService', () => {
+  let service: BacktestResultService;
+
+  const mockBacktestRepository = {
+    save: jest.fn(),
+    update: jest.fn()
+  };
+
+  const mockBacktestStreamService = {
+    publishStatus: jest.fn()
+  };
+
+  // Mock QueryRunner for transaction testing
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: {
+      save: jest.fn()
+    }
+  };
+
+  const mockDataSource = {
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner)
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BacktestResultService,
+        { provide: getRepositoryToken(Backtest), useValue: mockBacktestRepository },
+        { provide: DataSource, useValue: mockDataSource },
+        { provide: BacktestStreamService, useValue: mockBacktestStreamService }
+      ]
+    }).compile();
+
+    service = module.get<BacktestResultService>(BacktestResultService);
+
+    jest.clearAllMocks();
+    mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
+  });
+
+  describe('persistSuccess', () => {
+    const mockBacktest = {
+      id: 'backtest-123',
+      status: BacktestStatus.RUNNING
+    } as Backtest;
+
+    const mockFinalMetrics: BacktestFinalMetrics = {
+      finalValue: 11000,
+      totalReturn: 10,
+      annualizedReturn: 15,
+      sharpeRatio: 1.5,
+      maxDrawdown: -5,
+      totalTrades: 10,
+      winningTrades: 6,
+      winRate: 60
+    };
+
+    const mockResults = {
+      trades: [{ id: 'trade-1' }, { id: 'trade-2' }] as Partial<BacktestTrade>[],
+      signals: [{ id: 'signal-1' }] as Partial<BacktestSignal>[],
+      simulatedFills: [{ id: 'fill-1' }] as Partial<SimulatedOrderFill>[],
+      snapshots: [{ id: 'snapshot-1' }] as Partial<BacktestPerformanceSnapshot>[],
+      finalMetrics: mockFinalMetrics
+    };
+
+    it('should persist results, commit, and publish after the transaction', async () => {
+      mockQueryRunner.manager.save.mockResolvedValue({});
+
+      await service.persistSuccess(mockBacktest, mockResults);
+
+      expect(mockDataSource.createQueryRunner).toHaveBeenCalled();
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestSignal, mockResults.signals);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(SimulatedOrderFill, mockResults.simulatedFills);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestTrade, mockResults.trades);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestPerformanceSnapshot, mockResults.snapshots);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
+        Backtest,
+        expect.objectContaining({
+          id: 'backtest-123',
+          finalValue: 11000,
+          totalReturn: 10,
+          annualizedReturn: 15,
+          sharpeRatio: 1.5,
+          maxDrawdown: -5,
+          totalTrades: 10,
+          winningTrades: 6,
+          winRate: 60,
+          status: BacktestStatus.COMPLETED,
+          completedAt: expect.any(Date)
+        })
+      );
+
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.rollbackTransaction).not.toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+
+      const commitOrder = mockQueryRunner.commitTransaction.mock.invocationCallOrder[0];
+      const publishOrder = mockBacktestStreamService.publishStatus.mock.invocationCallOrder[0];
+
+      expect(commitOrder).toBeLessThan(publishOrder);
+      expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith('backtest-123', 'completed');
+    });
+
+    it('should rollback, release, and rethrow without publishing on failure', async () => {
+      const saveError = new Error('Database connection lost');
+      mockQueryRunner.manager.save.mockRejectedValue(saveError);
+
+      await expect(service.persistSuccess(mockBacktest, mockResults)).rejects.toThrow(saveError);
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(mockBacktestStreamService.publishStatus).not.toHaveBeenCalled();
+    });
+
+    it('should rollback when a later save fails', async () => {
+      const saveError = new Error('Trade save failed');
+      mockQueryRunner.manager.save
+        .mockResolvedValueOnce({}) // signals succeed
+        .mockResolvedValueOnce({}) // fills succeed
+        .mockRejectedValueOnce(saveError); // trades fail
+
+      await expect(service.persistSuccess(mockBacktest, mockResults)).rejects.toThrow(saveError);
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(mockBacktestStreamService.publishStatus).not.toHaveBeenCalled();
+    });
+
+    it('should skip saving empty arrays', async () => {
+      mockQueryRunner.manager.save.mockResolvedValue({});
+
+      const emptyResults = {
+        trades: [],
+        signals: [],
+        simulatedFills: [],
+        snapshots: [],
+        finalMetrics: mockResults.finalMetrics
+      };
+
+      await service.persistSuccess(mockBacktest, emptyResults);
+
+      // Should only save the backtest entity itself
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(1);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(Backtest, expect.any(Object));
+    });
+  });
+
+  describe('markFailed', () => {
+    it('should update backtest status and publish failed state', async () => {
+      const backtestId = 'backtest-456';
+      const errorMessage = 'Strategy execution error';
+
+      await service.markFailed(backtestId, errorMessage);
+
+      expect(mockBacktestRepository.update).toHaveBeenCalledWith(backtestId, {
+        status: BacktestStatus.FAILED,
+        errorMessage
+      });
+      expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith(backtestId, 'failed', errorMessage);
+    });
+  });
+
+  describe('markCancelled', () => {
+    it('should update backtest status and publish cancellation', async () => {
+      const mockBacktest = { id: 'backtest-789', status: BacktestStatus.RUNNING } as Backtest;
+      const reason = 'User requested cancellation';
+      mockBacktestRepository.save.mockResolvedValue(mockBacktest);
+
+      await service.markCancelled(mockBacktest, reason);
+
+      expect(mockBacktest.status).toBe(BacktestStatus.CANCELLED);
+      expect(mockBacktestRepository.save).toHaveBeenCalledWith(mockBacktest);
+      expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith('backtest-789', 'cancelled', reason);
+    });
+  });
+});
