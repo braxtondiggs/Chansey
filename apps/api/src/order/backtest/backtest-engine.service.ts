@@ -17,6 +17,7 @@ import {
 } from './backtest.entity';
 import { MarketDataReaderService, OHLCVData } from './market-data-reader.service';
 import { MarketDataSet } from './market-data-set.entity';
+import { QuoteCurrencyResolverService } from './quote-currency-resolver.service';
 import {
   applySlippage,
   calculateSimulatedSlippage,
@@ -140,7 +141,8 @@ export class BacktestEngine {
     @Inject(forwardRef(() => OHLCService))
     private readonly ohlcService: OHLCService,
     private readonly marketDataReader: MarketDataReaderService,
-    private readonly sharpeCalculator: SharpeRatioCalculator
+    private readonly sharpeCalculator: SharpeRatioCalculator,
+    private readonly quoteCurrencyResolver: QuoteCurrencyResolverService
   ) {}
 
   async executeHistoricalBacktest(
@@ -177,11 +179,10 @@ export class BacktestEngine {
 
     const coinIds = coins.map((coin) => coin.id);
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
-    const quoteCoin = await this.coinService.getCoinBySymbol('USD');
 
-    if (!quoteCoin) {
-      throw new Error('USD coin not found in database. Please ensure the USD coin exists before running backtests.');
-    }
+    // Resolve quote currency from configSnapshot (default: USDT) with fallback chain
+    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
+    const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
     // Determine data source: storage file (CSV) or database (Price table)
     const startDate = options.dataset.startAt ?? backtest.startDate;

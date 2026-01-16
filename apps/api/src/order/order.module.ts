@@ -23,6 +23,7 @@ import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-rep
 import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
+import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver.service';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { PositionExit } from './entities/position-exit.entity';
@@ -124,6 +125,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     CoinResolverService,
     CoinService,
     MarketDataReaderService,
+    QuoteCurrencyResolverService,
     OrderCalculationService,
     OrderService,
     OrderStateMachineService,
