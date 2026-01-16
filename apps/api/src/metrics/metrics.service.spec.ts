@@ -30,6 +30,7 @@ const buildService = () => {
 
     backtestsCompletedTotal: createCounterMock(),
     backtestDuration: createHistogramMock(),
+    quoteCurrencyFallbackTotal: createCounterMock(),
 
     queueJobsWaiting: createGaugeMock(),
     queueJobsActive: createGaugeMock(),
@@ -64,6 +65,7 @@ const buildService = () => {
     mocks.priceUpdateLag,
     mocks.backtestsCompletedTotal,
     mocks.backtestDuration,
+    mocks.quoteCurrencyFallbackTotal,
     mocks.queueJobsWaiting,
     mocks.queueJobsActive,
     mocks.queueJobsCompletedTotal,
@@ -149,6 +151,7 @@ describe('MetricsService', () => {
     service.setPriceUpdateLag('coingecko', 5);
     service.recordBacktestCompleted('mean-reversion', 'success');
     service.startBacktestTimer('mean-reversion')();
+    service.recordQuoteCurrencyFallback('USDT', 'USDC');
     service.setQueueJobsWaiting('orders', 7);
     service.setQueueJobsActive('orders', 3);
     service.recordQueueJobCompleted('orders');
@@ -158,6 +161,7 @@ describe('MetricsService', () => {
     expect(mocks.priceUpdateLag.set).toHaveBeenCalledWith({ source: 'coingecko' }, 5);
     expect(mocks.backtestsCompletedTotal.inc).toHaveBeenCalledWith({ strategy: 'mean-reversion', status: 'success' });
     expect(backtestEnd).toHaveBeenCalled();
+    expect(mocks.quoteCurrencyFallbackTotal.inc).toHaveBeenCalledWith({ preferred: 'USDT', actual: 'USDC' });
     expect(mocks.queueJobsWaiting.set).toHaveBeenCalledWith({ queue: 'orders' }, 7);
     expect(mocks.queueJobsActive.set).toHaveBeenCalledWith({ queue: 'orders' }, 3);
     expect(mocks.queueJobsCompletedTotal.inc).toHaveBeenCalledWith({ queue: 'orders' });

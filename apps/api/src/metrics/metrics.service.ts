@@ -69,6 +69,8 @@ export class MetricsService {
     private readonly backtestsCompletedTotal: Counter<string>,
     @InjectMetric('chansey_backtest_duration_seconds')
     private readonly backtestDuration: Histogram<string>,
+    @InjectMetric('chansey_backtest_quote_currency_fallback_total')
+    private readonly quoteCurrencyFallbackTotal: Counter<string>,
 
     // Queue Metrics
     @InjectMetric('chansey_queue_jobs_waiting')
@@ -226,6 +228,13 @@ export class MetricsService {
    */
   startBacktestTimer(strategy: string): () => void {
     return this.backtestDuration.startTimer({ strategy });
+  }
+
+  /**
+   * Record quote currency fallback during backtest initialization
+   */
+  recordQuoteCurrencyFallback(preferred: string, actual: string): void {
+    this.quoteCurrencyFallbackTotal.inc({ preferred, actual });
   }
 
   // ===================
