@@ -1,6 +1,8 @@
 import { BacktestEngine } from './backtest-engine.service';
 import { MarketDataReaderService } from './market-data-reader.service';
 
+import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
+
 describe('BacktestEngine storage flow', () => {
   it('loads CSV-backed market data and runs the backtest loop', async () => {
     const csv = [
@@ -32,7 +34,8 @@ describe('BacktestEngine storage flow', () => {
       algorithmRegistry as any,
       { getCoinBySymbol: jest.fn().mockResolvedValue({ id: 'USD', symbol: 'USD' }) } as any,
       ohlcService as any,
-      marketDataReader
+      marketDataReader,
+      new SharpeRatioCalculator()
     );
 
     const result = await engine.executeHistoricalBacktest(

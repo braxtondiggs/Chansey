@@ -2,10 +2,12 @@ import { BacktestEngine, MarketData, Portfolio, TradingSignal } from './backtest
 import { SlippageModelType } from './slippage-model';
 
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 
 describe('BacktestEngine.executeTrade', () => {
-  const createEngine = () => new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any);
+  const createEngine = () =>
+    new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any, new SharpeRatioCalculator());
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
     timestamp: new Date(),
@@ -62,7 +64,7 @@ describe('BacktestEngine.executeTrade', () => {
 
 describe('BacktestEngine.executeOptimizationBacktest', () => {
   const createEngine = (algorithmRegistry: any, ohlcService: any) =>
-    new BacktestEngine({} as any, algorithmRegistry, {} as any, ohlcService, {} as any);
+    new BacktestEngine({} as any, algorithmRegistry, {} as any, ohlcService, {} as any, new SharpeRatioCalculator());
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
     const algorithmRegistry = {

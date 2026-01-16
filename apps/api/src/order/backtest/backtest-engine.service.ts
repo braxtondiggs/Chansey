@@ -34,6 +34,7 @@ import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.s
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 
@@ -138,7 +139,8 @@ export class BacktestEngine {
     private readonly coinService: CoinService,
     @Inject(forwardRef(() => OHLCService))
     private readonly ohlcService: OHLCService,
-    private readonly marketDataReader: MarketDataReaderService
+    private readonly marketDataReader: MarketDataReaderService,
+    private readonly sharpeCalculator: SharpeRatioCalculator
   ) {}
 
   async executeHistoricalBacktest(
@@ -684,16 +686,9 @@ export class BacktestEngine {
       return 0;
     }
 
-    const average = returns.reduce((sum, value) => sum + value, 0) / returns.length;
-    const variance = returns.reduce((sum, value) => sum + Math.pow(value - average, 2), 0) / returns.length;
-    const stdDev = Math.sqrt(variance);
-
-    if (stdDev === 0) {
-      return 0;
-    }
-
-    const riskFreeRate = 0.02; // 2% annualized risk-free rate (placeholder)
-    return (average - riskFreeRate / 365) / stdDev;
+    // Use centralized calculator for consistent annualized Sharpe ratio
+    // Historical backtests use daily snapshots, so periodsPerYear = 252
+    return this.sharpeCalculator.calculate(returns, 0.02, 252);
   }
 
   /**
@@ -864,7 +859,7 @@ export class BacktestEngine {
     const durationDays = dayjs(config.endDate).diff(dayjs(config.startDate), 'day');
     const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
 
-    // Calculate volatility from returns
+    // Calculate returns from snapshots
     const returns: number[] = [];
     for (let i = 1; i < snapshots.length; i++) {
       const previous = snapshots[i - 1].portfolioValue;
@@ -872,14 +867,14 @@ export class BacktestEngine {
       returns.push(previous === 0 ? 0 : (current - previous) / previous);
     }
 
+    // Calculate annualized volatility (still needed for metrics interface)
     const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
     const variance =
       returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
     const volatility = Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
 
-    // Calculate Sharpe ratio
-    const riskFreeRate = 0.02;
-    const sharpeRatio = volatility > 0 ? (annualizedReturn - riskFreeRate) / volatility : 0;
+    // Calculate Sharpe ratio using centralized calculator for consistency
+    const sharpeRatio = this.sharpeCalculator.calculate(returns, 0.02, 252);
 
     // Calculate profit factor based on realized P&L from SELL trades
     const grossProfit = sellTrades
