@@ -72,6 +72,70 @@ export class MetricsService {
     @InjectMetric('chansey_backtest_quote_currency_fallback_total')
     private readonly quoteCurrencyFallbackTotal: Counter<string>,
 
+    // Backtest Lifecycle Metrics
+    @InjectMetric('chansey_backtest_created_total')
+    private readonly backtestCreatedTotal: Counter<string>,
+    @InjectMetric('chansey_backtest_started_total')
+    private readonly backtestStartedTotal: Counter<string>,
+    @InjectMetric('chansey_backtest_cancelled_total')
+    private readonly backtestCancelledTotal: Counter<string>,
+    @InjectMetric('chansey_backtest_active_count')
+    private readonly backtestActiveCount: Gauge<string>,
+
+    // Backtest Data Loading Metrics
+    @InjectMetric('chansey_backtest_data_load_duration_seconds')
+    private readonly backtestDataLoadDuration: Histogram<string>,
+    @InjectMetric('chansey_backtest_data_records_loaded_total')
+    private readonly backtestDataRecordsLoaded: Counter<string>,
+
+    // Backtest Trade Execution Metrics
+    @InjectMetric('chansey_backtest_trades_simulated_total')
+    private readonly backtestTradesSimulated: Counter<string>,
+    @InjectMetric('chansey_backtest_slippage_bps')
+    private readonly backtestSlippageBps: Histogram<string>,
+
+    // Backtest Algorithm Execution Metrics
+    @InjectMetric('chansey_backtest_algorithm_executions_total')
+    private readonly backtestAlgorithmExecutions: Counter<string>,
+    @InjectMetric('chansey_backtest_signals_generated_total')
+    private readonly backtestSignalsGenerated: Counter<string>,
+
+    // Backtest Result Persistence Metrics
+    @InjectMetric('chansey_backtest_persistence_duration_seconds')
+    private readonly backtestPersistenceDuration: Histogram<string>,
+    @InjectMetric('chansey_backtest_records_persisted_total')
+    private readonly backtestRecordsPersisted: Counter<string>,
+
+    // Backtest Resolution Metrics
+    @InjectMetric('chansey_backtest_coin_resolution_total')
+    private readonly backtestCoinResolution: Counter<string>,
+    @InjectMetric('chansey_backtest_instruments_resolved_total')
+    private readonly backtestInstrumentsResolved: Counter<string>,
+
+    // Backtest Error Metrics
+    @InjectMetric('chansey_backtest_errors_total')
+    private readonly backtestErrors: Counter<string>,
+
+    // Backtest Final Results Metrics
+    @InjectMetric('chansey_backtest_total_return_percent')
+    private readonly backtestTotalReturn: Histogram<string>,
+    @InjectMetric('chansey_backtest_sharpe_ratio')
+    private readonly backtestSharpeRatio: Histogram<string>,
+    @InjectMetric('chansey_backtest_max_drawdown_percent')
+    private readonly backtestMaxDrawdown: Histogram<string>,
+    @InjectMetric('chansey_backtest_trade_count')
+    private readonly backtestTradeCount: Histogram<string>,
+
+    // Backtest Checkpoint Metrics
+    @InjectMetric('chansey_backtest_checkpoints_saved_total')
+    private readonly backtestCheckpointsSavedTotal: Counter<string>,
+    @InjectMetric('chansey_backtest_checkpoints_resumed_total')
+    private readonly backtestCheckpointsResumedTotal: Counter<string>,
+    @InjectMetric('chansey_backtest_checkpoint_orphans_cleaned_total')
+    private readonly backtestCheckpointOrphansCleanedTotal: Counter<string>,
+    @InjectMetric('chansey_backtest_checkpoint_progress_percent')
+    private readonly backtestCheckpointProgress: Gauge<string>,
+
     // Queue Metrics
     @InjectMetric('chansey_queue_jobs_waiting')
     private readonly queueJobsWaiting: Gauge<string>,
@@ -235,6 +299,228 @@ export class MetricsService {
    */
   recordQuoteCurrencyFallback(preferred: string, actual: string): void {
     this.quoteCurrencyFallbackTotal.inc({ preferred, actual });
+  }
+
+  // ===================
+  // Backtest Lifecycle Metrics
+  // ===================
+
+  /**
+   * Record backtest creation
+   */
+  recordBacktestCreated(type: string, strategy: string): void {
+    this.backtestCreatedTotal.inc({ type, strategy });
+  }
+
+  /**
+   * Record backtest execution started
+   */
+  recordBacktestStarted(type: string, strategy: string, resumed: boolean): void {
+    this.backtestStartedTotal.inc({ type, strategy, resumed: String(resumed) });
+  }
+
+  /**
+   * Record backtest cancellation
+   */
+  recordBacktestCancelled(strategy: string): void {
+    this.backtestCancelledTotal.inc({ strategy });
+  }
+
+  /**
+   * Increment active backtest count
+   */
+  incrementActiveBacktests(type: string): void {
+    this.backtestActiveCount.inc({ type });
+  }
+
+  /**
+   * Decrement active backtest count
+   */
+  decrementActiveBacktests(type: string): void {
+    this.backtestActiveCount.dec({ type });
+  }
+
+  // ===================
+  // Backtest Data Loading Metrics
+  // ===================
+
+  /**
+   * Start data load timer - returns function to call when done
+   */
+  startDataLoadTimer(source: string): () => void {
+    return this.backtestDataLoadDuration.startTimer({ source });
+  }
+
+  /**
+   * Record number of price records loaded
+   */
+  recordDataRecordsLoaded(source: string, count: number): void {
+    this.backtestDataRecordsLoaded.inc({ source }, count);
+  }
+
+  // ===================
+  // Backtest Trade Execution Metrics
+  // ===================
+
+  /**
+   * Record simulated trade execution
+   */
+  recordTradeSimulated(
+    strategy: string,
+    type: 'buy' | 'sell',
+    result: 'executed' | 'rejected_insufficient_funds' | 'rejected_no_position' | 'rejected_no_price'
+  ): void {
+    this.backtestTradesSimulated.inc({ strategy, type, result });
+  }
+
+  /**
+   * Record slippage for a trade
+   */
+  recordSlippage(strategy: string, type: 'buy' | 'sell', slippageBps: number): void {
+    this.backtestSlippageBps.observe({ strategy, type }, slippageBps);
+  }
+
+  // ===================
+  // Backtest Algorithm Execution Metrics
+  // ===================
+
+  /**
+   * Record algorithm execution
+   */
+  recordAlgorithmExecution(strategy: string, result: 'success' | 'error' | 'no_signals'): void {
+    this.backtestAlgorithmExecutions.inc({ strategy, result });
+  }
+
+  /**
+   * Record trading signal generated
+   */
+  recordSignalGenerated(strategy: string, action: 'buy' | 'sell' | 'hold'): void {
+    this.backtestSignalsGenerated.inc({ strategy, action });
+  }
+
+  // ===================
+  // Backtest Result Persistence Metrics
+  // ===================
+
+  /**
+   * Start persistence timer - returns function to call when done
+   */
+  startPersistenceTimer(operation: 'full' | 'incremental' | 'checkpoint'): () => void {
+    return this.backtestPersistenceDuration.startTimer({ operation });
+  }
+
+  /**
+   * Record records persisted
+   */
+  recordRecordsPersisted(entityType: 'trades' | 'signals' | 'fills' | 'snapshots', count: number): void {
+    if (count > 0) {
+      this.backtestRecordsPersisted.inc({ entity_type: entityType }, count);
+    }
+  }
+
+  // ===================
+  // Backtest Resolution Metrics
+  // ===================
+
+  /**
+   * Record coin resolution attempt
+   */
+  recordCoinResolution(result: 'success' | 'partial' | 'failed'): void {
+    this.backtestCoinResolution.inc({ result });
+  }
+
+  /**
+   * Record instruments resolved
+   */
+  recordInstrumentsResolved(method: 'direct' | 'symbol_extraction' | 'fallback', count: number): void {
+    if (count > 0) {
+      this.backtestInstrumentsResolved.inc({ method }, count);
+    }
+  }
+
+  // ===================
+  // Backtest Error Metrics
+  // ===================
+
+  /**
+   * Record backtest error
+   */
+  recordBacktestError(
+    strategy: string,
+    errorType:
+      | 'algorithm_not_found'
+      | 'data_load_failed'
+      | 'persistence_failed'
+      | 'coin_resolution_failed'
+      | 'quote_currency_failed'
+      | 'execution_error'
+      | 'unknown'
+  ): void {
+    this.backtestErrors.inc({ strategy, error_type: errorType });
+  }
+
+  // ===================
+  // Backtest Final Results Metrics
+  // ===================
+
+  /**
+   * Record backtest final metrics (call once per completed backtest)
+   */
+  recordBacktestFinalMetrics(
+    strategy: string,
+    metrics: {
+      totalReturn: number;
+      sharpeRatio: number;
+      maxDrawdown: number;
+      tradeCount: number;
+    }
+  ): void {
+    // Convert to percentage for histogram buckets
+    this.backtestTotalReturn.observe({ strategy }, metrics.totalReturn * 100);
+    this.backtestSharpeRatio.observe({ strategy }, metrics.sharpeRatio);
+    this.backtestMaxDrawdown.observe({ strategy }, metrics.maxDrawdown * 100);
+    this.backtestTradeCount.observe({ strategy }, metrics.tradeCount);
+  }
+
+  // ===================
+  // Backtest Checkpoint Metrics
+  // ===================
+
+  /**
+   * Record checkpoint saved during backtest execution
+   */
+  recordCheckpointSaved(strategy: string): void {
+    this.backtestCheckpointsSavedTotal.inc({ strategy });
+  }
+
+  /**
+   * Record checkpoint resume operation
+   */
+  recordCheckpointResumed(strategy: string): void {
+    this.backtestCheckpointsResumedTotal.inc({ strategy });
+  }
+
+  /**
+   * Record orphaned records cleaned during checkpoint resume
+   */
+  recordCheckpointOrphansCleaned(entityType: 'trades' | 'signals' | 'fills' | 'snapshots', count: number): void {
+    if (count > 0) {
+      this.backtestCheckpointOrphansCleanedTotal.inc({ entity_type: entityType }, count);
+    }
+  }
+
+  /**
+   * Set checkpoint progress for an active backtest
+   */
+  setCheckpointProgress(backtestId: string, strategy: string, progressPercent: number): void {
+    this.backtestCheckpointProgress.set({ backtest_id: backtestId, strategy }, progressPercent);
+  }
+
+  /**
+   * Clear checkpoint progress when backtest completes
+   */
+  clearCheckpointProgress(backtestId: string, strategy: string): void {
+    this.backtestCheckpointProgress.set({ backtest_id: backtestId, strategy }, 0);
   }
 
   // ===================

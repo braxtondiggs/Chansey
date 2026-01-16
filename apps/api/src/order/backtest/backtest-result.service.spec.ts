@@ -26,6 +26,30 @@ describe('BacktestResultService', () => {
     publishStatus: jest.fn()
   };
 
+  const mockBacktestTradeRepository = {
+    count: jest.fn(),
+    find: jest.fn(),
+    remove: jest.fn()
+  };
+
+  const mockBacktestSignalRepository = {
+    count: jest.fn(),
+    find: jest.fn(),
+    remove: jest.fn()
+  };
+
+  const mockSimulatedFillRepository = {
+    count: jest.fn(),
+    find: jest.fn(),
+    remove: jest.fn()
+  };
+
+  const mockBacktestSnapshotRepository = {
+    count: jest.fn(),
+    find: jest.fn(),
+    remove: jest.fn()
+  };
+
   // Mock QueryRunner for transaction testing
   const mockQueryRunner = {
     connect: jest.fn(),
@@ -47,6 +71,10 @@ describe('BacktestResultService', () => {
       providers: [
         BacktestResultService,
         { provide: getRepositoryToken(Backtest), useValue: mockBacktestRepository },
+        { provide: getRepositoryToken(BacktestTrade), useValue: mockBacktestTradeRepository },
+        { provide: getRepositoryToken(BacktestSignal), useValue: mockBacktestSignalRepository },
+        { provide: getRepositoryToken(SimulatedOrderFill), useValue: mockSimulatedFillRepository },
+        { provide: getRepositoryToken(BacktestPerformanceSnapshot), useValue: mockBacktestSnapshotRepository },
         { provide: DataSource, useValue: mockDataSource },
         { provide: BacktestStreamService, useValue: mockBacktestStreamService }
       ]
@@ -56,6 +84,11 @@ describe('BacktestResultService', () => {
 
     jest.clearAllMocks();
     mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
+
+    (service as any).backtestTradeRepository = mockBacktestTradeRepository;
+    (service as any).backtestSignalRepository = mockBacktestSignalRepository;
+    (service as any).simulatedFillRepository = mockSimulatedFillRepository;
+    (service as any).backtestSnapshotRepository = mockBacktestSnapshotRepository;
   });
 
   describe('persistSuccess', () => {
@@ -196,6 +229,76 @@ describe('BacktestResultService', () => {
       expect(mockBacktest.status).toBe(BacktestStatus.CANCELLED);
       expect(mockBacktestRepository.save).toHaveBeenCalledWith(mockBacktest);
       expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith('backtest-789', 'cancelled', reason);
+    });
+  });
+
+  describe('cleanupOrphanedResults', () => {
+    it('removes excess results beyond checkpoint counts', async () => {
+      mockBacktestTradeRepository.count.mockResolvedValue(3);
+      mockBacktestSignalRepository.count.mockResolvedValue(1);
+      mockSimulatedFillRepository.count.mockResolvedValue(2);
+      mockBacktestSnapshotRepository.count.mockResolvedValue(0);
+
+      const excessTrades = [{ id: 'trade-3' }];
+      const excessFills = [{ id: 'fill-1' }, { id: 'fill-2' }];
+      mockBacktestTradeRepository.find.mockResolvedValue(excessTrades);
+      mockSimulatedFillRepository.find.mockResolvedValue(excessFills);
+
+      const result = await service.cleanupOrphanedResults('backtest-1', {
+        trades: 2,
+        signals: 1,
+        fills: 0,
+        snapshots: 0
+      });
+
+      expect(mockBacktestTradeRepository.find).toHaveBeenCalledWith(expect.objectContaining({ take: 1 }));
+      expect(mockBacktestTradeRepository.remove).toHaveBeenCalledWith(excessTrades);
+      expect(mockSimulatedFillRepository.find).toHaveBeenCalledWith(expect.objectContaining({ take: 2 }));
+      expect(mockSimulatedFillRepository.remove).toHaveBeenCalledWith(excessFills);
+      expect(mockBacktestSignalRepository.find).not.toHaveBeenCalled();
+      expect(mockBacktestSnapshotRepository.find).not.toHaveBeenCalled();
+
+      expect(result).toEqual({
+        deleted: { trades: 1, signals: 0, fills: 2, snapshots: 0 }
+      });
+    });
+
+    it('does nothing when counts match', async () => {
+      mockBacktestTradeRepository.count.mockResolvedValue(1);
+      mockBacktestSignalRepository.count.mockResolvedValue(1);
+      mockSimulatedFillRepository.count.mockResolvedValue(1);
+      mockBacktestSnapshotRepository.count.mockResolvedValue(1);
+
+      const result = await service.cleanupOrphanedResults('backtest-2', {
+        trades: 1,
+        signals: 1,
+        fills: 1,
+        snapshots: 1
+      });
+
+      expect(mockBacktestTradeRepository.find).not.toHaveBeenCalled();
+      expect(mockBacktestSignalRepository.find).not.toHaveBeenCalled();
+      expect(mockSimulatedFillRepository.find).not.toHaveBeenCalled();
+      expect(mockBacktestSnapshotRepository.find).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        deleted: { trades: 0, signals: 0, fills: 0, snapshots: 0 }
+      });
+    });
+  });
+
+  describe('getPersistedCounts', () => {
+    it('returns current persisted counts for a backtest', async () => {
+      mockBacktestTradeRepository.count.mockResolvedValue(4);
+      mockBacktestSignalRepository.count.mockResolvedValue(3);
+      mockSimulatedFillRepository.count.mockResolvedValue(2);
+      mockBacktestSnapshotRepository.count.mockResolvedValue(1);
+
+      await expect(service.getPersistedCounts('backtest-3')).resolves.toEqual({
+        trades: 4,
+        signals: 3,
+        fills: 2,
+        snapshots: 1
+      });
     });
   });
 });

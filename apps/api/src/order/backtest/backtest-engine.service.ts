@@ -2,6 +2,13 @@ import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
 
+import { createHash } from 'crypto';
+
+import {
+  BacktestCheckpointState,
+  CheckpointPortfolio,
+  DEFAULT_CHECKPOINT_CONFIG
+} from './backtest-checkpoint.interface';
 import { BacktestFinalMetrics } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import {
@@ -19,6 +26,7 @@ import {
 import { MarketDataReaderService, OHLCVData } from './market-data-reader.service';
 import { MarketDataSet } from './market-data-set.entity';
 import { QuoteCurrencyResolverService } from './quote-currency-resolver.service';
+import { SeededRandom } from './seeded-random';
 import {
   applySlippage,
   calculateSimulatedSlippage,
@@ -72,21 +80,24 @@ interface ExecuteOptions {
   dataset: MarketDataSet;
   deterministicSeed: string;
   telemetryEnabled?: boolean;
+
+  // Checkpoint options for resume capability
+  /** Number of timestamps between checkpoints (default: 500) */
+  checkpointInterval?: number;
+  /** Callback invoked at each checkpoint with current state and total timestamp count */
+  onCheckpoint?: (state: BacktestCheckpointState, results: CheckpointResults, totalTimestamps: number) => Promise<void>;
+  /** Checkpoint state to resume from (if resuming a previous run) */
+  resumeFrom?: BacktestCheckpointState;
 }
 
-const createSeededGenerator = (seed: string) => {
-  let h = 1779033703 ^ seed.length;
-  for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  return () => {
-    h = Math.imul(h ^ (h >>> 16), 2246822507);
-    h = Math.imul(h ^ (h >>> 13), 3266489909);
-    h ^= h >>> 16;
-    return (h >>> 0) / 4294967296;
-  };
-};
+interface CheckpointResults {
+  trades: Partial<BacktestTrade>[];
+  signals: Partial<BacktestSignal>[];
+  simulatedFills: Partial<SimulatedOrderFill>[];
+  snapshots: Partial<BacktestPerformanceSnapshot>[];
+}
+
+// Note: Seeded random generation now uses SeededRandom class for checkpoint support
 
 const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
   const action: TradingSignal['action'] =
@@ -161,17 +172,43 @@ export class BacktestEngine {
       throw new Error('Backtest algorithm relation not loaded');
     }
 
+    const isResuming = !!options.resumeFrom;
+    const checkpointInterval = options.checkpointInterval ?? DEFAULT_CHECKPOINT_CONFIG.checkpointInterval;
+
     this.logger.log(
-      `Starting historical backtest: ${backtest.name} (dataset=${options.dataset.id}, seed=${options.deterministicSeed})`
+      `Starting historical backtest: ${backtest.name} (dataset=${options.dataset.id}, seed=${options.deterministicSeed}, resuming=${isResuming})`
     );
 
-    const random = createSeededGenerator(options.deterministicSeed);
+    // Initialize or restore RNG based on resume state
+    let rng: SeededRandom;
+    if (isResuming && options.resumeFrom) {
+      rng = SeededRandom.fromState(options.resumeFrom.rngState);
+      this.logger.log(`Restored RNG state from checkpoint at index ${options.resumeFrom.lastProcessedIndex}`);
+    } else {
+      rng = new SeededRandom(options.deterministicSeed);
+    }
 
-    let portfolio: Portfolio = {
-      cashBalance: backtest.initialCapital,
-      positions: new Map(),
-      totalValue: backtest.initialCapital
-    };
+    // Initialize or restore portfolio based on resume state
+    let portfolio: Portfolio;
+    let peakValue: number;
+    let maxDrawdown: number;
+
+    if (isResuming && options.resumeFrom) {
+      portfolio = this.restorePortfolio(options.resumeFrom.portfolio, backtest.initialCapital);
+      peakValue = options.resumeFrom.peakValue;
+      maxDrawdown = options.resumeFrom.maxDrawdown;
+      this.logger.log(
+        `Restored portfolio: cash=${portfolio.cashBalance.toFixed(2)}, positions=${portfolio.positions.size}, peak=${peakValue.toFixed(2)}`
+      );
+    } else {
+      portfolio = {
+        cashBalance: backtest.initialCapital,
+        positions: new Map(),
+        totalValue: backtest.initialCapital
+      };
+      peakValue = backtest.initialCapital;
+      maxDrawdown = 0;
+    }
 
     const trades: Partial<BacktestTrade>[] = [];
     const signals: Partial<BacktestSignal>[] = [];
@@ -243,10 +280,26 @@ export class BacktestEngine {
         }
       : DEFAULT_SLIPPAGE_CONFIG;
 
-    let peakValue = backtest.initialCapital;
-    let maxDrawdown = 0;
+    // Determine starting index: either from checkpoint or from beginning
+    const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
-    for (let i = 0; i < timestamps.length; i++) {
+    if (isResuming) {
+      this.logger.log(
+        `Resuming from index ${startIndex} of ${timestamps.length} (${((startIndex / timestamps.length) * 100).toFixed(1)}% complete)`
+      );
+    }
+
+    // Track result counts at last checkpoint for proper slicing during incremental persistence
+    // When resuming, initialize from the checkpoint's persisted counts; otherwise start at zero
+    let lastCheckpointCounts =
+      isResuming && options.resumeFrom
+        ? { ...options.resumeFrom.persistedCounts }
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+
+    // Track timestamp index for checkpoint interval calculation
+    let lastCheckpointIndex = startIndex - 1;
+
+    for (let i = startIndex; i < timestamps.length; i++) {
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
 
@@ -330,7 +383,7 @@ export class BacktestEngine {
           portfolio,
           marketData,
           backtest.tradingFee,
-          random,
+          rng,
           slippageConfig
         );
         if (tradeResult) {
@@ -383,6 +436,47 @@ export class BacktestEngine {
             timestamp: timestamp.toISOString()
           });
         }
+      }
+
+      // Checkpoint callback: save state periodically for resume capability
+      const timeSinceLastCheckpoint = i - lastCheckpointIndex;
+      if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
+        const checkpointState = this.buildCheckpointState(
+          i,
+          timestamp.toISOString(),
+          portfolio,
+          peakValue,
+          maxDrawdown,
+          rng.getState(),
+          trades.length,
+          signals.length,
+          simulatedFills.length,
+          snapshots.length
+        );
+
+        // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
+        const checkpointResults: CheckpointResults = {
+          trades: trades.slice(lastCheckpointCounts.trades),
+          signals: signals.slice(lastCheckpointCounts.signals),
+          simulatedFills: simulatedFills.slice(lastCheckpointCounts.fills),
+          snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
+        };
+
+        // Pass total timestamps count to callback for accurate progress reporting
+        await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
+
+        // Update counts for next checkpoint slice
+        lastCheckpointCounts = {
+          trades: trades.length,
+          signals: signals.length,
+          fills: simulatedFills.length,
+          snapshots: snapshots.length
+        };
+        lastCheckpointIndex = i;
+
+        this.logger.debug(
+          `Checkpoint saved at index ${i}/${timestamps.length} (${((i / timestamps.length) * 100).toFixed(1)}%)`
+        );
       }
     }
 
@@ -493,7 +587,7 @@ export class BacktestEngine {
     portfolio: Portfolio,
     marketData: MarketData,
     tradingFee: number,
-    random: () => number,
+    rng: SeededRandom,
     slippageConfig: SlippageModelConfig = DEFAULT_SLIPPAGE_CONFIG
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const basePrice = marketData.prices.get(signal.coinId);
@@ -524,7 +618,7 @@ export class BacktestEngine {
         const investmentAmount = portfolio.totalValue * signal.percentage;
         quantity = investmentAmount / price;
       } else {
-        const investmentAmount = portfolio.totalValue * Math.min(0.2, Math.max(0.05, random()));
+        const investmentAmount = portfolio.totalValue * Math.min(0.2, Math.max(0.05, rng.next()));
         quantity = investmentAmount / price;
       }
 
@@ -568,7 +662,7 @@ export class BacktestEngine {
       // Capture cost basis BEFORE modifying position
       costBasis = existingPosition.averagePrice;
 
-      quantity = signal.quantity ?? existingPosition.quantity * Math.min(1, Math.max(0.25, random()));
+      quantity = signal.quantity ?? existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
       quantity = Math.min(quantity, existingPosition.quantity);
       totalValue = quantity * price;
 
@@ -693,6 +787,152 @@ export class BacktestEngine {
   }
 
   /**
+   * Restore portfolio state from a checkpoint.
+   * Converts the serializable CheckpointPortfolio format back to the internal Portfolio structure.
+   */
+  private restorePortfolio(checkpointPortfolio: CheckpointPortfolio, initialCapital: number): Portfolio {
+    const positions = new Map<string, Position>();
+    let positionsValue = 0;
+
+    for (const pos of checkpointPortfolio.positions) {
+      const totalValue = pos.quantity * pos.averagePrice;
+      positions.set(pos.coinId, {
+        coinId: pos.coinId,
+        quantity: pos.quantity,
+        averagePrice: pos.averagePrice,
+        totalValue
+      });
+      positionsValue += totalValue;
+    }
+
+    return {
+      cashBalance: checkpointPortfolio.cashBalance,
+      positions,
+      totalValue: checkpointPortfolio.cashBalance + positionsValue
+    };
+  }
+
+  /**
+   * Build checksum data object for checkpoint integrity verification.
+   * Centralized to ensure consistency between checkpoint creation and validation.
+   */
+  private buildChecksumData(
+    lastProcessedIndex: number,
+    lastProcessedTimestamp: string,
+    cashBalance: number,
+    positionCount: number,
+    peakValue: number,
+    maxDrawdown: number,
+    rngState: number
+  ): string {
+    return JSON.stringify({
+      lastProcessedIndex,
+      lastProcessedTimestamp,
+      cashBalance,
+      positionCount,
+      peakValue,
+      maxDrawdown,
+      rngState
+    });
+  }
+
+  /**
+   * Build a checkpoint state object for persistence.
+   * Includes all state needed to resume execution from this point.
+   */
+  private buildCheckpointState(
+    lastProcessedIndex: number,
+    lastProcessedTimestamp: string,
+    portfolio: Portfolio,
+    peakValue: number,
+    maxDrawdown: number,
+    rngState: number,
+    tradesCount: number,
+    signalsCount: number,
+    fillsCount: number,
+    snapshotsCount: number
+  ): BacktestCheckpointState {
+    // Convert Map-based positions to array format for JSON serialization
+    const checkpointPortfolio: CheckpointPortfolio = {
+      cashBalance: portfolio.cashBalance,
+      positions: Array.from(portfolio.positions.entries()).map(([coinId, pos]) => ({
+        coinId,
+        quantity: pos.quantity,
+        averagePrice: pos.averagePrice
+      }))
+    };
+
+    // Build checksum for data integrity verification using centralized helper
+    const checksumData = this.buildChecksumData(
+      lastProcessedIndex,
+      lastProcessedTimestamp,
+      portfolio.cashBalance,
+      portfolio.positions.size,
+      peakValue,
+      maxDrawdown,
+      rngState
+    );
+    const checksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
+
+    return {
+      lastProcessedIndex,
+      lastProcessedTimestamp,
+      portfolio: checkpointPortfolio,
+      peakValue,
+      maxDrawdown,
+      rngState,
+      persistedCounts: {
+        trades: tradesCount,
+        signals: signalsCount,
+        fills: fillsCount,
+        snapshots: snapshotsCount
+      },
+      checksum
+    };
+  }
+
+  /**
+   * Validate a checkpoint state against current market data.
+   * Returns true if the checkpoint is valid and can be used for resume.
+   */
+  validateCheckpoint(checkpoint: BacktestCheckpointState, timestamps: string[]): { valid: boolean; reason?: string } {
+    // Check if the checkpoint index is within bounds
+    if (checkpoint.lastProcessedIndex < 0 || checkpoint.lastProcessedIndex >= timestamps.length) {
+      return {
+        valid: false,
+        reason: `Checkpoint index ${checkpoint.lastProcessedIndex} out of bounds (0-${timestamps.length - 1})`
+      };
+    }
+
+    // Verify the timestamp at the checkpoint index matches
+    const expectedTimestamp = timestamps[checkpoint.lastProcessedIndex];
+    if (checkpoint.lastProcessedTimestamp !== expectedTimestamp) {
+      return {
+        valid: false,
+        reason: `Timestamp mismatch at index ${checkpoint.lastProcessedIndex}: expected ${expectedTimestamp}, got ${checkpoint.lastProcessedTimestamp}`
+      };
+    }
+
+    // Verify checksum integrity using centralized helper for consistency
+    const checksumData = this.buildChecksumData(
+      checkpoint.lastProcessedIndex,
+      checkpoint.lastProcessedTimestamp,
+      checkpoint.portfolio.cashBalance,
+      checkpoint.portfolio.positions.length,
+      checkpoint.peakValue,
+      checkpoint.maxDrawdown,
+      checkpoint.rngState
+    );
+    const expectedChecksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
+
+    if (checkpoint.checksum !== expectedChecksum) {
+      return { valid: false, reason: 'Checkpoint checksum validation failed - data may be corrupted' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
    * Execute a lightweight backtest for parameter optimization
    * This method doesn't persist any data - it runs the simulation and returns metrics only
    */
@@ -709,7 +949,7 @@ export class BacktestEngine {
         `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
     );
 
-    const random = createSeededGenerator(deterministicSeed);
+    const rng = new SeededRandom(deterministicSeed);
 
     let portfolio: Portfolio = {
       cashBalance: initialCapital,
@@ -822,7 +1062,7 @@ export class BacktestEngine {
       }
 
       for (const strategySignal of strategySignals) {
-        const tradeResult = await this.executeTrade(strategySignal, portfolio, marketData, tradingFee, random);
+        const tradeResult = await this.executeTrade(strategySignal, portfolio, marketData, tradingFee, rng);
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
         }

@@ -1,7 +1,7 @@
 import { MetricsService } from './metrics.service';
 
 const createCounterMock = () => ({ inc: jest.fn() }) as any;
-const createGaugeMock = () => ({ set: jest.fn() }) as any;
+const createGaugeMock = () => ({ set: jest.fn(), inc: jest.fn(), dec: jest.fn() }) as any;
 const createHistogramMock = () =>
   ({
     observe: jest.fn(),
@@ -10,39 +10,90 @@ const createHistogramMock = () =>
 
 const buildService = () => {
   const mocks = {
+    // HTTP Metrics
     httpRequestDuration: createHistogramMock(),
     httpRequestsTotal: createCounterMock(),
     httpConnectionsActive: createGaugeMock(),
 
+    // Order Metrics
     ordersSyncedTotal: createCounterMock(),
     ordersSyncErrorsTotal: createCounterMock(),
     orderSyncDuration: createHistogramMock(),
 
+    // Trade Metrics
     tradesExecutedTotal: createCounterMock(),
     tradeExecutionDuration: createHistogramMock(),
 
+    // Exchange Metrics
     exchangeConnections: createGaugeMock(),
     exchangeApiCallsTotal: createCounterMock(),
     exchangeApiLatency: createHistogramMock(),
 
+    // Price Metrics
     priceUpdatesTotal: createCounterMock(),
     priceUpdateLag: createGaugeMock(),
 
+    // Backtest Metrics
     backtestsCompletedTotal: createCounterMock(),
     backtestDuration: createHistogramMock(),
     quoteCurrencyFallbackTotal: createCounterMock(),
 
+    // Backtest Lifecycle Metrics
+    backtestCreatedTotal: createCounterMock(),
+    backtestStartedTotal: createCounterMock(),
+    backtestCancelledTotal: createCounterMock(),
+    backtestActiveCount: createGaugeMock(),
+
+    // Backtest Data Loading Metrics
+    backtestDataLoadDuration: createHistogramMock(),
+    backtestDataRecordsLoaded: createCounterMock(),
+
+    // Backtest Trade Execution Metrics
+    backtestTradesSimulated: createCounterMock(),
+    backtestSlippageBps: createHistogramMock(),
+
+    // Backtest Algorithm Execution Metrics
+    backtestAlgorithmExecutions: createCounterMock(),
+    backtestSignalsGenerated: createCounterMock(),
+
+    // Backtest Result Persistence Metrics
+    backtestPersistenceDuration: createHistogramMock(),
+    backtestRecordsPersisted: createCounterMock(),
+
+    // Backtest Resolution Metrics
+    backtestCoinResolution: createCounterMock(),
+    backtestInstrumentsResolved: createCounterMock(),
+
+    // Backtest Error Metrics
+    backtestErrors: createCounterMock(),
+
+    // Backtest Final Results Metrics
+    backtestTotalReturn: createHistogramMock(),
+    backtestSharpeRatio: createHistogramMock(),
+    backtestMaxDrawdown: createHistogramMock(),
+    backtestTradeCount: createHistogramMock(),
+
+    // Backtest Checkpoint Metrics
+    backtestCheckpointsSavedTotal: createCounterMock(),
+    backtestCheckpointsResumedTotal: createCounterMock(),
+    backtestCheckpointOrphansCleanedTotal: createCounterMock(),
+    backtestCheckpointProgress: createGaugeMock(),
+
+    // Queue Metrics
     queueJobsWaiting: createGaugeMock(),
     queueJobsActive: createGaugeMock(),
     queueJobsCompletedTotal: createCounterMock(),
     queueJobsFailedTotal: createCounterMock(),
 
+    // Portfolio Metrics
     portfolioTotalValue: createGaugeMock(),
     portfolioAssetsCount: createGaugeMock(),
 
+    // Strategy Metrics
     strategyDeploymentsActive: createGaugeMock(),
     strategySignalsTotal: createCounterMock(),
 
+    // Strategy Heartbeat Metrics
     strategyHeartbeatAge: createGaugeMock(),
     strategyHeartbeatTotal: createCounterMock(),
     strategyHeartbeatFailures: createGaugeMock(),
@@ -50,30 +101,72 @@ const buildService = () => {
   };
 
   const service = new MetricsService(
+    // HTTP Metrics
     mocks.httpRequestDuration,
     mocks.httpRequestsTotal,
     mocks.httpConnectionsActive,
+    // Order Metrics
     mocks.ordersSyncedTotal,
     mocks.ordersSyncErrorsTotal,
     mocks.orderSyncDuration,
+    // Trade Metrics
     mocks.tradesExecutedTotal,
     mocks.tradeExecutionDuration,
+    // Exchange Metrics
     mocks.exchangeConnections,
     mocks.exchangeApiCallsTotal,
     mocks.exchangeApiLatency,
+    // Price Metrics
     mocks.priceUpdatesTotal,
     mocks.priceUpdateLag,
+    // Backtest Metrics
     mocks.backtestsCompletedTotal,
     mocks.backtestDuration,
     mocks.quoteCurrencyFallbackTotal,
+    // Backtest Lifecycle Metrics
+    mocks.backtestCreatedTotal,
+    mocks.backtestStartedTotal,
+    mocks.backtestCancelledTotal,
+    mocks.backtestActiveCount,
+    // Backtest Data Loading Metrics
+    mocks.backtestDataLoadDuration,
+    mocks.backtestDataRecordsLoaded,
+    // Backtest Trade Execution Metrics
+    mocks.backtestTradesSimulated,
+    mocks.backtestSlippageBps,
+    // Backtest Algorithm Execution Metrics
+    mocks.backtestAlgorithmExecutions,
+    mocks.backtestSignalsGenerated,
+    // Backtest Result Persistence Metrics
+    mocks.backtestPersistenceDuration,
+    mocks.backtestRecordsPersisted,
+    // Backtest Resolution Metrics
+    mocks.backtestCoinResolution,
+    mocks.backtestInstrumentsResolved,
+    // Backtest Error Metrics
+    mocks.backtestErrors,
+    // Backtest Final Results Metrics
+    mocks.backtestTotalReturn,
+    mocks.backtestSharpeRatio,
+    mocks.backtestMaxDrawdown,
+    mocks.backtestTradeCount,
+    // Backtest Checkpoint Metrics
+    mocks.backtestCheckpointsSavedTotal,
+    mocks.backtestCheckpointsResumedTotal,
+    mocks.backtestCheckpointOrphansCleanedTotal,
+    mocks.backtestCheckpointProgress,
+    // Queue Metrics
     mocks.queueJobsWaiting,
     mocks.queueJobsActive,
     mocks.queueJobsCompletedTotal,
     mocks.queueJobsFailedTotal,
+    // Portfolio Metrics
     mocks.portfolioTotalValue,
     mocks.portfolioAssetsCount,
+    // Strategy Metrics
     mocks.strategyDeploymentsActive,
     mocks.strategySignalsTotal,
+    // Strategy Heartbeat Metrics
     mocks.strategyHeartbeatAge,
     mocks.strategyHeartbeatTotal,
     mocks.strategyHeartbeatFailures,

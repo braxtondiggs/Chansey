@@ -152,6 +152,160 @@ import { MetricsService } from './metrics.service';
       labelNames: ['preferred', 'actual']
     }),
 
+    // Backtest Lifecycle Metrics
+    makeCounterProvider({
+      name: 'chansey_backtest_created_total',
+      help: 'Total number of backtests created',
+      labelNames: ['type', 'strategy']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_started_total',
+      help: 'Total number of backtests started execution',
+      labelNames: ['type', 'strategy', 'resumed']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_cancelled_total',
+      help: 'Total number of backtests cancelled',
+      labelNames: ['strategy']
+    }),
+
+    makeGaugeProvider({
+      name: 'chansey_backtest_active_count',
+      help: 'Number of currently active/running backtests',
+      labelNames: ['type']
+    }),
+
+    // Backtest Data Loading Metrics
+    makeHistogramProvider({
+      name: 'chansey_backtest_data_load_duration_seconds',
+      help: 'Duration of market data loading for backtests',
+      labelNames: ['source'],
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60]
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_data_records_loaded_total',
+      help: 'Total number of price records loaded for backtests',
+      labelNames: ['source']
+    }),
+
+    // Backtest Trade Execution Metrics
+    makeCounterProvider({
+      name: 'chansey_backtest_trades_simulated_total',
+      help: 'Total number of simulated trades executed',
+      labelNames: ['strategy', 'type', 'result']
+    }),
+
+    makeHistogramProvider({
+      name: 'chansey_backtest_slippage_bps',
+      help: 'Distribution of slippage in basis points',
+      labelNames: ['strategy', 'type'],
+      buckets: [1, 2, 5, 10, 20, 50, 100]
+    }),
+
+    // Backtest Algorithm Execution Metrics
+    makeCounterProvider({
+      name: 'chansey_backtest_algorithm_executions_total',
+      help: 'Total number of algorithm executions during backtests',
+      labelNames: ['strategy', 'result']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_signals_generated_total',
+      help: 'Total number of trading signals generated during backtests',
+      labelNames: ['strategy', 'action']
+    }),
+
+    // Backtest Result Persistence Metrics
+    makeHistogramProvider({
+      name: 'chansey_backtest_persistence_duration_seconds',
+      help: 'Duration of backtest result persistence operations',
+      labelNames: ['operation'],
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30]
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_records_persisted_total',
+      help: 'Total number of records persisted for backtests',
+      labelNames: ['entity_type']
+    }),
+
+    // Backtest Resolution Metrics
+    makeCounterProvider({
+      name: 'chansey_backtest_coin_resolution_total',
+      help: 'Total coin resolution attempts for backtests',
+      labelNames: ['result']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_instruments_resolved_total',
+      help: 'Total instruments resolved for backtests',
+      labelNames: ['method']
+    }),
+
+    // Backtest Error Metrics
+    makeCounterProvider({
+      name: 'chansey_backtest_errors_total',
+      help: 'Total number of backtest errors by category',
+      labelNames: ['strategy', 'error_type']
+    }),
+
+    // Backtest Final Results Metrics
+    makeHistogramProvider({
+      name: 'chansey_backtest_total_return_percent',
+      help: 'Distribution of backtest total returns',
+      labelNames: ['strategy'],
+      buckets: [-50, -25, -10, -5, 0, 5, 10, 25, 50, 100, 200]
+    }),
+
+    makeHistogramProvider({
+      name: 'chansey_backtest_sharpe_ratio',
+      help: 'Distribution of backtest Sharpe ratios',
+      labelNames: ['strategy'],
+      buckets: [-2, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3, 5]
+    }),
+
+    makeHistogramProvider({
+      name: 'chansey_backtest_max_drawdown_percent',
+      help: 'Distribution of backtest maximum drawdowns',
+      labelNames: ['strategy'],
+      buckets: [0, 5, 10, 15, 20, 30, 40, 50, 75, 100]
+    }),
+
+    makeHistogramProvider({
+      name: 'chansey_backtest_trade_count',
+      help: 'Distribution of trade counts per backtest',
+      labelNames: ['strategy'],
+      buckets: [0, 10, 25, 50, 100, 250, 500, 1000, 2500]
+    }),
+
+    // Backtest Checkpoint Metrics
+    makeCounterProvider({
+      name: 'chansey_backtest_checkpoints_saved_total',
+      help: 'Total number of backtest checkpoints saved',
+      labelNames: ['strategy']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_checkpoints_resumed_total',
+      help: 'Total number of backtest checkpoint resumes',
+      labelNames: ['strategy']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_backtest_checkpoint_orphans_cleaned_total',
+      help: 'Total number of orphaned records cleaned during checkpoint resume',
+      labelNames: ['entity_type']
+    }),
+
+    makeGaugeProvider({
+      name: 'chansey_backtest_checkpoint_progress_percent',
+      help: 'Current checkpoint progress percentage for active backtests',
+      labelNames: ['backtest_id', 'strategy']
+    }),
+
     // Queue Metrics
     makeGaugeProvider({
       name: 'chansey_queue_jobs_waiting',
