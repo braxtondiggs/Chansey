@@ -1,5 +1,12 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  OnModuleInit,
+  Optional
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
@@ -53,6 +60,7 @@ import {
   ComparisonReportNotFoundException,
   MarketDataSetNotFoundException
 } from '../../common/exceptions/resource';
+import { MetricsService } from '../../metrics/metrics.service';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { User } from '../../users/users.entity';
 
@@ -81,7 +89,8 @@ export class BacktestService implements OnModuleInit {
     @InjectRepository(ComparisonReportRun)
     private readonly comparisonReportRunRepository: Repository<ComparisonReportRun>,
     @InjectQueue(BACKTEST_QUEUE_NAMES.historicalQueue) private readonly historicalQueue: Queue,
-    @InjectQueue(BACKTEST_QUEUE_NAMES.replayQueue) private readonly replayQueue: Queue
+    @InjectQueue(BACKTEST_QUEUE_NAMES.replayQueue) private readonly replayQueue: Queue,
+    @Optional() private readonly metricsService?: MetricsService
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -173,6 +182,9 @@ export class BacktestService implements OnModuleInit {
       });
 
       const savedBacktest = await this.backtestRepository.save(backtest);
+
+      // Record backtest creation metric
+      this.metricsService?.recordBacktestCreated(createBacktestDto.type, algorithm.name);
 
       // Stream publishing - non-critical, don't fail if stream is unavailable
       try {
@@ -904,6 +916,9 @@ export class BacktestService implements OnModuleInit {
       }
 
       await this.backtestResultService.markCancelled(backtest, 'User requested cancellation');
+
+      // Record cancellation metric
+      this.metricsService?.recordBacktestCancelled(backtest.algorithm?.name ?? 'unknown');
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;

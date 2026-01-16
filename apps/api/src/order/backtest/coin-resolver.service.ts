@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 
 import { MarketDataSet } from './market-data-set.entity';
 
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
 import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
+import { MetricsService } from '../../metrics/metrics.service';
 
 const MIN_BASE_SYMBOL_LENGTH = 3;
 
@@ -12,7 +13,10 @@ const MIN_BASE_SYMBOL_LENGTH = 3;
 export class CoinResolverService {
   private readonly logger = new Logger(CoinResolverService.name);
 
-  constructor(private readonly coinService: CoinService) {}
+  constructor(
+    private readonly coinService: CoinService,
+    @Optional() private readonly metricsService?: MetricsService
+  ) {}
 
   /**
    * Extracts the base asset symbol from a trading pair.
@@ -52,6 +56,9 @@ export class CoinResolverService {
     const directCoins = await this.coinService.getMultipleCoinsBySymbol(normalizedSymbols);
     const directSymbolSet = new Set(directCoins.map((c) => c.symbol.toUpperCase()));
 
+    // Record direct resolution count
+    this.metricsService?.recordInstrumentsResolved('direct', directCoins.length);
+
     // Track resolved coins (preserving order and avoiding duplicates)
     const resolvedMap = new Map<string, Coin>();
     for (const coin of directCoins) {
@@ -75,6 +82,7 @@ export class CoinResolverService {
       const baseCoins = await this.coinService.getMultipleCoinsBySymbol(baseCandidates);
       const baseSymbolMap = new Map(baseCoins.map((c) => [c.symbol.toUpperCase(), c]));
 
+      let symbolExtractionCount = 0;
       for (const { base } of unresolvedWithBases) {
         const upperBase = base.toUpperCase();
         const coin = baseSymbolMap.get(upperBase);
@@ -82,9 +90,13 @@ export class CoinResolverService {
           const upperCoinSymbol = coin.symbol.toUpperCase();
           if (!resolvedMap.has(upperCoinSymbol)) {
             resolvedMap.set(upperCoinSymbol, coin);
+            symbolExtractionCount++;
           }
         }
       }
+
+      // Record symbol extraction resolutions
+      this.metricsService?.recordInstrumentsResolved('symbol_extraction', symbolExtractionCount);
     }
 
     // Build final resolved list preserving original order
@@ -116,14 +128,21 @@ export class CoinResolverService {
     });
 
     if (!resolved.length) {
+      // Record failed resolution
+      this.metricsService?.recordCoinResolution('failed');
       throw new InstrumentUniverseUnresolvedException(dataset.id, instruments, unresolved);
     }
 
     if (unresolved.length > 0) {
+      // Record partial resolution
+      this.metricsService?.recordCoinResolution('partial');
       this.logger.warn(
         `Partial instrument resolution for dataset ${dataset.id}: ` +
           `resolved ${resolved.length}/${instruments.length}, unresolved: [${unresolved.join(', ')}]`
       );
+    } else {
+      // Record successful resolution (all instruments resolved)
+      this.metricsService?.recordCoinResolution('success');
     }
 
     if (resolved.length > maxInstruments) {

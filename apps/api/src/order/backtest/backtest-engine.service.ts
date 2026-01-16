@@ -84,8 +84,8 @@ interface ExecuteOptions {
   // Checkpoint options for resume capability
   /** Number of timestamps between checkpoints (default: 500) */
   checkpointInterval?: number;
-  /** Callback invoked at each checkpoint with current state */
-  onCheckpoint?: (state: BacktestCheckpointState, results: CheckpointResults) => Promise<void>;
+  /** Callback invoked at each checkpoint with current state and total timestamp count */
+  onCheckpoint?: (state: BacktestCheckpointState, results: CheckpointResults, totalTimestamps: number) => Promise<void>;
   /** Checkpoint state to resume from (if resuming a previous run) */
   resumeFrom?: BacktestCheckpointState;
 }
@@ -289,7 +289,14 @@ export class BacktestEngine {
       );
     }
 
-    // Track checkpoint-batch results for incremental persistence
+    // Track result counts at last checkpoint for proper slicing during incremental persistence
+    // When resuming, initialize from the checkpoint's persisted counts; otherwise start at zero
+    let lastCheckpointCounts =
+      isResuming && options.resumeFrom
+        ? { ...options.resumeFrom.persistedCounts }
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+
+    // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
 
     for (let i = startIndex; i < timestamps.length; i++) {
@@ -447,21 +454,24 @@ export class BacktestEngine {
           snapshots.length
         );
 
-        // Results accumulated since last checkpoint
+        // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
         const checkpointResults: CheckpointResults = {
-          trades: trades.slice(lastCheckpointIndex >= 0 ? trades.length - (trades.length - lastCheckpointIndex) : 0),
-          signals: signals.slice(
-            lastCheckpointIndex >= 0 ? signals.length - (signals.length - lastCheckpointIndex) : 0
-          ),
-          simulatedFills: simulatedFills.slice(
-            lastCheckpointIndex >= 0 ? simulatedFills.length - (simulatedFills.length - lastCheckpointIndex) : 0
-          ),
-          snapshots: snapshots.slice(
-            lastCheckpointIndex >= 0 ? snapshots.length - (snapshots.length - lastCheckpointIndex) : 0
-          )
+          trades: trades.slice(lastCheckpointCounts.trades),
+          signals: signals.slice(lastCheckpointCounts.signals),
+          simulatedFills: simulatedFills.slice(lastCheckpointCounts.fills),
+          snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
         };
 
-        await options.onCheckpoint(checkpointState, checkpointResults);
+        // Pass total timestamps count to callback for accurate progress reporting
+        await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
+
+        // Update counts for next checkpoint slice
+        lastCheckpointCounts = {
+          trades: trades.length,
+          signals: signals.length,
+          fills: simulatedFills.length,
+          snapshots: snapshots.length
+        };
         lastCheckpointIndex = i;
 
         this.logger.debug(
@@ -803,6 +813,30 @@ export class BacktestEngine {
   }
 
   /**
+   * Build checksum data object for checkpoint integrity verification.
+   * Centralized to ensure consistency between checkpoint creation and validation.
+   */
+  private buildChecksumData(
+    lastProcessedIndex: number,
+    lastProcessedTimestamp: string,
+    cashBalance: number,
+    positionCount: number,
+    peakValue: number,
+    maxDrawdown: number,
+    rngState: number
+  ): string {
+    return JSON.stringify({
+      lastProcessedIndex,
+      lastProcessedTimestamp,
+      cashBalance,
+      positionCount,
+      peakValue,
+      maxDrawdown,
+      rngState
+    });
+  }
+
+  /**
    * Build a checkpoint state object for persistence.
    * Includes all state needed to resume execution from this point.
    */
@@ -828,16 +862,16 @@ export class BacktestEngine {
       }))
     };
 
-    // Build checksum for data integrity verification
-    const checksumData = JSON.stringify({
+    // Build checksum for data integrity verification using centralized helper
+    const checksumData = this.buildChecksumData(
       lastProcessedIndex,
       lastProcessedTimestamp,
-      cashBalance: portfolio.cashBalance,
-      positionCount: portfolio.positions.size,
+      portfolio.cashBalance,
+      portfolio.positions.size,
       peakValue,
       maxDrawdown,
       rngState
-    });
+    );
     const checksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
 
     return {
@@ -879,16 +913,16 @@ export class BacktestEngine {
       };
     }
 
-    // Verify checksum integrity
-    const checksumData = JSON.stringify({
-      lastProcessedIndex: checkpoint.lastProcessedIndex,
-      lastProcessedTimestamp: checkpoint.lastProcessedTimestamp,
-      cashBalance: checkpoint.portfolio.cashBalance,
-      positionCount: checkpoint.portfolio.positions.length,
-      peakValue: checkpoint.peakValue,
-      maxDrawdown: checkpoint.maxDrawdown,
-      rngState: checkpoint.rngState
-    });
+    // Verify checksum integrity using centralized helper for consistency
+    const checksumData = this.buildChecksumData(
+      checkpoint.lastProcessedIndex,
+      checkpoint.lastProcessedTimestamp,
+      checkpoint.portfolio.cashBalance,
+      checkpoint.portfolio.positions.length,
+      checkpoint.peakValue,
+      checkpoint.maxDrawdown,
+      checkpoint.rngState
+    );
     const expectedChecksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
 
     if (checkpoint.checksum !== expectedChecksum) {
