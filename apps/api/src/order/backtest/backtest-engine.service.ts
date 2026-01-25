@@ -140,6 +140,8 @@ export interface OptimizationBacktestResult {
   tradeCount: number;
   annualizedReturn?: number;
   finalValue?: number;
+  /** Downside deviation for Sortino ratio calculation (standard deviation of negative returns only) */
+  downsideDeviation?: number;
 }
 
 @Injectable()
@@ -1114,6 +1116,15 @@ export class BacktestEngine {
       returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
     const volatility = Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
 
+    // Calculate downside deviation (standard deviation of negative returns only)
+    // Used for Sortino ratio: measures volatility of losses, ignoring upside volatility
+    const negativeReturns = returns.filter((r) => r < 0);
+    const downsideVariance =
+      negativeReturns.length > 0
+        ? negativeReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / negativeReturns.length
+        : 0;
+    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252); // Annualized
+
     // Calculate Sharpe ratio using centralized calculator for consistency
     const sharpeRatio = this.sharpeCalculator.calculate(returns, 0.02, 252);
 
@@ -1135,7 +1146,8 @@ export class BacktestEngine {
       profitFactor: Math.min(profitFactor, 10), // Cap at 10 to avoid infinity issues
       tradeCount: totalTrades,
       annualizedReturn,
-      finalValue
+      finalValue,
+      downsideDeviation
     };
   }
 }

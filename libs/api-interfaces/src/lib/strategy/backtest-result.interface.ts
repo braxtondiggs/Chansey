@@ -80,6 +80,8 @@ export interface WindowMetrics {
   tradeCount: number;
   profitFactor: number;
   volatility: number;
+  /** Downside deviation for Sortino ratio calculation (standard deviation of negative returns only) */
+  downsideDeviation?: number;
   [key: string]: any;
 }
 
