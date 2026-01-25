@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { DataSource, FindOptionsOrder, ObjectLiteral, Repository } from 'typeorm';
+import { DataSource, EntityManager, EntityTarget, FindOptionsOrder, ObjectLiteral, Repository } from 'typeorm';
 
 import { BacktestCheckpointState, PersistedResultsCounts } from './backtest-checkpoint.interface';
 import { BacktestStreamService } from './backtest-stream.service';
@@ -207,15 +207,18 @@ export class BacktestResultService {
   }
 
   /**
-   * Generic helper to clean up orphaned entities for a specific repository.
+   * Generic helper to clean up orphaned entities for a specific entity class.
    * Deletes the most recent entities that exceed the expected count.
+   * Accepts EntityManager for transactional operation.
    */
   private async cleanupOrphanedForEntity<T extends ObjectLiteral>(
-    repository: Repository<T>,
+    manager: EntityManager,
+    entityClass: EntityTarget<T>,
     backtestId: string,
     expectedCount: number,
     order: FindOptionsOrder<T>
   ): Promise<number> {
+    const repository = manager.getRepository(entityClass);
     const currentCount = await repository.count({ where: { backtest: { id: backtestId } } as any });
 
     if (currentCount <= expectedCount) {
@@ -241,28 +244,35 @@ export class BacktestResultService {
    * Clean up orphaned results that exceed expected counts.
    * This is used when resuming from a checkpoint to remove any partially-written
    * results that may have been saved after the checkpoint was taken.
+   *
+   * Uses a transaction to ensure all-or-nothing cleanup for data integrity.
    */
   async cleanupOrphanedResults(
     backtestId: string,
     expectedCounts: PersistedResultsCounts
   ): Promise<{ deleted: { trades: number; signals: number; fills: number; snapshots: number } }> {
-    // Clean up each entity type using the generic helper
-    const [trades, signals, fills, snapshots] = await Promise.all([
-      this.cleanupOrphanedForEntity(this.backtestTradeRepository, backtestId, expectedCounts.trades, {
+    // Use transaction to ensure atomicity - if any cleanup fails, all are rolled back
+    const deleted = await this.dataSource.transaction(async (manager) => {
+      // Clean up each entity type sequentially within the transaction
+      const trades = await this.cleanupOrphanedForEntity(manager, BacktestTrade, backtestId, expectedCounts.trades, {
         executedAt: 'DESC'
-      }),
-      this.cleanupOrphanedForEntity(this.backtestSignalRepository, backtestId, expectedCounts.signals, {
+      });
+      const signals = await this.cleanupOrphanedForEntity(manager, BacktestSignal, backtestId, expectedCounts.signals, {
         timestamp: 'DESC'
-      }),
-      this.cleanupOrphanedForEntity(this.simulatedFillRepository, backtestId, expectedCounts.fills, {
+      });
+      const fills = await this.cleanupOrphanedForEntity(manager, SimulatedOrderFill, backtestId, expectedCounts.fills, {
         executionTimestamp: 'DESC'
-      }),
-      this.cleanupOrphanedForEntity(this.backtestSnapshotRepository, backtestId, expectedCounts.snapshots, {
-        timestamp: 'DESC'
-      })
-    ]);
+      });
+      const snapshots = await this.cleanupOrphanedForEntity(
+        manager,
+        BacktestPerformanceSnapshot,
+        backtestId,
+        expectedCounts.snapshots,
+        { timestamp: 'DESC' }
+      );
 
-    const deleted = { trades, signals, fills, snapshots };
+      return { trades, signals, fills, snapshots };
+    });
 
     if (deleted.trades || deleted.signals || deleted.fills || deleted.snapshots) {
       this.logger.warn(
