@@ -1,9 +1,9 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { GridSearchService } from './grid-search.service';
 
@@ -50,8 +50,69 @@ export class OptimizationOrchestratorService {
     private readonly gridSearchService: GridSearchService,
     private readonly walkForwardService: WalkForwardService,
     private readonly windowProcessor: WindowProcessor,
-    private readonly backtestEngine: BacktestEngine
+    private readonly backtestEngine: BacktestEngine,
+    private readonly dataSource: DataSource
   ) {}
+
+  /**
+   * Validate optimization configuration before starting a run
+   */
+  private validateOptimizationConfig(config: OptimizationConfig): void {
+    const errors: string[] = [];
+
+    // Validate walk-forward configuration
+    if (config.walkForward.trainDays < config.walkForward.testDays) {
+      errors.push('trainDays must be >= testDays');
+    }
+    if (config.walkForward.trainDays <= 0) {
+      errors.push('trainDays must be positive');
+    }
+    if (config.walkForward.testDays <= 0) {
+      errors.push('testDays must be positive');
+    }
+    if (config.walkForward.stepDays <= 0) {
+      errors.push('stepDays must be positive');
+    }
+
+    // Validate combination limits
+    if (config.maxCombinations !== undefined && config.maxCombinations <= 0) {
+      errors.push('maxCombinations must be positive');
+    }
+    if (config.maxIterations !== undefined && config.maxIterations <= 0) {
+      errors.push('maxIterations must be positive');
+    }
+
+    // Validate early stopping config
+    if (config.earlyStop?.enabled) {
+      if (config.earlyStop.patience <= 0) {
+        errors.push('patience must be positive when early stopping is enabled');
+      }
+      if (config.earlyStop.minImprovement !== undefined && config.earlyStop.minImprovement < 0) {
+        errors.push('minImprovement cannot be negative');
+      }
+    }
+
+    // Validate composite weights sum to 1.0
+    if (config.objective.metric === 'composite' && config.objective.weights) {
+      const sum = Object.values(config.objective.weights).reduce((a, b) => a + (b || 0), 0);
+      if (Math.abs(sum - 1.0) > 0.001) {
+        errors.push(`Composite weights must sum to 1.0 (current sum: ${sum.toFixed(3)})`);
+      }
+    }
+
+    // Validate date range if provided
+    if (config.dateRange) {
+      const startDate = new Date(config.dateRange.startDate);
+      const endDate = new Date(config.dateRange.endDate);
+      if (startDate >= endDate) {
+        errors.push('startDate must be before endDate');
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException(`Invalid optimization config: ${errors.join('; ')}`);
+    }
+  }
 
   /**
    * Start a new optimization run
@@ -61,6 +122,9 @@ export class OptimizationOrchestratorService {
     parameterSpace: ParameterSpace,
     config: OptimizationConfig
   ): Promise<OptimizationRun> {
+    // Validate configuration before proceeding
+    this.validateOptimizationConfig(config);
+
     // Validate strategy exists
     const strategyConfig = await this.strategyConfigRepository.findOne({
       where: { id: strategyConfigId }
@@ -135,8 +199,9 @@ export class OptimizationOrchestratorService {
     run.startedAt = new Date();
     await this.optimizationRunRepository.save(run);
 
-    // Clear coin cache at the start of each run
-    this.clearCoinCache();
+    // Load coins once at start of optimization run for thread safety
+    const coins = await this.loadCoinsForOptimization();
+    this.logger.log(`Loaded ${coins.length} coins for optimization run ${runId}`);
 
     try {
       // Generate walk-forward windows
@@ -187,46 +252,62 @@ export class OptimizationOrchestratorService {
               run.strategyConfig,
               combination.values,
               windows,
-              run.config
+              run.config,
+              coins
             );
             return { combination, evaluationResult };
           })
         );
 
-        // Process batch results sequentially for proper tracking
-        for (const { combination, evaluationResult } of batchResults) {
-          // Store result
-          const result = this.optimizationResultRepository.create({
-            optimizationRunId: runId,
-            combinationIndex: combination.index,
-            parameters: combination.values,
-            avgTrainScore: evaluationResult.avgTrainScore,
-            avgTestScore: evaluationResult.avgTestScore,
-            avgDegradation: evaluationResult.avgDegradation,
-            consistencyScore: evaluationResult.consistencyScore,
-            overfittingWindows: evaluationResult.overfittingWindows,
-            windowResults: evaluationResult.windowResults,
-            isBaseline: combination.isBaseline
-          });
+        // Process batch results in transaction for atomic commit
+        await this.dataSource.transaction(async (manager) => {
+          for (const { combination, evaluationResult } of batchResults) {
+            // Store result
+            const result = manager.create(OptimizationResult, {
+              optimizationRunId: runId,
+              combinationIndex: combination.index,
+              parameters: combination.values,
+              avgTrainScore: evaluationResult.avgTrainScore,
+              avgTestScore: evaluationResult.avgTestScore,
+              avgDegradation: evaluationResult.avgDegradation,
+              consistencyScore: evaluationResult.consistencyScore,
+              overfittingWindows: evaluationResult.overfittingWindows,
+              windowResults: evaluationResult.windowResults,
+              isBaseline: combination.isBaseline
+            });
 
-          await this.optimizationResultRepository.save(result);
+            await manager.save(OptimizationResult, result);
 
-          // Track baseline score
-          if (combination.isBaseline) {
-            baselineScore = evaluationResult.avgTestScore;
+            // Track baseline score
+            if (combination.isBaseline) {
+              baselineScore = evaluationResult.avgTestScore;
+            }
+
+            // Track best score with minImprovement threshold for early stopping
+            if (evaluationResult.avgTestScore > bestScore) {
+              // Calculate improvement percentage
+              const improvementPct =
+                bestScore !== 0 ? ((evaluationResult.avgTestScore - bestScore) / Math.abs(bestScore)) * 100 : 100; // First improvement is always significant
+
+              const minImprovement = run.config.earlyStop?.minImprovement ?? 0;
+
+              // Only reset patience counter if improvement meets threshold
+              if (improvementPct >= minImprovement) {
+                noImprovementCount = 0; // Significant improvement - reset patience
+              } else {
+                noImprovementCount++; // Marginal improvement - continue counting
+              }
+
+              // Always update best score and parameters
+              bestScore = evaluationResult.avgTestScore;
+              bestParameters = combination.values;
+            } else {
+              noImprovementCount++;
+            }
+
+            combinationsProcessed++;
           }
-
-          // Track best score
-          if (evaluationResult.avgTestScore > bestScore) {
-            bestScore = evaluationResult.avgTestScore;
-            bestParameters = combination.values;
-            noImprovementCount = 0;
-          } else {
-            noImprovementCount++;
-          }
-
-          combinationsProcessed++;
-        }
+        });
 
         // Update progress after each batch
         await this.updateProgress(run, combinationsProcessed, windows.length, bestScore, bestParameters);
@@ -260,7 +341,8 @@ export class OptimizationOrchestratorService {
     strategyConfig: StrategyConfig,
     parameters: Record<string, unknown>,
     windows: WalkForwardWindowConfig[],
-    config: OptimizationConfig
+    config: OptimizationConfig,
+    coins: Coin[]
   ): Promise<CombinationEvaluationResult> {
     const windowResults: WindowResult[] = [];
     let totalTrainScore = 0;
@@ -274,7 +356,8 @@ export class OptimizationOrchestratorService {
         strategyConfig,
         parameters,
         window.trainStartDate,
-        window.trainEndDate
+        window.trainEndDate,
+        coins
       );
 
       // Execute backtest for test period
@@ -282,7 +365,8 @@ export class OptimizationOrchestratorService {
         strategyConfig,
         parameters,
         window.testStartDate,
-        window.testEndDate
+        window.testEndDate,
+        coins
       );
 
       // Calculate scores based on objective
@@ -332,9 +416,28 @@ export class OptimizationOrchestratorService {
   }
 
   /**
-   * Cached coins for optimization - loaded once per optimization run
+   * Load coins for optimization run - called once at start of optimization
+   * Returns top 50 coins by market rank, or any 50 coins with price data as fallback
    */
-  private cachedCoins: Coin[] | null = null;
+  private async loadCoinsForOptimization(): Promise<Coin[]> {
+    let coins = await this.coinRepository
+      .createQueryBuilder('coin')
+      .where('coin.marketRank IS NOT NULL')
+      .orderBy('coin.marketRank', 'ASC')
+      .take(50)
+      .getMany();
+
+    if (coins.length === 0) {
+      // Fallback: get any coins with price data
+      coins = await this.coinRepository.find({ take: 50 });
+    }
+
+    if (coins.length === 0) {
+      throw new Error('No coins available for optimization. Ensure coins are loaded in database.');
+    }
+
+    return coins;
+  }
 
   /**
    * Execute a backtest for the given parameters and date range using the real backtest engine
@@ -343,28 +446,9 @@ export class OptimizationOrchestratorService {
     strategyConfig: StrategyConfig,
     parameters: Record<string, unknown>,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    coins: Coin[]
   ): Promise<import('@chansey/api-interfaces').WindowMetrics> {
-    // Load coins if not cached - get top 50 by market rank
-    if (!this.cachedCoins) {
-      this.cachedCoins = await this.coinRepository
-        .createQueryBuilder('coin')
-        .where('coin.marketRank IS NOT NULL')
-        .orderBy('coin.marketRank', 'ASC')
-        .take(50)
-        .getMany();
-
-      if (this.cachedCoins.length === 0) {
-        // Fallback: get any coins with price data
-        this.cachedCoins = await this.coinRepository.find({ take: 50 });
-      }
-
-      if (this.cachedCoins.length === 0) {
-        this.logger.warn('No coins found, optimization will use simulated metrics');
-        return this.getSimulatedMetrics();
-      }
-    }
-
     // Build optimization backtest config
     const backtestConfig: OptimizationBacktestConfig = {
       algorithmId: strategyConfig.algorithmId,
@@ -376,7 +460,7 @@ export class OptimizationOrchestratorService {
     };
 
     try {
-      const result = await this.backtestEngine.executeOptimizationBacktest(backtestConfig, this.cachedCoins);
+      const result = await this.backtestEngine.executeOptimizationBacktest(backtestConfig, coins);
 
       return {
         sharpeRatio: result.sharpeRatio,
@@ -385,41 +469,12 @@ export class OptimizationOrchestratorService {
         winRate: result.winRate,
         volatility: result.volatility,
         profitFactor: result.profitFactor,
-        tradeCount: result.tradeCount
+        tradeCount: result.tradeCount,
+        downsideDeviation: result.downsideDeviation
       };
     } catch (error) {
-      this.logger.warn(`Backtest execution failed, using simulated metrics: ${error.message}`);
-      return this.getSimulatedMetrics();
+      throw new Error(`Backtest failed for ${startDate.toISOString()}-${endDate.toISOString()}: ${error.message}`);
     }
-  }
-
-  /**
-   * Get simulated metrics as fallback when backtest execution fails
-   */
-  private getSimulatedMetrics(): import('@chansey/api-interfaces').WindowMetrics {
-    const baseReturn = 0.05 + Math.random() * 0.15;
-    const volatility = 0.1 + Math.random() * 0.2;
-    const sharpeRatio = baseReturn / volatility;
-    const maxDrawdown = -(0.05 + Math.random() * 0.15);
-    const winRate = 0.45 + Math.random() * 0.2; // Decimal scale (0.0-1.0)
-    const profitFactor = 1 + Math.random() * 1.5;
-
-    return {
-      sharpeRatio,
-      totalReturn: baseReturn,
-      maxDrawdown,
-      winRate,
-      volatility,
-      profitFactor,
-      tradeCount: Math.floor(10 + Math.random() * 50)
-    };
-  }
-
-  /**
-   * Clear the cached coins (call at the start of each optimization run)
-   */
-  private clearCoinCache(): void {
-    this.cachedCoins = null;
   }
 
   /**
@@ -438,9 +493,16 @@ export class OptimizationOrchestratorService {
         return metrics.maxDrawdown !== 0 ? metrics.totalReturn / Math.abs(metrics.maxDrawdown) : 0;
       case 'profit_factor':
         return metrics.profitFactor || 1;
-      case 'sortino_ratio':
-        // Simplified Sortino - would need downside deviation
-        return metrics.sharpeRatio * 1.1;
+      case 'sortino_ratio': {
+        // Sortino ratio: (Return - Risk Free Rate) / Downside Deviation
+        // Uses 2% annual risk-free rate, consistent with Sharpe calculation
+        const riskFreeRate = 0.02;
+        if (!metrics.downsideDeviation || metrics.downsideDeviation === 0) {
+          // Fallback to Sharpe when no downside volatility (all returns positive)
+          return metrics.sharpeRatio;
+        }
+        return (metrics.totalReturn - riskFreeRate) / metrics.downsideDeviation;
+      }
       case 'composite':
         return this.calculateCompositeScore(metrics, objective.weights);
       default:
@@ -465,14 +527,19 @@ export class OptimizationOrchestratorService {
     };
 
     const calmarRatio = metrics.maxDrawdown !== 0 ? metrics.totalReturn / Math.abs(metrics.maxDrawdown) : 0;
+    const norm = OptimizationOrchestratorService.METRIC_NORMALIZATION;
 
-    // Normalize each metric to roughly 0-1 scale, then weight
-    const normalizedSharpe = Math.max(0, Math.min(1, (metrics.sharpeRatio + 1) / 4)); // -1 to 3 -> 0 to 1
-    const normalizedReturn = Math.max(0, Math.min(1, (metrics.totalReturn + 0.5) / 1)); // -0.5 to 0.5 -> 0 to 1
-    const normalizedCalmar = Math.max(0, Math.min(1, calmarRatio / 3)); // 0 to 3 -> 0 to 1
-    const normalizedPF = Math.max(0, Math.min(1, ((metrics.profitFactor || 1) - 0.5) / 2.5)); // 0.5 to 3 -> 0 to 1
-    const normalizedDD = Math.max(0, Math.min(1, 1 + metrics.maxDrawdown)); // -1 to 0 -> 0 to 1
-    const normalizedWR = Math.max(0, Math.min(1, metrics.winRate)); // Already decimal (0.0-1.0)
+    // Helper to normalize a value to [0, 1] given its expected range
+    const normalize = (value: number, range: { min: number; max: number }) =>
+      Math.max(0, Math.min(1, (value - range.min) / (range.max - range.min)));
+
+    // Normalize each metric to 0-1 scale using documented ranges
+    const normalizedSharpe = normalize(metrics.sharpeRatio, norm.sharpeRatio);
+    const normalizedReturn = normalize(metrics.totalReturn, norm.totalReturn);
+    const normalizedCalmar = normalize(calmarRatio, norm.calmarRatio);
+    const normalizedPF = normalize(metrics.profitFactor || 1, norm.profitFactor);
+    const normalizedDD = normalize(metrics.maxDrawdown, norm.maxDrawdown);
+    const normalizedWR = normalize(metrics.winRate, norm.winRate);
 
     return (
       normalizedSharpe * (w.sharpeRatio || 0) +
@@ -485,7 +552,41 @@ export class OptimizationOrchestratorService {
   }
 
   /**
-   * Calculate consistency score based on variance of test scores
+   * Normalization ranges for composite score calculation.
+   * Each metric is normalized to [0, 1] using: (value - min) / (max - min)
+   */
+  private static readonly METRIC_NORMALIZATION = {
+    /** Sharpe ratio typically ranges from -1 (losing) to 3+ (excellent) */
+    sharpeRatio: { min: -1, max: 3 },
+    /** Total return as decimal, e.g., -50% to +50% */
+    totalReturn: { min: -0.5, max: 0.5 },
+    /** Calmar ratio (return / max drawdown) typically 0 to 3 */
+    calmarRatio: { min: 0, max: 3 },
+    /** Profit factor typically 0.5 (losing) to 3+ (excellent) */
+    profitFactor: { min: 0.5, max: 3 },
+    /** Max drawdown as negative decimal, -100% to 0% */
+    maxDrawdown: { min: -1, max: 0 },
+    /** Win rate already normalized as decimal 0.0 to 1.0 */
+    winRate: { min: 0, max: 1 }
+  };
+
+  /**
+   * Multiplier for converting standard deviation to consistency penalty.
+   * Calibrated for scores typically in [-1, 3] range (e.g., Sharpe ratios):
+   * - stdDev=0.0 → 100% consistency (perfect)
+   * - stdDev=0.5 → 75% consistency (good)
+   * - stdDev=1.0 → 50% consistency (moderate)
+   * - stdDev=2.0 → 0% consistency (poor)
+   */
+  private static readonly CONSISTENCY_STDDEV_MULTIPLIER = 50;
+
+  /**
+   * Calculate consistency score based on variance of test scores.
+   * Measures how stable performance is across different time windows.
+   * Higher score = more consistent (lower variance).
+   *
+   * @param testScores Array of test scores from each walk-forward window
+   * @returns Consistency score from 0-100 (100 = perfectly consistent)
    */
   private calculateConsistencyScore(testScores: number[]): number {
     if (testScores.length < 2) return 100;
@@ -496,7 +597,7 @@ export class OptimizationOrchestratorService {
 
     // Lower standard deviation = higher consistency
     // Score of 100 at stdDev=0, decreasing as stdDev increases
-    const consistencyScore = Math.max(0, 100 - stdDev * 50);
+    const consistencyScore = Math.max(0, 100 - stdDev * OptimizationOrchestratorService.CONSISTENCY_STDDEV_MULTIPLIER);
     return Math.round(consistencyScore * 100) / 100;
   }
 
@@ -517,7 +618,9 @@ export class OptimizationOrchestratorService {
 
     const progressDetails: OptimizationProgressDetails = {
       currentCombination: combinationsTested,
-      currentWindow: 0,
+      // All windows are processed per combination; when updateProgress is called
+      // after a batch, all windows for those combinations have completed
+      currentWindow: totalWindows,
       totalWindows,
       estimatedTimeRemaining,
       lastUpdated: new Date(),
