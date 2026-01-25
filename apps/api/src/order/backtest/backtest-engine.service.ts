@@ -146,6 +146,11 @@ export interface OptimizationBacktestResult {
 export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
 
+  /** Maximum allocation per trade (20% of portfolio) */
+  private static readonly MAX_ALLOCATION = 0.2;
+  /** Minimum allocation per trade (5% of portfolio) */
+  private static readonly MIN_ALLOCATION = 0.05;
+
   constructor(
     private readonly backtestStream: BacktestStreamService,
     private readonly algorithmRegistry: AlgorithmRegistry,
@@ -378,13 +383,18 @@ export class BacktestEngine {
         };
         signals.push(signalRecord);
 
+        // Extract volume from current candle for volume-based slippage calculation
+        const coinCandle = currentPrices.find((c) => c.coinId === strategySignal.coinId);
+        const dailyVolume = coinCandle?.volume;
+
         const tradeResult = await this.executeTrade(
           strategySignal,
           portfolio,
           marketData,
           backtest.tradingFee,
           rng,
-          slippageConfig
+          slippageConfig,
+          dailyVolume
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
@@ -588,7 +598,8 @@ export class BacktestEngine {
     marketData: MarketData,
     tradingFee: number,
     rng: SeededRandom,
-    slippageConfig: SlippageModelConfig = DEFAULT_SLIPPAGE_CONFIG
+    slippageConfig: SlippageModelConfig = DEFAULT_SLIPPAGE_CONFIG,
+    dailyVolume?: number
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const basePrice = marketData.prices.get(signal.coinId);
     if (!basePrice) {
@@ -604,28 +615,42 @@ export class BacktestEngine {
     let quantity = 0;
     let totalValue = 0;
 
-    // Calculate slippage based on estimated order size
+    // Calculate slippage based on estimated order size and market volume
     const estimatedQuantity = signal.quantity ?? (portfolio.totalValue * 0.1) / basePrice;
-    const slippageBps = calculateSimulatedSlippage(slippageConfig, estimatedQuantity, basePrice);
+    const slippageBps = calculateSimulatedSlippage(slippageConfig, estimatedQuantity, basePrice, dailyVolume);
 
     // Apply slippage to get execution price
     const price = applySlippage(basePrice, slippageBps, isBuy);
 
     if (isBuy) {
+      // Position sizing priority: quantity > percentage > confidence > random
       if (signal.quantity) {
+        // Use explicit quantity if provided
         quantity = signal.quantity;
       } else if (signal.percentage) {
+        // Use percentage (from signal.strength) if provided
         const investmentAmount = portfolio.totalValue * signal.percentage;
         quantity = investmentAmount / price;
+      } else if (signal.confidence !== undefined) {
+        // Use confidence-based sizing: higher confidence = larger position (scaled between min and max allocation)
+        const confidenceBasedAllocation =
+          BacktestEngine.MIN_ALLOCATION +
+          signal.confidence * (BacktestEngine.MAX_ALLOCATION - BacktestEngine.MIN_ALLOCATION);
+        const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
+        quantity = investmentAmount / price;
       } else {
-        const investmentAmount = portfolio.totalValue * Math.min(0.2, Math.max(0.05, rng.next()));
+        // Fallback to random allocation (5-20% of portfolio)
+        const investmentAmount =
+          portfolio.totalValue *
+          Math.min(BacktestEngine.MAX_ALLOCATION, Math.max(BacktestEngine.MIN_ALLOCATION, rng.next()));
         quantity = investmentAmount / price;
       }
 
       totalValue = quantity * price;
+      const estimatedFee = totalValue * tradingFee;
 
-      if (portfolio.cashBalance < totalValue) {
-        this.logger.warn('Insufficient cash balance for BUY trade');
+      if (portfolio.cashBalance < totalValue + estimatedFee) {
+        this.logger.warn('Insufficient cash balance for BUY trade (including fees)');
         return null;
       }
 
@@ -662,7 +687,21 @@ export class BacktestEngine {
       // Capture cost basis BEFORE modifying position
       costBasis = existingPosition.averagePrice;
 
-      quantity = signal.quantity ?? existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
+      // Position sizing priority: quantity > percentage > confidence > random
+      if (signal.quantity) {
+        // Use explicit quantity if provided
+        quantity = signal.quantity;
+      } else if (signal.percentage) {
+        // Use percentage (from signal.strength) to determine portion to sell
+        quantity = existingPosition.quantity * Math.min(1, signal.percentage);
+      } else if (signal.confidence !== undefined) {
+        // Use confidence-based sizing: higher confidence = sell more (25% to 100% of position)
+        const confidenceBasedPercent = 0.25 + signal.confidence * 0.75;
+        quantity = existingPosition.quantity * confidenceBasedPercent;
+      } else {
+        // Fallback to random exit size (25-100% of position)
+        quantity = existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
+      }
       quantity = Math.min(quantity, existingPosition.quantity);
       totalValue = quantity * price;
 
@@ -1062,7 +1101,19 @@ export class BacktestEngine {
       }
 
       for (const strategySignal of strategySignals) {
-        const tradeResult = await this.executeTrade(strategySignal, portfolio, marketData, tradingFee, rng);
+        // Extract volume from current candle for volume-based slippage calculation
+        const coinCandle = currentPrices.find((c) => c.coinId === strategySignal.coinId);
+        const dailyVolume = coinCandle?.volume;
+
+        const tradeResult = await this.executeTrade(
+          strategySignal,
+          portfolio,
+          marketData,
+          tradingFee,
+          rng,
+          DEFAULT_SLIPPAGE_CONFIG,
+          dailyVolume
+        );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
         }

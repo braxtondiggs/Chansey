@@ -132,6 +132,260 @@ describe('BacktestEngine.executeTrade', () => {
     expect(result?.trade.realizedPnL).toBeCloseTo(18.01);
     expect(result?.trade.costBasis).toBeCloseTo(80);
   });
+
+  describe('Bug Fix: Insufficient funds check includes fees', () => {
+    it('rejects BUY when cash equals trade value but cannot cover fees', async () => {
+      const engine = createEngine();
+      // Cash exactly equals trade value (100), but not enough for fee (1%)
+      const portfolio: Portfolio = {
+        cashBalance: 100,
+        totalValue: 100,
+        positions: new Map()
+      };
+
+      const buySignal: TradingSignal = {
+        action: 'BUY',
+        coinId: 'BTC',
+        quantity: 1,
+        reason: 'entry'
+      };
+
+      const result = await (engine as any).executeTrade(
+        buySignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0.01, // 1% fee means we need 101 total
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      expect(result).toBeNull();
+      expect(portfolio.cashBalance).toBe(100); // Unchanged
+    });
+
+    it('allows BUY when cash covers both trade value and fees', async () => {
+      const engine = createEngine();
+      // Cash = 101, trade = 100, fee = 1 (1%), total = 101
+      const portfolio: Portfolio = {
+        cashBalance: 101,
+        totalValue: 101,
+        positions: new Map()
+      };
+
+      const buySignal: TradingSignal = {
+        action: 'BUY',
+        coinId: 'BTC',
+        quantity: 1,
+        reason: 'entry'
+      };
+
+      const result = await (engine as any).executeTrade(
+        buySignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0.01, // 1% fee
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      expect(result).toBeTruthy();
+      expect(portfolio.cashBalance).toBeCloseTo(0); // 101 - 100 - 1 = 0
+    });
+  });
+
+  describe('Bug Fix: Volume passed to slippage calculation', () => {
+    it('passes dailyVolume to slippage calculation', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 10000,
+        totalValue: 10000,
+        positions: new Map()
+      };
+
+      const buySignal: TradingSignal = {
+        action: 'BUY',
+        coinId: 'BTC',
+        quantity: 1,
+        reason: 'entry'
+      };
+
+      // With volume-based slippage, higher volume = lower slippage
+      const highVolumeResult = await (engine as any).executeTrade(
+        buySignal,
+        { ...portfolio, cashBalance: 10000, positions: new Map() },
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        1000000000 // High volume
+      );
+
+      const lowVolumeResult = await (engine as any).executeTrade(
+        buySignal,
+        { ...portfolio, cashBalance: 10000, positions: new Map() },
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        1000 // Low volume
+      );
+
+      // Higher volume should result in lower slippage (lower price for buy)
+      expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
+    });
+  });
+
+  describe('Bug Fix: Position sizing uses signal properties', () => {
+    it('uses signal.percentage for BUY position sizing', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 1000,
+        totalValue: 1000,
+        positions: new Map()
+      };
+
+      const buySignal: TradingSignal = {
+        action: 'BUY',
+        coinId: 'BTC',
+        percentage: 0.1, // 10% of portfolio
+        reason: 'entry'
+      };
+
+      const result = await (engine as any).executeTrade(
+        buySignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.99 }, // Would use 20% if random was used
+        noSlippage
+      );
+
+      // Should buy 100/100 = 1 BTC (10% of $1000)
+      expect(result?.trade.quantity).toBeCloseTo(1);
+      expect(result?.trade.totalValue).toBeCloseTo(100);
+    });
+
+    it('uses signal.confidence for BUY position sizing when percentage not set', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 1000,
+        totalValue: 1000,
+        positions: new Map()
+      };
+
+      const highConfidenceSignal: TradingSignal = {
+        action: 'BUY',
+        coinId: 'BTC',
+        confidence: 1.0, // Maximum confidence = 20% allocation
+        reason: 'strong entry'
+      };
+
+      const lowConfidenceSignal: TradingSignal = {
+        action: 'BUY',
+        coinId: 'BTC',
+        confidence: 0.0, // Minimum confidence = 5% allocation
+        reason: 'weak entry'
+      };
+
+      const highResult = await (engine as any).executeTrade(
+        highConfidenceSignal,
+        { ...portfolio, cashBalance: 1000, positions: new Map() },
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      const lowResult = await (engine as any).executeTrade(
+        lowConfidenceSignal,
+        { ...portfolio, cashBalance: 1000, positions: new Map() },
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      // High confidence should invest more than low confidence
+      expect(highResult?.trade.totalValue).toBeCloseTo(200); // 20% of $1000
+      expect(lowResult?.trade.totalValue).toBeCloseTo(50); // 5% of $1000
+    });
+
+    it('uses signal.percentage for SELL position sizing', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 0,
+        totalValue: 1000,
+        positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+      };
+
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        percentage: 0.5, // Sell 50% of position
+        reason: 'partial exit'
+      };
+
+      const result = await (engine as any).executeTrade(
+        sellSignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.99 }, // Would sell ~100% if random was used
+        noSlippage
+      );
+
+      // Should sell 5 BTC (50% of 10)
+      expect(result?.trade.quantity).toBeCloseTo(5);
+    });
+
+    it('uses signal.confidence for SELL position sizing when percentage not set', async () => {
+      const engine = createEngine();
+
+      const highConfidenceSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        confidence: 1.0, // Maximum confidence = 100% of position
+        reason: 'strong exit'
+      };
+
+      const lowConfidenceSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        confidence: 0.0, // Minimum confidence = 25% of position
+        reason: 'weak exit'
+      };
+
+      const highResult = await (engine as any).executeTrade(
+        highConfidenceSignal,
+        {
+          cashBalance: 0,
+          totalValue: 1000,
+          positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+        },
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      const lowResult = await (engine as any).executeTrade(
+        lowConfidenceSignal,
+        {
+          cashBalance: 0,
+          totalValue: 1000,
+          positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+        },
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      // High confidence should sell 100%, low confidence should sell 25%
+      expect(highResult?.trade.quantity).toBeCloseTo(10);
+      expect(lowResult?.trade.quantity).toBeCloseTo(2.5);
+    });
+  });
 });
 
 describe('BacktestEngine.executeOptimizationBacktest', () => {
@@ -217,6 +471,69 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       })
     );
     expect(algorithmRegistry.executeAlgorithm).not.toHaveBeenCalled();
+  });
+
+  it('returns annualized return and final value when price data exists', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+    const ohlcService = {
+      getCandlesByDateRange: jest.fn()
+    };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const startDate = new Date('2024-01-01T00:00:00.000Z');
+    const endDate = new Date('2024-01-03T00:00:00.000Z');
+    const candles = [
+      new OHLCCandle({
+        coinId: 'coin-1',
+        exchangeId: 'exchange-1',
+        timestamp: startDate,
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 105,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'coin-1',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-02T00:00:00.000Z'),
+        open: 105,
+        high: 115,
+        low: 95,
+        close: 110,
+        volume: 1000
+      })
+    ];
+
+    jest.spyOn(engine as any, 'getHistoricalPrices').mockResolvedValue(candles);
+
+    const result = await engine.executeOptimizationBacktest(
+      {
+        algorithmId: 'algo-1',
+        parameters: { foo: 'bar' },
+        startDate,
+        endDate,
+        initialCapital: 10000,
+        tradingFee: 0.001
+      },
+      [{ id: 'coin-1' }] as any
+    );
+
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledWith(
+      'algo-1',
+      expect.objectContaining({
+        config: { foo: 'bar' },
+        metadata: expect.objectContaining({ isOptimization: true, algorithmId: 'algo-1' })
+      })
+    );
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+    expect(result.finalValue).toBeCloseTo(10000);
+    expect(result.totalReturn).toBe(0);
+    expect(result.annualizedReturn).toBe(0);
+    expect(result.tradeCount).toBe(0);
+    expect(result.profitFactor).toBe(1);
   });
 });
 

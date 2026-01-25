@@ -14,6 +14,8 @@ import {
   SimulatedOrderFill
 } from './backtest.entity';
 
+import { MetricsService } from '../../metrics/metrics.service';
+
 describe('BacktestResultService', () => {
   let service: BacktestResultService;
 
@@ -29,25 +31,35 @@ describe('BacktestResultService', () => {
   const mockBacktestTradeRepository = {
     count: jest.fn(),
     find: jest.fn(),
+    save: jest.fn(),
     remove: jest.fn()
   };
 
   const mockBacktestSignalRepository = {
     count: jest.fn(),
     find: jest.fn(),
+    save: jest.fn(),
     remove: jest.fn()
   };
 
   const mockSimulatedFillRepository = {
     count: jest.fn(),
     find: jest.fn(),
+    save: jest.fn(),
     remove: jest.fn()
   };
 
   const mockBacktestSnapshotRepository = {
     count: jest.fn(),
     find: jest.fn(),
+    save: jest.fn(),
     remove: jest.fn()
+  };
+
+  const mockMetricsService = {
+    startPersistenceTimer: jest.fn(),
+    recordRecordsPersisted: jest.fn(),
+    recordCheckpointOrphansCleaned: jest.fn()
   };
 
   // Mock QueryRunner for transaction testing
@@ -62,8 +74,14 @@ describe('BacktestResultService', () => {
     }
   };
 
+  // Mock EntityManager for transaction callback
+  const mockTransactionManager = {
+    getRepository: jest.fn()
+  };
+
   const mockDataSource = {
-    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner)
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+    transaction: jest.fn()
   };
 
   beforeEach(async () => {
@@ -76,7 +94,8 @@ describe('BacktestResultService', () => {
         { provide: getRepositoryToken(SimulatedOrderFill), useValue: mockSimulatedFillRepository },
         { provide: getRepositoryToken(BacktestPerformanceSnapshot), useValue: mockBacktestSnapshotRepository },
         { provide: DataSource, useValue: mockDataSource },
-        { provide: BacktestStreamService, useValue: mockBacktestStreamService }
+        { provide: BacktestStreamService, useValue: mockBacktestStreamService },
+        { provide: MetricsService, useValue: mockMetricsService }
       ]
     }).compile();
 
@@ -117,10 +136,13 @@ describe('BacktestResultService', () => {
     };
 
     it('should persist results, commit, and publish after the transaction', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
       mockQueryRunner.manager.save.mockResolvedValue({});
 
       await service.persistSuccess(mockBacktest, mockResults);
 
+      expect(mockMetricsService.startPersistenceTimer).toHaveBeenCalledWith('full');
       expect(mockDataSource.createQueryRunner).toHaveBeenCalled();
       expect(mockQueryRunner.connect).toHaveBeenCalled();
       expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
@@ -129,6 +151,13 @@ describe('BacktestResultService', () => {
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(SimulatedOrderFill, mockResults.simulatedFills);
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestTrade, mockResults.trades);
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestPerformanceSnapshot, mockResults.snapshots);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('signals', mockResults.signals.length);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith(
+        'fills',
+        mockResults.simulatedFills.length
+      );
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('trades', mockResults.trades.length);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('snapshots', mockResults.snapshots.length);
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
         Backtest,
         expect.objectContaining({
@@ -149,6 +178,7 @@ describe('BacktestResultService', () => {
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
       expect(mockQueryRunner.rollbackTransaction).not.toHaveBeenCalled();
       expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
 
       const commitOrder = mockQueryRunner.commitTransaction.mock.invocationCallOrder[0];
       const publishOrder = mockBacktestStreamService.publishStatus.mock.invocationCallOrder[0];
@@ -158,6 +188,8 @@ describe('BacktestResultService', () => {
     });
 
     it('should rollback, release, and rethrow without publishing on failure', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
       const saveError = new Error('Database connection lost');
       mockQueryRunner.manager.save.mockRejectedValue(saveError);
 
@@ -167,9 +199,12 @@ describe('BacktestResultService', () => {
       expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
       expect(mockQueryRunner.release).toHaveBeenCalled();
       expect(mockBacktestStreamService.publishStatus).not.toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
     });
 
     it('should rollback when a later save fails', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
       const saveError = new Error('Trade save failed');
       mockQueryRunner.manager.save
         .mockResolvedValueOnce({}) // signals succeed
@@ -182,9 +217,12 @@ describe('BacktestResultService', () => {
       expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
       expect(mockQueryRunner.release).toHaveBeenCalled();
       expect(mockBacktestStreamService.publishStatus).not.toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
     });
 
     it('should skip saving empty arrays', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
       mockQueryRunner.manager.save.mockResolvedValue({});
 
       const emptyResults = {
@@ -200,6 +238,8 @@ describe('BacktestResultService', () => {
       // Should only save the backtest entity itself
       expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(1);
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(Backtest, expect.any(Object));
+      expect(mockMetricsService.recordRecordsPersisted).not.toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
     });
   });
 
@@ -232,17 +272,112 @@ describe('BacktestResultService', () => {
     });
   });
 
+  describe('persistIncremental', () => {
+    it('persists non-empty collections and records metrics', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+
+      const results = {
+        trades: [{ id: 'trade-1' }],
+        signals: [{ id: 'signal-1' }],
+        simulatedFills: [{ id: 'fill-1' }],
+        snapshots: [{ id: 'snapshot-1' }]
+      };
+
+      await service.persistIncremental({ id: 'backtest-1' } as Backtest, results);
+
+      expect(mockBacktestTradeRepository.save).toHaveBeenCalledWith(results.trades);
+      expect(mockBacktestSignalRepository.save).toHaveBeenCalledWith(results.signals);
+      expect(mockSimulatedFillRepository.save).toHaveBeenCalledWith(results.simulatedFills);
+      expect(mockBacktestSnapshotRepository.save).toHaveBeenCalledWith(results.snapshots);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('trades', results.trades.length);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('signals', results.signals.length);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('fills', results.simulatedFills.length);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('snapshots', results.snapshots.length);
+      expect(endTimer).toHaveBeenCalled();
+    });
+
+    it('skips empty collections', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+
+      const results = {
+        trades: [],
+        signals: [],
+        simulatedFills: [],
+        snapshots: []
+      };
+
+      await service.persistIncremental({ id: 'backtest-1' } as Backtest, results);
+
+      expect(mockBacktestTradeRepository.save).not.toHaveBeenCalled();
+      expect(mockBacktestSignalRepository.save).not.toHaveBeenCalled();
+      expect(mockSimulatedFillRepository.save).not.toHaveBeenCalled();
+      expect(mockBacktestSnapshotRepository.save).not.toHaveBeenCalled();
+      expect(mockMetricsService.recordRecordsPersisted).not.toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
+    });
+  });
+
+  describe('saveCheckpoint', () => {
+    it('updates checkpoint fields and progress counts', async () => {
+      const checkpoint = { lastProcessedIndex: 10 } as any;
+
+      await service.saveCheckpoint('backtest-1', checkpoint, 20, 100);
+
+      expect(mockBacktestRepository.update).toHaveBeenCalledWith('backtest-1', {
+        checkpointState: checkpoint,
+        lastCheckpointAt: expect.any(Date),
+        processedTimestampCount: 20,
+        totalTimestampCount: 100
+      });
+    });
+  });
+
+  describe('clearCheckpoint', () => {
+    it('clears checkpoint state and timestamp', async () => {
+      await service.clearCheckpoint('backtest-2');
+
+      expect(mockBacktestRepository.update).toHaveBeenCalledWith('backtest-2', {
+        checkpointState: null,
+        lastCheckpointAt: null
+      });
+    });
+  });
+
   describe('cleanupOrphanedResults', () => {
-    it('removes excess results beyond checkpoint counts', async () => {
-      mockBacktestTradeRepository.count.mockResolvedValue(3);
-      mockBacktestSignalRepository.count.mockResolvedValue(1);
-      mockSimulatedFillRepository.count.mockResolvedValue(2);
-      mockBacktestSnapshotRepository.count.mockResolvedValue(0);
+    // Helper to create repository mocks for transaction testing
+    const createMockRepo = () => ({
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+      remove: jest.fn().mockResolvedValue(undefined)
+    });
+
+    it('removes excess results beyond checkpoint counts within a transaction', async () => {
+      const mockTradeRepo = createMockRepo();
+      const mockSignalRepo = createMockRepo();
+      const mockFillRepo = createMockRepo();
+      const mockSnapshotRepo = createMockRepo();
+
+      // Set up counts: trades has 3 (expected 2 = 1 excess), fills has 2 (expected 0 = 2 excess)
+      mockTradeRepo.count.mockResolvedValue(3);
+      mockSignalRepo.count.mockResolvedValue(1);
+      mockFillRepo.count.mockResolvedValue(2);
+      mockSnapshotRepo.count.mockResolvedValue(0);
 
       const excessTrades = [{ id: 'trade-3' }];
       const excessFills = [{ id: 'fill-1' }, { id: 'fill-2' }];
-      mockBacktestTradeRepository.find.mockResolvedValue(excessTrades);
-      mockSimulatedFillRepository.find.mockResolvedValue(excessFills);
+      mockTradeRepo.find.mockResolvedValue(excessTrades);
+      mockFillRepo.find.mockResolvedValue(excessFills);
+
+      mockTransactionManager.getRepository
+        .mockReturnValueOnce(mockTradeRepo) // First call for BacktestTrade
+        .mockReturnValueOnce(mockSignalRepo) // Second call for BacktestSignal
+        .mockReturnValueOnce(mockFillRepo) // Third call for SimulatedOrderFill
+        .mockReturnValueOnce(mockSnapshotRepo); // Fourth call for BacktestPerformanceSnapshot
+
+      // Make transaction execute the callback with mock manager
+      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
 
       const result = await service.cleanupOrphanedResults('backtest-1', {
         trades: 2,
@@ -251,12 +386,32 @@ describe('BacktestResultService', () => {
         snapshots: 0
       });
 
-      expect(mockBacktestTradeRepository.find).toHaveBeenCalledWith(expect.objectContaining({ take: 1 }));
-      expect(mockBacktestTradeRepository.remove).toHaveBeenCalledWith(excessTrades);
-      expect(mockSimulatedFillRepository.find).toHaveBeenCalledWith(expect.objectContaining({ take: 2 }));
-      expect(mockSimulatedFillRepository.remove).toHaveBeenCalledWith(excessFills);
-      expect(mockBacktestSignalRepository.find).not.toHaveBeenCalled();
-      expect(mockBacktestSnapshotRepository.find).not.toHaveBeenCalled();
+      // Verify transaction was used
+      expect(mockDataSource.transaction).toHaveBeenCalled();
+
+      // Verify cleanup operations
+      expect(mockTradeRepo.count).toHaveBeenCalledWith({ where: { backtest: { id: 'backtest-1' } } });
+      expect(mockTradeRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { backtest: { id: 'backtest-1' } },
+          order: { executedAt: 'DESC' },
+          take: 1
+        })
+      );
+      expect(mockTradeRepo.remove).toHaveBeenCalledWith(excessTrades);
+      expect(mockFillRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { backtest: { id: 'backtest-1' } },
+          order: { executionTimestamp: 'DESC' },
+          take: 2
+        })
+      );
+      expect(mockFillRepo.remove).toHaveBeenCalledWith(excessFills);
+
+      expect(mockMetricsService.recordCheckpointOrphansCleaned).toHaveBeenCalledWith('trades', 1);
+      expect(mockMetricsService.recordCheckpointOrphansCleaned).toHaveBeenCalledWith('fills', 2);
+      expect(mockMetricsService.recordCheckpointOrphansCleaned).toHaveBeenCalledWith('signals', 0);
+      expect(mockMetricsService.recordCheckpointOrphansCleaned).toHaveBeenCalledWith('snapshots', 0);
 
       expect(result).toEqual({
         deleted: { trades: 1, signals: 0, fills: 2, snapshots: 0 }
@@ -264,10 +419,23 @@ describe('BacktestResultService', () => {
     });
 
     it('does nothing when counts match', async () => {
-      mockBacktestTradeRepository.count.mockResolvedValue(1);
-      mockBacktestSignalRepository.count.mockResolvedValue(1);
-      mockSimulatedFillRepository.count.mockResolvedValue(1);
-      mockBacktestSnapshotRepository.count.mockResolvedValue(1);
+      const mockTradeRepo = createMockRepo();
+      const mockSignalRepo = createMockRepo();
+      const mockFillRepo = createMockRepo();
+      const mockSnapshotRepo = createMockRepo();
+
+      mockTradeRepo.count.mockResolvedValue(1);
+      mockSignalRepo.count.mockResolvedValue(1);
+      mockFillRepo.count.mockResolvedValue(1);
+      mockSnapshotRepo.count.mockResolvedValue(1);
+
+      mockTransactionManager.getRepository
+        .mockReturnValueOnce(mockTradeRepo)
+        .mockReturnValueOnce(mockSignalRepo)
+        .mockReturnValueOnce(mockFillRepo)
+        .mockReturnValueOnce(mockSnapshotRepo);
+
+      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
 
       const result = await service.cleanupOrphanedResults('backtest-2', {
         trades: 1,
@@ -276,13 +444,50 @@ describe('BacktestResultService', () => {
         snapshots: 1
       });
 
-      expect(mockBacktestTradeRepository.find).not.toHaveBeenCalled();
-      expect(mockBacktestSignalRepository.find).not.toHaveBeenCalled();
-      expect(mockSimulatedFillRepository.find).not.toHaveBeenCalled();
-      expect(mockBacktestSnapshotRepository.find).not.toHaveBeenCalled();
+      expect(mockTradeRepo.find).not.toHaveBeenCalled();
+      expect(mockSignalRepo.find).not.toHaveBeenCalled();
+      expect(mockFillRepo.find).not.toHaveBeenCalled();
+      expect(mockSnapshotRepo.find).not.toHaveBeenCalled();
+      expect(mockMetricsService.recordCheckpointOrphansCleaned).not.toHaveBeenCalled();
       expect(result).toEqual({
         deleted: { trades: 0, signals: 0, fills: 0, snapshots: 0 }
       });
+    });
+
+    it('rolls back all changes on partial failure', async () => {
+      const mockTradeRepo = createMockRepo();
+      const mockSignalRepo = createMockRepo();
+      const mockFillRepo = createMockRepo();
+      const mockSnapshotRepo = createMockRepo();
+
+      mockTradeRepo.count.mockResolvedValue(3);
+      mockTradeRepo.find.mockResolvedValue([{ id: 'trade-1' }]);
+      mockTradeRepo.remove.mockResolvedValue(undefined); // First cleanup succeeds
+
+      mockSignalRepo.count.mockResolvedValue(3);
+      mockSignalRepo.find.mockResolvedValue([{ id: 'signal-1' }]);
+      mockSignalRepo.remove.mockRejectedValue(new Error('Database error')); // Second cleanup fails
+
+      mockTransactionManager.getRepository
+        .mockReturnValueOnce(mockTradeRepo)
+        .mockReturnValueOnce(mockSignalRepo)
+        .mockReturnValueOnce(mockFillRepo)
+        .mockReturnValueOnce(mockSnapshotRepo);
+
+      // Transaction should throw when callback throws
+      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
+
+      await expect(
+        service.cleanupOrphanedResults('backtest-3', {
+          trades: 2,
+          signals: 2,
+          fills: 0,
+          snapshots: 0
+        })
+      ).rejects.toThrow('Database error');
+
+      // Verify transaction was used (it would handle the rollback)
+      expect(mockDataSource.transaction).toHaveBeenCalled();
     });
   });
 
