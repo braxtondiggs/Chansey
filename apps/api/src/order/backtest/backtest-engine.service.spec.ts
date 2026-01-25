@@ -14,6 +14,11 @@ describe('BacktestEngine.executeTrade', () => {
     prices: new Map([[coinId, price]])
   });
 
+  const clonePortfolio = (portfolio: Portfolio): Portfolio => ({
+    ...portfolio,
+    positions: new Map(Array.from(portfolio.positions.entries()).map(([coinId, position]) => [coinId, { ...position }]))
+  });
+
   const noSlippage = { type: SlippageModelType.NONE };
 
   it('calculates realized P&L for partial sells', async () => {
@@ -232,6 +237,178 @@ describe('BacktestEngine.executeTrade', () => {
 
       // Higher volume should result in lower slippage (lower price for buy)
       expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
+    });
+  });
+
+  describe('Bug Fix: SELL slippage estimation uses position quantity', () => {
+    it('uses existing position quantity for SELL slippage estimation (percentage)', async () => {
+      const engine = createEngine();
+      // Large portfolio ($100,000) with small position (10 BTC @ $100 = $1,000)
+      // Selling 50% should estimate slippage for 5 BTC, not $10,000 worth
+      const portfolio: Portfolio = {
+        cashBalance: 99000,
+        totalValue: 100000,
+        positions: new Map([
+          [
+            'BTC',
+            {
+              coinId: 'BTC',
+              quantity: 10,
+              averagePrice: 100,
+              totalValue: 1000
+            }
+          ]
+        ])
+      };
+
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        percentage: 0.5, // Sell 50% of position
+        reason: 'partial exit'
+      };
+
+      // With volume-based slippage, the estimated quantity affects slippage calculation
+      // A $10,000 estimate (10% of portfolio) vs 5 BTC estimate (50% of position)
+      // would produce vastly different slippage in low-volume scenarios
+      const result = await (engine as any).executeTrade(
+        sellSignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        10000 // $1M daily volume
+      );
+
+      expect(result).toBeTruthy();
+      // Should sell 5 BTC (50% of 10)
+      expect(result.trade.quantity).toBeCloseTo(5);
+      // Slippage should be reasonable given 5 BTC * $100 = $500 vs $10k volume
+      // Not inflated due to $10,000 (10% of $100k portfolio) estimate
+      expect(result.trade.metadata?.slippageBps).toBeLessThanOrEqual(15);
+    });
+
+    it('uses existing position quantity for SELL slippage estimation (confidence)', async () => {
+      const engine = createEngine();
+      // Portfolio with significant BTC position
+      const portfolio: Portfolio = {
+        cashBalance: 90000,
+        totalValue: 100000,
+        positions: new Map([
+          [
+            'BTC',
+            {
+              coinId: 'BTC',
+              quantity: 100,
+              averagePrice: 100,
+              totalValue: 10000
+            }
+          ]
+        ])
+      };
+
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        confidence: 0.5, // Would sell ~62.5% based on confidence formula
+        reason: 'partial exit'
+      };
+
+      const result = await (engine as any).executeTrade(
+        sellSignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        100000 // $10M daily volume
+      );
+
+      expect(result).toBeTruthy();
+      // Slippage should be based on ~50 BTC position estimate, not 10% of portfolio
+      // which would be 100 BTC worth of estimation
+      expect(result.trade.metadata?.slippageBps).toBeCloseTo(10);
+    });
+
+    it('calculates volume-based slippage correctly for SELL trades with no explicit quantity', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 5000,
+        totalValue: 10000,
+        positions: new Map([
+          [
+            'BTC',
+            {
+              coinId: 'BTC',
+              quantity: 50,
+              averagePrice: 100,
+              totalValue: 5000
+            }
+          ]
+        ])
+      };
+
+      // SELL with no quantity specified - should use 50% of position (25 BTC) for slippage estimate
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        reason: 'exit'
+        // No quantity, percentage, or confidence - will use random
+      };
+
+      const lowVolumeResult = await (engine as any).executeTrade(
+        sellSignal,
+        clonePortfolio(portfolio),
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        1000 // Low volume
+      );
+
+      const highVolumeResult = await (engine as any).executeTrade(
+        sellSignal,
+        clonePortfolio(portfolio),
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        10000000 // High volume
+      );
+
+      // Higher volume should result in lower slippage
+      expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
+      expect(highVolumeResult?.trade.quantity).toBeCloseTo(25);
+      expect(lowVolumeResult?.trade.quantity).toBeCloseTo(25);
+    });
+
+    it('handles SELL with no existing position gracefully', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 10000,
+        totalValue: 10000,
+        positions: new Map() // No positions
+      };
+
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        reason: 'exit'
+      };
+
+      const result = await (engine as any).executeTrade(
+        sellSignal,
+        portfolio,
+        createMarketData('BTC', 100),
+        0,
+        { next: () => 0.5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        10000
+      );
+
+      // Should return null since there's no position to sell
+      expect(result).toBeNull();
     });
   });
 

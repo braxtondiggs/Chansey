@@ -384,8 +384,7 @@ export class BacktestEngine {
         signals.push(signalRecord);
 
         // Extract volume from current candle for volume-based slippage calculation
-        const coinCandle = currentPrices.find((c) => c.coinId === strategySignal.coinId);
-        const dailyVolume = coinCandle?.volume;
+        const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
 
         const tradeResult = await this.executeTrade(
           strategySignal,
@@ -561,6 +560,13 @@ export class BacktestEngine {
     };
   }
 
+  /**
+   * Extract daily volume from OHLC candles for a specific coin
+   */
+  private extractDailyVolume(currentPrices: OHLCCandle[], coinId: string): number | undefined {
+    return currentPrices.find((c) => c.coinId === coinId)?.volume;
+  }
+
   private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {
     return candles.reduce(
       (grouped, candle) => {
@@ -616,7 +622,17 @@ export class BacktestEngine {
     let totalValue = 0;
 
     // Calculate slippage based on estimated order size and market volume
-    const estimatedQuantity = signal.quantity ?? (portfolio.totalValue * 0.1) / basePrice;
+    let estimatedQuantity: number;
+    if (signal.quantity) {
+      estimatedQuantity = signal.quantity;
+    } else if (isBuy) {
+      // For BUY: estimate based on typical portfolio allocation (10%)
+      estimatedQuantity = (portfolio.totalValue * 0.1) / basePrice;
+    } else {
+      // For SELL: estimate based on existing position (50% as reasonable middle-ground)
+      const existingPosition = portfolio.positions.get(signal.coinId);
+      estimatedQuantity = (existingPosition?.quantity ?? 0) * 0.5;
+    }
     const slippageBps = calculateSimulatedSlippage(slippageConfig, estimatedQuantity, basePrice, dailyVolume);
 
     // Apply slippage to get execution price
@@ -1102,8 +1118,7 @@ export class BacktestEngine {
 
       for (const strategySignal of strategySignals) {
         // Extract volume from current candle for volume-based slippage calculation
-        const coinCandle = currentPrices.find((c) => c.coinId === strategySignal.coinId);
-        const dailyVolume = coinCandle?.volume;
+        const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
 
         const tradeResult = await this.executeTrade(
           strategySignal,
