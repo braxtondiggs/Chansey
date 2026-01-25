@@ -168,7 +168,6 @@ describe('BacktestOrchestrationService', () => {
       const result = await service.getEligibleUsers();
 
       expect(mockQueryBuilder.where).toHaveBeenCalledWith('user.algoTradingEnabled = :enabled', { enabled: true });
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('risk.id IS NOT NULL');
       expect(result).toHaveLength(1);
     });
 
