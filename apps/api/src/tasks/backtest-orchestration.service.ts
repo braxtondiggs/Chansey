@@ -2,8 +2,11 @@
  * Backtest Orchestration Service
  *
  * Business logic for automatic backtest orchestration.
- * Handles user selection, capital calculation, dataset selection,
- * deduplication, and backtest creation.
+ * Runs all testable algorithms (evaluate=true, status=ACTIVE) for all
+ * eligible users with standardized capital ($10,000).
+ *
+ * Handles user selection, dataset selection, deduplication,
+ * and backtest creation.
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -13,18 +16,17 @@ import { format } from 'date-fns';
 import { Repository } from 'typeorm';
 
 import {
+  BACKTEST_STANDARD_CAPITAL,
   DEFAULT_RISK_LEVEL,
   getRiskConfig,
   MIN_DATASET_INTEGRITY_SCORE,
-  MIN_ORCHESTRATION_CAPITAL,
   OrchestratedConfigSnapshot,
   OrchestrationResult,
   RiskLevelConfig
 } from './dto/backtest-orchestration.dto';
 
-import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
-import { AlgorithmActivationService } from '../algorithm/services/algorithm-activation.service';
-import { BalanceService } from '../balance/balance.service';
+import { Algorithm } from '../algorithm/algorithm.entity';
+import { AlgorithmService } from '../algorithm/algorithm.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { CreateBacktestDto } from '../order/backtest/dto/backtest.dto';
@@ -44,8 +46,7 @@ export class BacktestOrchestrationService {
     @InjectRepository(MarketDataSet)
     private readonly marketDataSetRepository: Repository<MarketDataSet>,
     private readonly usersService: UsersService,
-    private readonly balanceService: BalanceService,
-    private readonly algorithmActivationService: AlgorithmActivationService,
+    private readonly algorithmService: AlgorithmService,
     private readonly backtestService: BacktestService
   ) {}
 
@@ -72,7 +73,7 @@ export class BacktestOrchestrationService {
 
   /**
    * Main orchestration logic for a single user.
-   * Gets active algorithm activations and creates backtests for each.
+   * Gets all testable algorithms (evaluate=true, status=ACTIVE) and creates backtests for each.
    */
   async orchestrateForUser(userId: string): Promise<OrchestrationResult> {
     const result: OrchestrationResult = {
@@ -84,34 +85,34 @@ export class BacktestOrchestrationService {
     };
 
     try {
-      // Get user with exchange keys for balance fetching
+      // Get user with exchange keys
       const user = await this.usersService.getById(userId, true);
       const riskLevel = user.risk?.level ?? DEFAULT_RISK_LEVEL;
       const riskConfig = getRiskConfig(riskLevel);
 
       this.logger.log(`Orchestrating backtests for user ${userId} with risk level ${riskLevel}`);
 
-      // Get active algorithm activations
-      const activations = await this.algorithmActivationService.findUserActiveAlgorithms(userId);
+      // Get all testable algorithms (evaluate=true AND status=ACTIVE)
+      const algorithms = await this.algorithmService.getAlgorithmsForTesting();
 
-      if (activations.length === 0) {
-        this.logger.log(`No active algorithm activations found for user ${userId}`);
+      if (algorithms.length === 0) {
+        this.logger.log(`No testable algorithms found`);
         return result;
       }
 
-      this.logger.log(`Found ${activations.length} active activations for user ${userId}`);
+      this.logger.log(`Found ${algorithms.length} testable algorithms for user ${userId}`);
 
-      // Process each activation
-      for (const activation of activations) {
+      // Process each algorithm
+      for (const algorithm of algorithms) {
         try {
-          await this.processActivation(user, activation, riskConfig, result);
+          await this.processAlgorithm(user, algorithm, riskConfig, result);
         } catch (error) {
-          const errorMsg = `Failed to process activation ${activation.id}: ${error.message}`;
+          const errorMsg = `Failed to process algorithm ${algorithm.id}: ${error.message}`;
           this.logger.error(errorMsg, error.stack);
           result.errors.push(errorMsg);
           result.skippedAlgorithms.push({
-            algorithmId: activation.algorithmId,
-            algorithmName: activation.algorithm?.name ?? 'Unknown',
+            algorithmId: algorithm.id,
+            algorithmName: algorithm.name ?? 'Unknown',
             reason: error.message
           });
         }
@@ -132,17 +133,17 @@ export class BacktestOrchestrationService {
   }
 
   /**
-   * Process a single algorithm activation - check for duplicates,
-   * calculate capital, select dataset, and create backtest.
+   * Process a single algorithm - check for duplicates,
+   * select dataset, and create backtest with standard capital.
    */
-  private async processActivation(
+  private async processAlgorithm(
     user: User,
-    activation: AlgorithmActivation,
+    algorithm: Algorithm,
     riskConfig: RiskLevelConfig,
     result: OrchestrationResult
   ): Promise<void> {
-    const algorithmId = activation.algorithmId;
-    const algorithmName = activation.algorithm?.name ?? 'Unknown';
+    const algorithmId = algorithm.id;
+    const algorithmName = algorithm.name ?? 'Unknown';
 
     // Check for duplicate backtest in the last 24 hours
     if (await this.isDuplicate(user.id, algorithmId)) {
@@ -167,58 +168,22 @@ export class BacktestOrchestrationService {
       return;
     }
 
-    // Calculate allocated capital
-    const allocatedCapital = await this.calculateAllocatedCapital(user, activation);
-
-    // Create the backtest
-    const backtest = await this.createOrchestratedBacktest(user, activation, riskConfig, allocatedCapital, dataset);
+    // Create the backtest with standard capital
+    const backtest = await this.createOrchestratedBacktest(
+      user,
+      algorithm,
+      riskConfig,
+      BACKTEST_STANDARD_CAPITAL,
+      dataset
+    );
 
     result.backtestsCreated++;
     result.backtestIds.push(backtest.id);
 
     this.logger.log(
       `Created orchestrated backtest ${backtest.id} for user ${user.id}, ` +
-        `algorithm ${algorithmName}, capital $${allocatedCapital.toFixed(2)}`
+        `algorithm ${algorithmName}, capital $${BACKTEST_STANDARD_CAPITAL.toFixed(2)}`
     );
-  }
-
-  /**
-   * Calculate the allocated capital for a backtest based on
-   * portfolio value and allocation percentages.
-   */
-  async calculateAllocatedCapital(user: User, activation: AlgorithmActivation): Promise<number> {
-    try {
-      // Get current portfolio value
-      const balanceResponse = await this.balanceService.getUserBalances(user, false);
-      const portfolioValue = balanceResponse.totalUsdValue;
-
-      if (!portfolioValue || portfolioValue <= 0) {
-        this.logger.warn(`No portfolio value for user ${user.id}, using minimum capital`);
-        return MIN_ORCHESTRATION_CAPITAL;
-      }
-
-      // Calculate: portfolioValue × userAllocation% × activationAllocation%
-      const userAllocationPct = user.algoCapitalAllocationPercentage ?? 0;
-      const activationAllocationPct = activation.allocationPercentage ?? 1;
-
-      const allocated = portfolioValue * (userAllocationPct / 100) * (activationAllocationPct / 100);
-
-      // Ensure minimum capital
-      const finalCapital = Math.max(allocated, MIN_ORCHESTRATION_CAPITAL);
-
-      this.logger.debug(
-        `Capital calculation for user ${user.id}: ` +
-          `portfolio=$${portfolioValue.toFixed(2)}, ` +
-          `userAlloc=${userAllocationPct}%, ` +
-          `activationAlloc=${activationAllocationPct}%, ` +
-          `final=$${finalCapital.toFixed(2)}`
-      );
-
-      return finalCapital;
-    } catch (error) {
-      this.logger.warn(`Failed to calculate capital for user ${user.id}, using minimum: ${error.message}`);
-      return MIN_ORCHESTRATION_CAPITAL;
-    }
   }
 
   /**
@@ -287,12 +252,12 @@ export class BacktestOrchestrationService {
    */
   async createOrchestratedBacktest(
     user: User,
-    activation: AlgorithmActivation,
+    algorithm: Algorithm,
     riskConfig: RiskLevelConfig,
     allocatedCapital: number,
     dataset: MarketDataSet
   ): Promise<Backtest> {
-    const algorithmName = activation.algorithm?.name ?? 'Unknown';
+    const algorithmName = algorithm.name ?? 'Unknown';
     const dateStr = format(new Date(), 'yyyy-MM-dd');
 
     // Calculate date range based on lookback days
@@ -304,7 +269,7 @@ export class BacktestOrchestrationService {
       name: `Auto-${algorithmName}-${dateStr}`,
       description: `Orchestrated backtest for ${algorithmName}`,
       type: BacktestType.HISTORICAL,
-      algorithmId: activation.algorithmId,
+      algorithmId: algorithm.id,
       marketDataSetId: dataset.id,
       initialCapital: allocatedCapital,
       tradingFee: riskConfig.tradingFee,
@@ -313,7 +278,7 @@ export class BacktestOrchestrationService {
       slippageBaseBps: riskConfig.slippageBps,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      strategyParams: activation.config?.parameters
+      strategyParams: algorithm.config?.parameters
     };
 
     // Create the backtest via BacktestService

@@ -2,8 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { PortfolioType } from './portfolio-type.enum';
-import { PortfolioRelations } from './portfolio.entity';
-import { Portfolio } from './portfolio.entity';
+import { Portfolio, PortfolioRelations } from './portfolio.entity';
 import { PortfolioService } from './portfolio.service';
 import { PortfolioHistoricalPriceTask } from './tasks/portfolio-historical-price.task';
 

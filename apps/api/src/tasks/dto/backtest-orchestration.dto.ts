@@ -79,8 +79,8 @@ export const RISK_CONFIG_MATRIX: Record<number, RiskLevelConfig> = {
 /** Default risk level when user's risk level is not set */
 export const DEFAULT_RISK_LEVEL = 3;
 
-/** Minimum capital for orchestrated backtests (in USD) */
-export const MIN_ORCHESTRATION_CAPITAL = 1000;
+/** Standard capital for all orchestrated backtests (USD) */
+export const BACKTEST_STANDARD_CAPITAL = 10000;
 
 /** Minimum dataset integrity score for selection */
 export const MIN_DATASET_INTEGRITY_SCORE = 70;
