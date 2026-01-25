@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
@@ -8,15 +8,20 @@ import { Repository } from 'typeorm';
 import { CreateExchangeKeyDto, SupportedExchangeKeyDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 
+import { User } from '../../users/users.entity';
 import { ExchangeManagerService } from '../exchange-manager.service';
 import { ExchangeService } from '../exchange.service';
 import { IExchangeKeyService } from '../interfaces';
 
 @Injectable()
 export class ExchangeKeyService implements IExchangeKeyService {
+  private readonly logger = new Logger(ExchangeKeyService.name);
+
   constructor(
     @InjectRepository(ExchangeKey)
     private readonly exchangeKeyRepository: Repository<ExchangeKey>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     @Inject(forwardRef(() => ExchangeService))
     private readonly exchangeService: ExchangeService,
     @Inject(forwardRef(() => ExchangeManagerService))
@@ -138,12 +143,29 @@ export class ExchangeKeyService implements IExchangeKeyService {
     exchangeKey.isActive = isValid;
 
     // Save the exchange key
-    return this.exchangeKeyRepository.save(exchangeKey);
+    const savedKey = await this.exchangeKeyRepository.save(exchangeKey);
+
+    // Auto-enable algo trading when user adds valid exchange key
+    if (isValid) {
+      await this.autoEnableAlgoTrading(userId);
+    }
+
+    return savedKey;
   }
 
   async remove(id: string, userId: string): Promise<ExchangeKey> {
     const exchangeKey = await this.findOne(id, userId);
-    return await this.exchangeKeyRepository.remove(exchangeKey);
+
+    // Count keys before removal to determine if this is the last one
+    const keyCount = await this.exchangeKeyRepository.count({ where: { userId } });
+    const removedKey = await this.exchangeKeyRepository.remove(exchangeKey);
+
+    // Auto-disable algo trading when user removes their last exchange key
+    if (keyCount === 1) {
+      await this.autoDisableAlgoTrading(userId);
+    }
+
+    return removedKey;
   }
 
   /**
@@ -196,6 +218,50 @@ export class ExchangeKeyService implements IExchangeKeyService {
       // Validation failed, return false instead of throwing an exception
       // The caller will handle setting isActive to false
       return false;
+    }
+  }
+
+  /**
+   * Auto-enables algo trading when user adds their first valid exchange key.
+   * Sets algoTradingEnabled=true and records the enrollment timestamp.
+   */
+  private async autoEnableAlgoTrading(userId: string): Promise<void> {
+    try {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+
+      if (!user || user.algoTradingEnabled) {
+        return;
+      }
+
+      user.algoTradingEnabled = true;
+      user.algoEnrolledAt = new Date();
+
+      await this.userRepository.save(user);
+      this.logger.log(`Auto-enabled algo trading for user ${userId}`);
+    } catch (error) {
+      this.logger.error(`Failed to auto-enable algo trading for ${userId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Auto-disables algo trading when user removes their last exchange key.
+   * Preserves algoEnrolledAt for historical tracking.
+   */
+  private async autoDisableAlgoTrading(userId: string): Promise<void> {
+    try {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+
+      if (!user || !user.algoTradingEnabled) {
+        return;
+      }
+
+      user.algoTradingEnabled = false;
+      // Preserve algoEnrolledAt for historical tracking
+
+      await this.userRepository.save(user);
+      this.logger.log(`Auto-disabled algo trading for user ${userId} - last key removed`);
+    } catch (error) {
+      this.logger.error(`Failed to auto-disable algo trading for ${userId}: ${error.message}`);
     }
   }
 }

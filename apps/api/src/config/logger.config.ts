@@ -237,7 +237,8 @@ export function createLoggerConfig(): Params {
   return {
     pinoHttp: pinoHttpOptions as Params['pinoHttp'],
     // Forward logs to NestJS Logger for consistent output
-    forRoutes: ['*'],
+    // Note: Using '{*path}' to comply with path-to-regexp v8+ syntax (fixes FSTDEP deprecation warning)
+    forRoutes: ['{*path}'],
     // Exclude routes from request logging
     exclude: []
   };
