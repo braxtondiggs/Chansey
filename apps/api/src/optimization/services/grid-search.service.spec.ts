@@ -346,7 +346,8 @@ describe('GridSearchService', () => {
 
       const combinations = service.generateRandomCombinations(space, 20);
 
-      for (const combo of combinations) {
+      // Filter out baseline since it's intentionally included even if violating constraints
+      for (const combo of combinations.filter((c) => !c.isBaseline)) {
         expect((combo.values.short as number) < (combo.values.long as number)).toBe(true);
       }
     });

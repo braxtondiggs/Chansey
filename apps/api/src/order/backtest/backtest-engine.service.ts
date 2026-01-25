@@ -1116,12 +1116,13 @@ export class BacktestEngine {
       returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
     const volatility = Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
 
-    // Calculate downside deviation (standard deviation of negative returns only)
-    // Used for Sortino ratio: measures volatility of losses, ignoring upside volatility
-    const negativeReturns = returns.filter((r) => r < 0);
+    // Calculate downside deviation for Sortino ratio
+    // Uses same formula as SharpeRatioCalculator.calculateSortino for consistency
+    const periodRiskFreeRate = 0.02 / 252; // 2% annual rate / 252 trading days
+    const downsideReturns = returns.filter((r) => r < periodRiskFreeRate);
     const downsideVariance =
-      negativeReturns.length > 0
-        ? negativeReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / negativeReturns.length
+      returns.length > 0
+        ? downsideReturns.reduce((sum, r) => sum + Math.pow(r - periodRiskFreeRate, 2), 0) / returns.length
         : 0;
     const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252); // Annualized
 
