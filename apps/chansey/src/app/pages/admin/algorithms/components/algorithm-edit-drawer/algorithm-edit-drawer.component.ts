@@ -69,7 +69,7 @@ export class AlgorithmEditDrawerComponent {
     weight: [1.0],
     cron: [
       '0 */4 * * *',
-      [Validators.required, Validators.pattern(/^(\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+) (\*|[0-9]+)$/)]
+      [Validators.required, Validators.pattern(/^([0-9*,/-]+) ([0-9*,/-]+) ([0-9*,/-]+) ([0-9*,/-]+) ([0-9*,/-]+)$/)]
     ],
     version: [''],
     author: ['']

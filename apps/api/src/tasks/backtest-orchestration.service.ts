@@ -51,7 +51,8 @@ export class BacktestOrchestrationService {
 
   /**
    * Get all users eligible for automatic backtest orchestration.
-   * Users must have algoTradingEnabled=true and a valid risk assignment.
+   * Users must have algoTradingEnabled=true.
+   * Risk defaults to level 3 in orchestrateForUser() if not set.
    */
   async getEligibleUsers(): Promise<User[]> {
     try {
@@ -59,7 +60,6 @@ export class BacktestOrchestrationService {
         .createQueryBuilder('user')
         .leftJoinAndSelect('user.risk', 'risk')
         .where('user.algoTradingEnabled = :enabled', { enabled: true })
-        .andWhere('risk.id IS NOT NULL')
         .getMany();
 
       this.logger.log(`Found ${users.length} eligible users for orchestration`);
