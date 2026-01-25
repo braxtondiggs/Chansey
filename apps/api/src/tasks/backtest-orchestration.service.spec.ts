@@ -4,11 +4,16 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
-import { getRiskConfig, MIN_ORCHESTRATION_CAPITAL, RISK_CONFIG_MATRIX } from './dto/backtest-orchestration.dto';
+import {
+  BACKTEST_STANDARD_CAPITAL,
+  DEFAULT_RISK_LEVEL,
+  getRiskConfig,
+  MIN_DATASET_INTEGRITY_SCORE,
+  RISK_CONFIG_MATRIX
+} from './dto/backtest-orchestration.dto';
 
-import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
-import { AlgorithmActivationService } from '../algorithm/services/algorithm-activation.service';
-import { BalanceService } from '../balance/balance.service';
+import { Algorithm, AlgorithmCategory, AlgorithmStatus } from '../algorithm/algorithm.entity';
+import { AlgorithmService } from '../algorithm/algorithm.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { MarketDataSet, MarketDataTimeframe } from '../order/backtest/market-data-set.entity';
@@ -22,8 +27,8 @@ describe('BacktestOrchestrationService', () => {
   let userRepository: jest.Mocked<Repository<User>>;
   let backtestRepository: jest.Mocked<Repository<Backtest>>;
   let marketDataSetRepository: jest.Mocked<Repository<MarketDataSet>>;
-  let balanceService: jest.Mocked<BalanceService>;
-  let algorithmActivationService: jest.Mocked<AlgorithmActivationService>;
+  let usersService: jest.Mocked<UsersService>;
+  let algorithmService: jest.Mocked<AlgorithmService>;
   let backtestService: jest.Mocked<BacktestService>;
 
   const mockUser: Partial<User> = {
@@ -34,13 +39,12 @@ describe('BacktestOrchestrationService', () => {
     exchanges: []
   };
 
-  const mockActivation: Partial<AlgorithmActivation> = {
-    id: 'activation-1',
-    userId: 'user-123',
-    algorithmId: 'algo-1',
-    isActive: true,
-    allocationPercentage: 10,
-    algorithm: { id: 'algo-1', name: 'Test Algorithm' } as any,
+  const mockAlgorithm: Partial<Algorithm> = {
+    id: 'algo-1',
+    name: 'Test Algorithm',
+    status: AlgorithmStatus.ACTIVE,
+    evaluate: true,
+    category: AlgorithmCategory.TECHNICAL,
     config: { parameters: { param1: 'value1' } }
   };
 
@@ -94,15 +98,9 @@ describe('BacktestOrchestrationService', () => {
           }
         },
         {
-          provide: BalanceService,
+          provide: AlgorithmService,
           useValue: {
-            getUserBalances: jest.fn().mockResolvedValue({ totalUsdValue: 10000 })
-          }
-        },
-        {
-          provide: AlgorithmActivationService,
-          useValue: {
-            findUserActiveAlgorithms: jest.fn().mockResolvedValue([])
+            getAlgorithmsForTesting: jest.fn().mockResolvedValue([])
           }
         },
         {
@@ -121,8 +119,8 @@ describe('BacktestOrchestrationService', () => {
     userRepository = module.get(getRepositoryToken(User));
     backtestRepository = module.get(getRepositoryToken(Backtest));
     marketDataSetRepository = module.get(getRepositoryToken(MarketDataSet));
-    balanceService = module.get(BalanceService);
-    algorithmActivationService = module.get(AlgorithmActivationService);
+    usersService = module.get(UsersService);
+    algorithmService = module.get(AlgorithmService);
     backtestService = module.get(BacktestService);
   });
 
@@ -156,7 +154,7 @@ describe('BacktestOrchestrationService', () => {
   });
 
   describe('getEligibleUsers', () => {
-    it('should query users with algoTradingEnabled and valid risk', async () => {
+    it('should query users with algoTradingEnabled', async () => {
       const mockQueryBuilder = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
@@ -167,6 +165,8 @@ describe('BacktestOrchestrationService', () => {
 
       const result = await service.getEligibleUsers();
 
+      expect(userRepository.createQueryBuilder).toHaveBeenCalledWith('user');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('user.risk', 'risk');
       expect(mockQueryBuilder.where).toHaveBeenCalledWith('user.algoTradingEnabled = :enabled', { enabled: true });
       expect(result).toHaveLength(1);
     });
@@ -183,60 +183,6 @@ describe('BacktestOrchestrationService', () => {
       const result = await service.getEligibleUsers();
 
       expect(result).toEqual([]);
-    });
-  });
-
-  describe('calculateAllocatedCapital', () => {
-    it('should calculate capital based on portfolio and allocation percentages', async () => {
-      balanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 100000 } as any);
-
-      const user = { ...mockUser, algoCapitalAllocationPercentage: 25 } as User;
-      const activation = { ...mockActivation, allocationPercentage: 10 } as AlgorithmActivation;
-
-      const result = await service.calculateAllocatedCapital(user, activation);
-
-      // 100000 * 0.25 * 0.10 = 2500
-      expect(result).toBe(2500);
-    });
-
-    it('should return minimum capital when calculated value is below minimum', async () => {
-      balanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 5000 } as any);
-
-      const user = { ...mockUser, algoCapitalAllocationPercentage: 10 } as User;
-      const activation = { ...mockActivation, allocationPercentage: 5 } as AlgorithmActivation;
-
-      const result = await service.calculateAllocatedCapital(user, activation);
-
-      // 5000 * 0.10 * 0.05 = 25, but min is 1000
-      expect(result).toBe(MIN_ORCHESTRATION_CAPITAL);
-    });
-
-    it('should return minimum capital when portfolio value is zero', async () => {
-      balanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 0 } as any);
-
-      const result = await service.calculateAllocatedCapital(mockUser as User, mockActivation as AlgorithmActivation);
-
-      expect(result).toBe(MIN_ORCHESTRATION_CAPITAL);
-    });
-
-    it('should return minimum capital on balance fetch error', async () => {
-      balanceService.getUserBalances.mockRejectedValue(new Error('Balance fetch failed'));
-
-      const result = await service.calculateAllocatedCapital(mockUser as User, mockActivation as AlgorithmActivation);
-
-      expect(result).toBe(MIN_ORCHESTRATION_CAPITAL);
-    });
-
-    it('should use default allocation percentages when values are missing', async () => {
-      balanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 10000 } as any);
-
-      const user = { ...mockUser, algoCapitalAllocationPercentage: undefined } as User;
-      const activation = { ...mockActivation, allocationPercentage: undefined } as AlgorithmActivation;
-
-      const result = await service.calculateAllocatedCapital(user, activation);
-
-      // Defaults to 0% user allocation and 1% activation allocation, min capital applies.
-      expect(result).toBe(MIN_ORCHESTRATION_CAPITAL);
     });
   });
 
@@ -318,6 +264,10 @@ describe('BacktestOrchestrationService', () => {
       const result = await service.selectDataset(riskConfig);
 
       expect(result).toEqual(mockDataset);
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith('dataset.integrityScore >= :minIntegrity', {
+        minIntegrity: MIN_DATASET_INTEGRITY_SCORE
+      });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('dataset.endAt >= :cutoff', { cutoff: expect.any(Date) });
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('dataset.timeframe IN (:...timeframes)', {
         timeframes: [MarketDataTimeframe.MINUTE, MarketDataTimeframe.HOUR]
       });
@@ -364,22 +314,46 @@ describe('BacktestOrchestrationService', () => {
       const result = await service.selectDataset(riskConfig);
 
       expect(result).toEqual(mockDataset);
+      expect(fallbackQueryBuilder.where).toHaveBeenCalledWith('dataset.integrityScore >= :minIntegrity', {
+        minIntegrity: MIN_DATASET_INTEGRITY_SCORE
+      });
+      expect(fallbackQueryBuilder.andWhere).toHaveBeenCalledWith('dataset.endAt >= :cutoff', {
+        cutoff: expect.any(Date)
+      });
       expect(fallbackQueryBuilder.take).toHaveBeenCalledWith(1);
+    });
+
+    it('should return null when dataset selection fails', async () => {
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockRejectedValue(new Error('query failed'))
+      };
+      (marketDataSetRepository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+      const riskConfig = getRiskConfig(3);
+      const result = await service.selectDataset(riskConfig);
+
+      expect(result).toBeNull();
     });
   });
 
   describe('orchestrateForUser', () => {
-    it('should return empty result when user has no active activations', async () => {
-      algorithmActivationService.findUserActiveAlgorithms.mockResolvedValue([]);
+    it('should return empty result when no testable algorithms exist', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([]);
 
       const result = await service.orchestrateForUser('user-123');
 
+      expect(usersService.getById).toHaveBeenCalledWith('user-123', true);
       expect(result.backtestsCreated).toBe(0);
       expect(result.backtestIds).toHaveLength(0);
     });
 
     it('should skip duplicate backtests', async () => {
-      algorithmActivationService.findUserActiveAlgorithms.mockResolvedValue([mockActivation as AlgorithmActivation]);
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
 
       // Mock isDuplicate to return true
       const mockQueryBuilder = {
@@ -395,9 +369,8 @@ describe('BacktestOrchestrationService', () => {
       expect(result.skippedAlgorithms[0].reason).toContain('Duplicate');
     });
 
-    it('should create backtest for valid activation', async () => {
-      algorithmActivationService.findUserActiveAlgorithms.mockResolvedValue([mockActivation as AlgorithmActivation]);
-      balanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 10000 } as any);
+    it('should create backtest for valid algorithm with standard capital', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
 
       // Mock no duplicates
       const backtestQueryBuilder = {
@@ -433,13 +406,97 @@ describe('BacktestOrchestrationService', () => {
         expect.anything(),
         expect.objectContaining({
           type: BacktestType.HISTORICAL,
-          algorithmId: 'algo-1'
+          algorithmId: 'algo-1',
+          initialCapital: BACKTEST_STANDARD_CAPITAL
+        })
+      );
+    });
+
+    it('should use default risk level when user has no risk', async () => {
+      const userWithoutRisk = { ...mockUser, risk: undefined } as User;
+      usersService.getById.mockResolvedValueOnce(userWithoutRisk);
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
+
+      const backtestQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null)
+      };
+      (backtestRepository.createQueryBuilder as jest.Mock).mockReturnValue(backtestQueryBuilder);
+
+      const datasetQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([mockDataset])
+      };
+      (marketDataSetRepository.createQueryBuilder as jest.Mock).mockReturnValue(datasetQueryBuilder);
+
+      backtestService.createBacktest.mockResolvedValue({
+        id: 'new-backtest',
+        configSnapshot: { algorithm: { id: 'algo-1' } }
+      } as any);
+      backtestRepository.findOne.mockResolvedValue({ id: 'new-backtest' } as any);
+
+      const selectDatasetSpy = jest.spyOn(service, 'selectDataset');
+
+      await service.orchestrateForUser('user-123');
+
+      expect(selectDatasetSpy).toHaveBeenCalledWith(getRiskConfig(DEFAULT_RISK_LEVEL));
+    });
+
+    it('should return errors when user lookup fails', async () => {
+      usersService.getById.mockRejectedValueOnce(new Error('User not found'));
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.errors[0]).toContain('Failed to orchestrate for user user-123: User not found');
+      expect(result.backtestsCreated).toBe(0);
+    });
+
+    it('should use standard capital of $10,000 for all backtests', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
+
+      // Mock no duplicates
+      const backtestQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null)
+      };
+      (backtestRepository.createQueryBuilder as jest.Mock).mockReturnValue(backtestQueryBuilder);
+
+      // Mock dataset selection
+      const datasetQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([mockDataset])
+      };
+      (marketDataSetRepository.createQueryBuilder as jest.Mock).mockReturnValue(datasetQueryBuilder);
+
+      backtestService.createBacktest.mockResolvedValue({
+        id: 'new-backtest',
+        configSnapshot: {}
+      } as any);
+      backtestRepository.findOne.mockResolvedValue({ id: 'new-backtest' } as any);
+
+      await service.orchestrateForUser('user-123');
+
+      // Verify standard capital is used
+      expect(backtestService.createBacktest).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          initialCapital: 10000
         })
       );
     });
 
     it('should skip when no dataset is available', async () => {
-      algorithmActivationService.findUserActiveAlgorithms.mockResolvedValue([mockActivation as AlgorithmActivation]);
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
 
       const backtestQueryBuilder = {
         where: jest.fn().mockReturnThis(),
@@ -466,7 +523,7 @@ describe('BacktestOrchestrationService', () => {
     });
 
     it('should capture errors when backtest creation fails', async () => {
-      algorithmActivationService.findUserActiveAlgorithms.mockResolvedValue([mockActivation as AlgorithmActivation]);
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
 
       const backtestQueryBuilder = {
         where: jest.fn().mockReturnThis(),
@@ -489,9 +546,63 @@ describe('BacktestOrchestrationService', () => {
 
       const result = await service.orchestrateForUser('user-123');
 
-      expect(result.errors[0]).toContain('Failed to process activation');
+      expect(result.errors[0]).toContain('Failed to process algorithm');
       expect(result.skippedAlgorithms[0].reason).toContain('Create failed');
       expect(result.backtestsCreated).toBe(0);
+    });
+
+    it('should process all testable algorithms for a user', async () => {
+      const mockAlgorithm2: Partial<Algorithm> = {
+        id: 'algo-2',
+        name: 'Test Algorithm 2',
+        status: AlgorithmStatus.ACTIVE,
+        evaluate: true,
+        category: AlgorithmCategory.TECHNICAL
+      };
+
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([
+        mockAlgorithm as Algorithm,
+        mockAlgorithm2 as Algorithm
+      ]);
+
+      // Mock no duplicates
+      const backtestQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null)
+      };
+      (backtestRepository.createQueryBuilder as jest.Mock).mockReturnValue(backtestQueryBuilder);
+
+      // Mock dataset selection
+      const datasetQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([mockDataset])
+      };
+      (marketDataSetRepository.createQueryBuilder as jest.Mock).mockReturnValue(datasetQueryBuilder);
+
+      // Mock backtest creation
+      backtestService.createBacktest
+        .mockResolvedValueOnce({
+          id: 'backtest-1',
+          configSnapshot: {}
+        } as any)
+        .mockResolvedValueOnce({
+          id: 'backtest-2',
+          configSnapshot: {}
+        } as any);
+      backtestRepository.findOne
+        .mockResolvedValueOnce({ id: 'backtest-1' } as any)
+        .mockResolvedValueOnce({ id: 'backtest-2' } as any);
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.backtestsCreated).toBe(2);
+      expect(result.backtestIds).toContain('backtest-1');
+      expect(result.backtestIds).toContain('backtest-2');
     });
   });
 
@@ -507,9 +618,9 @@ describe('BacktestOrchestrationService', () => {
       const riskConfig = getRiskConfig(3);
       const result = await service.createOrchestratedBacktest(
         mockUser as User,
-        mockActivation as AlgorithmActivation,
+        mockAlgorithm as Algorithm,
         riskConfig,
-        2500,
+        BACKTEST_STANDARD_CAPITAL,
         mockDataset as MarketDataSet
       );
 
@@ -520,6 +631,56 @@ describe('BacktestOrchestrationService', () => {
         })
       });
       expect(result).toEqual({ id: 'backtest-123' });
+    });
+
+    it('should use algorithm config parameters in backtest', async () => {
+      backtestService.createBacktest.mockResolvedValue({
+        id: 'backtest-123',
+        configSnapshot: {}
+      } as any);
+      backtestRepository.findOne.mockResolvedValue({ id: 'backtest-123' } as any);
+
+      const riskConfig = getRiskConfig(3);
+      await service.createOrchestratedBacktest(
+        mockUser as User,
+        mockAlgorithm as Algorithm,
+        riskConfig,
+        BACKTEST_STANDARD_CAPITAL,
+        mockDataset as MarketDataSet
+      );
+
+      expect(backtestService.createBacktest).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          strategyParams: { param1: 'value1' }
+        })
+      );
+    });
+
+    it('should throw when created backtest cannot be fetched', async () => {
+      backtestService.createBacktest.mockResolvedValue({
+        id: 'backtest-123',
+        configSnapshot: {}
+      } as any);
+      backtestRepository.findOne.mockResolvedValue(null);
+
+      const riskConfig = getRiskConfig(3);
+
+      await expect(
+        service.createOrchestratedBacktest(
+          mockUser as User,
+          mockAlgorithm as Algorithm,
+          riskConfig,
+          BACKTEST_STANDARD_CAPITAL,
+          mockDataset as MarketDataSet
+        )
+      ).rejects.toThrow('Failed to fetch created backtest backtest-123');
+    });
+  });
+
+  describe('BACKTEST_STANDARD_CAPITAL constant', () => {
+    it('should be $10,000', () => {
+      expect(BACKTEST_STANDARD_CAPITAL).toBe(10000);
     });
   });
 });
