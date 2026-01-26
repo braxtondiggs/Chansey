@@ -3,3 +3,4 @@ export interface Message {
 }
 
 export * from './backtesting/backtesting.interface';
+export * from './paper-trading';

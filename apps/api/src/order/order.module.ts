@@ -31,6 +31,7 @@ import { PositionExit } from './entities/position-exit.entity';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
+import { PaperTradingModule } from './paper-trading/paper-trading.module';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
@@ -111,7 +112,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     IndicatorModule,
     MetricsModule,
     StorageModule,
-    BacktestSharedModule
+    BacktestSharedModule,
+    PaperTradingModule
   ],
   providers: [
     AlgorithmService,

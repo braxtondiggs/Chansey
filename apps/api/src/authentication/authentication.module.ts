@@ -7,6 +7,7 @@ import { SecurityAuditLog, SecurityAuditService } from './audit';
 import { AuthenticationController } from './authentication.controller';
 import { AuthenticationService } from './authentication.service';
 import { RolesGuard } from './guard/roles.guard';
+import { WsJwtAuthenticationGuard } from './guard/ws-jwt-authentication.guard';
 import { PasswordService } from './password.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { ApiKeyStrategy } from './strategy/api.strategy';
@@ -31,11 +32,12 @@ import { UsersModule } from '../users/users.module';
     LocalStrategy,
     JwtStrategy,
     RolesGuard,
+    WsJwtAuthenticationGuard,
     RefreshTokenService,
     PasswordService,
     SecurityAuditService
   ],
   controllers: [AuthenticationController],
-  exports: [RolesGuard, RefreshTokenService, PasswordService, SecurityAuditService]
+  exports: [JwtModule, RolesGuard, WsJwtAuthenticationGuard, RefreshTokenService, PasswordService, SecurityAuditService]
 })
 export class AuthenticationModule {}
