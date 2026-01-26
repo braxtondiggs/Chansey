@@ -1,5 +1,7 @@
 import { Job } from 'bullmq';
 
+import { ReplaySpeed } from '@chansey/api-interfaces';
+
 import { BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
 import { LiveReplayProcessor } from './live-replay.processor';
@@ -171,7 +173,7 @@ describe('LiveReplayProcessor', () => {
       mode: BacktestType.LIVE_REPLAY,
       isLiveReplay: true,
       isResuming: false,
-      replaySpeed: 'FAST_5X'
+      replaySpeed: ReplaySpeed.FAST_5X
     });
     expect(backtestEngine.executeLiveReplayBacktest).toHaveBeenCalledWith(
       backtest,

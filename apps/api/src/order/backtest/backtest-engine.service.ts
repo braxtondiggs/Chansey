@@ -587,7 +587,7 @@ export class BacktestEngine {
     let maxDrawdown: number;
 
     if (isResuming && options.resumeFrom) {
-      portfolio = this.restorePortfolio(options.resumeFrom.portfolio, backtest.initialCapital);
+      portfolio = this.portfolioState.deserialize(options.resumeFrom.portfolio);
       peakValue = options.resumeFrom.peakValue;
       maxDrawdown = options.resumeFrom.maxDrawdown;
       this.logger.log(
@@ -664,9 +664,9 @@ export class BacktestEngine {
 
     // Build slippage config from backtest configSnapshot
     const slippageSnapshot = backtest.configSnapshot?.slippage;
-    const slippageConfig: SlippageModelConfig = slippageSnapshot
+    const slippageConfig: SlippageConfig = slippageSnapshot
       ? {
-          type: (slippageSnapshot.model as SlippageModelType) ?? SlippageModelType.FIXED,
+          type: (slippageSnapshot.model as SharedSlippageModelType) ?? SharedSlippageModelType.FIXED,
           fixedBps: slippageSnapshot.fixedBps ?? 5,
           baseSlippageBps: slippageSnapshot.baseBps ?? 5,
           volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
@@ -797,7 +797,7 @@ export class BacktestEngine {
         prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
-      portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
+      portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
       for (const coin of coins) {
@@ -827,7 +827,7 @@ export class BacktestEngine {
           deterministicSeed: options.deterministicSeed,
           backtestId: backtest.id,
           isLiveReplay: true,
-          replaySpeed: ReplaySpeed[replaySpeed]
+          replaySpeed: replaySpeed
         }
       };
 

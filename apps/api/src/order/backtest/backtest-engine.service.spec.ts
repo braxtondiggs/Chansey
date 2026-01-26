@@ -767,11 +767,14 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     new BacktestEngine(
       { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
       deps.algorithmRegistry,
-      {} as any,
       deps.ohlcService,
       deps.marketDataReader,
-      new SharpeRatioCalculator(),
-      deps.quoteCurrencyResolver
+      deps.quoteCurrencyResolver,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState
     );
 
   const createCandles = () => [

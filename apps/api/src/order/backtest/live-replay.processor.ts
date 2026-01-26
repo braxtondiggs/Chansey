@@ -111,7 +111,7 @@ export class LiveReplayProcessor extends WorkerHost {
         mode,
         isLiveReplay: true,
         isResuming,
-        replaySpeed: ReplaySpeed[backtest.liveReplayState.replaySpeed]
+        replaySpeed: backtest.liveReplayState.replaySpeed
       });
 
       const { coins, warnings } = await this.coinResolver.resolveCoins(dataset);
