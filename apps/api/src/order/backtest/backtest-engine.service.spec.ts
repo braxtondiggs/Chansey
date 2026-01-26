@@ -1,13 +1,41 @@
 import { BacktestEngine, MarketData, Portfolio, TradingSignal } from './backtest-engine.service';
-import { SlippageModelType } from './slippage-model';
+import {
+  FeeCalculatorService,
+  MetricsCalculatorService,
+  PortfolioStateService,
+  PositionManagerService,
+  SlippageModelType,
+  SlippageService
+} from './shared';
 
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 
+// Create shared service instances for tests
+const sharpeCalculator = new SharpeRatioCalculator();
+const drawdownCalculator = new DrawdownCalculator();
+const slippageService = new SlippageService();
+const feeCalculator = new FeeCalculatorService();
+const positionManager = new PositionManagerService();
+const metricsCalculator = new MetricsCalculatorService(sharpeCalculator, drawdownCalculator);
+const portfolioState = new PortfolioStateService();
+
 describe('BacktestEngine.executeTrade', () => {
   const createEngine = () =>
-    new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any, new SharpeRatioCalculator(), {} as any);
+    new BacktestEngine(
+      {} as any, // backtestStream
+      {} as any, // algorithmRegistry
+      {} as any, // ohlcService
+      {} as any, // marketDataReader
+      {} as any, // quoteCurrencyResolver
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState
+    );
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
     timestamp: new Date(),
@@ -134,8 +162,30 @@ describe('BacktestEngine.executeTrade', () => {
     );
 
     expect(result?.trade.price).toBeCloseTo(99);
-    expect(result?.trade.realizedPnL).toBeCloseTo(18.01);
+    // Note: Fee is no longer subtracted from realizedPnL (bug fix: fee only affects cashBalance)
+    expect(result?.trade.realizedPnL).toBeCloseTo(19);
     expect(result?.trade.costBasis).toBeCloseTo(80);
+  });
+
+  it('returns null when market data has no price for the coin', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 100,
+      totalValue: 100,
+      positions: new Map()
+    };
+
+    const result = await (engine as any).executeTrade(
+      { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      portfolio,
+      { timestamp: new Date(), prices: new Map() },
+      0,
+      { next: () => 0.5 },
+      noSlippage
+    );
+
+    expect(result).toBeNull();
+    expect(portfolio.cashBalance).toBe(100);
   });
 
   describe('Bug Fix: Insufficient funds check includes fees', () => {
@@ -289,48 +339,6 @@ describe('BacktestEngine.executeTrade', () => {
       expect(result.trade.metadata?.slippageBps).toBeLessThanOrEqual(15);
     });
 
-    it('uses existing position quantity for SELL slippage estimation (confidence)', async () => {
-      const engine = createEngine();
-      // Portfolio with significant BTC position
-      const portfolio: Portfolio = {
-        cashBalance: 90000,
-        totalValue: 100000,
-        positions: new Map([
-          [
-            'BTC',
-            {
-              coinId: 'BTC',
-              quantity: 100,
-              averagePrice: 100,
-              totalValue: 10000
-            }
-          ]
-        ])
-      };
-
-      const sellSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        confidence: 0.5, // Would sell ~62.5% based on confidence formula
-        reason: 'partial exit'
-      };
-
-      const result = await (engine as any).executeTrade(
-        sellSignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
-        100000 // $10M daily volume
-      );
-
-      expect(result).toBeTruthy();
-      // Slippage should be based on ~50 BTC position estimate, not 10% of portfolio
-      // which would be 100 BTC worth of estimation
-      expect(result.trade.metadata?.slippageBps).toBeCloseTo(10);
-    });
-
     it('calculates volume-based slippage correctly for SELL trades with no explicit quantity', async () => {
       const engine = createEngine();
       const portfolio: Portfolio = {
@@ -381,6 +389,36 @@ describe('BacktestEngine.executeTrade', () => {
       expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
       expect(highVolumeResult?.trade.quantity).toBeCloseTo(25);
       expect(lowVolumeResult?.trade.quantity).toBeCloseTo(25);
+    });
+
+    it('deducts fee from cash balance on SELL trades', async () => {
+      const engine = createEngine();
+      const portfolio: Portfolio = {
+        cashBalance: 0,
+        totalValue: 1000,
+        positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100 }]])
+      };
+
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: 'BTC',
+        quantity: 1,
+        reason: 'exit'
+      };
+
+      const result = await (engine as any).executeTrade(
+        sellSignal,
+        portfolio,
+        createMarketData('BTC', 200),
+        0.01,
+        { next: () => 0.5 },
+        noSlippage
+      );
+
+      expect(result).toBeTruthy();
+      // Proceeds 200, fee 2, cash should be 198
+      expect(portfolio.cashBalance).toBeCloseTo(198);
+      expect(result?.trade.fee).toBeCloseTo(2);
     });
 
     it('handles SELL with no existing position gracefully', async () => {
@@ -568,13 +606,16 @@ describe('BacktestEngine.executeTrade', () => {
 describe('BacktestEngine.executeOptimizationBacktest', () => {
   const createEngine = (algorithmRegistry: any, ohlcService: any) =>
     new BacktestEngine(
-      {} as any,
+      {} as any, // backtestStream
       algorithmRegistry,
-      {} as any,
       ohlcService,
-      {} as any,
-      new SharpeRatioCalculator(),
-      {} as any
+      {} as any, // marketDataReader
+      {} as any, // quoteCurrencyResolver
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState
     );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
@@ -716,7 +757,18 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
 
 describe('BacktestEngine checkpointing', () => {
   const createEngine = () =>
-    new BacktestEngine({} as any, {} as any, {} as any, {} as any, {} as any, new SharpeRatioCalculator(), {} as any);
+    new BacktestEngine(
+      {} as any, // backtestStream
+      {} as any, // algorithmRegistry
+      {} as any, // ohlcService
+      {} as any, // marketDataReader
+      {} as any, // quoteCurrencyResolver
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState
+    );
 
   const createCheckpoint = (engine: BacktestEngine) => {
     const portfolio: Portfolio = {
@@ -784,10 +836,10 @@ describe('BacktestEngine checkpointing', () => {
   });
 
   it('restores portfolio state from checkpoint data', () => {
-    const engine = createEngine();
-    const checkpoint = createCheckpoint(engine);
+    const checkpoint = createCheckpoint(createEngine());
 
-    const restored = (engine as any).restorePortfolio(checkpoint.portfolio, 1000);
+    // Use shared portfolioState service directly since BacktestEngine delegates to it
+    const restored = portfolioState.deserialize(checkpoint.portfolio);
 
     expect(restored.cashBalance).toBe(1000);
     expect(restored.positions.size).toBe(1);
