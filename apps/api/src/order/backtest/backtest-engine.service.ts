@@ -28,12 +28,16 @@ import { MarketDataSet } from './market-data-set.entity';
 import { QuoteCurrencyResolverService } from './quote-currency-resolver.service';
 import { SeededRandom } from './seeded-random';
 import {
-  applySlippage,
-  calculateSimulatedSlippage,
-  DEFAULT_SLIPPAGE_CONFIG,
-  SlippageModelConfig,
-  SlippageModelType
-} from './slippage-model';
+  FeeCalculatorService,
+  MetricsCalculatorService,
+  Portfolio,
+  PortfolioStateService,
+  PositionManagerService,
+  SlippageModelType as SharedSlippageModelType,
+  SlippageConfig,
+  SlippageService,
+  TimeframeType
+} from './shared';
 
 import {
   AlgorithmResult,
@@ -42,29 +46,24 @@ import {
 } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
-import { CoinService } from '../../coin/coin.service';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
-import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
+
+// Default slippage config using shared service
+const DEFAULT_SLIPPAGE_CONFIG: SlippageConfig = {
+  type: SharedSlippageModelType.FIXED,
+  fixedBps: 5,
+  maxSlippageBps: 500
+};
 
 export interface MarketData {
   timestamp: Date;
   prices: Map<string, number>; // coinId -> price
 }
 
-export interface Position {
-  coinId: string;
-  quantity: number;
-  averagePrice: number;
-  totalValue: number;
-}
-
-export interface Portfolio {
-  cashBalance: number;
-  positions: Map<string, Position>;
-  totalValue: number;
-}
+// Re-export Position and Portfolio from shared module for backwards compatibility
+export { Portfolio, Position } from './shared';
 
 export interface TradingSignal {
   action: 'BUY' | 'SELL' | 'HOLD';
@@ -156,13 +155,34 @@ export class BacktestEngine {
   constructor(
     private readonly backtestStream: BacktestStreamService,
     private readonly algorithmRegistry: AlgorithmRegistry,
-    private readonly coinService: CoinService,
     @Inject(forwardRef(() => OHLCService))
     private readonly ohlcService: OHLCService,
     private readonly marketDataReader: MarketDataReaderService,
-    private readonly sharpeCalculator: SharpeRatioCalculator,
-    private readonly quoteCurrencyResolver: QuoteCurrencyResolverService
+    private readonly quoteCurrencyResolver: QuoteCurrencyResolverService,
+    // Shared backtest services
+    private readonly slippageService: SlippageService,
+    private readonly feeCalculator: FeeCalculatorService,
+    private readonly positionManager: PositionManagerService,
+    private readonly metricsCalculator: MetricsCalculatorService,
+    private readonly portfolioState: PortfolioStateService
   ) {}
+
+  /**
+   * Map legacy slippage model type string to shared enum
+   */
+  private mapSlippageModelType(model?: string): SharedSlippageModelType {
+    switch (model) {
+      case 'none':
+        return SharedSlippageModelType.NONE;
+      case 'volume-based':
+        return SharedSlippageModelType.VOLUME_BASED;
+      case 'historical':
+        return SharedSlippageModelType.HISTORICAL;
+      case 'fixed':
+      default:
+        return SharedSlippageModelType.FIXED;
+    }
+  }
 
   async executeHistoricalBacktest(
     backtest: Backtest,
@@ -201,7 +221,7 @@ export class BacktestEngine {
     let maxDrawdown: number;
 
     if (isResuming && options.resumeFrom) {
-      portfolio = this.restorePortfolio(options.resumeFrom.portfolio, backtest.initialCapital);
+      portfolio = this.portfolioState.deserialize(options.resumeFrom.portfolio);
       peakValue = options.resumeFrom.peakValue;
       maxDrawdown = options.resumeFrom.maxDrawdown;
       this.logger.log(
@@ -276,15 +296,15 @@ export class BacktestEngine {
 
     this.logger.log(`Processing ${timestamps.length} time periods`);
 
-    // Build slippage config from backtest configSnapshot
+    // Build slippage config from backtest configSnapshot using shared service
     const slippageSnapshot = backtest.configSnapshot?.slippage;
-    const slippageConfig: SlippageModelConfig = slippageSnapshot
-      ? {
-          type: (slippageSnapshot.model as SlippageModelType) ?? SlippageModelType.FIXED,
+    const slippageConfig: SlippageConfig = slippageSnapshot
+      ? this.slippageService.buildConfig({
+          type: this.mapSlippageModelType(slippageSnapshot.model as string),
           fixedBps: slippageSnapshot.fixedBps ?? 5,
           baseSlippageBps: slippageSnapshot.baseBps ?? 5,
           volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
-        }
+        })
       : DEFAULT_SLIPPAGE_CONFIG;
 
     // Determine starting index: either from checkpoint or from beginning
@@ -315,7 +335,7 @@ export class BacktestEngine {
         prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
-      portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
+      portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
       for (const coin of coins) {
@@ -583,30 +603,13 @@ export class BacktestEngine {
     );
   }
 
-  private updatePortfolioValues(portfolio: Portfolio, currentPrices: Map<string, number>): Portfolio {
-    let totalValue = portfolio.cashBalance;
-
-    for (const [coinId, position] of portfolio.positions) {
-      const currentPrice = currentPrices.get(coinId);
-      if (currentPrice) {
-        position.totalValue = position.quantity * currentPrice;
-        totalValue += position.totalValue;
-      }
-    }
-
-    return {
-      ...portfolio,
-      totalValue
-    };
-  }
-
   private async executeTrade(
     signal: TradingSignal,
     portfolio: Portfolio,
     marketData: MarketData,
     tradingFee: number,
     rng: SeededRandom,
-    slippageConfig: SlippageModelConfig = DEFAULT_SLIPPAGE_CONFIG,
+    slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
     dailyVolume?: number
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const basePrice = marketData.prices.get(signal.coinId);
@@ -635,10 +638,19 @@ export class BacktestEngine {
       const existingPosition = portfolio.positions.get(signal.coinId);
       estimatedQuantity = (existingPosition?.quantity ?? 0) * 0.5;
     }
-    const slippageBps = calculateSimulatedSlippage(slippageConfig, estimatedQuantity, basePrice, dailyVolume);
 
-    // Apply slippage to get execution price
-    const price = applySlippage(basePrice, slippageBps, isBuy);
+    // Use shared SlippageService for consistent slippage calculation
+    const slippageResult = this.slippageService.calculateSlippage(
+      {
+        price: basePrice,
+        quantity: estimatedQuantity,
+        isBuy,
+        dailyVolume
+      },
+      slippageConfig
+    );
+    const slippageBps = slippageResult.slippageBps;
+    const price = slippageResult.executionPrice;
 
     if (isBuy) {
       // Position sizing priority: quantity > percentage > confidence > random
@@ -665,9 +677,12 @@ export class BacktestEngine {
       }
 
       totalValue = quantity * price;
-      const estimatedFee = totalValue * tradingFee;
+      const estimatedFeeResult = this.feeCalculator.calculateFee(
+        { tradeValue: totalValue },
+        this.feeCalculator.fromFlatRate(tradingFee)
+      );
 
-      if (portfolio.cashBalance < totalValue + estimatedFee) {
+      if (portfolio.cashBalance < totalValue + estimatedFeeResult.fee) {
         this.logger.warn('Insufficient cash balance for BUY trade (including fees)');
         return null;
       }
@@ -724,10 +739,8 @@ export class BacktestEngine {
       totalValue = quantity * price;
 
       // Calculate realized P&L: (sell price - cost basis) * quantity
-      // Fee will be subtracted separately below
-      const grossPnL = (price - costBasis) * quantity;
-      const fee = totalValue * tradingFee;
-      realizedPnL = grossPnL - fee;
+      // Note: This is gross P&L before fees. Fee is deducted from cashBalance separately.
+      realizedPnL = (price - costBasis) * quantity;
       realizedPnLPercent = costBasis > 0 ? (price - costBasis) / costBasis : 0;
 
       existingPosition.quantity -= quantity;
@@ -741,9 +754,13 @@ export class BacktestEngine {
       }
     }
 
-    const fee = totalValue * tradingFee;
+    // Use shared FeeCalculatorService for consistent fee calculation
+    const feeConfig = this.feeCalculator.fromFlatRate(tradingFee);
+    const feeResult = this.feeCalculator.calculateFee({ tradeValue: totalValue }, feeConfig);
+    const fee = feeResult.fee;
     portfolio.cashBalance -= fee;
-    portfolio.totalValue = portfolio.cashBalance + this.calculatePositionsValue(portfolio.positions, marketData.prices);
+    portfolio.totalValue =
+      portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, marketData.prices);
 
     return {
       trade: {
@@ -764,15 +781,6 @@ export class BacktestEngine {
       } as Partial<BacktestTrade>,
       slippageBps
     };
-  }
-
-  private calculatePositionsValue(positions: Map<string, Position>, currentPrices: Map<string, number>): number {
-    let total = 0;
-    for (const [coinId, position] of positions) {
-      const price = currentPrices.get(coinId) ?? 0;
-      total += position.quantity * price;
-    }
-    return total;
   }
 
   private portfolioToHoldings(portfolio: Portfolio, prices: Map<string, number>) {
@@ -838,35 +846,13 @@ export class BacktestEngine {
       return 0;
     }
 
-    // Use centralized calculator for consistent annualized Sharpe ratio
-    // Historical backtests use daily snapshots, so periodsPerYear = 252
-    return this.sharpeCalculator.calculate(returns, 0.02, 252);
-  }
-
-  /**
-   * Restore portfolio state from a checkpoint.
-   * Converts the serializable CheckpointPortfolio format back to the internal Portfolio structure.
-   */
-  private restorePortfolio(checkpointPortfolio: CheckpointPortfolio, initialCapital: number): Portfolio {
-    const positions = new Map<string, Position>();
-    let positionsValue = 0;
-
-    for (const pos of checkpointPortfolio.positions) {
-      const totalValue = pos.quantity * pos.averagePrice;
-      positions.set(pos.coinId, {
-        coinId: pos.coinId,
-        quantity: pos.quantity,
-        averagePrice: pos.averagePrice,
-        totalValue
-      });
-      positionsValue += totalValue;
-    }
-
-    return {
-      cashBalance: checkpointPortfolio.cashBalance,
-      positions,
-      totalValue: checkpointPortfolio.cashBalance + positionsValue
-    };
+    // Use metricsCalculator for consistent annualized Sharpe ratio
+    // Historical backtests use daily snapshots with traditional 252-day calendar
+    return this.metricsCalculator.calculateSharpeRatio(returns, {
+      timeframe: TimeframeType.DAILY,
+      useCryptoCalendar: false,
+      riskFreeRate: 0.02
+    });
   }
 
   /**
@@ -1069,7 +1055,7 @@ export class BacktestEngine {
         prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
-      portfolio = this.updatePortfolioValues(portfolio, marketData.prices);
+      portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       // Build price data context for algorithm
       const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
@@ -1192,8 +1178,12 @@ export class BacktestEngine {
         : 0;
     const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252); // Annualized
 
-    // Calculate Sharpe ratio using centralized calculator for consistency
-    const sharpeRatio = this.sharpeCalculator.calculate(returns, 0.02, 252);
+    // Calculate Sharpe ratio using metricsCalculator for consistency
+    const sharpeRatio = this.metricsCalculator.calculateSharpeRatio(returns, {
+      timeframe: TimeframeType.DAILY,
+      useCryptoCalendar: false,
+      riskFreeRate: 0.02
+    });
 
     // Calculate profit factor based on realized P&L from SELL trades
     const grossProfit = sellTrades

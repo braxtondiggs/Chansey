@@ -24,6 +24,7 @@ import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver.service';
+import { BacktestSharedModule } from './backtest/shared';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { PositionExit } from './entities/position-exit.entity';
@@ -49,7 +50,6 @@ import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { SharpeRatioCalculator } from '../common/metrics/sharpe-ratio.calculator';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { MetricsModule } from '../metrics/metrics.module';
@@ -110,12 +110,12 @@ const BACKTEST_DEFAULTS = backtestConfig();
     forwardRef(() => UsersModule),
     IndicatorModule,
     MetricsModule,
-    StorageModule
+    StorageModule,
+    BacktestSharedModule
   ],
   providers: [
     AlgorithmService,
     BacktestEngine,
-    SharpeRatioCalculator,
     BacktestProcessor,
     LiveReplayProcessor,
     BacktestService,
