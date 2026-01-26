@@ -18,6 +18,7 @@ describe('LiveReplayProcessor', () => {
       coinResolver: any;
       backtestStream: any;
       backtestResultService: any;
+      backtestPauseService: any;
       metricsService: any;
     }> = {}
   ) => {
@@ -25,6 +26,7 @@ describe('LiveReplayProcessor', () => {
     const coinResolver = { resolveCoins: jest.fn() };
     const backtestStream = { publishStatus: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
+    const backtestPauseService = { clearPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
     const metricsService = {
       startBacktestTimer: jest.fn(),
       recordBacktestCompleted: jest.fn()
@@ -37,6 +39,7 @@ describe('LiveReplayProcessor', () => {
       overrides.coinResolver ?? (coinResolver as any),
       overrides.backtestStream ?? (backtestStream as any),
       overrides.backtestResultService ?? (backtestResultService as any),
+      overrides.backtestPauseService ?? (backtestPauseService as any),
       overrides.metricsService ?? (metricsService as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)
@@ -135,7 +138,7 @@ describe('LiveReplayProcessor', () => {
     const backtestRepository = { findOne: jest.fn().mockResolvedValue(backtest), save: jest.fn() };
     const backtestStream = { publishStatus: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
-    const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue({}) };
+    const backtestEngine = { executeLiveReplayBacktest: jest.fn().mockResolvedValue({ paused: false }) };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const metricsTimer = jest.fn();
     const metricsService = {
@@ -165,9 +168,12 @@ describe('LiveReplayProcessor', () => {
 
     expect(backtestRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: BacktestStatus.RUNNING }));
     expect(backtestStream.publishStatus).toHaveBeenCalledWith(backtest.id, 'running', undefined, {
-      mode: BacktestType.LIVE_REPLAY
+      mode: BacktestType.LIVE_REPLAY,
+      isLiveReplay: true,
+      isResuming: false,
+      replaySpeed: 'FAST_5X'
     });
-    expect(backtestEngine.executeHistoricalBacktest).toHaveBeenCalledWith(
+    expect(backtestEngine.executeLiveReplayBacktest).toHaveBeenCalledWith(
       backtest,
       [{ id: 'BTC' }],
       expect.objectContaining({
@@ -176,9 +182,73 @@ describe('LiveReplayProcessor', () => {
         telemetryEnabled: true
       })
     );
-    expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(backtest, {});
+    expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(backtest, { paused: false });
     expect(metricsService.recordBacktestCompleted).toHaveBeenCalledWith('algo-3', 'success');
     expect(metricsTimer).toHaveBeenCalled();
+  });
+
+  it('cleans up orphaned results when resuming from checkpoint', async () => {
+    const checkpointState = {
+      lastProcessedIndex: 50,
+      persistedCounts: { trades: 5, signals: 10, fills: 5, snapshots: 2 }
+    };
+    const dataset = { id: 'dataset-resume', replayCapable: true, instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const backtest = {
+      id: 'backtest-resume',
+      status: BacktestStatus.PENDING,
+      type: BacktestType.LIVE_REPLAY,
+      marketDataSet: dataset,
+      checkpointState
+    } as any;
+
+    const backtestRepository = { findOne: jest.fn().mockResolvedValue(backtest), save: jest.fn() };
+    const backtestStream = { publishStatus: jest.fn(), publishLog: jest.fn() };
+    const backtestResultService = {
+      persistSuccess: jest.fn(),
+      markFailed: jest.fn(),
+      cleanupOrphanedResults: jest
+        .fn()
+        .mockResolvedValue({ deleted: { trades: 1, signals: 0, fills: 0, snapshots: 0 } })
+    };
+    const backtestEngine = { executeLiveReplayBacktest: jest.fn().mockResolvedValue({ paused: false }) };
+    const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
+    const backtestPauseService = { clearPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
+    const metricsTimer = jest.fn();
+    const metricsService = {
+      startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
+      recordBacktestCompleted: jest.fn()
+    };
+
+    const processor = createProcessor({
+      backtestRepository,
+      backtestStream,
+      backtestResultService,
+      backtestEngine,
+      coinResolver,
+      backtestPauseService,
+      metricsService
+    });
+
+    const job = createJob({
+      backtestId: backtest.id,
+      userId: 'user-resume',
+      datasetId: dataset.id,
+      algorithmId: 'algo-resume',
+      deterministicSeed: 'seed-resume',
+      mode: BacktestType.LIVE_REPLAY
+    });
+
+    await processor.process(job);
+
+    // Verify orphan cleanup was called with checkpoint counts
+    expect(backtestResultService.cleanupOrphanedResults).toHaveBeenCalledWith(
+      backtest.id,
+      checkpointState.persistedCounts
+    );
+
+    // Verify backtest continued to run after cleanup
+    expect(backtestEngine.executeLiveReplayBacktest).toHaveBeenCalled();
+    expect(backtestResultService.persistSuccess).toHaveBeenCalled();
   });
 
   it('marks failed when instrument universe cannot be resolved', async () => {

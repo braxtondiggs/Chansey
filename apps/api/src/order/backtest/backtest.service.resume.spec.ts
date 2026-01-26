@@ -9,6 +9,8 @@ describe('BacktestService.resumeBacktest', () => {
     const backtestStream = { publishStatus: jest.fn() };
     const backtestRepository = { save: jest.fn() };
     const queue = { add: jest.fn() };
+    const datasetValidator = { validateDataset: jest.fn() };
+    const backtestPauseService = { clearPauseFlag: jest.fn(), setPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
 
     const service = new BacktestService(
       {} as any,
@@ -17,6 +19,7 @@ describe('BacktestService.resumeBacktest', () => {
       {} as any,
       backtestStream as any,
       {} as any,
+      datasetValidator as any,
       backtestRepository as any,
       {} as any,
       {} as any,
@@ -26,7 +29,8 @@ describe('BacktestService.resumeBacktest', () => {
       {} as any,
       {} as any,
       queue as any,
-      queue as any
+      queue as any,
+      backtestPauseService as any
     );
 
     return { service, backtestStream, backtestRepository, queue };

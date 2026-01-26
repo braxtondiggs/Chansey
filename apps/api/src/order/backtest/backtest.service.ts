@@ -24,6 +24,7 @@ import {
 
 import { DEFAULT_CHECKPOINT_CONFIG } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
+import { BacktestPauseService } from './backtest-pause.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
@@ -38,6 +39,7 @@ import {
 } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
 import { ComparisonReport, ComparisonReportRun } from './comparison-report.entity';
+import { DatasetValidatorService } from './dataset-validator.service';
 import {
   BacktestComparisonDto,
   BacktestFiltersDto,
@@ -77,6 +79,7 @@ export class BacktestService implements OnModuleInit {
     private readonly backtestEngine: BacktestEngine,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
+    private readonly datasetValidator: DatasetValidatorService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(BacktestTrade) private readonly backtestTradeRepository: Repository<BacktestTrade>,
     @InjectRepository(BacktestPerformanceSnapshot)
@@ -90,6 +93,7 @@ export class BacktestService implements OnModuleInit {
     private readonly comparisonReportRunRepository: Repository<ComparisonReportRun>,
     @InjectQueue(BACKTEST_QUEUE_NAMES.historicalQueue) private readonly historicalQueue: Queue,
     @InjectQueue(BACKTEST_QUEUE_NAMES.replayQueue) private readonly replayQueue: Queue,
+    private readonly backtestPauseService: BacktestPauseService,
     @Optional() private readonly metricsService?: MetricsService
   ) {}
 
@@ -134,6 +138,22 @@ export class BacktestService implements OnModuleInit {
         warningFlags.push('dataset_not_replay_capable');
       }
 
+      // Validate dataset against backtest configuration
+      const validationResult = await this.datasetValidator.validateDataset(marketDataSet, {
+        startDate: new Date(createBacktestDto.startDate),
+        endDate: new Date(createBacktestDto.endDate)
+      });
+
+      if (!validationResult.valid) {
+        const errorMessages = validationResult.errors.map((e) => e.message).join('; ');
+        throw new BadRequestException(`Dataset validation failed: ${errorMessages}`);
+      }
+
+      // Add validation warnings to backtest warnings
+      if (validationResult.warnings.length > 0) {
+        warningFlags.push(...validationResult.warnings);
+      }
+
       const configSnapshot = {
         algorithm: {
           id: algorithm.id,
@@ -152,7 +172,8 @@ export class BacktestService implements OnModuleInit {
           tradingFee: createBacktestDto.tradingFee || 0.001,
           startDate: createBacktestDto.startDate,
           endDate: createBacktestDto.endDate,
-          quoteCurrency: createBacktestDto.quoteCurrency || 'USDT'
+          quoteCurrency: createBacktestDto.quoteCurrency || 'USDT',
+          replaySpeed: createBacktestDto.replaySpeed
         },
         slippage: {
           model: createBacktestDto.slippageModel || 'fixed',
@@ -925,6 +946,55 @@ export class BacktestService implements OnModuleInit {
       }
       this.logger.error(`Failed to cancel backtest ${backtestId}: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to cancel backtest due to an internal error');
+    }
+  }
+
+  /**
+   * Request a running live replay backtest to pause.
+   * The backtest will pause at the next checkpoint and save its state.
+   *
+   * @param user - User requesting the pause
+   * @param backtestId - ID of the backtest to pause
+   */
+  async pauseBacktest(user: User, backtestId: string): Promise<void> {
+    try {
+      const backtest = await this.fetchBacktestEntity(user, backtestId, ['algorithm', 'marketDataSet', 'user']);
+
+      // Only allow pausing running live replay backtests
+      if (backtest.status !== BacktestStatus.RUNNING) {
+        throw new BadRequestException(`Can only pause running backtests. Current status: ${backtest.status}`);
+      }
+
+      if (backtest.type !== BacktestType.LIVE_REPLAY) {
+        throw new BadRequestException(
+          `Only live replay backtests support pause. This backtest type is: ${backtest.type}`
+        );
+      }
+
+      // Set pause flag - the processor will check this and pause at the next checkpoint
+      await this.backtestPauseService.setPauseFlag(backtestId);
+
+      // Publish status update to stream
+      try {
+        await this.backtestStream.publishStatus(backtest.id, 'pause_requested', undefined, {
+          requestedAt: new Date().toISOString()
+        });
+        await this.backtestStream.publishLog(
+          backtest.id,
+          'info',
+          'Pause requested. Backtest will pause at the next checkpoint.'
+        );
+      } catch (streamError) {
+        this.logger.warn(`Failed to publish pause request status for backtest ${backtestId}: ${streamError.message}`);
+      }
+
+      this.logger.log(`Pause requested for backtest ${backtestId}`);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error(`Failed to pause backtest ${backtestId}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to pause backtest due to an internal error');
     }
   }
 

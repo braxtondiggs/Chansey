@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 
 import { MarketDataSet } from './market-data-set.entity';
 
@@ -8,6 +8,17 @@ import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
 import { MetricsService } from '../../metrics/metrics.service';
 
 const MIN_BASE_SYMBOL_LENGTH = 3;
+
+/**
+ * Options for coin resolution behavior.
+ */
+export interface CoinResolverOptions {
+  /**
+   * If true, throw an error when instruments are truncated due to maxInstruments limit
+   * instead of silently truncating. Use this when user confirmation is required.
+   */
+  requireConfirmation?: boolean;
+}
 
 @Injectable()
 export class CoinResolverService {
@@ -37,10 +48,15 @@ export class CoinResolverService {
    * Returns warning flags when instruments are truncated due to maxInstruments limit.
    *
    * @param dataset The market dataset containing the instrument universe
+   * @param options Optional configuration for resolution behavior
    * @returns Object containing resolved Coin entities and any warning flags
    * @throws InstrumentUniverseUnresolvedException when no instruments can be resolved
+   * @throws BadRequestException when requireConfirmation is true and truncation would occur
    */
-  async resolveCoins(dataset: MarketDataSet): Promise<{ coins: Coin[]; warnings: string[] }> {
+  async resolveCoins(
+    dataset: MarketDataSet,
+    options: CoinResolverOptions = {}
+  ): Promise<{ coins: Coin[]; warnings: string[] }> {
     const maxInstruments = dataset.maxInstruments ?? 50;
     const warnings: string[] = [];
     const instruments = dataset.instrumentUniverse ?? [];
@@ -146,6 +162,12 @@ export class CoinResolverService {
     }
 
     if (resolved.length > maxInstruments) {
+      if (options.requireConfirmation) {
+        throw new BadRequestException(
+          `Dataset has ${resolved.length} resolved instruments but maxInstruments limit is ${maxInstruments}. ` +
+            `Update the dataset's maxInstruments setting or proceed without the requireConfirmation flag to allow truncation.`
+        );
+      }
       this.logger.warn(`Truncating instrument universe from ${resolved.length} to ${maxInstruments} coins`);
       warnings.push('instrument_universe_truncated');
     }

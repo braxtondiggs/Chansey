@@ -15,6 +15,7 @@ import {
   ValidateNested
 } from 'class-validator';
 
+import { ReplaySpeed } from '../backtest-pacing.interface';
 import {
   BacktestStatus,
   BacktestType,
@@ -190,6 +191,19 @@ export class CreateBacktestDto {
     required: false
   })
   quoteCurrency?: string;
+
+  @IsEnum(ReplaySpeed)
+  @IsOptional()
+  @ApiProperty({
+    description:
+      'Replay speed for LIVE_REPLAY backtests. Controls the delay between processing timestamps. ' +
+      'REAL_TIME=1 (1s delay), FAST_2X=2 (500ms), FAST_5X=5 (200ms), FAST_10X=10 (100ms), MAX_SPEED=0 (no delay).',
+    enum: ReplaySpeed,
+    example: ReplaySpeed.FAST_5X,
+    default: ReplaySpeed.FAST_5X,
+    required: false
+  })
+  replaySpeed?: ReplaySpeed = ReplaySpeed.FAST_5X;
 }
 
 export class UpdateBacktestDto {
