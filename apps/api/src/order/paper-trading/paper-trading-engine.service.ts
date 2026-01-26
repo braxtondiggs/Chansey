@@ -55,12 +55,12 @@ export interface TickResult {
   prices: Record<string, number>;
 }
 
-const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
+const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): TradingSignal => {
   const action: TradingSignal['action'] =
     signal.type === AlgoSignalType.SELL ? 'SELL' : signal.type === AlgoSignalType.BUY ? 'BUY' : 'HOLD';
 
-  // Extract symbol from coinId (e.g., 'BTC' -> 'BTC/USD')
-  const symbol = `${signal.coinId}/USD`;
+  // Extract symbol from coinId using session's quote currency
+  const symbol = `${signal.coinId}/${quoteCurrency}`;
 
   return {
     action,
@@ -132,8 +132,8 @@ export class PaperTradingEngineService {
       const allSymbols = [...new Set([...holdingSymbols, ...configSymbols])];
 
       if (allSymbols.length === 0) {
-        // Default to common trading pairs if no positions
-        allSymbols.push('BTC/USD', 'ETH/USD');
+        // Default to common trading pairs using session's quote currency
+        allSymbols.push(`BTC/${quoteCurrency}`, `ETH/${quoteCurrency}`);
       }
 
       // 3. Fetch current prices
@@ -260,7 +260,9 @@ export class PaperTradingEngineService {
       );
 
       if (result.success && result.signals?.length) {
-        return result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+        return result.signals
+          .map((signal) => mapStrategySignal(signal, quoteCurrency))
+          .filter((signal) => signal.action !== 'HOLD');
       }
 
       return [];

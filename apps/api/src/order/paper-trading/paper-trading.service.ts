@@ -6,6 +6,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 
+import { PipelineStartParams, SessionStatusResponse } from '@chansey/api-interfaces';
+
 import {
   CreatePaperTradingSessionDto,
   PaperTradingOrderFiltersDto,
@@ -27,37 +29,6 @@ import { PaperTradingJobType, StartSessionJobData, StopSessionJobData } from './
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { User } from '../../users/users.entity';
-
-export interface PipelineStartParams {
-  pipelineId: string;
-  algorithmId: string;
-  exchangeKeyId: string;
-  initialCapital: number;
-  optimizedParameters: Record<string, number>;
-  duration: string;
-  stopConditions?: { maxDrawdown?: number; targetReturn?: number };
-  userId: string;
-  name?: string;
-}
-
-export interface SessionStatusResponse {
-  status: PaperTradingStatus;
-  metrics: {
-    initialCapital: number;
-    currentPortfolioValue: number;
-    totalReturn: number;
-    totalReturnPercent: number;
-    maxDrawdown: number;
-    sharpeRatio?: number;
-    winRate: number;
-    totalTrades: number;
-    winningTrades: number;
-    losingTrades: number;
-    totalFees: number;
-    durationHours: number;
-  };
-  stoppedReason?: string;
-}
 
 @Injectable()
 export class PaperTradingService {

@@ -229,6 +229,8 @@ export interface PipelineStartParams {
   optimizedParameters: Record<string, number>;
   duration: string;
   stopConditions?: StopConditions;
+  userId: string;
+  name?: string;
 }
 
 export interface SessionStatusResponse {
