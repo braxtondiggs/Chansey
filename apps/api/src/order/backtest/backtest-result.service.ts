@@ -128,6 +128,10 @@ export class BacktestResultService {
   /**
    * Persist results incrementally during checkpoint.
    * This is called periodically during backtest execution to save progress.
+   *
+   * Uses a transaction to ensure all-or-nothing persistence. If any save fails,
+   * the entire batch is rolled back, preventing partial writes that could cause
+   * data inconsistency when resuming from checkpoints.
    */
   async persistIncremental(
     backtest: Backtest,
@@ -139,34 +143,47 @@ export class BacktestResultService {
     }
   ): Promise<void> {
     const endTimer = this.metricsService?.startPersistenceTimer('incremental');
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
     try {
       if (results.signals?.length) {
-        await this.backtestSignalRepository.save(results.signals);
+        await queryRunner.manager.save(BacktestSignal, results.signals);
         this.metricsService?.recordRecordsPersisted('signals', results.signals.length);
       }
 
       if (results.simulatedFills?.length) {
-        await this.simulatedFillRepository.save(results.simulatedFills);
+        await queryRunner.manager.save(SimulatedOrderFill, results.simulatedFills);
         this.metricsService?.recordRecordsPersisted('fills', results.simulatedFills.length);
       }
 
       if (results.trades?.length) {
-        await this.backtestTradeRepository.save(results.trades);
+        await queryRunner.manager.save(BacktestTrade, results.trades);
         this.metricsService?.recordRecordsPersisted('trades', results.trades.length);
       }
 
       if (results.snapshots?.length) {
-        await this.backtestSnapshotRepository.save(results.snapshots);
+        await queryRunner.manager.save(BacktestPerformanceSnapshot, results.snapshots);
         this.metricsService?.recordRecordsPersisted('snapshots', results.snapshots.length);
       }
+
+      await queryRunner.commitTransaction();
 
       this.logger.debug(
         `Persisted incremental results for backtest ${backtest.id}: ` +
           `${results.trades?.length ?? 0} trades, ${results.signals?.length ?? 0} signals, ` +
           `${results.simulatedFills?.length ?? 0} fills, ${results.snapshots?.length ?? 0} snapshots`
       );
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        `Failed to persist incremental results for backtest ${backtest.id}: ${error.message}`,
+        error.stack
+      );
+      throw error;
     } finally {
+      await queryRunner.release();
       endTimer?.();
     }
   }

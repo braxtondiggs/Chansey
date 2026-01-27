@@ -5,7 +5,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { BacktestCheckpointState } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
+import { CheckpointResults, DEFAULT_LIVE_REPLAY_CHECKPOINT_INTERVAL, ReplaySpeed } from './backtest-pacing.interface';
+import { BacktestPauseService } from './backtest-pause.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
@@ -28,6 +31,7 @@ export class LiveReplayProcessor extends WorkerHost {
     private readonly coinResolver: CoinResolverService,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
+    private readonly backtestPauseService: BacktestPauseService,
     private readonly metricsService: MetricsService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
@@ -72,9 +76,43 @@ export class LiveReplayProcessor extends WorkerHost {
         throw new Error('Dataset is not flagged as replay capable');
       }
 
+      // Check if we're resuming from a checkpoint
+      const isResuming = !!backtest.checkpointState;
+
+      // Clean up any orphaned results that may have been partially written after the checkpoint
+      // This ensures data consistency when resuming from a crash or unexpected termination
+      if (isResuming && backtest.checkpointState?.persistedCounts) {
+        this.logger.log(
+          `Resuming from checkpoint at index ${backtest.checkpointState.lastProcessedIndex}, cleaning up orphans...`
+        );
+        const { deleted } = await this.backtestResultService.cleanupOrphanedResults(
+          backtestId,
+          backtest.checkpointState.persistedCounts
+        );
+        if (deleted.trades || deleted.signals || deleted.fills || deleted.snapshots) {
+          this.logger.log(
+            `Orphan cleanup complete: removed ${deleted.trades} trades, ${deleted.signals} signals, ${deleted.fills} fills, ${deleted.snapshots} snapshots`
+          );
+        }
+      }
+
       backtest.status = BacktestStatus.RUNNING;
+      // Initialize live replay state with configuration
+      backtest.liveReplayState = {
+        replaySpeed: this.getReplaySpeedFromConfig(backtest),
+        isPaused: false
+      };
       await this.backtestRepository.save(backtest);
-      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, { mode });
+
+      // Clear any stale pause flag from previous runs
+      await this.backtestPauseService.clearPauseFlag(backtestId);
+
+      await this.backtestStream.publishStatus(backtest.id, 'running', undefined, {
+        mode,
+        isLiveReplay: true,
+        isResuming,
+        replaySpeed: backtest.liveReplayState.replaySpeed
+      });
 
       const { coins, warnings } = await this.coinResolver.resolveCoins(dataset);
 
@@ -87,11 +125,70 @@ export class LiveReplayProcessor extends WorkerHost {
         }
       }
 
-      const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
+      // Define pause check callback using the pause service
+      const shouldPause = async (): Promise<boolean> => {
+        return this.backtestPauseService.isPauseRequested(backtestId);
+      };
+
+      // Define callback for when backtest is paused
+      const onPaused = async (checkpoint: BacktestCheckpointState): Promise<void> => {
+        backtest.status = BacktestStatus.PAUSED;
+        backtest.checkpointState = checkpoint;
+        backtest.lastCheckpointAt = new Date();
+        backtest.liveReplayState = {
+          ...backtest.liveReplayState,
+          isPaused: true,
+          pausedAt: new Date().toISOString(),
+          pauseReason: 'user_requested'
+        };
+        await this.backtestRepository.save(backtest);
+
+        await this.backtestStream.publishStatus(backtest.id, 'paused', undefined, {
+          checkpointIndex: checkpoint.lastProcessedIndex,
+          pausedAt: backtest.liveReplayState.pausedAt
+        });
+
+        this.logger.log(`Live replay ${backtestId} paused at checkpoint index ${checkpoint.lastProcessedIndex}`);
+      };
+
+      // Define checkpoint callback for incremental persistence
+      const onCheckpoint = async (
+        state: BacktestCheckpointState,
+        results: CheckpointResults,
+        totalTimestamps: number
+      ): Promise<void> => {
+        await this.backtestResultService.persistIncremental(backtest, results);
+        await this.backtestResultService.saveCheckpoint(
+          backtestId,
+          state,
+          state.lastProcessedIndex + 1,
+          totalTimestamps
+        );
+      };
+
+      // Execute live replay with pacing, pause support, and checkpoints
+      const results = await this.backtestEngine.executeLiveReplayBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
-        telemetryEnabled: true
+        telemetryEnabled: true,
+        replaySpeed: backtest.liveReplayState.replaySpeed,
+        checkpointInterval: DEFAULT_LIVE_REPLAY_CHECKPOINT_INTERVAL,
+        onCheckpoint,
+        resumeFrom: backtest.checkpointState ?? undefined,
+        shouldPause,
+        onPaused
       });
+
+      // Handle paused state (don't mark as completed)
+      if (results.paused) {
+        this.logger.log(`Live replay ${backtestId} paused, checkpoint saved`);
+        // Clear the pause flag after successful pause
+        await this.backtestPauseService.clearPauseFlag(backtestId);
+        return;
+      }
+
+      // Clear pause flag after successful completion
+      await this.backtestPauseService.clearPauseFlag(backtestId);
 
       await this.backtestResultService.persistSuccess(backtest, results);
       this.metricsService.recordBacktestCompleted(strategyName, 'success');
@@ -102,5 +199,20 @@ export class LiveReplayProcessor extends WorkerHost {
     } finally {
       endTimer();
     }
+  }
+
+  /**
+   * Extract replay speed from backtest configuration.
+   * Defaults to FAST_5X if not specified.
+   */
+  private getReplaySpeedFromConfig(backtest: Backtest): ReplaySpeed {
+    const configSpeed = backtest.configSnapshot?.run?.replaySpeed;
+    if (typeof configSpeed === 'number' && configSpeed in ReplaySpeed) {
+      return configSpeed as ReplaySpeed;
+    }
+    if (typeof configSpeed === 'string' && configSpeed in ReplaySpeed) {
+      return ReplaySpeed[configSpeed as keyof typeof ReplaySpeed];
+    }
+    return ReplaySpeed.FAST_5X;
   }
 }

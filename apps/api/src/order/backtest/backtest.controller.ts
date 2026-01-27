@@ -177,6 +177,17 @@ export class BacktestController {
   async resumeBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.backtestService.resumeBacktest(user, id);
   }
+
+  @Post(':id/pause')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Pause a running live replay backtest' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({ status: HttpStatus.ACCEPTED, description: 'Backtest pause requested' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Backtest cannot be paused' })
+  async pauseBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.backtestService.pauseBacktest(user, id);
+    return { message: 'Backtest pause requested. The backtest will pause at the next checkpoint.' };
+  }
 }
 
 @ApiTags('Comparison Reports')

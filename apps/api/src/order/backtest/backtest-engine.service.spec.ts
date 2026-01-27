@@ -1,4 +1,5 @@
 import { BacktestEngine, MarketData, Portfolio, TradingSignal } from './backtest-engine.service';
+import { ReplaySpeed } from './backtest-pacing.interface';
 import {
   FeeCalculatorService,
   MetricsCalculatorService,
@@ -8,6 +9,7 @@ import {
   SlippageService
 } from './shared';
 
+import { SignalType } from '../../algorithm/interfaces';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
@@ -752,6 +754,351 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
     expect(result.annualizedReturn).toBe(0);
     expect(result.tradeCount).toBe(0);
     expect(result.profitFactor).toBe(1);
+  });
+});
+
+describe('BacktestEngine.executeLiveReplayBacktest', () => {
+  const createEngine = (deps: {
+    algorithmRegistry: any;
+    marketDataReader: any;
+    ohlcService: any;
+    quoteCurrencyResolver: any;
+  }) =>
+    new BacktestEngine(
+      { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
+      deps.algorithmRegistry,
+      deps.ohlcService,
+      deps.marketDataReader,
+      deps.quoteCurrencyResolver,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState
+    );
+
+  const createCandles = () => [
+    new OHLCCandle({
+      coinId: 'BTC',
+      exchangeId: 'exchange-1',
+      timestamp: new Date('2024-01-01T00:00:00.000Z'),
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 100,
+      volume: 1000
+    }),
+    new OHLCCandle({
+      coinId: 'BTC',
+      exchangeId: 'exchange-1',
+      timestamp: new Date('2024-01-01T01:00:00.000Z'),
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 100,
+      volume: 1000
+    })
+  ];
+
+  it('pauses and returns a checkpoint when shouldPause resolves true', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    const shouldPause = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const onPaused = jest.fn().mockResolvedValue(undefined);
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-1',
+        name: 'Live Replay',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-1',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-1',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        shouldPause,
+        onPaused
+      }
+    );
+
+    expect(result.paused).toBe(true);
+    expect(result.pausedCheckpoint?.lastProcessedIndex).toBe(0);
+    expect(result.snapshots).toHaveLength(1);
+    expect(onPaused).toHaveBeenCalledTimes(1);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits checkpoint results with incremental slices', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest
+        .fn()
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [
+            {
+              type: SignalType.BUY,
+              coinId: 'BTC',
+              quantity: 1,
+              reason: 'entry'
+            }
+          ]
+        })
+        .mockResolvedValueOnce({ success: true, signals: [] })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    const onCheckpoint = jest.fn().mockResolvedValue(undefined);
+
+    await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-2',
+        name: 'Checkpoint Replay',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-2',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-2',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        checkpointInterval: 1,
+        onCheckpoint
+      }
+    );
+
+    expect(onCheckpoint).toHaveBeenCalled();
+    const [, firstResults, totalTimestamps] = onCheckpoint.mock.calls[0];
+    expect(totalTimestamps).toBe(2);
+    expect(firstResults.trades).toHaveLength(1);
+    expect(firstResults.signals).toHaveLength(1);
+    expect(firstResults.simulatedFills).toHaveLength(1);
+    expect(firstResults.snapshots).toHaveLength(1);
+  });
+
+  it('continues execution when pause check fails transiently', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Pause check fails once but then succeeds
+    const shouldPause = jest.fn().mockRejectedValueOnce(new Error('Redis unavailable')).mockResolvedValue(false);
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-transient',
+        name: 'Transient Failure Test',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-transient',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-transient',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        shouldPause
+      }
+    );
+
+    // Should complete normally despite transient failure
+    expect(result.paused).toBe(false);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+  });
+
+  it('forces precautionary pause after 3 consecutive pause check failures', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+
+    // Create more candles so we have enough iterations for 3 failures
+    const candles = [
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      })
+    ];
+
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Pause check fails 3 times consecutively (threshold)
+    const shouldPause = jest.fn().mockRejectedValue(new Error('Redis unavailable'));
+    const onPaused = jest.fn().mockResolvedValue(undefined);
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-consecutive-fail',
+        name: 'Consecutive Failure Test',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-fail',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T04:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-fail',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        shouldPause,
+        onPaused
+      }
+    );
+
+    // Should force pause after 3 consecutive failures
+    expect(result.paused).toBe(true);
+    expect(onPaused).toHaveBeenCalledTimes(1);
+    // Should have processed fewer timestamps than available
+    expect(algorithmRegistry.executeAlgorithm.mock.calls.length).toBeLessThan(4);
+  });
+
+  it('resets pause failure counter on successful pause check', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+
+    // Create 5 candles
+    const candles = [1, 2, 3, 4, 5].map(
+      (i) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-01T0${i - 1}:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Fail twice, succeed, fail twice again - should NOT trigger precautionary pause
+    const shouldPause = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('Redis error'))
+      .mockRejectedValueOnce(new Error('Redis error'))
+      .mockResolvedValueOnce(false) // Success resets counter
+      .mockRejectedValueOnce(new Error('Redis error'))
+      .mockResolvedValueOnce(false);
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-reset-counter',
+        name: 'Reset Counter Test',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T05:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-reset',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T05:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-reset',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        shouldPause
+      }
+    );
+
+    // Should complete normally since counter resets on success
+    expect(result.paused).toBe(false);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(5);
   });
 });
 

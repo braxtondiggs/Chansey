@@ -273,9 +273,10 @@ describe('BacktestResultService', () => {
   });
 
   describe('persistIncremental', () => {
-    it('persists non-empty collections and records metrics', async () => {
+    it('persists non-empty collections within a transaction and records metrics', async () => {
       const endTimer = jest.fn();
       mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+      mockQueryRunner.manager.save.mockResolvedValue({});
 
       const results = {
         trades: [{ id: 'trade-1' }],
@@ -286,20 +287,34 @@ describe('BacktestResultService', () => {
 
       await service.persistIncremental({ id: 'backtest-1' } as Backtest, results);
 
-      expect(mockBacktestTradeRepository.save).toHaveBeenCalledWith(results.trades);
-      expect(mockBacktestSignalRepository.save).toHaveBeenCalledWith(results.signals);
-      expect(mockSimulatedFillRepository.save).toHaveBeenCalledWith(results.simulatedFills);
-      expect(mockBacktestSnapshotRepository.save).toHaveBeenCalledWith(results.snapshots);
+      // Verify transaction lifecycle
+      expect(mockDataSource.createQueryRunner).toHaveBeenCalled();
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+
+      // Verify all entities saved through transaction manager
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestSignal, results.signals);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(SimulatedOrderFill, results.simulatedFills);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestTrade, results.trades);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestPerformanceSnapshot, results.snapshots);
+
+      // Verify metrics recorded
       expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('trades', results.trades.length);
       expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('signals', results.signals.length);
       expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('fills', results.simulatedFills.length);
       expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('snapshots', results.snapshots.length);
+
+      // Verify transaction committed and released
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.rollbackTransaction).not.toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
       expect(endTimer).toHaveBeenCalled();
     });
 
-    it('skips empty collections', async () => {
+    it('skips empty collections but still commits transaction', async () => {
       const endTimer = jest.fn();
       mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+      mockQueryRunner.manager.save.mockResolvedValue({});
 
       const results = {
         trades: [],
@@ -310,11 +325,65 @@ describe('BacktestResultService', () => {
 
       await service.persistIncremental({ id: 'backtest-1' } as Backtest, results);
 
-      expect(mockBacktestTradeRepository.save).not.toHaveBeenCalled();
-      expect(mockBacktestSignalRepository.save).not.toHaveBeenCalled();
-      expect(mockSimulatedFillRepository.save).not.toHaveBeenCalled();
-      expect(mockBacktestSnapshotRepository.save).not.toHaveBeenCalled();
+      // Verify transaction lifecycle still happens
+      expect(mockDataSource.createQueryRunner).toHaveBeenCalled();
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+
+      // No saves should occur for empty arrays
+      expect(mockQueryRunner.manager.save).not.toHaveBeenCalled();
       expect(mockMetricsService.recordRecordsPersisted).not.toHaveBeenCalled();
+
+      // Transaction should still commit and release
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
+    });
+
+    it('rolls back transaction and rethrows on save failure', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+      const saveError = new Error('Database connection lost');
+      mockQueryRunner.manager.save.mockRejectedValue(saveError);
+
+      const results = {
+        trades: [{ id: 'trade-1' }],
+        signals: [{ id: 'signal-1' }],
+        simulatedFills: [],
+        snapshots: []
+      };
+
+      await expect(service.persistIncremental({ id: 'backtest-1' } as Backtest, results)).rejects.toThrow(saveError);
+
+      // Verify rollback occurred
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(endTimer).toHaveBeenCalled();
+    });
+
+    it('rolls back when a later save fails', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+      const saveError = new Error('Trade save failed');
+      mockQueryRunner.manager.save
+        .mockResolvedValueOnce({}) // signals succeed
+        .mockResolvedValueOnce({}) // fills succeed
+        .mockRejectedValueOnce(saveError); // trades fail
+
+      const results = {
+        trades: [{ id: 'trade-1' }],
+        signals: [{ id: 'signal-1' }],
+        simulatedFills: [{ id: 'fill-1' }],
+        snapshots: []
+      };
+
+      await expect(service.persistIncremental({ id: 'backtest-1' } as Backtest, results)).rejects.toThrow(saveError);
+
+      // Verify rollback occurred even though some saves succeeded
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
       expect(endTimer).toHaveBeenCalled();
     });
   });

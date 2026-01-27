@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BacktestEngine } from './backtest/backtest-engine.service';
+import { BacktestPauseService } from './backtest/backtest-pause.service';
 import { BacktestResultService } from './backtest/backtest-result.service';
 import { BacktestStreamService } from './backtest/backtest-stream.service';
 import { backtestConfig } from './backtest/backtest.config';
@@ -20,6 +21,7 @@ import { BacktestProcessor } from './backtest/backtest.processor';
 import { BacktestService } from './backtest/backtest.service';
 import { CoinResolverService } from './backtest/coin-resolver.service';
 import { ComparisonReport, ComparisonReportRun } from './backtest/comparison-report.entity';
+import { DatasetValidatorService } from './backtest/dataset-validator.service';
 import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
@@ -120,12 +122,14 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestEngine,
     BacktestProcessor,
     LiveReplayProcessor,
+    BacktestPauseService,
     BacktestService,
     BacktestStreamService,
     BacktestResultService,
     BacktestGateway,
     CoinResolverService,
     CoinService,
+    DatasetValidatorService,
     MarketDataReaderService,
     QuoteCurrencyResolverService,
     OrderCalculationService,

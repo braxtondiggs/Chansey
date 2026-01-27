@@ -55,6 +55,23 @@ export enum MarketDataTimeframe {
   DAY = 'DAY'
 }
 
+/**
+ * Replay speed multiplier for live replay backtests.
+ * Controls the delay between processing each timestamp.
+ */
+export enum ReplaySpeed {
+  /** Real-time: 1 second per candle */
+  REAL_TIME = 1,
+  /** 2x speed: 500ms per candle */
+  FAST_2X = 2,
+  /** 5x speed: 200ms per candle */
+  FAST_5X = 5,
+  /** 10x speed: 100ms per candle */
+  FAST_10X = 10,
+  /** Maximum speed: no delay between candles */
+  MAX_SPEED = 0
+}
+
 // Backward compatibility type alias
 export type BacktestMode = 'historical' | 'live_replay';
 
@@ -224,6 +241,8 @@ export interface CreateBacktestRequest {
   parametersOverride?: Record<string, unknown>;
   executionWindow?: { startAt: Date | string; endAt: Date | string };
   deterministicSeed?: string;
+  /** Replay speed for LIVE_REPLAY backtests (default: FAST_5X) */
+  replaySpeed?: ReplaySpeed;
 }
 
 export interface BacktestFilters {

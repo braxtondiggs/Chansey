@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { BacktestEngine } from './backtest-engine.service';
+import { BacktestPauseService } from './backtest-pause.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
@@ -17,6 +18,7 @@ import {
 } from './backtest.entity';
 import { BacktestService } from './backtest.service';
 import { ComparisonReport, ComparisonReportRun } from './comparison-report.entity';
+import { DatasetValidatorService } from './dataset-validator.service';
 import { MarketDataSet } from './market-data-set.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
@@ -61,6 +63,14 @@ describe('BacktestService (live replay)', () => {
         { provide: BacktestEngine, useValue: {} },
         { provide: BacktestStreamService, useValue: { publishStatus: jest.fn(), publishLog: jest.fn() } },
         { provide: BacktestResultService, useValue: {} },
+        {
+          provide: DatasetValidatorService,
+          useValue: { validateDataset: jest.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }) }
+        },
+        {
+          provide: BacktestPauseService,
+          useValue: { clearPauseFlag: jest.fn(), setPauseFlag: jest.fn(), isPauseRequested: jest.fn() }
+        },
         { provide: getRepositoryToken(Backtest), useValue: backtestRepository },
         { provide: getRepositoryToken(BacktestTrade), useValue: {} },
         { provide: getRepositoryToken(BacktestPerformanceSnapshot), useValue: {} },
