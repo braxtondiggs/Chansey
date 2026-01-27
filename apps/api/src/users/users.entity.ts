@@ -6,7 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   Relation,
   UpdateDateColumn
 } from 'typeorm';
@@ -18,7 +18,7 @@ import type { Risk } from '../risk/risk.entity';
 
 @Entity()
 export class User {
-  @PrimaryColumn({ unique: true })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column()

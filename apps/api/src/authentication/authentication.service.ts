@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
-import { v4 as uuidv4 } from 'uuid';
 
 import { SecurityAuditService } from './audit';
 import { VerifyOtpDto } from './dto';
@@ -65,12 +64,8 @@ export class AuthenticationService {
       const emailVerificationToken = this.password.generateSecureToken();
       const emailVerificationTokenExpiresAt = this.password.getVerificationTokenExpiration();
 
-      // Generate unique user ID
-      const userId = uuidv4();
-
       // Create user with native auth fields
       const newUser = await this.user.create({
-        id: userId,
         email: registrationData.email,
         given_name: registrationData.given_name,
         family_name: registrationData.family_name,

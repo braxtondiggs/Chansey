@@ -12,7 +12,7 @@ export class HistoricalBalance {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
+  @Column({ type: 'uuid' })
   userId: string;
 
   @ManyToOne(() => Exchange)

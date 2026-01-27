@@ -35,7 +35,7 @@ export class ExchangeKey {
   })
   user: Relation<User>;
 
-  @Column()
+  @Column({ type: 'uuid' })
   userId: string;
 
   @ManyToOne('Exchange', { onDelete: 'CASCADE' })
