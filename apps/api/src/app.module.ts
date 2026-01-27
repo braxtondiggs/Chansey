@@ -32,6 +32,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { OHLCModule } from './ohlc/ohlc.module';
 import { OptimizationModule } from './optimization/optimization.module';
 import { OrderModule } from './order/order.module';
+import { PipelineModule } from './pipeline/pipeline.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { RiskModule } from './risk/risk.module';
 import { ScoringModule } from './scoring/scoring.module';
@@ -127,6 +128,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     OHLCModule,
     OptimizationModule,
     OrderModule,
+    PipelineModule,
     PortfolioModule,
     RiskModule,
     ScoringModule,

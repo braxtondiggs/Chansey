@@ -1,5 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
@@ -51,7 +52,8 @@ export class OptimizationOrchestratorService {
     private readonly walkForwardService: WalkForwardService,
     private readonly windowProcessor: WindowProcessor,
     private readonly backtestEngine: BacktestEngine,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   /**
@@ -673,6 +675,15 @@ export class OptimizationOrchestratorService {
     this.logger.log(
       `Optimization run ${run.id} completed. Best score: ${bestScore.toFixed(4)}, Improvement: ${improvement.toFixed(2)}%`
     );
+
+    // Emit completion event for pipeline orchestrator
+    this.eventEmitter.emit('optimization.completed', {
+      runId: run.id,
+      strategyConfigId: run.strategyConfigId,
+      bestParameters: bestParameters ?? {},
+      bestScore,
+      improvement: run.improvement
+    });
   }
 
   /**
