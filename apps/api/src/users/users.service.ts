@@ -30,8 +30,6 @@ export class UsersService {
 
   async create(user: Partial<User>) {
     try {
-      if (!user.id) throw new InternalServerErrorException('User ID is required');
-
       const newUser = this.user.create(user);
 
       // Set default risk level
@@ -45,14 +43,14 @@ export class UsersService {
         this.logger.warn('Default "Moderate" risk level not found');
       }
 
-      await this.user.save(newUser);
+      const savedEntity = await this.user.save(newUser);
 
-      const savedUser = await this.getById(user.id);
+      const savedUser = await this.getById(savedEntity.id);
 
-      this.logger.debug(`User created with ID: ${user.id}`);
+      this.logger.debug(`User created with ID: ${savedEntity.id}`);
       return savedUser;
     } catch (error) {
-      this.logger.error(`Failed to create user with ID: ${user?.id}`, error.stack);
+      this.logger.error(`Failed to create user`, error.stack);
       throw new InternalServerErrorException('Failed to create user');
     }
   }
