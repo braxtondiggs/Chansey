@@ -20,43 +20,51 @@ export class ShutdownService implements OnApplicationShutdown {
 
   constructor(
     @InjectQueue('balance-queue') private readonly balanceQueue: Queue,
+    @InjectQueue('backtest-orchestration') private readonly backtestOrchestrationQueue: Queue,
     @InjectQueue('backtest-queue') private readonly backtestQueue: Queue,
     @InjectQueue('category-queue') private readonly categoryQueue: Queue,
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
     @InjectQueue('drift-detection-queue') private readonly driftDetectionQueue: Queue,
     @InjectQueue('exchange-queue') private readonly exchangeQueue: Queue,
     @InjectQueue('ohlc-queue') private readonly ohlcQueue: Queue,
+    @InjectQueue('optimization') private readonly optimizationQueue: Queue,
     @InjectQueue('order-queue') private readonly orderQueue: Queue,
+    @InjectQueue('paper-trading') private readonly paperTradingQueue: Queue,
     @InjectQueue('performance-ranking') private readonly performanceRankingQueue: Queue,
+    @InjectQueue('pipeline') private readonly pipelineQueue: Queue,
+    @InjectQueue('pipeline-orchestration') private readonly pipelineOrchestrationQueue: Queue,
     @InjectQueue('portfolio-queue') private readonly portfolioQueue: Queue,
     @InjectQueue('price-queue') private readonly priceQueue: Queue,
     @InjectQueue('regime-check-queue') private readonly regimeCheckQueue: Queue,
     @InjectQueue('strategy-evaluation-queue') private readonly strategyEvaluationQueue: Queue,
     @InjectQueue('ticker-pairs-queue') private readonly tickerPairsQueue: Queue,
     @InjectQueue('trade-execution') private readonly tradeExecutionQueue: Queue,
-    @InjectQueue('user-queue') private readonly userQueue: Queue,
-    @InjectQueue('optimization') private readonly optimizationQueue: Queue
+    @InjectQueue('user-queue') private readonly userQueue: Queue
   ) {}
 
   private get queues(): { name: string; queue: Queue }[] {
     return [
       { name: 'balance-queue', queue: this.balanceQueue },
+      { name: 'backtest-orchestration', queue: this.backtestOrchestrationQueue },
       { name: 'backtest-queue', queue: this.backtestQueue },
       { name: 'category-queue', queue: this.categoryQueue },
       { name: 'coin-queue', queue: this.coinQueue },
       { name: 'drift-detection-queue', queue: this.driftDetectionQueue },
       { name: 'exchange-queue', queue: this.exchangeQueue },
       { name: 'ohlc-queue', queue: this.ohlcQueue },
+      { name: 'optimization', queue: this.optimizationQueue },
       { name: 'order-queue', queue: this.orderQueue },
+      { name: 'paper-trading', queue: this.paperTradingQueue },
       { name: 'performance-ranking', queue: this.performanceRankingQueue },
+      { name: 'pipeline', queue: this.pipelineQueue },
+      { name: 'pipeline-orchestration', queue: this.pipelineOrchestrationQueue },
       { name: 'portfolio-queue', queue: this.portfolioQueue },
       { name: 'price-queue', queue: this.priceQueue },
       { name: 'regime-check-queue', queue: this.regimeCheckQueue },
       { name: 'strategy-evaluation-queue', queue: this.strategyEvaluationQueue },
       { name: 'ticker-pairs-queue', queue: this.tickerPairsQueue },
       { name: 'trade-execution', queue: this.tradeExecutionQueue },
-      { name: 'user-queue', queue: this.userQueue },
-      { name: 'optimization', queue: this.optimizationQueue }
+      { name: 'user-queue', queue: this.userQueue }
     ];
   }
 
