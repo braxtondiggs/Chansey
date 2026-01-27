@@ -43,11 +43,10 @@ export class UsersService {
         this.logger.warn('Default "Moderate" risk level not found');
       }
 
-      const savedEntity = await this.user.save(newUser);
+      const savedUser = await this.user.save(newUser);
+      savedUser.exchanges = [];
 
-      const savedUser = await this.getById(savedEntity.id);
-
-      this.logger.debug(`User created with ID: ${savedEntity.id}`);
+      this.logger.debug(`User created with ID: ${savedUser.id}`);
       return savedUser;
     } catch (error) {
       this.logger.error(`Failed to create user`, error.stack);
