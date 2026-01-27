@@ -9,6 +9,15 @@ import {
   CheckpointPortfolio,
   DEFAULT_CHECKPOINT_CONFIG
 } from './backtest-checkpoint.interface';
+import {
+  calculateReplayDelay,
+  CheckpointResults,
+  DEFAULT_BASE_INTERVAL_MS,
+  DEFAULT_LIVE_REPLAY_CHECKPOINT_INTERVAL,
+  LiveReplayExecuteOptions,
+  LiveReplayExecuteResult,
+  ReplaySpeed
+} from './backtest-pacing.interface';
 import { BacktestFinalMetrics } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import {
@@ -89,14 +98,8 @@ interface ExecuteOptions {
   resumeFrom?: BacktestCheckpointState;
 }
 
-interface CheckpointResults {
-  trades: Partial<BacktestTrade>[];
-  signals: Partial<BacktestSignal>[];
-  simulatedFills: Partial<SimulatedOrderFill>[];
-  snapshots: Partial<BacktestPerformanceSnapshot>[];
-}
-
 // Note: Seeded random generation now uses SeededRandom class for checkpoint support
+// CheckpointResults is imported from backtest-pacing.interface.ts
 
 const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
   const action: TradingSignal['action'] =
@@ -527,6 +530,475 @@ export class BacktestEngine {
     this.logger.log(`Backtest completed: ${trades.length} trades, final value: $${portfolio.totalValue.toFixed(2)}`);
 
     return { trades, signals, simulatedFills, snapshots, finalMetrics };
+  }
+
+  /**
+   * Helper method to introduce a delay between timestamp processing.
+   * Used for live replay pacing.
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Execute a live replay backtest with real-time pacing and pause/resume support.
+   *
+   * Key differences from executeHistoricalBacktest:
+   * - Configurable delay between timestamps (pacing)
+   * - Support for pause/resume via shouldPause callback
+   * - More frequent checkpoints (every 100 timestamps vs 500 for historical)
+   * - Returns paused state with checkpoint if paused
+   *
+   * @param backtest - The backtest entity
+   * @param coins - Coins to include in the backtest
+   * @param options - Live replay execution options including pacing configuration
+   */
+  async executeLiveReplayBacktest(
+    backtest: Backtest,
+    coins: Coin[],
+    options: LiveReplayExecuteOptions
+  ): Promise<LiveReplayExecuteResult> {
+    if (!backtest.algorithm) {
+      throw new Error('Backtest algorithm relation not loaded');
+    }
+
+    const isResuming = !!options.resumeFrom;
+    const checkpointInterval = options.checkpointInterval ?? DEFAULT_LIVE_REPLAY_CHECKPOINT_INTERVAL;
+    const replaySpeed = options.replaySpeed ?? ReplaySpeed.FAST_5X;
+    const baseIntervalMs = options.baseIntervalMs ?? DEFAULT_BASE_INTERVAL_MS;
+    const delayMs = calculateReplayDelay(replaySpeed, baseIntervalMs);
+
+    this.logger.log(
+      `Starting live replay backtest: ${backtest.name} (dataset=${options.dataset.id}, seed=${options.deterministicSeed}, resuming=${isResuming}, speed=${ReplaySpeed[replaySpeed]}, delay=${delayMs}ms)`
+    );
+
+    // Initialize or restore RNG based on resume state
+    let rng: SeededRandom;
+    if (isResuming && options.resumeFrom) {
+      rng = SeededRandom.fromState(options.resumeFrom.rngState);
+      this.logger.log(`Restored RNG state from checkpoint at index ${options.resumeFrom.lastProcessedIndex}`);
+    } else {
+      rng = new SeededRandom(options.deterministicSeed);
+    }
+
+    // Initialize or restore portfolio based on resume state
+    let portfolio: Portfolio;
+    let peakValue: number;
+    let maxDrawdown: number;
+
+    if (isResuming && options.resumeFrom) {
+      portfolio = this.portfolioState.deserialize(options.resumeFrom.portfolio);
+      peakValue = options.resumeFrom.peakValue;
+      maxDrawdown = options.resumeFrom.maxDrawdown;
+      this.logger.log(
+        `Restored portfolio: cash=${portfolio.cashBalance.toFixed(2)}, positions=${portfolio.positions.size}, peak=${peakValue.toFixed(2)}`
+      );
+    } else {
+      portfolio = {
+        cashBalance: backtest.initialCapital,
+        positions: new Map(),
+        totalValue: backtest.initialCapital
+      };
+      peakValue = backtest.initialCapital;
+      maxDrawdown = 0;
+    }
+
+    const trades: Partial<BacktestTrade>[] = [];
+    const signals: Partial<BacktestSignal>[] = [];
+    const simulatedFills: Partial<SimulatedOrderFill>[] = [];
+    const snapshots: Partial<BacktestPerformanceSnapshot>[] = [];
+
+    const coinIds = coins.map((coin) => coin.id);
+    const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
+
+    // Resolve quote currency from configSnapshot (default: USDT) with fallback chain
+    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
+    const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
+
+    // Determine data source: storage file (CSV) or database (Price table)
+    const startDate = options.dataset.startAt ?? backtest.startDate;
+    const endDate = options.dataset.endAt ?? backtest.endDate;
+
+    let historicalPrices: OHLCCandle[];
+
+    if (this.marketDataReader.hasStorageLocation(options.dataset)) {
+      // Use CSV data from MinIO storage
+      this.logger.log(`Reading market data from storage: ${options.dataset.storageLocation}`);
+      const marketDataResult = await this.marketDataReader.readMarketData(options.dataset, startDate, endDate);
+      historicalPrices = this.convertOHLCVToCandles(marketDataResult.data);
+      this.logger.log(
+        `Loaded ${historicalPrices.length} candle records from storage (${marketDataResult.dateRange.start.toISOString()} to ${marketDataResult.dateRange.end.toISOString()})`
+      );
+    } else {
+      // Fall back to database OHLC table
+      historicalPrices = await this.getHistoricalPrices(coinIds, startDate, endDate);
+    }
+
+    if (historicalPrices.length === 0) {
+      throw new Error('No historical price data available for the specified date range');
+    }
+
+    const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
+    const timestamps = Object.keys(pricesByTimestamp).sort();
+
+    const priceHistoryByCoin = new Map<string, OHLCCandle[]>();
+    const priceSummariesByCoin = new Map<
+      string,
+      { avg: number; coin: string; date: Date; high: number; low: number }[]
+    >();
+    const indexByCoin = new Map<string, number>();
+
+    for (const coinId of coinIds) {
+      const history = historicalPrices
+        .filter((price) => price.coinId === coinId)
+        .sort((a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime());
+      priceHistoryByCoin.set(coinId, history);
+      priceSummariesByCoin.set(
+        coinId,
+        history.map((price) => this.buildPriceSummary(price))
+      );
+      indexByCoin.set(coinId, -1);
+    }
+
+    this.logger.log(`Processing ${timestamps.length} time periods with ${delayMs}ms delay between each`);
+
+    // Build slippage config from backtest configSnapshot
+    const slippageSnapshot = backtest.configSnapshot?.slippage;
+    const slippageConfig: SlippageConfig = slippageSnapshot
+      ? {
+          type: (slippageSnapshot.model as SharedSlippageModelType) ?? SharedSlippageModelType.FIXED,
+          fixedBps: slippageSnapshot.fixedBps ?? 5,
+          baseSlippageBps: slippageSnapshot.baseBps ?? 5,
+          volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
+        }
+      : DEFAULT_SLIPPAGE_CONFIG;
+
+    // Determine starting index: either from checkpoint or from beginning
+    const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
+
+    if (isResuming) {
+      this.logger.log(
+        `Resuming from index ${startIndex} of ${timestamps.length} (${((startIndex / timestamps.length) * 100).toFixed(1)}% complete)`
+      );
+    }
+
+    // Track result counts at last checkpoint for proper slicing during incremental persistence
+    let lastCheckpointCounts =
+      isResuming && options.resumeFrom
+        ? { ...options.resumeFrom.persistedCounts }
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+
+    // Track timestamp index for checkpoint interval calculation
+    let lastCheckpointIndex = startIndex - 1;
+
+    // Track consecutive pause check failures for resilience
+    // If pause checks fail repeatedly, force a pause as a safety measure
+    const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
+    let consecutivePauseFailures = 0;
+
+    for (let i = startIndex; i < timestamps.length; i++) {
+      // Check for pause request BEFORE processing this timestamp
+      if (options.shouldPause) {
+        try {
+          const shouldPauseNow = await options.shouldPause();
+
+          // Reset failure counter on successful check
+          consecutivePauseFailures = 0;
+
+          if (shouldPauseNow) {
+            const checkpointState = this.buildCheckpointState(
+              i - 1, // Last successfully processed index
+              timestamps[Math.max(0, i - 1)],
+              portfolio,
+              peakValue,
+              maxDrawdown,
+              rng.getState(),
+              trades.length,
+              signals.length,
+              simulatedFills.length,
+              snapshots.length
+            );
+
+            this.logger.log(`Live replay paused at index ${i - 1}/${timestamps.length}`);
+
+            // Call onPaused callback for state persistence
+            if (options.onPaused) {
+              await options.onPaused(checkpointState);
+            }
+
+            // Calculate partial final metrics
+            const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+
+            return {
+              trades,
+              signals,
+              simulatedFills,
+              snapshots,
+              finalMetrics,
+              paused: true,
+              pausedCheckpoint: checkpointState
+            };
+          }
+        } catch (pauseError) {
+          consecutivePauseFailures++;
+          this.logger.warn(
+            `Pause check failed at index ${i} (attempt ${consecutivePauseFailures}/${MAX_CONSECUTIVE_PAUSE_FAILURES}): ${pauseError.message}`
+          );
+
+          // If pause checks fail repeatedly, force a precautionary pause
+          // This ensures we don't miss a user's pause request due to transient Redis issues
+          if (consecutivePauseFailures >= MAX_CONSECUTIVE_PAUSE_FAILURES) {
+            this.logger.error(
+              `Pause check failed ${MAX_CONSECUTIVE_PAUSE_FAILURES} times consecutively, forcing precautionary pause`
+            );
+
+            const checkpointState = this.buildCheckpointState(
+              i - 1,
+              timestamps[Math.max(0, i - 1)],
+              portfolio,
+              peakValue,
+              maxDrawdown,
+              rng.getState(),
+              trades.length,
+              signals.length,
+              simulatedFills.length,
+              snapshots.length
+            );
+
+            if (options.onPaused) {
+              await options.onPaused(checkpointState);
+            }
+
+            const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+
+            return {
+              trades,
+              signals,
+              simulatedFills,
+              snapshots,
+              finalMetrics,
+              paused: true,
+              pausedCheckpoint: checkpointState
+            };
+          }
+        }
+      }
+
+      // Apply pacing delay (except for the first timestamp and MAX_SPEED)
+      if (delayMs > 0 && i > startIndex) {
+        await this.delay(delayMs);
+      }
+
+      const timestamp = new Date(timestamps[i]);
+      const currentPrices = pricesByTimestamp[timestamps[i]];
+
+      const marketData: MarketData = {
+        timestamp,
+        prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
+      };
+
+      portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
+
+      const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
+      for (const coin of coins) {
+        const history = priceHistoryByCoin.get(coin.id) ?? [];
+        let pointer = indexByCoin.get(coin.id) ?? -1;
+        while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
+          pointer += 1;
+        }
+        indexByCoin.set(coin.id, pointer);
+        if (pointer >= 0) {
+          const summaries = priceSummariesByCoin.get(coin.id) ?? [];
+          priceData[coin.id] = summaries.slice(0, pointer + 1);
+        }
+      }
+
+      const context = {
+        coins,
+        priceData,
+        timestamp,
+        config: backtest.configSnapshot?.parameters ?? {},
+        positions: Object.fromEntries(
+          [...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity])
+        ),
+        availableBalance: portfolio.cashBalance,
+        metadata: {
+          datasetId: options.dataset.id,
+          deterministicSeed: options.deterministicSeed,
+          backtestId: backtest.id,
+          isLiveReplay: true,
+          replaySpeed: replaySpeed
+        }
+      };
+
+      let strategySignals: TradingSignal[] = [];
+      try {
+        const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        if (result.success && result.signals?.length) {
+          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+        }
+      } catch (error) {
+        if (error instanceof AlgorithmNotRegisteredException) {
+          throw error;
+        }
+        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+      }
+
+      for (const strategySignal of strategySignals) {
+        const signalRecord: Partial<BacktestSignal> = {
+          timestamp,
+          signalType:
+            strategySignal.action === 'BUY'
+              ? SignalType.ENTRY
+              : strategySignal.action === 'SELL'
+                ? SignalType.EXIT
+                : SignalType.ADJUSTMENT,
+          instrument: strategySignal.coinId,
+          direction:
+            strategySignal.action === 'HOLD'
+              ? SignalDirection.FLAT
+              : strategySignal.action === 'BUY'
+                ? SignalDirection.LONG
+                : SignalDirection.SHORT,
+          quantity: strategySignal.quantity ?? strategySignal.percentage ?? 0,
+          price: marketData.prices.get(strategySignal.coinId),
+          reason: strategySignal.reason,
+          confidence: strategySignal.confidence,
+          payload: strategySignal.metadata,
+          backtest
+        };
+        signals.push(signalRecord);
+
+        // Extract volume from current candle for volume-based slippage calculation
+        const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
+
+        const tradeResult = await this.executeTrade(
+          strategySignal,
+          portfolio,
+          marketData,
+          backtest.tradingFee,
+          rng,
+          slippageConfig,
+          dailyVolume
+        );
+        if (tradeResult) {
+          const { trade, slippageBps } = tradeResult;
+
+          const baseCoin = coinMap.get(strategySignal.coinId);
+          if (!baseCoin) {
+            throw new Error(
+              `baseCoin not found for coinId ${strategySignal.coinId}. Ensure all coins referenced by the algorithm are included in the backtest.`
+            );
+          }
+
+          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
+          simulatedFills.push({
+            orderType: SimulatedOrderType.MARKET,
+            status: SimulatedOrderStatus.FILLED,
+            filledQuantity: trade.quantity,
+            averagePrice: trade.price,
+            fees: trade.fee,
+            slippageBps,
+            executionTimestamp: timestamp,
+            instrument: strategySignal.coinId,
+            metadata: trade.metadata,
+            backtest
+          });
+        }
+      }
+
+      if (portfolio.totalValue > peakValue) {
+        peakValue = portfolio.totalValue;
+      }
+      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      if (currentDrawdown > maxDrawdown) {
+        maxDrawdown = currentDrawdown;
+      }
+
+      if (i % 24 === 0 || i === timestamps.length - 1) {
+        snapshots.push({
+          timestamp,
+          portfolioValue: portfolio.totalValue,
+          cashBalance: portfolio.cashBalance,
+          holdings: this.portfolioToHoldings(portfolio, marketData.prices),
+          cumulativeReturn: (portfolio.totalValue - backtest.initialCapital) / backtest.initialCapital,
+          drawdown: currentDrawdown,
+          backtest
+        });
+
+        if (options.telemetryEnabled) {
+          await this.backtestStream.publishMetric(backtest.id, 'portfolio_value', portfolio.totalValue, 'USD', {
+            timestamp: timestamp.toISOString(),
+            isLiveReplay: 1,
+            replaySpeed: ReplaySpeed[replaySpeed]
+          });
+        }
+      }
+
+      // Checkpoint callback: save state periodically for resume capability
+      // Live replay uses more frequent checkpoints (default: 100 vs 500 for historical)
+      const timeSinceLastCheckpoint = i - lastCheckpointIndex;
+      if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
+        const checkpointState = this.buildCheckpointState(
+          i,
+          timestamp.toISOString(),
+          portfolio,
+          peakValue,
+          maxDrawdown,
+          rng.getState(),
+          trades.length,
+          signals.length,
+          simulatedFills.length,
+          snapshots.length
+        );
+
+        // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
+        const checkpointResults: CheckpointResults = {
+          trades: trades.slice(lastCheckpointCounts.trades),
+          signals: signals.slice(lastCheckpointCounts.signals),
+          simulatedFills: simulatedFills.slice(lastCheckpointCounts.fills),
+          snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
+        };
+
+        // Pass total timestamps count to callback for accurate progress reporting
+        await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
+
+        // Update counts for next checkpoint slice
+        lastCheckpointCounts = {
+          trades: trades.length,
+          signals: signals.length,
+          fills: simulatedFills.length,
+          snapshots: snapshots.length
+        };
+        lastCheckpointIndex = i;
+
+        this.logger.debug(
+          `Live replay checkpoint saved at index ${i}/${timestamps.length} (${((i / timestamps.length) * 100).toFixed(1)}%)`
+        );
+      }
+    }
+
+    const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+
+    if (options.telemetryEnabled) {
+      await this.backtestStream.publishMetric(
+        backtest.id,
+        'final_value',
+        finalMetrics.finalValue ?? portfolio.totalValue,
+        'USD',
+        { isLiveReplay: 1 }
+      );
+      await this.backtestStream.publishMetric(backtest.id, 'total_return', finalMetrics.totalReturn ?? 0, 'pct', {
+        isLiveReplay: 1
+      });
+      await this.backtestStream.publishStatus(backtest.id, 'completed', undefined, { isLiveReplay: true });
+    }
+
+    this.logger.log(
+      `Live replay backtest completed: ${trades.length} trades, final value: $${portfolio.totalValue.toFixed(2)}`
+    );
+
+    return { trades, signals, simulatedFills, snapshots, finalMetrics, paused: false };
   }
 
   /**

@@ -16,6 +16,7 @@ import {
 
 import { ColumnNumericTransformer } from './../../utils/transformers';
 import { BacktestCheckpointState } from './backtest-checkpoint.interface';
+import { LiveReplayState } from './backtest-pacing.interface';
 import { MarketDataSet } from './market-data-set.entity';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
@@ -194,6 +195,10 @@ export class Backtest {
   @Column({ type: 'integer', default: 0 })
   @ApiProperty({ description: 'Total number of timestamps to process', default: 0 })
   totalTimestampCount: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: 'Live replay state for pause/resume and pacing configuration', required: false })
+  liveReplayState?: LiveReplayState;
 
   @Index('backtest_userId_index')
   @ManyToOne('User', { nullable: false, onDelete: 'CASCADE' })
