@@ -179,7 +179,7 @@ export class Pipeline {
   completedAt?: Date;
 
   // Relations
-  @ManyToOne('User', { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   @ApiProperty({ description: 'User who created the pipeline' })
   user: Relation<User>;

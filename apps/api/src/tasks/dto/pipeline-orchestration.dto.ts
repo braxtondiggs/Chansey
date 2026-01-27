@@ -28,6 +28,16 @@ export interface RiskOptimizationConfig {
 }
 
 /**
+ * Risk-based stop conditions for paper trading
+ */
+export interface RiskStopConditions {
+  /** Stop if drawdown exceeds this percentage (e.g., 0.20 = 20%) */
+  maxDrawdown: number;
+  /** Stop if return reaches target (e.g., 0.30 = 30%) */
+  targetReturn: number;
+}
+
+/**
  * Paper Trading Duration Matrix
  *
  * Maps user risk levels (1-5) to paper trading duration.
@@ -61,6 +71,28 @@ export const OPTIMIZATION_CONFIG: Record<number, RiskOptimizationConfig> = {
   3: { trainDays: 90, testDays: 30, stepDays: 14, maxCombinations: 500 }, // Default
   4: { trainDays: 60, testDays: 21, stepDays: 10, maxCombinations: 300 },
   5: { trainDays: 30, testDays: 14, stepDays: 7, maxCombinations: 200 } // Aggressive
+};
+
+/**
+ * Paper Trading Stop Conditions Matrix
+ *
+ * Maps user risk levels (1-5) to stop conditions.
+ * Lower risk levels have tighter drawdown limits and lower target returns.
+ *
+ * | Level | Description      | Max Drawdown | Target Return |
+ * |-------|------------------|--------------|---------------|
+ * | 1     | Conservative     | 15%          | 25%           |
+ * | 2     | Low-Moderate     | 20%          | 35%           |
+ * | 3     | Moderate         | 25%          | 50%           |
+ * | 4     | Moderate-High    | 30%          | 75%           |
+ * | 5     | Aggressive       | 40%          | 100%          |
+ */
+export const STOP_CONDITIONS_CONFIG: Record<number, RiskStopConditions> = {
+  1: { maxDrawdown: 0.15, targetReturn: 0.25 }, // Conservative - tight stops
+  2: { maxDrawdown: 0.2, targetReturn: 0.35 },
+  3: { maxDrawdown: 0.25, targetReturn: 0.5 }, // Default
+  4: { maxDrawdown: 0.3, targetReturn: 0.75 },
+  5: { maxDrawdown: 0.4, targetReturn: 1.0 } // Aggressive - wide stops
 };
 
 /** Default risk level when user's risk level is not set */
@@ -132,11 +164,20 @@ export function getOptimizationConfig(riskLevel: number): RiskOptimizationConfig
 }
 
 /**
+ * Get stop conditions for a given risk level
+ * Falls back to default (level 3) if level is invalid
+ */
+export function getStopConditions(riskLevel: number): RiskStopConditions {
+  return STOP_CONDITIONS_CONFIG[riskLevel] ?? STOP_CONDITIONS_CONFIG[DEFAULT_RISK_LEVEL];
+}
+
+/**
  * Build complete stage configuration for a pipeline based on risk level
  */
 export function buildStageConfigFromRisk(riskLevel: number): PipelineStageConfig {
   const optimizationConfig = getOptimizationConfig(riskLevel);
   const paperTradingDuration = getPaperTradingDuration(riskLevel);
+  const stopConditions = getStopConditions(riskLevel);
 
   // Calculate date ranges
   const now = new Date();
@@ -178,10 +219,7 @@ export function buildStageConfigFromRisk(riskLevel: number): PipelineStageConfig
     initialCapital: PIPELINE_STANDARD_CAPITAL,
     duration: paperTradingDuration,
     tradingFee: STANDARD_TRADING_FEE,
-    stopConditions: {
-      maxDrawdown: 0.25, // Stop at 25% drawdown
-      targetReturn: 0.5 // Stop at 50% gain
-    }
+    stopConditions
   };
 
   return {

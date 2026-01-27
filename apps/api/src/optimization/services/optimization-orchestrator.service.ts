@@ -10,6 +10,7 @@ import { GridSearchService } from './grid-search.service';
 
 import { Coin } from '../../coin/coin.entity';
 import { BacktestEngine, OptimizationBacktestConfig } from '../../order/backtest/backtest-engine.service';
+import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
@@ -677,7 +678,7 @@ export class OptimizationOrchestratorService {
     );
 
     // Emit completion event for pipeline orchestrator
-    this.eventEmitter.emit('optimization.completed', {
+    this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_COMPLETED, {
       runId: run.id,
       strategyConfigId: run.strategyConfigId,
       bestParameters: bestParameters ?? {},

@@ -430,10 +430,10 @@ export class PipelineOrchestratorService {
     bestScore: number,
     improvement: number
   ): Promise<void> {
-    // Find pipeline in OPTIMIZE stage for this strategy config
+    // Find pipeline by optimizationRunId for uniqueness (strategyConfigId could match multiple pipelines)
     const pipeline = await this.pipelineRepository.findOne({
       where: {
-        strategyConfigId,
+        optimizationRunId: runId,
         currentStage: PipelineStage.OPTIMIZE,
         status: PipelineStatus.RUNNING
       },
@@ -866,7 +866,7 @@ export class PipelineOrchestratorService {
           ? {
               enabled: true,
               patience: config.patience ?? 20,
-              minImprovement: 5 // 5% improvement required to reset patience
+              minImprovement: pipeline.progressionRules?.optimization?.minImprovement ?? 5
             }
           : undefined,
         parallelism: {

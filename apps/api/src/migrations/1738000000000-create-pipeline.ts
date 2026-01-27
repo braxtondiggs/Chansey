@@ -61,7 +61,7 @@ export class CreatePipeline1738000000000 implements MigrationInterface {
         "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
         "startedAt" TIMESTAMPTZ,
         "completedAt" TIMESTAMPTZ,
-        "userId" VARCHAR(255) NOT NULL,
+        "userId" UUID NOT NULL,
         CONSTRAINT "fk_pipelines_user" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE,
         CONSTRAINT "fk_pipelines_strategy_config" FOREIGN KEY ("strategyConfigId") REFERENCES "strategy_configs"("id") ON DELETE CASCADE,
         CONSTRAINT "fk_pipelines_exchange_key" FOREIGN KEY ("exchangeKeyId") REFERENCES "exchange_key"("id") ON DELETE CASCADE,
