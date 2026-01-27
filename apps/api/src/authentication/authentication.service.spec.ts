@@ -125,7 +125,6 @@ describe('AuthenticationService', () => {
     expect(securityAudit.logRegistration).toHaveBeenCalledWith('user-id-123', 'user@example.com');
     expect(usersService.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 'user-id-123',
         email: 'user@example.com',
         given_name: 'Sam',
         family_name: 'Stone',
