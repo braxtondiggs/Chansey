@@ -394,14 +394,18 @@ export class OHLCService {
     const [totalCandles, coinsWithDataResult, oldestCandle, newestCandle, lastSyncResult] = await Promise.all([
       this.ohlcRepository.count(),
       this.ohlcRepository.createQueryBuilder('candle').select('COUNT(DISTINCT candle.coinId)', 'count').getRawOne(),
-      this.ohlcRepository.findOne({
-        order: { timestamp: 'ASC' },
-        select: ['timestamp']
-      }),
-      this.ohlcRepository.findOne({
-        order: { timestamp: 'DESC' },
-        select: ['timestamp']
-      }),
+      this.ohlcRepository
+        .createQueryBuilder('candle')
+        .select('candle.timestamp')
+        .orderBy('candle.timestamp', 'ASC')
+        .take(1)
+        .getOne(),
+      this.ohlcRepository
+        .createQueryBuilder('candle')
+        .select('candle.timestamp')
+        .orderBy('candle.timestamp', 'DESC')
+        .take(1)
+        .getOne(),
       this.symbolMapRepository.findOne({
         where: { isActive: true },
         order: { lastSyncAt: 'DESC' },
