@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../exchange/exchange.service';
+import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 import { CoinService } from '../coin.service';
 
 @Processor('coin-queue')
@@ -391,12 +392,27 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                 description: coin.description.en,
                 image: coin.image.large || coin.image.small || coin.image.thumb,
                 genesis: coin.genesis_date,
-                totalSupply: coin.market_data.total_supply,
-                totalVolume: coin.market_data.total_volume.usd,
-                circulatingSupply: coin.market_data.circulating_supply,
-                maxSupply: coin.market_data.max_supply,
+                totalSupply: sanitizeNumericValue(coin.market_data.total_supply, {
+                  fieldName: `${symbol}.totalSupply`,
+                  allowNegative: false
+                }),
+                totalVolume: sanitizeNumericValue(coin.market_data.total_volume.usd, {
+                  fieldName: `${symbol}.totalVolume`,
+                  allowNegative: false
+                }),
+                circulatingSupply: sanitizeNumericValue(coin.market_data.circulating_supply, {
+                  fieldName: `${symbol}.circulatingSupply`,
+                  allowNegative: false
+                }),
+                maxSupply: sanitizeNumericValue(coin.market_data.max_supply, {
+                  fieldName: `${symbol}.maxSupply`,
+                  allowNegative: false
+                }),
                 marketRank: coin.market_cap_rank,
-                marketCap: coin.market_data.market_cap.usd,
+                marketCap: sanitizeNumericValue(coin.market_data.market_cap.usd, {
+                  fieldName: `${symbol}.marketCap`,
+                  allowNegative: false
+                }),
                 geckoRank: coin.coingecko_rank ?? geckoRank ?? null,
                 developerScore: coin.developer_score,
                 communityScore: coin.community_score,
@@ -418,7 +434,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                 priceChangePercentage60d: coin.market_data.price_change_percentage_60d,
                 priceChangePercentage200d: coin.market_data.price_change_percentage_200d,
                 priceChangePercentage1y: coin.market_data.price_change_percentage_1y,
-                marketCapChange24h: coin.market_data.market_cap_change_24h,
+                marketCapChange24h: sanitizeNumericValue(coin.market_data.market_cap_change_24h, {
+                  fieldName: `${symbol}.marketCapChange24h`
+                }),
                 marketCapChangePercentage24h: coin.market_data.market_cap_change_percentage_24h,
                 geckoLastUpdatedAt: coin.market_data.last_updated
               });
