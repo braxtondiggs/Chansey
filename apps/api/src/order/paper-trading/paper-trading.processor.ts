@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Job } from 'bullmq';
@@ -12,6 +13,7 @@ import { PaperTradingStreamService } from './paper-trading-stream.service';
 import { paperTradingConfig } from './paper-trading.config';
 import {
   AnyPaperTradingJobData,
+  NotifyPipelineJobData,
   PaperTradingJobType,
   StartSessionJobData,
   StopSessionJobData,
@@ -43,10 +45,29 @@ class UnrecoverableError extends Error {
   }
 }
 
-// Helper function to classify errors
-function classifyError(error: Error): 'recoverable' | 'unrecoverable' {
+/**
+ * Classify an error and wrap it in the appropriate error class.
+ * Returns a RecoverableError or UnrecoverableError based on error characteristics.
+ */
+function classifyError(error: Error): RecoverableError | UnrecoverableError {
   const errorMessage = error.message?.toLowerCase() ?? '';
   const errorName = error.name?.toLowerCase() ?? '';
+
+  // Configuration and authentication errors are unrecoverable
+  if (
+    errorMessage.includes('invalid api key') ||
+    errorMessage.includes('authentication') ||
+    errorMessage.includes('unauthorized') ||
+    errorMessage.includes('forbidden') ||
+    errorMessage.includes('401') ||
+    errorMessage.includes('403') ||
+    errorMessage.includes('not found') ||
+    errorMessage.includes('algorithm') ||
+    errorMessage.includes('configuration') ||
+    errorMessage.includes('invalid parameter')
+  ) {
+    return new UnrecoverableError(error.message, error);
+  }
 
   // Network and rate limit errors are recoverable
   if (
@@ -63,27 +84,11 @@ function classifyError(error: Error): 'recoverable' | 'unrecoverable' {
     errorMessage.includes('502') ||
     errorMessage.includes('temporarily unavailable')
   ) {
-    return 'recoverable';
-  }
-
-  // Configuration and authentication errors are unrecoverable
-  if (
-    errorMessage.includes('invalid api key') ||
-    errorMessage.includes('authentication') ||
-    errorMessage.includes('unauthorized') ||
-    errorMessage.includes('forbidden') ||
-    errorMessage.includes('401') ||
-    errorMessage.includes('403') ||
-    errorMessage.includes('not found') ||
-    errorMessage.includes('algorithm') ||
-    errorMessage.includes('configuration') ||
-    errorMessage.includes('invalid parameter')
-  ) {
-    return 'unrecoverable';
+    return new RecoverableError(error.message, error);
   }
 
   // Default to recoverable for unknown errors
-  return 'recoverable';
+  return new RecoverableError(error.message, error);
 }
 
 @Injectable()
@@ -101,7 +106,8 @@ export class PaperTradingProcessor extends WorkerHost {
     private readonly paperTradingService: PaperTradingService,
     private readonly engineService: PaperTradingEngineService,
     private readonly streamService: PaperTradingStreamService,
-    private readonly metricsService: MetricsService
+    private readonly metricsService: MetricsService,
+    private readonly eventEmitter: EventEmitter2
   ) {
     super();
     this.maxConsecutiveErrors = config.maxConsecutiveErrors;
@@ -121,6 +127,9 @@ export class PaperTradingProcessor extends WorkerHost {
         break;
       case PaperTradingJobType.STOP_SESSION:
         await this.handleStopSession(job.data as StopSessionJobData);
+        break;
+      case PaperTradingJobType.NOTIFY_PIPELINE:
+        await this.handleNotifyPipeline(job.data as NotifyPipelineJobData);
         break;
       default:
         this.logger.warn(`Unknown job type: ${type}`);
@@ -263,14 +272,14 @@ export class PaperTradingProcessor extends WorkerHost {
     } catch (error) {
       this.logger.error(`Tick processing error for session ${sessionId}: ${error.message}`, error.stack);
 
-      const errorType = classifyError(error);
+      const classifiedError = classifyError(error);
 
-      if (errorType === 'unrecoverable') {
+      if (classifiedError instanceof UnrecoverableError) {
         // Unrecoverable errors should fail the session immediately
         this.logger.warn(`Session ${sessionId} encountered unrecoverable error, marking as failed`);
-        await this.paperTradingService.markFailed(sessionId, `Unrecoverable error: ${error.message}`);
+        await this.paperTradingService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
         await this.streamService.publishStatus(sessionId, 'failed', 'unrecoverable_error', {
-          errorMessage: error.message,
+          errorMessage: classifiedError.message,
           errorType: 'unrecoverable'
         });
         return;
@@ -281,12 +290,12 @@ export class PaperTradingProcessor extends WorkerHost {
       await this.sessionRepository.save(session);
 
       if (session.consecutiveErrors >= this.maxConsecutiveErrors) {
-        await this.pauseSessionDueToErrors(session, error.message);
+        await this.pauseSessionDueToErrors(session, classifiedError.message);
       } else {
         await this.streamService.publishLog(
           sessionId,
           'warn',
-          `Recoverable error (${session.consecutiveErrors}/${this.maxConsecutiveErrors}): ${error.message}`,
+          `Recoverable error (${session.consecutiveErrors}/${this.maxConsecutiveErrors}): ${classifiedError.message}`,
           {
             errorType: 'recoverable',
             consecutiveErrors: session.consecutiveErrors
@@ -344,6 +353,21 @@ export class PaperTradingProcessor extends WorkerHost {
     } catch (error) {
       this.logger.error(`Failed to finalize session ${sessionId}: ${error.message}`, error.stack);
     }
+  }
+
+  /**
+   * Handle pipeline notification - emit event to pipeline orchestrator
+   * This is processed as a job for reliable delivery even if the process crashes
+   */
+  private async handleNotifyPipeline(data: NotifyPipelineJobData): Promise<void> {
+    const { sessionId, pipelineId, stoppedReason } = data;
+    this.logger.log(`Notifying pipeline ${pipelineId} about session ${sessionId} completion`);
+
+    this.eventEmitter.emit('paper-trading.completed', {
+      sessionId,
+      pipelineId,
+      stoppedReason
+    });
   }
 
   /**

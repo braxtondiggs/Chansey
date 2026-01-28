@@ -6,11 +6,18 @@ import {
   DiskHealthIndicator,
   HealthCheck,
   HealthCheckService,
-  HttpHealthIndicator,
   MemoryHealthIndicator,
   MicroserviceHealthIndicator,
   TypeOrmHealthIndicator
 } from '@nestjs/terminus';
+
+import {
+  BullMQHealthIndicator,
+  DatabasePoolHealthIndicator,
+  ExchangeHealthIndicator,
+  OHLCHealthIndicator,
+  RedisHealthIndicator
+} from './indicators';
 
 @ApiExcludeController()
 @Controller('health')
@@ -18,11 +25,15 @@ export class HealthController {
   constructor(
     private readonly config: ConfigService,
     private readonly health: HealthCheckService,
-    private readonly http: HttpHealthIndicator,
     private readonly memory: MemoryHealthIndicator,
     private readonly microservice: MicroserviceHealthIndicator,
     private readonly typeOrm: TypeOrmHealthIndicator,
-    private readonly disk: DiskHealthIndicator
+    private readonly disk: DiskHealthIndicator,
+    private readonly bullmq: BullMQHealthIndicator,
+    private readonly databasePool: DatabasePoolHealthIndicator,
+    private readonly exchange: ExchangeHealthIndicator,
+    private readonly ohlc: OHLCHealthIndicator,
+    private readonly redisPerformance: RedisHealthIndicator
   ) {}
 
   @Get()
@@ -31,6 +42,9 @@ export class HealthController {
     return this.health.check([
       // Database connectivity
       () => this.typeOrm.pingCheck('database'),
+
+      // Database connection pool health
+      () => this.databasePool.isHealthy('database_pool'),
 
       // Redis connectivity
       () =>
@@ -46,6 +60,9 @@ export class HealthController {
           }
         }),
 
+      // Redis performance metrics
+      () => this.redisPerformance.isHealthy('redis_performance'),
+
       // MinIO storage connectivity
       () =>
         this.microservice.pingCheck<TcpClientOptions>('minio', {
@@ -57,8 +74,8 @@ export class HealthController {
           }
         }),
 
-      // Memory usage check (fails if heap > 150MB)
-      () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
+      // Memory usage check (fails if heap > 512MB)
+      () => this.memory.checkHeap('memory_heap', 512 * 1024 * 1024),
 
       // Disk space check (fails if > 90% full)
       () =>
@@ -67,8 +84,14 @@ export class HealthController {
           thresholdPercent: 0.9
         }),
 
-      // External API check (CoinGecko)
-      () => this.http.pingCheck('coingecko', 'https://api.coingecko.com/api/v3/ping')
+      // BullMQ queue health
+      () => this.bullmq.isHealthy('queues'),
+
+      // Exchange connectivity and latency
+      () => this.exchange.isHealthy('exchanges'),
+
+      // OHLC data freshness
+      () => this.ohlc.isHealthy('ohlc_data')
     ]);
   }
 }
