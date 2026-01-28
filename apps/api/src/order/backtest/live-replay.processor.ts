@@ -56,8 +56,13 @@ export class LiveReplayProcessor extends WorkerHost {
         throw new Error(`Backtest ${backtestId} not found`);
       }
 
+      // Type guard: ensure this processor only handles LIVE_REPLAY backtests
       if (backtest.type !== BacktestType.LIVE_REPLAY) {
-        this.logger.warn(`Backtest ${backtestId} is not configured for live replay. Type: ${backtest.type}`);
+        this.logger.error(`LiveReplayProcessor received wrong type: ${backtest.type}, expected LIVE_REPLAY`);
+        await this.backtestResultService.markFailed(
+          backtestId,
+          `System error: BacktestType.${backtest.type} incorrectly routed to replay processor.`
+        );
         return;
       }
 

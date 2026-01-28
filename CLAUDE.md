@@ -175,6 +175,46 @@ Portfolio module tracks investment performance with:
 When working with this codebase, prioritize understanding the exchange integration patterns and background job
 processing, as these are core to the application's functionality.
 
+### Pipeline & Backtest Architecture
+
+**User Isolation Model**: Pipelines and backtests are **strictly user-specific**. Each has a mandatory `user` FK with
+cascade delete. Users cannot see each other's results - all queries filter by `user.id`.
+
+**What Makes Each Run Unique**:
+
+| Factor             | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| User               | Each run belongs to one user                          |
+| Algorithm          | Which trading algorithm to use                        |
+| Strategy Params    | User-specific parameter overrides (e.g., MA periods)  |
+| Market Data Set    | Which historical data to backtest against             |
+| Date Range         | Start/end dates for the backtest period               |
+| Initial Capital    | Starting portfolio value                              |
+| Trading Fee        | Commission percentage                                 |
+| Slippage Model     | How to simulate execution slippage                    |
+| Risk Level (1-5)   | User's risk profile drives all pipeline stage configs |
+| Exchange Key       | User's specific exchange credentials                  |
+| Deterministic Seed | For reproducibility                                   |
+
+**Shared vs User-Specific Resources**:
+
+| Shared (Global)  | User-Specific                      |
+| ---------------- | ---------------------------------- |
+| Algorithms       | Strategy Configs (param overrides) |
+| Market Data Sets | Exchange Keys                      |
+|                  | Backtests & Pipelines              |
+|                  | Risk Profile                       |
+
+**Risk-Based Configuration** (determines pipeline stage behavior):
+
+| Risk Level       | Paper Trading | Training Period | Max Drawdown |
+| ---------------- | ------------- | --------------- | ------------ |
+| 1 (Conservative) | 14 days       | 180 days        | 15%          |
+| 3 (Moderate)     | 7 days        | 90 days         | 25%          |
+| 5 (Aggressive)   | 3 days        | 30 days         | 40%          |
+
+**Pipeline Stage Flow**: `OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADING → COMPLETED`
+
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
 
