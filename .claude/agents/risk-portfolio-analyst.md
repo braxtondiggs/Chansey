@@ -83,12 +83,12 @@ function expectedShortfall(returns: number[], confidence: number): number {
 
 ### Risk-Adjusted Returns
 
-| Metric | Formula | Interpretation |
-|--------|---------|----------------|
-| Sharpe Ratio | (Rp - Rf) / σp | Excess return per unit of total risk |
-| Sortino Ratio | (Rp - Rf) / σd | Excess return per unit of downside risk |
-| Calmar Ratio | Rp / MaxDD | Annual return per unit of max drawdown |
-| Treynor Ratio | (Rp - Rf) / β | Excess return per unit of systematic risk |
+| Metric            | Formula                | Interpretation                                  |
+| ----------------- | ---------------------- | ----------------------------------------------- |
+| Sharpe Ratio      | (Rp - Rf) / σp         | Excess return per unit of total risk            |
+| Sortino Ratio     | (Rp - Rf) / σd         | Excess return per unit of downside risk         |
+| Calmar Ratio      | Rp / MaxDD             | Annual return per unit of max drawdown          |
+| Treynor Ratio     | (Rp - Rf) / β          | Excess return per unit of systematic risk       |
 | Information Ratio | (Rp - Rb) / σ(Rp - Rb) | Excess return over benchmark per tracking error |
 
 ```typescript
@@ -354,29 +354,29 @@ interface CorrelationAlert {
 ### VaR Confidence Levels
 
 | Confidence | Z-Score | Days/Year Exceeded |
-|------------|---------|-------------------|
-| 90% | 1.282 | 25 |
-| 95% | 1.645 | 13 |
-99% | 2.326 | 2.5 |
-| 99.9% | 3.090 | 0.25 |
+| ---------- | ------- | ------------------ |
+| 90%        | 1.282   | 25                 |
+| 95%        | 1.645   | 13                 |
+| 99%        | 2.326   | 2.5                |
+| 99.9%      | 3.090   | 0.25               |
 
 ### Position Size Guidelines
 
 | Risk Tolerance | Per-Trade Risk | Max Position |
-|---------------|----------------|--------------|
-| Conservative | 0.5% | 5% |
-| Moderate | 1.0% | 10% |
-| Aggressive | 2.0% | 20% |
+| -------------- | -------------- | ------------ |
+| Conservative   | 0.5%           | 5%           |
+| Moderate       | 1.0%           | 10%          |
+| Aggressive     | 2.0%           | 20%          |
 
 ### Sharpe Ratio Interpretation
 
-| Sharpe | Quality |
-|--------|---------|
-| < 0 | Losing money |
-| 0-1 | Below average |
-| 1-2 | Good |
-| 2-3 | Very good |
-| > 3 | Excellent (verify!) |
+| Sharpe | Quality             |
+| ------ | ------------------- |
+| < 0    | Losing money        |
+| 0-1    | Below average       |
+| 1-2    | Good                |
+| 2-3    | Very good           |
+| > 3    | Excellent (verify!) |
 
 ## Session Guidance
 
@@ -388,4 +388,5 @@ When analyzing risk:
 4. **Dynamic Risk**: Risk changes with market conditions
 5. **Implementation**: Translate analysis into actionable limits
 
-Always connect theoretical concepts to the actual implementation in the codebase and provide concrete recommendations based on the user's specific situation.
+Always connect theoretical concepts to the actual implementation in the codebase and provide concrete recommendations
+based on the user's specific situation.

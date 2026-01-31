@@ -630,14 +630,25 @@ export class BacktestMonitoringService {
       )
       .addSelect('COUNT(*)', 'signalCount')
       .addSelect(
-        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END)`,
+        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
         'successRate'
       )
-      .addSelect('AVG(t.realizedPnLPercent)', 'avgReturn')
+      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
       .leftJoin(
-        BacktestTrade,
+        (subQuery) =>
+          subQuery
+            .select('t2.id', 'id')
+            .addSelect('t2.backtestId', 'backtestId')
+            .addSelect('t2.realizedPnL', 'realizedPnL')
+            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
+            .addSelect('t2.executedAt', 'executedAt')
+            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .from(BacktestTrade, 't2')
+            .leftJoin('t2.baseCoin', 'bc')
+            .leftJoin('t2.quoteCoin', 'qc')
+            .where(`t2.type = '${TradeType.SELL}'`),
         't',
-        `t.backtestId = s.backtestId AND t.type = '${TradeType.SELL}' AND t.executedAt >= s.timestamp`
+        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .andWhere('s.confidence IS NOT NULL')
@@ -666,14 +677,25 @@ export class BacktestMonitoringService {
       .select('s.signalType', 'type')
       .addSelect('COUNT(*)', 'count')
       .addSelect(
-        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END)`,
+        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
         'successRate'
       )
-      .addSelect('AVG(t.realizedPnLPercent)', 'avgReturn')
+      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
       .leftJoin(
-        BacktestTrade,
+        (subQuery) =>
+          subQuery
+            .select('t2.id', 'id')
+            .addSelect('t2.backtestId', 'backtestId')
+            .addSelect('t2.realizedPnL', 'realizedPnL')
+            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
+            .addSelect('t2.executedAt', 'executedAt')
+            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .from(BacktestTrade, 't2')
+            .leftJoin('t2.baseCoin', 'bc')
+            .leftJoin('t2.quoteCoin', 'qc')
+            .where(`t2.type = '${TradeType.SELL}'`),
         't',
-        `t.backtestId = s.backtestId AND t.type = '${TradeType.SELL}' AND t.executedAt >= s.timestamp`
+        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.signalType');
@@ -694,14 +716,25 @@ export class BacktestMonitoringService {
       .select('s.direction', 'direction')
       .addSelect('COUNT(*)', 'count')
       .addSelect(
-        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END)`,
+        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
         'successRate'
       )
-      .addSelect('AVG(t.realizedPnLPercent)', 'avgReturn')
+      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
       .leftJoin(
-        BacktestTrade,
+        (subQuery) =>
+          subQuery
+            .select('t2.id', 'id')
+            .addSelect('t2.backtestId', 'backtestId')
+            .addSelect('t2.realizedPnL', 'realizedPnL')
+            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
+            .addSelect('t2.executedAt', 'executedAt')
+            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .from(BacktestTrade, 't2')
+            .leftJoin('t2.baseCoin', 'bc')
+            .leftJoin('t2.quoteCoin', 'qc')
+            .where(`t2.type = '${TradeType.SELL}'`),
         't',
-        `t.backtestId = s.backtestId AND t.type = '${TradeType.SELL}' AND t.executedAt >= s.timestamp`
+        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.direction');
@@ -722,14 +755,25 @@ export class BacktestMonitoringService {
       .select('s.instrument', 'instrument')
       .addSelect('COUNT(*)', 'count')
       .addSelect(
-        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END)`,
+        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
         'successRate'
       )
-      .addSelect('AVG(t.realizedPnLPercent)', 'avgReturn')
+      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
       .leftJoin(
-        BacktestTrade,
+        (subQuery) =>
+          subQuery
+            .select('t2.id', 'id')
+            .addSelect('t2.backtestId', 'backtestId')
+            .addSelect('t2.realizedPnL', 'realizedPnL')
+            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
+            .addSelect('t2.executedAt', 'executedAt')
+            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .from(BacktestTrade, 't2')
+            .leftJoin('t2.baseCoin', 'bc')
+            .leftJoin('t2.quoteCoin', 'qc')
+            .where(`t2.type = '${TradeType.SELL}'`),
         't',
-        `t.backtestId = s.backtestId AND t.type = '${TradeType.SELL}' AND t.executedAt >= s.timestamp`
+        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.instrument')
