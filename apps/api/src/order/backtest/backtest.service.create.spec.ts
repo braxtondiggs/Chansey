@@ -159,7 +159,7 @@ describe('BacktestService.createBacktest', () => {
         deterministicSeed: 'seed-1',
         mode: BacktestType.PAPER_TRADING
       }),
-      { jobId: 'backtest-1', removeOnComplete: true }
+      { jobId: 'backtest-1', removeOnComplete: true, removeOnFail: false }
     );
     expect(metricsService.recordBacktestCreated).toHaveBeenCalledWith(BacktestType.PAPER_TRADING, 'Algo');
   });

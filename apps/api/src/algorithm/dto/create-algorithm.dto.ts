@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { IsBoolean, IsOptional, IsString, Validate, IsEnum, IsObject, IsNumber } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, IsString, Validate } from 'class-validator';
 
-import { AlgorithmStatus, AlgorithmCategory, AlgorithmConfig } from '../algorithm.entity';
+import { AlgorithmCategory, AlgorithmConfig, AlgorithmStatus } from '../algorithm.entity';
 
 export class CreateAlgorithmDto {
   @IsString()
@@ -50,10 +50,10 @@ export class CreateAlgorithmDto {
 
   @IsOptional()
   @IsBoolean()
-  @ApiPropertyOptional({ 
-    example: true, 
-    default: true, 
-    description: 'Whether to include this algorithm in evaluations' 
+  @ApiPropertyOptional({
+    example: true,
+    default: true,
+    description: 'Whether to include this algorithm in evaluations'
   })
   evaluate?: boolean;
 
