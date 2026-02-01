@@ -196,8 +196,8 @@ describe('PaperTradingService', () => {
     expect(paperTradingQueue.removeJobScheduler).toHaveBeenCalledWith('paper-trading-tick-session-4');
   });
 
-  it('stops a session and emits pipeline completion event', async () => {
-    const { service, paperTradingQueue, eventEmitter } = createService();
+  it('stops a session and enqueues pipeline notification', async () => {
+    const { service, paperTradingQueue } = createService();
 
     const session = { id: 'session-5', status: PaperTradingStatus.ACTIVE, pipelineId: 'pipe-1' } as any;
     jest.spyOn(service, 'findOne').mockResolvedValue(session);
@@ -211,11 +211,17 @@ describe('PaperTradingService', () => {
       { type: PaperTradingJobType.STOP_SESSION, sessionId: 'session-5', userId: mockUser.id, reason: 'user_cancelled' },
       { jobId: 'paper-trading-stop-session-5' }
     );
-    expect(eventEmitter.emit).toHaveBeenCalledWith('paper-trading.completed', {
-      sessionId: 'session-5',
-      pipelineId: 'pipe-1',
-      stoppedReason: 'user_cancelled'
-    });
+    expect(paperTradingQueue.add).toHaveBeenCalledWith(
+      'notify-pipeline',
+      expect.objectContaining({
+        type: PaperTradingJobType.NOTIFY_PIPELINE,
+        sessionId: 'session-5',
+        pipelineId: 'pipe-1',
+        stoppedReason: 'user_cancelled',
+        userId: mockUser.id
+      }),
+      expect.objectContaining({ jobId: 'paper-trading-notify-session-5' })
+    );
     expect(result).toBe(session);
   });
 
