@@ -66,7 +66,7 @@ export function sanitizeNumericValue(value: unknown, options: SanitizeNumericOpt
   // Check for overflow: count integer digits
   const absValue = Math.abs(numValue);
   const integerPart = Math.floor(absValue);
-  const integerDigits = integerPart === 0 ? 1 : Math.floor(Math.log10(integerPart)) + 1;
+  const integerDigits = integerPart === 0 ? 1 : BigInt(integerPart).toString().length;
 
   if (integerDigits > maxIntegerDigits) {
     logger.warn(

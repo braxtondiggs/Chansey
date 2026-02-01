@@ -87,6 +87,17 @@ describe('sanitizeNumericValue', () => {
       expect(sanitizeNumericValue(value, { maxIntegerDigits: 10 })).toBeNull();
       expect(sanitizeNumericValue(value, { maxIntegerDigits: 15 })).toBe(value);
     });
+
+    it('should correctly count digits for numbers near powers of 10', () => {
+      // These values caused issues with Math.log10 due to floating-point precision
+      // 999999999999999 has 15 digits
+      expect(sanitizeNumericValue(999999999999999, { maxIntegerDigits: 15 })).toBe(999999999999999);
+      expect(sanitizeNumericValue(999999999999999, { maxIntegerDigits: 14 })).toBeNull();
+
+      // 1000000000000000 has 16 digits
+      expect(sanitizeNumericValue(1000000000000000, { maxIntegerDigits: 16 })).toBe(1000000000000000);
+      expect(sanitizeNumericValue(1000000000000000, { maxIntegerDigits: 15 })).toBeNull();
+    });
   });
 
   describe('negative value handling', () => {
