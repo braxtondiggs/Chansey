@@ -1,5 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
@@ -9,6 +10,7 @@ import { GridSearchService } from './grid-search.service';
 
 import { Coin } from '../../coin/coin.entity';
 import { BacktestEngine, OptimizationBacktestConfig } from '../../order/backtest/backtest-engine.service';
+import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
@@ -51,7 +53,8 @@ export class OptimizationOrchestratorService {
     private readonly walkForwardService: WalkForwardService,
     private readonly windowProcessor: WindowProcessor,
     private readonly backtestEngine: BacktestEngine,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   /**
@@ -673,6 +676,15 @@ export class OptimizationOrchestratorService {
     this.logger.log(
       `Optimization run ${run.id} completed. Best score: ${bestScore.toFixed(4)}, Improvement: ${improvement.toFixed(2)}%`
     );
+
+    // Emit completion event for pipeline orchestrator
+    this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_COMPLETED, {
+      runId: run.id,
+      strategyConfigId: run.strategyConfigId,
+      bestParameters: bestParameters ?? {},
+      bestScore,
+      improvement: run.improvement
+    });
   }
 
   /**

@@ -1,3 +1,4 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -62,6 +63,10 @@ describe('BacktestResultService', () => {
     recordCheckpointOrphansCleaned: jest.fn()
   };
 
+  const mockEventEmitter = {
+    emit: jest.fn()
+  };
+
   // Mock QueryRunner for transaction testing
   const mockQueryRunner = {
     connect: jest.fn(),
@@ -95,6 +100,7 @@ describe('BacktestResultService', () => {
         { provide: getRepositoryToken(BacktestPerformanceSnapshot), useValue: mockBacktestSnapshotRepository },
         { provide: DataSource, useValue: mockDataSource },
         { provide: BacktestStreamService, useValue: mockBacktestStreamService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: MetricsService, useValue: mockMetricsService }
       ]
     }).compile();
@@ -240,6 +246,44 @@ describe('BacktestResultService', () => {
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(Backtest, expect.any(Object));
       expect(mockMetricsService.recordRecordsPersisted).not.toHaveBeenCalled();
       expect(endTimer).toHaveBeenCalled();
+    });
+
+    it('emits backtest.completed event for mapped backtest type', async () => {
+      mockMetricsService.startPersistenceTimer.mockReturnValue(jest.fn());
+      mockQueryRunner.manager.save.mockResolvedValue({});
+
+      const backtest = {
+        ...mockBacktest,
+        type: 'HISTORICAL'
+      } as Backtest;
+
+      await service.persistSuccess(backtest, mockResults);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith('backtest.completed', {
+        backtestId: 'backtest-123',
+        type: 'HISTORICAL',
+        metrics: {
+          sharpeRatio: mockResults.finalMetrics.sharpeRatio,
+          totalReturn: mockResults.finalMetrics.totalReturn,
+          maxDrawdown: mockResults.finalMetrics.maxDrawdown,
+          winRate: mockResults.finalMetrics.winRate,
+          totalTrades: mockResults.finalMetrics.totalTrades
+        }
+      });
+    });
+
+    it('does not emit completion event for unknown backtest type', async () => {
+      mockMetricsService.startPersistenceTimer.mockReturnValue(jest.fn());
+      mockQueryRunner.manager.save.mockResolvedValue({});
+
+      const backtest = {
+        ...mockBacktest,
+        type: 'UNKNOWN'
+      } as unknown as Backtest;
+
+      await service.persistSuccess(backtest, mockResults);
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith('backtest.completed', expect.any(Object));
     });
   });
 
