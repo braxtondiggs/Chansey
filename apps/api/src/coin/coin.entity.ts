@@ -77,7 +77,7 @@ export class Coin {
   })
   marketRank?: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Total supply of the coin',
     example: 21000000.0,
@@ -86,7 +86,7 @@ export class Coin {
   })
   totalSupply?: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Circulating supply of the coin',
     example: 18500000.0,
@@ -95,7 +95,7 @@ export class Coin {
   })
   circulatingSupply?: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Maximum supply of the coin',
     example: 21000000.0,
@@ -211,7 +211,7 @@ export class Coin {
   })
   atlChange?: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Total volume of the coin',
     example: 600000000.0,
@@ -220,7 +220,7 @@ export class Coin {
   })
   totalVolume?: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Market capitalization of the coin',
     example: 1200000000000.0,
@@ -310,7 +310,7 @@ export class Coin {
   })
   priceChangePercentage1y?: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
     description: 'Market cap change in 24 hours',
     example: -16184990966.68,
