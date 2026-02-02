@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
@@ -115,6 +116,10 @@ describe('OptimizationOrchestratorService', () => {
       transaction: jest.fn()
     } as unknown as jest.Mocked<DataSource>;
 
+    const eventEmitter = {
+      emit: jest.fn()
+    } as unknown as jest.Mocked<EventEmitter2>;
+
     service = new OptimizationOrchestratorService(
       optimizationRunRepo,
       optimizationResultRepo,
@@ -125,7 +130,8 @@ describe('OptimizationOrchestratorService', () => {
       walkForwardService,
       windowProcessor,
       backtestEngine,
-      dataSource
+      dataSource,
+      eventEmitter
     );
   });
 
@@ -483,6 +489,81 @@ describe('OptimizationOrchestratorService', () => {
       await service.startOptimization('strategy-1', createValidSpace(), config);
 
       expect(gridSearchService.generateRandomCombinations).toHaveBeenCalledWith(expect.any(Object), 50);
+    });
+  });
+
+  describe('executeOptimization', () => {
+    const buildRun = (overrides: Partial<OptimizationRun> = {}) =>
+      ({
+        id: 'run-1',
+        status: OptimizationStatus.PENDING,
+        strategyConfigId: 'strategy-1',
+        strategyConfig: { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig,
+        config: createValidConfig(),
+        parameterSpace: createValidSpace(),
+        baselineParameters: { period: 14 },
+        totalCombinations: 2,
+        combinationsTested: 0,
+        ...overrides
+      }) as OptimizationRun;
+
+    const mockCoins = [{ id: 'btc' }, { id: 'eth' }] as Coin[];
+
+    const mockCoinQueryBuilder = () => ({
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(mockCoins)
+    });
+
+    it('should throw NotFoundException when run is missing', async () => {
+      optimizationRunRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.executeOptimization('missing', [])).rejects.toThrow(NotFoundException);
+    });
+
+    it('should mark run failed when insufficient windows are generated', async () => {
+      const run = buildRun({
+        config: createValidConfig({ walkForward: { minWindowsRequired: 3 } as any })
+      });
+      optimizationRunRepo.findOne.mockResolvedValue(run);
+      optimizationRunRepo.save.mockResolvedValue(run);
+      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
+      walkForwardService.generateWindows.mockReturnValue([]);
+
+      await expect(service.executeOptimization(run.id, [])).rejects.toThrow('Insufficient windows');
+
+      expect(run.status).toBe(OptimizationStatus.FAILED);
+      expect(run.errorMessage).toContain('Insufficient windows');
+      expect(optimizationRunRepo.save).toHaveBeenCalledWith(run);
+    });
+
+    it('should exit early when run is cancelled before processing batch', async () => {
+      const run = buildRun({
+        config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
+      });
+      optimizationRunRepo.findOne
+        .mockResolvedValueOnce(run) // initial load with relations
+        .mockResolvedValueOnce({ id: run.id, status: OptimizationStatus.CANCELLED } as OptimizationRun); // cancellation check
+
+      optimizationRunRepo.save.mockResolvedValue(run);
+      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
+      walkForwardService.generateWindows.mockReturnValue([
+        {
+          windowIndex: 0,
+          trainStartDate: new Date('2024-01-01'),
+          trainEndDate: new Date('2024-02-01'),
+          testStartDate: new Date('2024-02-01'),
+          testEndDate: new Date('2024-03-01')
+        }
+      ]);
+
+      const evaluateSpy = jest.spyOn(service, 'evaluateCombination');
+
+      await service.executeOptimization(run.id, [{ index: 0, values: {}, isBaseline: true }]);
+
+      expect(evaluateSpy).not.toHaveBeenCalled();
+      expect(dataSource.transaction).not.toHaveBeenCalled();
     });
   });
 

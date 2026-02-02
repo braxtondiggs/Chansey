@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { DataSource, EntityManager, EntityTarget, FindOptionsOrder, ObjectLiteral, Repository } from 'typeorm';
@@ -41,6 +42,7 @@ export class BacktestResultService {
     private readonly backtestSnapshotRepository: Repository<BacktestPerformanceSnapshot>,
     private readonly dataSource: DataSource,
     private readonly backtestStream: BacktestStreamService,
+    private readonly eventEmitter: EventEmitter2,
     @Optional() private readonly metricsService?: MetricsService
   ) {}
 
@@ -108,6 +110,28 @@ export class BacktestResultService {
 
     // Publish status AFTER transaction commits to ensure consistency
     await this.backtestStream.publishStatus(backtest.id, 'completed');
+
+    // Emit completion event for pipeline orchestrator
+    // Map BacktestType enum to the expected string types
+    const typeMapping: Record<string, 'HISTORICAL' | 'LIVE_REPLAY' | undefined> = {
+      HISTORICAL: 'HISTORICAL',
+      LIVE_REPLAY: 'LIVE_REPLAY'
+    };
+    const mappedType = typeMapping[backtest.type];
+
+    if (mappedType) {
+      this.eventEmitter.emit('backtest.completed', {
+        backtestId: backtest.id,
+        type: mappedType,
+        metrics: {
+          sharpeRatio: results.finalMetrics.sharpeRatio,
+          totalReturn: results.finalMetrics.totalReturn,
+          maxDrawdown: results.finalMetrics.maxDrawdown,
+          winRate: results.finalMetrics.winRate,
+          totalTrades: results.finalMetrics.totalTrades
+        }
+      });
+    }
   }
 
   async markFailed(backtestId: string, errorMessage: string): Promise<void> {
