@@ -31,7 +31,6 @@ import {
   BacktestProgressDto,
   BacktestSignalQueryDto,
   BacktestTradesQueryDto,
-  CreateBacktestDto,
   CreateComparisonReportDto,
   UpdateBacktestDto
 } from './dto/backtest.dto';
@@ -46,21 +45,6 @@ import { User } from '../../users/users.entity';
 @Controller('backtests')
 export class BacktestController {
   constructor(private readonly backtestService: BacktestService) {}
-
-  @Post()
-  @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({
-    summary: 'Create a new backtest',
-    description: 'Creates a comprehensive backtest run with historical data and performance analysis'
-  })
-  @ApiResponse({ status: HttpStatus.ACCEPTED })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid backtest parameters' })
-  async createBacktest(
-    @GetUser() user: User,
-    @Body(new ValidationPipe({ transform: true })) createBacktestDto: CreateBacktestDto
-  ): Promise<BacktestRunDetail> {
-    return this.backtestService.createBacktest(user, createBacktestDto);
-  }
 
   @Get()
   @ApiOperation({ summary: 'Get all backtests with optional filtering' })
@@ -160,33 +144,6 @@ export class BacktestController {
   @ApiResponse({ status: HttpStatus.OK, type: BacktestProgressDto })
   async getBacktestProgress(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.backtestService.getBacktestProgress(user, id);
-  }
-
-  @Post(':id/cancel')
-  @ApiOperation({ summary: 'Cancel a running backtest' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Backtest cancelled' })
-  async cancelBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    await this.backtestService.cancelBacktest(user, id);
-    return { message: 'Backtest cancelled successfully' };
-  }
-
-  @Post(':id/resume')
-  @ApiOperation({ summary: 'Resume a paused backtest' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  async resumeBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.backtestService.resumeBacktest(user, id);
-  }
-
-  @Post(':id/pause')
-  @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: 'Pause a running live replay backtest' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: HttpStatus.ACCEPTED, description: 'Backtest pause requested' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Backtest cannot be paused' })
-  async pauseBacktest(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    await this.backtestService.pauseBacktest(user, id);
-    return { message: 'Backtest pause requested. The backtest will pause at the next checkpoint.' };
   }
 }
 
