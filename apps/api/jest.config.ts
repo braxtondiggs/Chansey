@@ -13,5 +13,12 @@ export default {
   },
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: '../../coverage/apps/api',
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.spec.ts', '!src/**/*.module.ts', '!src/main.ts', '!src/migrations/**']
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.spec.ts',
+    '!src/**/*.module.ts',
+    '!src/main.ts',
+    '!src/migrations/**'
+  ],
+  setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts']
 };
