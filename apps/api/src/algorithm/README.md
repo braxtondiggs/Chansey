@@ -306,6 +306,7 @@ To add a new trading algorithm:
    ```
 
 2. **Implement Core Logic**:
+
    ```typescript
    async execute(context: AlgorithmContext): Promise<AlgorithmResult> {
      const signals: TradingSignal[] = [];

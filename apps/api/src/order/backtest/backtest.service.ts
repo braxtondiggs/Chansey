@@ -229,7 +229,11 @@ export class BacktestService implements OnModuleInit {
         deterministicSeed
       });
       const targetQueue = this.getQueueForType(createBacktestDto.type);
-      await targetQueue.add('execute-backtest', jobPayload, { jobId: savedBacktest.id, removeOnComplete: true });
+      await targetQueue.add('execute-backtest', jobPayload, {
+        jobId: savedBacktest.id,
+        removeOnComplete: true,
+        removeOnFail: false
+      });
 
       return this.mapRunDetail(savedBacktest);
     } catch (error) {
@@ -1059,7 +1063,11 @@ export class BacktestService implements OnModuleInit {
         deterministicSeed: backtest.deterministicSeed
       });
       const queue = this.getQueueForType(backtest.type);
-      await queue.add('execute-backtest', payload, { jobId: backtest.id, removeOnComplete: true });
+      await queue.add('execute-backtest', payload, {
+        jobId: backtest.id,
+        removeOnComplete: true,
+        removeOnFail: false
+      });
 
       try {
         await this.backtestStream.publishStatus(backtest.id, 'queued', undefined, {

@@ -4,7 +4,8 @@ This document describes the **PAPER_TRADE** stage of the Strategy Development Pi
 
 ## Overview
 
-The PAPER_TRADE stage is the final validation before deployment, running the strategy against live market data without risking real capital. This stage tests the strategy under current market conditions in real-time.
+The PAPER_TRADE stage is the final validation before deployment, running the strategy against live market data without
+risking real capital. This stage tests the strategy under current market conditions in real-time.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -49,47 +50,47 @@ The PAPER_TRADE stage is the final validation before deployment, running the str
 ```typescript
 interface PaperTradingStageConfig {
   /** Initial capital for paper trading */
-  initialCapital: number;        // Default: 10000
+  initialCapital: number; // Default: 10000
 
   /** Duration string (e.g., '7d', '14d', '30d') */
-  duration: string;              // Risk-dependent
+  duration: string; // Risk-dependent
 
   /** Trading fee as decimal */
-  tradingFee?: number;           // Default: 0.001
+  tradingFee?: number; // Default: 0.001
 
   /** Auto-stop conditions */
   stopConditions?: {
     /** Stop if drawdown exceeds this percentage */
-    maxDrawdown?: number;        // Default: 0.25 (25%)
+    maxDrawdown?: number; // Default: 0.25 (25%)
 
     /** Stop if return reaches target */
-    targetReturn?: number;       // Default: 0.50 (50%)
+    targetReturn?: number; // Default: 0.50 (50%)
   };
 
   /** Tick interval in milliseconds */
-  tickIntervalMs?: number;       // Default: 30000 (30s)
+  tickIntervalMs?: number; // Default: 30000 (30s)
 }
 ```
 
 ### Risk-Based Duration
 
-| Risk Level | Duration | Description |
-|------------|----------|-------------|
-| 1 (Conservative) | 14 days | Longest validation |
-| 2 | 10 days | |
-| 3 (Moderate) | 7 days | Default |
-| 4 | 5 days | |
-| 5 (Aggressive) | 3 days | Shortest validation |
+| Risk Level       | Duration | Description         |
+| ---------------- | -------- | ------------------- |
+| 1 (Conservative) | 14 days  | Longest validation  |
+| 2                | 10 days  |                     |
+| 3 (Moderate)     | 7 days   | Default             |
+| 4                | 5 days   |                     |
+| 5 (Aggressive)   | 3 days   | Shortest validation |
 
 ## Progression Criteria
 
 To complete the pipeline successfully:
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| **Sharpe Ratio** | ≥ 0.7 | Further relaxed from live replay |
-| **Max Drawdown** | ≤ 35% | Allows 5% more vs live replay |
-| **Total Return** | ≥ 0% | Must at least break even |
+| Metric           | Threshold | Description                      |
+| ---------------- | --------- | -------------------------------- |
+| **Sharpe Ratio** | ≥ 0.7     | Further relaxed from live replay |
+| **Max Drawdown** | ≤ 35%     | Allows 5% more vs live replay    |
+| **Total Return** | ≥ 0%      | Must at least break even         |
 
 ## Output
 
@@ -116,7 +117,7 @@ interface PaperTradingStageResult {
   degradationFromLiveReplay?: number;
 
   // Stop information
-  stoppedReason?: string;        // 'duration_reached', 'target_reached', 'drawdown_exceeded', etc.
+  stoppedReason?: string; // 'duration_reached', 'target_reached', 'drawdown_exceeded', etc.
   durationHours: number;
 
   completedAt: string;
@@ -125,13 +126,13 @@ interface PaperTradingStageResult {
 
 ## Key Services
 
-| Service | File | Responsibility |
-|---------|------|----------------|
-| `PaperTradingService` | `paper-trading.service.ts` | Session management |
-| `PaperTradingEngineService` | `paper-trading-engine.service.ts` | Core trading engine |
-| `PaperTradingMarketDataService` | `paper-trading-market-data.service.ts` | Live price feeds |
-| `PaperTradingProcessor` | `paper-trading.processor.ts` | BullMQ job processor |
-| `PaperTradingStreamService` | `paper-trading-stream.service.ts` | WebSocket updates |
+| Service                         | File                                   | Responsibility       |
+| ------------------------------- | -------------------------------------- | -------------------- |
+| `PaperTradingService`           | `paper-trading.service.ts`             | Session management   |
+| `PaperTradingEngineService`     | `paper-trading-engine.service.ts`      | Core trading engine  |
+| `PaperTradingMarketDataService` | `paper-trading-market-data.service.ts` | Live price feeds     |
+| `PaperTradingProcessor`         | `paper-trading.processor.ts`           | BullMQ job processor |
+| `PaperTradingStreamService`     | `paper-trading-stream.service.ts`      | WebSocket updates    |
 
 ## Session Lifecycle
 
@@ -143,13 +144,13 @@ PAUSED (initial) → RUNNING → STOPPED/COMPLETED
 
 ### Status Definitions
 
-| Status | Description |
-|--------|-------------|
-| `PAUSED` | Initial state, or user-paused |
-| `RUNNING` | Actively processing market data |
-| `STOPPED` | Terminated by stop condition or user |
+| Status      | Description                           |
+| ----------- | ------------------------------------- |
+| `PAUSED`    | Initial state, or user-paused         |
+| `RUNNING`   | Actively processing market data       |
+| `STOPPED`   | Terminated by stop condition or user  |
 | `COMPLETED` | Duration reached with passing metrics |
-| `FAILED` | Error or threshold violation |
+| `FAILED`    | Error or threshold violation          |
 
 ## Event Flow
 
@@ -199,6 +200,7 @@ Pipeline.handlePaperTradingComplete()
 ## Stop Conditions
 
 ### Duration Reached
+
 ```typescript
 if (elapsedHours >= parseDuration(config.duration)) {
   await this.stopSession(sessionId, 'duration_reached');
@@ -206,6 +208,7 @@ if (elapsedHours >= parseDuration(config.duration)) {
 ```
 
 ### Target Return Reached
+
 ```typescript
 if (metrics.totalReturnPercent >= config.stopConditions.targetReturn * 100) {
   await this.stopSession(sessionId, 'target_reached');
@@ -213,6 +216,7 @@ if (metrics.totalReturnPercent >= config.stopConditions.targetReturn * 100) {
 ```
 
 ### Max Drawdown Exceeded
+
 ```typescript
 if (metrics.maxDrawdown > config.stopConditions.maxDrawdown) {
   await this.stopSession(sessionId, 'drawdown_exceeded');
@@ -220,11 +224,13 @@ if (metrics.maxDrawdown > config.stopConditions.maxDrawdown) {
 ```
 
 ### User Cancellation
+
 ```typescript
 await this.stopSession(sessionId, 'user_cancelled');
 ```
 
 ### Pipeline Cancellation
+
 ```typescript
 await this.stopSession(sessionId, 'pipeline_cancelled');
 ```
@@ -232,6 +238,7 @@ await this.stopSession(sessionId, 'pipeline_cancelled');
 ## Pause/Resume Behavior
 
 ### Pause
+
 ```typescript
 await paperTradingService.pause(sessionId, user);
 // Removes tick job from queue
@@ -240,6 +247,7 @@ await paperTradingService.pause(sessionId, user);
 ```
 
 ### Resume
+
 ```typescript
 await paperTradingService.resume(sessionId, user);
 // Re-queues tick job
@@ -292,11 +300,11 @@ interface TickProcessing {
 
 After paper trading completes, the pipeline generates a final recommendation:
 
-| Recommendation | Criteria |
-|----------------|----------|
-| **DEPLOY** | Sharpe ≥ 1.0, Drawdown ≤ 25%, Win Rate ≥ 50%, Consistent across stages |
-| **NEEDS_REVIEW** | Sharpe ≥ 0.5, Drawdown ≤ 40%, Win Rate ≥ 40% |
-| **DO_NOT_DEPLOY** | Below thresholds or critical warnings |
+| Recommendation    | Criteria                                                               |
+| ----------------- | ---------------------------------------------------------------------- |
+| **DEPLOY**        | Sharpe ≥ 1.0, Drawdown ≤ 25%, Win Rate ≥ 50%, Consistent across stages |
+| **NEEDS_REVIEW**  | Sharpe ≥ 0.5, Drawdown ≤ 40%, Win Rate ≥ 40%                           |
+| **DO_NOT_DEPLOY** | Below thresholds or critical warnings                                  |
 
 ## API Reference
 
@@ -312,7 +320,7 @@ const session = await paperTradingService.startFromPipeline({
   duration: '7d',
   stopConditions: {
     maxDrawdown: 0.25,
-    targetReturn: 0.50
+    targetReturn: 0.5
   },
   userId: user.id,
   name: 'Pipeline - Paper Trading'
@@ -340,18 +348,23 @@ await paperTradingService.stop(sessionId, user, 'user_cancelled');
 ## Entities
 
 ### PaperTradingSession
+
 Main session entity tracking the paper trading run.
 
 ### PaperTradingAccount
+
 Virtual accounts holding currency balances.
 
 ### PaperTradingOrder
+
 Simulated orders placed by the strategy.
 
 ### PaperTradingSignal
+
 Strategy signals that triggered orders.
 
 ### PaperTradingSnapshot
+
 Periodic snapshots of portfolio performance.
 
 ## Best Practices
@@ -365,20 +378,24 @@ Periodic snapshots of portfolio performance.
 ## Common Issues
 
 ### "Exchange key not found"
+
 - Ensure user has configured exchange API keys
 - Verify exchange key is active
 
 ### "Failed to fetch market data"
+
 - Exchange API may be rate limited
 - Check exchange connectivity
 - Verify API key permissions
 
 ### "Session stopped unexpectedly"
+
 - Check stop condition thresholds
 - Review logs for errors
 - Verify strategy isn't generating invalid signals
 
 ### "Degradation from live replay too high"
+
 - Market conditions may have changed
 - Strategy may be sensitive to market regime
 - Review recent market events

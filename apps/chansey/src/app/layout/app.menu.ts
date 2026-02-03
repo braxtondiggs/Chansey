@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal, effect } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { AuthService } from '@chansey-web/app/shared/services/auth.service';
@@ -122,6 +122,11 @@ export class AppMenu implements OnInit {
             label: 'Trading State',
             icon: 'pi pi-fw pi-power-off',
             routerLink: ['/admin/trading-state']
+          },
+          {
+            label: 'Backtest Monitoring',
+            icon: 'pi pi-fw pi-eye',
+            routerLink: ['/admin/backtest-monitoring']
           }
         ]
       });
