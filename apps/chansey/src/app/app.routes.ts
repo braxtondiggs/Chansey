@@ -149,6 +149,11 @@ export const appRoutes: Route[] = [
         loadComponent: () =>
           import('./pages/admin/trading-state/trading-state.component').then((c) => c.TradingStateComponent),
         data: { breadcrumb: 'Trading State' }
+      },
+      {
+        path: 'backtest-monitoring',
+        loadComponent: () => import('./pages/admin/backtest-monitoring').then((c) => c.BacktestMonitoringComponent),
+        data: { breadcrumb: 'Backtest Monitoring' }
       }
     ]
   },

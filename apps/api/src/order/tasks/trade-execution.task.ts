@@ -150,10 +150,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
             );
           }
         } catch (error) {
-          this.logger.error(
-            `Failed to execute trade for activation ${activation.id}: ${error.message}`,
-            error.stack
-          );
+          this.logger.error(`Failed to execute trade for activation ${activation.id}: ${error.message}`, error.stack);
           failCount++;
           // Continue with next activation even if one fails
         }

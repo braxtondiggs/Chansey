@@ -189,7 +189,26 @@ export const queryKeys = {
   // --------------------------------------------------------------------------
   admin: {
     all: ['admin'] as const,
-    tradingState: () => [...queryKeys.admin.all, 'trading-state'] as const
+    tradingState: () => [...queryKeys.admin.all, 'trading-state'] as const,
+    backtestMonitoring: {
+      all: () => [...queryKeys.admin.all, 'backtest-monitoring'] as const,
+      overview: (filters?: Record<string, unknown>) =>
+        filters
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'overview', filters] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'overview'] as const),
+      backtests: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'backtests', query] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'backtests'] as const),
+      signalAnalytics: (filters?: Record<string, unknown>) =>
+        filters
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'signal-analytics', filters] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'signal-analytics'] as const),
+      tradeAnalytics: (filters?: Record<string, unknown>) =>
+        filters
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'trade-analytics', filters] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'trade-analytics'] as const)
+    }
   }
 } as const;
 

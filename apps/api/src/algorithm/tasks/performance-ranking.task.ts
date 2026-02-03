@@ -136,9 +136,7 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
           performanceCalculated++;
           userIds.add(activation.userId);
 
-          this.logger.debug(
-            `Calculated performance for activation ${activation.id} (${activation.algorithm.name})`
-          );
+          this.logger.debug(`Calculated performance for activation ${activation.id} (${activation.algorithm.name})`);
         } catch (error) {
           this.logger.error(
             `Failed to calculate performance for activation ${activation.id}: ${error.message}`,
@@ -166,10 +164,7 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
           usersRanked++;
           this.logger.debug(`Calculated rankings for user ${userId}`);
         } catch (error) {
-          this.logger.error(
-            `Failed to calculate rankings for user ${userId}: ${error.message}`,
-            error.stack
-          );
+          this.logger.error(`Failed to calculate rankings for user ${userId}: ${error.message}`, error.stack);
           // Continue with next user even if one fails
         }
 

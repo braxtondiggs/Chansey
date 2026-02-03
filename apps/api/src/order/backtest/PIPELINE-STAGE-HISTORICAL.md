@@ -4,7 +4,8 @@ This document describes the **HISTORICAL** stage of the Strategy Development Pip
 
 ## Overview
 
-The HISTORICAL stage runs a complete backtest on historical market data using the optimized parameters from the OPTIMIZE stage. This establishes baseline performance expectations.
+The HISTORICAL stage runs a complete backtest on historical market data using the optimized parameters from the OPTIMIZE
+stage. This establishes baseline performance expectations.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -52,31 +53,31 @@ interface HistoricalStageConfig {
   endDate: string;
 
   /** Initial capital for backtest */
-  initialCapital: number;        // Default: 10000
+  initialCapital: number; // Default: 10000
 
   /** Trading fee as decimal (e.g., 0.001 = 0.1%) */
-  tradingFee?: number;           // Default: 0.001
+  tradingFee?: number; // Default: 0.001
 
   /** Market data set ID */
-  marketDataSetId?: string;      // Default: 'default-historical-data'
+  marketDataSetId?: string; // Default: 'default-historical-data'
 }
 ```
 
 ### Risk-Based Defaults
 
-| Risk Level | Historical Period | Initial Capital |
-|------------|-------------------|-----------------|
-| All Levels | 3 months (ending 1 month ago) | $10,000 |
+| Risk Level | Historical Period             | Initial Capital |
+| ---------- | ----------------------------- | --------------- |
+| All Levels | 3 months (ending 1 month ago) | $10,000         |
 
 ## Progression Criteria
 
 To advance to the LIVE_REPLAY stage:
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| **Sharpe Ratio** | ≥ 1.0 | Risk-adjusted return quality |
-| **Max Drawdown** | ≤ 25% | Maximum peak-to-trough decline |
-| **Win Rate** | ≥ 45% | Percentage of profitable trades |
+| Metric           | Threshold | Description                     |
+| ---------------- | --------- | ------------------------------- |
+| **Sharpe Ratio** | ≥ 1.0     | Risk-adjusted return quality    |
+| **Max Drawdown** | ≤ 25%     | Maximum peak-to-trough decline  |
+| **Win Rate**     | ≥ 45%     | Percentage of profitable trades |
 
 ## Output
 
@@ -104,28 +105,28 @@ interface HistoricalStageResult {
   losingTrades: number;
 
   // Execution info
-  duration: number;              // Seconds
+  duration: number; // Seconds
   completedAt: string;
 }
 ```
 
 ## Key Services
 
-| Service | File | Responsibility |
-|---------|------|----------------|
-| `BacktestService` | `backtest.service.ts` | Backtest creation and management |
-| `BacktestEngine` | `backtest-engine.service.ts` | Core simulation engine |
-| `BacktestProcessor` | `backtest.processor.ts` | BullMQ job processor |
-| `BacktestResultService` | `backtest-result.service.ts` | Result storage and retrieval |
-| `MetricsService` | `../../metrics/metrics.service.ts` | Performance calculation |
+| Service                 | File                               | Responsibility                   |
+| ----------------------- | ---------------------------------- | -------------------------------- |
+| `BacktestService`       | `backtest.service.ts`              | Backtest creation and management |
+| `BacktestEngine`        | `backtest-engine.service.ts`       | Core simulation engine           |
+| `BacktestProcessor`     | `backtest.processor.ts`            | BullMQ job processor             |
+| `BacktestResultService` | `backtest-result.service.ts`       | Result storage and retrieval     |
+| `MetricsService`        | `../../metrics/metrics.service.ts` | Performance calculation          |
 
 ## Backtest Types
 
 ```typescript
 enum BacktestType {
-  HISTORICAL = 'HISTORICAL',     // ← Used by this stage
-  LIVE_REPLAY = 'LIVE_REPLAY',   // Used by LIVE_REPLAY stage
-  OPTIMIZATION = 'OPTIMIZATION'  // Used by OPTIMIZE stage internally
+  HISTORICAL = 'HISTORICAL', // ← Used by this stage
+  LIVE_REPLAY = 'LIVE_REPLAY', // Used by LIVE_REPLAY stage
+  OPTIMIZATION = 'OPTIMIZATION' // Used by OPTIMIZE stage internally
 }
 ```
 
@@ -170,6 +171,7 @@ Pipeline.handleBacktestComplete('HISTORICAL')
 ## Pause/Resume Behavior
 
 ### Pause
+
 ```typescript
 await backtestPauseService.setPauseFlag(backtestId);
 // Sets Redis flag that processor checks periodically
@@ -177,6 +179,7 @@ await backtestPauseService.setPauseFlag(backtestId);
 ```
 
 ### Resume
+
 ```typescript
 await backtestService.resumeBacktest(user, backtestId);
 // Clears pause flag
@@ -184,6 +187,7 @@ await backtestService.resumeBacktest(user, backtestId);
 ```
 
 ### Checkpoint System
+
 - Checkpoints saved every N candles (configurable)
 - Contains: processed index, positions, balances, metrics
 - Enables resume without data loss
@@ -194,42 +198,50 @@ await backtestService.resumeBacktest(user, backtestId);
 interface MarketDataSet {
   id: string;
   name: string;
-  symbols: string[];             // e.g., ['BTC/USDT', 'ETH/USDT']
+  symbols: string[]; // e.g., ['BTC/USDT', 'ETH/USDT']
   timeframe: '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
   startDate: Date;
   endDate: Date;
-  integrityScore: number;        // Data quality (0-100)
-  replayCapable: boolean;        // Has tick-level data
+  integrityScore: number; // Data quality (0-100)
+  replayCapable: boolean; // Has tick-level data
 }
 ```
 
 ## Performance Metrics
 
 ### Sharpe Ratio
+
 ```
 sharpeRatio = (annualizedReturn - riskFreeRate) / annualizedVolatility
 ```
+
 - Risk-free rate typically 0% for crypto
 - Higher is better (>1.0 is good, >2.0 is excellent)
 
 ### Maximum Drawdown
+
 ```
 maxDrawdown = max((peak - trough) / peak) for all peaks
 ```
+
 - Expressed as percentage (0.25 = 25%)
 - Lower is better
 
 ### Win Rate
+
 ```
 winRate = winningTrades / totalTrades
 ```
+
 - Expressed as decimal (0.45 = 45%)
 - Context-dependent (some strategies are profitable with <50% win rate)
 
 ### Total Return
+
 ```
 totalReturn = (finalValue - initialCapital) / initialCapital
 ```
+
 - Expressed as decimal (0.15 = 15%)
 
 ## API Reference
@@ -279,20 +291,24 @@ await backtestService.cancelBacktest(user, backtestId);
 ## Common Issues
 
 ### "Market dataset not found"
+
 - Ensure `marketDataSetId` exists in database
 - Check data has been ingested for required symbols
 
 ### "Dataset validation failed"
+
 - Data may not cover requested date range
 - Data integrity score may be too low
 - Missing symbols in dataset
 
 ### "Sharpe ratio below threshold"
+
 - Strategy may not be profitable
 - Check if optimized parameters make sense
 - Review trade signals for issues
 
 ### "Excessive drawdown"
+
 - Strategy may be too aggressive
 - Consider position sizing adjustments
 - Review risk management parameters
@@ -300,6 +316,7 @@ await backtestService.cancelBacktest(user, backtestId);
 ## Database Schema
 
 ### Backtest Entity
+
 ```sql
 CREATE TABLE backtest (
   id UUID PRIMARY KEY,

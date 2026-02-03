@@ -1,3 +1,4 @@
+export * from './lib/admin/backtest-monitoring.interface';
 export * from './lib/admin/trading-state.interface';
 export * from './lib/algorithm/algorithm.interface';
 export * from './lib/api-interfaces';
