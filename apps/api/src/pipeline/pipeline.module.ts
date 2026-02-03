@@ -16,6 +16,7 @@ import { AuthenticationModule } from '../authentication/authentication.module';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { OptimizationModule } from '../optimization/optimization.module';
 import { OrderModule } from '../order/order.module';
+import { PaperTradingModule } from '../order/paper-trading/paper-trading.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 
 const PIPELINE_CONFIG = pipelineConfig();
@@ -28,7 +29,8 @@ const PIPELINE_CONFIG = pipelineConfig();
     EventEmitterModule.forRoot(),
     forwardRef(() => AuthenticationModule),
     forwardRef(() => OptimizationModule),
-    forwardRef(() => OrderModule)
+    forwardRef(() => OrderModule),
+    forwardRef(() => PaperTradingModule)
   ],
   controllers: [PipelineController],
   providers: [PipelineOrchestratorService, PipelineProcessor, PipelineEventListener, PipelineReportService],
