@@ -4,7 +4,9 @@ This document describes the **LIVE_REPLAY** stage of the Strategy Development Pi
 
 ## Overview
 
-The LIVE_REPLAY stage replays recent market data with realistic timing and execution conditions. Unlike historical backtesting, live replay simulates the actual experience of trading in real-time, including execution delays and market microstructure effects.
+The LIVE_REPLAY stage replays recent market data with realistic timing and execution conditions. Unlike historical
+backtesting, live replay simulates the actual experience of trading in real-time, including execution delays and market
+microstructure effects.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -44,13 +46,13 @@ The LIVE_REPLAY stage replays recent market data with realistic timing and execu
 
 ## Key Differences from Historical
 
-| Aspect | HISTORICAL | LIVE_REPLAY |
-|--------|------------|-------------|
-| Data Period | 3+ months ago | Last month |
-| Execution | Instant fills | Simulated delays |
-| Timing | No pacing | Optional real-time pacing |
-| Purpose | Baseline metrics | Realistic validation |
-| Degradation | N/A | Measured vs historical |
+| Aspect      | HISTORICAL       | LIVE_REPLAY               |
+| ----------- | ---------------- | ------------------------- |
+| Data Period | 3+ months ago    | Last month                |
+| Execution   | Instant fills    | Simulated delays          |
+| Timing      | No pacing        | Optional real-time pacing |
+| Purpose     | Baseline metrics | Realistic validation      |
+| Degradation | N/A              | Measured vs historical    |
 
 ## Configuration
 
@@ -63,19 +65,19 @@ interface LiveReplayStageConfig {
   endDate: string;
 
   /** Initial capital for replay */
-  initialCapital: number;        // Default: 10000
+  initialCapital: number; // Default: 10000
 
   /** Trading fee as decimal */
-  tradingFee?: number;           // Default: 0.001
+  tradingFee?: number; // Default: 0.001
 
   /** Market data set ID */
-  marketDataSetId?: string;      // Default: 'default-historical-data'
+  marketDataSetId?: string; // Default: 'default-historical-data'
 
   /** Enable real-time pacing */
-  enablePacing?: boolean;        // Default: false
+  enablePacing?: boolean; // Default: false
 
   /** Pacing speed multiplier (1 = real-time) */
-  pacingSpeed?: number;          // Default: 1
+  pacingSpeed?: number; // Default: 1
 }
 ```
 
@@ -92,11 +94,11 @@ This ensures no data overlap between historical and live replay testing.
 
 To advance to the PAPER_TRADE stage:
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| **Sharpe Ratio** | ≥ 0.8 | Slightly relaxed from historical |
-| **Max Drawdown** | ≤ 30% | Allows 5% more vs historical |
-| **Max Degradation** | ≤ 20% | Return degradation from historical |
+| Metric              | Threshold | Description                        |
+| ------------------- | --------- | ---------------------------------- |
+| **Sharpe Ratio**    | ≥ 0.8     | Slightly relaxed from historical   |
+| **Max Drawdown**    | ≤ 30%     | Allows 5% more vs historical       |
+| **Max Degradation** | ≤ 20%     | Return degradation from historical |
 
 ### Degradation Calculation
 
@@ -106,7 +108,7 @@ degradation = ((historicalReturn - liveReplayReturn) / |historicalReturn|) * 100
 
 - Positive degradation = performance dropped
 - Negative degradation = performance improved (rare)
-- >20% degradation suggests potential overfitting
+- > 20% degradation suggests potential overfitting
 
 ## Output
 
@@ -144,23 +146,25 @@ interface LiveReplayStageResult {
 
 ## Key Services
 
-| Service | File | Responsibility |
-|---------|------|----------------|
-| `BacktestService` | `backtest.service.ts` | Backtest creation and management |
-| `LiveReplayProcessor` | `live-replay.processor.ts` | BullMQ processor for replay |
-| `BacktestEngine` | `backtest-engine.service.ts` | Core simulation engine |
-| `BacktestPauseService` | `backtest-pause.service.ts` | Pause/resume via Redis |
+| Service                | File                         | Responsibility                   |
+| ---------------------- | ---------------------------- | -------------------------------- |
+| `BacktestService`      | `backtest.service.ts`        | Backtest creation and management |
+| `LiveReplayProcessor`  | `live-replay.processor.ts`   | BullMQ processor for replay      |
+| `BacktestEngine`       | `backtest-engine.service.ts` | Core simulation engine           |
+| `BacktestPauseService` | `backtest-pause.service.ts`  | Pause/resume via Redis           |
 
 ## Live Replay Features
 
 ### Real-Time Pacing
 
 When `enablePacing: true`:
+
 ```
 1 candle per actual candle duration (e.g., 1 hour candles = 1 hour between)
 ```
 
 With `pacingSpeed: 60`:
+
 ```
 60x faster (1 hour candle = 1 minute between)
 ```
@@ -170,16 +174,16 @@ With `pacingSpeed: 60`:
 ```typescript
 interface ReplayExecutionConfig {
   // Minimum delay before order fills
-  minExecutionDelayMs: number;    // Default: 100
+  minExecutionDelayMs: number; // Default: 100
 
   // Maximum delay before order fills
-  maxExecutionDelayMs: number;    // Default: 500
+  maxExecutionDelayMs: number; // Default: 500
 
   // Slippage model
   slippageModel: 'fixed' | 'proportional' | 'volume_based';
 
   // Slippage percentage
-  slippageBps: number;            // Basis points
+  slippageBps: number; // Basis points
 }
 ```
 
@@ -246,6 +250,7 @@ Pipeline.handleBacktestComplete('LIVE_REPLAY')
 ## Pause/Resume Behavior
 
 ### Pause
+
 ```typescript
 await backtestService.pauseBacktest(user, backtestId);
 // Sets pause flag in Redis
@@ -254,6 +259,7 @@ await backtestService.pauseBacktest(user, backtestId);
 ```
 
 ### Resume
+
 ```typescript
 await backtestService.resumeBacktest(user, backtestId);
 // Clears pause flag
@@ -276,6 +282,7 @@ if (!dataset.replayCapable) {
 ```
 
 Replay-capable datasets include:
+
 - Tick-level or 1-minute data
 - Bid/ask spreads (optional)
 - Volume data
@@ -285,12 +292,12 @@ Replay-capable datasets include:
 
 ### Expected Degradation
 
-| Degradation | Interpretation |
-|-------------|---------------|
-| 0-10% | Excellent - strategy is robust |
-| 10-20% | Acceptable - normal variance |
-| 20-30% | Concerning - review strategy |
-| >30% | Likely overfitting or timing issues |
+| Degradation | Interpretation                      |
+| ----------- | ----------------------------------- |
+| 0-10%       | Excellent - strategy is robust      |
+| 10-20%      | Acceptable - normal variance        |
+| 20-30%      | Concerning - review strategy        |
+| >30%        | Likely overfitting or timing issues |
 
 ### Common Causes of High Degradation
 
@@ -329,16 +336,19 @@ const backtest = await backtestService.createBacktest(user, {
 ## Common Issues
 
 ### "Dataset is not replay capable"
+
 - Dataset lacks tick-level data
 - Use a different dataset with replay support
 - Upgrade dataset to include required fields
 
 ### "High degradation from historical"
+
 - Review optimization for overfitting
 - Check if market conditions changed significantly
 - Validate execution assumptions
 
 ### "Checkpoint recovery failed"
+
 - Clear checkpoint and restart from beginning
 - Check Redis connectivity
 - Verify data integrity

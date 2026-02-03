@@ -1,12 +1,11 @@
 # ADR-001: Strategy Development Pipeline Architecture
 
-**Status:** Accepted
-**Date:** 2026-01-26
-**Authors:** Engineering Team
+**Status:** Accepted **Date:** 2026-01-26 **Authors:** Engineering Team
 
 ## Context
 
-Chansey needs a systematic approach to validate trading strategies before deployment to live trading. Manual validation is error-prone, inconsistent, and doesn't scale as the number of strategies grows.
+Chansey needs a systematic approach to validate trading strategies before deployment to live trading. Manual validation
+is error-prone, inconsistent, and doesn't scale as the number of strategies grows.
 
 ### Problem Statement
 
@@ -35,24 +34,28 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADE → COMPLETED
 ```
 
 #### Stage 1: Optimization
+
 - **Purpose**: Find optimal strategy parameters using walk-forward analysis
 - **Method**: Grid search with configurable parameter space
 - **Output**: Best parameters and improvement percentage over baseline
 - **Rationale**: Walk-forward optimization reduces overfitting by validating on out-of-sample data
 
 #### Stage 2: Historical Backtest
+
 - **Purpose**: Full performance evaluation on historical data
 - **Method**: Standard backtest with optimized parameters
 - **Output**: Comprehensive metrics (Sharpe, drawdown, win rate, etc.)
 - **Rationale**: Provides baseline performance expectation
 
 #### Stage 3: Live Replay
+
 - **Purpose**: Test with realistic timing and execution conditions
 - **Method**: Replay recent data with optional real-time pacing
 - **Output**: Performance metrics with degradation analysis
 - **Rationale**: Catches timing-sensitive bugs and unrealistic fill assumptions
 
 #### Stage 4: Paper Trading
+
 - **Purpose**: Live market validation without real capital
 - **Method**: Simulated trading against live exchange data
 - **Output**: Real-world performance under current market conditions
@@ -65,11 +68,13 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADE → COMPLETED
 **Choice**: Use NestJS EventEmitter for cross-module communication
 
 **Alternatives Considered:**
+
 - Direct service calls
 - Message queue (RabbitMQ/Kafka)
 - Polling-based coordination
 
 **Rationale**:
+
 - Loose coupling between pipeline and execution services
 - Simpler than full message broker for single-instance deployment
 - Easy to add WebSocket notifications later
@@ -80,11 +85,13 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADE → COMPLETED
 **Choice**: Use BullMQ for stage execution jobs
 
 **Alternatives Considered:**
+
 - In-process async execution
 - Database-based job queue
 - Agenda.js
 
 **Rationale**:
+
 - Redis-backed persistence survives server restarts
 - Built-in retry logic with exponential backoff
 - Job deduplication with unique IDs
@@ -96,11 +103,13 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADE → COMPLETED
 **Choice**: Per-pipeline progression thresholds stored in entity
 
 **Alternatives Considered:**
+
 - Global thresholds in configuration
 - Strategy-type specific defaults only
 - User-defined only
 
 **Rationale**:
+
 - Flexibility for different strategy types and risk profiles
 - Defaults provided for easy onboarding
 - Supports risk-based configuration from user profiles
@@ -110,11 +119,13 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADE → COMPLETED
 **Choice**: Store stage results as JSON column in Pipeline entity
 
 **Alternatives Considered:**
+
 - Separate tables for each stage result type
 - Document database (MongoDB)
 - Normalized relational schema
 
 **Rationale**:
+
 - Simplifies schema evolution as stages evolve
 - Single query retrieves all pipeline data
 - Results are write-once, read-many (no normalization benefit)
@@ -125,11 +136,13 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADE → COMPLETED
 **Choice**: Allow performance degradation between stages (20% historical→live, 30% live→paper)
 
 **Alternatives Considered:**
+
 - Strict improvement requirements
 - No degradation limits
 - Percentage of Sharpe ratio
 
 **Rationale**:
+
 - Real-world performance is typically lower than historical
 - Some degradation is expected and acceptable
 - Catches significant problems while allowing realistic strategies

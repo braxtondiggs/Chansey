@@ -642,10 +642,9 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .addSelect('bc.slug', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .leftJoin('t2.quoteCoin', 'qc')
             .where(`t2.type = '${TradeType.SELL}'`),
         't',
         't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
@@ -689,10 +688,9 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .addSelect('bc.slug', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .leftJoin('t2.quoteCoin', 'qc')
             .where(`t2.type = '${TradeType.SELL}'`),
         't',
         't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
@@ -728,10 +726,9 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .addSelect('bc.slug', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .leftJoin('t2.quoteCoin', 'qc')
             .where(`t2.type = '${TradeType.SELL}'`),
         't',
         't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
@@ -767,10 +764,9 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
+            .addSelect('bc.slug', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .leftJoin('t2.quoteCoin', 'qc')
             .where(`t2.type = '${TradeType.SELL}'`),
         't',
         't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
