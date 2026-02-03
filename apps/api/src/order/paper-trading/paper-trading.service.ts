@@ -24,7 +24,12 @@ import {
   PaperTradingSnapshot,
   PaperTradingStatus
 } from './entities';
-import { PaperTradingJobType, StartSessionJobData, StopSessionJobData } from './paper-trading.job-data';
+import {
+  NotifyPipelineJobData,
+  PaperTradingJobType,
+  StartSessionJobData,
+  StopSessionJobData
+} from './paper-trading.job-data';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
@@ -311,18 +316,25 @@ export class PaperTradingService {
       await this.paperTradingQueue.add('stop-session', jobData, {
         jobId: `paper-trading-stop-${id}`
       });
+
+      // Queue pipeline notification within transaction for reliable delivery
+      // This ensures the notification is persisted even if the process crashes
+      if (session.pipelineId) {
+        const notifyJobData: NotifyPipelineJobData = {
+          type: PaperTradingJobType.NOTIFY_PIPELINE,
+          sessionId: id,
+          userId: user.id,
+          pipelineId: session.pipelineId,
+          stoppedReason: reason
+        };
+
+        await this.paperTradingQueue.add('notify-pipeline', notifyJobData, {
+          jobId: `paper-trading-notify-${id}`
+        });
+      }
     });
 
     this.logger.log(`Stopped paper trading session ${id} (reason: ${reason})`);
-
-    // Emit event for pipeline orchestrator (outside transaction since this is fire-and-forget)
-    if (session.pipelineId) {
-      this.eventEmitter.emit('paper-trading.completed', {
-        sessionId: id,
-        pipelineId: session.pipelineId,
-        stoppedReason: reason
-      });
-    }
 
     return this.findOne(id, user);
   }

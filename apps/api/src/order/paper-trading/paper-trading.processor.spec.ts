@@ -38,6 +38,10 @@ describe('PaperTradingProcessor', () => {
       startBacktestTimer: jest.fn().mockReturnValue(jest.fn())
     };
 
+    const eventEmitter = {
+      emit: jest.fn()
+    };
+
     const config = { maxConsecutiveErrors: 2 };
 
     return {
@@ -48,13 +52,15 @@ describe('PaperTradingProcessor', () => {
         (overrides.paperTradingService ?? paperTradingService) as any,
         (overrides.engineService ?? engineService) as any,
         (overrides.streamService ?? streamService) as any,
-        (overrides.metricsService ?? metricsService) as any
+        (overrides.metricsService ?? metricsService) as any,
+        (overrides.eventEmitter ?? eventEmitter) as any
       ),
       sessionRepository,
       paperTradingService,
       engineService,
       streamService,
-      metricsService
+      metricsService,
+      eventEmitter
     };
   };
 

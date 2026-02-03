@@ -8,6 +8,9 @@ import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { DriftDetectionTask } from './drift-detection.task';
 import { MarketRegimeTask } from './market-regime.task';
 import { PerformanceCalcTask } from './performance-calc.task';
+import { PipelineOrchestrationProcessor } from './pipeline-orchestration.processor';
+import { PipelineOrchestrationService } from './pipeline-orchestration.service';
+import { PipelineOrchestrationTask } from './pipeline-orchestration.task';
 import { PromotionTask } from './promotion.task';
 import { RiskMonitoringTask } from './risk-monitoring.task';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
@@ -18,11 +21,14 @@ import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { BalanceModule } from '../balance/balance.module';
 import { CoinModule } from '../coin/coin.module';
+import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 import { Backtest } from '../order/backtest/backtest.entity';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
 import { OrderModule } from '../order/order.module';
+import { Pipeline } from '../pipeline/entities/pipeline.entity';
+import { PipelineModule } from '../pipeline/pipeline.module';
 import { Risk } from '../risk/risk.entity';
 import { ScoringModule } from '../scoring/scoring.module';
 import { BacktestRun } from '../strategy/entities/backtest-run.entity';
@@ -48,6 +54,7 @@ import { UsersModule } from '../users/users.module';
  * - RiskMonitoringTask: Every hour - Monitor active deployments for risk breaches
  * - DriftDetectionTask: Every 6 hours - Detect performance drift in deployed strategies
  * - PerformanceCalcTask: Daily at 1 AM - Calculate daily performance metrics
+ * - PipelineOrchestrationTask: Daily at 2 AM - Orchestrate full validation pipelines for algo-enabled users
  * - BacktestOrchestrationTask: Daily at 3 AM - Orchestrate automatic backtests for algo-enabled users
  */
 @Module({
@@ -61,13 +68,16 @@ import { UsersModule } from '../users/users.module';
       User,
       AlgorithmActivation,
       Backtest,
-      MarketDataSet
+      MarketDataSet,
+      Pipeline,
+      ExchangeKey
     ]),
     BullModule.registerQueue(
       { name: 'strategy-evaluation-queue' },
       { name: 'drift-detection-queue' },
       { name: 'regime-check-queue' },
-      { name: 'backtest-orchestration' }
+      { name: 'backtest-orchestration' },
+      { name: 'pipeline-orchestration' }
     ),
     forwardRef(() => AlgorithmModule),
     forwardRef(() => CoinModule),
@@ -76,6 +86,7 @@ import { UsersModule } from '../users/users.module';
     forwardRef(() => MarketRegimeModule),
     forwardRef(() => UsersModule),
     forwardRef(() => BalanceModule),
+    forwardRef(() => PipelineModule),
     ScoringModule,
     AuditModule,
     MonitoringModule
@@ -90,7 +101,10 @@ import { UsersModule } from '../users/users.module';
     TaskSchedulerService,
     BacktestOrchestrationTask,
     BacktestOrchestrationProcessor,
-    BacktestOrchestrationService
+    BacktestOrchestrationService,
+    PipelineOrchestrationTask,
+    PipelineOrchestrationProcessor,
+    PipelineOrchestrationService
   ],
   exports: [
     StrategyEvaluationTask,
@@ -100,7 +114,8 @@ import { UsersModule } from '../users/users.module';
     DriftDetectionTask,
     PerformanceCalcTask,
     TaskSchedulerService,
-    BacktestOrchestrationTask
+    BacktestOrchestrationTask,
+    PipelineOrchestrationTask
   ]
 })
 export class TasksModule {}

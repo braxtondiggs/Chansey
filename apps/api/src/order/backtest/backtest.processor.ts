@@ -10,7 +10,7 @@ import { BacktestEngine } from './backtest-engine.service';
 import { BacktestResultService } from './backtest-result.service';
 import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
-import { Backtest, BacktestStatus } from './backtest.entity';
+import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
 import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
@@ -55,6 +55,16 @@ export class BacktestProcessor extends WorkerHost {
 
       if (backtest.status !== BacktestStatus.PENDING) {
         this.logger.warn(`Backtest ${backtestId} is not pending. Current status: ${backtest.status}`);
+        return;
+      }
+
+      // Type guard: ensure this processor only handles HISTORICAL backtests
+      if (mode !== BacktestType.HISTORICAL) {
+        this.logger.error(`BacktestProcessor received wrong type: ${mode}, expected HISTORICAL`);
+        await this.backtestResultService.markFailed(
+          backtestId,
+          `System error: BacktestType.${mode} incorrectly routed to historical processor.`
+        );
         return;
       }
 

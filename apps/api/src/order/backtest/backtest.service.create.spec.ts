@@ -71,10 +71,12 @@ describe('BacktestService.createBacktest', () => {
     };
   };
 
+  // Note: Only HISTORICAL and LIVE_REPLAY can be created via createBacktest().
+  // PAPER_TRADING and STRATEGY_OPTIMIZATION must use their dedicated services.
   const baseDto = {
     name: 'Test Backtest',
     description: 'test',
-    type: BacktestType.PAPER_TRADING,
+    type: BacktestType.HISTORICAL,
     algorithmId: 'algo-1',
     marketDataSetId: 'dataset-1',
     initialCapital: 1000,
@@ -149,18 +151,17 @@ describe('BacktestService.createBacktest', () => {
       } as any
     );
 
-    expect(result.warningFlags).toEqual(
-      expect.arrayContaining(['dataset_integrity_low', 'dataset_not_replay_capable', 'partial overlap'])
-    );
+    // Note: 'dataset_not_replay_capable' is only added for non-HISTORICAL types
+    expect(result.warningFlags).toEqual(expect.arrayContaining(['dataset_integrity_low', 'partial overlap']));
     expect(historicalQueue.add).toHaveBeenCalledWith(
       'execute-backtest',
       expect.objectContaining({
         backtestId: 'backtest-1',
         deterministicSeed: 'seed-1',
-        mode: BacktestType.PAPER_TRADING
+        mode: BacktestType.HISTORICAL
       }),
       { jobId: 'backtest-1', removeOnComplete: true, removeOnFail: false }
     );
-    expect(metricsService.recordBacktestCreated).toHaveBeenCalledWith(BacktestType.PAPER_TRADING, 'Algo');
+    expect(metricsService.recordBacktestCreated).toHaveBeenCalledWith(BacktestType.HISTORICAL, 'Algo');
   });
 });
