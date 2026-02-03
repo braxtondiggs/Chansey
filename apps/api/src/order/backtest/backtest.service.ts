@@ -590,7 +590,22 @@ export class BacktestService implements OnModuleInit {
   }
 
   private getQueueForType(type: BacktestType): Queue {
-    return type === BacktestType.LIVE_REPLAY ? this.replayQueue : this.historicalQueue;
+    switch (type) {
+      case BacktestType.HISTORICAL:
+        return this.historicalQueue;
+      case BacktestType.LIVE_REPLAY:
+        return this.replayQueue;
+      case BacktestType.PAPER_TRADING:
+      case BacktestType.STRATEGY_OPTIMIZATION:
+        throw new Error(
+          `BacktestType.${type} should not be created via backtestService.createBacktest(). ` +
+            `Use the appropriate service: paperTradingService or optimizationService.`
+        );
+      default: {
+        const _exhaustive: never = type;
+        throw new Error(`Unknown backtest type: ${type}`);
+      }
+    }
   }
 
   private async loadBacktestsForUser(userId: string, ids: string[]): Promise<Backtest[]> {
