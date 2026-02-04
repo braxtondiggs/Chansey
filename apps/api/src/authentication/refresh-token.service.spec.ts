@@ -2,12 +2,14 @@ import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { RefreshTokenService } from './refresh-token.service';
 
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
-type TestUser = User & { roles?: string[] };
+type TestUser = User & { roles?: Role[] };
 
 describe('RefreshTokenService', () => {
   let configStore: Record<string, any>;
@@ -53,7 +55,7 @@ describe('RefreshTokenService', () => {
   it('returns new tokens and rememberMe=false when refresh token is near expiry', async () => {
     const payload = { sub: 'user-123', exp: 1_700_000_000 + 7 * 24 * 60 * 60 };
     const baseUser = { id: payload.sub, email: 'user@example.com' } as TestUser;
-    const fullUser = { ...baseUser, roles: ['admin'] };
+    const fullUser = { ...baseUser, roles: [Role.ADMIN] };
     const dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
 
     jwtService.verifyAsync.mockResolvedValue(payload);
@@ -82,7 +84,7 @@ describe('RefreshTokenService', () => {
   it('returns rememberMe=true when refresh token has long expiration', async () => {
     const payload = { sub: 'user-999', exp: 1_700_000_000 + 31 * 24 * 60 * 60 };
     const baseUser = { id: payload.sub, email: 'remember@example.com' } as TestUser;
-    const fullUser = { ...baseUser, roles: ['manager'] };
+    const fullUser = { ...baseUser, roles: [Role.USER] };
     const dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
 
     jwtService.verifyAsync.mockResolvedValue(payload);
@@ -120,7 +122,7 @@ describe('RefreshTokenService', () => {
   });
 
   it('generates access tokens with provided roles', async () => {
-    const user = { id: 'user-1', email: 'role@example.com', roles: ['admin'] } as TestUser;
+    const user = { id: 'user-1', email: 'role@example.com', roles: [Role.ADMIN] } as TestUser;
 
     jwtService.signAsync.mockResolvedValue('signed-access');
 
@@ -131,7 +133,7 @@ describe('RefreshTokenService', () => {
       expect.objectContaining({
         sub: user.id,
         email: user.email,
-        roles: ['admin'],
+        roles: [Role.ADMIN],
         type: 'access'
       }),
       expect.objectContaining({
@@ -149,11 +151,13 @@ describe('RefreshTokenService', () => {
 
     await service.generateAccessToken(user);
 
-    expect(jwtService.signAsync.mock.calls[0][0]).toEqual(expect.objectContaining({ roles: ['user'], type: 'access' }));
+    expect(jwtService.signAsync.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ roles: [Role.USER], type: 'access' })
+    );
   });
 
   it('generates refresh token with configured expiration when rememberMe is false', async () => {
-    const user = { id: 'user-3', roles: ['analyst'] } as TestUser;
+    const user = { id: 'user-3', roles: [Role.USER] } as TestUser;
 
     jwtService.signAsync.mockResolvedValue('signed-refresh');
 
@@ -161,7 +165,7 @@ describe('RefreshTokenService', () => {
 
     expect(token).toBe('signed-refresh');
     expect(jwtService.signAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ sub: user.id, roles: ['analyst'], type: 'refresh' }),
+      expect.objectContaining({ sub: user.id, roles: [Role.USER], type: 'refresh' }),
       expect.objectContaining({ expiresIn: '7d', secret: 'refresh-secret', algorithm: 'HS512' })
     );
   });

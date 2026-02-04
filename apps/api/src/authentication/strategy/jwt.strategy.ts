@@ -4,13 +4,15 @@ import { PassportStrategy } from '@nestjs/passport';
 
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
 
 interface AccessTokenPayload {
   sub: string; // User ID
   email: string; // User email
-  roles: string[]; // Roles assigned to user
+  roles: Role[]; // Roles assigned to user
   type: string; // Token type ('access' or 'refresh')
   exp: number; // Expiration time (in seconds since epoch)
   iat: number; // Issued at time (in seconds since epoch)
@@ -42,7 +44,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Merge roles from JWT payload with user data
     return new User({
       ...user,
-      roles: payload.roles || user.roles || ['user']
+      roles: payload.roles || user.roles || [Role.USER]
     });
   }
 }

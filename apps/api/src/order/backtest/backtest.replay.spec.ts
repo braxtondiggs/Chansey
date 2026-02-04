@@ -3,6 +3,8 @@ import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { BacktestEngine } from './backtest-engine.service';
 import { BacktestPauseService } from './backtest-pause.service';
 import { BacktestResultService } from './backtest-result.service';
@@ -38,7 +40,7 @@ describe('BacktestService (live replay)', () => {
   const mockUser = {
     id: 'test-user-id',
     email: 'test@example.com',
-    roles: ['user']
+    roles: [Role.USER]
   };
 
   beforeEach(async () => {

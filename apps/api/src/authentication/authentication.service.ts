@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { SecurityAuditService } from './audit';
 import { VerifyOtpDto } from './dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -73,7 +75,7 @@ export class AuthenticationService {
         emailVerified: false,
         emailVerificationToken,
         emailVerificationTokenExpiresAt,
-        roles: ['user']
+        roles: [Role.USER]
       });
 
       // Send verification email
