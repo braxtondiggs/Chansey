@@ -35,6 +35,7 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === 'true'),
+  REDIS_URL: z.string().url().optional(),
 
   // Authentication & Security
   COOKIE_SECRET: z
