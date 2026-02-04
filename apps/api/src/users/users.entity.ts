@@ -11,6 +11,8 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
+import { Role } from '@chansey/api-interfaces';
+
 import type { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import type { Order } from '../order/order.entity';
 import type { Portfolio } from '../portfolio/portfolio.entity';
@@ -88,9 +90,13 @@ export class User {
   @Exclude()
   passwordResetTokenExpiresAt?: Date;
 
-  // Roles (moved from Authorizer to local)
-  @Column({ type: 'simple-array', default: 'user' })
-  roles: string[];
+  @Column({
+    type: 'enum',
+    enum: Role,
+    array: true,
+    default: [Role.USER]
+  })
+  roles: Role[];
 
   // Account Security
   @Column({ default: 0 })

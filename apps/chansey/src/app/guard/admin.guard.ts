@@ -3,7 +3,7 @@ import { Router, UrlTree } from '@angular/router';
 
 import { QueryClient } from '@tanstack/query-core';
 
-import { IUser } from '@chansey/api-interfaces';
+import { IUser, Role } from '@chansey/api-interfaces';
 import { authenticatedFetch, queryKeys } from '@chansey/shared';
 
 @Injectable({
@@ -19,7 +19,7 @@ export class AdminGuard {
       queryFn: () => authenticatedFetch<IUser>('/api/user')
     });
 
-    if (user?.roles?.includes('admin')) return true;
+    if (user?.roles?.includes(Role.ADMIN)) return true;
     return this.router.createUrlTree(['/app/dashboard']);
   }
 }

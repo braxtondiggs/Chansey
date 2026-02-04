@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { AlgorithmService } from './algorithm.service';
 import {
   CreateAlgorithmDto,
@@ -207,7 +209,7 @@ export class AlgorithmController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Create a new algorithm',
     description: 'Create a new algorithm configuration.'
@@ -223,7 +225,7 @@ export class AlgorithmController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Update an algorithm',
     description: 'Update an existing algorithm configuration.'
@@ -247,7 +249,7 @@ export class AlgorithmController {
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Delete an algorithm',
     description: 'Delete an algorithm configuration.'

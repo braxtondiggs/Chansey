@@ -1,6 +1,8 @@
 import { Controller, Get, HttpStatus, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { PoolStatisticsService } from './pool-statistics.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 
@@ -17,7 +19,7 @@ import { StrategyEvaluationTask } from '../tasks/strategy-evaluation.task';
 @ApiBearerAuth('token')
 @Controller('admin/risks')
 @UseGuards(JwtAuthenticationGuard, RolesGuard)
-@Roles('admin')
+@Roles(Role.ADMIN)
 export class AdminPoolController {
   constructor(
     private readonly poolStatistics: PoolStatisticsService,

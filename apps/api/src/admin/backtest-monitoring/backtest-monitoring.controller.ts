@@ -4,6 +4,8 @@ import { Throttle } from '@nestjs/throttler';
 
 import { Response } from 'express';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { BacktestMonitoringService } from './backtest-monitoring.service';
 import {
   BacktestFiltersDto,
@@ -31,7 +33,7 @@ import { RolesGuard } from '../../authentication/guard/roles.guard';
 @ApiBearerAuth('token')
 @Controller('admin/backtest-monitoring')
 @UseGuards(JwtAuthenticationGuard, RolesGuard)
-@Roles('admin')
+@Roles(Role.ADMIN)
 export class BacktestMonitoringController {
   constructor(private readonly monitoringService: BacktestMonitoringService) {}
 
