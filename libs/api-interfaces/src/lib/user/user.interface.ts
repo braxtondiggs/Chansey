@@ -1,3 +1,5 @@
+import { Role } from './role.enum';
+
 import { ExchangeKey } from '../exchange/exchange.interface';
 
 export interface IUser {
@@ -12,7 +14,7 @@ export interface IUser {
   gender: string | null;
   birthdate: string | null;
   phone_number: string | null;
-  roles: string[];
+  roles: Role[];
   otpEnabled: boolean;
   lastLoginAt: Date | null;
   exchanges: ExchangeKey[];

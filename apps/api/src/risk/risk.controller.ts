@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { Risk } from '@chansey/api-interfaces';
+import { Risk, Role } from '@chansey/api-interfaces';
 
 import { CreateRiskDto, UpdateRiskDto } from './dto';
 import { Risk as RiskEntity } from './risk.entity';
@@ -21,7 +21,7 @@ export class RiskController {
 
   @Post()
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Create a new risk profile' })
   @ApiResponse({ status: 201, description: 'The risk has been successfully created.', type: RiskEntity })
   @ApiResponse({ status: 400, description: 'Bad Request.' })
@@ -48,7 +48,7 @@ export class RiskController {
 
   @Patch(':id')
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Update a risk profile' })
   @ApiParam({ name: 'id', description: 'Risk ID' })
   @ApiResponse({ status: 200, description: 'The risk has been successfully updated.', type: RiskEntity })
@@ -60,7 +60,7 @@ export class RiskController {
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Delete a risk profile' })
   @ApiParam({ name: 'id', description: 'Risk ID' })
   @ApiResponse({ status: 200, description: 'The risk has been successfully deleted.' })

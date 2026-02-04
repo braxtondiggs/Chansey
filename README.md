@@ -3,58 +3,132 @@
 [![CI](https://github.com/braxtondiggs/Chansey/actions/workflows/ci.yml/badge.svg)](https://github.com/braxtondiggs/Chansey/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
-[![Angular](https://img.shields.io/badge/Angular-20-red.svg)](https://angular.io/)
+[![Angular](https://img.shields.io/badge/Angular-20-red.svg)](https://angular.dev/)
 [![NestJS](https://img.shields.io/badge/NestJS-11-red.svg)](https://nestjs.com/)
 
-A modern cryptocurrency portfolio management application built with Angular and NestJS. Track your investments across
-multiple exchanges, monitor performance, and manage your crypto portfolio with real-time data synchronization.
+A cryptocurrency portfolio management and algorithmic trading platform with a comprehensive strategy validation
+pipeline. Track investments across multiple exchanges, develop trading algorithms, and validate strategies through
+rigorous backtesting before deployment.
 
-## 🚀 Features
+## Features
 
-- **Multi-Exchange Support**: Connect to Binance, Coinbase, and other major cryptocurrency exchanges
-- **Real-Time Synchronization**: Automated order and balance updates via background job processing
-- **Portfolio Analytics**: Track performance, asset allocation, and historical data
-- **Secure API Integration**: Encrypted storage of exchange API keys with JWT authentication
-- **Responsive PWA**: Mobile-first design with offline capabilities
-- **Admin Dashboard**: Queue management and system monitoring tools
-- **Algorithm Backtesting**: Historical + live replay simulations with telemetry, comparison dashboards, and
-  simulation-only safeties
+### Portfolio Management
 
-## 🛠 Technology Stack
+- **Multi-Exchange Support** - Connect to Binance, Coinbase, Kraken, and more via CCXT
+- **Real-Time Sync** - Automated order and balance synchronization via background jobs
+- **Portfolio Analytics** - Performance tracking, asset allocation, and historical snapshots
+- **Coin Details** - Market statistics, price charts, and holdings per cryptocurrency
 
-### Frontend (apps/chansey)
+### Strategy Development Pipeline
 
-- **Angular 20** with standalone components
-- **PrimeNG** UI component library
-- **TailwindCSS** for styling
-- **TanStack Query** for state management and caching
-- **PWA** with service worker support
+A 4-stage validation workflow ensures strategies are thoroughly tested before live deployment:
 
-### Backend (apps/api)
+```
+OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADING → COMPLETED
+```
 
-- **NestJS** REST API framework
-- **TypeORM** with PostgreSQL database
-- **Redis** for caching and session storage
-- **BullMQ** for background job processing
-- **CCXT** for cryptocurrency exchange integration
-- **JWT** authentication with refresh tokens
+| Stage             | Purpose                          | Key Thresholds             |
+| ----------------- | -------------------------------- | -------------------------- |
+| **Optimize**      | Walk-forward parameter tuning    | ≥5% improvement            |
+| **Historical**    | Full backtest on historical data | Sharpe ≥1.0, Drawdown ≤25% |
+| **Live Replay**   | Real-time pacing simulation      | Degradation ≤20%           |
+| **Paper Trading** | Live market without real capital | Return ≥0%                 |
+
+### Built-in Trading Strategies
+
+- EMA/SMA Crossover, Triple EMA
+- RSI, RSI Divergence, RSI-MACD Combo
+- MACD, Bollinger Bands (Breakout & Squeeze)
+- ATR Trailing Stop, Mean Reversion
+- Confluence (multi-indicator consensus)
+
+### Backtesting Modes
+
+- **Historical** - Full-period simulations with comprehensive metrics
+- **Live Replay** - Recent market data with realistic execution delays
+- **Paper Trading** - Live market simulation with configurable stop conditions
+- **Strategy Optimization** - Grid search parameter tuning with walk-forward analysis
+
+### Security & Administration
+
+- JWT authentication with refresh tokens and role-based access
+- Encrypted exchange API key storage
+- Admin dashboard with queue monitoring and trading kill switch
+- Comprehensive audit logging
+
+## Tech Stack
+
+### Frontend (`apps/chansey`)
+
+| Technology     | Purpose                        |
+| -------------- | ------------------------------ |
+| Angular 20     | Standalone components, signals |
+| PrimeNG 20     | UI component library           |
+| TailwindCSS 4  | Utility-first styling          |
+| TanStack Query | Server state management        |
+| Chart.js       | Data visualization             |
+| PWA            | Offline support, installable   |
+
+### Backend (`apps/api`)
+
+| Technology    | Purpose                   |
+| ------------- | ------------------------- |
+| NestJS 11     | REST API framework        |
+| TypeORM       | PostgreSQL ORM            |
+| BullMQ        | Background job processing |
+| Redis         | Caching and job queues    |
+| CCXT          | Exchange connectivity     |
+| Passport      | JWT authentication        |
+| OpenTelemetry | Distributed tracing       |
+| Pino          | Structured logging        |
 
 ### Infrastructure
 
-- **Railway** deployment platform
-- **Minio** for file storage
-- **CoinGecko API** for price data
+| Service        | Purpose                 |
+| -------------- | ----------------------- |
+| PostgreSQL 15+ | Primary database        |
+| Redis 6+       | Cache and queue backend |
+| Railway        | Deployment platform     |
+| Minio          | File storage            |
+| CoinGecko API  | Market data             |
 
-## 📋 Prerequisites
+## Project Structure
 
-- **Node.js** 22+ and npm
-- **PostgreSQL** 14+
-- **Redis** 6+
-- **Git**
+```
+├── apps/
+│   ├── api/                 # NestJS REST API
+│   │   └── src/
+│   │       ├── algorithm/   # Trading strategies
+│   │       ├── backtest/    # Backtesting engine
+│   │       ├── pipeline/    # Validation workflow
+│   │       ├── paper-trading/
+│   │       ├── optimization/
+│   │       ├── exchange/    # CCXT integration
+│   │       ├── order/       # Order management
+│   │       ├── portfolio/   # Holdings & performance
+│   │       └── ...
+│   ├── chansey/             # Angular frontend
+│   │   └── src/app/
+│   │       ├── backtesting/ # Backtest UI
+│   │       ├── dashboard/   # Portfolio overview
+│   │       ├── prices/      # Market data
+│   │       └── ...
+│   └── chansey-e2e/         # Cypress E2E tests
+├── libs/
+│   ├── api-interfaces/      # Shared TypeScript types
+│   └── shared/              # Shared utilities
+└── docs/bruno/              # API documentation
+```
 
-## 🔧 Quick Start
+## Quick Start
 
-### 1. Clone and Install
+### Prerequisites
+
+- Node.js 22+
+- PostgreSQL 15+
+- Redis 6+
+
+### Installation
 
 ```bash
 git clone https://github.com/braxtondiggs/Chansey.git
@@ -62,17 +136,15 @@ cd Chansey
 npm install
 ```
 
-### 2. Environment Setup
-
-Create environment files for both applications:
+### Environment Setup
 
 **apps/api/.env**
 
 ```env
-DATABASE_URL=postgresql://username:password@localhost:5432/chansey
+DATABASE_URL=postgresql://user:pass@localhost:5432/chansey
 REDIS_URL=redis://localhost:6379
-JWT_SECRET=your-jwt-secret
-COINGECKO_API_KEY=your-coingecko-api-key
+JWT_SECRET=your-secret-key
+COINGECKO_API_KEY=your-api-key
 ```
 
 **apps/chansey/.env**
@@ -81,149 +153,149 @@ COINGECKO_API_KEY=your-coingecko-api-key
 API_URL=http://localhost:3000/api
 ```
 
-### 3. Database Setup
+### Database Setup
 
 ```bash
-# Run database migrations
-npm run db:migrate
-
-# Seed initial data (optional)
-npm run db:seed
+npm run migration:run
 ```
 
-### 4. Start Development Servers
+### Start Development
 
 ```bash
-# Start both API and frontend
+# Both API and frontend
 npm start
 
-# Or start individually
-npm run api    # API server on http://localhost:3000
-npm run site   # Frontend on http://localhost:4200
+# Individual apps
+npm run api    # http://localhost:3000
+npm run site   # http://localhost:4200
 ```
 
-## 📜 Development Commands
+## Commands
 
-### Essential Commands
+### Development
+
+| Command             | Description             |
+| ------------------- | ----------------------- |
+| `npm start`         | Start API and frontend  |
+| `npm run api`       | Start API only          |
+| `npm run site`      | Start frontend only     |
+| `npm run build`     | Build affected projects |
+| `npm run build:all` | Build all projects      |
+
+### Testing & Quality
+
+| Command            | Description            |
+| ------------------ | ---------------------- |
+| `npm test`         | Run affected tests     |
+| `npm run test:all` | Run all tests          |
+| `npm run lint`     | Lint affected projects |
+| `npm run lint:fix` | Lint and auto-fix      |
+| `npm run format`   | Format with Prettier   |
+
+### Database
+
+| Command                    | Description           |
+| -------------------------- | --------------------- |
+| `npm run migration:run`    | Run migrations        |
+| `npm run migration:show`   | Show migration status |
+| `npm run migration:revert` | Revert last migration |
+
+### Nx Commands
+
+| Command               | Description            |
+| --------------------- | ---------------------- |
+| `nx serve api`        | Serve API              |
+| `nx serve chansey`    | Serve frontend         |
+| `nx build api --prod` | Production API build   |
+| `nx affected:test`    | Test affected projects |
+| `nx graph`            | View dependency graph  |
+
+### Utilities
+
+| Command                 | Description                   |
+| ----------------------- | ----------------------------- |
+| `npm run deps:check`    | Check for unused dependencies |
+| `npm run deps:circular` | Detect circular dependencies  |
+| `npm run analyze:site`  | Bundle analysis               |
+| `npm run redis:flush`   | Flush Redis cache             |
+
+## Architecture
+
+### User Isolation Model
+
+All pipelines, backtests, and strategies are strictly user-specific with cascade delete. Users cannot access each
+other's data.
+
+### Risk-Based Configuration
+
+Pipeline behavior adapts to user risk profile (1-5 scale):
+
+| Risk Level       | Paper Trading | Training Period | Max Drawdown |
+| ---------------- | ------------- | --------------- | ------------ |
+| Conservative (1) | 14 days       | 180 days        | 15%          |
+| Moderate (3)     | 7 days        | 90 days         | 25%          |
+| Aggressive (5)   | 3 days        | 30 days         | 40%          |
+
+### Background Processing
+
+BullMQ queues handle async operations:
+
+- Order synchronization (hourly)
+- Pipeline stage execution
+- Backtest and optimization runs
+- Paper trading ticks
+- Price data collection
+
+Admin queue dashboard available at `/api/admin/queues`.
+
+### Key Entities
+
+| Entity                | Purpose                               |
+| --------------------- | ------------------------------------- |
+| `User`                | Authentication and isolation boundary |
+| `ExchangeKey`         | Encrypted exchange API credentials    |
+| `Algorithm`           | Trading strategy implementations      |
+| `StrategyConfig`      | User-specific parameter overrides     |
+| `Pipeline`            | 4-stage validation workflow           |
+| `Backtest`            | Historical/replay test results        |
+| `PaperTradingSession` | Live simulation state                 |
+
+## API Documentation
+
+- **Swagger UI** - Available at `/api/docs` when running the API
+- **Bruno Collection** - Comprehensive API tests in `docs/bruno/`
+
+## Monitoring
+
+- **Queue Dashboard** - `/api/admin/queues` (admin only)
+- **Health Checks** - `/api/health`
+- **Prometheus Metrics** - `/api/metrics`
+- **OpenTelemetry** - Distributed tracing support
+
+## Deployment
+
+The application deploys on Railway with PostgreSQL and Redis add-ons. Production builds:
 
 ```bash
-npm start           # Start both applications
-npm run build       # Build all applications
-npm run test        # Run all tests
-npm run lint        # Run ESLint on all projects
-npm run format      # Format code with Prettier
-npm run e2e         # Run Cypress end-to-end tests
+npm run build:api      # API build
+npm run build:client   # Frontend build
+npm run start:prod     # Start production API
 ```
 
-### Nx-Specific Commands
-
-```bash
-nx serve api                # Serve API only
-nx serve chansey           # Serve frontend only
-nx build api --prod        # Production build for API
-nx affected:test           # Test only affected projects
-nx affected:lint           # Lint only affected projects
-nx dep-graph              # View project dependency graph
-```
-
-### Database Operations
-
-```bash
-npm run db:migrate         # Run database migrations
-npm run db:migration:create # Create new migration
-npm run db:seed           # Seed database with initial data
-```
-
-## 🏗 Architecture Overview
-
-### Monorepo Structure
-
-```
-├── apps/
-│   ├── api/              # NestJS API server
-│   ├── chansey/          # Angular frontend
-│   └── chansey-e2e/      # Cypress E2E tests
-├── libs/
-│   └── api-interfaces/   # Shared TypeScript interfaces
-└── docs/
-    └── bruno/           # API documentation and testing
-```
-
-### Key Features
-
-#### Exchange Integration
-
-- Standardized exchange API interactions via CCXT library
-- Secure API key storage with encryption
-- Automated order synchronization via scheduled tasks
-- Support for multiple exchanges per user
-
-#### Background Processing
-
-- **BullMQ** job queues with Redis backend
-- Scheduled tasks for:
-  - Order synchronization (hourly)
-  - Price data updates
-  - Balance calculations
-  - Portfolio historical data collection
-
-#### Security & Authentication
-
-- JWT-based authentication with refresh tokens
-- Role-based access control (admin/user)
-- API key encryption for exchange credentials
-- Rate limiting and security headers
-- CSRF protection
-
-- **Backtesting Workflow**: Analysts launch historical runs while developers can trigger live replay simulations; both
-  modes persist signals, trades, and telemetry per run for later auditing.
-- **Simulation Safeguards**: Live replay processors intercept outbound trades and record them as `SimulatedOrderFill`
-  events so no orders reach external venues during testing.
-- **Comparison Reporting**: Completed runs can be grouped via `/comparison-reports`, exposing aligned metrics and
-  benchmark overlays that feed the Angular comparison dashboard.
-
-## 🧪 Testing
-
-```bash
-# Unit tests
-npm run test
-
-# E2E tests
-npm run e2e
-
-# Test specific application
-nx test api
-nx test chansey
-
-# Test affected projects only
-nx affected:test
-```
-
-## 📊 Monitoring
-
-- **Queue Dashboard**: Available at `/api/admin/queues` (admin only)
-- **API Documentation**: Swagger/OpenAPI docs when running API
-- **Bruno Collection**: Comprehensive API testing in `docs/bruno/`
-
-## 🚀 Deployment
-
-The application is deployed on Railway with PostgreSQL and Redis add-ons. See deployment documentation for detailed
-setup instructions.
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Follow the existing code style and run `npm run lint`
+3. Follow code style (`npm run lint && npm run format`)
 4. Write tests for new functionality
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
+5. Commit changes (`git commit -m 'Add amazing feature'`)
+6. Push to branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
-## 📝 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-Built with ❤️ using [Nx](https://nx.dev) monorepo tooling
+Built with [Nx](https://nx.dev) monorepo tooling

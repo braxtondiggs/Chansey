@@ -1,6 +1,8 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { HaltTradingDto } from './dto/halt-trading.dto';
 import { ResumeTradingDto } from './dto/resume-trading.dto';
 import { CancelAllOrdersResponseDto, TradingStateResponseDto } from './dto/trading-state-response.dto';
@@ -22,7 +24,7 @@ import { User } from '../../users/users.entity';
 @ApiBearerAuth('token')
 @Controller('admin/trading')
 @UseGuards(JwtAuthenticationGuard, RolesGuard)
-@Roles('admin')
+@Roles(Role.ADMIN)
 export class TradingStateController {
   constructor(private readonly tradingStateService: TradingStateService) {}
 

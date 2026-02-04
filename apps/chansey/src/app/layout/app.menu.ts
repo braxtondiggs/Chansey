@@ -1,6 +1,8 @@
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 
 import { AppMenuitem } from './app.menuitem';
@@ -32,7 +34,7 @@ interface MenuItem {
 export class AppMenu implements OnInit {
   private readonly authService = inject(AuthService);
   user = this.authService.useUser();
-  isAdmin = computed(() => this.user.data()?.roles?.includes('admin'));
+  isAdmin = computed(() => this.user.data()?.roles?.includes(Role.ADMIN));
   model = signal<MenuItem[]>([]);
 
   constructor() {

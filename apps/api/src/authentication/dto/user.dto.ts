@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
 
-import { ExchangeKey, IUser } from '@chansey/api-interfaces';
+import { ExchangeKey, IUser, Role } from '@chansey/api-interfaces';
 
 export class UserDto implements IUser {
   @ApiProperty({
@@ -92,12 +92,12 @@ export class UserDto implements IUser {
 
   @ApiProperty({
     description: 'Roles assigned to the user',
-    example: ['admin'],
+    example: [Role.ADMIN],
     isArray: true,
-    type: String
+    enum: Role
   })
   @Expose()
-  roles: string[] = [];
+  roles: Role[] = [];
 
   @ApiProperty({
     description: 'Whether OTP/2FA is enabled',

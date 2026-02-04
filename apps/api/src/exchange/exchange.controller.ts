@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { CreateExchangeDto, ExchangeResponseDto, UpdateExchangeDto } from './dto';
 import { ExchangeService } from './exchange.service';
 
@@ -97,7 +99,7 @@ export class ExchangeController {
 
   @Post()
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Create exchange',
     description: 'Creates a new exchange.'
@@ -125,7 +127,7 @@ export class ExchangeController {
 
   @Patch(':id')
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Update exchange',
     description: 'Updates an existing exchange by its unique identifier. Requires admin role.'
@@ -160,7 +162,7 @@ export class ExchangeController {
 
   @Delete(':id')
   @UseGuards(JwtAuthenticationGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Delete exchange',
     description: 'Deletes an exchange by its unique identifier. Requires admin role.'

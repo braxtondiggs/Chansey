@@ -2,6 +2,8 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
@@ -55,7 +57,7 @@ export class RefreshTokenService {
     const payload = {
       sub: user.id,
       email: user.email,
-      roles: user.roles || ['user'], // Default to 'user' role if none assigned
+      roles: user.roles || [Role.USER], // Default to 'user' role if none assigned
       type: 'access'
     };
 
@@ -70,7 +72,7 @@ export class RefreshTokenService {
     const payload = {
       sub: user.id,
       type: 'refresh',
-      roles: user.roles || ['user'] // Include roles in refresh token to preserve them
+      roles: user.roles || [Role.USER] // Include roles in refresh token to preserve them
     };
 
     // Use longer expiration for remember me

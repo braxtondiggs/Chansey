@@ -8,6 +8,8 @@ import {
   ApiTags
 } from '@nestjs/swagger';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { PipelineFiltersDto } from './dto';
 import { Pipeline } from './entities/pipeline.entity';
 import { PipelineSummaryReport } from './interfaces';
@@ -28,7 +30,7 @@ import { RolesGuard } from '../authentication/guard/roles.guard';
 @ApiTags('Admin - Pipelines')
 @ApiBearerAuth('token')
 @UseGuards(JwtAuthenticationGuard, RolesGuard)
-@Roles('admin')
+@Roles(Role.ADMIN)
 export class PipelineController {
   constructor(
     private readonly orchestratorService: PipelineOrchestratorService,

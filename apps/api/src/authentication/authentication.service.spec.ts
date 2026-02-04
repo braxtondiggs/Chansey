@@ -2,6 +2,8 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 
 import { Repository } from 'typeorm';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { SecurityAuditService } from './audit';
 import { AuthenticationService } from './authentication.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -131,7 +133,7 @@ describe('AuthenticationService', () => {
         passwordHash: 'hashed-password',
         emailVerified: false,
         emailVerificationToken: 'verify-token',
-        roles: ['user']
+        roles: [Role.USER]
       })
     );
     expect(emailService.sendVerificationEmail).toHaveBeenCalledWith('user@example.com', 'verify-token', 'Sam');
@@ -205,7 +207,7 @@ describe('AuthenticationService', () => {
       passwordHash: 'hash',
       emailVerified: true,
       failedLoginAttempts: 4,
-      roles: ['user']
+      roles: [Role.USER]
     } as User);
 
     passwordService.verifyPassword.mockResolvedValue(false);
@@ -240,7 +242,7 @@ describe('AuthenticationService', () => {
       emailVerified: true,
       otpEnabled: true,
       failedLoginAttempts: 0,
-      roles: ['user']
+      roles: [Role.USER]
     } as User);
 
     passwordService.verifyPassword.mockResolvedValue(true);
@@ -271,7 +273,7 @@ describe('AuthenticationService', () => {
       otpHash: 'otp-hash',
       otpExpiresAt: new Date(Date.now() + 60_000),
       otpFailedAttempts: 1,
-      roles: ['user']
+      roles: [Role.USER]
     } as User);
 
     passwordService.verifyOtp.mockResolvedValue(false);

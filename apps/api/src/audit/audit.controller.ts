@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Query, Param, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 
-import { AuditTrailQuery } from '@chansey/api-interfaces';
+import { AuditTrailQuery, Role } from '@chansey/api-interfaces';
 
 import { AuditQueryService } from './audit-query.service';
 import { AuditService } from './audit.service';
@@ -14,7 +14,7 @@ import { RolesGuard } from '../authentication/guard/roles.guard';
  *
  * REST API for querying and analyzing audit trails.
  *
- * All endpoints require authentication. Admin-only endpoints are marked with @Roles('admin').
+ * All endpoints require authentication. Admin-only endpoints are marked with @Roles(Role.ADMIN).
  *
  * Features:
  * - Query audit logs with flexible filtering
@@ -48,7 +48,7 @@ export class AuditController {
    * - pagination (limit, offset)
    */
   @Get('logs')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   async queryAuditTrail(@Query() query: AuditTrailQuery) {
     return this.auditService.queryAuditTrail(query);
   }
@@ -143,7 +143,7 @@ export class AuditController {
    * - Audit log integrity status
    */
   @Get('compliance')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   async getComplianceReport(@Query('startDate') startDate: string, @Query('endDate') endDate: string) {
     return this.auditQueryService.getComplianceReport(new Date(startDate), new Date(endDate));
   }
@@ -156,7 +156,7 @@ export class AuditController {
    * Searches across metadata, beforeState, and afterState fields
    */
   @Get('search')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   async searchAuditLogs(@Query('q') searchTerm: string, @Query('limit') limit?: number) {
     return this.auditQueryService.searchAuditLogs(searchTerm, limit);
   }
@@ -173,7 +173,7 @@ export class AuditController {
    * - Most active day
    */
   @Get('user/:userId/activity')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   async getUserActivitySummary(@Param('userId') userId: string, @Query('days') days?: number) {
     return this.auditQueryService.getUserActivitySummary(userId, days ? parseInt(days.toString()) : 30);
   }
@@ -189,7 +189,7 @@ export class AuditController {
    * - Events grouped by entity type
    */
   @Get('statistics')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   async getAuditStatistics(@Query('startDate') startDate: string, @Query('endDate') endDate: string) {
     return this.auditService.getAuditStatistics(new Date(startDate), new Date(endDate));
   }
@@ -205,7 +205,7 @@ export class AuditController {
    * - List of failed entry IDs
    */
   @Post('verify')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   async verifyAuditLogIntegrity(@Body() body: { auditLogIds: string[] }) {
     return this.auditService.verifyMultipleEntries(body.auditLogIds);
@@ -223,7 +223,7 @@ export class AuditController {
    * - Integrity percentage
    */
   @Post('verify/range')
-  @Roles('admin')
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   async verifyAuditLogRange(@Body() body: { startDate: string; endDate: string }) {
     const { logs } = await this.auditService.queryAuditTrail({

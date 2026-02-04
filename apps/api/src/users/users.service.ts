@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
+import { Role } from '@chansey/api-interfaces';
+
 import { UpdateUserDto } from './dto';
 import { User } from './users.entity';
 
@@ -131,7 +133,7 @@ export class UsersService {
 
       return {
         ...dbUser,
-        roles: user.roles || dbUser.roles || ['user'],
+        roles: user.roles || dbUser.roles || [Role.USER],
         exchanges
       };
     } catch (error) {
