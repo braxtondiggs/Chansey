@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BacktestMonitoringController } from './backtest-monitoring/backtest-monitoring.controller';
 import { BacktestMonitoringService } from './backtest-monitoring/backtest-monitoring.service';
+import { LiveTradeMonitoringModule } from './live-trade-monitoring/live-trade-monitoring.module';
 import { TradingStateController } from './trading-state/trading-state.controller';
 import { TradingState } from './trading-state/trading-state.entity';
 import { TradingStateService } from './trading-state/trading-state.service';
@@ -27,6 +28,7 @@ import { StrategyModule } from '../strategy/strategy.module';
   imports: [
     TypeOrmModule.forFeature([TradingState, Order, Backtest, BacktestTrade, BacktestSignal, SimulatedOrderFill]),
     AuditModule,
+    LiveTradeMonitoringModule,
     forwardRef(() => OrderModule),
     forwardRef(() => StrategyModule)
   ],

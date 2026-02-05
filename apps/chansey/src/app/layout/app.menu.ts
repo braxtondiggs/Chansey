@@ -64,11 +64,6 @@ export class AppMenu implements OnInit {
             routerLink: ['/app/transactions']
           },
           {
-            label: 'Backtesting',
-            icon: 'pi pi-fw pi-chart-line',
-            routerLink: ['/app/backtesting']
-          },
-          {
             label: 'Prices',
             icon: 'pi pi-fw pi-money-bill',
             routerLink: ['/app/prices']
