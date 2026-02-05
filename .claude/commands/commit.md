@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git diff:*), Bash(git log:*)
-argument-hint: [message] | --no-verify | --amend
+argument-hint: [message] | --no-verify | --amend | --issue <number>
 description: Create well-formatted commits with conventional commit format
 ---
 
@@ -49,6 +49,7 @@ Create well-formatted commit: $ARGUMENTS
   - `db`: Database related changes
 - **Present tense, imperative mood**: Write commit messages as commands (e.g., "add feature" not "added feature")
 - **Concise first line**: Keep the first line under 72 characters
+- **Link GitHub issues**: When working on a tracked issue, add `Closes #<number>` on a separate line at the bottom of the commit body
 
 ## Guidelines for Splitting Commits
 
@@ -63,6 +64,7 @@ When analyzing the diff, consider splitting commits based on these criteria:
 ## Examples
 
 Good commit messages:
+
 - feat: add user authentication system
 - fix: resolve memory leak in rendering process
 - docs: update API documentation with new endpoints
@@ -70,17 +72,23 @@ Good commit messages:
 - fix: resolve linter warnings in component files
 - chore: improve developer tooling setup process
 - feat: implement business logic for transaction validation
-- fix: address minor styling inconsistency in header
 - fix: patch critical security vulnerability in auth flow
-- style: reorganize component structure for better readability
-- fix: remove deprecated legacy code
 - feat: add input validation for user registration form
-- fix: resolve failing CI pipeline tests
-- feat: implement analytics tracking for user engagement
-- fix: strengthen authentication password requirements
-- feat: improve form accessibility for screen readers
+
+Example with issue reference (multi-line commit):
+
+```
+feat: add user authentication system
+
+- Implement JWT-based authentication
+- Add login and logout endpoints
+- Create user session management
+
+Closes #123
+```
 
 Example of splitting commits:
+
 - First commit: feat: add new solc version type definitions
 - Second commit: docs: update documentation for new solc versions
 - Third commit: chore: update package.json dependencies
@@ -93,6 +101,8 @@ Example of splitting commits:
 ## Command Options
 
 - `--no-verify`: Skip running the pre-commit checks (lint, build, generate:docs)
+- `--issue <number>` or `-i <number>`: Link the commit to a GitHub issue (adds `Closes #<number>` at the bottom of the commit body)
+- `--amend`: Amend the previous commit instead of creating a new one
 
 ## Important Notes
 
@@ -104,3 +114,5 @@ Example of splitting commits:
 - Before committing, the command will review the diff to identify if multiple commits would be more appropriate
 - If suggesting multiple commits, it will help you stage and commit the changes separately
 - Always reviews the commit diff to ensure the message matches the changes
+- When `--issue` is provided, add `Closes #<number>` on a separate line at the bottom of the commit body
+- Using `Closes #<number>` automatically closes the referenced issue when the commit is merged to the default branch
