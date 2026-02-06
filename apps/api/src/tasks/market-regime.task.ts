@@ -17,7 +17,7 @@ export class MarketRegimeTask {
   private readonly logger = new Logger(MarketRegimeTask.name);
 
   // Track assets to monitor
-  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'MATIC'];
+  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'POL'];
 
   constructor(
     @InjectQueue('regime-check-queue') private regimeQueue: Queue,
@@ -101,7 +101,7 @@ export class MarketRegimeTask {
         BTC: 'bitcoin',
         ETH: 'ethereum',
         SOL: 'solana',
-        MATIC: 'polygon'
+        POL: 'polygon-ecosystem-token'
       };
 
       const slug = assetSlugMap[asset.toUpperCase()];

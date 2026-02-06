@@ -22,7 +22,8 @@ describe('BacktestOrchestrationTask', () => {
   };
 
   const mockService = {
-    getEligibleUsers: jest.fn()
+    getEligibleUsers: jest.fn(),
+    ensureDatasetExists: jest.fn().mockResolvedValue(undefined)
   };
 
   beforeEach(async () => {

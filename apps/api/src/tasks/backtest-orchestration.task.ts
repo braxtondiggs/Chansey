@@ -33,6 +33,9 @@ export class BacktestOrchestrationTask {
     this.logger.log('Starting daily backtest orchestration scheduling');
 
     try {
+      // Ensure a database-backed dataset exists before orchestrating
+      await this.orchestrationService.ensureDatasetExists();
+
       const eligibleUsers = await this.orchestrationService.getEligibleUsers();
       this.logger.log(`Found ${eligibleUsers.length} eligible users for orchestration`);
 
