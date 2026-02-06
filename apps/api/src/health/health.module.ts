@@ -21,10 +21,10 @@ import { OHLCModule } from '../ohlc/ohlc.module';
     }),
     BullModule.registerQueue(
       { name: 'order-queue' },
-      { name: 'backtest-queue' },
       { name: 'coin-queue' },
-      { name: 'ohlc-queue' },
-      { name: 'price-queue' }
+      { name: 'price-queue' },
+      { name: 'strategy-evaluation-queue' },
+      { name: 'regime-check-queue' }
     ),
     ExchangeModule,
     OHLCModule
