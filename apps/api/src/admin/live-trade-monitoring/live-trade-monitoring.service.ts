@@ -748,13 +748,34 @@ export class LiveTradeMonitoringService {
   }
 
   private async getAlertsSummary(filters: LiveTradeFiltersDto): Promise<AlertsSummaryDto> {
-    const alerts = await this.generateAllAlerts(filters);
+    // Lightweight path: skip user relation loading and alert sorting
+    const { activations, perfMap, backtestMap } = await this.fetchAlertBaseData(filters, false);
 
-    return {
-      critical: alerts.filter((a) => a.severity === AlertSeverity.CRITICAL).length,
-      warning: alerts.filter((a) => a.severity === AlertSeverity.WARNING).length,
-      info: alerts.filter((a) => a.severity === AlertSeverity.INFO).length
-    };
+    let critical = 0;
+    let warning = 0;
+    let info = 0;
+
+    for (const activation of activations) {
+      const performance = perfMap.get(activation.id) || null;
+      const backtest = backtestMap.get(activation.algorithmId) || null;
+      const activationAlerts = this.generateAlertsForActivation(activation, performance, backtest);
+
+      for (const alert of activationAlerts) {
+        switch (alert.severity) {
+          case AlertSeverity.CRITICAL:
+            critical++;
+            break;
+          case AlertSeverity.WARNING:
+            warning++;
+            break;
+          case AlertSeverity.INFO:
+            info++;
+            break;
+        }
+      }
+    }
+
+    return { critical, warning, info };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1017,55 +1038,66 @@ export class LiveTradeMonitoringService {
 
     const results = await qb.getRawMany();
 
-    return Promise.all(
-      results.map(async (r) => {
-        const backtestSlippage = await this.getAlgorithmBacktestSlippage(r.algorithmId);
-        return {
-          algorithmId: r.algorithmId,
-          algorithmName: r.algorithmName,
-          liveSlippage: {
-            avgBps: Number(r.avgBps || 0),
-            medianBps: Number(r.medianBps || 0),
-            minBps: Number(r.minBps || 0),
-            maxBps: Number(r.maxBps || 0),
-            p95Bps: Number(r.p95Bps || 0),
-            stdDevBps: Number(r.stdDevBps || 0),
-            orderCount: parseInt(r.orderCount || '0', 10)
-          },
-          backtestSlippage,
-          slippageDifferenceBps: new Decimal(r.avgBps || 0).minus(backtestSlippage?.avgBps || 0).toNumber()
-        };
-      })
-    );
+    // Batch fetch backtest slippage for all algorithms (fixes N+1)
+    const algorithmIds = results.map((r) => r.algorithmId).filter(Boolean);
+    const backtestSlippageMap = await this.getBatchAlgorithmBacktestSlippage(algorithmIds);
+
+    return results.map((r) => {
+      const backtestSlippage = backtestSlippageMap.get(r.algorithmId);
+      return {
+        algorithmId: r.algorithmId,
+        algorithmName: r.algorithmName,
+        liveSlippage: {
+          avgBps: Number(r.avgBps || 0),
+          medianBps: Number(r.medianBps || 0),
+          minBps: Number(r.minBps || 0),
+          maxBps: Number(r.maxBps || 0),
+          p95Bps: Number(r.p95Bps || 0),
+          stdDevBps: Number(r.stdDevBps || 0),
+          orderCount: parseInt(r.orderCount || '0', 10)
+        },
+        backtestSlippage,
+        slippageDifferenceBps: new Decimal(r.avgBps || 0).minus(backtestSlippage?.avgBps || 0).toNumber()
+      };
+    });
   }
 
-  private async getAlgorithmBacktestSlippage(algorithmId: string): Promise<SlippageStatsDto | undefined> {
-    const result = await this.fillRepo
+  private async getBatchAlgorithmBacktestSlippage(algorithmIds: string[]): Promise<Map<string, SlippageStatsDto>> {
+    const map = new Map<string, SlippageStatsDto>();
+    if (algorithmIds.length === 0) return map;
+
+    const results = await this.fillRepo
       .createQueryBuilder('f')
       .leftJoin('f.backtest', 'b')
-      .where('b.algorithm.id = :algorithmId', { algorithmId })
-      .select('COALESCE(AVG(f.slippageBps), 0)', 'avgBps')
+      .leftJoin('b.algorithm', 'a')
+      .where('a.id IN (:...algorithmIds)', { algorithmIds })
+      .select('a.id', 'algorithmId')
+      .addSelect('COALESCE(AVG(f.slippageBps), 0)', 'avgBps')
       .addSelect('COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.slippageBps), 0)', 'medianBps')
       .addSelect('COALESCE(MIN(f.slippageBps), 0)', 'minBps')
       .addSelect('COALESCE(MAX(f.slippageBps), 0)', 'maxBps')
       .addSelect('COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY f.slippageBps), 0)', 'p95Bps')
       .addSelect('COALESCE(STDDEV(f.slippageBps), 0)', 'stdDevBps')
       .addSelect('COUNT(*)', 'orderCount')
-      .getRawOne();
+      .groupBy('a.id')
+      .getRawMany();
 
-    if (!result || parseInt(result.orderCount || '0', 10) === 0) {
-      return undefined;
+    for (const r of results) {
+      const orderCount = parseInt(r.orderCount || '0', 10);
+      if (orderCount > 0) {
+        map.set(r.algorithmId, {
+          avgBps: Number(r.avgBps || 0),
+          medianBps: Number(r.medianBps || 0),
+          minBps: Number(r.minBps || 0),
+          maxBps: Number(r.maxBps || 0),
+          p95Bps: Number(r.p95Bps || 0),
+          stdDevBps: Number(r.stdDevBps || 0),
+          orderCount
+        });
+      }
     }
 
-    return {
-      avgBps: Number(result.avgBps || 0),
-      medianBps: Number(result.medianBps || 0),
-      minBps: Number(result.minBps || 0),
-      maxBps: Number(result.maxBps || 0),
-      p95Bps: Number(result.p95Bps || 0),
-      stdDevBps: Number(result.stdDevBps || 0),
-      orderCount: parseInt(result.orderCount || '0', 10)
-    };
+    return map;
   }
 
   private async getSlippageByTimeOfDay(
@@ -1337,13 +1369,28 @@ export class LiveTradeMonitoringService {
   // PRIVATE HELPER METHODS - Alerts
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private async generateAllAlerts(filters: LiveTradeFiltersDto): Promise<PerformanceAlertDto[]> {
-    const alerts: PerformanceAlertDto[] = [];
+  /**
+   * Fetch base data needed for alert generation.
+   * @param includeUser Whether to load user relations (needed for full alerts, not for counting)
+   */
+  private async fetchAlertBaseData(
+    filters: LiveTradeFiltersDto,
+    includeUser: boolean
+  ): Promise<{
+    activations: AlgorithmActivation[];
+    perfMap: Map<string, AlgorithmPerformance>;
+    backtestMap: Map<string, Backtest>;
+  }> {
+    const emptyResult = {
+      activations: [],
+      perfMap: new Map<string, AlgorithmPerformance>(),
+      backtestMap: new Map<string, Backtest>()
+    };
 
-    // Get all active algorithm activations
+    const relations = includeUser ? ['algorithm', 'user'] : ['algorithm'];
     const activations = await this.activationRepo.find({
       where: { isActive: true },
-      relations: ['algorithm', 'user']
+      relations
     });
 
     const filteredActivations = activations.filter((a) => {
@@ -1352,9 +1399,9 @@ export class LiveTradeMonitoringService {
       return true;
     });
 
-    if (filteredActivations.length === 0) return alerts;
+    if (filteredActivations.length === 0) return emptyResult;
 
-    // Batch fetch latest performance for all activations (fixes N+1)
+    // Batch fetch latest performance for all activations
     const activationIds = filteredActivations.map((a) => a.id);
     const performances = await this.performanceRepo
       .createQueryBuilder('ap')
@@ -1369,7 +1416,7 @@ export class LiveTradeMonitoringService {
       perfMap.set(p.algorithmActivationId, p);
     }
 
-    // Batch fetch latest completed backtest per algorithm (fixes N+1)
+    // Batch fetch latest completed backtest per algorithm
     const algorithmIds = [...new Set(filteredActivations.map((a) => a.algorithmId))];
     const backtests = await this.backtestRepo
       .createQueryBuilder('b')
@@ -1388,7 +1435,14 @@ export class LiveTradeMonitoringService {
       backtestMap.set(b.algorithm.id, b);
     }
 
-    for (const activation of filteredActivations) {
+    return { activations: filteredActivations, perfMap, backtestMap };
+  }
+
+  private async generateAllAlerts(filters: LiveTradeFiltersDto): Promise<PerformanceAlertDto[]> {
+    const { activations, perfMap, backtestMap } = await this.fetchAlertBaseData(filters, true);
+
+    const alerts: PerformanceAlertDto[] = [];
+    for (const activation of activations) {
       const performance = perfMap.get(activation.id) || null;
       const backtest = backtestMap.get(activation.algorithmId) || null;
 
