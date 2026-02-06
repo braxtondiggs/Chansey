@@ -1650,7 +1650,10 @@ export class LiveTradeMonitoringService {
   }
 
   private calculateDeviationPercent(liveValue: number, backtestValue: number): number {
-    if (backtestValue === 0) return 0;
+    if (backtestValue === 0) {
+      if (liveValue === 0) return 0;
+      return liveValue > 0 ? 100 : -100;
+    }
     return new Decimal(liveValue).minus(backtestValue).dividedBy(Math.abs(backtestValue)).times(100).toNumber();
   }
 
@@ -1677,10 +1680,14 @@ export class LiveTradeMonitoringService {
       const values = headers.map((h) => {
         const val = (row as Record<string, unknown>)[h];
         if (val === null || val === undefined) return '';
-        if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
-          return `"${val.replace(/"/g, '""')}"`;
+        let str = String(val);
+        if (typeof val === 'string' && /^[=+\-@\t\r]/.test(str)) {
+          str = `'${str}`;
         }
-        return String(val);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
       });
       csvRows.push(values.join(','));
     }

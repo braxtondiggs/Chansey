@@ -9,7 +9,7 @@ export class AddLiveTradeMonitoringIndexes1738400000000 implements MigrationInte
 
     // Partial index for slippage analysis queries (only rows with slippage data)
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_algo_trade_slippage" ON "order" ("is_algorithmic_trade", "actualSlippageBps")`
+      `CREATE INDEX IF NOT EXISTS "IDX_order_algo_trade_slippage" ON "order" ("is_algorithmic_trade", "actualSlippageBps") WHERE "actualSlippageBps" IS NOT NULL`
     );
   }
 
