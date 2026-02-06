@@ -69,11 +69,6 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Settings' }
       },
       {
-        path: 'backtesting',
-        loadComponent: () => import('./pages/backtesting').then((c) => c.BacktestingShellComponent),
-        data: { breadcrumb: 'Backtesting' }
-      },
-      {
         path: 'transactions',
         loadComponent: () => import('./pages/transactions').then((c) => c.TransactionsComponent),
         data: { breadcrumb: 'Transactions' }
@@ -154,6 +149,11 @@ export const appRoutes: Route[] = [
         path: 'backtest-monitoring',
         loadComponent: () => import('./pages/admin/backtest-monitoring').then((c) => c.BacktestMonitoringComponent),
         data: { breadcrumb: 'Backtest Monitoring' }
+      },
+      {
+        path: 'live-trade-monitoring',
+        loadComponent: () => import('./pages/admin/live-trade-monitoring').then((c) => c.LiveTradeMonitoringComponent),
+        data: { breadcrumb: 'Live Trade Monitoring' }
       }
     ]
   },

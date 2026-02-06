@@ -208,6 +208,35 @@ export const queryKeys = {
         filters
           ? ([...queryKeys.admin.backtestMonitoring.all(), 'trade-analytics', filters] as const)
           : ([...queryKeys.admin.backtestMonitoring.all(), 'trade-analytics'] as const)
+    },
+    liveTradeMonitoring: {
+      all: () => [...queryKeys.admin.all, 'live-trade-monitoring'] as const,
+      overview: (filters?: Record<string, unknown>) =>
+        filters
+          ? ([...queryKeys.admin.liveTradeMonitoring.all(), 'overview', filters] as const)
+          : ([...queryKeys.admin.liveTradeMonitoring.all(), 'overview'] as const),
+      algorithms: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.liveTradeMonitoring.all(), 'algorithms', query] as const)
+          : ([...queryKeys.admin.liveTradeMonitoring.all(), 'algorithms'] as const),
+      orders: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.liveTradeMonitoring.all(), 'orders', query] as const)
+          : ([...queryKeys.admin.liveTradeMonitoring.all(), 'orders'] as const),
+      comparison: (algorithmId: string) =>
+        [...queryKeys.admin.liveTradeMonitoring.all(), 'comparison', algorithmId] as const,
+      slippageAnalysis: (filters?: Record<string, unknown>) =>
+        filters
+          ? ([...queryKeys.admin.liveTradeMonitoring.all(), 'slippage-analysis', filters] as const)
+          : ([...queryKeys.admin.liveTradeMonitoring.all(), 'slippage-analysis'] as const),
+      userActivity: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.liveTradeMonitoring.all(), 'user-activity', query] as const)
+          : ([...queryKeys.admin.liveTradeMonitoring.all(), 'user-activity'] as const),
+      alerts: (filters?: Record<string, unknown>) =>
+        filters
+          ? ([...queryKeys.admin.liveTradeMonitoring.all(), 'alerts', filters] as const)
+          : ([...queryKeys.admin.liveTradeMonitoring.all(), 'alerts'] as const)
     }
   }
 } as const;

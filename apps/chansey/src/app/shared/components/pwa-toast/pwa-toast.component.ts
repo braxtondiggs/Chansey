@@ -1,5 +1,4 @@
-
-import { Component, inject, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit } from '@angular/core';
 
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -31,7 +30,7 @@ import { PwaService } from '@chansey-web/app/shared/services';
         </div>
       </ng-template>
     </p-toast>
-    `
+  `
 })
 export class PwaToastComponent implements OnInit, OnDestroy {
   private readonly pwaService = inject(PwaService);
@@ -51,6 +50,7 @@ export class PwaToastComponent implements OnInit, OnDestroy {
   }
 
   private showUpdateNotification() {
+    this.messageService.clear('pwa-updates');
     this.messageService.add({
       key: 'pwa-updates',
       severity: 'info',

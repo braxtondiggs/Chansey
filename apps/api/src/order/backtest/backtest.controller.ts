@@ -19,6 +19,7 @@ import {
   BacktestRunCollection,
   BacktestRunDetail,
   BacktestSignalCollection,
+  Role,
   SimulatedOrderFillCollection
 } from '@chansey/api-interfaces';
 
@@ -36,12 +37,15 @@ import {
 } from './dto/backtest.dto';
 
 import GetUser from '../../authentication/decorator/get-user.decorator';
+import { Roles } from '../../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../../authentication/guard/jwt-authentication.guard';
+import { RolesGuard } from '../../authentication/guard/roles.guard';
 import { User } from '../../users/users.entity';
 
 @ApiTags('Backtests')
 @ApiBearerAuth('token')
-@UseGuards(JwtAuthenticationGuard)
+@UseGuards(JwtAuthenticationGuard, RolesGuard)
+@Roles(Role.ADMIN)
 @Controller('backtests')
 export class BacktestController {
   constructor(private readonly backtestService: BacktestService) {}
@@ -149,7 +153,8 @@ export class BacktestController {
 
 @ApiTags('Comparison Reports')
 @ApiBearerAuth('token')
-@UseGuards(JwtAuthenticationGuard)
+@UseGuards(JwtAuthenticationGuard, RolesGuard)
+@Roles(Role.ADMIN)
 @Controller('comparison-reports')
 export class ComparisonReportController {
   constructor(private readonly backtestService: BacktestService) {}

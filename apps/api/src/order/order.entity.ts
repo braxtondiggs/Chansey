@@ -77,6 +77,10 @@ export interface TradeExecution {
 @Index('IDX_order_user_side', ['user', 'side'])
 @Index('IDX_order_exchange_status', ['exchange', 'status'])
 @Index('IDX_order_user_status_slippage', ['user', 'status', 'actualSlippageBps'])
+@Index('IDX_order_algo_trade_created', ['isAlgorithmicTrade', 'createdAt'])
+@Index('IDX_order_algo_trade_slippage', ['isAlgorithmicTrade', 'actualSlippageBps'], {
+  where: '"actualSlippageBps" IS NOT NULL'
+})
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   @IsUUID()

@@ -42,7 +42,9 @@ export class PwaService {
       this.swUpdate.versionUpdates
         .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
         .subscribe(() => {
-          this._updateAvailable$.next(true);
+          if (!this._updateAvailable$.value) {
+            this._updateAvailable$.next(true);
+          }
         });
 
       // Check for updates every 6 hours
