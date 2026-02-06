@@ -65,7 +65,7 @@ export interface HistoricalStageConfig {
   initialCapital: number;
   /** Trading fee as decimal (e.g., 0.001 = 0.1%) */
   tradingFee?: number;
-  /** Market data set ID (defaults to 'default-historical-data' if not provided) */
+  /** Market data set ID (defaults to auto-generated dataset if not provided) */
   marketDataSetId?: string;
 }
 
@@ -81,7 +81,7 @@ export interface LiveReplayStageConfig {
   initialCapital: number;
   /** Trading fee as decimal */
   tradingFee?: number;
-  /** Market data set ID (defaults to 'default-historical-data' if not provided) */
+  /** Market data set ID (defaults to auto-generated dataset if not provided) */
   marketDataSetId?: string;
   /** Enable real-time pacing */
   enablePacing?: boolean;
