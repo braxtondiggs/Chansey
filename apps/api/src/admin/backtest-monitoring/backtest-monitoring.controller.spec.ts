@@ -8,8 +8,8 @@ import { BacktestListQueryDto, ExportFormat, PaginatedBacktestListDto } from './
 import { AverageMetricsDto, BacktestFiltersDto, BacktestOverviewDto, RecentActivityDto } from './dto/overview.dto';
 import { SignalAnalyticsDto, SignalOverallStatsDto } from './dto/signal-analytics.dto';
 import {
+  BacktestSlippageStatsDto,
   ProfitabilityStatsDto,
-  SlippageStatsDto,
   TradeAnalyticsDto,
   TradeDurationStatsDto,
   TradeSummaryDto
@@ -129,7 +129,7 @@ describe('BacktestMonitoringController', () => {
       p95Bps: 12,
       maxBps: 15,
       fillCount: 40
-    } as SlippageStatsDto,
+    } as BacktestSlippageStatsDto,
     byInstrument: []
   };
 

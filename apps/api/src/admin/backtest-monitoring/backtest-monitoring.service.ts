@@ -28,9 +28,9 @@ import {
   SignalTypeMetricsDto
 } from './dto/signal-analytics.dto';
 import {
+  BacktestSlippageStatsDto,
   InstrumentTradeMetricsDto,
   ProfitabilityStatsDto,
-  SlippageStatsDto,
   TradeAnalyticsDto,
   TradeDurationStatsDto,
   TradeSummaryDto
@@ -922,7 +922,7 @@ export class BacktestMonitoringService {
     };
   }
 
-  private async getSlippageStats(backtestIds: string[]): Promise<SlippageStatsDto> {
+  private async getSlippageStats(backtestIds: string[]): Promise<BacktestSlippageStatsDto> {
     const qb = this.fillRepo
       .createQueryBuilder('f')
       .select('AVG(f.slippageBps)', 'avgBps')
