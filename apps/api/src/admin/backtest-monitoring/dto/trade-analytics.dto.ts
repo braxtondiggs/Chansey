@@ -90,7 +90,7 @@ export class TradeDurationStatsDto {
 /**
  * Slippage statistics
  */
-export class SlippageStatsDto {
+export class BacktestSlippageStatsDto {
   @ApiProperty({ description: 'Average slippage in basis points', example: 5.2 })
   avgBps: number;
 
@@ -144,7 +144,7 @@ export class TradeAnalyticsDto {
   duration: TradeDurationStatsDto;
 
   @ApiProperty({ description: 'Slippage statistics from simulated fills' })
-  slippage: SlippageStatsDto;
+  slippage: BacktestSlippageStatsDto;
 
   @ApiProperty({ description: 'Trade metrics by instrument (top 10)', type: [InstrumentTradeMetricsDto] })
   byInstrument: InstrumentTradeMetricsDto[];

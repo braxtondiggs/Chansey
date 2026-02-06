@@ -31,12 +31,12 @@ import {
   TopPerformingAlgorithmDto
 } from './dto/overview.dto';
 import {
+  LiveSlippageStatsDto,
   SlippageAnalysisDto,
   SlippageByAlgorithmDto,
   SlippageBySizeDto,
   SlippageBySymbolDto,
-  SlippageByTimeDto,
-  SlippageStatsDto
+  SlippageByTimeDto
 } from './dto/slippage-analysis.dto';
 import { PaginatedUserActivityDto, UserActivityItemDto, UserAlgorithmSummaryDto } from './dto/user-activity.dto';
 
@@ -936,7 +936,7 @@ export class LiveTradeMonitoringService {
   private async getOverallLiveSlippage(
     filters: LiveTradeFiltersDto,
     dateRange: { startDate?: Date; endDate?: Date }
-  ): Promise<SlippageStatsDto> {
+  ): Promise<LiveSlippageStatsDto> {
     const qb = this.orderRepo
       .createQueryBuilder('o')
       .where('o.isAlgorithmicTrade = true')
@@ -975,7 +975,7 @@ export class LiveTradeMonitoringService {
     };
   }
 
-  private async getOverallBacktestSlippage(filters: LiveTradeFiltersDto): Promise<SlippageStatsDto | undefined> {
+  private async getOverallBacktestSlippage(filters: LiveTradeFiltersDto): Promise<LiveSlippageStatsDto | undefined> {
     const qb = this.fillRepo.createQueryBuilder('f').leftJoin('f.backtest', 'b');
 
     if (filters.algorithmId) {
@@ -1062,8 +1062,8 @@ export class LiveTradeMonitoringService {
     });
   }
 
-  private async getBatchAlgorithmBacktestSlippage(algorithmIds: string[]): Promise<Map<string, SlippageStatsDto>> {
-    const map = new Map<string, SlippageStatsDto>();
+  private async getBatchAlgorithmBacktestSlippage(algorithmIds: string[]): Promise<Map<string, LiveSlippageStatsDto>> {
+    const map = new Map<string, LiveSlippageStatsDto>();
     if (algorithmIds.length === 0) return map;
 
     const results = await this.fillRepo

@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 /**
  * Slippage statistics
  */
-export class SlippageStatsDto {
+export class LiveSlippageStatsDto {
   @ApiProperty({ description: 'Average slippage in basis points', example: 12.5 })
   avgBps: number;
 
@@ -37,10 +37,10 @@ export class SlippageByAlgorithmDto {
   algorithmName: string;
 
   @ApiProperty({ description: 'Live trading slippage stats' })
-  liveSlippage: SlippageStatsDto;
+  liveSlippage: LiveSlippageStatsDto;
 
   @ApiPropertyOptional({ description: 'Backtest slippage stats (from SimulatedOrderFill)' })
-  backtestSlippage?: SlippageStatsDto;
+  backtestSlippage?: LiveSlippageStatsDto;
 
   @ApiProperty({ description: 'Difference between live and backtest average (bps)', example: 5.5 })
   slippageDifferenceBps: number;
@@ -102,10 +102,10 @@ export class SlippageBySymbolDto {
  */
 export class SlippageAnalysisDto {
   @ApiProperty({ description: 'Overall live trading slippage statistics' })
-  overallLive: SlippageStatsDto;
+  overallLive: LiveSlippageStatsDto;
 
   @ApiPropertyOptional({ description: 'Overall backtest slippage statistics' })
-  overallBacktest?: SlippageStatsDto;
+  overallBacktest?: LiveSlippageStatsDto;
 
   @ApiProperty({ description: 'Difference between live and backtest average (bps)', example: 5.5 })
   overallDifferenceBps: number;
