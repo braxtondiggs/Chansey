@@ -6,6 +6,9 @@ import { Job } from 'bullmq';
 import { PromotionTask } from './promotion.task';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
 
+type EvaluateStrategyJob = { strategyConfigId: string };
+type ActivateDeploymentJob = { deploymentId: string; strategyName: string };
+
 @Injectable()
 @Processor('strategy-evaluation-queue')
 export class StrategyEvaluationProcessor extends WorkerHost {
@@ -18,27 +21,27 @@ export class StrategyEvaluationProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ strategyConfigId?: string; deploymentId?: string; strategyName?: string }>): Promise<void> {
+  async process(job: Job<EvaluateStrategyJob | ActivateDeploymentJob>): Promise<void> {
     const startTime = Date.now();
 
     try {
       switch (job.name) {
         case 'evaluate-strategy': {
-          const { strategyConfigId } = job.data;
+          const { strategyConfigId } = job.data as EvaluateStrategyJob;
           this.logger.log(`Processing strategy evaluation job ${job.id} for strategy ${strategyConfigId}`);
           await this.strategyEvaluationTask.processStrategyEvaluation(strategyConfigId);
           break;
         }
 
         case 'activate-deployment': {
-          const { deploymentId, strategyName } = job.data;
+          const { deploymentId, strategyName } = job.data as ActivateDeploymentJob;
           this.logger.log(`Processing deployment activation job ${job.id} for deployment ${deploymentId}`);
           await this.promotionTask.processDeploymentActivation(deploymentId, strategyName);
           break;
         }
 
         default:
-          this.logger.warn(`Unknown job name: ${job.name}`);
+          throw new Error(`Unknown job name: ${job.name}`);
       }
 
       const duration = Date.now() - startTime;
