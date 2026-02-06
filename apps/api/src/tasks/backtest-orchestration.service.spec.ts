@@ -14,7 +14,6 @@ import {
 
 import { Algorithm, AlgorithmCategory, AlgorithmStatus } from '../algorithm/algorithm.entity';
 import { AlgorithmService } from '../algorithm/algorithm.service';
-import { OHLCService } from '../ohlc/ohlc.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { MarketDataSet, MarketDataTimeframe } from '../order/backtest/market-data-set.entity';
@@ -111,13 +110,6 @@ describe('BacktestOrchestrationService', () => {
               id: 'backtest-1',
               configSnapshot: {}
             })
-          }
-        },
-        {
-          provide: OHLCService,
-          useValue: {
-            getCandleDataDateRange: jest.fn().mockResolvedValue(null),
-            getCoinsWithCandleData: jest.fn().mockResolvedValue([])
           }
         }
       ]
