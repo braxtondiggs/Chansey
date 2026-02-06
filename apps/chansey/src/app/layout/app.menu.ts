@@ -20,7 +20,7 @@ interface MenuItem {
   standalone: true,
   imports: [AppMenuitem, RouterModule],
   template: `<ul class="layout-menu">
-    @for (item of model(); track item; let i = $index) {
+    @for (item of model(); track item.label; let i = $index) {
       @if (!item.separator) {
         <li chansey-menuitem [item]="item" [index]="i" [root]="true"></li>
       }
@@ -124,6 +124,11 @@ export class AppMenu implements OnInit {
             label: 'Backtest Monitoring',
             icon: 'pi pi-fw pi-eye',
             routerLink: ['/admin/backtest-monitoring']
+          },
+          {
+            label: 'Live Trade Monitoring',
+            icon: 'pi pi-fw pi-chart-line',
+            routerLink: ['/admin/live-trade-monitoring']
           }
         ]
       });

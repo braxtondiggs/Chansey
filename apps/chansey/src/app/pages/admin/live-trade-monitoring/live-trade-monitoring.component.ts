@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { MessageService } from 'primeng/api';
@@ -10,6 +10,7 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
 import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
+import { TooltipModule } from 'primeng/tooltip';
 
 import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.component';
 import { AlgorithmSelectorComponent } from './components/algorithm-selector/algorithm-selector.component';
@@ -33,6 +34,7 @@ import {
 @Component({
   selector: 'app-live-trade-monitoring',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     FormsModule,
@@ -43,6 +45,7 @@ import {
     SelectModule,
     TabsModule,
     ToastModule,
+    TooltipModule,
     OverviewCardsComponent,
     BacktestComparisonPanelComponent,
     SlippageComparisonPanelComponent,
@@ -105,7 +108,7 @@ import {
         <app-overview-cards [overview]="overview()" class="mb-4" />
 
         <!-- Tabs -->
-        <p-tabs [(value)]="activeTab">
+        <p-tabs [value]="activeTab()" (valueChange)="onTabChange($event)">
           <p-tablist>
             <p-tab value="overview">Overview</p-tab>
             <p-tab value="comparison">Backtest vs Live</p-tab>
@@ -212,16 +215,13 @@ export class LiveTradeMonitoringComponent {
 
   // Filter state
   dateRange: Date[] | null = null;
-  activeTab = 'overview';
+  activeTab = signal('overview');
 
   // Filters signal for queries
   filtersSignal = signal<LiveTradeFiltersDto>({});
   ordersPage = signal(1);
   userActivityPage = signal(1);
   selectedAlgorithmId = signal<string | null>(null);
-
-  // Computed filters
-  currentFilters = computed(() => this.filtersSignal());
 
   // TanStack Query hooks
   overviewQuery = this.monitoringService.useOverview(this.filtersSignal);
@@ -240,14 +240,21 @@ export class LiveTradeMonitoringComponent {
     }))
   );
   comparisonQuery = this.monitoringService.useComparison(this.selectedAlgorithmId);
-  slippageQuery = this.monitoringService.useSlippageAnalysis(this.filtersSignal);
-  alertsQuery = this.monitoringService.useAlerts(this.filtersSignal);
+  slippageQuery = this.monitoringService.useSlippageAnalysis(
+    this.filtersSignal,
+    computed(() => this.activeTab() === 'slippage')
+  );
+  alertsQuery = this.monitoringService.useAlerts(
+    this.filtersSignal,
+    computed(() => this.activeTab() === 'alerts')
+  );
   userActivityQuery = this.monitoringService.useUserActivity(
     computed(() => ({
       page: this.userActivityPage(),
       limit: 10,
       minActiveAlgorithms: 1
-    }))
+    })),
+    computed(() => this.activeTab() === 'users')
   );
 
   // Computed data
@@ -260,15 +267,20 @@ export class LiveTradeMonitoringComponent {
   alerts = computed(() => this.alertsQuery.data() as AlertsDto | undefined);
   userActivity = computed(() => this.userActivityQuery.data() as PaginatedUserActivityDto | undefined);
 
-  // Alerts summary for tab badge
+  // Alerts summary for tab badge (sourced from overview which always polls,
+  // not alertsQuery which only polls when the alerts tab is active)
   alertsSummary = computed(() => {
-    const alertsData = this.alerts();
+    const overviewData = this.overview();
     return {
-      critical: alertsData?.criticalCount || 0,
-      warning: alertsData?.warningCount || 0,
-      info: alertsData?.infoCount || 0
+      critical: overviewData?.alertsSummary?.critical || 0,
+      warning: overviewData?.alertsSummary?.warning || 0,
+      info: overviewData?.alertsSummary?.info || 0
     };
   });
+
+  onTabChange(value: string | number | undefined): void {
+    this.activeTab.set(String(value ?? 'overview'));
+  }
 
   onDateRangeChange(): void {
     this.updateFilters();
@@ -308,16 +320,16 @@ export class LiveTradeMonitoringComponent {
     this.ordersQuery.refetch();
     this.algorithmsQuery.refetch();
 
-    if (this.activeTab === 'comparison' && this.selectedAlgorithmId()) {
+    if (this.activeTab() === 'comparison' && this.selectedAlgorithmId()) {
       this.comparisonQuery.refetch();
     }
-    if (this.activeTab === 'slippage') {
+    if (this.activeTab() === 'slippage') {
       this.slippageQuery.refetch();
     }
-    if (this.activeTab === 'alerts') {
+    if (this.activeTab() === 'alerts') {
       this.alertsQuery.refetch();
     }
-    if (this.activeTab === 'users') {
+    if (this.activeTab() === 'users') {
       this.userActivityQuery.refetch();
     }
 
@@ -331,7 +343,7 @@ export class LiveTradeMonitoringComponent {
 
   async onExport(): Promise<void> {
     try {
-      await this.monitoringService.downloadExport('csv', this.currentFilters());
+      await this.monitoringService.downloadExport('csv', this.filtersSignal());
       this.messageService.add({
         severity: 'success',
         summary: 'Export Complete',

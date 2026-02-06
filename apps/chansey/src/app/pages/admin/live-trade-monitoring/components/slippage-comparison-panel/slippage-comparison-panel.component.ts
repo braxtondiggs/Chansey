@@ -1,5 +1,5 @@
 import { CommonModule, DecimalPipe } from '@angular/common';
-import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
@@ -10,6 +10,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
 @Component({
   selector: 'app-slippage-comparison-panel',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, CardModule, ChartModule, TableModule, DecimalPipe],
   template: `
     <div class="mt-4">

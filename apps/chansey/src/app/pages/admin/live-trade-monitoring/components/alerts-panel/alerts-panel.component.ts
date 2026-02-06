@@ -1,5 +1,5 @@
 import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -10,6 +10,7 @@ import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.service';
 @Component({
   selector: 'app-alerts-panel',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, CardModule, TableModule, TagModule, DecimalPipe, DatePipe],
   template: `
     <div class="mt-4">

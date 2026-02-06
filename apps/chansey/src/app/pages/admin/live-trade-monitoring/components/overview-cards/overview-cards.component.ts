@@ -1,5 +1,5 @@
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -10,6 +10,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.service';
 @Component({
   selector: 'app-overview-cards',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, CardModule, TableModule, TagModule, DecimalPipe, CurrencyPipe],
   template: `
     <div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
@@ -56,7 +57,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.service';
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
           <span class="text-3xl font-bold text-indigo-500">
-            {{ overview?.summary?.avgSlippageBps | number: '1.1-1' }} bps
+            {{ overview?.summary?.avgSlippageBps || 0 | number: '1.1-1' }} bps
           </span>
           <span class="mt-1 text-sm text-gray-500">Avg Slippage</span>
         </div>

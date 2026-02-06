@@ -219,35 +219,37 @@ export class LiveTradeMonitoringService {
 
     const activations = await qb.getRawAndEntities();
 
-    // Map to DTOs
-    const data: AlgorithmActivationListItemDto[] = await Promise.all(
-      activations.entities.map(async (aa, index) => {
-        const raw = activations.raw[index];
-        const orderStats = await this.getActivationOrderStats(aa.id, dateRange);
+    // Batch fetch order stats for all activations (fixes N+1)
+    const activationIds = activations.entities.map((aa) => aa.id);
+    const orderStatsMap = await this.getBatchActivationOrderStats(activationIds);
 
-        return {
-          id: aa.id,
-          algorithmId: aa.algorithmId,
-          algorithmName: aa.algorithm?.name || 'Unknown',
-          userId: aa.userId,
-          userEmail: aa.user?.email || 'Unknown',
-          isActive: aa.isActive,
-          allocationPercentage: Number(aa.allocationPercentage),
-          activatedAt: aa.activatedAt?.toISOString(),
-          deactivatedAt: aa.deactivatedAt?.toISOString(),
-          totalOrders: parseInt(raw.totalOrders || '0', 10),
-          orders24h: orderStats.orders24h,
-          totalVolume: orderStats.totalVolume,
-          roi: raw.roi ? Number(raw.roi) : undefined,
-          winRate: raw.winRate ? Number(raw.winRate) : undefined,
-          sharpeRatio: raw.sharpeRatio ? Number(raw.sharpeRatio) : undefined,
-          maxDrawdown: raw.maxDrawdown ? Number(raw.maxDrawdown) : undefined,
-          avgSlippageBps: orderStats.avgSlippageBps,
-          exchangeName: aa.exchangeKey?.exchange?.name || 'Unknown',
-          createdAt: aa.createdAt.toISOString()
-        };
-      })
-    );
+    // Map to DTOs
+    const data: AlgorithmActivationListItemDto[] = activations.entities.map((aa, index) => {
+      const raw = activations.raw[index];
+      const orderStats = orderStatsMap.get(aa.id) || { orders24h: 0, totalVolume: 0, avgSlippageBps: 0 };
+
+      return {
+        id: aa.id,
+        algorithmId: aa.algorithmId,
+        algorithmName: aa.algorithm?.name || 'Unknown',
+        userId: aa.userId,
+        userEmail: aa.user?.email || 'Unknown',
+        isActive: aa.isActive,
+        allocationPercentage: Number(aa.allocationPercentage),
+        activatedAt: aa.activatedAt?.toISOString(),
+        deactivatedAt: aa.deactivatedAt?.toISOString(),
+        totalOrders: parseInt(raw.totalOrders || '0', 10),
+        orders24h: orderStats.orders24h,
+        totalVolume: orderStats.totalVolume,
+        roi: raw.roi ? Number(raw.roi) : undefined,
+        winRate: raw.winRate ? Number(raw.winRate) : undefined,
+        sharpeRatio: raw.sharpeRatio ? Number(raw.sharpeRatio) : undefined,
+        maxDrawdown: raw.maxDrawdown ? Number(raw.maxDrawdown) : undefined,
+        avgSlippageBps: orderStats.avgSlippageBps,
+        exchangeName: aa.exchangeKey?.exchange?.name || 'Unknown',
+        createdAt: aa.createdAt.toISOString()
+      };
+    });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -469,30 +471,42 @@ export class LiveTradeMonitoringService {
 
     const users = await qb.getMany();
 
-    const data: UserActivityItemDto[] = await Promise.all(
-      users.map(async (u) => {
-        const activity = await this.getUserOrderActivity(u.id);
-        const algorithms = await this.getUserAlgorithmSummary(u.id);
+    // Batch fetch order activity and algorithm summaries for all users (fixes N+1)
+    const userIds = users.map((u) => u.id);
+    const [orderActivityMap, algorithmSummaryMap] = await Promise.all([
+      this.getBatchUserOrderActivity(userIds),
+      this.getBatchUserAlgorithmSummary(userIds)
+    ]);
 
-        return {
-          userId: u.id,
-          email: u.email,
-          firstName: u.given_name,
-          lastName: u.family_name,
-          totalActivations: algorithms.length,
-          activeAlgorithms: algorithms.filter((a) => a.isActive).length,
-          totalOrders: activity.totalOrders,
-          orders24h: activity.orders24h,
-          orders7d: activity.orders7d,
-          totalVolume: activity.totalVolume,
-          totalPnL: activity.totalPnL,
-          avgSlippageBps: activity.avgSlippageBps,
-          registeredAt: u.createdAt.toISOString(),
-          lastOrderAt: activity.lastOrderAt,
-          algorithms
-        };
-      })
-    );
+    const data: UserActivityItemDto[] = users.map((u) => {
+      const activity = orderActivityMap.get(u.id) || {
+        totalOrders: 0,
+        orders24h: 0,
+        orders7d: 0,
+        totalVolume: 0,
+        totalPnL: 0,
+        avgSlippageBps: 0
+      };
+      const algorithms = algorithmSummaryMap.get(u.id) || [];
+
+      return {
+        userId: u.id,
+        email: u.email,
+        firstName: u.given_name,
+        lastName: u.family_name,
+        totalActivations: algorithms.length,
+        activeAlgorithms: algorithms.filter((a) => a.isActive).length,
+        totalOrders: activity.totalOrders,
+        orders24h: activity.orders24h,
+        orders7d: activity.orders7d,
+        totalVolume: activity.totalVolume,
+        totalPnL: activity.totalPnL,
+        avgSlippageBps: activity.avgSlippageBps,
+        registeredAt: u.createdAt.toISOString(),
+        lastOrderAt: activity.lastOrderAt,
+        algorithms
+      };
+    });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -747,27 +761,35 @@ export class LiveTradeMonitoringService {
   // PRIVATE HELPER METHODS - Algorithms & Orders
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private async getActivationOrderStats(
-    activationId: string,
-    _dateRange: { startDate?: Date; endDate?: Date }
-  ): Promise<{ orders24h: number; totalVolume: number; avgSlippageBps: number }> {
+  private async getBatchActivationOrderStats(
+    activationIds: string[]
+  ): Promise<Map<string, { orders24h: number; totalVolume: number; avgSlippageBps: number }>> {
+    const map = new Map<string, { orders24h: number; totalVolume: number; avgSlippageBps: number }>();
+    if (activationIds.length === 0) return map;
+
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const result = await this.orderRepo
+    const results = await this.orderRepo
       .createQueryBuilder('o')
-      .select('COALESCE(SUM(o.cost), 0)', 'totalVolume')
+      .select('o.algorithmActivationId', 'activationId')
+      .addSelect('COALESCE(SUM(o.cost), 0)', 'totalVolume')
       .addSelect('COALESCE(AVG(o.actualSlippageBps), 0)', 'avgSlippageBps')
       .addSelect(`COUNT(*) FILTER (WHERE o."createdAt" >= :oneDayAgo)`, 'orders24h')
-      .where('o.algorithmActivationId = :activationId', { activationId })
+      .where('o.algorithmActivationId IN (:...activationIds)', { activationIds })
       .andWhere('o.isAlgorithmicTrade = true')
       .setParameter('oneDayAgo', oneDayAgo)
-      .getRawOne();
+      .groupBy('o.algorithmActivationId')
+      .getRawMany();
 
-    return {
-      orders24h: parseInt(result?.orders24h || '0', 10),
-      totalVolume: Number(result?.totalVolume || 0),
-      avgSlippageBps: Number(result?.avgSlippageBps || 0)
-    };
+    for (const r of results) {
+      map.set(r.activationId, {
+        orders24h: parseInt(r.orders24h || '0', 10),
+        totalVolume: Number(r.totalVolume || 0),
+        avgSlippageBps: Number(r.avgSlippageBps || 0)
+      });
+    }
+
+    return map;
   }
 
   private async getOrderAggregates(
@@ -1085,52 +1107,64 @@ export class LiveTradeMonitoringService {
     filters: LiveTradeFiltersDto,
     dateRange: { startDate?: Date; endDate?: Date }
   ): Promise<SlippageBySizeDto[]> {
-    const buckets = [
+    const bucketDefs = [
       { bucket: '$0-$100', min: 0, max: 100 },
       { bucket: '$100-$500', min: 100, max: 500 },
       { bucket: '$500-$1000', min: 500, max: 1000 },
       { bucket: '$1000-$5000', min: 1000, max: 5000 },
       { bucket: '$5000-$10000', min: 5000, max: 10000 },
-      { bucket: '$10000+', min: 10000, max: Number.MAX_SAFE_INTEGER }
+      { bucket: '$10000+', min: 10000, max: 999999999 }
     ];
 
-    const results: SlippageBySizeDto[] = [];
+    // Single query with CASE WHEN buckets instead of 6 sequential queries
+    const qb = this.orderRepo
+      .createQueryBuilder('o')
+      .where('o.isAlgorithmicTrade = true')
+      .andWhere('o.actualSlippageBps IS NOT NULL')
+      .select(
+        `CASE
+          WHEN o.cost < 100 THEN 0
+          WHEN o.cost < 500 THEN 1
+          WHEN o.cost < 1000 THEN 2
+          WHEN o.cost < 5000 THEN 3
+          WHEN o.cost < 10000 THEN 4
+          ELSE 5
+        END`,
+        'bucketIndex'
+      )
+      .addSelect('COALESCE(AVG(o.actualSlippageBps), 0)', 'avgBps')
+      .addSelect('COUNT(*)', 'orderCount')
+      .groupBy('bucketIndex')
+      .orderBy('bucketIndex', 'ASC');
 
-    for (const { bucket, min, max } of buckets) {
-      const qb = this.orderRepo
-        .createQueryBuilder('o')
-        .where('o.isAlgorithmicTrade = true')
-        .andWhere('o.actualSlippageBps IS NOT NULL')
-        .andWhere('o.cost >= :min', { min })
-        .andWhere('o.cost < :max', { max });
+    if (filters.algorithmId) {
+      qb.leftJoin('o.algorithmActivation', 'aa').andWhere('aa.algorithmId = :algorithmId', {
+        algorithmId: filters.algorithmId
+      });
+    }
+    if (dateRange.startDate) {
+      qb.andWhere('o.createdAt >= :startDate', { startDate: dateRange.startDate });
+    }
+    if (dateRange.endDate) {
+      qb.andWhere('o.createdAt <= :endDate', { endDate: dateRange.endDate });
+    }
 
-      if (filters.algorithmId) {
-        qb.leftJoin('o.algorithmActivation', 'aa').andWhere('aa.algorithmId = :algorithmId', {
-          algorithmId: filters.algorithmId
-        });
-      }
-      if (dateRange.startDate) {
-        qb.andWhere('o.createdAt >= :startDate', { startDate: dateRange.startDate });
-      }
-      if (dateRange.endDate) {
-        qb.andWhere('o.createdAt <= :endDate', { endDate: dateRange.endDate });
-      }
-
-      const result = await qb
-        .select('COALESCE(AVG(o.actualSlippageBps), 0)', 'avgBps')
-        .addSelect('COUNT(*)', 'orderCount')
-        .getRawOne();
-
-      results.push({
-        bucket,
-        minSize: min,
-        maxSize: max === Number.MAX_SAFE_INTEGER ? 999999999 : max,
-        avgBps: Number(result?.avgBps || 0),
-        orderCount: parseInt(result?.orderCount || '0', 10)
+    const rawResults = await qb.getRawMany();
+    const resultMap = new Map<number, { avgBps: number; orderCount: number }>();
+    for (const r of rawResults) {
+      resultMap.set(parseInt(r.bucketIndex, 10), {
+        avgBps: Number(r.avgBps || 0),
+        orderCount: parseInt(r.orderCount || '0', 10)
       });
     }
 
-    return results;
+    return bucketDefs.map((def, index) => ({
+      bucket: def.bucket,
+      minSize: def.min,
+      maxSize: def.max,
+      avgBps: resultMap.get(index)?.avgBps || 0,
+      orderCount: resultMap.get(index)?.orderCount || 0
+    }));
   }
 
   private async getSlippageBySymbol(
@@ -1175,70 +1209,128 @@ export class LiveTradeMonitoringService {
   // PRIVATE HELPER METHODS - User Activity
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private async getUserOrderActivity(userId: string): Promise<{
-    totalOrders: number;
-    orders24h: number;
-    orders7d: number;
-    totalVolume: number;
-    totalPnL: number;
-    avgSlippageBps: number;
-    lastOrderAt?: string;
-  }> {
+  private async getBatchUserOrderActivity(userIds: string[]): Promise<
+    Map<
+      string,
+      {
+        totalOrders: number;
+        orders24h: number;
+        orders7d: number;
+        totalVolume: number;
+        totalPnL: number;
+        avgSlippageBps: number;
+        lastOrderAt?: string;
+      }
+    >
+  > {
+    const map = new Map<
+      string,
+      {
+        totalOrders: number;
+        orders24h: number;
+        orders7d: number;
+        totalVolume: number;
+        totalPnL: number;
+        avgSlippageBps: number;
+        lastOrderAt?: string;
+      }
+    >();
+    if (userIds.length === 0) return map;
+
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const result = await this.orderRepo
+    const results = await this.orderRepo
       .createQueryBuilder('o')
-      .where('o.user.id = :userId', { userId })
-      .andWhere('o.isAlgorithmicTrade = true')
-      .select('COUNT(*)', 'totalOrders')
+      .select('o."userId"', 'userId')
+      .addSelect('COUNT(*)', 'totalOrders')
       .addSelect(`COUNT(*) FILTER (WHERE o."createdAt" >= :oneDayAgo)`, 'orders24h')
       .addSelect(`COUNT(*) FILTER (WHERE o."createdAt" >= :sevenDaysAgo)`, 'orders7d')
       .addSelect('COALESCE(SUM(o.cost), 0)', 'totalVolume')
       .addSelect('COALESCE(SUM(o.gainLoss), 0)', 'totalPnL')
       .addSelect('COALESCE(AVG(o.actualSlippageBps), 0)', 'avgSlippageBps')
-      .addSelect('MAX(o.createdAt)', 'lastOrderAt')
+      .addSelect('MAX(o."createdAt")', 'lastOrderAt')
+      .where('o."userId" IN (:...userIds)', { userIds })
+      .andWhere('o.isAlgorithmicTrade = true')
       .setParameter('oneDayAgo', oneDayAgo)
       .setParameter('sevenDaysAgo', sevenDaysAgo)
-      .getRawOne();
+      .groupBy('o."userId"')
+      .getRawMany();
 
-    return {
-      totalOrders: parseInt(result?.totalOrders || '0', 10),
-      orders24h: parseInt(result?.orders24h || '0', 10),
-      orders7d: parseInt(result?.orders7d || '0', 10),
-      totalVolume: Number(result?.totalVolume || 0),
-      totalPnL: Number(result?.totalPnL || 0),
-      avgSlippageBps: Number(result?.avgSlippageBps || 0),
-      lastOrderAt: result?.lastOrderAt ? new Date(result.lastOrderAt).toISOString() : undefined
-    };
+    for (const r of results) {
+      map.set(r.userId, {
+        totalOrders: parseInt(r.totalOrders || '0', 10),
+        orders24h: parseInt(r.orders24h || '0', 10),
+        orders7d: parseInt(r.orders7d || '0', 10),
+        totalVolume: Number(r.totalVolume || 0),
+        totalPnL: Number(r.totalPnL || 0),
+        avgSlippageBps: Number(r.avgSlippageBps || 0),
+        lastOrderAt: r.lastOrderAt ? new Date(r.lastOrderAt).toISOString() : undefined
+      });
+    }
+
+    return map;
   }
 
-  private async getUserAlgorithmSummary(userId: string): Promise<UserAlgorithmSummaryDto[]> {
+  private async getBatchUserAlgorithmSummary(userIds: string[]): Promise<Map<string, UserAlgorithmSummaryDto[]>> {
+    const map = new Map<string, UserAlgorithmSummaryDto[]>();
+    if (userIds.length === 0) return map;
+
+    // Get all activations for all users in one query
     const activations = await this.activationRepo.find({
-      where: { userId },
+      where: userIds.map((id) => ({ userId: id })),
       relations: ['algorithm']
     });
 
-    return Promise.all(
-      activations.map(async (aa) => {
-        const orderCount = await this.orderRepo.count({
-          where: { algorithmActivationId: aa.id, isAlgorithmicTrade: true }
-        });
+    if (activations.length === 0) return map;
 
-        const performance = await this.performanceRepo.findOne({
-          where: { algorithmActivationId: aa.id },
-          order: { calculatedAt: 'DESC' }
-        });
+    const activationIds = activations.map((aa) => aa.id);
 
-        return {
-          activationId: aa.id,
-          algorithmName: aa.algorithm?.name || 'Unknown',
-          isActive: aa.isActive,
-          totalOrders: orderCount,
-          roi: performance?.roi
-        };
-      })
-    );
+    // Batch fetch order counts grouped by activation
+    const orderCounts = await this.orderRepo
+      .createQueryBuilder('o')
+      .select('o.algorithmActivationId', 'activationId')
+      .addSelect('COUNT(*)', 'orderCount')
+      .where('o.algorithmActivationId IN (:...activationIds)', { activationIds })
+      .andWhere('o.isAlgorithmicTrade = true')
+      .groupBy('o.algorithmActivationId')
+      .getRawMany();
+
+    const orderCountMap = new Map<string, number>();
+    for (const r of orderCounts) {
+      orderCountMap.set(r.activationId, parseInt(r.orderCount || '0', 10));
+    }
+
+    // Batch fetch latest performance per activation
+    const performances = await this.performanceRepo
+      .createQueryBuilder('ap')
+      .where('ap.algorithmActivationId IN (:...activationIds)', { activationIds })
+      .andWhere(
+        'ap.calculatedAt = (SELECT MAX(ap2."calculatedAt") FROM algorithm_performances ap2 WHERE ap2."algorithmActivationId" = ap."algorithmActivationId")'
+      )
+      .getMany();
+
+    const perfMap = new Map<string, AlgorithmPerformance>();
+    for (const p of performances) {
+      perfMap.set(p.algorithmActivationId, p);
+    }
+
+    // Build summary per user
+    for (const aa of activations) {
+      const summary: UserAlgorithmSummaryDto = {
+        activationId: aa.id,
+        algorithmName: aa.algorithm?.name || 'Unknown',
+        isActive: aa.isActive,
+        totalOrders: orderCountMap.get(aa.id) || 0,
+        roi: perfMap.get(aa.id)?.roi
+      };
+
+      const existing = map.get(aa.userId) || [];
+      existing.push(summary);
+      map.set(aa.userId, existing);
+    }
+
+    return map;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1254,23 +1346,52 @@ export class LiveTradeMonitoringService {
       relations: ['algorithm', 'user']
     });
 
-    for (const activation of activations) {
-      if (filters.algorithmId && activation.algorithmId !== filters.algorithmId) continue;
-      if (filters.userId && activation.userId !== filters.userId) continue;
+    const filteredActivations = activations.filter((a) => {
+      if (filters.algorithmId && a.algorithmId !== filters.algorithmId) return false;
+      if (filters.userId && a.userId !== filters.userId) return false;
+      return true;
+    });
 
-      // Get live performance
-      const performance = await this.performanceRepo.findOne({
-        where: { algorithmActivationId: activation.id },
-        order: { calculatedAt: 'DESC' }
-      });
+    if (filteredActivations.length === 0) return alerts;
 
-      // Get backtest for comparison
-      const backtest = await this.backtestRepo.findOne({
-        where: { algorithm: { id: activation.algorithmId }, status: BacktestStatus.COMPLETED },
-        order: { completedAt: 'DESC' }
-      });
+    // Batch fetch latest performance for all activations (fixes N+1)
+    const activationIds = filteredActivations.map((a) => a.id);
+    const performances = await this.performanceRepo
+      .createQueryBuilder('ap')
+      .where('ap.algorithmActivationId IN (:...activationIds)', { activationIds })
+      .andWhere(
+        'ap.calculatedAt = (SELECT MAX(ap2."calculatedAt") FROM algorithm_performances ap2 WHERE ap2."algorithmActivationId" = ap."algorithmActivationId")'
+      )
+      .getMany();
 
-      // Generate alerts based on thresholds
+    const perfMap = new Map<string, AlgorithmPerformance>();
+    for (const p of performances) {
+      perfMap.set(p.algorithmActivationId, p);
+    }
+
+    // Batch fetch latest completed backtest per algorithm (fixes N+1)
+    const algorithmIds = [...new Set(filteredActivations.map((a) => a.algorithmId))];
+    const backtests = await this.backtestRepo
+      .createQueryBuilder('b')
+      .leftJoinAndSelect('b.algorithm', 'a')
+      .where('a.id IN (:...algorithmIds)', { algorithmIds })
+      .andWhere('b.status = :status', { status: BacktestStatus.COMPLETED })
+      .andWhere(
+        'b.completedAt = (SELECT MAX(b2."completedAt") FROM backtests b2 WHERE b2."algorithmId" = a.id AND b2.status = :completedStatus)'
+      )
+      .setParameter('status', BacktestStatus.COMPLETED)
+      .setParameter('completedStatus', BacktestStatus.COMPLETED)
+      .getMany();
+
+    const backtestMap = new Map<string, Backtest>();
+    for (const b of backtests) {
+      backtestMap.set(b.algorithm.id, b);
+    }
+
+    for (const activation of filteredActivations) {
+      const performance = perfMap.get(activation.id) || null;
+      const backtest = backtestMap.get(activation.algorithmId) || null;
+
       const activationAlerts = this.generateAlertsForActivation(activation, performance, backtest);
       alerts.push(...activationAlerts);
     }

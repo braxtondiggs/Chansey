@@ -103,26 +103,3 @@ export class ComparisonDto {
   @ApiProperty({ description: 'When the comparison was calculated' })
   calculatedAt: string;
 }
-
-/**
- * Summary of all algorithms comparison
- */
-export class ComparisonSummaryDto {
-  @ApiProperty({ description: 'Total algorithms compared' })
-  totalCompared: number;
-
-  @ApiProperty({ description: 'Algorithms performing better than backtest' })
-  performingBetter: number;
-
-  @ApiProperty({ description: 'Algorithms performing worse than backtest' })
-  performingWorse: number;
-
-  @ApiProperty({ description: 'Algorithms with significant deviation' })
-  withSignificantDeviation: number;
-
-  @ApiProperty({ description: 'Average return deviation across all algorithms' })
-  avgReturnDeviation: number;
-
-  @ApiProperty({ description: 'Average slippage deviation across all algorithms' })
-  avgSlippageDeviation: number;
-}

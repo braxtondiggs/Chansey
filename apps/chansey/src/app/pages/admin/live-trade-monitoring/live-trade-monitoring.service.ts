@@ -466,15 +466,17 @@ export class LiveTradeMonitoringService {
   /**
    * Query slippage analysis
    */
-  useSlippageAnalysis(filters?: Signal<LiveTradeFiltersDto>) {
+  useSlippageAnalysis(filters?: Signal<LiveTradeFiltersDto>, enabled?: Signal<boolean>) {
     return injectQuery(() => {
       const currentFilters = filters?.() ?? this.filtersSignal();
+      const isEnabled = enabled?.() ?? true;
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.slippageAnalysis(currentFilters as Record<string, unknown>),
         queryFn: () =>
           authenticatedFetch<SlippageAnalysisDto>(
             buildUrl(`${this.apiUrl}/slippage-analysis`, currentFilters as Record<string, unknown>)
           ),
+        enabled: isEnabled,
         ...FREQUENT_POLICY
       };
     });
@@ -483,15 +485,17 @@ export class LiveTradeMonitoringService {
   /**
    * Query user activity
    */
-  useUserActivity(query?: Signal<UserActivityQueryDto>) {
+  useUserActivity(query?: Signal<UserActivityQueryDto>, enabled?: Signal<boolean>) {
     return injectQuery(() => {
       const currentQuery = query?.() ?? {};
+      const isEnabled = enabled?.() ?? true;
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.userActivity(currentQuery as Record<string, unknown>),
         queryFn: () =>
           authenticatedFetch<PaginatedUserActivityDto>(
             buildUrl(`${this.apiUrl}/user-activity`, currentQuery as Record<string, unknown>)
           ),
+        enabled: isEnabled,
         ...FREQUENT_POLICY
       };
     });
@@ -500,13 +504,15 @@ export class LiveTradeMonitoringService {
   /**
    * Query performance alerts
    */
-  useAlerts(filters?: Signal<LiveTradeFiltersDto>) {
+  useAlerts(filters?: Signal<LiveTradeFiltersDto>, enabled?: Signal<boolean>) {
     return injectQuery(() => {
       const currentFilters = filters?.() ?? this.filtersSignal();
+      const isEnabled = enabled?.() ?? true;
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.alerts(currentFilters as Record<string, unknown>),
         queryFn: () =>
           authenticatedFetch<AlertsDto>(buildUrl(`${this.apiUrl}/alerts`, currentFilters as Record<string, unknown>)),
+        enabled: isEnabled,
         ...FREQUENT_POLICY
       };
     });
