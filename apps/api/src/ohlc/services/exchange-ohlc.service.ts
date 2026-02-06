@@ -39,6 +39,13 @@ export class ExchangeOHLCService {
   }
 
   /**
+   * Get the exchange priority list for iteration by external callers
+   */
+  getExchangePriority(): string[] {
+    return [...this.EXCHANGE_PRIORITY];
+  }
+
+  /**
    * Fetch OHLC data with automatic fallback to next exchange on failure
    * @param symbol Trading symbol (e.g., 'BTC/USD')
    * @param since Start timestamp in milliseconds
@@ -228,6 +235,14 @@ export class ExchangeOHLCService {
           symbols.push(symbol);
         }
       }
+
+      // Sort to prefer /USD over /USDT over /ZUSD
+      const quoteOrder: Record<string, number> = { USD: 0, USDT: 1, ZUSD: 2 };
+      symbols.sort((a, b) => {
+        const quoteA = a.split('/')[1] || '';
+        const quoteB = b.split('/')[1] || '';
+        return (quoteOrder[quoteA] ?? 99) - (quoteOrder[quoteB] ?? 99);
+      });
 
       return symbols;
     } catch (error) {

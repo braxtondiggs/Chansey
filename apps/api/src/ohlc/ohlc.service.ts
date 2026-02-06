@@ -324,14 +324,12 @@ export class OHLCService {
   }
 
   /**
-   * Create or update a symbol mapping
+   * Create or update a symbol mapping.
+   * Looks up by coinId only so a coin can be remapped to a different exchange.
    */
   async upsertSymbolMap(mapping: Partial<ExchangeSymbolMap>): Promise<ExchangeSymbolMap> {
     const existing = await this.symbolMapRepository.findOne({
-      where: {
-        coinId: mapping.coinId,
-        exchangeId: mapping.exchangeId
-      }
+      where: { coinId: mapping.coinId }
     });
 
     if (existing) {
@@ -348,6 +346,23 @@ export class OHLCService {
    */
   async updateSymbolMapStatus(id: string, isActive: boolean): Promise<void> {
     await this.symbolMapRepository.update(id, { isActive });
+  }
+
+  /**
+   * Deactivate mappings that have never synced successfully and exceed a failure threshold.
+   * Returns the number of deactivated mappings.
+   */
+  async deactivateFailedMappings(minFailures: number): Promise<number> {
+    const result = await this.symbolMapRepository
+      .createQueryBuilder()
+      .update(ExchangeSymbolMap)
+      .set({ isActive: false })
+      .where('lastSyncAt IS NULL')
+      .andWhere('failureCount >= :minFailures', { minFailures })
+      .andWhere('isActive = true')
+      .execute();
+
+    return result.affected || 0;
   }
 
   /**

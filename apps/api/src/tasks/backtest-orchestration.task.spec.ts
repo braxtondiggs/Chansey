@@ -7,6 +7,8 @@ import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
+import { BacktestService } from '../order/backtest/backtest.service';
+
 describe('BacktestOrchestrationTask', () => {
   let task: BacktestOrchestrationTask;
   let orchestrationQueue: jest.Mocked<Queue>;
@@ -22,8 +24,11 @@ describe('BacktestOrchestrationTask', () => {
   };
 
   const mockService = {
-    getEligibleUsers: jest.fn(),
-    ensureDatasetExists: jest.fn().mockResolvedValue(undefined)
+    getEligibleUsers: jest.fn()
+  };
+
+  const mockBacktestService = {
+    ensureDefaultDatasetExists: jest.fn().mockResolvedValue(null)
   };
 
   beforeEach(async () => {
@@ -31,7 +36,8 @@ describe('BacktestOrchestrationTask', () => {
       providers: [
         BacktestOrchestrationTask,
         { provide: getQueueToken('backtest-orchestration'), useValue: mockQueue },
-        { provide: BacktestOrchestrationService, useValue: mockService }
+        { provide: BacktestOrchestrationService, useValue: mockService },
+        { provide: BacktestService, useValue: mockBacktestService }
       ]
     }).compile();
 

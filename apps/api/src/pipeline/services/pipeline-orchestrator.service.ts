@@ -885,7 +885,10 @@ export class PipelineOrchestratorService {
 
   private async executeHistoricalStage(pipeline: Pipeline): Promise<void> {
     const config = pipeline.stageConfig.historical;
-    const marketDataSetId = config.marketDataSetId ?? 'default-historical-data';
+    const marketDataSetId = config.marketDataSetId ?? (await this.backtestService.getDefaultDatasetId());
+    if (!marketDataSetId) {
+      throw new Error('No market data set configured and no auto-generated dataset available');
+    }
 
     // Create historical backtest (createBacktest auto-queues execution)
     const backtest = await this.backtestService.createBacktest(pipeline.user as User, {
@@ -909,7 +912,10 @@ export class PipelineOrchestratorService {
 
   private async executeLiveReplayStage(pipeline: Pipeline): Promise<void> {
     const config = pipeline.stageConfig.liveReplay;
-    const marketDataSetId = config.marketDataSetId ?? 'default-historical-data';
+    const marketDataSetId = config.marketDataSetId ?? (await this.backtestService.getDefaultDatasetId());
+    if (!marketDataSetId) {
+      throw new Error('No market data set configured and no auto-generated dataset available');
+    }
 
     // Create live replay backtest (createBacktest auto-queues execution)
     const backtest = await this.backtestService.createBacktest(pipeline.user as User, {

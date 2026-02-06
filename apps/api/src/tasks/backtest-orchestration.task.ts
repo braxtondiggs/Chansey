@@ -14,6 +14,8 @@ import { Queue } from 'bullmq';
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { OrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
+import { BacktestService } from '../order/backtest/backtest.service';
+
 @Injectable()
 export class BacktestOrchestrationTask {
   private readonly logger = new Logger(BacktestOrchestrationTask.name);
@@ -21,7 +23,8 @@ export class BacktestOrchestrationTask {
   constructor(
     @InjectQueue('backtest-orchestration')
     private readonly orchestrationQueue: Queue<OrchestrationJobData>,
-    private readonly orchestrationService: BacktestOrchestrationService
+    private readonly orchestrationService: BacktestOrchestrationService,
+    private readonly backtestService: BacktestService
   ) {}
 
   /**
@@ -34,7 +37,7 @@ export class BacktestOrchestrationTask {
 
     try {
       // Ensure a database-backed dataset exists before orchestrating
-      await this.orchestrationService.ensureDatasetExists();
+      await this.backtestService.ensureDefaultDatasetExists();
 
       const eligibleUsers = await this.orchestrationService.getEligibleUsers();
       this.logger.log(`Found ${eligibleUsers.length} eligible users for orchestration`);

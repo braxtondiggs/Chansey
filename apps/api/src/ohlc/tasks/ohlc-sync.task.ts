@@ -106,16 +106,32 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Create symbol mappings for popular coins on the primary supported exchange
+   * Create symbol mappings for popular coins, validating that pairs actually exist on exchanges.
+   * Tries each exchange in priority order and picks the first one with a valid pair.
    */
   private async seedSymbolMaps(): Promise<void> {
     try {
-      const exchanges = await this.exchangeService.getExchanges({ supported: true });
-      const primaryExchange = exchanges.find((e) => e.slug === 'binance_us') || exchanges[0];
+      // Deactivate mappings that have never synced and have accumulated failures
+      // Uses the same threshold as runtime deactivation to avoid removing transiently-failed mappings
+      const deactivated = await this.ohlcService.deactivateFailedMappings(OHLCSyncTask.MAX_CONSECUTIVE_FAILURES);
+      if (deactivated > 0) {
+        this.logger.log(`Deactivated ${deactivated} failed symbol mappings before re-seeding`);
+      }
 
-      if (!primaryExchange) {
-        this.logger.warn('No supported exchange found, cannot seed symbol maps');
-        return;
+      const exchanges = await this.exchangeService.getExchanges({ supported: true });
+      const exchangePriority = this.exchangeOHLC.getExchangePriority();
+
+      // Build a map of exchange slug -> exchange entity for quick lookup
+      const exchangeBySlug = new Map(exchanges.map((e) => [e.slug, e]));
+
+      // Pre-load markets for each exchange in priority order
+      for (const slug of exchangePriority) {
+        if (!exchangeBySlug.has(slug)) continue;
+        try {
+          await this.exchangeOHLC.getAvailableSymbols(slug, 'BTC'); // triggers loadMarkets()
+        } catch (error) {
+          this.logger.warn(`Failed to load markets for ${slug}: ${error.message}`);
+        }
       }
 
       const coins = await this.coinService.getPopularCoins(50);
@@ -126,22 +142,42 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       }
 
       let created = 0;
+      let skipped = 0;
+
       for (const coin of coins) {
         try {
-          await this.ohlcService.upsertSymbolMap({
-            coinId: coin.id,
-            exchangeId: primaryExchange.id,
-            symbol: `${coin.symbol.toUpperCase()}/USD`,
-            isActive: true,
-            priority: 0
-          });
-          created++;
+          let mapped = false;
+
+          for (const slug of exchangePriority) {
+            const exchange = exchangeBySlug.get(slug);
+            if (!exchange) continue;
+
+            const symbols = await this.exchangeOHLC.getAvailableSymbols(slug, coin.symbol);
+            if (symbols.length > 0) {
+              await this.ohlcService.upsertSymbolMap({
+                coinId: coin.id,
+                exchangeId: exchange.id,
+                symbol: symbols[0], // Already sorted: /USD preferred over /USDT
+                isActive: true,
+                priority: 0,
+                failureCount: 0
+              });
+              created++;
+              mapped = true;
+              break;
+            }
+          }
+
+          if (!mapped) {
+            this.logger.warn(`No valid trading pair found for ${coin.symbol} on any exchange, skipping`);
+            skipped++;
+          }
         } catch (error) {
           this.logger.warn(`Failed to create symbol map for ${coin.symbol}: ${error.message}`);
         }
       }
 
-      this.logger.log(`Seeded ${created} symbol mappings on ${primaryExchange.name}`);
+      this.logger.log(`Seeded ${created} symbol mappings, skipped ${skipped} coins with no valid pairs`);
     } catch (error) {
       this.logger.error(`Failed to seed symbol maps: ${error.message}`);
     }
@@ -304,6 +340,8 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
   /**
    * Sync a single symbol mapping
    */
+  private static readonly MAX_CONSECUTIVE_FAILURES = 24;
+
   private async syncSingleMapping(
     mapping: ExchangeSymbolMap,
     since: number
@@ -312,8 +350,8 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       const result = await this.exchangeOHLC.fetchOHLC(mapping.exchange.slug, mapping.symbol, since, 5);
 
       if (!result.success || !result.candles || result.candles.length === 0) {
-        // Increment failure count
         await this.ohlcService.incrementFailureCount(mapping.id);
+        await this.deactivateIfExceededThreshold(mapping);
         return { success: false };
       }
 
@@ -340,7 +378,20 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     } catch (error) {
       this.logger.warn(`Failed to sync ${mapping.symbol} from ${mapping.exchange?.slug}: ${error.message}`);
       await this.ohlcService.incrementFailureCount(mapping.id);
+      await this.deactivateIfExceededThreshold(mapping);
       return { success: false };
+    }
+  }
+
+  /**
+   * Deactivate a mapping if its failure count has exceeded the threshold
+   */
+  private async deactivateIfExceededThreshold(mapping: ExchangeSymbolMap): Promise<void> {
+    if (mapping.failureCount + 1 >= OHLCSyncTask.MAX_CONSECUTIVE_FAILURES) {
+      this.logger.warn(
+        `Deactivating ${mapping.symbol} on ${mapping.exchange?.slug} after ${OHLCSyncTask.MAX_CONSECUTIVE_FAILURES} consecutive failures`
+      );
+      await this.ohlcService.updateSymbolMapStatus(mapping.id, false);
     }
   }
 
