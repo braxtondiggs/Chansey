@@ -34,10 +34,10 @@ export class BullMQHealthIndicator {
   constructor(
     private readonly healthIndicatorService: HealthIndicatorService,
     @InjectQueue('order-queue') private readonly orderQueue: Queue,
-    @InjectQueue('backtest-queue') private readonly backtestQueue: Queue,
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
-    @InjectQueue('ohlc-queue') private readonly ohlcQueue: Queue,
-    @InjectQueue('price-queue') private readonly priceQueue: Queue
+    @InjectQueue('price-queue') private readonly priceQueue: Queue,
+    @InjectQueue('strategy-evaluation-queue') private readonly strategyEvaluationQueue: Queue,
+    @InjectQueue('regime-check-queue') private readonly regimeCheckQueue: Queue
   ) {}
 
   /**
@@ -51,10 +51,10 @@ export class BullMQHealthIndicator {
     try {
       const queues = [
         { name: 'order-queue', queue: this.orderQueue },
-        { name: 'backtest-queue', queue: this.backtestQueue },
         { name: 'coin-queue', queue: this.coinQueue },
-        { name: 'ohlc-queue', queue: this.ohlcQueue },
-        { name: 'price-queue', queue: this.priceQueue }
+        { name: 'price-queue', queue: this.priceQueue },
+        { name: 'strategy-evaluation-queue', queue: this.strategyEvaluationQueue },
+        { name: 'regime-check-queue', queue: this.regimeCheckQueue }
       ];
 
       // Check queues in parallel with timeout to avoid indefinite hangs
