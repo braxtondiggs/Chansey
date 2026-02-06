@@ -5,7 +5,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BacktestOrchestrationProcessor } from './backtest-orchestration.processor';
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
+import { DriftDetectionProcessor } from './drift-detection.processor';
 import { DriftDetectionTask } from './drift-detection.task';
+import { MarketRegimeProcessor } from './market-regime.processor';
 import { MarketRegimeTask } from './market-regime.task';
 import { PerformanceCalcTask } from './performance-calc.task';
 import { PipelineOrchestrationProcessor } from './pipeline-orchestration.processor';
@@ -13,6 +15,7 @@ import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 import { PipelineOrchestrationTask } from './pipeline-orchestration.task';
 import { PromotionTask } from './promotion.task';
 import { RiskMonitoringTask } from './risk-monitoring.task';
+import { StrategyEvaluationProcessor } from './strategy-evaluation.processor';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
 import { TaskSchedulerService } from './task-scheduler.service';
 
@@ -93,10 +96,13 @@ import { UsersModule } from '../users/users.module';
   ],
   providers: [
     StrategyEvaluationTask,
+    StrategyEvaluationProcessor,
     MarketRegimeTask,
+    MarketRegimeProcessor,
     PromotionTask,
     RiskMonitoringTask,
     DriftDetectionTask,
+    DriftDetectionProcessor,
     PerformanceCalcTask,
     TaskSchedulerService,
     BacktestOrchestrationTask,

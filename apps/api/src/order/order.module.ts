@@ -102,7 +102,6 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BullModule.registerQueue({ name: 'order-queue' }),
     BullModule.registerQueue({ name: BACKTEST_DEFAULTS.historicalQueue }),
     BullModule.registerQueue({ name: BACKTEST_DEFAULTS.replayQueue }),
-    BullModule.registerQueue({ name: 'backtest-queue' }),
     BullModule.registerQueue({ name: 'trade-execution' }),
     BullModule.registerQueue({ name: 'position-monitor' }),
     SharedCacheModule,

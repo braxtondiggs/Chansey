@@ -5,12 +5,10 @@
 export const QUEUE_NAMES = [
   'balance-queue',
   'backtest-orchestration',
-  'backtest-queue',
   'category-queue',
   'coin-queue',
   'drift-detection-queue',
   'exchange-queue',
-  'ohlc-queue',
   'optimization',
   'order-queue',
   'paper-trading',
