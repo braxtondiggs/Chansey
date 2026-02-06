@@ -1,11 +1,12 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { forwardRef, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CronExpression } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
 import { CoinService } from '../../coin/coin.service';
+import { ExchangeService } from '../../exchange/exchange.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
@@ -24,6 +25,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     private readonly exchangeOHLC: ExchangeOHLCService,
     @Inject(forwardRef(() => CoinService))
     private readonly coinService: CoinService,
+    private readonly exchangeService: ExchangeService,
     private readonly configService: ConfigService,
     private readonly lockService: DistributedLockService
   ) {
@@ -44,9 +46,104 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       return;
     }
 
+    await this.seedSymbolMapsIfEmpty();
+
     if (!this.jobScheduled) {
       await this.scheduleOHLCSyncJob();
       this.jobScheduled = true;
+    }
+  }
+
+  /**
+   * Weekly refresh: add symbol mappings for any new popular coins
+   * Runs every Sunday at 4:00 AM
+   */
+  @Cron('0 4 * * 0')
+  async refreshSymbolMaps(): Promise<void> {
+    if (
+      process.env.NODE_ENV === 'development' ||
+      process.env.DISABLE_BACKGROUND_TASKS === 'true' ||
+      this.configService.get('OHLC_SYNC_ENABLED') === 'false'
+    ) {
+      return;
+    }
+
+    const lock = await this.lockService.acquire({
+      key: LOCK_KEYS.SYMBOL_MAP_REFRESH,
+      ttlMs: LOCK_DEFAULTS.SCHEDULE_LOCK_TTL_MS,
+      maxRetries: 2,
+      retryDelayMs: 500
+    });
+
+    if (!lock.acquired) {
+      this.logger.log('Another instance is refreshing symbol maps, skipping');
+      return;
+    }
+
+    try {
+      this.logger.log('Running weekly symbol map refresh');
+      await this.seedSymbolMaps();
+    } finally {
+      await this.lockService.release(LOCK_KEYS.SYMBOL_MAP_REFRESH, lock.lockId);
+    }
+  }
+
+  /**
+   * Seed symbol mappings only if the table is completely empty (first boot)
+   */
+  private async seedSymbolMapsIfEmpty(): Promise<void> {
+    try {
+      const existing = await this.ohlcService.getActiveSymbolMaps();
+      if (existing.length > 0) {
+        return;
+      }
+
+      this.logger.log('No symbol mappings found, seeding from popular coins');
+      await this.seedSymbolMaps();
+    } catch (error) {
+      this.logger.error(`Failed to check/seed symbol maps: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create symbol mappings for popular coins on the primary supported exchange
+   */
+  private async seedSymbolMaps(): Promise<void> {
+    try {
+      const exchanges = await this.exchangeService.getExchanges({ supported: true });
+      const primaryExchange = exchanges.find((e) => e.slug === 'binance_us') || exchanges[0];
+
+      if (!primaryExchange) {
+        this.logger.warn('No supported exchange found, cannot seed symbol maps');
+        return;
+      }
+
+      const coins = await this.coinService.getPopularCoins(50);
+
+      if (coins.length === 0) {
+        this.logger.warn('No popular coins found, cannot seed symbol maps');
+        return;
+      }
+
+      let created = 0;
+      for (const coin of coins) {
+        try {
+          await this.ohlcService.upsertSymbolMap({
+            coinId: coin.id,
+            exchangeId: primaryExchange.id,
+            symbol: `${coin.symbol.toUpperCase()}/USD`,
+            isActive: true,
+            priority: 0
+          });
+          created++;
+        } catch (error) {
+          this.logger.warn(`Failed to create symbol map for ${coin.symbol}: ${error.message}`);
+        }
+      }
+
+      this.logger.log(`Seeded ${created} symbol mappings on ${primaryExchange.name}`);
+    } catch (error) {
+      this.logger.error(`Failed to seed symbol maps: ${error.message}`);
     }
   }
 

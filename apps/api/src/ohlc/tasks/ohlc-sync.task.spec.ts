@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { OHLCSyncTask } from './ohlc-sync.task';
 
 import { CoinService } from '../../coin/coin.service';
+import { ExchangeService } from '../../exchange/exchange.service';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
@@ -13,6 +14,7 @@ describe('OHLCSyncTask', () => {
   let ohlcService: jest.Mocked<OHLCService>;
   let exchangeOHLC: jest.Mocked<ExchangeOHLCService>;
   let coinService: jest.Mocked<CoinService>;
+  let exchangeService: jest.Mocked<ExchangeService>;
   let configService: { get: jest.Mock };
   let lockService: { acquire: jest.Mock; release: jest.Mock };
 
@@ -38,8 +40,13 @@ describe('OHLCSyncTask', () => {
     } as unknown as jest.Mocked<ExchangeOHLCService>;
 
     coinService = {
-      updateCurrentPrice: jest.fn()
+      updateCurrentPrice: jest.fn(),
+      getPopularCoins: jest.fn().mockResolvedValue([])
     } as unknown as jest.Mocked<CoinService>;
+
+    exchangeService = {
+      getExchanges: jest.fn().mockResolvedValue([])
+    } as unknown as jest.Mocked<ExchangeService>;
 
     configService = { get: jest.fn() };
 
@@ -53,6 +60,7 @@ describe('OHLCSyncTask', () => {
       ohlcService,
       exchangeOHLC,
       coinService,
+      exchangeService,
       configService as any,
       lockService as any
     );
@@ -76,11 +84,72 @@ describe('OHLCSyncTask', () => {
     process.env.NODE_ENV = 'production';
     process.env.DISABLE_BACKGROUND_TASKS = 'false';
     configService.get.mockReturnValue(undefined);
+    ohlcService.getActiveSymbolMaps.mockResolvedValue([]);
     const scheduleSpy = jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
 
     await task.onModuleInit();
 
     expect(scheduleSpy).toHaveBeenCalled();
+  });
+
+  it('onModuleInit seeds symbol maps when table is empty', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    ohlcService.getActiveSymbolMaps.mockResolvedValue([]);
+    exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
+    coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
+    ohlcService.upsertSymbolMap = jest.fn().mockResolvedValue({});
+    jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(ohlcService.upsertSymbolMap).toHaveBeenCalledWith({
+      coinId: 'btc',
+      exchangeId: 'ex-1',
+      symbol: 'BTC/USD',
+      isActive: true,
+      priority: 0
+    });
+  });
+
+  it('onModuleInit skips seeding when mappings already exist', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    ohlcService.getActiveSymbolMaps.mockResolvedValue([{ id: 'existing' }] as any);
+    jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(exchangeService.getExchanges).not.toHaveBeenCalled();
+  });
+
+  it('refreshSymbolMaps skips when lock not acquired', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    lockService.acquire.mockResolvedValue({ acquired: false });
+
+    await task.refreshSymbolMaps();
+
+    expect(exchangeService.getExchanges).not.toHaveBeenCalled();
+    expect(lockService.release).not.toHaveBeenCalled();
+  });
+
+  it('refreshSymbolMaps acquires and releases lock', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'refresh-lock' });
+    exchangeService.getExchanges.mockResolvedValue([]);
+
+    await task.refreshSymbolMaps();
+
+    expect(lockService.acquire).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'ohlc-sync:symbol-map-refresh-lock' })
+    );
+    expect(lockService.release).toHaveBeenCalledWith('ohlc-sync:symbol-map-refresh-lock', 'refresh-lock');
   });
 
   it('handleOHLCSync returns empty summary when no mappings', async () => {

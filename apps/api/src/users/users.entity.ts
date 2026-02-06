@@ -119,10 +119,10 @@ export class User {
     type: 'decimal',
     precision: 5,
     scale: 2,
-    nullable: true,
+    default: 25,
     comment: 'Percentage of free balance allocated to algo trading (e.g., 25.50 = 25.5%)'
   })
-  algoCapitalAllocationPercentage?: number;
+  algoCapitalAllocationPercentage: number;
 
   @Column({ type: 'timestamptz', nullable: true })
   algoEnrolledAt?: Date;

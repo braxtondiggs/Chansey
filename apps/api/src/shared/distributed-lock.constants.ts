@@ -1,6 +1,7 @@
 export const LOCK_KEYS = {
   LIVE_TRADING: 'live-trading:execution-lock',
-  OHLC_SYNC_SCHEDULE: 'ohlc-sync:schedule-lock'
+  OHLC_SYNC_SCHEDULE: 'ohlc-sync:schedule-lock',
+  SYMBOL_MAP_REFRESH: 'ohlc-sync:symbol-map-refresh-lock'
 } as const;
 
 export const LOCK_DEFAULTS = {

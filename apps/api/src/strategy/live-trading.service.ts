@@ -100,7 +100,7 @@ export class LiveTradingService implements OnApplicationShutdown {
 
   private async executeUserStrategies(user: User): Promise<void> {
     if (!user.algoCapitalAllocationPercentage || user.algoCapitalAllocationPercentage <= 0) {
-      this.logger.warn(`User ${user.id} has no capital allocation percentage set`);
+      this.logger.debug(`User ${user.id} has no capital allocation percentage set, skipping`);
       return;
     }
 
