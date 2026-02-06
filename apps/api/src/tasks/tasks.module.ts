@@ -27,6 +27,7 @@ import { CoinModule } from '../coin/coin.module';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { OHLCModule } from '../ohlc/ohlc.module';
 import { Backtest } from '../order/backtest/backtest.entity';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
 import { OrderModule } from '../order/order.module';
@@ -90,6 +91,7 @@ import { UsersModule } from '../users/users.module';
     forwardRef(() => UsersModule),
     forwardRef(() => BalanceModule),
     forwardRef(() => PipelineModule),
+    forwardRef(() => OHLCModule),
     ScoringModule,
     AuditModule,
     MonitoringModule
