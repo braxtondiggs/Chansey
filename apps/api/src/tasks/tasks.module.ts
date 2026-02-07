@@ -59,7 +59,7 @@ import { UsersModule } from '../users/users.module';
  * - DriftDetectionTask: Every 6 hours - Detect performance drift in deployed strategies
  * - PerformanceCalcTask: Daily at 1 AM - Calculate daily performance metrics
  * - PipelineOrchestrationTask: Daily at 2 AM - Orchestrate full validation pipelines for algo-enabled users
- * - BacktestOrchestrationTask: Daily at 3 AM - Orchestrate automatic backtests for algo-enabled users
+ * - BacktestOrchestrationTask: Twice daily at 3 AM/3 PM UTC - Orchestrate automatic backtests for algo-enabled users
  */
 @Module({
   imports: [

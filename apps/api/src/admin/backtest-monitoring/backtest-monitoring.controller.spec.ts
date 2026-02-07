@@ -16,6 +16,7 @@ import {
 } from './dto/trade-analytics.dto';
 
 import { BacktestStatus, BacktestType } from '../../order/backtest/backtest.entity';
+import { BacktestOrchestrationTask } from '../../tasks/backtest-orchestration.task';
 
 describe('BacktestMonitoringController', () => {
   let controller: BacktestMonitoringController;
@@ -146,7 +147,16 @@ describe('BacktestMonitoringController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BacktestMonitoringController],
-      providers: [{ provide: BacktestMonitoringService, useValue: service }]
+      providers: [
+        { provide: BacktestMonitoringService, useValue: service },
+        {
+          provide: BacktestOrchestrationTask,
+          useValue: {
+            triggerManualOrchestration: jest.fn().mockResolvedValue({ queued: 1 }),
+            getQueueStats: jest.fn().mockResolvedValue({ waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 })
+          }
+        }
+      ]
     }).compile();
 
     controller = module.get(BacktestMonitoringController);

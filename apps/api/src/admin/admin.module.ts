@@ -13,6 +13,7 @@ import { Backtest, BacktestSignal, BacktestTrade, SimulatedOrderFill } from '../
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
 import { StrategyModule } from '../strategy/strategy.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 /**
  * AdminModule
@@ -30,7 +31,8 @@ import { StrategyModule } from '../strategy/strategy.module';
     AuditModule,
     LiveTradeMonitoringModule,
     forwardRef(() => OrderModule),
-    forwardRef(() => StrategyModule)
+    forwardRef(() => StrategyModule),
+    forwardRef(() => TasksModule)
   ],
   providers: [TradingStateService, BacktestMonitoringService],
   controllers: [TradingStateController, BacktestMonitoringController],
