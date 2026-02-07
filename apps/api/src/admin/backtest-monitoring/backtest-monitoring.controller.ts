@@ -1,5 +1,5 @@
-import { Controller, Get, HttpStatus, Param, ParseUUIDPipe, Query, Res, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpStatus, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
 import { Response } from 'express';
@@ -20,6 +20,7 @@ import {
 import { Roles } from '../../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../../authentication/guard/roles.guard';
+import { BacktestOrchestrationTask } from '../../tasks/backtest-orchestration.task';
 
 /**
  * Admin controller for backtest monitoring dashboard.
@@ -35,7 +36,10 @@ import { RolesGuard } from '../../authentication/guard/roles.guard';
 @UseGuards(JwtAuthenticationGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class BacktestMonitoringController {
-  constructor(private readonly monitoringService: BacktestMonitoringService) {}
+  constructor(
+    private readonly monitoringService: BacktestMonitoringService,
+    private readonly orchestrationTask: BacktestOrchestrationTask
+  ) {}
 
   /**
    * Get overview metrics for the backtest monitoring dashboard
@@ -115,6 +119,42 @@ export class BacktestMonitoringController {
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getTradeAnalytics(@Query() filters: BacktestFiltersDto): Promise<TradeAnalyticsDto> {
     return this.monitoringService.getTradeAnalytics(filters);
+  }
+
+  /**
+   * Manually trigger backtest orchestration
+   */
+  @Post('trigger')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Trigger backtest orchestration',
+    description: 'Manually triggers backtest orchestration for a specific user or all eligible users.'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { userId: { type: 'string', format: 'uuid', description: 'Optional user ID' } }
+    },
+    required: false
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Orchestration jobs queued' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async triggerOrchestration(@Body() body?: { userId?: string }): Promise<{ queued: number }> {
+    return this.orchestrationTask.triggerManualOrchestration(body?.userId);
+  }
+
+  /**
+   * Get backtest orchestration queue stats
+   */
+  @Get('queue-stats')
+  @ApiOperation({
+    summary: 'Get orchestration queue statistics',
+    description: 'Returns current queue counts for waiting, active, completed, failed, and delayed jobs.'
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Queue stats retrieved successfully' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getQueueStats() {
+    return this.orchestrationTask.getQueueStats();
   }
 
   /**

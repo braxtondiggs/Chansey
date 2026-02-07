@@ -105,7 +105,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     }
 
     if (!user.exchanges || user.exchanges.length === 0) {
-      this.logger.warn(`User ${user.id} has no exchange keys configured`);
+      this.logger.debug(`User ${user.id} has no exchange keys configured`);
       return;
     }
 
