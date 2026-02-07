@@ -88,17 +88,16 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci --prefer-offline --no-audit
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
       - name: Cache Playwright browsers
+        id: cache-playwright
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Run database migrations
-        run: npm run migration:run
+      - name: Install Playwright browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
 
       - name: Build API
         run: npx nx build api
@@ -114,11 +113,16 @@ jobs:
           for i in $(seq 1 30); do
             if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
               echo "API is ready!"
-              break
+              exit 0
             fi
             echo "Attempt $i/30 - waiting..."
             sleep 2
           done
+          echo "API failed to start!"
+          exit 1
+
+      - name: Seed E2E test user
+        run: node apps/api/scripts/seed-e2e-user.js
 
       - name: Run E2E tests
         run: npx nx e2e chansey --configuration=ci
