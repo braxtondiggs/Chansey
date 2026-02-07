@@ -14,6 +14,7 @@
           <div class="flex flex-col">
             @for (message of messages(); track message; let first = $first) {
               <p-message
+                data-testid="login-message"
                 [severity]="message.severity"
                 [text]="message.content"
                 icon="pi {{ message.icon }}"
@@ -23,6 +24,7 @@
             }
             @if (showResendVerification()) {
               <p-button
+                data-testid="login-resend-verification"
                 type="button"
                 [text]="true"
                 [loading]="resendVerificationMutation.isPending()"
@@ -36,6 +38,7 @@
           <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8">
             <p-floatlabel variant="on" class="mt-4">
               <input
+                data-testid="login-email"
                 type="text"
                 formControlName="email"
                 pInputText
@@ -54,6 +57,7 @@
             <p-fluid>
               <p-floatlabel variant="on" class="mt-4">
                 <p-password
+                  data-testid="login-password"
                   formControlName="password"
                   size="large"
                   [toggleMask]="true"
@@ -70,12 +74,23 @@
 
             <div class="my-8 flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <p-checkbox inputId="remember" formControlName="remember" [binary]="true" />
+                <p-checkbox
+                  data-testid="login-remember"
+                  inputId="remember"
+                  formControlName="remember"
+                  [binary]="true"
+                />
                 <label for="remember" class="body-small">Remember me</label>
               </div>
               <a routerLink="/forgot-password" class="body-small text-primary-500 hover:underline">Forgot password?</a>
             </div>
-            <p-button type="submit" [loading]="loginMutation.isPending()" [raised]="true" [style]="{ width: '100%' }">
+            <p-button
+              data-testid="login-submit"
+              type="submit"
+              [loading]="loginMutation.isPending()"
+              [raised]="true"
+              [style]="{ width: '100%' }"
+            >
               <span>Login</span>
             </p-button>
           </form>

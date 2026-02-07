@@ -5,7 +5,7 @@
   "parallel": 3,
   "generators": {
     "@nx/angular:application": {
-      "e2eTestRunner": "cypress",
+      "e2eTestRunner": "playwright",
       "linter": "eslint",
       "style": "scss",
       "unitTestRunner": "jest"
@@ -95,12 +95,7 @@
     },
     "e2e": {
       "inputs": ["default", "^production"],
-      "outputs": [
-        "{projectRoot}/dist",
-        "{workspaceRoot}/dist/cypress",
-        "{projectRoot}/cypress/videos",
-        "{projectRoot}/cypress/screenshots"
-      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright"],
       "cache": true
     },
     "@nx/jest:jest": {
@@ -163,7 +158,7 @@
       "!{projectRoot}/.eslintrc.json",
       "!{projectRoot}/src/test-setup.[jt]s",
       "!{projectRoot}/**/*.md",
-      "!{projectRoot}/cypress/**/*",
+      "!{projectRoot}/apps/chansey-e2e/**/*",
       "!{projectRoot}/.storybook/**/*",
       "!{projectRoot}/**/*.stories.ts"
     ]

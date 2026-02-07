@@ -14,6 +14,7 @@
           <div class="flex flex-col">
             @for (message of messages(); track message; let first = $first) {
               <p-message
+                data-testid="register-message"
                 [severity]="message.severity"
                 [text]="message.content"
                 icon="pi {{ message.icon }}"
@@ -26,6 +27,7 @@
             <div class="flex gap-4">
               <p-floatlabel variant="on" class="mt-4 w-1/2">
                 <input
+                  data-testid="register-given-name"
                   type="text"
                   formControlName="given_name"
                   pInputText
@@ -38,6 +40,7 @@
               </p-floatlabel>
               <p-floatlabel variant="on" class="mt-4 w-1/2">
                 <input
+                  data-testid="register-family-name"
                   type="text"
                   formControlName="family_name"
                   pInputText
@@ -59,6 +62,7 @@
             </div>
             <p-floatlabel variant="on" class="mt-4">
               <input
+                data-testid="register-email"
                 type="text"
                 formControlName="email"
                 pInputText
@@ -78,6 +82,7 @@
             }
             <p-floatlabel variant="on" class="mt-4">
               <p-password
+                data-testid="register-password"
                 formControlName="password"
                 size="large"
                 [inputStyle]="{ width: '100%' }"
@@ -105,6 +110,7 @@
             }
             <p-floatlabel variant="on" class="mt-4">
               <p-password
+                data-testid="register-confirm-password"
                 formControlName="confirmPassword"
                 size="large"
                 [inputStyle]="{ width: '100%' }"
@@ -125,6 +131,7 @@
               <small class="text-red-500"> Passwords do not match </small>
             }
             <p-button
+              data-testid="register-submit"
               type="submit"
               class="mt-8 block w-full"
               [loading]="registerMutation.isPending()"

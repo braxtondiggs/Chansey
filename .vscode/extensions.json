@@ -11,6 +11,7 @@
     "nrwl.angular-console",
     "steoates.autoimport",
     "streetsidesoftware.code-spell-checker",
-    "wix.vscode-import-cost"
+    "wix.vscode-import-cost",
+    "ms-playwright.playwright"
   ]
 }
