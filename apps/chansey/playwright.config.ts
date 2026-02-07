@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: {
     command: 'npx nx serve chansey',
     url: 'http://localhost:4200',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env['CI'],
     cwd: workspaceRoot,
     timeout: 120000
   },

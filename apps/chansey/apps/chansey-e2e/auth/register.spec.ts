@@ -8,8 +8,7 @@ test.describe('Register Flow', () => {
 
   test.describe('Real API Integration', () => {
     test('should register a new user successfully', async ({ page }) => {
-      const timestamp = Date.now();
-      const testEmail = `e2e-new-${timestamp}@chansey.local`;
+      const testEmail = `e2e-register-${Date.now()}@chansey.local`;
 
       await page.getByTestId('register-given-name').fill('New');
       await page.getByTestId('register-family-name').fill('User');

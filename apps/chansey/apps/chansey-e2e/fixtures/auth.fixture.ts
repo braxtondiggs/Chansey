@@ -16,6 +16,7 @@ type AuthFixtures = {
 };
 
 export const test = base.extend<AuthFixtures>({
+  // eslint-disable-next-line no-empty-pattern
   testUser: async ({}, use) => {
     await use(TEST_USER);
   },

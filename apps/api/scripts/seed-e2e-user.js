@@ -15,12 +15,12 @@ async function seed() {
 
   await client.query(
     `INSERT INTO "user" (
-      id, email, given_name, family_name, "passwordHash", "emailVerified",
+      email, given_name, family_name, "passwordHash", "emailVerified",
       roles, "failedLoginAttempts", "otpEnabled", "otpFailedAttempts",
       hide_balance, "algoTradingEnabled", "algoCapitalAllocationPercentage",
       "createdAt", "updatedAt"
     ) VALUES (
-      'e2e-test-0000-0000-0000-000000000001', 'e2e-test@chansey.local', 'E2E', 'Test',
+      'e2e-test@chansey.local', 'E2E', 'Test',
       $1, true, '{user}', 0, false, 0, false, false, 25.00, NOW(), NOW()
     )
     ON CONFLICT (email) DO UPDATE SET
@@ -29,6 +29,14 @@ async function seed() {
       "failedLoginAttempts" = 0`,
     [hash]
   );
+
+  // Clean up orphan users from previous test runs
+  const { rowCount } = await client.query(
+    `DELETE FROM "user" WHERE email LIKE 'e2e-register-%@chansey.local' OR email LIKE 'e2e-new-%@chansey.local'`
+  );
+  if (rowCount > 0) {
+    console.log(`Cleaned up ${rowCount} orphan test user(s)`);
+  }
 
   await client.end();
   console.log('E2E test user seeded successfully');
