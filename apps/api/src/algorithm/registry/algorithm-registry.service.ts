@@ -45,11 +45,16 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get strategy by algorithm ID
+   * Get strategy by algorithm ID (supports lazy initialization for runtime-activated algorithms)
    */
-  getStrategyForAlgorithm(algorithmId: string): AlgorithmStrategy | undefined {
+  async getStrategyForAlgorithm(algorithmId: string): Promise<AlgorithmStrategy | undefined> {
     const strategyId = this.algorithmToStrategy.get(algorithmId);
-    return strategyId ? this.strategies.get(strategyId) : undefined;
+    if (strategyId) {
+      return this.strategies.get(strategyId);
+    }
+
+    // Lazy init for runtime-activated algorithms
+    return this.lazyInitAlgorithm(algorithmId);
   }
 
   /**
@@ -63,7 +68,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
    * Execute an algorithm by ID
    */
   async executeAlgorithm(algorithmId: string, context: AlgorithmContext): Promise<AlgorithmResult> {
-    const strategy = this.getStrategyForAlgorithm(algorithmId);
+    const strategy = await this.getStrategyForAlgorithm(algorithmId);
 
     if (!strategy) {
       throw new AlgorithmNotRegisteredException(algorithmId);
@@ -113,7 +118,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
       const algorithms = await this.algorithmService.getActiveAlgorithms();
 
       for (const algorithm of algorithms) {
-        const strategy = this.findStrategyByService(algorithm.service);
+        const strategy = this.findStrategyByService(algorithm.service, algorithm.strategyId);
 
         if (strategy) {
           await strategy.onInit(algorithm);
@@ -129,13 +134,40 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Find strategy by service name
+   * Find strategy by strategyId (direct map lookup) or fallback to service name matching
    */
-  private findStrategyByService(serviceName: string): AlgorithmStrategy | undefined {
+  private findStrategyByService(serviceName: string, strategyId?: string): AlgorithmStrategy | undefined {
+    // Direct match by strategyId (most reliable, O(1))
+    if (strategyId && this.strategies.has(strategyId)) {
+      return this.strategies.get(strategyId);
+    }
+
+    // Fallback: legacy service name matching
     for (const strategy of this.strategies.values()) {
       if (strategy.constructor.name === serviceName || strategy.name === serviceName) {
         return strategy;
       }
+    }
+    return undefined;
+  }
+
+  /**
+   * Lazy-initialize a runtime-activated algorithm that wasn't active at startup
+   */
+  private async lazyInitAlgorithm(algorithmId: string): Promise<AlgorithmStrategy | undefined> {
+    try {
+      const algorithm = await this.algorithmService.getAlgorithmById(algorithmId);
+      if (!algorithm) return undefined;
+
+      const strategy = this.findStrategyByService(algorithm.service, algorithm.strategyId);
+      if (strategy) {
+        await strategy.onInit(algorithm);
+        this.algorithmToStrategy.set(algorithm.id, strategy.id);
+        this.logger.log(`Lazy-initialized algorithm "${algorithm.name}" with strategy "${strategy.name}"`);
+        return strategy;
+      }
+    } catch (error) {
+      this.logger.error(`Failed to lazy-init algorithm ${algorithmId}: ${error.message}`);
     }
     return undefined;
   }
