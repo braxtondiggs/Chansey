@@ -53,9 +53,8 @@ export class StrategyService {
     }
 
     // Verify algorithm is registered in AlgorithmRegistry
-    try {
-      this.algorithmRegistry.getStrategyForAlgorithm(algorithm.id);
-    } catch (error) {
+    const registeredStrategy = await this.algorithmRegistry.getStrategyForAlgorithm(algorithm.id);
+    if (!registeredStrategy) {
       throw new BadRequestException(`Algorithm ${algorithm.id} not registered in AlgorithmRegistry`);
     }
 
@@ -230,7 +229,7 @@ export class StrategyService {
     const algorithm = await this.algorithmService.getAlgorithmById(strategyConfig.algorithmId);
 
     // Get strategy implementation from registry
-    const strategy = this.algorithmRegistry.getStrategyForAlgorithm(algorithm.id);
+    const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(algorithm.id);
 
     // Merge parameters (StrategyConfig overrides Algorithm defaults)
     const mergedConfig = {

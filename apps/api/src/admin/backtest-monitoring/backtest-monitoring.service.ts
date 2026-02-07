@@ -876,7 +876,7 @@ export class BacktestMonitoringService {
           backtest: { id: In(backtestIds) },
           type: TradeType.SELL
         },
-        select: ['metadata'],
+        select: ['id', 'metadata'],
         skip: offset,
         take: BATCH_SIZE
       });

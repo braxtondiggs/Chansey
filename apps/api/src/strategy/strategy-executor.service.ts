@@ -37,7 +37,7 @@ export class StrategyExecutorService {
     availableCapital: number
   ): Promise<TradingSignal | null> {
     try {
-      const algorithm = this.algorithmRegistry.getStrategyForAlgorithm(strategy.algorithm.id);
+      const algorithm = await this.algorithmRegistry.getStrategyForAlgorithm(strategy.algorithm.id);
       if (!algorithm) {
         this.logger.warn(`Algorithm ${strategy.algorithm.id} not found for strategy ${strategy.id}`);
         return null;

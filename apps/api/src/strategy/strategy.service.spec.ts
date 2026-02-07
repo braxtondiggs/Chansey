@@ -111,7 +111,7 @@ describe('StrategyService', () => {
 
     it('creates a strategy when algorithm exists and is registered', async () => {
       algorithmService.getAlgorithmById.mockResolvedValue({ id: 'algo-1', name: 'Algo', config: {} } as any);
-      algorithmRegistry.getStrategyForAlgorithm.mockReturnValue({} as any);
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({} as any);
       strategyRepo.create.mockReturnValue(createStrategy({ id: 'created-id', name: dto.name }));
       strategyRepo.save.mockResolvedValue(createStrategy({ id: 'created-id', name: dto.name }));
 
@@ -135,9 +135,7 @@ describe('StrategyService', () => {
 
     it('throws when algorithm is not registered', async () => {
       algorithmService.getAlgorithmById.mockResolvedValue({ id: 'algo-1', name: 'Algo', config: {} } as any);
-      algorithmRegistry.getStrategyForAlgorithm.mockImplementation(() => {
-        throw new Error('not registered');
-      });
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue(undefined);
 
       await expect(service.create(dto)).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -238,7 +236,7 @@ describe('StrategyService', () => {
         name: 'Algo',
         config: { parameters: { base: true, risk: 0.1 } }
       } as any);
-      algorithmRegistry.getStrategyForAlgorithm.mockReturnValue({ execute: jest.fn() } as any);
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({ execute: jest.fn() } as any);
 
       const result = await service.getStrategyInstance(strategy.id);
 
