@@ -48,10 +48,19 @@ jobs:
           - 6379:6379
 
     env:
-      DATABASE_URL: postgresql://chansey:chansey@localhost:5432/chansey_test
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: chansey
+      PGPASSWORD: chansey
+      PGDATABASE: chansey_test
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: e2e-test-jwt-secret-do-not-use-in-production
       JWT_REFRESH_SECRET: e2e-test-jwt-refresh-secret-do-not-use-in-production
+      COOKIE_SECRET: e2e-test-cookie-secret-do-not-use-in-production!!
+      RESEND_API_KEY: re_test_placeholder_not_real
+      FRONTEND_URL: http://localhost:4200
       PORT: 3000
       NODE_ENV: test
       CHANSEY_API_KEY: e2e-test-api-key
