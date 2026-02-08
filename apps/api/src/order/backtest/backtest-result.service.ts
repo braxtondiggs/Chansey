@@ -16,6 +16,7 @@ import {
 } from './backtest.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 
 export interface BacktestFinalMetrics {
   finalValue: number;
@@ -62,46 +63,70 @@ export class BacktestResultService {
     await queryRunner.startTransaction();
 
     try {
-      if (results.signals?.length) {
-        await queryRunner.manager.save(BacktestSignal, results.signals);
-        this.metricsService?.recordRecordsPersisted('signals', results.signals.length);
+      // Only persist entities that haven't already been saved via checkpoint persistence.
+      // Entities saved during persistIncremental have IDs assigned by TypeORM.
+      // Re-saving them can cause issues with TypeORM cascade resolution.
+      const newSignals = (results.signals ?? []).filter((s) => !s.id);
+      const newFills = (results.simulatedFills ?? []).filter((f) => !f.id);
+      const newTrades = (results.trades ?? []).filter((t) => !t.id);
+      const newSnapshots = (results.snapshots ?? []).filter((s) => !s.id);
+
+      if (newSignals.length) {
+        await queryRunner.manager.save(BacktestSignal, newSignals);
+        this.metricsService?.recordRecordsPersisted('signals', newSignals.length);
       }
 
-      if (results.simulatedFills?.length) {
-        await queryRunner.manager.save(SimulatedOrderFill, results.simulatedFills);
-        this.metricsService?.recordRecordsPersisted('fills', results.simulatedFills.length);
+      if (newFills.length) {
+        await queryRunner.manager.save(SimulatedOrderFill, newFills);
+        this.metricsService?.recordRecordsPersisted('fills', newFills.length);
       }
 
-      if (results.trades?.length) {
-        await queryRunner.manager.save(BacktestTrade, results.trades);
-        this.metricsService?.recordRecordsPersisted('trades', results.trades.length);
+      if (newTrades.length) {
+        await queryRunner.manager.save(BacktestTrade, newTrades);
+        this.metricsService?.recordRecordsPersisted('trades', newTrades.length);
       }
 
-      if (results.snapshots?.length) {
-        await queryRunner.manager.save(BacktestPerformanceSnapshot, results.snapshots);
-        this.metricsService?.recordRecordsPersisted('snapshots', results.snapshots.length);
+      if (newSnapshots.length) {
+        await queryRunner.manager.save(BacktestPerformanceSnapshot, newSnapshots);
+        this.metricsService?.recordRecordsPersisted('snapshots', newSnapshots.length);
       }
 
-      Object.assign(backtest, {
-        finalValue: results.finalMetrics.finalValue,
-        totalReturn: results.finalMetrics.totalReturn,
-        annualizedReturn: results.finalMetrics.annualizedReturn,
-        sharpeRatio: results.finalMetrics.sharpeRatio,
-        maxDrawdown: results.finalMetrics.maxDrawdown,
-        totalTrades: results.finalMetrics.totalTrades,
-        winningTrades: results.finalMetrics.winningTrades,
-        winRate: results.finalMetrics.winRate,
+      // Sanitize all numeric metric values before persistence to prevent overflow
+      const sanitizedMetrics = this.sanitizeFinalMetrics(results.finalMetrics);
+
+      // Use a targeted update instead of save() to avoid TypeORM cascade issues
+      // with loaded relations (algorithm, user, marketDataSet)
+      await queryRunner.manager.update(Backtest, backtest.id, {
+        finalValue: sanitizedMetrics.finalValue,
+        totalReturn: sanitizedMetrics.totalReturn,
+        annualizedReturn: sanitizedMetrics.annualizedReturn,
+        sharpeRatio: sanitizedMetrics.sharpeRatio,
+        maxDrawdown: sanitizedMetrics.maxDrawdown,
+        totalTrades: sanitizedMetrics.totalTrades,
+        winningTrades: sanitizedMetrics.winningTrades,
+        winRate: sanitizedMetrics.winRate,
         status: BacktestStatus.COMPLETED,
         completedAt: new Date()
       });
 
-      await queryRunner.manager.save(Backtest, backtest);
+      // Sync the in-memory entity for post-transaction event emission
+      Object.assign(backtest, sanitizedMetrics, {
+        status: BacktestStatus.COMPLETED,
+        completedAt: new Date()
+      });
 
       await queryRunner.commitTransaction();
       this.logger.log(`Backtest ${backtest.id} results persisted successfully`);
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to persist backtest ${backtest.id} results: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to persist backtest ${backtest.id} results: ${error.message}`,
+        error.stack ?? 'no stack trace'
+      );
+      // Log the values being saved for debugging
+      this.logger.error(
+        `Backtest ${backtest.id} finalMetrics at time of failure: ${JSON.stringify(results.finalMetrics)}`
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -132,6 +157,26 @@ export class BacktestResultService {
         }
       });
     }
+  }
+
+  /**
+   * Sanitize all numeric values in finalMetrics to prevent database overflow.
+   * Returns null for any value that would overflow its column precision.
+   */
+  private sanitizeFinalMetrics(metrics: BacktestFinalMetrics): BacktestFinalMetrics {
+    return {
+      finalValue:
+        sanitizeNumericValue(metrics.finalValue, { maxIntegerDigits: 10, fieldName: 'finalValue' }) ??
+        metrics.finalValue,
+      totalReturn: sanitizeNumericValue(metrics.totalReturn, { maxIntegerDigits: 4, fieldName: 'totalReturn' }) ?? 0,
+      annualizedReturn:
+        sanitizeNumericValue(metrics.annualizedReturn, { maxIntegerDigits: 4, fieldName: 'annualizedReturn' }) ?? 0,
+      sharpeRatio: sanitizeNumericValue(metrics.sharpeRatio, { maxIntegerDigits: 4, fieldName: 'sharpeRatio' }) ?? 0,
+      maxDrawdown: sanitizeNumericValue(metrics.maxDrawdown, { maxIntegerDigits: 4, fieldName: 'maxDrawdown' }) ?? 0,
+      totalTrades: Number.isFinite(metrics.totalTrades) ? metrics.totalTrades : 0,
+      winningTrades: Number.isFinite(metrics.winningTrades) ? metrics.winningTrades : 0,
+      winRate: sanitizeNumericValue(metrics.winRate, { maxIntegerDigits: 4, fieldName: 'winRate' }) ?? 0
+    };
   }
 
   async markFailed(backtestId: string, errorMessage: string): Promise<void> {
