@@ -414,30 +414,95 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                   allowNegative: false
                 }),
                 geckoRank: coin.coingecko_rank ?? geckoRank ?? null,
-                developerScore: coin.developer_score,
-                communityScore: coin.community_score,
-                liquidityScore: coin.liquidity_score,
-                publicInterestScore: coin.public_interest_score,
-                sentimentUp: coin.sentiment_votes_up_percentage,
-                sentimentDown: coin.sentiment_votes_down_percentage,
-                ath: coin.market_data.ath.usd,
-                atl: coin.market_data.atl.usd,
+                developerScore: sanitizeNumericValue(coin.developer_score, {
+                  maxIntegerDigits: 3,
+                  fieldName: `${symbol}.developerScore`,
+                  allowNegative: false
+                }),
+                communityScore: sanitizeNumericValue(coin.community_score, {
+                  maxIntegerDigits: 3,
+                  fieldName: `${symbol}.communityScore`,
+                  allowNegative: false
+                }),
+                liquidityScore: sanitizeNumericValue(coin.liquidity_score, {
+                  maxIntegerDigits: 3,
+                  fieldName: `${symbol}.liquidityScore`,
+                  allowNegative: false
+                }),
+                publicInterestScore: sanitizeNumericValue(coin.public_interest_score, {
+                  maxIntegerDigits: 3,
+                  fieldName: `${symbol}.publicInterestScore`,
+                  allowNegative: false
+                }),
+                sentimentUp: sanitizeNumericValue(coin.sentiment_votes_up_percentage, {
+                  maxIntegerDigits: 3,
+                  fieldName: `${symbol}.sentimentUp`,
+                  allowNegative: false
+                }),
+                sentimentDown: sanitizeNumericValue(coin.sentiment_votes_down_percentage, {
+                  maxIntegerDigits: 3,
+                  fieldName: `${symbol}.sentimentDown`,
+                  allowNegative: false
+                }),
+                ath: sanitizeNumericValue(coin.market_data.ath.usd, {
+                  maxIntegerDigits: 17,
+                  fieldName: `${symbol}.ath`,
+                  allowNegative: false
+                }),
+                atl: sanitizeNumericValue(coin.market_data.atl.usd, {
+                  maxIntegerDigits: 17,
+                  fieldName: `${symbol}.atl`,
+                  allowNegative: false
+                }),
                 athDate: coin.market_data.ath_date.usd,
                 atlDate: coin.market_data.atl_date.usd,
-                athChange: coin.market_data.ath_change_percentage.usd,
-                atlChange: coin.market_data.atl_change_percentage.usd,
-                priceChange24h: coin.market_data.price_change_24h,
-                priceChangePercentage24h: coin.market_data.price_change_percentage_24h,
-                priceChangePercentage7d: coin.market_data.price_change_percentage_7d,
-                priceChangePercentage14d: coin.market_data.price_change_percentage_14d,
-                priceChangePercentage30d: coin.market_data.price_change_percentage_30d,
-                priceChangePercentage60d: coin.market_data.price_change_percentage_60d,
-                priceChangePercentage200d: coin.market_data.price_change_percentage_200d,
-                priceChangePercentage1y: coin.market_data.price_change_percentage_1y,
+                athChange: sanitizeNumericValue(coin.market_data.ath_change_percentage.usd, {
+                  maxIntegerDigits: 4,
+                  fieldName: `${symbol}.athChange`
+                }),
+                atlChange: sanitizeNumericValue(coin.market_data.atl_change_percentage.usd, {
+                  maxIntegerDigits: 9,
+                  fieldName: `${symbol}.atlChange`
+                }),
+                priceChange24h: sanitizeNumericValue(coin.market_data.price_change_24h, {
+                  maxIntegerDigits: 17,
+                  fieldName: `${symbol}.priceChange24h`
+                }),
+                priceChangePercentage24h: sanitizeNumericValue(coin.market_data.price_change_percentage_24h, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage24h`
+                }),
+                priceChangePercentage7d: sanitizeNumericValue(coin.market_data.price_change_percentage_7d, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage7d`
+                }),
+                priceChangePercentage14d: sanitizeNumericValue(coin.market_data.price_change_percentage_14d, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage14d`
+                }),
+                priceChangePercentage30d: sanitizeNumericValue(coin.market_data.price_change_percentage_30d, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage30d`
+                }),
+                priceChangePercentage60d: sanitizeNumericValue(coin.market_data.price_change_percentage_60d, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage60d`
+                }),
+                priceChangePercentage200d: sanitizeNumericValue(coin.market_data.price_change_percentage_200d, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage200d`
+                }),
+                priceChangePercentage1y: sanitizeNumericValue(coin.market_data.price_change_percentage_1y, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.priceChangePercentage1y`
+                }),
                 marketCapChange24h: sanitizeNumericValue(coin.market_data.market_cap_change_24h, {
                   fieldName: `${symbol}.marketCapChange24h`
                 }),
-                marketCapChangePercentage24h: coin.market_data.market_cap_change_percentage_24h,
+                marketCapChangePercentage24h: sanitizeNumericValue(coin.market_data.market_cap_change_percentage_24h, {
+                  maxIntegerDigits: 5,
+                  fieldName: `${symbol}.marketCapChangePercentage24h`
+                }),
                 geckoLastUpdatedAt: coin.market_data.last_updated
               });
               this.logger.debug(`Successfully updated ${symbol}`);

@@ -75,7 +75,8 @@ describe('BacktestResultService', () => {
     rollbackTransaction: jest.fn(),
     release: jest.fn(),
     manager: {
-      save: jest.fn()
+      save: jest.fn(),
+      update: jest.fn()
     }
   };
 
@@ -133,11 +134,12 @@ describe('BacktestResultService', () => {
       winRate: 60
     };
 
+    // Entities WITHOUT ids represent new entities not yet checkpoint-persisted
     const mockResults = {
-      trades: [{ id: 'trade-1' }, { id: 'trade-2' }] as Partial<BacktestTrade>[],
-      signals: [{ id: 'signal-1' }] as Partial<BacktestSignal>[],
-      simulatedFills: [{ id: 'fill-1' }] as Partial<SimulatedOrderFill>[],
-      snapshots: [{ id: 'snapshot-1' }] as Partial<BacktestPerformanceSnapshot>[],
+      trades: [{ quantity: 1 }, { quantity: 2 }] as Partial<BacktestTrade>[],
+      signals: [{ instrument: 'BTC' }] as Partial<BacktestSignal>[],
+      simulatedFills: [{ filledQuantity: 1 }] as Partial<SimulatedOrderFill>[],
+      snapshots: [{ portfolioValue: 10000 }] as Partial<BacktestPerformanceSnapshot>[],
       finalMetrics: mockFinalMetrics
     };
 
@@ -145,6 +147,7 @@ describe('BacktestResultService', () => {
       const endTimer = jest.fn();
       mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
       mockQueryRunner.manager.save.mockResolvedValue({});
+      mockQueryRunner.manager.update.mockResolvedValue({});
 
       await service.persistSuccess(mockBacktest, mockResults);
 
@@ -153,6 +156,7 @@ describe('BacktestResultService', () => {
       expect(mockQueryRunner.connect).toHaveBeenCalled();
       expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
 
+      // New entities (without IDs) should be saved
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestSignal, mockResults.signals);
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(SimulatedOrderFill, mockResults.simulatedFills);
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestTrade, mockResults.trades);
@@ -164,15 +168,17 @@ describe('BacktestResultService', () => {
       );
       expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('trades', mockResults.trades.length);
       expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('snapshots', mockResults.snapshots.length);
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
+
+      // Backtest entity should be updated via update() not save()
+      expect(mockQueryRunner.manager.update).toHaveBeenCalledWith(
         Backtest,
+        'backtest-123',
         expect.objectContaining({
-          id: 'backtest-123',
           finalValue: 11000,
           totalReturn: 10,
           annualizedReturn: 15,
           sharpeRatio: 1.5,
-          maxDrawdown: -5,
+          maxDrawdown: expect.any(Number),
           totalTrades: 10,
           winningTrades: 6,
           winRate: 60,
@@ -191,6 +197,41 @@ describe('BacktestResultService', () => {
 
       expect(commitOrder).toBeLessThan(publishOrder);
       expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith('backtest-123', 'completed');
+    });
+
+    it('should skip already-persisted entities (those with IDs)', async () => {
+      const endTimer = jest.fn();
+      mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
+      mockQueryRunner.manager.save.mockResolvedValue({});
+      mockQueryRunner.manager.update.mockResolvedValue({});
+
+      // Mix of checkpoint-persisted entities (with IDs) and new entities (without IDs)
+      const mixedResults = {
+        trades: [{ id: 'trade-1', quantity: 1 }, { quantity: 2 }] as Partial<BacktestTrade>[],
+        signals: [{ id: 'signal-1', instrument: 'BTC' }] as Partial<BacktestSignal>[],
+        simulatedFills: [] as Partial<SimulatedOrderFill>[],
+        snapshots: [
+          { id: 'snap-1', portfolioValue: 10000 },
+          { id: 'snap-2', portfolioValue: 10000 },
+          { portfolioValue: 10000 }
+        ] as Partial<BacktestPerformanceSnapshot>[],
+        finalMetrics: mockFinalMetrics
+      };
+
+      await service.persistSuccess(mockBacktest, mixedResults);
+
+      // Only new entities (without IDs) should be saved
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestTrade, [{ quantity: 2 }]);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(BacktestPerformanceSnapshot, [
+        { portfolioValue: 10000 }
+      ]);
+      // Signals with IDs should be skipped entirely
+      expect(mockQueryRunner.manager.save).not.toHaveBeenCalledWith(BacktestSignal, expect.anything());
+      // Empty fills should be skipped
+      expect(mockQueryRunner.manager.save).not.toHaveBeenCalledWith(SimulatedOrderFill, expect.anything());
+
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('trades', 1);
+      expect(mockMetricsService.recordRecordsPersisted).toHaveBeenCalledWith('snapshots', 1);
     });
 
     it('should rollback, release, and rethrow without publishing on failure', async () => {
@@ -230,6 +271,7 @@ describe('BacktestResultService', () => {
       const endTimer = jest.fn();
       mockMetricsService.startPersistenceTimer.mockReturnValue(endTimer);
       mockQueryRunner.manager.save.mockResolvedValue({});
+      mockQueryRunner.manager.update.mockResolvedValue({});
 
       const emptyResults = {
         trades: [],
@@ -241,9 +283,10 @@ describe('BacktestResultService', () => {
 
       await service.persistSuccess(mockBacktest, emptyResults);
 
-      // Should only save the backtest entity itself
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(1);
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(Backtest, expect.any(Object));
+      // No child entity saves should happen
+      expect(mockQueryRunner.manager.save).not.toHaveBeenCalled();
+      // Backtest entity should still be updated
+      expect(mockQueryRunner.manager.update).toHaveBeenCalledWith(Backtest, 'backtest-123', expect.any(Object));
       expect(mockMetricsService.recordRecordsPersisted).not.toHaveBeenCalled();
       expect(endTimer).toHaveBeenCalled();
     });
@@ -251,6 +294,7 @@ describe('BacktestResultService', () => {
     it('emits backtest.completed event for mapped backtest type', async () => {
       mockMetricsService.startPersistenceTimer.mockReturnValue(jest.fn());
       mockQueryRunner.manager.save.mockResolvedValue({});
+      mockQueryRunner.manager.update.mockResolvedValue({});
 
       const backtest = {
         ...mockBacktest,
@@ -275,6 +319,7 @@ describe('BacktestResultService', () => {
     it('does not emit completion event for unknown backtest type', async () => {
       mockMetricsService.startPersistenceTimer.mockReturnValue(jest.fn());
       mockQueryRunner.manager.save.mockResolvedValue({});
+      mockQueryRunner.manager.update.mockResolvedValue({});
 
       const backtest = {
         ...mockBacktest,
