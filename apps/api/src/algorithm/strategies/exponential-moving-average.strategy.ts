@@ -51,7 +51,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
 
-        if (!priceHistory || priceHistory.length < slowPeriod) {
+        if (!this.hasEnoughData(priceHistory, slowPeriod)) {
           this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
@@ -231,15 +231,14 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       return false;
     }
 
-    // Check if we have sufficient price data for EMA calculation
-    for (const coin of context.coins) {
-      const priceHistory = context.priceData[coin.id];
-      if (!priceHistory || priceHistory.length < 26) {
-        return false;
-      }
-    }
+    const slowPeriod = (context.config.slowPeriod as number) || 26;
 
-    return true;
+    // At least one coin must have sufficient price data for EMA calculation
+    return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], slowPeriod));
+  }
+
+  private hasEnoughData(priceHistory: PriceSummary[] | undefined, slowPeriod: number): boolean {
+    return !!priceHistory && priceHistory.length >= slowPeriod;
   }
 
   /**

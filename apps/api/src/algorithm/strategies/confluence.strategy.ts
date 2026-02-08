@@ -914,12 +914,6 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       return false;
     }
 
-    for (const coin of context.coins) {
-      if (!this.hasEnoughData(context.priceData[coin.id], config)) {
-        return false;
-      }
-    }
-
-    return true;
+    return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], config));
   }
 }

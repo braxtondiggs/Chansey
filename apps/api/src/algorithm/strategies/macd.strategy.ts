@@ -332,12 +332,6 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
     }
 
     const config = this.getConfigWithDefaults(context.config);
-    for (const coin of context.coins) {
-      if (!this.hasEnoughData(context.priceData[coin.id], config)) {
-        return false;
-      }
-    }
-
-    return true;
+    return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], config));
   }
 }
