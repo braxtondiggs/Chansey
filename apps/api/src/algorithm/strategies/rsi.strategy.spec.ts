@@ -109,6 +109,38 @@ describe('RSIStrategy', () => {
       expect(result.signals).toHaveLength(0);
       expect(indicatorService.calculateRSI).not.toHaveBeenCalled();
     });
+
+    it('should only generate signals for coins with sufficient data', async () => {
+      const sufficientPrices = createMockPrices(30);
+      const insufficientPrices = createMockPrices(5);
+
+      const rsiValues = Array(30).fill(NaN);
+      rsiValues[28] = 32;
+      rsiValues[29] = 25; // oversold
+      mockRsi(rsiValues);
+
+      const context = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: sufficientPrices as any,
+          eth: insufficientPrices as any
+        },
+        timestamp: new Date(),
+        config: { period: 14, oversoldThreshold: 30, overboughtThreshold: 70 }
+      } as AlgorithmContext;
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(indicatorService.calculateRSI).toHaveBeenCalledTimes(1);
+      expect(indicatorService.calculateRSI).toHaveBeenCalledWith(
+        expect.objectContaining({ coinId: 'btc' }),
+        expect.anything()
+      );
+    });
   });
 
   describe('canExecute', () => {
@@ -131,6 +163,40 @@ describe('RSIStrategy', () => {
       const context: AlgorithmContext = {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { period: 14 }
+      };
+
+      expect(strategy.canExecute(context)).toBe(false);
+    });
+
+    it('should return true when at least one coin has sufficient data (ANY semantics)', () => {
+      const context: AlgorithmContext = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: createMockPrices(30) as any,
+          eth: createMockPrices(5) as any
+        },
+        timestamp: new Date(),
+        config: { period: 14 }
+      };
+
+      expect(strategy.canExecute(context)).toBe(true);
+    });
+
+    it('should return false when no coins have sufficient data', () => {
+      const context: AlgorithmContext = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: createMockPrices(5) as any,
+          eth: createMockPrices(3) as any
+        },
         timestamp: new Date(),
         config: { period: 14 }
       };

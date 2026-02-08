@@ -131,6 +131,58 @@ describe('MACDStrategy', () => {
     });
   });
 
+  describe('canExecute', () => {
+    it('should return true with sufficient data', () => {
+      const context = buildContext();
+      expect(strategy.canExecute(context)).toBe(true);
+    });
+
+    it('should return false with insufficient data', () => {
+      const context = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: createMockPrices(10) as any },
+        timestamp: new Date(),
+        config: {}
+      } as AlgorithmContext;
+
+      expect(strategy.canExecute(context)).toBe(false);
+    });
+
+    it('should return true when at least one coin has sufficient data (ANY semantics)', () => {
+      const context = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: createMockPrices(50) as any,
+          eth: createMockPrices(5) as any
+        },
+        timestamp: new Date(),
+        config: {}
+      } as AlgorithmContext;
+
+      expect(strategy.canExecute(context)).toBe(true);
+    });
+
+    it('should return false when no coins have sufficient data', () => {
+      const context = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: createMockPrices(5) as any,
+          eth: createMockPrices(3) as any
+        },
+        timestamp: new Date(),
+        config: {}
+      } as AlgorithmContext;
+
+      expect(strategy.canExecute(context)).toBe(false);
+    });
+  });
+
   describe('getConfigSchema', () => {
     it('should return valid configuration schema', () => {
       const schema = strategy.getConfigSchema();

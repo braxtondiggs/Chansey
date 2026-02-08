@@ -398,6 +398,40 @@ describe('ConfluenceStrategy', () => {
 
       expect(strategy.canExecute(context)).toBe(false);
     });
+
+    it('should return true when at least one coin has sufficient data (ANY semantics)', () => {
+      const context = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: createMockPrices(60) as any,
+          eth: createMockPrices(5) as any
+        },
+        timestamp: new Date(),
+        config: { minConfluence: 3 }
+      } as AlgorithmContext;
+
+      expect(strategy.canExecute(context)).toBe(true);
+    });
+
+    it('should return false when no coins have sufficient data', () => {
+      const context = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' }
+        ] as any,
+        priceData: {
+          btc: createMockPrices(5) as any,
+          eth: createMockPrices(3) as any
+        },
+        timestamp: new Date(),
+        config: { minConfluence: 3 }
+      } as AlgorithmContext;
+
+      expect(strategy.canExecute(context)).toBe(false);
+    });
   });
 
   describe('edge cases', () => {

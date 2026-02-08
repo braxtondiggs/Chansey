@@ -51,7 +51,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
 
-        if (!priceHistory || priceHistory.length < slowPeriod) {
+        if (!this.hasEnoughData(priceHistory, slowPeriod)) {
           this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
@@ -210,14 +210,11 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
 
     const slowPeriod = (context.config.slowPeriod as number) || 20;
 
-    // Check if we have sufficient price data
-    for (const coin of context.coins) {
-      const priceHistory = context.priceData[coin.id];
-      if (!priceHistory || priceHistory.length < slowPeriod) {
-        return false;
-      }
-    }
+    // At least one coin must have sufficient price data
+    return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], slowPeriod));
+  }
 
-    return true;
+  private hasEnoughData(priceHistory: PriceSummary[] | undefined, slowPeriod: number): boolean {
+    return !!priceHistory && priceHistory.length >= slowPeriod;
   }
 }

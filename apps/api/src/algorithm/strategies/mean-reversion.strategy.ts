@@ -52,7 +52,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
 
-        if (!priceHistory || priceHistory.length < period + 1) {
+        if (!this.hasEnoughData(priceHistory, period)) {
           this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
@@ -229,15 +229,13 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
       return false;
     }
 
-    // Check if we have sufficient price data for mean reversion calculation
-    for (const coin of context.coins) {
-      const priceHistory = context.priceData[coin.id];
-      if (!priceHistory || priceHistory.length < 21) {
-        // Need at least 21 data points for 20-period calculation
-        return false;
-      }
-    }
+    const period = (context.config.period as number) || 20;
 
-    return true;
+    // At least one coin must have sufficient price data for mean reversion calculation
+    return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], period));
+  }
+
+  private hasEnoughData(priceHistory: PriceSummary[] | undefined, period: number): boolean {
+    return !!priceHistory && priceHistory.length >= period + 1;
   }
 }
