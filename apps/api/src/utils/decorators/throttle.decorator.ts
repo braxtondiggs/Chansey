@@ -1,12 +1,14 @@
 import { Throttle } from '@nestjs/throttler';
 
-// Strict rate limiting for authentication endpoints
+const isTest = process.env['NODE_ENV'] === 'test';
+
+// Strict rate limiting for authentication endpoints (relaxed in test/E2E mode)
 export const AuthThrottle = () =>
-  Throttle({
-    short: { limit: 3, ttl: 1000 }, // 3 requests per second
-    medium: { limit: 5, ttl: 60000 }, // 5 requests per minute
-    long: { limit: 20, ttl: 3600000 } // 20 requests per hour
-  });
+  Throttle(
+    isTest
+      ? { short: { limit: 100, ttl: 1000 }, medium: { limit: 100, ttl: 60000 }, long: { limit: 1000, ttl: 3600000 } }
+      : { short: { limit: 3, ttl: 1000 }, medium: { limit: 5, ttl: 60000 }, long: { limit: 20, ttl: 3600000 } }
+  );
 
 // Moderate rate limiting for API endpoints
 export const ApiThrottle = () =>
