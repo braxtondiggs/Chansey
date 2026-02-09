@@ -4,9 +4,24 @@ import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
+import { SignalType, TradingSignal } from '../../algorithm/interfaces';
+import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { AlgorithmActivationService } from '../../algorithm/services/algorithm-activation.service';
+import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-context-builder.service';
+import { BalanceService } from '../../balance/balance.service';
+import { CoinService } from '../../coin/coin.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { TradeExecutionService, TradeSignal } from '../services/trade-execution.service';
+import { UsersService } from '../../users/users.service';
+import { TradeExecutionService, TradeSignalWithExit } from '../services/trade-execution.service';
+
+const MIN_CONFIDENCE_THRESHOLD = 0.6;
+const ACTIONABLE_SIGNAL_TYPES = new Set([SignalType.BUY, SignalType.SELL]);
+const EXCHANGE_QUOTE_CURRENCY: Record<string, string> = {
+  binance_us: 'USDT',
+  coinbase: 'USD'
+};
+const DEFAULT_QUOTE_CURRENCY = 'USDT';
 
 /**
  * TradeExecutionTask
@@ -23,7 +38,12 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('trade-execution') private readonly tradeExecutionQueue: Queue,
     private readonly tradeExecutionService: TradeExecutionService,
-    private readonly algorithmActivationService: AlgorithmActivationService
+    private readonly algorithmActivationService: AlgorithmActivationService,
+    private readonly algorithmRegistry: AlgorithmRegistry,
+    private readonly contextBuilder: AlgorithmContextBuilder,
+    private readonly balanceService: BalanceService,
+    private readonly coinService: CoinService,
+    private readonly usersService: UsersService
   ) {
     super();
   }
@@ -103,13 +123,11 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
   /**
    * Handle trade execution for all active algorithm activations
-   * @param job - The job object
    */
   private async handleExecuteTrades(job: Job) {
     try {
       await job.updateProgress(10);
 
-      // Fetch all active algorithm activations
       const activeActivations = await this.algorithmActivationService.findAllActiveAlgorithms();
 
       this.logger.log(`Found ${activeActivations.length} active algorithm activations`);
@@ -119,6 +137,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           totalActivations: 0,
           successCount: 0,
           failCount: 0,
+          skippedCount: 0,
           timestamp: new Date().toISOString()
         };
       }
@@ -127,74 +146,56 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
       let successCount = 0;
       let failCount = 0;
+      let skippedCount = 0;
 
       const totalActivations = activeActivations.length;
       let processedActivations = 0;
 
-      // Process each activation
+      // Cache portfolio value per user to avoid redundant exchange API calls
+      const portfolioCache = new Map<string, number>();
+
       for (const activation of activeActivations) {
         try {
-          // Generate trade signal based on algorithm strategy
-          // TODO: In production, this should call the actual algorithm strategy
-          // For now, we'll skip execution to avoid creating real trades without proper signals
-          const signal = await this.generateTradeSignal();
+          // Get cached or fetch portfolio value
+          let portfolioValue = portfolioCache.get(activation.userId);
+          if (portfolioValue === undefined) {
+            portfolioValue = await this.fetchPortfolioValue(activation);
+            portfolioCache.set(activation.userId, portfolioValue);
+          }
+
+          const signal = await this.generateTradeSignal(activation, portfolioValue);
 
           if (signal) {
-            // For BUY signals, check funds and attempt opportunity selling if needed
-            // Note: generateTradeSignal() currently returns null (TODO placeholder),
-            // so this code path won't execute until signal generation is implemented.
-            if (signal.action === 'BUY') {
-              try {
-                await this.tradeExecutionService.executeTradeSignal(signal);
-                this.logger.log(
-                  `Successfully executed trade for activation ${activation.id} (${activation.algorithm.name})`
-                );
-                successCount++;
-              } catch (buyError: unknown) {
-                // If buy failed (potentially insufficient funds), attempt opportunity selling
-                // This is structurally ready but depends on generateTradeSignal() being implemented
-                const err = toErrorInfo(buyError);
-                this.logger.warn(
-                  `BUY trade failed for activation ${activation.id}, ` +
-                    `opportunity selling check would occur here: ${err.message}`
-                );
-                failCount++;
-              }
-            } else {
-              // SELL signals execute directly
-              await this.tradeExecutionService.executeTradeSignal(signal);
-              this.logger.log(
-                `Successfully executed trade for activation ${activation.id} (${activation.algorithm.name})`
-              );
-              successCount++;
-            }
-          } else {
-            this.logger.debug(
-              `No trade signal generated for activation ${activation.id} (${activation.algorithm.name})`
+            await this.tradeExecutionService.executeTradeSignal(signal);
+            this.logger.log(
+              `Executed trade for activation ${activation.id} (${activation.algorithm.name}): ${signal.action} ${signal.symbol}`
             );
+            successCount++;
+          } else {
+            this.logger.debug(`No actionable signal for activation ${activation.id} (${activation.algorithm.name})`);
+            skippedCount++;
           }
         } catch (error: unknown) {
           const err = toErrorInfo(error);
           this.logger.error(`Failed to execute trade for activation ${activation.id}: ${err.message}`, err.stack);
           failCount++;
-          // Continue with next activation even if one fails
         }
 
         processedActivations++;
-        // Update progress as we process activations
         const progressPercentage = Math.floor(20 + (processedActivations / totalActivations) * 70);
         await job.updateProgress(progressPercentage);
       }
 
       await job.updateProgress(100);
       this.logger.log(
-        `Completed trade execution for ${totalActivations} activations (${successCount} successful, ${failCount} failed)`
+        `Trade execution complete: ${totalActivations} activations — ${successCount} executed, ${skippedCount} skipped, ${failCount} failed`
       );
 
       return {
         totalActivations,
         successCount,
         failCount,
+        skippedCount,
         timestamp: new Date().toISOString()
       };
     } catch (error: unknown) {
@@ -206,49 +207,94 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
   /**
    * Generate a trade signal for an algorithm activation
-   * This is a placeholder - in production, this should call the actual algorithm strategy
-   * @returns TradeSignal or null if no trade should be executed
+   * @returns TradeSignalWithExit or null if no actionable trade
    */
-  private async generateTradeSignal(): Promise<TradeSignal | null> {
-    // TODO: Integrate with algorithm strategy execution
-    // For now, return null to prevent automatic trade execution
-    // This should be replaced with actual algorithm signal generation:
-    // 1. Call algorithm strategy's analyze() method
-    // 2. Check if strategy returns a BUY or SELL signal
-    // 3. Calculate trade size based on allocation percentage
-    // 4. Return trade signal object
+  async generateTradeSignal(
+    activation: AlgorithmActivation,
+    portfolioValue: number
+  ): Promise<TradeSignalWithExit | null> {
+    const algorithm = activation.algorithm;
 
-    // Example implementation (commented out to prevent automatic trades):
-    /*
-    try {
-      const strategyResult = await this.algorithmRegistry.executeAlgorithm(
-        activation.algorithmId,
-        context
-      );
-
-      if (strategyResult && strategyResult.action !== 'HOLD') {
-        // Calculate portfolio value (simplified - should get from balance service)
-        const portfolioValue = 10000; // TODO: Get actual portfolio value
-        const tradeSize = this.tradeExecutionService.calculateTradeSize(activation, portfolioValue);
-
-        // Get current market price to calculate quantity
-        const ticker = await exchangeClient.fetchTicker(strategyResult.symbol);
-        const quantity = tradeSize / ticker.last;
-
-        return {
-          algorithmActivationId: activation.id,
-          userId: activation.userId,
-          exchangeKeyId: activation.exchangeKeyId,
-          action: strategyResult.action,
-          symbol: strategyResult.symbol,
-          quantity
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Failed to generate trade signal: ${error.message}`);
+    // Skip algorithms without a strategy
+    if (!algorithm.strategyId && !algorithm.service) {
+      this.logger.debug(`Algorithm ${algorithm.name} has no strategy configured, skipping`);
+      return null;
     }
-    */
 
-    return null;
+    // Build execution context
+    const context = await this.contextBuilder.buildContext(algorithm);
+
+    if (!this.contextBuilder.validateContext(context)) {
+      this.logger.debug(`Context validation failed for algorithm ${algorithm.name}, skipping`);
+      return null;
+    }
+
+    // Execute the algorithm strategy
+    const result = await this.algorithmRegistry.executeAlgorithm(activation.algorithmId, context);
+
+    if (!result.success || !result.signals || result.signals.length === 0) {
+      return null;
+    }
+
+    // Filter to actionable signals with sufficient confidence
+    const actionableSignals = result.signals.filter(
+      (s) => ACTIONABLE_SIGNAL_TYPES.has(s.type) && s.confidence >= MIN_CONFIDENCE_THRESHOLD
+    );
+
+    if (actionableSignals.length === 0) {
+      return null;
+    }
+
+    // Pick the strongest signal by strength × confidence
+    const bestSignal = actionableSignals.reduce((best: TradingSignal, current: TradingSignal) =>
+      current.strength * current.confidence > best.strength * best.confidence ? current : best
+    );
+
+    // Resolve trading symbol (e.g. "BTC/USDT")
+    const symbol = await this.resolveTradingSymbol(bestSignal.coinId, activation);
+    if (!symbol) {
+      this.logger.warn(`Could not resolve trading symbol for coin ${bestSignal.coinId}, skipping`);
+      return null;
+    }
+
+    return {
+      algorithmActivationId: activation.id,
+      userId: activation.userId,
+      exchangeKeyId: activation.exchangeKeyId,
+      action: bestSignal.type as 'BUY' | 'SELL',
+      symbol,
+      quantity: 0,
+      autoSize: true,
+      portfolioValue
+    };
+  }
+
+  /**
+   * Resolve a coin ID + exchange into a trading symbol (e.g. "BTC/USDT")
+   */
+  async resolveTradingSymbol(coinId: string, activation: AlgorithmActivation): Promise<string | null> {
+    try {
+      const coin = await this.coinService.getCoinById(coinId);
+      const exchangeSlug = activation.exchangeKey?.exchange?.slug;
+      const quoteCurrency = EXCHANGE_QUOTE_CURRENCY[exchangeSlug] || DEFAULT_QUOTE_CURRENCY;
+      return `${coin.symbol.toUpperCase()}/${quoteCurrency}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch total portfolio USD value for an activation's user
+   * Returns 0 on error for graceful degradation
+   */
+  async fetchPortfolioValue(activation: AlgorithmActivation): Promise<number> {
+    try {
+      const user = await this.usersService.getById(activation.userId, true);
+      const balances = await this.balanceService.getUserBalances(user);
+      return balances.totalUsdValue || 0;
+    } catch (error) {
+      this.logger.warn(`Failed to fetch portfolio value for user ${activation.userId}: ${error.message}`);
+      return 0;
+    }
   }
 }
