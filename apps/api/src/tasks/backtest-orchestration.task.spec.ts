@@ -1,5 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
 
@@ -7,6 +8,8 @@ import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
+import { BacktestResultService } from '../order/backtest/backtest-result.service';
+import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 
 describe('BacktestOrchestrationTask', () => {
@@ -31,13 +34,23 @@ describe('BacktestOrchestrationTask', () => {
     ensureDefaultDatasetExists: jest.fn().mockResolvedValue(null)
   };
 
+  const mockBacktestResultService = {
+    markFailed: jest.fn().mockResolvedValue(undefined)
+  };
+
+  const mockBacktestRepository = {
+    find: jest.fn().mockResolvedValue([])
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BacktestOrchestrationTask,
         { provide: getQueueToken('backtest-orchestration'), useValue: mockQueue },
         { provide: BacktestOrchestrationService, useValue: mockService },
-        { provide: BacktestService, useValue: mockBacktestService }
+        { provide: BacktestService, useValue: mockBacktestService },
+        { provide: BacktestResultService, useValue: mockBacktestResultService },
+        { provide: getRepositoryToken(Backtest), useValue: mockBacktestRepository }
       ]
     }).compile();
 
@@ -150,6 +163,110 @@ describe('BacktestOrchestrationTask', () => {
         failed: 0,
         delayed: 3
       });
+    });
+  });
+
+  describe('detectStaleBacktests', () => {
+    it('should do nothing when no stale backtests exist', async () => {
+      mockBacktestRepository.find.mockResolvedValue([]);
+
+      await task.detectStaleBacktests();
+
+      // Two find calls: one for HISTORICAL, one for LIVE_REPLAY
+      expect(mockBacktestRepository.find).toHaveBeenCalledTimes(2);
+      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('should mark stale HISTORICAL backtests as failed with 30-min threshold', async () => {
+      const staleBacktest = {
+        id: 'stale-bt-1',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 500,
+        totalTimestampCount: 2000,
+        checkpointState: { lastProcessedIndex: 499 }
+      };
+      // First call (HISTORICAL) returns stale, second call (LIVE_REPLAY) returns empty
+      mockBacktestRepository.find.mockResolvedValueOnce([staleBacktest]).mockResolvedValueOnce([]);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
+        'stale-bt-1',
+        expect.stringContaining('Stale: no checkpoint progress for 30 min')
+      );
+    });
+
+    it('should mark stale LIVE_REPLAY backtests as failed with 60-min threshold', async () => {
+      const staleReplay = {
+        id: 'stale-replay-1',
+        type: BacktestType.LIVE_REPLAY,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 75 * 60 * 1000),
+        processedTimestampCount: 200,
+        totalTimestampCount: 1000,
+        checkpointState: { lastProcessedIndex: 199 }
+      };
+      // First call (HISTORICAL) returns empty, second call (LIVE_REPLAY) returns stale
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([staleReplay]);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
+        'stale-replay-1',
+        expect.stringContaining('Stale: no checkpoint progress for 60 min')
+      );
+    });
+
+    it('should NOT mark LIVE_REPLAY as stale within 60 min', async () => {
+      const recentReplay = {
+        id: 'recent-replay-1',
+        type: BacktestType.LIVE_REPLAY,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 40 * 60 * 1000),
+        processedTimestampCount: 200,
+        totalTimestampCount: 1000
+      };
+      // The 40-min-old replay should NOT appear in query results (threshold is 60 min)
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('should continue loop when markFailed throws for one backtest', async () => {
+      const stale1 = {
+        id: 'stale-1',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 100,
+        totalTimestampCount: 500,
+        checkpointState: { lastProcessedIndex: 99 }
+      };
+      const stale2 = {
+        id: 'stale-2',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 50 * 60 * 1000),
+        processedTimestampCount: 200,
+        totalTimestampCount: 600,
+        checkpointState: { lastProcessedIndex: 199 }
+      };
+      mockBacktestRepository.find.mockResolvedValueOnce([stale1, stale2]).mockResolvedValueOnce([]);
+
+      // First markFailed throws, second should still be called
+      mockBacktestResultService.markFailed
+        .mockRejectedValueOnce(new Error('DB connection lost'))
+        .mockResolvedValueOnce(undefined);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledTimes(2);
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith('stale-1', expect.any(String));
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith('stale-2', expect.any(String));
     });
   });
 });
