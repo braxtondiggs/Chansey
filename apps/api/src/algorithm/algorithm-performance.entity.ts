@@ -223,9 +223,9 @@ export class AlgorithmPerformance {
     const sharpeWeight = 0.3;
     const winRateWeight = 0.3;
 
-    const normalizedRoi = Math.min((this.roi ?? 0) / 100, 1);
-    const normalizedSharpe = Math.min((this.sharpeRatio ?? 0) / 3, 1);
-    const normalizedWinRate = Math.min(this.winRate ?? 0, 1);
+    const normalizedRoi = Math.max(0, Math.min(((this.roi ?? 0) + 100) / 200, 1));
+    const normalizedSharpe = Math.max(0, Math.min(((this.sharpeRatio ?? 0) + 3) / 6, 1));
+    const normalizedWinRate = Math.max(0, Math.min(this.winRate ?? 0, 1));
 
     return normalizedRoi * roiWeight + normalizedSharpe * sharpeWeight + normalizedWinRate * winRateWeight;
   }

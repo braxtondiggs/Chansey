@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { SD } from 'technicalindicators';
-import { Between, Repository } from 'typeorm';
+import { Between, In, Repository } from 'typeorm';
 
 import { AlgorithmActivationService } from './algorithm-activation.service';
 
@@ -40,7 +40,7 @@ export class AlgorithmPerformanceService {
     const orders = await this.orderRepository.find({
       where: {
         algorithmActivationId: activationId,
-        status: Between(OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED)
+        status: In([OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED])
       },
       order: { transactTime: 'ASC' }
     });
@@ -219,52 +219,121 @@ export class AlgorithmPerformanceService {
 
   /**
    * Calculate and update rankings for all user's algorithm activations
-   * Updates allocation percentage based on rank (higher rank = higher allocation)
+   * Uses composite scoring: 50% ROI + 30% algorithm weight + 20% risk-adjusted score
+   * Allocates proportionally with clamping [0.5%, 10.0%]
    * @param userId - User ID
    */
   async calculateRankings(userId: string): Promise<void> {
-    // Get all active activations for the user
+    // Get all active activations for the user (includes algorithm relation)
     const activations = await this.algorithmActivationService.findUserActiveAlgorithms(userId);
 
     if (activations.length === 0) return;
 
-    // Get latest performance for each activation
-    const performanceRecords: AlgorithmPerformance[] = [];
-
+    // Build activation ID → algorithm weight map
+    const activationWeightMap = new Map<string, number>();
     for (const activation of activations) {
-      const latestPerformance = await this.algorithmPerformanceRepository.findOne({
-        where: { algorithmActivationId: activation.id },
-        order: { calculatedAt: 'DESC' }
-      });
-
-      if (latestPerformance) {
-        performanceRecords.push(latestPerformance);
-      }
+      activationWeightMap.set(activation.id, activation.algorithm?.weight ?? 5);
     }
+
+    // Get latest performance for each activation in a single query
+    const activationIds = activations.map((a) => a.id);
+    const performanceRecords = await this.algorithmPerformanceRepository
+      .createQueryBuilder('perf')
+      .distinctOn(['perf.algorithmActivationId'])
+      .where('perf.algorithmActivationId IN (:...activationIds)', { activationIds })
+      .orderBy('perf.algorithmActivationId')
+      .addOrderBy('perf.calculatedAt', 'DESC')
+      .getMany();
 
     if (performanceRecords.length === 0) return;
 
-    // Sort by ROI descending (best performing first)
-    performanceRecords.sort((a, b) => (b.roi || 0) - (a.roi || 0));
+    // Calculate composite scores
+    const compositeScores = new Map<string, number>();
+    let totalComposite = 0;
 
-    // Assign ranks and update allocation percentages
-    const baseAllocation = 1.0; // Base allocation percentage
-    const rankBonus = 0.5; // Bonus per rank position
+    for (const perf of performanceRecords) {
+      const normalizedROI = Math.max(0, Math.min(((perf.roi || 0) + 100) / 200, 1));
+      const algorithmWeight = activationWeightMap.get(perf.algorithmActivationId) ?? 5;
+      const normalizedWeight = (algorithmWeight - 1) / 9;
+      const riskAdjustedScore = perf.getRiskAdjustedScore();
 
+      const composite = 0.5 * normalizedROI + 0.3 * normalizedWeight + 0.2 * riskAdjustedScore;
+      compositeScores.set(perf.algorithmActivationId, composite);
+      totalComposite += composite;
+    }
+
+    // Sort by composite score descending for rank assignment
+    performanceRecords.sort(
+      (a, b) =>
+        (compositeScores.get(b.algorithmActivationId) || 0) - (compositeScores.get(a.algorithmActivationId) || 0)
+    );
+
+    // Budget = n × 2.0% (preserves current allocation magnitude)
+    const budget = performanceRecords.length * 2.0;
+    const minAllocation = 0.5;
+    const maxAllocation = 10.0;
+
+    // Compute raw proportional allocations
+    const allocations = new Map<string, number>();
+    for (const perf of performanceRecords) {
+      const composite = compositeScores.get(perf.algorithmActivationId) || 0;
+      let allocation: number;
+      if (totalComposite === 0) {
+        allocation = budget / performanceRecords.length;
+      } else {
+        allocation = (composite / totalComposite) * budget;
+      }
+      allocations.set(perf.algorithmActivationId, allocation);
+    }
+
+    // Iterative clamping with redistribution to preserve budget
+    const frozen = new Set<string>();
+    const maxIterations = performanceRecords.length + 1;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let surplus = 0;
+      let unfrozenTotal = 0;
+      let changed = false;
+
+      for (const perf of performanceRecords) {
+        const id = perf.algorithmActivationId;
+        if (frozen.has(id)) continue;
+
+        const alloc = allocations.get(id)!;
+        if (alloc < minAllocation) {
+          surplus += alloc - minAllocation; // negative (deficit)
+          allocations.set(id, minAllocation);
+          frozen.add(id);
+          changed = true;
+        } else if (alloc > maxAllocation) {
+          surplus += alloc - maxAllocation; // positive (excess)
+          allocations.set(id, maxAllocation);
+          frozen.add(id);
+          changed = true;
+        } else {
+          unfrozenTotal += alloc;
+        }
+      }
+
+      if (!changed || surplus === 0 || unfrozenTotal === 0) break;
+
+      // Redistribute surplus proportionally among unfrozen entries
+      for (const perf of performanceRecords) {
+        const id = perf.algorithmActivationId;
+        if (frozen.has(id)) continue;
+        const alloc = allocations.get(id)!;
+        allocations.set(id, alloc + (alloc / unfrozenTotal) * surplus);
+      }
+    }
+
+    // Save ranks and allocations
     for (let i = 0; i < performanceRecords.length; i++) {
       const rank = i + 1;
       const performance = performanceRecords[i];
+      const allocationPercentage = allocations.get(performance.algorithmActivationId)!;
 
       // Update rank in performance record
       performance.rank = rank;
       await this.algorithmPerformanceRepository.save(performance);
-
-      // Calculate allocation: top rank gets highest allocation
-      // Rank 1: 1.0 + (n * 0.5) where n = total algorithms - 1
-      // Rank 2: 1.0 + ((n-1) * 0.5)
-      // etc.
-      const allocationBonus = (performanceRecords.length - rank) * rankBonus;
-      const allocationPercentage = Math.max(baseAllocation + allocationBonus, 0.5);
 
       // Update activation allocation
       await this.algorithmActivationService.updateAllocationPercentage(
@@ -272,8 +341,10 @@ export class AlgorithmPerformanceService {
         allocationPercentage
       );
 
+      const composite = compositeScores.get(performance.algorithmActivationId) || 0;
       this.logger.log(
-        `Ranked activation ${performance.algorithmActivationId} as #${rank} with ${allocationPercentage.toFixed(2)}% allocation`
+        `Ranked activation ${performance.algorithmActivationId} as #${rank} ` +
+          `(composite: ${composite.toFixed(3)}) with ${allocationPercentage.toFixed(2)}% allocation`
       );
     }
   }
@@ -314,14 +385,17 @@ export class AlgorithmPerformanceService {
    */
   async getUserRankings(userId: string): Promise<AlgorithmPerformance[]> {
     const activations = await this.algorithmActivationService.findUserActiveAlgorithms(userId);
-    const performances: AlgorithmPerformance[] = [];
 
-    for (const activation of activations) {
-      const performance = await this.getLatestPerformance(activation.id);
-      if (performance) {
-        performances.push(performance);
-      }
-    }
+    if (activations.length === 0) return [];
+
+    const activationIds = activations.map((a) => a.id);
+    const performances = await this.algorithmPerformanceRepository
+      .createQueryBuilder('perf')
+      .distinctOn(['perf.algorithmActivationId'])
+      .where('perf.algorithmActivationId IN (:...activationIds)', { activationIds })
+      .orderBy('perf.algorithmActivationId')
+      .addOrderBy('perf.calculatedAt', 'DESC')
+      .getMany();
 
     // Sort by rank (undefined/nulls last)
     return performances.sort((a, b) => {

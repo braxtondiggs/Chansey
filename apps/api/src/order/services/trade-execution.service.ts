@@ -50,6 +50,10 @@ export interface TradeSignalWithExit extends TradeSignal {
   exitConfig?: Partial<ExitConfig>;
   /** Historical price data for ATR-based exit calculations */
   priceData?: PriceSummary[];
+  /** If true, auto-calculate quantity from activation's allocation percentage */
+  autoSize?: boolean;
+  /** Total portfolio value in USD; required when autoSize is true */
+  portfolioValue?: number;
 }
 
 /**
@@ -68,6 +72,8 @@ export class TradeExecutionService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(AlgorithmActivation)
+    private readonly algorithmActivationRepository: Repository<AlgorithmActivation>,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,
@@ -134,6 +140,30 @@ export class TradeExecutionService {
       this.logger.debug(
         `Expected price for ${signal.symbol}: ${expectedPrice} (${signal.action === 'BUY' ? 'ask' : 'bid'})`
       );
+
+      // AUTO-SIZE: calculate quantity from activation's allocation percentage
+      if (signal.autoSize && signal.portfolioValue > 0 && expectedPrice > 0) {
+        try {
+          const activation = await this.algorithmActivationRepository.findOne({
+            where: { id: signal.algorithmActivationId }
+          });
+
+          if (activation) {
+            const tradeSizeUsd = this.calculateTradeSize(activation, signal.portfolioValue);
+            signal.quantity = tradeSizeUsd / expectedPrice;
+
+            this.logger.log(
+              `Auto-sized trade: $${tradeSizeUsd.toFixed(2)} / $${expectedPrice.toFixed(2)} = ${signal.quantity.toFixed(8)} ${signal.symbol}`
+            );
+          } else {
+            this.logger.warn(
+              `Activation ${signal.algorithmActivationId} not found for auto-sizing, using provided quantity`
+            );
+          }
+        } catch (error) {
+          this.logger.warn(`Auto-sizing failed, using provided quantity: ${error.message}`);
+        }
+      }
 
       // PRE-EXECUTION SLIPPAGE CHECK
       if (this.slippageLimits.enabled) {
