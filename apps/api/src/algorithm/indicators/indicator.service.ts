@@ -437,12 +437,22 @@ export class IndicatorService {
     return crypto.createHash('md5').update(hashInput).digest('hex').substring(0, 8);
   }
 
+  private static readonly CACHE_TIMEOUT_MS = 2000;
+
+  private withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<T>((resolve) => {
+      timeoutId = setTimeout(() => resolve(fallback), IndicatorService.CACHE_TIMEOUT_MS);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+  }
+
   /**
    * Get a value from cache
    */
   private async getFromCache<T>(key: string): Promise<T | null> {
     try {
-      const cached = await this.cacheManager.get<T>(key);
+      const cached = await this.withTimeout(this.cacheManager.get<T>(key), null as T | undefined);
       return cached ?? null;
     } catch (error) {
       this.logger.warn(`Cache get failed for key ${key}:`, error);
@@ -455,7 +465,7 @@ export class IndicatorService {
    */
   private async setInCache<T>(key: string, value: T): Promise<void> {
     try {
-      await this.cacheManager.set(key, value, INDICATOR_CACHE_CONFIG.DEFAULT_TTL);
+      await this.withTimeout(this.cacheManager.set(key, value, INDICATOR_CACHE_CONFIG.DEFAULT_TTL), undefined);
     } catch (error) {
       this.logger.warn(`Cache set failed for key ${key}:`, error);
     }

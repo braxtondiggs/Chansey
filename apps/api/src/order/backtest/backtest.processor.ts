@@ -20,7 +20,11 @@ import { MetricsService } from '../../metrics/metrics.service';
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 @Injectable()
-@Processor(BACKTEST_QUEUE_NAMES.historicalQueue)
+@Processor(BACKTEST_QUEUE_NAMES.historicalQueue, {
+  lockDuration: 7_200_000,
+  stalledInterval: 7_200_000,
+  maxStalledCount: 1
+})
 export class BacktestProcessor extends WorkerHost {
   private readonly logger = new Logger(BacktestProcessor.name);
 
@@ -162,12 +166,35 @@ export class BacktestProcessor extends WorkerHost {
         this.metricsService.setCheckpointProgress(backtestId, strategyName, Math.round(progress));
       };
 
+      let heartbeatCallCount = 0;
+      const onHeartbeat = async (index: number, totalTimestamps: number) => {
+        heartbeatCallCount++;
+
+        // Check external FAILED status every ~90s (every 3rd heartbeat)
+        if (heartbeatCallCount % 3 === 0) {
+          const current = await this.backtestRepository.findOne({
+            where: { id: backtestId },
+            select: ['id', 'status']
+          });
+          if (current && current.status === BacktestStatus.FAILED) {
+            throw new Error('Backtest was externally marked as FAILED — aborting execution');
+          }
+        }
+
+        await this.backtestRepository.update(backtestId, {
+          lastCheckpointAt: new Date(),
+          processedTimestampCount: index + 1,
+          totalTimestampCount: totalTimestamps
+        });
+      };
+
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
         telemetryEnabled: true,
         checkpointInterval: DEFAULT_CHECKPOINT_CONFIG.checkpointInterval,
         onCheckpoint,
+        onHeartbeat,
         resumeFrom
       });
 
@@ -189,7 +216,15 @@ export class BacktestProcessor extends WorkerHost {
       });
     } catch (error) {
       this.logger.error(`Historical backtest ${backtestId} failed: ${error.message}`, error.stack);
-      await this.backtestResultService.markFailed(backtestId, error.message);
+
+      // Skip markFailed if already externally failed (e.g. by stale watchdog)
+      const current = await this.backtestRepository.findOne({
+        where: { id: backtestId },
+        select: ['id', 'status']
+      });
+      if (!current || current.status !== BacktestStatus.FAILED) {
+        await this.backtestResultService.markFailed(backtestId, error.message);
+      }
       this.metricsService.recordBacktestCompleted(strategyName, 'failed');
 
       // Categorize error type for metrics

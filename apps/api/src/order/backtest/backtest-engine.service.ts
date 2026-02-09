@@ -94,6 +94,8 @@ interface ExecuteOptions {
   checkpointInterval?: number;
   /** Callback invoked at each checkpoint with current state and total timestamp count */
   onCheckpoint?: (state: BacktestCheckpointState, results: CheckpointResults, totalTimestamps: number) => Promise<void>;
+  /** Lightweight callback for progress updates (called at most every ~30 seconds) */
+  onHeartbeat?: (index: number, totalTimestamps: number) => Promise<void>;
   /** Checkpoint state to resume from (if resuming a previous run) */
   resumeFrom?: BacktestCheckpointState;
 }
@@ -329,7 +331,16 @@ export class BacktestEngine {
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
 
+    // Track consecutive algorithm failures to detect systematic issues
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // Time-based heartbeat tracking (every ~30 seconds instead of every N iterations)
+    let lastHeartbeatTime = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 30_000;
+
     for (let i = startIndex; i < timestamps.length; i++) {
+      const iterStart = Date.now();
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
 
@@ -376,11 +387,19 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
+        consecutiveErrors = 0;
       } catch (error) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+        consecutiveErrors++;
+        this.logger.warn(
+          `Algorithm execution failed at ${timestamp.toISOString()} ` +
+            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${error.message}`
+        );
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${error.message}`);
+        }
       }
 
       for (const strategySignal of strategySignals) {
@@ -470,6 +489,20 @@ export class BacktestEngine {
             timestamp: timestamp.toISOString()
           });
         }
+      }
+
+      // Iteration timing telemetry
+      const iterDuration = Date.now() - iterStart;
+      if (iterDuration > 5000) {
+        this.logger.warn(
+          `Slow iteration ${i}/${timestamps.length} took ${iterDuration}ms ` + `at ${timestamp.toISOString()}`
+        );
+      }
+
+      // Lightweight heartbeat for stale detection (every ~30 seconds)
+      if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+        await options.onHeartbeat(i, timestamps.length);
+        lastHeartbeatTime = Date.now();
       }
 
       // Checkpoint callback: save state periodically for resume capability
@@ -691,6 +724,14 @@ export class BacktestEngine {
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
 
+    // Track consecutive algorithm failures to detect systematic issues
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // Time-based heartbeat tracking (every ~30 seconds)
+    let lastHeartbeatTime = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 30_000;
+
     // Track consecutive pause check failures for resilience
     // If pause checks fail repeatedly, force a pause as a safety measure
     const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
@@ -837,11 +878,19 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
+        consecutiveErrors = 0;
       } catch (error) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+        consecutiveErrors++;
+        this.logger.warn(
+          `Algorithm execution failed at ${timestamp.toISOString()} ` +
+            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${error.message}`
+        );
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${error.message}`);
+        }
       }
 
       for (const strategySignal of strategySignals) {
@@ -933,6 +982,12 @@ export class BacktestEngine {
             replaySpeed: ReplaySpeed[replaySpeed]
           });
         }
+      }
+
+      // Lightweight heartbeat for stale detection (every ~30 seconds)
+      if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+        await options.onHeartbeat(i, timestamps.length);
+        lastHeartbeatTime = Date.now();
       }
 
       // Checkpoint callback: save state periodically for resume capability
