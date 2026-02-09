@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { Expose } from 'class-transformer';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import {
   AfterInsert,
   AfterLoad,
@@ -149,19 +149,18 @@ export class Algorithm {
   })
   evaluate: boolean;
 
-  @IsOptional()
-  @IsNumber()
   @Column({
     type: 'decimal',
     precision: 10,
     scale: 4,
     transformer: new ColumnNumericTransformer(),
-    nullable: true
+    nullable: true,
+    default: 5
   })
   @ApiProperty({
-    description: 'Weight of the algorithm in portfolio calculations',
-    example: 1.5,
-    required: false
+    description: 'Auto-calculated performance score (1-10). Recalculated every 5 minutes.',
+    example: 7,
+    readOnly: true
   })
   weight?: number;
 

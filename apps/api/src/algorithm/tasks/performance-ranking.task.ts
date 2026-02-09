@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 
 import { AlgorithmActivationService } from '../services/algorithm-activation.service';
 import { AlgorithmPerformanceService } from '../services/algorithm-performance.service';
+import { AlgorithmScoreService } from '../services/algorithm-score.service';
 
 /**
  * PerformanceRankingTask
@@ -22,7 +23,8 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('performance-ranking') private readonly performanceRankingQueue: Queue,
     private readonly algorithmActivationService: AlgorithmActivationService,
-    private readonly algorithmPerformanceService: AlgorithmPerformanceService
+    private readonly algorithmPerformanceService: AlgorithmPerformanceService,
+    private readonly algorithmScoreService: AlgorithmScoreService
   ) {
     super();
   }
@@ -174,6 +176,9 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
         await job.updateProgress(progressPercentage);
       }
 
+      // Recalculate algorithm performance scores
+      await this.algorithmScoreService.recalculateAllScores();
+
       await job.updateProgress(100);
       this.logger.log(
         `Completed performance calculation: ${performanceCalculated} activations, ${usersRanked} users ranked`
@@ -183,6 +188,7 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
         totalActivations,
         performanceCalculated,
         usersRanked,
+        scoresRecalculated: true,
         timestamp: new Date().toISOString()
       };
     } catch (error) {
