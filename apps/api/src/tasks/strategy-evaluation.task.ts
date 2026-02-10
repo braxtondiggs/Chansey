@@ -4,7 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
 
@@ -35,7 +35,8 @@ export class StrategyEvaluationTask {
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly backtestEngine: BacktestEngine,
     private readonly scoringService: ScoringService,
-    private readonly riskPoolMapping: RiskPoolMappingService
+    private readonly riskPoolMapping: RiskPoolMappingService,
+    private readonly dataSource: DataSource
   ) {}
 
   /**
@@ -180,31 +181,54 @@ export class StrategyEvaluationTask {
         return;
       }
 
-      // Check capacity (max 30 strategies per risk level)
+      // Wrap capacity check + rotation/promotion in a transaction with pessimistic locking
       const MAX_STRATEGIES_PER_LEVEL = 30;
-      const currentCount = await this.strategyConfigRepo.count({
-        where: {
-          shadowStatus: 'live',
-          riskPoolId: riskEntity.id
+
+      await this.dataSource.transaction(async (manager) => {
+        // Lock all live strategies in pool with pessimistic_write (SELECT ... FOR UPDATE)
+        // This serializes concurrent evaluations for the same risk level
+        const liveStrategies = await manager.find(StrategyConfig, {
+          where: { shadowStatus: 'live', riskPoolId: riskEntity.id },
+          lock: { mode: 'pessimistic_write' }
+        });
+        const currentCount = liveStrategies.length;
+
+        // Load the candidate strategy within the transaction
+        const candidateStrategy = await manager.findOneByOrFail(StrategyConfig, { id: strategyConfigId });
+
+        if (currentCount >= MAX_STRATEGIES_PER_LEVEL) {
+          this.logger.log(
+            `Risk level ${riskLevel} is at capacity (${currentCount}/${MAX_STRATEGIES_PER_LEVEL}). Attempting rotation for strategy ${strategyConfigId}.`
+          );
+
+          const worst = await this.findWorstPerformingStrategy(riskEntity.id, manager);
+          if (!worst) {
+            this.logger.warn(
+              `No rotation candidate found for risk level ${riskLevel}. Strategy ${strategyConfigId} will remain in testing.`
+            );
+            return;
+          }
+
+          const newScore = Number(score.overallScore);
+          if (newScore > worst.latestScore) {
+            await this.rotateStrategy(worst, candidateStrategy, riskEntity, newScore, manager);
+          } else {
+            this.logger.log(
+              `Strategy ${strategyConfigId} (score: ${newScore}) does not outperform worst pool member ${worst.id} (score: ${worst.latestScore}). Rotation skipped.`
+            );
+          }
+          return;
         }
-      });
 
-      if (currentCount >= MAX_STRATEGIES_PER_LEVEL) {
-        this.logger.warn(
-          `Risk level ${riskLevel} is at capacity (${currentCount}/${MAX_STRATEGIES_PER_LEVEL}). Strategy ${strategyConfigId} will remain in testing.`
+        // Assign strategy to risk level
+        candidateStrategy.riskPoolId = riskEntity.id;
+        candidateStrategy.shadowStatus = 'live';
+        await manager.save(candidateStrategy);
+
+        this.logger.log(
+          `Strategy ${strategyConfigId} assigned to Risk Level ${riskLevel} (Score: ${score.overallScore}, Count: ${currentCount + 1}/${MAX_STRATEGIES_PER_LEVEL})`
         );
-        // TODO: Implement rotation logic to replace lowest-performing strategy
-        return;
-      }
-
-      // Assign strategy to risk level
-      strategy.riskPoolId = riskEntity.id;
-      strategy.shadowStatus = 'live'; // Promote to live
-      await this.strategyConfigRepo.save(strategy);
-
-      this.logger.log(
-        `Strategy ${strategyConfigId} assigned to Risk Level ${riskLevel} (Score: ${score.overallScore}, Count: ${currentCount + 1}/${MAX_STRATEGIES_PER_LEVEL})`
-      );
+      });
     } catch (error) {
       this.logger.error(`Failed to assign strategy ${strategyConfigId} to risk level: ${error.message}`);
       throw error;
@@ -223,6 +247,67 @@ export class StrategyEvaluationTask {
     if (score >= 50) return 4; // Moderate-High (acceptable strategies)
     if (score >= 40) return 5; // Aggressive (marginal strategies)
     return null; // < 40: not promoted
+  }
+
+  /**
+   * Find the worst-performing live strategy in a risk pool.
+   * Uses a single query with a subquery to get each strategy's most recent score.
+   */
+  private async findWorstPerformingStrategy(
+    riskPoolId: string,
+    manager: EntityManager
+  ): Promise<{ id: string; name: string; latestScore: number } | null> {
+    const result = await manager
+      .createQueryBuilder(StrategyConfig, 'sc')
+      .innerJoin(
+        'strategy_scores',
+        'ss',
+        'ss."strategyConfigId" = sc.id AND ss."calculatedAt" = (' +
+          'SELECT MAX(ss2."calculatedAt") FROM strategy_scores ss2 WHERE ss2."strategyConfigId" = sc.id' +
+          ')'
+      )
+      .select(['sc.id AS id', 'sc.name AS name', 'ss."overallScore" AS "latestScore"'])
+      .where('sc."riskPoolId" = :riskPoolId', { riskPoolId })
+      .andWhere('sc."shadowStatus" = :status', { status: 'live' })
+      .orderBy('ss."overallScore"', 'ASC')
+      .limit(1)
+      .getRawOne();
+
+    if (!result) return null;
+
+    return {
+      id: result.id,
+      name: result.name,
+      latestScore: Number(result.latestScore)
+    };
+  }
+
+  /**
+   * Rotate a strategy in the risk pool: demote the worst, promote the new.
+   */
+  private async rotateStrategy(
+    worst: { id: string; name: string; latestScore: number },
+    newStrategy: StrategyConfig,
+    riskEntity: Risk,
+    newScore: number,
+    manager: EntityManager
+  ): Promise<void> {
+    // Demote worst strategy — load entity so save() triggers @UpdateDateColumn
+    const worstEntity = await manager.findOneByOrFail(StrategyConfig, { id: worst.id });
+    worstEntity.shadowStatus = 'retired';
+    worstEntity.riskPoolId = null;
+    await manager.save(worstEntity);
+
+    // Promote new strategy
+    newStrategy.shadowStatus = 'live';
+    newStrategy.riskPoolId = riskEntity.id;
+    await manager.save(newStrategy);
+
+    this.logger.log(
+      `Rotation complete for risk level ${riskEntity.level}: ` +
+        `demoted "${worst.name}" (${worst.id}, score: ${worst.latestScore}) → ` +
+        `promoted "${newStrategy.name}" (${newStrategy.id}, score: ${newScore})`
+    );
   }
 
   /**
