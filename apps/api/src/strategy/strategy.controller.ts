@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { CreateStrategyConfigDto, UpdateStrategyConfigDto, StrategyConfigListFilters } from '@chansey/api-interfaces';
+import { CreateStrategyConfigDto, StrategyConfigListFilters, UpdateStrategyConfigDto } from '@chansey/api-interfaces';
 
 import { StrategyService } from './strategy.service';
 
@@ -14,7 +14,7 @@ import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authenticati
 @ApiTags('strategies')
 @Controller('strategies')
 @UseGuards(JwtAuthenticationGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('token')
 export class StrategyController {
   constructor(private readonly strategyService: StrategyService) {}
 

@@ -1,8 +1,10 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { DriftDetectorService } from './drift-detector.service';
 import { MonitoringService } from './monitoring.service';
+
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 
 /**
  * MonitoringController
@@ -18,7 +20,8 @@ import { MonitoringService } from './monitoring.service';
  */
 @ApiTags('Monitoring')
 @Controller('monitoring/deployments')
-// @UseGuards(JwtAuthGuard) // TODO: Uncomment when auth is implemented
+@UseGuards(JwtAuthenticationGuard)
+@ApiBearerAuth('token')
 export class MonitoringController {
   constructor(
     private readonly monitoringService: MonitoringService,
