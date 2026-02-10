@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, HttpStatus, HttpCode } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { DeploymentService } from './deployment.service';
 import { Deployment } from './entities/deployment.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
+
+import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 
 /**
  * DeploymentController
@@ -24,7 +26,8 @@ import { PerformanceMetric } from './entities/performance-metric.entity';
  */
 @ApiTags('Deployments')
 @Controller('deployments')
-// @UseGuards(JwtAuthGuard) // TODO: Uncomment when auth is implemented
+@UseGuards(JwtAuthenticationGuard)
+@ApiBearerAuth('token')
 export class DeploymentController {
   constructor(private readonly deploymentService: DeploymentService) {}
 

@@ -19,7 +19,7 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 @Controller('strategies/:strategyId/optimize')
 @ApiTags('Strategy Optimization')
 @UseGuards(JwtAuthenticationGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('token')
 export class OptimizationController {
   constructor(private readonly orchestratorService: OptimizationOrchestratorService) {}
 

@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { MarketRegimeService } from './market-regime.service';
 
@@ -12,7 +12,7 @@ import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authenticati
 @ApiTags('market-regime')
 @Controller('market-regime')
 @UseGuards(JwtAuthenticationGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('token')
 export class MarketRegimeController {
   constructor(private readonly marketRegimeService: MarketRegimeService) {}
 
