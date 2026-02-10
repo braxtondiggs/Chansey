@@ -40,7 +40,7 @@ import { User } from '../../users/users.entity';
 @ApiTags('Paper Trading')
 @Controller('paper-trading')
 @UseGuards(JwtAuthenticationGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('token')
 export class PaperTradingController {
   constructor(private readonly paperTradingService: PaperTradingService) {}
 
