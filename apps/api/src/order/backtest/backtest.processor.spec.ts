@@ -77,7 +77,23 @@ describe('BacktestProcessor', () => {
         .fn()
         .mockResolvedValue({ deleted: { trades: 0, signals: 0, fills: 0, snapshots: 0 } })
     };
-    const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue({}) };
+    const mockResult = {
+      trades: [],
+      signals: [],
+      simulatedFills: [],
+      snapshots: [],
+      finalMetrics: {
+        finalValue: 10000,
+        totalReturn: 0,
+        annualizedReturn: 0,
+        sharpeRatio: 0,
+        maxDrawdown: 0,
+        totalTrades: 0,
+        winningTrades: 0,
+        winRate: 0
+      }
+    };
+    const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue(mockResult) };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const metricsTimer = jest.fn();
     const metricsService = {
@@ -119,13 +135,13 @@ describe('BacktestProcessor', () => {
         dataset,
         deterministicSeed: 'seed-1',
         telemetryEnabled: true,
-        checkpointInterval: 500,
+        checkpointInterval: 100,
         onCheckpoint: expect.any(Function),
         resumeFrom: undefined
       })
     );
     expect(backtestResultService.clearCheckpoint).toHaveBeenCalledWith(backtest.id);
-    expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(backtest, {});
+    expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(backtest, mockResult);
     expect(metricsService.recordBacktestCompleted).toHaveBeenCalledWith('algo-1', 'success');
     expect(metricsTimer).toHaveBeenCalled();
   });
@@ -204,7 +220,22 @@ describe('BacktestProcessor', () => {
           persistedCounts: { trades: 0, signals: 0, fills: 0, snapshots: 0 }
         };
         await options.onCheckpoint(state, { trades: [], signals: [], simulatedFills: [], snapshots: [] }, 200);
-        return {};
+        return {
+          trades: [],
+          signals: [],
+          simulatedFills: [],
+          snapshots: [],
+          finalMetrics: {
+            finalValue: 10000,
+            totalReturn: 0,
+            annualizedReturn: 0,
+            sharpeRatio: 0,
+            maxDrawdown: 0,
+            totalTrades: 0,
+            winningTrades: 0,
+            winRate: 0
+          }
+        };
       })
     };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
@@ -272,7 +303,23 @@ describe('BacktestProcessor', () => {
         deleted: { trades: 1, signals: 0, fills: 0, snapshots: 0 }
       })
     };
-    const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue({}) };
+    const mockResult = {
+      trades: [],
+      signals: [],
+      simulatedFills: [],
+      snapshots: [],
+      finalMetrics: {
+        finalValue: 10000,
+        totalReturn: 0,
+        annualizedReturn: 0,
+        sharpeRatio: 0,
+        maxDrawdown: 0,
+        totalTrades: 0,
+        winningTrades: 0,
+        winRate: 0
+      }
+    };
+    const backtestEngine = { executeHistoricalBacktest: jest.fn().mockResolvedValue(mockResult) };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const metricsTimer = jest.fn();
     const metricsService = {

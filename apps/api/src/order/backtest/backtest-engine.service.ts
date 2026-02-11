@@ -90,7 +90,7 @@ interface ExecuteOptions {
   telemetryEnabled?: boolean;
 
   // Checkpoint options for resume capability
-  /** Number of timestamps between checkpoints (default: 500) */
+  /** Number of timestamps between checkpoints (default: 100) */
   checkpointInterval?: number;
   /** Callback invoked at each checkpoint with current state and total timestamp count */
   onCheckpoint?: (state: BacktestCheckpointState, results: CheckpointResults, totalTimestamps: number) => Promise<void>;
@@ -247,6 +247,12 @@ export class BacktestEngine {
     const simulatedFills: Partial<SimulatedOrderFill>[] = [];
     const snapshots: Partial<BacktestPerformanceSnapshot>[] = [];
 
+    // Running metric counters that survive array clearing after checkpoints
+    let totalTradeCount = 0;
+    let sellTradeCount = 0;
+    let winningTradeCount = 0;
+    const portfolioValueSeries: number[] = [];
+
     const coinIds = coins.map((coin) => coin.id);
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
 
@@ -327,6 +333,9 @@ export class BacktestEngine {
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
         : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+
+    // Cumulative count of all items persisted to DB across all checkpoints (for resume reconciliation)
+    let cumulativePersistedCounts = { ...lastCheckpointCounts };
 
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
@@ -450,6 +459,13 @@ export class BacktestEngine {
           }
 
           trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
+          totalTradeCount++;
+          if (trade.type === TradeType.SELL) {
+            sellTradeCount++;
+            if ((trade.realizedPnL ?? 0) > 0) {
+              winningTradeCount++;
+            }
+          }
           simulatedFills.push({
             orderType: SimulatedOrderType.MARKET,
             status: SimulatedOrderStatus.FILLED,
@@ -483,6 +499,7 @@ export class BacktestEngine {
           drawdown: currentDrawdown,
           backtest
         });
+        portfolioValueSeries.push(portfolio.totalValue);
 
         if (options.telemetryEnabled) {
           await this.backtestStream.publishMetric(backtest.id, 'portfolio_value', portfolio.totalValue, 'USD', {
@@ -508,6 +525,14 @@ export class BacktestEngine {
       // Checkpoint callback: save state periodically for resume capability
       const timeSinceLastCheckpoint = i - lastCheckpointIndex;
       if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
+        // Compute cumulative persisted counts including current batch
+        const nextCumulativeCounts = {
+          trades: cumulativePersistedCounts.trades + trades.length,
+          signals: cumulativePersistedCounts.signals + signals.length,
+          fills: cumulativePersistedCounts.fills + simulatedFills.length,
+          snapshots: cumulativePersistedCounts.snapshots + snapshots.length
+        };
+
         const checkpointState = this.buildCheckpointState(
           i,
           timestamp.toISOString(),
@@ -515,13 +540,13 @@ export class BacktestEngine {
           peakValue,
           maxDrawdown,
           rng.getState(),
-          trades.length,
-          signals.length,
-          simulatedFills.length,
-          snapshots.length
+          nextCumulativeCounts.trades,
+          nextCumulativeCounts.signals,
+          nextCumulativeCounts.fills,
+          nextCumulativeCounts.snapshots
         );
 
-        // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
+        // All items in the arrays are new since last clear
         const checkpointResults: CheckpointResults = {
           trades: trades.slice(lastCheckpointCounts.trades),
           signals: signals.slice(lastCheckpointCounts.signals),
@@ -532,13 +557,13 @@ export class BacktestEngine {
         // Pass total timestamps count to callback for accurate progress reporting
         await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
 
-        // Update counts for next checkpoint slice
-        lastCheckpointCounts = {
-          trades: trades.length,
-          signals: signals.length,
-          fills: simulatedFills.length,
-          snapshots: snapshots.length
-        };
+        // Update cumulative counts and release persisted results from memory
+        cumulativePersistedCounts = nextCumulativeCounts;
+        trades.length = 0;
+        signals.length = 0;
+        simulatedFills.length = 0;
+        snapshots.length = 0;
+        lastCheckpointCounts = { trades: 0, signals: 0, fills: 0, snapshots: 0 };
         lastCheckpointIndex = i;
 
         this.logger.debug(
@@ -547,7 +572,12 @@ export class BacktestEngine {
       }
     }
 
-    const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+    const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown, {
+      totalTrades: totalTradeCount,
+      winningTrades: winningTradeCount,
+      sellTradeCount,
+      portfolioValues: portfolioValueSeries
+    });
 
     if (options.telemetryEnabled) {
       await this.backtestStream.publishMetric(
@@ -560,7 +590,7 @@ export class BacktestEngine {
       await this.backtestStream.publishStatus(backtest.id, 'completed');
     }
 
-    this.logger.log(`Backtest completed: ${trades.length} trades, final value: $${portfolio.totalValue.toFixed(2)}`);
+    this.logger.log(`Backtest completed: ${totalTradeCount} trades, final value: $${portfolio.totalValue.toFixed(2)}`);
 
     return { trades, signals, simulatedFills, snapshots, finalMetrics };
   }
@@ -640,6 +670,12 @@ export class BacktestEngine {
     const signals: Partial<BacktestSignal>[] = [];
     const simulatedFills: Partial<SimulatedOrderFill>[] = [];
     const snapshots: Partial<BacktestPerformanceSnapshot>[] = [];
+
+    // Running metric counters that survive array clearing after checkpoints
+    let totalTradeCount = 0;
+    let sellTradeCount = 0;
+    let winningTradeCount = 0;
+    const portfolioValueSeries: number[] = [];
 
     const coinIds = coins.map((coin) => coin.id);
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
@@ -721,6 +757,9 @@ export class BacktestEngine {
         ? { ...options.resumeFrom.persistedCounts }
         : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
 
+    // Cumulative count of all items persisted to DB across all checkpoints (for resume reconciliation)
+    let cumulativePersistedCounts = { ...lastCheckpointCounts };
+
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
 
@@ -747,6 +786,13 @@ export class BacktestEngine {
           consecutivePauseFailures = 0;
 
           if (shouldPauseNow) {
+            const pauseCumulativeCounts = {
+              trades: cumulativePersistedCounts.trades + trades.length,
+              signals: cumulativePersistedCounts.signals + signals.length,
+              fills: cumulativePersistedCounts.fills + simulatedFills.length,
+              snapshots: cumulativePersistedCounts.snapshots + snapshots.length
+            };
+
             const checkpointState = this.buildCheckpointState(
               i - 1, // Last successfully processed index
               timestamps[Math.max(0, i - 1)],
@@ -754,10 +800,10 @@ export class BacktestEngine {
               peakValue,
               maxDrawdown,
               rng.getState(),
-              trades.length,
-              signals.length,
-              simulatedFills.length,
-              snapshots.length
+              pauseCumulativeCounts.trades,
+              pauseCumulativeCounts.signals,
+              pauseCumulativeCounts.fills,
+              pauseCumulativeCounts.snapshots
             );
 
             this.logger.log(`Live replay paused at index ${i - 1}/${timestamps.length}`);
@@ -768,7 +814,12 @@ export class BacktestEngine {
             }
 
             // Calculate partial final metrics
-            const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+            const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown, {
+              totalTrades: totalTradeCount,
+              winningTrades: winningTradeCount,
+              sellTradeCount,
+              portfolioValues: portfolioValueSeries
+            });
 
             return {
               trades,
@@ -793,6 +844,13 @@ export class BacktestEngine {
               `Pause check failed ${MAX_CONSECUTIVE_PAUSE_FAILURES} times consecutively, forcing precautionary pause`
             );
 
+            const pauseCumulativeCounts = {
+              trades: cumulativePersistedCounts.trades + trades.length,
+              signals: cumulativePersistedCounts.signals + signals.length,
+              fills: cumulativePersistedCounts.fills + simulatedFills.length,
+              snapshots: cumulativePersistedCounts.snapshots + snapshots.length
+            };
+
             const checkpointState = this.buildCheckpointState(
               i - 1,
               timestamps[Math.max(0, i - 1)],
@@ -800,17 +858,22 @@ export class BacktestEngine {
               peakValue,
               maxDrawdown,
               rng.getState(),
-              trades.length,
-              signals.length,
-              simulatedFills.length,
-              snapshots.length
+              pauseCumulativeCounts.trades,
+              pauseCumulativeCounts.signals,
+              pauseCumulativeCounts.fills,
+              pauseCumulativeCounts.snapshots
             );
 
             if (options.onPaused) {
               await options.onPaused(checkpointState);
             }
 
-            const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+            const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown, {
+              totalTrades: totalTradeCount,
+              winningTrades: winningTradeCount,
+              sellTradeCount,
+              portfolioValues: portfolioValueSeries
+            });
 
             return {
               trades,
@@ -941,6 +1004,13 @@ export class BacktestEngine {
           }
 
           trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
+          totalTradeCount++;
+          if (trade.type === TradeType.SELL) {
+            sellTradeCount++;
+            if ((trade.realizedPnL ?? 0) > 0) {
+              winningTradeCount++;
+            }
+          }
           simulatedFills.push({
             orderType: SimulatedOrderType.MARKET,
             status: SimulatedOrderStatus.FILLED,
@@ -974,6 +1044,7 @@ export class BacktestEngine {
           drawdown: currentDrawdown,
           backtest
         });
+        portfolioValueSeries.push(portfolio.totalValue);
 
         if (options.telemetryEnabled) {
           await this.backtestStream.publishMetric(backtest.id, 'portfolio_value', portfolio.totalValue, 'USD', {
@@ -994,6 +1065,14 @@ export class BacktestEngine {
       // Live replay uses more frequent checkpoints (default: 100 vs 500 for historical)
       const timeSinceLastCheckpoint = i - lastCheckpointIndex;
       if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
+        // Compute cumulative persisted counts including current batch
+        const nextCumulativeCounts = {
+          trades: cumulativePersistedCounts.trades + trades.length,
+          signals: cumulativePersistedCounts.signals + signals.length,
+          fills: cumulativePersistedCounts.fills + simulatedFills.length,
+          snapshots: cumulativePersistedCounts.snapshots + snapshots.length
+        };
+
         const checkpointState = this.buildCheckpointState(
           i,
           timestamp.toISOString(),
@@ -1001,13 +1080,13 @@ export class BacktestEngine {
           peakValue,
           maxDrawdown,
           rng.getState(),
-          trades.length,
-          signals.length,
-          simulatedFills.length,
-          snapshots.length
+          nextCumulativeCounts.trades,
+          nextCumulativeCounts.signals,
+          nextCumulativeCounts.fills,
+          nextCumulativeCounts.snapshots
         );
 
-        // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
+        // All items in the arrays are new since last clear
         const checkpointResults: CheckpointResults = {
           trades: trades.slice(lastCheckpointCounts.trades),
           signals: signals.slice(lastCheckpointCounts.signals),
@@ -1018,13 +1097,13 @@ export class BacktestEngine {
         // Pass total timestamps count to callback for accurate progress reporting
         await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
 
-        // Update counts for next checkpoint slice
-        lastCheckpointCounts = {
-          trades: trades.length,
-          signals: signals.length,
-          fills: simulatedFills.length,
-          snapshots: snapshots.length
-        };
+        // Update cumulative counts and release persisted results from memory
+        cumulativePersistedCounts = nextCumulativeCounts;
+        trades.length = 0;
+        signals.length = 0;
+        simulatedFills.length = 0;
+        snapshots.length = 0;
+        lastCheckpointCounts = { trades: 0, signals: 0, fills: 0, snapshots: 0 };
         lastCheckpointIndex = i;
 
         this.logger.debug(
@@ -1033,7 +1112,12 @@ export class BacktestEngine {
       }
     }
 
-    const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown);
+    const finalMetrics = this.calculateFinalMetrics(backtest, portfolio, trades, snapshots, maxDrawdown, {
+      totalTrades: totalTradeCount,
+      winningTrades: winningTradeCount,
+      sellTradeCount,
+      portfolioValues: portfolioValueSeries
+    });
 
     if (options.telemetryEnabled) {
       await this.backtestStream.publishMetric(
@@ -1050,7 +1134,7 @@ export class BacktestEngine {
     }
 
     this.logger.log(
-      `Live replay backtest completed: ${trades.length} trades, final value: $${portfolio.totalValue.toFixed(2)}`
+      `Live replay backtest completed: ${totalTradeCount} trades, final value: $${portfolio.totalValue.toFixed(2)}`
     );
 
     return { trades, signals, simulatedFills, snapshots, finalMetrics, paused: false };
@@ -1328,22 +1412,56 @@ export class BacktestEngine {
     portfolio: Portfolio,
     trades: Partial<BacktestTrade>[],
     snapshots: Partial<BacktestPerformanceSnapshot>[],
-    maxDrawdown: number
+    maxDrawdown: number,
+    overrides?: {
+      totalTrades: number;
+      winningTrades: number;
+      sellTradeCount: number;
+      portfolioValues: number[];
+    }
   ): BacktestFinalMetrics {
     const finalValue = portfolio.totalValue;
     const totalReturn = (finalValue - backtest.initialCapital) / backtest.initialCapital;
-    const totalTrades = trades.length;
 
-    // Win rate is based on SELL trades with positive realized P&L
-    // Only SELL trades have P&L calculated (they close positions)
-    const sellTrades = trades.filter((t) => t.type === TradeType.SELL);
-    const winningTrades = sellTrades.filter((t) => (t.realizedPnL ?? 0) > 0).length;
-    const sellTradeCount = sellTrades.length;
+    let totalTrades: number;
+    let winningTrades: number;
+    let sellTradeCount: number;
+
+    if (overrides) {
+      // Use running counters (arrays may have been cleared after checkpoints)
+      totalTrades = overrides.totalTrades;
+      winningTrades = overrides.winningTrades;
+      sellTradeCount = overrides.sellTradeCount;
+    } else {
+      // Compute from arrays (live-replay and other callers)
+      totalTrades = trades.length;
+      const sellTrades = trades.filter((t) => t.type === TradeType.SELL);
+      winningTrades = sellTrades.filter((t) => (t.realizedPnL ?? 0) > 0).length;
+      sellTradeCount = sellTrades.length;
+    }
 
     const durationDays = dayjs(backtest.endDate).diff(dayjs(backtest.startDate), 'day');
     const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
 
-    const sharpeRatio = this.calculateSharpeRatio(snapshots, backtest.initialCapital);
+    // Use overrides.portfolioValues for Sharpe when arrays have been cleared, else use snapshots
+    let sharpeRatio: number;
+    if (overrides?.portfolioValues?.length) {
+      const returns: number[] = [];
+      for (let i = 1; i < overrides.portfolioValues.length; i++) {
+        const prev = overrides.portfolioValues[i - 1];
+        returns.push(prev === 0 ? 0 : (overrides.portfolioValues[i] - prev) / prev);
+      }
+      sharpeRatio =
+        returns.length > 0
+          ? this.metricsCalculator.calculateSharpeRatio(returns, {
+              timeframe: TimeframeType.DAILY,
+              useCryptoCalendar: false,
+              riskFreeRate: 0.02
+            })
+          : 0;
+    } else {
+      sharpeRatio = this.calculateSharpeRatio(snapshots, backtest.initialCapital);
+    }
 
     return {
       finalValue,

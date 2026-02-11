@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BacktestEngine } from './backtest/backtest-engine.service';
 import { BacktestPauseService } from './backtest/backtest-pause.service';
+import { BacktestRecoveryService } from './backtest/backtest-recovery.service';
 import { BacktestResultService } from './backtest/backtest-result.service';
 import { BacktestStreamService } from './backtest/backtest-stream.service';
 import { backtestConfig } from './backtest/backtest.config';
@@ -121,6 +122,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     AlgorithmService,
     BacktestEngine,
     BacktestProcessor,
+    BacktestRecoveryService,
     LiveReplayProcessor,
     BacktestPauseService,
     BacktestService,

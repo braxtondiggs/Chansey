@@ -60,7 +60,7 @@ export interface BacktestCheckpointState {
  * Configuration options for checkpoint behavior.
  */
 export interface CheckpointConfig {
-  /** Number of timestamps between checkpoints (default: 500) */
+  /** Number of timestamps between checkpoints (default: 100) */
   checkpointInterval: number;
 
   /** Maximum age of checkpoint before forcing restart (milliseconds, default: 7 days) */
@@ -71,6 +71,6 @@ export interface CheckpointConfig {
  * Default checkpoint configuration values.
  */
 export const DEFAULT_CHECKPOINT_CONFIG: CheckpointConfig = {
-  checkpointInterval: 500,
+  checkpointInterval: 100,
   maxCheckpointAge: 7 * 24 * 60 * 60 * 1000 // 7 days
 };
