@@ -162,10 +162,11 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
    * Calculate signal strength based on price position relative to EMAs
    */
   private calculateSignalStrength(price: number, ema12: number, ema26: number): number {
-    const emaSpread = Math.abs(ema12 - ema26) / Math.max(ema12, ema26);
-    const pricePosition = (price - Math.min(ema12, ema26)) / Math.abs(ema12 - ema26);
+    const spread = Math.abs(ema12 - ema26);
+    const maxEma = Math.max(ema12, ema26);
+    const emaSpread = maxEma > 0 ? spread / maxEma : 0;
+    const pricePosition = spread > 0 ? (price - Math.min(ema12, ema26)) / spread : 0.5;
 
-    // Strength is based on EMA spread and price position
     return Math.min(1, Math.max(0, emaSpread * 2 + pricePosition * 0.5));
   }
 
@@ -179,18 +180,24 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
     direction: 'bullish' | 'bearish'
   ): number {
     const recentPeriod = 5;
-    const startIndex = Math.max(0, prices.length - recentPeriod);
+    const startIndex = Math.max(1, prices.length - recentPeriod);
 
-    let trendConfirmations = 0;
+    let convergingBars = 0;
     for (let i = startIndex; i < prices.length - 1; i++) {
-      if (direction === 'bullish' && ema12[i] > ema26[i]) {
-        trendConfirmations++;
-      } else if (direction === 'bearish' && ema12[i] < ema26[i]) {
-        trendConfirmations++;
+      const currentGap = ema12[i] - ema26[i];
+      const previousGap = ema12[i - 1] - ema26[i - 1];
+
+      // For bullish: gap should be increasing (becoming more positive / less negative)
+      // For bearish: gap should be decreasing (becoming more negative / less positive)
+      if (direction === 'bullish' && currentGap > previousGap) {
+        convergingBars++;
+      } else if (direction === 'bearish' && currentGap < previousGap) {
+        convergingBars++;
       }
     }
 
-    return trendConfirmations / recentPeriod;
+    const barsChecked = prices.length - 1 - startIndex;
+    return barsChecked > 0 ? convergingBars / barsChecked : 0;
   }
 
   /**

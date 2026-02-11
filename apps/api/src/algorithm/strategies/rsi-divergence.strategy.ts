@@ -116,11 +116,11 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
    */
   private getConfigWithDefaults(config: Record<string, unknown>): RSIDivergenceConfig {
     return {
-      rsiPeriod: (config.rsiPeriod as number) || 14,
-      lookbackPeriod: (config.lookbackPeriod as number) || 14,
-      pivotStrength: (config.pivotStrength as number) || 2,
-      minDivergencePercent: (config.minDivergencePercent as number) || 5,
-      minConfidence: (config.minConfidence as number) || 0.6
+      rsiPeriod: (config.rsiPeriod as number) ?? 14,
+      lookbackPeriod: (config.lookbackPeriod as number) ?? 14,
+      pivotStrength: (config.pivotStrength as number) ?? 2,
+      minDivergencePercent: (config.minDivergencePercent as number) ?? 5,
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -220,7 +220,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   ): DivergenceResult | null {
     const currentIndex = prices.length - 1;
     const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
-    const lookbackEnd = currentIndex - config.pivotStrength; // Need room for pivot confirmation
+    const lookbackEnd = currentIndex; // findPivotHighs/Lows already applies -strength internally
 
     // Find pivot highs for bearish divergence detection
     const pivotHighs = this.findPivotHighs(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
@@ -228,49 +228,43 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     // Find pivot lows for bullish divergence detection
     const pivotLows = this.findPivotLows(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
 
+    let bearish: DivergenceResult | null = null;
+    let bullish: DivergenceResult | null = null;
+
     // Check for bearish divergence (price higher highs, RSI lower highs)
     if (pivotHighs.length >= 2) {
-      // Get the two most recent pivot highs
       const recentHighs = pivotHighs.slice(-2);
       const [pivot1, pivot2] = recentHighs;
 
       const priceDivergence = ((pivot2.price - pivot1.price) / pivot1.price) * 100;
       const rsiDivergence = pivot2.rsi - pivot1.rsi;
 
-      // Bearish: Price making higher highs but RSI making lower highs
       if (priceDivergence >= config.minDivergencePercent && rsiDivergence < 0) {
-        return {
-          type: 'bearish',
-          pivot1,
-          pivot2,
-          priceDivergence,
-          rsiDivergence
-        };
+        bearish = { type: 'bearish', pivot1, pivot2, priceDivergence, rsiDivergence };
       }
     }
 
     // Check for bullish divergence (price lower lows, RSI higher lows)
     if (pivotLows.length >= 2) {
-      // Get the two most recent pivot lows
       const recentLows = pivotLows.slice(-2);
       const [pivot1, pivot2] = recentLows;
 
       const priceDivergence = ((pivot2.price - pivot1.price) / pivot1.price) * 100;
       const rsiDivergence = pivot2.rsi - pivot1.rsi;
 
-      // Bullish: Price making lower lows but RSI making higher lows
       if (priceDivergence <= -config.minDivergencePercent && rsiDivergence > 0) {
-        return {
-          type: 'bullish',
-          pivot1,
-          pivot2,
-          priceDivergence,
-          rsiDivergence
-        };
+        bullish = { type: 'bullish', pivot1, pivot2, priceDivergence, rsiDivergence };
       }
     }
 
-    return null;
+    // Return the strongest divergence by combined magnitude
+    if (bearish && bullish) {
+      const bearishMag = Math.abs(bearish.priceDivergence) + Math.abs(bearish.rsiDivergence);
+      const bullishMag = Math.abs(bullish.priceDivergence) + Math.abs(bullish.rsiDivergence);
+      return bearishMag >= bullishMag ? bearish : bullish;
+    }
+
+    return bearish || bullish || null;
   }
 
   /**
@@ -391,7 +385,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   private prepareChartData(prices: PriceSummary[], rsi: number[], config: RSIDivergenceConfig): ChartDataPoint[] {
     const currentIndex = prices.length - 1;
     const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
-    const lookbackEnd = currentIndex - config.pivotStrength;
+    const lookbackEnd = currentIndex;
 
     const pivotHighs = this.findPivotHighs(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
     const pivotLows = this.findPivotLows(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);

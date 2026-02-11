@@ -108,12 +108,12 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
    */
   private getConfigWithDefaults(config: Record<string, unknown>): EMARSIFilterConfig {
     return {
-      fastEmaPeriod: (config.fastEmaPeriod as number) || 12,
-      slowEmaPeriod: (config.slowEmaPeriod as number) || 26,
-      rsiPeriod: (config.rsiPeriod as number) || 14,
-      rsiMaxForBuy: (config.rsiMaxForBuy as number) || 70,
-      rsiMinForSell: (config.rsiMinForSell as number) || 30,
-      minConfidence: (config.minConfidence as number) || 0.6
+      fastEmaPeriod: (config.fastEmaPeriod as number) ?? 12,
+      slowEmaPeriod: (config.slowEmaPeriod as number) ?? 26,
+      rsiPeriod: (config.rsiPeriod as number) ?? 14,
+      rsiMaxForBuy: (config.rsiMaxForBuy as number) ?? 70,
+      rsiMinForSell: (config.rsiMinForSell as number) ?? 30,
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -246,9 +246,12 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
     const currentSlowEMA = slowEMA[currentIndex];
     const currentRSI = rsi[currentIndex];
 
-    // EMA spread strength
-    const emaSpread = Math.abs(currentFastEMA - currentSlowEMA) / currentSlowEMA;
-    const emaStrength = Math.min(1, emaSpread * 20); // 5% spread = max strength
+    // EMA divergence rate strength (how fast EMAs are separating)
+    const previousIndex = currentIndex - 1;
+    const previousSpread = fastEMA[previousIndex] - slowEMA[previousIndex];
+    const currentSpread = currentFastEMA - currentSlowEMA;
+    const spreadChange = Math.abs(currentSpread - previousSpread);
+    const emaStrength = Math.min(1, (spreadChange / currentSlowEMA) * 100);
 
     // RSI strength based on how far from filter threshold
     let rsiStrength = 0;
@@ -278,18 +281,18 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
     const lookback = 5;
     const startIndex = Math.max(0, currentIndex - lookback);
 
-    // Check EMA trend consistency
-    let emaTrendConsistent = 0;
-    for (let i = startIndex; i < currentIndex; i++) {
-      if (isNaN(fastEMA[i]) || isNaN(slowEMA[i])) continue;
-
-      if (direction === 'bullish' && fastEMA[i] > slowEMA[i]) {
-        emaTrendConsistent++;
-      } else if (direction === 'bearish' && fastEMA[i] < slowEMA[i]) {
-        emaTrendConsistent++;
+    // Check price momentum confirmation
+    let momentumCount = 0;
+    let validBars = 0;
+    for (let i = startIndex + 1; i <= currentIndex; i++) {
+      validBars++;
+      if (direction === 'bullish' && prices[i].avg > prices[i - 1].avg) {
+        momentumCount++;
+      } else if (direction === 'bearish' && prices[i].avg < prices[i - 1].avg) {
+        momentumCount++;
       }
     }
-    const trendScore = emaTrendConsistent / lookback;
+    const trendScore = validBars > 0 ? momentumCount / validBars : 0;
 
     // RSI positioning score
     const currentRSI = rsi[currentIndex];
@@ -301,7 +304,8 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
       } else if (currentRSI < 30) {
         rsiScore = 0.8; // Oversold - good but may bounce first
       } else {
-        rsiScore = Math.max(0, 1 - (currentRSI - 50) / (config.rsiMaxForBuy - 50));
+        const buyDivisor = config.rsiMaxForBuy - 50;
+        rsiScore = buyDivisor === 0 ? 0 : Math.max(0, 1 - (currentRSI - 50) / buyDivisor);
       }
     } else {
       // Ideal RSI zone for selling: 50-70
@@ -310,7 +314,8 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
       } else if (currentRSI > 70) {
         rsiScore = 0.8; // Overbought - good but may have more to fall
       } else {
-        rsiScore = Math.max(0, 1 - (50 - currentRSI) / (50 - config.rsiMinForSell));
+        const sellDivisor = 50 - config.rsiMinForSell;
+        rsiScore = sellDivisor === 0 ? 0 : Math.max(0, 1 - (50 - currentRSI) / sellDivisor);
       }
     }
 

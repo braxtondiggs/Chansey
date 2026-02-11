@@ -94,10 +94,10 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
    */
   private getConfigWithDefaults(config: Record<string, unknown>): RSIConfig {
     return {
-      period: (config.period as number) || 14,
-      oversoldThreshold: (config.oversoldThreshold as number) || 30,
-      overboughtThreshold: (config.overboughtThreshold as number) || 70,
-      minConfidence: (config.minConfidence as number) || 0.6
+      period: (config.period as number) ?? 14,
+      oversoldThreshold: (config.oversoldThreshold as number) ?? 30,
+      overboughtThreshold: (config.overboughtThreshold as number) ?? 70,
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -121,7 +121,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
 
-    if (previousIndex < 0 || isNaN(rsi[currentIndex])) {
+    if (previousIndex < 0 || isNaN(rsi[currentIndex]) || isNaN(rsi[previousIndex])) {
       return null;
     }
 
@@ -140,7 +140,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         strength,
         price: currentPrice,
         confidence,
-        reason: `RSI oversold: ${currentRSI.toFixed(2)} < ${config.oversoldThreshold} (recovering from ${previousRSI.toFixed(2)})`,
+        reason: `RSI oversold: ${currentRSI.toFixed(2)} < ${config.oversoldThreshold} (prev: ${previousRSI.toFixed(2)})`,
         metadata: {
           symbol: coinSymbol,
           rsi: currentRSI,
@@ -162,7 +162,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         strength,
         price: currentPrice,
         confidence,
-        reason: `RSI overbought: ${currentRSI.toFixed(2)} > ${config.overboughtThreshold} (rising from ${previousRSI.toFixed(2)})`,
+        reason: `RSI overbought: ${currentRSI.toFixed(2)} > ${config.overboughtThreshold} (prev: ${previousRSI.toFixed(2)})`,
         metadata: {
           symbol: coinSymbol,
           rsi: currentRSI,
@@ -211,7 +211,8 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
     }
 
     // Higher confidence if RSI has been trending in the same direction
-    return Math.min(1, consistentBars / recentPeriod + 0.3);
+    const consistency = consistentBars / recentPeriod;
+    return Math.min(1, 0.1 + consistency * 0.9);
   }
 
   /**
