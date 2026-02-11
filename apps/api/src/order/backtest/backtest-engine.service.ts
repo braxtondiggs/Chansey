@@ -327,15 +327,11 @@ export class BacktestEngine {
       );
     }
 
-    // Track result counts at last checkpoint for proper slicing during incremental persistence
-    // When resuming, initialize from the checkpoint's persisted counts; otherwise start at zero
-    let lastCheckpointCounts =
+    // Cumulative count of all items persisted to DB across all checkpoints (for resume reconciliation)
+    let cumulativePersistedCounts =
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
         : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
-
-    // Cumulative count of all items persisted to DB across all checkpoints (for resume reconciliation)
-    let cumulativePersistedCounts = { ...lastCheckpointCounts };
 
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
@@ -546,12 +542,12 @@ export class BacktestEngine {
           nextCumulativeCounts.snapshots
         );
 
-        // All items in the arrays are new since last clear
+        // Shallow-copy arrays before clearing so the callback retains the data
         const checkpointResults: CheckpointResults = {
-          trades: trades.slice(lastCheckpointCounts.trades),
-          signals: signals.slice(lastCheckpointCounts.signals),
-          simulatedFills: simulatedFills.slice(lastCheckpointCounts.fills),
-          snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
+          trades: [...trades],
+          signals: [...signals],
+          simulatedFills: [...simulatedFills],
+          snapshots: [...snapshots]
         };
 
         // Pass total timestamps count to callback for accurate progress reporting
@@ -563,7 +559,6 @@ export class BacktestEngine {
         signals.length = 0;
         simulatedFills.length = 0;
         snapshots.length = 0;
-        lastCheckpointCounts = { trades: 0, signals: 0, fills: 0, snapshots: 0 };
         lastCheckpointIndex = i;
 
         this.logger.debug(
@@ -751,14 +746,11 @@ export class BacktestEngine {
       );
     }
 
-    // Track result counts at last checkpoint for proper slicing during incremental persistence
-    let lastCheckpointCounts =
+    // Cumulative count of all items persisted to DB across all checkpoints (for resume reconciliation)
+    let cumulativePersistedCounts =
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
         : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
-
-    // Cumulative count of all items persisted to DB across all checkpoints (for resume reconciliation)
-    let cumulativePersistedCounts = { ...lastCheckpointCounts };
 
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
@@ -1086,12 +1078,12 @@ export class BacktestEngine {
           nextCumulativeCounts.snapshots
         );
 
-        // All items in the arrays are new since last clear
+        // Shallow-copy arrays before clearing so the callback retains the data
         const checkpointResults: CheckpointResults = {
-          trades: trades.slice(lastCheckpointCounts.trades),
-          signals: signals.slice(lastCheckpointCounts.signals),
-          simulatedFills: simulatedFills.slice(lastCheckpointCounts.fills),
-          snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
+          trades: [...trades],
+          signals: [...signals],
+          simulatedFills: [...simulatedFills],
+          snapshots: [...snapshots]
         };
 
         // Pass total timestamps count to callback for accurate progress reporting
@@ -1103,7 +1095,6 @@ export class BacktestEngine {
         signals.length = 0;
         simulatedFills.length = 0;
         snapshots.length = 0;
-        lastCheckpointCounts = { trades: 0, signals: 0, fills: 0, snapshots: 0 };
         lastCheckpointIndex = i;
 
         this.logger.debug(
@@ -1444,24 +1435,10 @@ export class BacktestEngine {
     const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
 
     // Use overrides.portfolioValues for Sharpe when arrays have been cleared, else use snapshots
-    let sharpeRatio: number;
-    if (overrides?.portfolioValues?.length) {
-      const returns: number[] = [];
-      for (let i = 1; i < overrides.portfolioValues.length; i++) {
-        const prev = overrides.portfolioValues[i - 1];
-        returns.push(prev === 0 ? 0 : (overrides.portfolioValues[i] - prev) / prev);
-      }
-      sharpeRatio =
-        returns.length > 0
-          ? this.metricsCalculator.calculateSharpeRatio(returns, {
-              timeframe: TimeframeType.DAILY,
-              useCryptoCalendar: false,
-              riskFreeRate: 0.02
-            })
-          : 0;
-    } else {
-      sharpeRatio = this.calculateSharpeRatio(snapshots, backtest.initialCapital);
-    }
+    const portfolioValues = overrides?.portfolioValues?.length
+      ? overrides.portfolioValues
+      : snapshots.map((s) => s.portfolioValue ?? backtest.initialCapital);
+    const sharpeRatio = this.calculateSharpeRatio(portfolioValues);
 
     return {
       finalValue,
@@ -1475,24 +1452,17 @@ export class BacktestEngine {
     };
   }
 
-  private calculateSharpeRatio(snapshots: Partial<BacktestPerformanceSnapshot>[], initialCapital: number): number {
-    if (!snapshots.length) {
+  private calculateSharpeRatio(portfolioValues: number[]): number {
+    if (portfolioValues.length < 2) {
       return 0;
     }
 
     const returns: number[] = [];
-    for (let i = 1; i < snapshots.length; i++) {
-      const previous = snapshots[i - 1].portfolioValue ?? initialCapital;
-      const current = snapshots[i].portfolioValue ?? initialCapital;
-      returns.push(previous === 0 ? 0 : (current - previous) / previous);
+    for (let i = 1; i < portfolioValues.length; i++) {
+      const prev = portfolioValues[i - 1];
+      returns.push(prev === 0 ? 0 : (portfolioValues[i] - prev) / prev);
     }
 
-    if (returns.length === 0) {
-      return 0;
-    }
-
-    // Use metricsCalculator for consistent annualized Sharpe ratio
-    // Historical backtests use daily snapshots with traditional 252-day calendar
     return this.metricsCalculator.calculateSharpeRatio(returns, {
       timeframe: TimeframeType.DAILY,
       useCryptoCalendar: false,
