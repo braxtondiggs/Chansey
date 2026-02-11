@@ -1,3 +1,10 @@
+// Polyfill globalThis.crypto for Jest's node environment
+// Required by @nestjs/typeorm's generateString utility
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+if (!globalThis.crypto) {
+  Object.defineProperty(globalThis, 'crypto', { value: require('node:crypto').webcrypto });
+}
+
 import * as dotenv from 'dotenv';
 
 import { join } from 'path';
