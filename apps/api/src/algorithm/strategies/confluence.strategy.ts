@@ -27,8 +27,8 @@ import {
  *
  * Signals are only generated when minConfluence indicators agree.
  *
- * BUY: EMA12 > EMA26 + RSI < 40 + MACD positive + ATR normal + BB %B < 0.2
- * SELL: EMA12 < EMA26 + RSI > 60 + MACD negative + ATR normal + BB %B > 0.8
+ * BUY: EMA12 > EMA26 + RSI > 60 + MACD positive + ATR normal + BB %B > 0.8
+ * SELL: EMA12 < EMA26 + RSI < 40 + MACD negative + ATR normal + BB %B < 0.2
  */
 @Injectable()
 export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
@@ -106,41 +106,41 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    */
   private getConfigWithDefaults(config: Record<string, unknown>): ConfluenceConfig {
     return {
-      minConfluence: (config.minConfluence as number) || 3,
-      minConfidence: (config.minConfidence as number) || 0.65,
+      minConfluence: (config.minConfluence as number) ?? 3,
+      minConfidence: (config.minConfidence as number) ?? 0.65,
 
       ema: {
         enabled: config.emaEnabled !== false,
-        fastPeriod: (config.emaFastPeriod as number) || 12,
-        slowPeriod: (config.emaSlowPeriod as number) || 26
+        fastPeriod: (config.emaFastPeriod as number) ?? 12,
+        slowPeriod: (config.emaSlowPeriod as number) ?? 26
       },
 
       rsi: {
         enabled: config.rsiEnabled !== false,
-        period: (config.rsiPeriod as number) || 14,
-        buyThreshold: (config.rsiBuyThreshold as number) || 40,
-        sellThreshold: (config.rsiSellThreshold as number) || 60
+        period: (config.rsiPeriod as number) ?? 14,
+        buyThreshold: (config.rsiBuyThreshold as number) ?? 55,
+        sellThreshold: (config.rsiSellThreshold as number) ?? 45
       },
 
       macd: {
         enabled: config.macdEnabled !== false,
-        fastPeriod: (config.macdFastPeriod as number) || 12,
-        slowPeriod: (config.macdSlowPeriod as number) || 26,
-        signalPeriod: (config.macdSignalPeriod as number) || 9
+        fastPeriod: (config.macdFastPeriod as number) ?? 12,
+        slowPeriod: (config.macdSlowPeriod as number) ?? 26,
+        signalPeriod: (config.macdSignalPeriod as number) ?? 9
       },
 
       atr: {
         enabled: config.atrEnabled !== false,
-        period: (config.atrPeriod as number) || 14,
-        volatilityThresholdMultiplier: (config.atrVolatilityMultiplier as number) || 1.5
+        period: (config.atrPeriod as number) ?? 14,
+        volatilityThresholdMultiplier: (config.atrVolatilityMultiplier as number) ?? 1.5
       },
 
       bollingerBands: {
         enabled: config.bbEnabled !== false,
-        period: (config.bbPeriod as number) || 20,
-        stdDev: (config.bbStdDev as number) || 2,
-        buyThreshold: (config.bbBuyThreshold as number) || 0.2,
-        sellThreshold: (config.bbSellThreshold as number) || 0.8
+        period: (config.bbPeriod as number) ?? 20,
+        stdDev: (config.bbStdDev as number) ?? 2,
+        buyThreshold: (config.bbBuyThreshold as number) ?? 0.7,
+        sellThreshold: (config.bbSellThreshold as number) ?? 0.3
       }
     };
   }
@@ -165,7 +165,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     }
 
     if (config.macd.enabled) {
-      requirements.push(config.macd.slowPeriod + config.macd.signalPeriod);
+      requirements.push(config.macd.slowPeriod + config.macd.signalPeriod - 1);
     }
 
     if (config.atr.enabled) {
@@ -406,9 +406,13 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   }
 
   /**
-   * RSI Momentum Evaluation
-   * Bullish: RSI < buyThreshold (room to run up)
-   * Bearish: RSI > sellThreshold (room to fall)
+   * RSI Momentum Evaluation (trend-confirming mode)
+   * Bullish: RSI > buyThreshold (strong upward momentum confirms trend)
+   * Bearish: RSI < sellThreshold (weak momentum confirms downtrend)
+   *
+   * Note: Uses trend-confirming interpretation (RSI > threshold = bullish)
+   * rather than mean-reversion (RSI < threshold = oversold = bullish),
+   * so RSI agrees with trend-following indicators like EMA and MACD.
    */
   private evaluateRSISignal(
     rsi: number[],
@@ -427,24 +431,24 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       };
     }
 
-    // For BUY: RSI < 40 means room to run (not overbought)
-    // For SELL: RSI > 60 means room to fall (not oversold)
-    if (currentRSI < config.buyThreshold) {
-      const strength = (config.buyThreshold - currentRSI) / config.buyThreshold;
+    // Trend-confirming: RSI above buy threshold confirms bullish momentum
+    // RSI below sell threshold confirms bearish momentum
+    if (currentRSI > config.buyThreshold) {
+      const strength = (currentRSI - config.buyThreshold) / (100 - config.buyThreshold);
       return {
         name: 'RSI',
         signal: 'bullish',
         strength: Math.min(1, strength + 0.3),
-        reason: `Bullish momentum: RSI (${currentRSI.toFixed(2)}) < ${config.buyThreshold} (room to run)`,
+        reason: `Bullish momentum: RSI (${currentRSI.toFixed(2)}) > ${config.buyThreshold} (strong upward momentum)`,
         values: { rsi: currentRSI, threshold: config.buyThreshold }
       };
-    } else if (currentRSI > config.sellThreshold) {
-      const strength = (currentRSI - config.sellThreshold) / (100 - config.sellThreshold);
+    } else if (currentRSI < config.sellThreshold) {
+      const strength = (config.sellThreshold - currentRSI) / config.sellThreshold;
       return {
         name: 'RSI',
         signal: 'bearish',
         strength: Math.min(1, strength + 0.3),
-        reason: `Bearish momentum: RSI (${currentRSI.toFixed(2)}) > ${config.sellThreshold} (room to fall)`,
+        reason: `Bearish momentum: RSI (${currentRSI.toFixed(2)}) < ${config.sellThreshold} (weak momentum)`,
         values: { rsi: currentRSI, threshold: config.sellThreshold }
       };
     } else {
@@ -574,9 +578,13 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   }
 
   /**
-   * Bollinger Bands Mean Reversion Evaluation
-   * Bullish: %B < buyThreshold (price near/below lower band)
-   * Bearish: %B > sellThreshold (price near/above upper band)
+   * Bollinger Bands Trend Evaluation (trend-confirming mode)
+   * Bullish: %B > buyThreshold (price pushing toward upper band, strong uptrend)
+   * Bearish: %B < sellThreshold (price pushing toward lower band, strong downtrend)
+   *
+   * Note: Uses trend-confirming interpretation (%B > threshold = bullish breakout)
+   * rather than mean-reversion (%B < threshold = oversold = bullish),
+   * so BB agrees with trend-following indicators like EMA and MACD.
    */
   private evaluateBollingerBandsSignal(
     pb: number[],
@@ -597,24 +605,24 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       };
     }
 
-    // %B < 0.2 = near lower band = bullish (mean reversion up expected)
-    // %B > 0.8 = near upper band = bearish (mean reversion down expected)
-    if (currentPB < config.buyThreshold) {
-      const strength = (config.buyThreshold - currentPB) / config.buyThreshold;
+    // Trend-confirming: %B above buy threshold = price pushing upper band = bullish breakout
+    // %B below sell threshold = price pushing lower band = bearish breakdown
+    if (currentPB > config.buyThreshold) {
+      const strength = (currentPB - config.buyThreshold) / (1 - config.buyThreshold);
       return {
         name: 'BB',
         signal: 'bullish',
         strength: Math.min(1, strength + 0.4),
-        reason: `Bullish mean reversion: %B (${currentPB.toFixed(2)}) < ${config.buyThreshold} (near lower band)`,
+        reason: `Bullish breakout: %B (${currentPB.toFixed(2)}) > ${config.buyThreshold} (price pushing upper band)`,
         values: { percentB: currentPB, bandwidth: currentBandwidth, threshold: config.buyThreshold }
       };
-    } else if (currentPB > config.sellThreshold) {
-      const strength = (currentPB - config.sellThreshold) / (1 - config.sellThreshold);
+    } else if (currentPB < config.sellThreshold) {
+      const strength = (config.sellThreshold - currentPB) / config.sellThreshold;
       return {
         name: 'BB',
         signal: 'bearish',
         strength: Math.min(1, strength + 0.4),
-        reason: `Bearish mean reversion: %B (${currentPB.toFixed(2)}) > ${config.sellThreshold} (near upper band)`,
+        reason: `Bearish breakdown: %B (${currentPB.toFixed(2)}) < ${config.sellThreshold} (price pushing lower band)`,
         values: { percentB: currentPB, bandwidth: currentBandwidth, threshold: config.sellThreshold }
       };
     } else {
@@ -823,17 +831,17 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       rsiPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'RSI calculation period' },
       rsiBuyThreshold: {
         type: 'number',
-        default: 40,
-        min: 20,
-        max: 50,
-        description: 'RSI threshold for bullish (RSI < threshold)'
+        default: 55,
+        min: 45,
+        max: 70,
+        description: 'RSI threshold for bullish (RSI > threshold confirms upward momentum)'
       },
       rsiSellThreshold: {
         type: 'number',
-        default: 60,
-        min: 50,
-        max: 80,
-        description: 'RSI threshold for bearish (RSI > threshold)'
+        default: 45,
+        min: 30,
+        max: 55,
+        description: 'RSI threshold for bearish (RSI < threshold confirms weak momentum)'
       },
 
       // MACD (Oscillator) settings
@@ -859,17 +867,17 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       bbStdDev: { type: 'number', default: 2, min: 1, max: 3, description: 'Standard deviation multiplier' },
       bbBuyThreshold: {
         type: 'number',
-        default: 0.2,
-        min: 0,
-        max: 0.5,
-        description: '%B threshold for bullish (< value = near lower band)'
+        default: 0.7,
+        min: 0.5,
+        max: 1,
+        description: '%B threshold for bullish (> value = price pushing upper band, confirms uptrend)'
       },
       bbSellThreshold: {
         type: 'number',
-        default: 0.8,
-        min: 0.5,
-        max: 1,
-        description: '%B threshold for bearish (> value = near upper band)'
+        default: 0.3,
+        min: 0,
+        max: 0.5,
+        description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
       }
     };
   }

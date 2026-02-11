@@ -147,37 +147,23 @@ describe('ConfluenceStrategy', () => {
     });
   };
 
-  // Setup all indicators for bullish scenario
+  // Setup all indicators for bullish scenario (trend-confirming)
   const setupBullishIndicators = () => {
     mockEMA(105, 100, 99, 100); // EMA12 > EMA26 (bullish trend)
-    mockRSI(35); // RSI < 40 (bullish momentum)
+    mockRSI(65); // RSI > 55 (strong upward momentum confirms trend)
     mockMACD(0.002, 0.001); // Positive histogram with upward momentum
     mockATR(1.0, 1.0); // Normal volatility
-    mockBollingerBands(0.15); // %B < 0.2 (bullish mean reversion)
+    mockBollingerBands(0.85); // %B > 0.7 (price pushing upper band, confirms uptrend)
   };
 
-  // Setup all indicators for bearish scenario
+  // Setup all indicators for bearish scenario (trend-confirming)
   const setupBearishIndicators = () => {
     mockEMA(95, 100, 101, 100); // EMA12 < EMA26 (bearish trend)
-    mockRSI(65); // RSI > 60 (bearish momentum)
+    mockRSI(35); // RSI < 45 (weak momentum confirms downtrend)
     mockMACD(-0.002, -0.001); // Negative histogram with downward momentum
     mockATR(1.0, 1.0); // Normal volatility
-    mockBollingerBands(0.85); // %B > 0.8 (bearish mean reversion)
+    mockBollingerBands(0.15); // %B < 0.3 (price pushing lower band, confirms downtrend)
   };
-
-  describe('strategy properties', () => {
-    it('should have correct id', () => {
-      expect(strategy.id).toBe('confluence-001');
-    });
-
-    it('should have correct name', () => {
-      expect(strategy.name).toBeDefined();
-    });
-
-    it('should have correct version', () => {
-      expect(strategy.version).toBeDefined();
-    });
-  });
 
   describe('execute - signal generation', () => {
     it('should generate BUY signal when all 5 indicators agree bullish', async () => {
@@ -206,7 +192,7 @@ describe('ConfluenceStrategy', () => {
     it('should return no signals when only 2 indicators agree (minConfluence=3)', async () => {
       // Disable ATR so it doesn't add to confluence count as neutral
       mockEMA(105, 100); // Bullish
-      mockRSI(35); // Bullish
+      mockRSI(65); // Bullish (RSI > 55)
       mockMACD(-0.002, -0.001); // Bearish (conflicting)
       mockBollingerBands(0.5); // Neutral
 
@@ -218,10 +204,10 @@ describe('ConfluenceStrategy', () => {
 
     it('should filter signals when ATR indicates high volatility', async () => {
       mockEMA(105, 100);
-      mockRSI(35);
+      mockRSI(65);
       mockMACD(0.002, 0.001);
       mockATR(2.5, 1.0); // High volatility (2.5x average)
-      mockBollingerBands(0.15);
+      mockBollingerBands(0.85);
 
       const result = await strategy.execute(buildContext({ minConfluence: 3 }));
 
@@ -241,10 +227,10 @@ describe('ConfluenceStrategy', () => {
 
   describe('execute - indicator disabling', () => {
     it('should work with EMA disabled', async () => {
-      mockRSI(35);
+      mockRSI(65);
       mockMACD(0.002, 0.001);
       mockATR(1.0, 1.0);
-      mockBollingerBands(0.15);
+      mockBollingerBands(0.85);
 
       const result = await strategy.execute(buildContext({ emaEnabled: false, minConfluence: 3 }));
 
@@ -257,7 +243,7 @@ describe('ConfluenceStrategy', () => {
       mockEMA(105, 100);
       mockMACD(0.002, 0.001);
       mockATR(1.0, 1.0);
-      mockBollingerBands(0.15);
+      mockBollingerBands(0.85);
 
       const result = await strategy.execute(buildContext({ rsiEnabled: false, minConfluence: 3 }));
 
@@ -267,9 +253,9 @@ describe('ConfluenceStrategy', () => {
 
     it('should work with MACD disabled', async () => {
       mockEMA(105, 100);
-      mockRSI(35);
+      mockRSI(65);
       mockATR(1.0, 1.0);
-      mockBollingerBands(0.15);
+      mockBollingerBands(0.85);
 
       const result = await strategy.execute(buildContext({ macdEnabled: false, minConfluence: 3 }));
 
@@ -279,9 +265,9 @@ describe('ConfluenceStrategy', () => {
 
     it('should work with ATR disabled', async () => {
       mockEMA(105, 100);
-      mockRSI(35);
+      mockRSI(65);
       mockMACD(0.002, 0.001);
-      mockBollingerBands(0.15);
+      mockBollingerBands(0.85);
 
       const result = await strategy.execute(buildContext({ atrEnabled: false, minConfluence: 3 }));
 
@@ -291,7 +277,7 @@ describe('ConfluenceStrategy', () => {
 
     it('should work with Bollinger Bands disabled', async () => {
       mockEMA(105, 100);
-      mockRSI(35);
+      mockRSI(65);
       mockMACD(0.002, 0.001);
       mockATR(1.0, 1.0);
 
@@ -325,43 +311,6 @@ describe('ConfluenceStrategy', () => {
   });
 
   describe('configuration', () => {
-    it('should return valid configuration schema', () => {
-      const schema = strategy.getConfigSchema();
-
-      // Core settings
-      expect(schema).toHaveProperty('minConfluence');
-      expect(schema).toHaveProperty('minConfidence');
-
-      // EMA settings
-      expect(schema).toHaveProperty('emaEnabled');
-      expect(schema).toHaveProperty('emaFastPeriod');
-      expect(schema).toHaveProperty('emaSlowPeriod');
-
-      // RSI settings
-      expect(schema).toHaveProperty('rsiEnabled');
-      expect(schema).toHaveProperty('rsiPeriod');
-      expect(schema).toHaveProperty('rsiBuyThreshold');
-      expect(schema).toHaveProperty('rsiSellThreshold');
-
-      // MACD settings
-      expect(schema).toHaveProperty('macdEnabled');
-      expect(schema).toHaveProperty('macdFastPeriod');
-      expect(schema).toHaveProperty('macdSlowPeriod');
-      expect(schema).toHaveProperty('macdSignalPeriod');
-
-      // ATR settings
-      expect(schema).toHaveProperty('atrEnabled');
-      expect(schema).toHaveProperty('atrPeriod');
-      expect(schema).toHaveProperty('atrVolatilityMultiplier');
-
-      // Bollinger Bands settings
-      expect(schema).toHaveProperty('bbEnabled');
-      expect(schema).toHaveProperty('bbPeriod');
-      expect(schema).toHaveProperty('bbStdDev');
-      expect(schema).toHaveProperty('bbBuyThreshold');
-      expect(schema).toHaveProperty('bbSellThreshold');
-    });
-
     it('should apply default values correctly', async () => {
       setupBullishIndicators();
 

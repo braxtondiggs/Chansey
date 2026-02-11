@@ -37,7 +37,7 @@ export class BacktestOrchestrationTask {
    * Daily cron job at 3 AM UTC.
    * Queries eligible users and adds staggered jobs to the queue.
    */
-  @Cron('0 3,15 * * *')
+  @Cron('0 3 * * *')
   async scheduleOrchestration(): Promise<void> {
     this.logger.log('Starting daily backtest orchestration scheduling');
 

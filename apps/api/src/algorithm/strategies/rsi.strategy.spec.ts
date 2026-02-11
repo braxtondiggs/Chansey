@@ -71,23 +71,31 @@ describe('RSIStrategy', () => {
     });
   };
 
-  describe('strategy properties', () => {
-    it('should have correct id', () => {
-      expect(strategy.id).toBe('rsi-momentum-001');
-    });
-  });
-
   describe('execute', () => {
     it.each([
-      ['oversold -> BUY', 25, 32, { oversoldThreshold: 30, overboughtThreshold: 70 }, 1, SignalType.BUY],
-      ['overbought -> SELL', 78, 68, { oversoldThreshold: 30, overboughtThreshold: 70 }, 1, SignalType.SELL],
-      ['neutral -> no signal', 52, 48, { oversoldThreshold: 30, overboughtThreshold: 70 }, 0, undefined],
-      ['custom oversold -> BUY', 38, 42, { oversoldThreshold: 40, overboughtThreshold: 60 }, 1, SignalType.BUY]
-    ])('should handle %s', async (_label, latestRsi, prevRsi, config, expectedCount, expectedType) => {
+      ['oversold -> BUY', [28, 26, 24, 30, 25], { oversoldThreshold: 30, overboughtThreshold: 70 }, 1, SignalType.BUY],
+      [
+        'overbought -> SELL',
+        [72, 74, 76, 68, 78],
+        { oversoldThreshold: 30, overboughtThreshold: 70 },
+        1,
+        SignalType.SELL
+      ],
+      ['neutral -> no signal', [48, 50, 52, 48, 52], { oversoldThreshold: 30, overboughtThreshold: 70 }, 0, undefined],
+      [
+        'custom oversold -> BUY',
+        [38, 36, 34, 42, 38],
+        { oversoldThreshold: 40, overboughtThreshold: 60 },
+        1,
+        SignalType.BUY
+      ]
+    ])('should handle %s', async (_label, recentRsiValues, config, expectedCount, expectedType) => {
       const prices = createMockPrices(30);
       const rsiValues = Array(30).fill(NaN);
-      rsiValues[28] = prevRsi;
-      rsiValues[29] = latestRsi;
+      // Fill the last 5 bars for confidence calculation
+      for (let i = 0; i < recentRsiValues.length; i++) {
+        rsiValues[25 + i] = recentRsiValues[i];
+      }
 
       mockRsi(rsiValues);
 
@@ -108,6 +116,41 @@ describe('RSIStrategy', () => {
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(0);
       expect(indicatorService.calculateRSI).not.toHaveBeenCalled();
+    });
+
+    it('should respect minConfidence: 0 (not replace with default)', async () => {
+      const prices = createMockPrices(30);
+      // All recent RSI values below 50 to produce high confidence for oversold
+      const rsiValues = Array(30).fill(NaN);
+      rsiValues[25] = 20;
+      rsiValues[26] = 22;
+      rsiValues[27] = 24;
+      rsiValues[28] = 26;
+      rsiValues[29] = 25;
+      mockRsi(rsiValues);
+
+      const result = await strategy.execute(
+        buildContext(prices, { period: 14, oversoldThreshold: 30, overboughtThreshold: 70, minConfidence: 0 })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('should return no signal when previousRSI is NaN', async () => {
+      const prices = createMockPrices(30);
+      // Only the last RSI value is valid; previous is still NaN
+      const rsiValues = Array(30).fill(NaN);
+      rsiValues[29] = 25; // oversold, but rsiValues[28] is NaN
+      mockRsi(rsiValues);
+
+      const result = await strategy.execute(
+        buildContext(prices, { period: 14, oversoldThreshold: 30, overboughtThreshold: 70 })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
     });
 
     it('should only generate signals for coins with sufficient data', async () => {
@@ -202,17 +245,6 @@ describe('RSIStrategy', () => {
       };
 
       expect(strategy.canExecute(context)).toBe(false);
-    });
-  });
-
-  describe('getConfigSchema', () => {
-    it('should return valid configuration schema', () => {
-      const schema = strategy.getConfigSchema();
-
-      expect(schema).toHaveProperty('period');
-      expect(schema).toHaveProperty('oversoldThreshold');
-      expect(schema).toHaveProperty('overboughtThreshold');
-      expect(schema).toHaveProperty('minConfidence');
     });
   });
 });

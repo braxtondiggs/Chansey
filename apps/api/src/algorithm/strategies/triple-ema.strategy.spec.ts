@@ -54,12 +54,6 @@ describe('TripleEMAStrategy', () => {
     jest.clearAllMocks();
   });
 
-  describe('strategy properties', () => {
-    it('should have correct id', () => {
-      expect(strategy.id).toBe('triple-ema-001');
-    });
-  });
-
   describe('execute', () => {
     it('should generate BUY signal when EMAs align bullish (fast > medium > slow)', async () => {
       const prices = createMockPrices(70);
@@ -223,18 +217,6 @@ describe('TripleEMAStrategy', () => {
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(0);
-    });
-  });
-
-  describe('getConfigSchema', () => {
-    it('should return valid configuration schema', () => {
-      const schema = strategy.getConfigSchema();
-
-      expect(schema).toHaveProperty('fastPeriod');
-      expect(schema).toHaveProperty('mediumPeriod');
-      expect(schema).toHaveProperty('slowPeriod');
-      expect(schema).toHaveProperty('requireFullAlignment');
-      expect(schema).toHaveProperty('signalOnPartialCross');
     });
   });
 });

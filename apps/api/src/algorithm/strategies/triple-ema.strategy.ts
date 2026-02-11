@@ -119,12 +119,12 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
    */
   private getConfigWithDefaults(config: Record<string, unknown>): TripleEMAConfig {
     return {
-      fastPeriod: (config.fastPeriod as number) || 8,
-      mediumPeriod: (config.mediumPeriod as number) || 21,
-      slowPeriod: (config.slowPeriod as number) || 55,
+      fastPeriod: (config.fastPeriod as number) ?? 8,
+      mediumPeriod: (config.mediumPeriod as number) ?? 21,
+      slowPeriod: (config.slowPeriod as number) ?? 55,
       requireFullAlignment: (config.requireFullAlignment as boolean) ?? true,
       signalOnPartialCross: (config.signalOnPartialCross as boolean) ?? false,
-      minConfidence: (config.minConfidence as number) || 0.6
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -219,21 +219,10 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
 
     // Check for full alignment change (strongest signal)
     if (alignmentState.current !== alignmentState.previous) {
-      if (
-        alignmentState.current === 'bullish' &&
-        (alignmentState.previous === 'bearish' || alignmentState.previous === 'neutral')
-      ) {
+      if (alignmentState.current === 'bullish') {
         // Transition to bullish alignment
-        const strength = this.calculateSignalStrength(alignmentState, true);
-        const confidence = this.calculateConfidence(
-          fastEMA,
-          mediumEMA,
-          slowEMA,
-          alignmentState,
-          config,
-          currentIndex,
-          true
-        );
+        const strength = this.calculateSignalStrength(alignmentState);
+        const confidence = this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, true);
 
         return {
           type: SignalType.BUY,
@@ -255,21 +244,10 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         };
       }
 
-      if (
-        alignmentState.current === 'bearish' &&
-        (alignmentState.previous === 'bullish' || alignmentState.previous === 'neutral')
-      ) {
+      if (alignmentState.current === 'bearish') {
         // Transition to bearish alignment
-        const strength = this.calculateSignalStrength(alignmentState, false);
-        const confidence = this.calculateConfidence(
-          fastEMA,
-          mediumEMA,
-          slowEMA,
-          alignmentState,
-          config,
-          currentIndex,
-          false
-        );
+        const strength = this.calculateSignalStrength(alignmentState);
+        const confidence = this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, false);
 
         return {
           type: SignalType.SELL,
@@ -299,9 +277,9 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
 
       if (fastMediumCrossover && alignmentState.mediumAboveSlow && alignmentState.fastAboveMedium) {
         // Fast crossed above medium while medium > slow (bullish partial)
-        const strength = this.calculateSignalStrength(alignmentState, true) * 0.7;
+        const strength = this.calculateSignalStrength(alignmentState) * 0.7;
         const confidence =
-          this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, config, currentIndex, true) * 0.8;
+          this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, true) * 0.8;
 
         return {
           type: SignalType.BUY,
@@ -324,9 +302,9 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
 
       if (fastMediumCrossover && !alignmentState.mediumAboveSlow && !alignmentState.fastAboveMedium) {
         // Fast crossed below medium while medium < slow (bearish partial)
-        const strength = this.calculateSignalStrength(alignmentState, false) * 0.7;
+        const strength = this.calculateSignalStrength(alignmentState) * 0.7;
         const confidence =
-          this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, config, currentIndex, false) * 0.8;
+          this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, false) * 0.8;
 
         return {
           type: SignalType.SELL,
@@ -354,7 +332,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
   /**
    * Calculate signal strength based on EMA spread
    */
-  private calculateSignalStrength(alignmentState: AlignmentState, isBullish: boolean): number {
+  private calculateSignalStrength(alignmentState: AlignmentState): number {
     // Larger EMA spread indicates stronger trend
     const spreadStrength = Math.min(1, alignmentState.emaSpread * 10); // 10% spread = max strength
 
@@ -372,7 +350,6 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
     mediumEMA: number[],
     slowEMA: number[],
     alignmentState: AlignmentState,
-    config: TripleEMAConfig,
     currentIndex: number,
     isBullish: boolean
   ): number {
@@ -381,9 +358,11 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
 
     // Check how many recent bars had consistent alignment trend
     let consistentBars = 0;
+    let validBars = 0;
     for (let i = startIndex; i < currentIndex; i++) {
       if (isNaN(fastEMA[i]) || isNaN(mediumEMA[i]) || isNaN(slowEMA[i])) continue;
 
+      validBars++;
       const barAlignment = this.getAlignment(fastEMA[i], mediumEMA[i], slowEMA[i]);
       if (isBullish && (barAlignment === 'bullish' || barAlignment === 'neutral')) {
         consistentBars++;
@@ -392,7 +371,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       }
     }
 
-    const consistencyScore = consistentBars / lookback;
+    const consistencyScore = validBars > 0 ? consistentBars / validBars : 0;
 
     // EMA spread contributes to confidence
     const spreadScore = Math.min(1, alignmentState.emaSpread * 8);

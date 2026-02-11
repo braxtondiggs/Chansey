@@ -130,14 +130,14 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
    */
   private getConfigWithDefaults(config: Record<string, unknown>): RSIMACDComboConfig {
     return {
-      rsiPeriod: (config.rsiPeriod as number) || 14,
-      rsiOversold: (config.rsiOversold as number) || 35,
-      rsiOverbought: (config.rsiOverbought as number) || 65,
-      macdFast: (config.macdFast as number) || 12,
-      macdSlow: (config.macdSlow as number) || 26,
-      macdSignal: (config.macdSignal as number) || 9,
-      confirmationWindow: (config.confirmationWindow as number) || 3,
-      minConfidence: (config.minConfidence as number) || 0.7
+      rsiPeriod: (config.rsiPeriod as number) ?? 14,
+      rsiOversold: (config.rsiOversold as number) ?? 35,
+      rsiOverbought: (config.rsiOverbought as number) ?? 65,
+      macdFast: (config.macdFast as number) ?? 12,
+      macdSlow: (config.macdSlow as number) ?? 26,
+      macdSignal: (config.macdSignal as number) ?? 9,
+      confirmationWindow: (config.confirmationWindow as number) ?? 3,
+      minConfidence: (config.minConfidence as number) ?? 0.7
     };
   }
 
@@ -145,7 +145,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
    * Check if we have enough data for both RSI and MACD calculations
    */
   private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: RSIMACDComboConfig): boolean {
-    const macdMinRequired = config.macdSlow + config.macdSignal;
+    const macdMinRequired = config.macdSlow + config.macdSignal - 1;
     const minRequired = Math.max(config.rsiPeriod, macdMinRequired) + config.confirmationWindow;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
@@ -222,7 +222,8 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         histogram,
         config,
         'bullish',
-        currentIndex
+        currentIndex,
+        signalState
       );
       const confidence = this.calculateConfidence(signalState, config, currentIndex);
 
@@ -232,7 +233,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         strength,
         price: currentPrice,
         confidence,
-        reason: `RSI+MACD Combo BUY: RSI oversold (${currentRSI.toFixed(2)} < ${config.rsiOversold}) + MACD bullish crossover within ${config.confirmationWindow} bars`,
+        reason: `RSI+MACD Combo BUY: RSI oversold (${rsi[signalState.rsiBar].toFixed(2)} < ${config.rsiOversold}) + MACD bullish crossover within ${config.confirmationWindow} bars`,
         metadata: {
           symbol: coinSymbol,
           rsi: currentRSI,
@@ -256,7 +257,8 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         histogram,
         config,
         'bearish',
-        currentIndex
+        currentIndex,
+        signalState
       );
       const confidence = this.calculateConfidence(signalState, config, currentIndex);
 
@@ -266,7 +268,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         strength,
         price: currentPrice,
         confidence,
-        reason: `RSI+MACD Combo SELL: RSI overbought (${currentRSI.toFixed(2)} > ${config.rsiOverbought}) + MACD bearish crossover within ${config.confirmationWindow} bars`,
+        reason: `RSI+MACD Combo SELL: RSI overbought (${rsi[signalState.rsiBar].toFixed(2)} > ${config.rsiOverbought}) + MACD bearish crossover within ${config.confirmationWindow} bars`,
         metadata: {
           symbol: coinSymbol,
           rsi: currentRSI,
@@ -294,20 +296,21 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
     histogram: number[],
     config: RSIMACDComboConfig,
     direction: 'bullish' | 'bearish',
-    currentIndex: number
+    currentIndex: number,
+    signalState: SignalState
   ): number {
-    const currentRSI = rsi[currentIndex];
-    const currentHistogram = histogram[currentIndex];
+    const signalRSI = rsi[signalState.rsiBar];
+    const signalHistogram = histogram[signalState.macdBar];
 
-    // RSI strength: how far into oversold/overbought territory
+    // RSI strength: how far into oversold/overbought territory (at signal bar)
     let rsiStrength = 0;
-    if (direction === 'bullish' && currentRSI < config.rsiOversold) {
-      rsiStrength = (config.rsiOversold - currentRSI) / config.rsiOversold;
-    } else if (direction === 'bearish' && currentRSI > config.rsiOverbought) {
-      rsiStrength = (currentRSI - config.rsiOverbought) / (100 - config.rsiOverbought);
+    if (direction === 'bullish' && signalRSI < config.rsiOversold) {
+      rsiStrength = (config.rsiOversold - signalRSI) / config.rsiOversold;
+    } else if (direction === 'bearish' && signalRSI > config.rsiOverbought) {
+      rsiStrength = (signalRSI - config.rsiOverbought) / (100 - config.rsiOverbought);
     }
 
-    // MACD strength: histogram magnitude
+    // MACD strength: histogram magnitude (at signal bar)
     let macdStrength = 0;
     let avgHistogram = 0;
     let count = 0;
@@ -317,8 +320,8 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         count++;
       }
     }
-    avgHistogram = count > 0 ? avgHistogram / count : Math.abs(currentHistogram);
-    macdStrength = Math.min(1, Math.abs(currentHistogram) / (avgHistogram * 2));
+    avgHistogram = count > 0 ? avgHistogram / count : Math.abs(signalHistogram);
+    macdStrength = Math.min(1, Math.abs(signalHistogram) / (avgHistogram * 2));
 
     // Combined strength (average of both)
     return Math.min(1, (rsiStrength + macdStrength) / 2 + 0.3);
