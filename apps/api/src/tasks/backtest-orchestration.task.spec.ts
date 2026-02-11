@@ -177,12 +177,12 @@ describe('BacktestOrchestrationTask', () => {
       expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
     });
 
-    it('should mark stale HISTORICAL backtests as failed with 30-min threshold', async () => {
+    it('should mark stale HISTORICAL backtests as failed with 90-min threshold', async () => {
       const staleBacktest = {
         id: 'stale-bt-1',
         type: BacktestType.HISTORICAL,
         status: BacktestStatus.RUNNING,
-        lastCheckpointAt: new Date(Date.now() - 45 * 60 * 1000),
+        lastCheckpointAt: new Date(Date.now() - 100 * 60 * 1000),
         processedTimestampCount: 500,
         totalTimestampCount: 2000,
         checkpointState: { lastProcessedIndex: 499 }
@@ -194,16 +194,16 @@ describe('BacktestOrchestrationTask', () => {
 
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
         'stale-bt-1',
-        expect.stringContaining('Stale: no checkpoint progress for 30 min')
+        expect.stringContaining('Stale: no heartbeat progress for 90 min')
       );
     });
 
-    it('should mark stale LIVE_REPLAY backtests as failed with 60-min threshold', async () => {
+    it('should mark stale LIVE_REPLAY backtests as failed with 120-min threshold', async () => {
       const staleReplay = {
         id: 'stale-replay-1',
         type: BacktestType.LIVE_REPLAY,
         status: BacktestStatus.RUNNING,
-        lastCheckpointAt: new Date(Date.now() - 75 * 60 * 1000),
+        lastCheckpointAt: new Date(Date.now() - 130 * 60 * 1000),
         processedTimestampCount: 200,
         totalTimestampCount: 1000,
         checkpointState: { lastProcessedIndex: 199 }
@@ -215,25 +215,23 @@ describe('BacktestOrchestrationTask', () => {
 
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
         'stale-replay-1',
-        expect.stringContaining('Stale: no checkpoint progress for 60 min')
+        expect.stringContaining('Stale: no heartbeat progress for 120 min')
       );
     });
 
-    it('should NOT mark LIVE_REPLAY as stale within 60 min', async () => {
-      const recentReplay = {
-        id: 'recent-replay-1',
-        type: BacktestType.LIVE_REPLAY,
-        status: BacktestStatus.RUNNING,
-        lastCheckpointAt: new Date(Date.now() - 40 * 60 * 1000),
-        processedTimestampCount: 200,
-        totalTimestampCount: 1000
-      };
-      // The 40-min-old replay should NOT appear in query results (threshold is 60 min)
+    it('should NOT mark LIVE_REPLAY as stale within 120 min', async () => {
+      // The 90-min-old replay should NOT appear in query results (threshold is 120 min)
       mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       await task.detectStaleBacktests();
 
       expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
+
+      // Verify the LIVE_REPLAY query uses a ~120-min cutoff (second find call)
+      const liveReplayCall = mockBacktestRepository.find.mock.calls[1][0];
+      const liveReplayWhere = liveReplayCall.where[0];
+      expect(liveReplayWhere.type).toBe(BacktestType.LIVE_REPLAY);
+      expect(liveReplayWhere.lastCheckpointAt).toBeDefined();
     });
 
     it('should continue loop when markFailed throws for one backtest', async () => {
@@ -241,7 +239,7 @@ describe('BacktestOrchestrationTask', () => {
         id: 'stale-1',
         type: BacktestType.HISTORICAL,
         status: BacktestStatus.RUNNING,
-        lastCheckpointAt: new Date(Date.now() - 45 * 60 * 1000),
+        lastCheckpointAt: new Date(Date.now() - 100 * 60 * 1000),
         processedTimestampCount: 100,
         totalTimestampCount: 500,
         checkpointState: { lastProcessedIndex: 99 }
@@ -250,7 +248,7 @@ describe('BacktestOrchestrationTask', () => {
         id: 'stale-2',
         type: BacktestType.HISTORICAL,
         status: BacktestStatus.RUNNING,
-        lastCheckpointAt: new Date(Date.now() - 50 * 60 * 1000),
+        lastCheckpointAt: new Date(Date.now() - 110 * 60 * 1000),
         processedTimestampCount: 200,
         totalTimestampCount: 600,
         checkpointState: { lastProcessedIndex: 199 }
@@ -267,6 +265,36 @@ describe('BacktestOrchestrationTask', () => {
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledTimes(2);
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith('stale-1', expect.any(String));
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith('stale-2', expect.any(String));
+    });
+
+    it('should query HISTORICAL with 90-min cutoff', async () => {
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const before = Date.now();
+
+      await task.detectStaleBacktests();
+
+      const after = Date.now();
+      const historicalCall = mockBacktestRepository.find.mock.calls[0][0];
+      const cutoffDate: Date = historicalCall.where[0].lastCheckpointAt.value;
+      const expectedCutoff = 90 * 60 * 1000;
+      // Verify cutoff is within 5 seconds of expected 90-min threshold
+      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff);
+      expect(after - cutoffDate.getTime()).toBeLessThanOrEqual(expectedCutoff + 5000);
+    });
+
+    it('should query LIVE_REPLAY with 120-min cutoff', async () => {
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const before = Date.now();
+
+      await task.detectStaleBacktests();
+
+      const after = Date.now();
+      const liveReplayCall = mockBacktestRepository.find.mock.calls[1][0];
+      const cutoffDate: Date = liveReplayCall.where[0].lastCheckpointAt.value;
+      const expectedCutoff = 120 * 60 * 1000;
+      // Verify cutoff is within 5 seconds of expected 120-min threshold
+      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff);
+      expect(after - cutoffDate.getTime()).toBeLessThanOrEqual(expectedCutoff + 5000);
     });
   });
 });

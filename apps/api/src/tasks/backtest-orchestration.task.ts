@@ -22,6 +22,9 @@ import { BacktestService } from '../order/backtest/backtest.service';
 
 @Injectable()
 export class BacktestOrchestrationTask {
+  private static readonly HISTORICAL_THRESHOLD_MS = 90 * 60 * 1000;
+  private static readonly LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
+
   private readonly logger = new Logger(BacktestOrchestrationTask.name);
 
   constructor(
@@ -141,19 +144,18 @@ export class BacktestOrchestrationTask {
 
   /**
    * Watchdog that detects and fails stale RUNNING backtests.
-   * Uses type-aware thresholds: 30 min for HISTORICAL, 60 min for LIVE_REPLAY.
+   * Uses type-aware thresholds: 90 min for HISTORICAL, 120 min for LIVE_REPLAY.
+   * The lastCheckpointAt column is updated by both heartbeats (~30s) and checkpoints,
+   * so this effectively checks "no heartbeat progress" rather than just checkpoint saves.
    * PAPER_TRADING and STRATEGY_OPTIMIZATION are excluded entirely.
    * Errors on individual markFailed calls do not abort the loop.
    */
   @Cron('*/15 * * * *')
   async detectStaleBacktests(): Promise<void> {
-    const HISTORICAL_THRESHOLD_MS = 30 * 60 * 1000;
-    const LIVE_REPLAY_THRESHOLD_MS = 60 * 60 * 1000;
+    const historicalCutoff = new Date(Date.now() - BacktestOrchestrationTask.HISTORICAL_THRESHOLD_MS);
+    const liveReplayCutoff = new Date(Date.now() - BacktestOrchestrationTask.LIVE_REPLAY_THRESHOLD_MS);
 
-    const historicalCutoff = new Date(Date.now() - HISTORICAL_THRESHOLD_MS);
-    const liveReplayCutoff = new Date(Date.now() - LIVE_REPLAY_THRESHOLD_MS);
-
-    // Query stale HISTORICAL backtests (30-min threshold)
+    // Query stale HISTORICAL backtests (90-min threshold)
     const staleHistorical = await this.backtestRepository.find({
       where: [
         { status: BacktestStatus.RUNNING, type: BacktestType.HISTORICAL, lastCheckpointAt: LessThan(historicalCutoff) },
@@ -166,7 +168,7 @@ export class BacktestOrchestrationTask {
       ]
     });
 
-    // Query stale LIVE_REPLAY backtests (60-min threshold)
+    // Query stale LIVE_REPLAY backtests (120-min threshold)
     const staleLiveReplay = await this.backtestRepository.find({
       where: [
         {
@@ -184,20 +186,26 @@ export class BacktestOrchestrationTask {
     });
 
     const staleBacktests = [
-      ...staleHistorical.map((bt) => ({ backtest: bt, thresholdMs: HISTORICAL_THRESHOLD_MS })),
-      ...staleLiveReplay.map((bt) => ({ backtest: bt, thresholdMs: LIVE_REPLAY_THRESHOLD_MS }))
+      ...staleHistorical.map((bt) => ({
+        backtest: bt,
+        thresholdMs: BacktestOrchestrationTask.HISTORICAL_THRESHOLD_MS
+      })),
+      ...staleLiveReplay.map((bt) => ({
+        backtest: bt,
+        thresholdMs: BacktestOrchestrationTask.LIVE_REPLAY_THRESHOLD_MS
+      }))
     ];
 
     for (const { backtest, thresholdMs } of staleBacktests) {
       try {
         this.logger.warn(
           `Marking stale ${backtest.type} backtest ${backtest.id} as FAILED ` +
-            `(last checkpoint: ${backtest.lastCheckpointAt?.toISOString()}, ` +
+            `(last heartbeat: ${backtest.lastCheckpointAt?.toISOString()}, ` +
             `progress: ${backtest.processedTimestampCount}/${backtest.totalTimestampCount})`
         );
         await this.backtestResultService.markFailed(
           backtest.id,
-          `Stale: no checkpoint progress for ${Math.round(thresholdMs / 60000)} min. ` +
+          `Stale: no heartbeat progress for ${Math.round(thresholdMs / 60000)} min. ` +
             `Last index: ${backtest.checkpointState?.lastProcessedIndex ?? 'unknown'}`
         );
       } catch (error) {
