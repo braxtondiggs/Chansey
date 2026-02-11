@@ -115,11 +115,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
    */
   private getConfigWithDefaults(config: Record<string, unknown>): ATRTrailingStopConfig {
     return {
-      atrPeriod: (config.atrPeriod as number) || 14,
-      atrMultiplier: (config.atrMultiplier as number) || 2.5,
-      tradeDirection: (config.tradeDirection as 'long' | 'short' | 'both') || 'long',
+      atrPeriod: (config.atrPeriod as number) ?? 14,
+      atrMultiplier: (config.atrMultiplier as number) ?? 2.5,
+      tradeDirection: (config.tradeDirection as 'long' | 'short' | 'both') ?? 'long',
       useHighLow: (config.useHighLow as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) || 0.6
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -161,13 +161,18 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         previousHighestHigh = high;
       }
     }
-    const previousStopLevel = previousHighestHigh - atr[currentIndex - 1] * config.atrMultiplier;
+    const prevATR = !isNaN(atr[currentIndex - 1]) ? atr[currentIndex - 1] : currentATR;
+    const previousStopLevel = previousHighestHigh - prevATR * config.atrMultiplier;
+
+    // Ratchet: trailing stop should only move up for longs
+    const rawStopLevel = stopLevel;
+    const ratchetedStopLevel = isNaN(previousStopLevel) ? rawStopLevel : Math.max(rawStopLevel, previousStopLevel);
 
     // Check if stop is triggered (price dropped below trailing stop)
-    const isTriggered = currentPrice < stopLevel;
+    const isTriggered = currentPrice < ratchetedStopLevel;
 
     return {
-      stopLevel,
+      stopLevel: ratchetedStopLevel,
       previousStopLevel,
       isTriggered,
       triggerType: isTriggered ? 'stop_loss' : null
@@ -205,13 +210,18 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         previousLowestLow = low;
       }
     }
-    const previousStopLevel = previousLowestLow + atr[currentIndex - 1] * config.atrMultiplier;
+    const prevATR = !isNaN(atr[currentIndex - 1]) ? atr[currentIndex - 1] : currentATR;
+    const previousStopLevel = previousLowestLow + prevATR * config.atrMultiplier;
+
+    // Ratchet: trailing stop should only move down for shorts
+    const rawStopLevel = stopLevel;
+    const ratchetedStopLevel = isNaN(previousStopLevel) ? rawStopLevel : Math.min(rawStopLevel, previousStopLevel);
 
     // Check if stop is triggered (price rose above trailing stop for shorts)
-    const isTriggered = currentPrice > stopLevel;
+    const isTriggered = currentPrice > ratchetedStopLevel;
 
     return {
-      stopLevel,
+      stopLevel: ratchetedStopLevel,
       previousStopLevel,
       isTriggered,
       triggerType: isTriggered ? 'stop_loss' : null
@@ -236,11 +246,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
     }
 
     const stopState = this.calculateLongTrailingStop(prices, atr, config, lookbackStart, currentIndex);
-    const currentPrice = prices[currentIndex].avg;
+    const triggerPrice = config.useHighLow ? prices[currentIndex].low : prices[currentIndex].avg;
     const currentATR = atr[currentIndex];
 
     if (stopState.isTriggered) {
-      const strength = this.calculateSignalStrength(currentPrice, stopState.stopLevel, currentATR, 'long');
+      const strength = this.calculateSignalStrength(triggerPrice, stopState.stopLevel, currentATR);
       const confidence = this.calculateConfidence(prices, atr, stopState, config, 'long');
 
       return {
@@ -249,10 +259,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         strength,
         price: stopState.stopLevel,
         confidence,
-        reason: `Long trailing stop triggered: Price (${currentPrice.toFixed(2)}) fell below stop (${stopState.stopLevel.toFixed(2)}). ATR: ${currentATR.toFixed(4)}`,
+        reason: `Long trailing stop triggered: Price (${triggerPrice.toFixed(2)}) fell below stop (${stopState.stopLevel.toFixed(2)}). ATR: ${currentATR.toFixed(4)}`,
         metadata: {
           symbol: coinSymbol,
-          currentPrice,
+          currentPrice: triggerPrice,
+          avgPrice: prices[currentIndex].avg,
           stopLevel: stopState.stopLevel,
           previousStopLevel: stopState.previousStopLevel,
           atr: currentATR,
@@ -284,11 +295,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
     }
 
     const stopState = this.calculateShortTrailingStop(prices, atr, config, lookbackStart, currentIndex);
-    const currentPrice = prices[currentIndex].avg;
+    const triggerPrice = config.useHighLow ? prices[currentIndex].high : prices[currentIndex].avg;
     const currentATR = atr[currentIndex];
 
     if (stopState.isTriggered) {
-      const strength = this.calculateSignalStrength(currentPrice, stopState.stopLevel, currentATR, 'short');
+      const strength = this.calculateSignalStrength(triggerPrice, stopState.stopLevel, currentATR);
       const confidence = this.calculateConfidence(prices, atr, stopState, config, 'short');
 
       return {
@@ -297,10 +308,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         strength,
         price: stopState.stopLevel,
         confidence,
-        reason: `Short trailing stop triggered: Price (${currentPrice.toFixed(2)}) rose above stop (${stopState.stopLevel.toFixed(2)}). ATR: ${currentATR.toFixed(4)}`,
+        reason: `Short trailing stop triggered: Price (${triggerPrice.toFixed(2)}) rose above stop (${stopState.stopLevel.toFixed(2)}). ATR: ${currentATR.toFixed(4)}`,
         metadata: {
           symbol: coinSymbol,
-          currentPrice,
+          currentPrice: triggerPrice,
+          avgPrice: prices[currentIndex].avg,
           stopLevel: stopState.stopLevel,
           previousStopLevel: stopState.previousStopLevel,
           atr: currentATR,
@@ -317,12 +329,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   /**
    * Calculate signal strength based on how far price breached stop
    */
-  private calculateSignalStrength(
-    currentPrice: number,
-    stopLevel: number,
-    atr: number,
-    direction: 'long' | 'short'
-  ): number {
+  private calculateSignalStrength(currentPrice: number, stopLevel: number, atr: number): number {
     const breachAmount = Math.abs(currentPrice - stopLevel);
     const breachRatio = breachAmount / atr;
 

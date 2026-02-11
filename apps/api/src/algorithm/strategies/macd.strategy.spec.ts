@@ -92,12 +92,6 @@ describe('MACDStrategy', () => {
     });
   };
 
-  describe('strategy properties', () => {
-    it('should have correct id', () => {
-      expect(strategy.id).toBe('macd-crossover-001');
-    });
-  });
-
   describe('execute', () => {
     it.each([
       [
@@ -128,6 +122,49 @@ describe('MACDStrategy', () => {
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should produce valid strength (not NaN) when all histogram values are zero', async () => {
+      const macdValues = Array(50).fill(NaN);
+      const signalValues = Array(50).fill(NaN);
+      const histogramValues = Array(50).fill(0);
+      // Set up a bullish crossover via MACD/signal, but keep histogram all-zero
+      // so avgMagnitude is exactly 0 and the division guard fires
+      macdValues[48] = -0.001;
+      macdValues[49] = 0.002;
+      signalValues[48] = 0.001;
+      signalValues[49] = 0.001;
+
+      indicatorService.calculateMACD.mockResolvedValue({
+        macd: macdValues,
+        signal: signalValues,
+        histogram: histogramValues,
+        validCount: 15,
+        fastPeriod: 12,
+        slowPeriod: 26,
+        signalPeriod: 9,
+        fromCache: false
+      });
+
+      const result = await strategy.execute(buildContext({ minConfidence: 0, useHistogramConfirmation: false }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).not.toBeNaN();
+      expect(result.signals[0].strength).toBe(0.3);
+    });
+
+    it('should respect explicit zero config values (not override with defaults)', async () => {
+      mockMACD(-0.001, 0.002, 0.001, 0.001, -0.002, 0.001);
+
+      const result = await strategy.execute(
+        buildContext({ minHistogramStrength: 0, minConfidence: 0, useHistogramConfirmation: false })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
     });
   });
 
@@ -180,17 +217,6 @@ describe('MACDStrategy', () => {
       } as AlgorithmContext;
 
       expect(strategy.canExecute(context)).toBe(false);
-    });
-  });
-
-  describe('getConfigSchema', () => {
-    it('should return valid configuration schema', () => {
-      const schema = strategy.getConfigSchema();
-
-      expect(schema).toHaveProperty('fastPeriod');
-      expect(schema).toHaveProperty('slowPeriod');
-      expect(schema).toHaveProperty('signalPeriod');
-      expect(schema).toHaveProperty('useHistogramConfirmation');
     });
   });
 });

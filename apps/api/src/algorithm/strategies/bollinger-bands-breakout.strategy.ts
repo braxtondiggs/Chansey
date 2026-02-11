@@ -113,11 +113,11 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
    */
   private getConfigWithDefaults(config: Record<string, unknown>): BollingerBreakoutConfig {
     return {
-      period: (config.period as number) || 20,
-      stdDev: (config.stdDev as number) || 2,
+      period: (config.period as number) ?? 20,
+      stdDev: (config.stdDev as number) ?? 2,
       requireConfirmation: (config.requireConfirmation as boolean) ?? false,
-      confirmationBars: (config.confirmationBars as number) || 2,
-      minConfidence: (config.minConfidence as number) || 0.6
+      confirmationBars: (config.confirmationBars as number) ?? 2,
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -162,6 +162,9 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
       if (!confirmed.isConfirmed) {
         return null;
       }
+      // Only generate signal in the confirmed direction
+      if (confirmed.direction === 'bullish' && currentPB < 0) return null;
+      if (confirmed.direction === 'bearish' && currentPB > 1) return null;
     }
 
     // Bullish breakout: Price above upper band (%B > 1)
@@ -294,7 +297,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
     const bandwidthScore = bandwidthExpanding / lookback;
     const momentumScore = momentumConsistent / lookback;
 
-    return Math.min(1, (bandwidthScore + momentumScore) / 2 + 0.4);
+    return Math.min(1, (bandwidthScore + momentumScore) / 2 + 0.3);
   }
 
   /**

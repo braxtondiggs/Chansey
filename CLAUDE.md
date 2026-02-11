@@ -108,6 +108,8 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 
 - Jest for unit tests
 - Cypress for e2e tests
+- **Run a single test file**: `npx nx test api --testFile='confluence.strategy'`
+  - Do NOT use `--testPathPattern` — the Nx Jest executor splits it into individual characters, matching all files
 - API endpoints documented with Bruno collection in `docs/bruno/`
 
 ### Database & Migrations
