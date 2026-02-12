@@ -150,7 +150,8 @@ export class Backtest {
 
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({
-    description: 'Immutable snapshot of configuration parameters (algorithm version, dataset, execution window)',
+    description:
+      'Snapshot of configuration parameters (algorithm version, dataset, execution window). May include system-managed fields added during orchestration or recovery.',
     required: false
   })
   configSnapshot?: Record<string, any>;
