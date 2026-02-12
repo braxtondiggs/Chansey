@@ -11,7 +11,7 @@ import {
 } from '@tanstack/angular-query-experimental';
 
 import { ApiError, type ApiErrorResponse } from './api-error';
-import { STANDARD_POLICY, type CachePolicy, mergeCachePolicy } from './cache-policies';
+import { STANDARD_POLICY, mergeCachePolicy, type CachePolicy } from './cache-policies';
 
 // ============================================================================
 // Types
@@ -51,18 +51,64 @@ export interface MutationOptions<TData, TVariables, TError = Error> {
 }
 
 // ============================================================================
+// Token Refresh State
+// ============================================================================
+
+/** Coalesced refresh promise — concurrent 401s share a single refresh request */
+let refreshPromise: Promise<boolean> | null = null;
+
+/** Once true, no further refresh attempts are made until reset (e.g. re-login) */
+let sessionExpired = false;
+
+/**
+ * Resets the session-expired flag so refresh attempts can resume.
+ * Call this after a successful login.
+ */
+export function resetSessionExpiredFlag(): void {
+  sessionExpired = false;
+}
+
+// ============================================================================
 // Authenticated Fetch
 // ============================================================================
 
 /**
- * Performs an authenticated fetch request with HttpOnly cookie credentials
+ * Attempts to refresh the access token via the refresh-token cookie.
+ * Coalesces concurrent calls so only one network request is made.
+ */
+function attemptTokenRefresh(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'include'
+    })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+/** Dispatches a custom event that Angular can listen for */
+function dispatchSessionExpiredEvent(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:session-expired'));
+  }
+}
+
+/**
+ * Performs an authenticated fetch request with HttpOnly cookie credentials.
+ * On 401, transparently attempts a token refresh and retries once.
  *
  * @param url - The URL to fetch
  * @param options - Fetch options
+ * @param isRetry - Internal flag to prevent infinite retry loops
  * @returns Promise resolving to the response data
  * @throws ApiError if the request fails
  */
-export async function authenticatedFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+export async function authenticatedFetch<T>(url: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const isFormData = options.body instanceof FormData;
   const hasBody = options.body !== undefined && options.body !== null;
 
@@ -83,12 +129,28 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
     // Parse error response from backend
     const errorData = await response.json().catch(() => ({}) as Partial<ApiErrorResponse>);
 
-    // Special case for 401 with default message
-    if (response.status === 401 && !errorData.code) {
+    // --- 401 handling with transparent token refresh ---
+    if (response.status === 401) {
+      const isRefreshEndpoint = url.includes('/api/auth/refresh');
+
+      // Attempt refresh if this isn't already a retry, session hasn't expired,
+      // and the failing request isn't the refresh endpoint itself
+      if (!isRetry && !sessionExpired && !isRefreshEndpoint) {
+        const refreshed = await attemptTokenRefresh();
+        if (refreshed) {
+          // Retry the original request exactly once
+          return authenticatedFetch<T>(url, options, true);
+        }
+
+        // Refresh failed — mark session as expired
+        sessionExpired = true;
+        dispatchSessionExpiredEvent();
+      }
+
       throw new ApiError({
         statusCode: 401,
-        code: 'AUTH.INVALID_CREDENTIALS',
-        message: 'Authentication required',
+        code: errorData.code || 'AUTH.INVALID_CREDENTIALS',
+        message: errorData.message || 'Authentication required',
         path: url,
         timestamp: new Date().toISOString()
       });

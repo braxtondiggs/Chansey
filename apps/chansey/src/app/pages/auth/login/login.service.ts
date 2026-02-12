@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { QueryClient } from '@tanstack/query-core';
 
 import { ILogin, ILoginResponse, IResendEmailResponse } from '@chansey/api-interfaces';
-import { queryKeys, useAuthMutation } from '@chansey/shared';
+import { queryKeys, resetSessionExpiredFlag, useAuthMutation } from '@chansey/shared';
 
 @Injectable({
   providedIn: 'root'
@@ -16,6 +16,7 @@ export class LoginService {
   useLogin() {
     return useAuthMutation<ILoginResponse, ILogin>('/api/auth/login', 'POST', {
       onSuccess: (response, variables) => {
+        resetSessionExpiredFlag();
         if (response.should_show_email_otp_screen) {
           sessionStorage.setItem('otpEmail', variables.email);
           this.router.navigate(['/auth/otp']);
