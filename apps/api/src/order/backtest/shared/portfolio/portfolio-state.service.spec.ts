@@ -477,5 +477,37 @@ describe('PortfolioStateService', () => {
       expect(restored.positions.get('bitcoin')?.quantity).toBe(original.positions.get('bitcoin')?.quantity);
       expect(restored.positions.get('bitcoin')?.averagePrice).toBe(original.positions.get('bitcoin')?.averagePrice);
     });
+
+    it('should round-trip entryDate through serialize/deserialize', () => {
+      const entryDate = new Date('2024-06-15T10:30:00.000Z');
+      const original: Portfolio = {
+        cashBalance: 5000,
+        positions: new Map([
+          ['bitcoin', { coinId: 'bitcoin', quantity: 0.1, averagePrice: 45000, totalValue: 4500, entryDate }]
+        ]),
+        totalValue: 9500
+      };
+
+      const serialized = service.serialize(original);
+
+      expect(serialized.positions[0].entryDate).toBe('2024-06-15T10:30:00.000Z');
+
+      const restored = service.deserialize(serialized);
+      const restoredPos = restored.positions.get('bitcoin');
+
+      expect(restoredPos?.entryDate).toBeInstanceOf(Date);
+      expect(restoredPos?.entryDate?.toISOString()).toBe('2024-06-15T10:30:00.000Z');
+    });
+
+    it('should deserialize legacy checkpoint without entryDate', () => {
+      const serialized: SerializablePortfolio = {
+        cashBalance: 5000,
+        positions: [{ coinId: 'bitcoin', quantity: 0.1, averagePrice: 45000 }]
+      };
+
+      const restored = service.deserialize(serialized);
+
+      expect(restored.positions.get('bitcoin')?.entryDate).toBeUndefined();
+    });
   });
 });

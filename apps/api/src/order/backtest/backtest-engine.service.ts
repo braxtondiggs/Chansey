@@ -1282,6 +1282,11 @@ export class BacktestEngine {
       existingPosition.quantity = newQuantity;
       existingPosition.totalValue = existingPosition.quantity * price;
 
+      // Track entry date: set on new position, preserve on add-to (first-in basis)
+      if (!existingPosition.entryDate) {
+        existingPosition.entryDate = marketData.timestamp;
+      }
+
       portfolio.positions.set(signal.coinId, existingPosition);
     }
 
@@ -1290,10 +1295,18 @@ export class BacktestEngine {
     let realizedPnLPercent: number | undefined;
     let costBasis: number | undefined;
 
+    // Track hold time for SELL trades (used by monitoring dashboard)
+    let holdTimeMs: number | undefined;
+
     if (signal.action === 'SELL') {
       const existingPosition = portfolio.positions.get(signal.coinId);
       if (!existingPosition || existingPosition.quantity === 0) {
         return null;
+      }
+
+      // Calculate hold time from entry date
+      if (existingPosition.entryDate) {
+        holdTimeMs = marketData.timestamp.getTime() - existingPosition.entryDate.getTime();
       }
 
       // Capture cost basis BEFORE modifying position
@@ -1355,7 +1368,8 @@ export class BacktestEngine {
           reason: signal.reason,
           confidence: signal.confidence ?? 0,
           basePrice, // Original price before slippage
-          slippageBps // Simulated slippage applied
+          slippageBps, // Simulated slippage applied
+          ...(holdTimeMs !== undefined && { holdTimeMs })
         }
       } as Partial<BacktestTrade>,
       slippageBps
@@ -1480,7 +1494,8 @@ export class BacktestEngine {
       positions: Array.from(portfolio.positions.entries()).map(([coinId, pos]) => ({
         coinId,
         quantity: pos.quantity,
-        averagePrice: pos.averagePrice
+        averagePrice: pos.averagePrice,
+        ...(pos.entryDate && { entryDate: pos.entryDate.toISOString() })
       }))
     };
 
