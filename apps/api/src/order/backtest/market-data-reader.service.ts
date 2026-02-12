@@ -1,11 +1,13 @@
 /**
  * Market Data Reader Service
  *
- * Reads and parses market data CSV files from MinIO storage.
+ * Reads and parses market data CSV files from MinIO storage using stream-based parsing.
  * Supports OHLCV (Open, High, Low, Close, Volume) format for backtesting.
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+
+import { Options, parse } from 'csv-parse';
 
 import * as path from 'path';
 
@@ -14,10 +16,10 @@ import { MarketDataSet } from './market-data-set.entity';
 import { StorageService } from '../../storage/storage.service';
 
 /**
- * Maximum allowed CSV file size (100MB)
- * Larger files should use streaming parsing or be split
+ * Maximum allowed CSV file size (500MB)
+ * Stream-based parsing supports larger files with constant memory usage
  */
-const MAX_CSV_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const MAX_CSV_FILE_SIZE_BYTES = 500 * 1024 * 1024;
 
 /**
  * Unix timestamp bounds for validation
@@ -57,6 +59,30 @@ export interface MarketDataResult {
     end: Date;
   };
 }
+
+interface ParsedRow {
+  timestamp: string;
+  close: string;
+  open?: string;
+  high?: string;
+  low?: string;
+  volume?: string;
+  symbol?: string;
+  _lineNumber: number;
+}
+
+/**
+ * Column alias mappings: canonical name -> aliases
+ */
+const COLUMN_ALIASES: Record<string, string[]> = {
+  timestamp: ['time', 'date', 'datetime'],
+  close: ['c', 'price'],
+  open: ['o'],
+  high: ['h'],
+  low: ['l'],
+  volume: ['vol', 'v'],
+  symbol: ['coin', 'asset', 'ticker']
+};
 
 /**
  * Service for reading and parsing market data CSV files from MinIO/S3 storage.
@@ -124,7 +150,7 @@ export class MarketDataReaderService {
   }
 
   /**
-   * Read market data from a dataset's storage location
+   * Read market data from a dataset's storage location using stream-based parsing
    *
    * @param dataset - The MarketDataSet entity
    * @param startDate - Optional start date filter
@@ -154,42 +180,232 @@ export class MarketDataReaderService {
       );
     }
 
-    // Fetch the file
-    const fileBuffer = await this.storageService.getFile(objectPath);
-    const csvContent = fileBuffer.toString('utf-8');
+    // Stream-parse CSV with a 5-minute timeout
+    const abortController = new AbortController();
+    const timeoutMs = 5 * 60 * 1000;
 
-    // Parse CSV
-    const allData = this.parseCSV(csvContent, dataset.instrumentUniverse);
+    let timer: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        abortController.abort();
+        reject(new Error(`CSV parsing timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+      // Allow process to exit if this is the only timer
+      if (timer.unref) timer.unref();
+    });
 
-    // Filter by date range if provided
-    let filteredData = allData;
-    if (startDate || endDate) {
-      filteredData = allData.filter((row) => {
-        if (startDate && row.timestamp < startDate) return false;
-        if (endDate && row.timestamp > endDate) return false;
-        return true;
-      });
-    }
-
-    // Sort by timestamp
-    filteredData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-
-    const result: MarketDataResult = {
-      data: filteredData,
-      source: 'storage',
-      recordCount: filteredData.length,
-      dateRange: {
-        start: filteredData.length > 0 ? filteredData[0].timestamp : (startDate ?? new Date()),
-        end: filteredData.length > 0 ? filteredData[filteredData.length - 1].timestamp : (endDate ?? new Date())
-      }
-    };
-
-    this.logger.log(
-      `Loaded ${result.recordCount} OHLCV records from ${objectPath} ` +
-        `(${result.dateRange.start.toISOString()} to ${result.dateRange.end.toISOString()})`
+    const parsePromise = this.streamParseCSV(
+      objectPath,
+      dataset.instrumentUniverse,
+      abortController.signal,
+      startDate,
+      endDate
     );
 
-    return result;
+    try {
+      const filteredData = await Promise.race([parsePromise, timeoutPromise]);
+
+      // Sort by timestamp
+      filteredData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      const result: MarketDataResult = {
+        data: filteredData,
+        source: 'storage',
+        recordCount: filteredData.length,
+        dateRange: {
+          start: filteredData.length > 0 ? filteredData[0].timestamp : (startDate ?? new Date()),
+          end: filteredData.length > 0 ? filteredData[filteredData.length - 1].timestamp : (endDate ?? new Date())
+        }
+      };
+
+      this.logger.log(
+        `Loaded ${result.recordCount} OHLCV records from ${objectPath} ` +
+          `(${result.dateRange.start.toISOString()} to ${result.dateRange.end.toISOString()})`
+      );
+
+      return result;
+    } finally {
+      clearTimeout(timer!);
+    }
+  }
+
+  /**
+   * Stream-parse a CSV file from storage into OHLCVData[]
+   */
+  private async streamParseCSV(
+    objectPath: string,
+    instrumentUniverse: string[],
+    signal: AbortSignal,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<OHLCVData[]> {
+    const dataStream = await this.storageService.getFileStream(objectPath);
+    const defaultCoinId = instrumentUniverse.length > 0 ? instrumentUniverse[0] : 'UNKNOWN';
+
+    const parserOptions: Options = {
+      columns: (header: string[]) => this.mapColumnNames(header),
+      skip_empty_lines: true,
+      trim: true,
+      relax_quotes: true,
+      relax_column_count: true,
+      on_record: (record, context) => {
+        (record as unknown as ParsedRow)._lineNumber = context.lines;
+        return record;
+      }
+    };
+    const parser = parse(parserOptions);
+
+    const data: OHLCVData[] = [];
+    const errors: string[] = [];
+    let totalRows = 0;
+
+    return new Promise<OHLCVData[]>((resolve, reject) => {
+      let settled = false;
+      const safeResolve = (val: OHLCVData[]) => {
+        if (!settled) {
+          settled = true;
+          resolve(val);
+        }
+      };
+      const safeReject = (err: Error) => {
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      };
+
+      const cleanup = () => {
+        dataStream.destroy();
+        parser.destroy();
+      };
+
+      const onAbort = () => {
+        cleanup();
+        safeReject(new Error('CSV parsing aborted'));
+      };
+
+      if (signal.aborted) {
+        cleanup();
+        safeReject(new Error('CSV parsing aborted'));
+        return;
+      }
+
+      signal.addEventListener('abort', onAbort, { once: true });
+
+      dataStream.pipe(parser);
+
+      parser.on('data', (row: ParsedRow) => {
+        totalRows++;
+        try {
+          const parsed = this.parseRow(row, defaultCoinId, startDate, endDate);
+          if (parsed) {
+            data.push(parsed);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (errors.length < 1000) {
+            errors.push(`Line ${row._lineNumber}: ${message}`);
+          } else if (errors.length === 1000) {
+            errors.push('... additional errors truncated');
+          }
+        }
+      });
+
+      parser.on('error', (error: Error) => {
+        signal.removeEventListener('abort', onAbort);
+        cleanup();
+        safeReject(new Error(`CSV parsing error: ${error.message}`));
+      });
+
+      parser.on('end', () => {
+        signal.removeEventListener('abort', onAbort);
+
+        if (errors.length > 0 && totalRows > 0 && errors.length > totalRows * 0.1) {
+          this.logger.warn(`CSV parsing had ${errors.length} errors out of ${totalRows} rows`);
+        }
+
+        if (data.length === 0) {
+          const reason =
+            totalRows > 0 && (startDate || endDate)
+              ? 'all valid rows were outside the requested date range'
+              : 'the file contains no valid data rows';
+          safeReject(
+            new Error(`No market data loaded because ${reason}. Parse errors: ${errors.slice(0, 5).join('; ')}`)
+          );
+          return;
+        }
+
+        safeResolve(data);
+      });
+    });
+  }
+
+  /**
+   * Map CSV header column names to canonical names using alias mappings.
+   * Validates that required columns (timestamp, close) are present.
+   * @throws Error if required columns are missing
+   */
+  private mapColumnNames(header: string[]): string[] {
+    const lowerHeader = header.map((h) => h.toLowerCase().trim());
+
+    const mapped = lowerHeader.map((col) => {
+      // Check if it's already a canonical name
+      if (COLUMN_ALIASES[col]) return col;
+
+      // Check aliases
+      for (const [canonical, aliases] of Object.entries(COLUMN_ALIASES)) {
+        if (aliases.includes(col)) return canonical;
+      }
+
+      // Unknown column — pass through
+      return col;
+    });
+
+    if (!mapped.includes('timestamp')) {
+      throw new Error('CSV must have a timestamp column (timestamp, time, date, or datetime)');
+    }
+    if (!mapped.includes('close')) {
+      throw new Error('CSV must have a close/price column');
+    }
+
+    return mapped;
+  }
+
+  /**
+   * Parse a single CSV row into OHLCVData.
+   * Returns null if the row is filtered out by date range (not an error).
+   * Throws for invalid data.
+   */
+  private parseRow(row: ParsedRow, defaultCoinId: string, startDate?: Date, endDate?: Date): OHLCVData | null {
+    const timestamp = this.parseTimestamp(row.timestamp);
+    if (!timestamp) {
+      throw new Error('Invalid timestamp');
+    }
+
+    // Filter by date range inline — filtered rows never enter the result array
+    if (startDate && timestamp < startDate) return null;
+    if (endDate && timestamp > endDate) return null;
+
+    const close = parseFloat(row.close);
+    if (isNaN(close)) {
+      throw new Error('Invalid close price');
+    }
+
+    const open = row.open !== undefined ? parseFloat(row.open) : close;
+    const high = row.high !== undefined ? parseFloat(row.high) : close;
+    const low = row.low !== undefined ? parseFloat(row.low) : close;
+    const volume = row.volume !== undefined ? parseFloat(row.volume) : 0;
+    const coinId = row.symbol ?? defaultCoinId;
+
+    return {
+      timestamp,
+      open: isNaN(open) ? close : open,
+      high: isNaN(high) ? close : high,
+      low: isNaN(low) ? close : low,
+      close,
+      volume: isNaN(volume) ? 0 : volume,
+      coinId: coinId.toUpperCase()
+    };
   }
 
   /**
@@ -272,138 +488,6 @@ export class MarketDataReaderService {
     }
 
     return normalized;
-  }
-
-  /**
-   * Parse CSV content into OHLCV data
-   *
-   * Expected CSV format:
-   * timestamp,open,high,low,close,volume[,symbol]
-   * 2024-01-01T00:00:00Z,42000.50,42150.00,41900.00,42100.00,1500.5[,BTC]
-   */
-  private parseCSV(csvContent: string, instrumentUniverse: string[]): OHLCVData[] {
-    const lines = csvContent.split('\n').filter((line) => line.trim());
-
-    if (lines.length < 2) {
-      throw new Error('CSV file is empty or has no data rows');
-    }
-
-    // Parse header
-    const header = lines[0]
-      .toLowerCase()
-      .split(',')
-      .map((h) => h.trim());
-    const timestampIndex = this.findColumnIndex(header, ['timestamp', 'time', 'date', 'datetime']);
-    const openIndex = this.findColumnIndex(header, ['open', 'o']);
-    const highIndex = this.findColumnIndex(header, ['high', 'h']);
-    const lowIndex = this.findColumnIndex(header, ['low', 'l']);
-    const closeIndex = this.findColumnIndex(header, ['close', 'c', 'price']);
-    const volumeIndex = this.findColumnIndex(header, ['volume', 'vol', 'v']);
-    const symbolIndex = this.findColumnIndex(header, ['symbol', 'coin', 'asset', 'ticker']);
-
-    if (timestampIndex === -1) {
-      throw new Error('CSV must have a timestamp column (timestamp, time, date, or datetime)');
-    }
-    if (closeIndex === -1) {
-      throw new Error('CSV must have a close/price column');
-    }
-
-    // Default coin ID from instrument universe
-    const defaultCoinId = instrumentUniverse.length > 0 ? instrumentUniverse[0] : 'UNKNOWN';
-
-    const data: OHLCVData[] = [];
-    const errors: string[] = [];
-
-    // Parse data rows
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      try {
-        const values = this.parseCSVLine(line);
-
-        const timestamp = this.parseTimestamp(values[timestampIndex]);
-        if (!timestamp) {
-          errors.push(`Line ${i + 1}: Invalid timestamp`);
-          continue;
-        }
-
-        const close = parseFloat(values[closeIndex]);
-        if (isNaN(close)) {
-          errors.push(`Line ${i + 1}: Invalid close price`);
-          continue;
-        }
-
-        const open = openIndex !== -1 ? parseFloat(values[openIndex]) : close;
-        const high = highIndex !== -1 ? parseFloat(values[highIndex]) : close;
-        const low = lowIndex !== -1 ? parseFloat(values[lowIndex]) : close;
-        const volume = volumeIndex !== -1 ? parseFloat(values[volumeIndex]) : 0;
-        const coinId = symbolIndex !== -1 ? values[symbolIndex] : defaultCoinId;
-
-        data.push({
-          timestamp,
-          open: isNaN(open) ? close : open,
-          high: isNaN(high) ? close : high,
-          low: isNaN(low) ? close : low,
-          close,
-          volume: isNaN(volume) ? 0 : volume,
-          coinId: coinId.toUpperCase()
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        errors.push(`Line ${i + 1}: ${message}`);
-      }
-    }
-
-    if (errors.length > 0 && errors.length > data.length * 0.1) {
-      // More than 10% errors - warn
-      this.logger.warn(`CSV parsing had ${errors.length} errors out of ${lines.length - 1} rows`);
-    }
-
-    if (data.length === 0) {
-      throw new Error(`No valid data rows found in CSV. Errors: ${errors.slice(0, 5).join('; ')}`);
-    }
-
-    return data;
-  }
-
-  /**
-   * Find column index by possible names
-   * @param header - Array of header column names
-   * @param possibleNames - Array of possible column name variations to search for
-   * @returns Column index or -1 if not found
-   */
-  private findColumnIndex(header: string[], possibleNames: string[]): number {
-    for (const name of possibleNames) {
-      const index = header.indexOf(name);
-      if (index !== -1) return index;
-    }
-    return -1;
-  }
-
-  /**
-   * Parse a CSV line handling quoted values
-   */
-  private parseCSVLine(line: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    values.push(current.trim());
-    return values;
   }
 
   /**

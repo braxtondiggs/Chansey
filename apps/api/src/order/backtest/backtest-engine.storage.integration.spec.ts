@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 import { BacktestEngine } from './backtest-engine.service';
 import { MarketDataReaderService } from './market-data-reader.service';
 import {
@@ -23,6 +25,24 @@ const metricsCalculator = new MetricsCalculatorService(sharpeCalculator, drawdow
 const portfolioState = new PortfolioStateService();
 
 describe('BacktestEngine storage flow', () => {
+  /** Build a MarketDataReaderService backed by a mock storage that streams the given CSV */
+  const createCSVReader = (csv: string) => {
+    const storageService = {
+      getFileStats: jest.fn().mockResolvedValue({ size: Buffer.byteLength(csv) }),
+      getFileStream: jest.fn().mockResolvedValue(Readable.from([csv]))
+    };
+    return { marketDataReader: new MarketDataReaderService(storageService as any), storageService };
+  };
+
+  /** Build a MarketDataReaderService with no-op storage (for DB-fallback tests) */
+  const createEmptyReader = () => {
+    const storageService = {
+      getFileStats: jest.fn(),
+      getFileStream: jest.fn()
+    };
+    return { marketDataReader: new MarketDataReaderService(storageService as any), storageService };
+  };
+
   const createEngine = (overrides?: {
     algorithmRegistry?: any;
     ohlcService?: any;
@@ -52,6 +72,23 @@ describe('BacktestEngine storage flow', () => {
     );
   };
 
+  /** Minimal backtest entity shape */
+  const baseBacktest = (overrides?: Partial<Record<string, any>>) => ({
+    id: 'backtest-1',
+    name: 'Test Backtest',
+    initialCapital: 1000,
+    tradingFee: 0,
+    startDate: new Date('2024-01-01T00:00:00Z'),
+    endDate: new Date('2024-01-01T02:00:00Z'),
+    algorithm: { id: 'algo-1' },
+    configSnapshot: {
+      parameters: {},
+      run: {},
+      slippage: { model: 'fixed', fixedBps: 5 }
+    },
+    ...overrides
+  });
+
   it('loads CSV-backed market data and runs the backtest loop', async () => {
     const csv = [
       'timestamp,open,high,low,close,volume,symbol',
@@ -59,11 +96,7 @@ describe('BacktestEngine storage flow', () => {
       '2024-01-01T01:00:00Z,102,110,101,108,1100,BTC'
     ].join('\n');
 
-    const storageService = {
-      getFileStats: jest.fn().mockResolvedValue({ size: Buffer.byteLength(csv) }),
-      getFile: jest.fn().mockResolvedValue(Buffer.from(csv))
-    };
-    const marketDataReader = new MarketDataReaderService(storageService as any);
+    const { marketDataReader, storageService } = createCSVReader(csv);
 
     const algorithmRegistry = {
       executeAlgorithm: jest
@@ -90,36 +123,21 @@ describe('BacktestEngine storage flow', () => {
         })
     };
 
-    const ohlcService = {
-      getCandlesByDateRange: jest.fn()
-    };
-
+    const ohlcService = { getCandlesByDateRange: jest.fn() };
     const quoteCurrencyResolver = {
       resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdc', symbol: 'USDC' })
     };
 
-    const engine = createEngine({
-      algorithmRegistry,
-      ohlcService,
-      marketDataReader,
-      quoteCurrencyResolver
-    });
+    const engine = createEngine({ algorithmRegistry, ohlcService, marketDataReader, quoteCurrencyResolver });
 
     const result = await engine.executeHistoricalBacktest(
-      {
-        id: 'backtest-1',
-        name: 'CSV Backtest',
-        initialCapital: 1000,
-        tradingFee: 0,
-        startDate: new Date('2024-01-01T00:00:00Z'),
-        endDate: new Date('2024-01-01T02:00:00Z'),
-        algorithm: { id: 'algo-1' },
+      baseBacktest({
         configSnapshot: {
           parameters: { risk: 'low' },
           run: { quoteCurrency: 'USDC' },
           slippage: { model: 'fixed', fixedBps: 50 }
         }
-      } as any,
+      }) as any,
       [{ id: 'BTC', symbol: 'BTC' } as any],
       {
         deterministicSeed: 'seed',
@@ -133,10 +151,15 @@ describe('BacktestEngine storage flow', () => {
       }
     );
 
+    // Verify storage path was used (not database)
     expect(storageService.getFileStats).toHaveBeenCalledWith('datasets/btc.csv');
-    expect(storageService.getFile).toHaveBeenCalledWith('datasets/btc.csv');
+    expect(storageService.getFileStream).toHaveBeenCalledWith('datasets/btc.csv');
     expect(ohlcService.getCandlesByDateRange).not.toHaveBeenCalled();
+
+    // Verify quote currency resolution
     expect(quoteCurrencyResolver.resolveQuoteCurrency).toHaveBeenCalledWith('USDC');
+
+    // Verify algorithm was called for each timestamp with correct context
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledWith(
       'algo-1',
@@ -149,6 +172,8 @@ describe('BacktestEngine storage flow', () => {
         })
       })
     );
+
+    // Verify result structure
     expect(result.snapshots.length).toBeGreaterThan(0);
     expect(result.trades).toHaveLength(1);
     expect(result.trades[0].quoteCoin?.symbol).toBe('USDC');
@@ -186,42 +211,16 @@ describe('BacktestEngine storage flow', () => {
       })
     ];
 
-    const ohlcService = {
-      getCandlesByDateRange: jest.fn().mockResolvedValue(candles)
-    };
-
-    const storageService = {
-      getFileStats: jest.fn(),
-      getFile: jest.fn()
-    };
-    const marketDataReader = new MarketDataReaderService(storageService as any);
-
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const { marketDataReader, storageService } = createEmptyReader();
     const quoteCurrencyResolver = {
       resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' })
     };
 
-    const engine = createEngine({
-      algorithmRegistry,
-      ohlcService,
-      marketDataReader,
-      quoteCurrencyResolver
-    });
+    const engine = createEngine({ algorithmRegistry, ohlcService, marketDataReader, quoteCurrencyResolver });
 
     const result = await engine.executeHistoricalBacktest(
-      {
-        id: 'backtest-db',
-        name: 'DB Backtest',
-        initialCapital: 1000,
-        tradingFee: 0,
-        startDate,
-        endDate,
-        algorithm: { id: 'algo-1' },
-        configSnapshot: {
-          parameters: {},
-          run: {},
-          slippage: { model: 'fixed', fixedBps: 5 }
-        }
-      } as any,
+      baseBacktest({ id: 'backtest-db', name: 'DB Backtest', startDate, endDate }) as any,
       [{ id: 'BTC', symbol: 'BTC' } as any],
       {
         deterministicSeed: 'seed',
@@ -237,10 +236,45 @@ describe('BacktestEngine storage flow', () => {
 
     expect(ohlcService.getCandlesByDateRange).toHaveBeenCalledWith(['BTC'], startDate, endDate);
     expect(storageService.getFileStats).not.toHaveBeenCalled();
-    expect(storageService.getFile).not.toHaveBeenCalled();
+    expect(storageService.getFileStream).not.toHaveBeenCalled();
     expect(quoteCurrencyResolver.resolveQuoteCurrency).toHaveBeenCalledWith('USDT');
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
     expect(result.snapshots).toHaveLength(2);
     expect(result.trades).toHaveLength(0);
+  });
+
+  it('throws when algorithm relation is not loaded', async () => {
+    const { marketDataReader } = createEmptyReader();
+    const engine = createEngine({ marketDataReader });
+
+    await expect(
+      engine.executeHistoricalBacktest(
+        baseBacktest({ algorithm: undefined }) as any,
+        [{ id: 'BTC', symbol: 'BTC' } as any],
+        {
+          deterministicSeed: 'seed',
+          dataset: { id: 'ds', storageLocation: '', instrumentUniverse: ['BTC'] } as any
+        }
+      )
+    ).rejects.toThrow('Backtest algorithm relation not loaded');
+  });
+
+  it('throws when no historical price data is available', async () => {
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue([]) };
+    const { marketDataReader } = createEmptyReader();
+    const engine = createEngine({ ohlcService, marketDataReader });
+
+    await expect(
+      engine.executeHistoricalBacktest(baseBacktest() as any, [{ id: 'BTC', symbol: 'BTC' } as any], {
+        deterministicSeed: 'seed',
+        dataset: {
+          id: 'dataset-empty',
+          storageLocation: '',
+          instrumentUniverse: ['BTC'],
+          startAt: new Date('2024-01-01'),
+          endAt: new Date('2024-01-02')
+        } as any
+      })
+    ).rejects.toThrow('No historical price data available');
   });
 });
