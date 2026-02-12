@@ -471,15 +471,12 @@ export class PipelineOrchestratorService {
     await this.pipelineRepository.save(pipeline);
 
     // Evaluate progression
-    const passed = this.evaluateOptimizationProgression(pipeline, improvement);
+    const { passed, failures } = this.evaluateOptimizationProgression(pipeline, improvement);
 
     if (passed) {
       await this.advanceToNextStage(pipeline);
     } else {
-      await this.failPipeline(
-        pipeline,
-        `Optimization did not meet progression threshold (improvement: ${improvement.toFixed(2)}%)`
-      );
+      await this.failPipeline(pipeline, `Optimization did not meet progression threshold: ${failures.join('; ')}`);
     }
   }
 
@@ -566,12 +563,12 @@ export class PipelineOrchestratorService {
     const thresholds =
       type === 'HISTORICAL' ? pipeline.progressionRules.historical : pipeline.progressionRules.liveReplay;
 
-    const passed = this.evaluateStageProgression(metrics, thresholds);
+    const { passed, failures } = this.evaluateStageProgression(metrics, thresholds);
 
     if (passed) {
       await this.advanceToNextStage(pipeline);
     } else {
-      await this.failPipeline(pipeline, `${type} backtest did not meet progression thresholds`);
+      await this.failPipeline(pipeline, `${type} backtest did not meet thresholds: ${failures.join('; ')}`);
     }
   }
 
@@ -639,7 +636,7 @@ export class PipelineOrchestratorService {
 
     // Evaluate progression
     const thresholds = pipeline.progressionRules.paperTrading;
-    const passed = this.evaluateStageProgression(
+    const { passed, failures } = this.evaluateStageProgression(
       {
         sharpeRatio: metrics.sharpeRatio ?? 0,
         totalReturn: metrics.totalReturn,
@@ -654,16 +651,23 @@ export class PipelineOrchestratorService {
       // Pipeline completed successfully
       await this.completePipeline(pipeline);
     } else {
-      await this.failPipeline(pipeline, `Paper trading did not meet progression thresholds`);
+      await this.failPipeline(pipeline, `Paper trading did not meet thresholds: ${failures.join('; ')}`);
     }
   }
 
   /**
    * Evaluate optimization progression
    */
-  private evaluateOptimizationProgression(pipeline: Pipeline, improvement: number): boolean {
+  private evaluateOptimizationProgression(
+    pipeline: Pipeline,
+    improvement: number
+  ): { passed: boolean; failures: string[] } {
     const threshold = pipeline.progressionRules.optimization.minImprovement;
-    return improvement >= threshold;
+    const failures: string[] = [];
+    if (improvement < threshold) {
+      failures.push(`Improvement ${improvement.toFixed(2)}% < min ${threshold.toFixed(2)}%`);
+    }
+    return { passed: failures.length === 0, failures };
   }
 
   /**
@@ -678,20 +682,30 @@ export class PipelineOrchestratorService {
       totalTrades: number;
     },
     thresholds: StageProgressionThresholds
-  ): boolean {
+  ): { passed: boolean; failures: string[] } {
+    const failures: string[] = [];
     if (thresholds.minSharpeRatio !== undefined && metrics.sharpeRatio < thresholds.minSharpeRatio) {
-      return false;
+      failures.push(`Sharpe ratio ${metrics.sharpeRatio.toFixed(3)} < min ${thresholds.minSharpeRatio.toFixed(3)}`);
     }
     if (thresholds.maxDrawdown !== undefined && metrics.maxDrawdown > thresholds.maxDrawdown) {
-      return false;
+      failures.push(
+        `Max drawdown ${(metrics.maxDrawdown * 100).toFixed(1)}% > max ${(thresholds.maxDrawdown * 100).toFixed(1)}%`
+      );
     }
     if (thresholds.minWinRate !== undefined && metrics.winRate < thresholds.minWinRate) {
-      return false;
+      failures.push(
+        `Win rate ${(metrics.winRate * 100).toFixed(1)}% < min ${(thresholds.minWinRate * 100).toFixed(1)}%`
+      );
     }
     if (thresholds.minTotalReturn !== undefined && metrics.totalReturn < thresholds.minTotalReturn) {
-      return false;
+      failures.push(
+        `Total return ${(metrics.totalReturn * 100).toFixed(1)}% < min ${(thresholds.minTotalReturn * 100).toFixed(1)}%`
+      );
     }
-    return true;
+    if (thresholds.minTotalTrades !== undefined && metrics.totalTrades < thresholds.minTotalTrades) {
+      failures.push(`Total trades ${metrics.totalTrades} < min ${thresholds.minTotalTrades}`);
+    }
+    return { passed: failures.length === 0, failures };
   }
 
   /**
