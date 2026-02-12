@@ -53,34 +53,76 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     return undefined;
   }
 
+  /** Timeout for individual coin BB calculation (prevents indefinite hangs) */
+  private static readonly COIN_CALCULATION_TIMEOUT_MS = 15_000;
+
   /**
    * Execute the Bollinger Band Squeeze strategy
    */
   async execute(context: AlgorithmContext): Promise<AlgorithmResult> {
     const signals: TradingSignal[] = [];
     const chartData: { [key: string]: ChartDataPoint[] } = {};
+    const executeStart = Date.now();
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const eligibleCoins = context.coins.filter((coin) => this.hasEnoughData(context.priceData[coin.id], config));
+
+      this.logger.debug(
+        `BB Squeeze execute: ${eligibleCoins.length}/${context.coins.length} coins eligible, ` +
+          `timestamp=${context.timestamp?.toISOString?.() ?? 'unknown'}`
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
-        // Calculate Bollinger Bands using IndicatorService (with caching)
-        const bbResult = await this.indicatorService.calculateBollingerBands(
-          {
-            coinId: coin.id,
-            prices: priceHistory,
-            period: config.period,
-            stdDev: config.stdDev
-          },
-          this
-        );
+        const coinStart = Date.now();
+
+        // Calculate Bollinger Bands with timeout guard to prevent indefinite hangs
+        let bbResult: Awaited<ReturnType<typeof this.indicatorService.calculateBollingerBands>>;
+        try {
+          const bbPromise = this.indicatorService.calculateBollingerBands(
+            {
+              coinId: coin.id,
+              prices: priceHistory,
+              period: config.period,
+              stdDev: config.stdDev
+            },
+            this
+          );
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `BB calculation timed out for ${coin.symbol} after ${BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS}ms (${priceHistory.length} prices)`
+                  )
+                ),
+              BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS
+            );
+          });
+
+          bbResult = await Promise.race([bbPromise, timeoutPromise]);
+        } catch (err) {
+          this.logger.error(
+            `BB Squeeze: calculateBollingerBands failed for ${coin.symbol} ` +
+              `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${err.message}`
+          );
+          continue;
+        }
+
+        const bbDuration = Date.now() - coinStart;
+        if (bbDuration > 1000) {
+          this.logger.warn(
+            `BB Squeeze: slow calculateBollingerBands for ${coin.symbol}: ${bbDuration}ms ` +
+              `(${priceHistory.length} prices, cached=${bbResult.fromCache})`
+          );
+        }
 
         const { upper, middle, lower, pb, bandwidth } = bbResult;
 
@@ -103,6 +145,22 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
         // Prepare chart data
         chartData[coin.id] = this.prepareChartData(priceHistory, upper, middle, lower, pb, bandwidth, config);
+
+        const totalCoinDuration = Date.now() - coinStart;
+        if (totalCoinDuration > 2000) {
+          this.logger.warn(
+            `BB Squeeze: slow coin processing for ${coin.symbol}: ${totalCoinDuration}ms total ` +
+              `(bb=${bbDuration}ms, chart=${totalCoinDuration - bbDuration}ms, ${priceHistory.length} prices)`
+          );
+        }
+      }
+
+      const totalDuration = Date.now() - executeStart;
+      if (totalDuration > 3000) {
+        this.logger.warn(
+          `BB Squeeze: slow execute total: ${totalDuration}ms ` +
+            `(${eligibleCoins.length} coins, ${signals.length} signals)`
+        );
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -111,7 +169,10 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         signalsGenerated: signals.length
       });
     } catch (error) {
-      this.logger.error(`Bollinger Band Squeeze strategy execution failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `Bollinger Band Squeeze strategy execution failed after ${Date.now() - executeStart}ms: ${error.message}`,
+        error.stack
+      );
       return this.createErrorResult(error.message);
     }
   }

@@ -361,7 +361,32 @@ export class BacktestEngine {
 
       let strategySignals: TradingSignal[] = [];
       try {
-        const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        const algoExecStart = Date.now();
+        const ALGORITHM_TIMEOUT_MS = 60_000;
+
+        const algoPromise = this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        const algoTimeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Algorithm execution timed out after ${ALGORITHM_TIMEOUT_MS}ms at iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+                )
+              ),
+            ALGORITHM_TIMEOUT_MS
+          );
+        });
+
+        const result: AlgorithmResult = await Promise.race([algoPromise, algoTimeoutPromise]);
+
+        const algoExecDuration = Date.now() - algoExecStart;
+        if (algoExecDuration > 5000) {
+          this.logger.warn(
+            `Slow algorithm execution at iteration ${i}/${timestamps.length}: ${algoExecDuration}ms ` +
+              `(${backtest.algorithm.id}, ${timestamp.toISOString()})`
+          );
+        }
+
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
