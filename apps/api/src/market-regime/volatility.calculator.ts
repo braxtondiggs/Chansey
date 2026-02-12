@@ -150,36 +150,4 @@ export class VolatilityCalculator {
 
     return returns;
   }
-
-  /**
-   * Calculate implied volatility (future-looking)
-   * Requires options data - placeholder for now
-   */
-  calculateImpliedVolatility(): number {
-    // TODO: Implement when options data is available
-    throw new Error('Implied volatility calculation not yet implemented');
-  }
-
-  /**
-   * Calculate GARCH(1,1) volatility forecast
-   * More sophisticated volatility model
-   */
-  calculateGARCHVolatility(returns: number[]): number {
-    // Simplified GARCH(1,1) implementation
-    // In production, use dedicated time series library
-
-    if (returns.length < 10) return this.calculateStandardVolatility(returns);
-
-    const omega = 0.000001; // Long-term variance
-    const alpha = 0.1; // Weight on recent squared return
-    const beta = 0.85; // Weight on previous variance
-
-    let variance = this.calculateStandardVolatility(returns) ** 2;
-
-    for (const ret of returns) {
-      variance = omega + alpha * ret ** 2 + beta * variance;
-    }
-
-    return Math.sqrt(variance);
-  }
 }
