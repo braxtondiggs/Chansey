@@ -302,11 +302,10 @@ export class BacktestService implements OnModuleInit {
     };
   }
 
-  async getDatasets(user: User): Promise<MarketDataSet[]> {
+  async getDatasets(): Promise<MarketDataSet[]> {
     // Ensure default dataset exists before returning
     await this.ensureDefaultDatasetExists();
 
-    // TODO: restrict datasets by user governance; currently returning all approved sets
     return this.marketDataSetRepository.find({ order: { createdAt: 'DESC' } });
   }
 

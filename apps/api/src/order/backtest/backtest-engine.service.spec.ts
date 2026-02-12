@@ -605,6 +605,157 @@ describe('BacktestEngine.executeTrade', () => {
   });
 });
 
+describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
+  const createEngine = (algorithmRegistry: any, ohlcService: any) =>
+    new BacktestEngine(
+      { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
+      algorithmRegistry,
+      ohlcService,
+      { hasStorageLocation: jest.fn().mockReturnValue(false) } as any,
+      { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) } as any,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState
+    );
+
+  const createCandles = (coinId: string) => [
+    new OHLCCandle({
+      coinId,
+      exchangeId: 'exchange-1',
+      timestamp: new Date('2024-01-01T00:00:00.000Z'),
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 100,
+      volume: 1000
+    }),
+    new OHLCCandle({
+      coinId,
+      exchangeId: 'exchange-1',
+      timestamp: new Date('2024-01-01T01:00:00.000Z'),
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 100,
+      volume: 1000
+    })
+  ];
+
+  it('maps STOP_LOSS signals to SELL and produces trades', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest
+        .fn()
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [
+            { type: SignalType.BUY, coinId: 'BTC', quantity: 1, strength: 0.5, reason: 'entry', confidence: 0.8 }
+          ]
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [
+            {
+              type: SignalType.STOP_LOSS,
+              coinId: 'BTC',
+              quantity: 1,
+              strength: 0.8,
+              reason: 'stop triggered',
+              confidence: 0.9
+            }
+          ]
+        })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles('BTC')) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-stop-loss',
+        name: 'STOP_LOSS Test',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-1',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-stop-loss'
+      }
+    );
+
+    // Should have 2 trades: BUY + SELL (from STOP_LOSS)
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0].type).toBe('BUY');
+    expect(result.trades[1].type).toBe('SELL');
+    expect(result.signals).toHaveLength(2);
+  });
+
+  it('maps TAKE_PROFIT signals to SELL and produces trades', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest
+        .fn()
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [
+            { type: SignalType.BUY, coinId: 'BTC', quantity: 1, strength: 0.5, reason: 'entry', confidence: 0.8 }
+          ]
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [
+            {
+              type: SignalType.TAKE_PROFIT,
+              coinId: 'BTC',
+              quantity: 1,
+              strength: 0.8,
+              reason: 'target reached',
+              confidence: 0.9
+            }
+          ]
+        })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles('BTC')) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-take-profit',
+        name: 'TAKE_PROFIT Test',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-2',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-take-profit'
+      }
+    );
+
+    // Should have 2 trades: BUY + SELL (from TAKE_PROFIT)
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0].type).toBe('BUY');
+    expect(result.trades[1].type).toBe('SELL');
+    expect(result.signals).toHaveLength(2);
+  });
+});
+
 describe('BacktestEngine.executeOptimizationBacktest', () => {
   const createEngine = (algorithmRegistry: any, ohlcService: any) =>
     new BacktestEngine(
