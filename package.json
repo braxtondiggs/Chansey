@@ -11,7 +11,7 @@
     "build:all": "nx run-many --target=build --projects=api,chansey",
     "build:api": "nx build api --configuration=production",
     "build:client": "nx build chansey --configuration=production",
-    "start:prod": "node dist/api/main.js",
+    "start:prod": "node --max-old-space-size=6144 dist/api/main.js",
     "start:client": "serve -s dist/client -p 4200",
     "api": "nx serve api",
     "site": "nx serve chansey",

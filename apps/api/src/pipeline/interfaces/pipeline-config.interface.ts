@@ -136,6 +136,8 @@ export interface StageProgressionThresholds {
   minImprovement?: number;
   /** Maximum degradation from previous stage (percentage) */
   maxDegradation?: number;
+  /** Minimum total trades required (opt-in) */
+  minTotalTrades?: number;
 }
 
 /**

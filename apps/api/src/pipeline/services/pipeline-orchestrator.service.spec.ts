@@ -370,7 +370,12 @@ describe('PipelineOrchestratorService', () => {
         3 // Only 3% improvement, below 10% threshold
       );
 
-      expect(pipelineRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: PipelineStatus.FAILED }));
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('3.00% < min 10.00%')
+        })
+      );
     });
   });
 

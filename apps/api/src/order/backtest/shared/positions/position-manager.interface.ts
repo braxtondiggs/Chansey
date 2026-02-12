@@ -16,6 +16,8 @@ export interface Position {
   averagePrice: number;
   /** Current market value of the position */
   totalValue: number;
+  /** Timestamp when the position was first opened (used for hold-time calculation) */
+  entryDate?: Date;
 }
 
 /**
