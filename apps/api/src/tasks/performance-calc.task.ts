@@ -45,7 +45,7 @@ export class PerformanceCalcTask {
   /**
    * Execute performance calculation for all active deployments
    *
-   * Called by TaskSchedulerService based on cron schedule
+   * Called on cron schedule
    */
   async execute(): Promise<void> {
     this.logger.log('Starting performance metric calculation task');
