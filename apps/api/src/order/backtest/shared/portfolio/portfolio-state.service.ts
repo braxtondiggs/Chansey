@@ -309,7 +309,8 @@ export class PortfolioStateService implements IPortfolioState {
       positions: Array.from(portfolio.positions.entries()).map(([coinId, pos]) => ({
         coinId,
         quantity: pos.quantity,
-        averagePrice: pos.averagePrice
+        averagePrice: pos.averagePrice,
+        ...(pos.entryDate && { entryDate: pos.entryDate.toISOString() })
       }))
     };
   }
@@ -329,7 +330,8 @@ export class PortfolioStateService implements IPortfolioState {
         coinId: pos.coinId,
         quantity: pos.quantity,
         averagePrice: pos.averagePrice,
-        totalValue
+        totalValue,
+        ...(pos.entryDate && { entryDate: new Date(pos.entryDate) })
       });
 
       positionsValue += totalValue;

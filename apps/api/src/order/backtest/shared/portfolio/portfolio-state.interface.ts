@@ -44,6 +44,7 @@ export interface SerializablePosition {
   coinId: string;
   quantity: number;
   averagePrice: number;
+  entryDate?: string;
 }
 
 /**
