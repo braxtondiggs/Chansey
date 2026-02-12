@@ -40,7 +40,7 @@ export class DriftDetectionTask {
   /**
    * Execute drift detection for all active deployments
    *
-   * Called by TaskSchedulerService based on cron schedule
+   * Called on cron schedule
    */
   async execute(): Promise<void> {
     this.logger.log('Starting drift detection task');

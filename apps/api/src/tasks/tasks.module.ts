@@ -17,7 +17,6 @@ import { PromotionTask } from './promotion.task';
 import { RiskMonitoringTask } from './risk-monitoring.task';
 import { StrategyEvaluationProcessor } from './strategy-evaluation.processor';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
-import { TaskSchedulerService } from './task-scheduler.service';
 
 import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
@@ -106,7 +105,6 @@ import { UsersModule } from '../users/users.module';
     DriftDetectionTask,
     DriftDetectionProcessor,
     PerformanceCalcTask,
-    TaskSchedulerService,
     BacktestOrchestrationTask,
     BacktestOrchestrationProcessor,
     BacktestOrchestrationService,
@@ -121,7 +119,6 @@ import { UsersModule } from '../users/users.module';
     RiskMonitoringTask,
     DriftDetectionTask,
     PerformanceCalcTask,
-    TaskSchedulerService,
     BacktestOrchestrationTask,
     PipelineOrchestrationTask
   ]
