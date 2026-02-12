@@ -56,6 +56,7 @@ import {
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 
@@ -258,7 +259,7 @@ export class BacktestEngine {
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
 
     // Resolve quote currency from configSnapshot (default: USDT) with fallback chain
-    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
+    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? DEFAULT_QUOTE_CURRENCY;
     const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
     // Determine data source: storage file (CSV) or database (Price table)
@@ -623,7 +624,7 @@ export class BacktestEngine {
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
 
     // Resolve quote currency from configSnapshot (default: USDT) with fallback chain
-    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
+    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? DEFAULT_QUOTE_CURRENCY;
     const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
     // Determine data source: storage file (CSV) or database (Price table)

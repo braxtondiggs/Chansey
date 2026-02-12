@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY, USD_QUOTE_CURRENCIES } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { formatSymbolForExchange } from '../../exchange/utils';
 
@@ -228,20 +229,19 @@ export class ExchangeOHLCService {
 
       for (const symbol of Object.keys(client.markets)) {
         const market = client.markets[symbol];
-        if (
-          market.base?.toUpperCase() === baseUpper &&
-          (market.quote === 'USD' || market.quote === 'USDT' || market.quote === 'ZUSD')
-        ) {
+        if (market.base?.toUpperCase() === baseUpper && USD_QUOTE_CURRENCIES.has(market.quote)) {
           symbols.push(symbol);
         }
       }
 
-      // Sort to prefer /USD over /USDT over /ZUSD
-      const quoteOrder: Record<string, number> = { USD: 0, USDT: 1, ZUSD: 2 };
+      // Prefer the exchange's native quote currency first
+      const preferred = EXCHANGE_QUOTE_CURRENCY[exchangeSlug] ?? DEFAULT_QUOTE_CURRENCY;
       symbols.sort((a, b) => {
         const quoteA = a.split('/')[1] || '';
         const quoteB = b.split('/')[1] || '';
-        return (quoteOrder[quoteA] ?? 99) - (quoteOrder[quoteB] ?? 99);
+        if (quoteA === preferred && quoteB !== preferred) return -1;
+        if (quoteB === preferred && quoteA !== preferred) return 1;
+        return a.localeCompare(b);
       });
 
       return symbols;
