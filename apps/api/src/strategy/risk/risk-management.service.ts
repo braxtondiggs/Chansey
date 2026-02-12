@@ -109,7 +109,7 @@ export class RiskManagementService {
       eventType: AuditEventType.RISK_EVALUATION,
       entityType: 'Deployment',
       entityId: deploymentId,
-      userId: userId || 'system',
+      userId,
       beforeState: null,
       afterState: {
         hasCriticalRisk: evaluation.hasCriticalRisk,

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Param, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
 
 import { AuditTrailQuery, Role } from '@chansey/api-interfaces';
 
@@ -59,6 +59,7 @@ export class AuditController {
    * GET /audit/entity/StrategyConfig/abc-123
    */
   @Get('entity/:entityType/:entityId')
+  @Roles(Role.ADMIN)
   async getEntityAuditTrail(
     @Param('entityType') entityType: string,
     @Param('entityId') entityId: string,
@@ -75,6 +76,7 @@ export class AuditController {
    * Returns all events with the same correlation ID, ordered chronologically
    */
   @Get('workflow/:correlationId')
+  @Roles(Role.ADMIN)
   async getCorrelatedEvents(@Param('correlationId') correlationId: string) {
     return this.auditService.getCorrelatedEvents(correlationId);
   }
@@ -91,6 +93,7 @@ export class AuditController {
    * - Workflow summary
    */
   @Get('workflow/:correlationId/reconstruct')
+  @Roles(Role.ADMIN)
   async reconstructWorkflow(@Param('correlationId') correlationId: string) {
     return this.auditQueryService.reconstructWorkflow(correlationId);
   }
@@ -109,6 +112,7 @@ export class AuditController {
    * - Complete timeline of all events
    */
   @Get('strategy/:strategyConfigId/lifecycle')
+  @Roles(Role.ADMIN)
   async getStrategyLifecycle(@Param('strategyConfigId') strategyConfigId: string) {
     return this.auditQueryService.getStrategyLifecycle(strategyConfigId);
   }
@@ -126,6 +130,7 @@ export class AuditController {
    * - Allocation changes
    */
   @Get('deployment/:deploymentId/trail')
+  @Roles(Role.ADMIN)
   async getDeploymentAuditTrail(@Param('deploymentId') deploymentId: string) {
     return this.auditQueryService.getDeploymentAuditTrail(deploymentId);
   }

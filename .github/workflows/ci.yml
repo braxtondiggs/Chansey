@@ -18,10 +18,10 @@ concurrency:
 # Needed for nx-set-shas and Railway deployment
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: "22"
   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Cache node_modules
@@ -68,7 +68,10 @@ jobs:
       - name: Set SHAs for Nx Affected Commands
         uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: 'master'
+          main-branch-name: "master"
+
+      - name: Start Nx Cloud CI run
+        run: npx nx-cloud start-ci-run
 
       - name: Get affected projects
         id: affected
@@ -104,11 +107,12 @@ jobs:
 
           echo "Outputs set: has_api=$(grep has_api $GITHUB_OUTPUT | cut -d= -f2), has_chansey=$(grep has_chansey $GITHUB_OUTPUT | cut -d= -f2)"
 
-  # Job 2: Lint affected projects
+  # Job 2: Lint affected projects (PRs only - master already validated by PR checks)
   lint:
     name: Lint
     runs-on: ubuntu-latest
     needs: setup
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,7 +122,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Restore node_modules
@@ -142,16 +146,21 @@ jobs:
 
       - uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: 'master'
+          main-branch-name: "master"
 
       - name: Lint affected projects
         run: npm run ci:lint
 
-  # Job 3: Test affected projects
+      - name: Self-Healing CI
+        if: failure()
+        run: npx nx-cloud fix-ci
+
+  # Job 3: Test affected projects (PRs only - master already validated by PR checks)
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: setup
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,7 +170,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Restore node_modules
@@ -185,10 +194,14 @@ jobs:
 
       - uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: 'master'
+          main-branch-name: "master"
 
       - name: Test affected projects
         run: npm run ci:test
+
+      - name: Self-Healing CI
+        if: failure()
+        run: npx nx-cloud fix-ci
 
       - name: Upload coverage reports
         if: always()
@@ -213,7 +226,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Restore node_modules
@@ -237,7 +250,7 @@ jobs:
 
       - uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: 'master'
+          main-branch-name: "master"
 
       - name: Build affected projects
         run: |
@@ -248,6 +261,10 @@ jobs:
             # On PRs, only build affected projects
             npm run ci:build
           fi
+
+      - name: Self-Healing CI
+        if: failure() && github.event_name == 'pull_request'
+        run: npx nx-cloud fix-ci
 
       - name: Upload build artifacts
         if: success()
@@ -269,7 +286,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Run npm audit
@@ -289,7 +306,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Download build artifacts
@@ -317,7 +334,7 @@ jobs:
   # Job 7: Deploy frontend to Railway (only on master push when affected)
   deploy-frontend:
     name: Deploy Frontend
-    needs: [setup, lint, test, build]
+    needs: [setup, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.setup.outputs.has_chansey == 'true'
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
@@ -335,7 +352,7 @@ jobs:
   # Job 8: Deploy API to Railway (only on master push when affected)
   deploy-api:
     name: Deploy API
-    needs: [setup, lint, test, build]
+    needs: [setup, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.setup.outputs.has_api == 'true'
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
@@ -359,11 +376,12 @@ jobs:
     steps:
       - name: Check job statuses
         run: |
-          if [ "${{ needs.lint.result }}" != "success" ]; then
+          # Lint and test are skipped on master push (already validated by PR)
+          if [ "${{ needs.lint.result }}" != "success" ] && [ "${{ needs.lint.result }}" != "skipped" ]; then
             echo "❌ Lint failed"
             exit 1
           fi
-          if [ "${{ needs.test.result }}" != "success" ]; then
+          if [ "${{ needs.test.result }}" != "success" ] && [ "${{ needs.test.result }}" != "skipped" ]; then
             echo "❌ Test failed"
             exit 1
           fi
