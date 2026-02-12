@@ -44,6 +44,8 @@ export interface TradingSignal {
   reason: string;
   confidence?: number;
   metadata?: Record<string, any>;
+  /** Preserves the original algorithm signal type (e.g. STOP_LOSS, TAKE_PROFIT) */
+  originalType?: AlgoSignalType;
 }
 
 export interface TickResult {
@@ -56,8 +58,19 @@ export interface TickResult {
 }
 
 const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): TradingSignal => {
-  const action: TradingSignal['action'] =
-    signal.type === AlgoSignalType.SELL ? 'SELL' : signal.type === AlgoSignalType.BUY ? 'BUY' : 'HOLD';
+  let action: TradingSignal['action'];
+  switch (signal.type) {
+    case AlgoSignalType.BUY:
+      action = 'BUY';
+      break;
+    case AlgoSignalType.SELL:
+    case AlgoSignalType.STOP_LOSS:
+    case AlgoSignalType.TAKE_PROFIT:
+      action = 'SELL';
+      break;
+    default:
+      action = 'HOLD';
+  }
 
   // Extract symbol from coinId using session's quote currency
   const symbol = `${signal.coinId}/${quoteCurrency}`;
@@ -70,8 +83,18 @@ const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): Tradi
     percentage: signal.strength,
     reason: signal.reason,
     confidence: signal.confidence,
-    metadata: signal.metadata as Record<string, any>
+    metadata: signal.metadata as Record<string, any>,
+    originalType: signal.type
   };
+};
+
+const classifySignalType = (signal: TradingSignal): PaperTradingSignalType => {
+  if (signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT) {
+    return PaperTradingSignalType.RISK_CONTROL;
+  }
+  if (signal.action === 'BUY') return PaperTradingSignalType.ENTRY;
+  if (signal.action === 'SELL') return PaperTradingSignalType.EXIT;
+  return PaperTradingSignalType.ADJUSTMENT;
 };
 
 @Injectable()
@@ -491,12 +514,7 @@ export class PaperTradingEngineService {
    */
   private async saveSignal(session: PaperTradingSession, signal: TradingSignal): Promise<PaperTradingSignal> {
     const signalEntity = this.signalRepository.create({
-      signalType:
-        signal.action === 'BUY'
-          ? PaperTradingSignalType.ENTRY
-          : signal.action === 'SELL'
-            ? PaperTradingSignalType.EXIT
-            : PaperTradingSignalType.ADJUSTMENT,
+      signalType: classifySignalType(signal),
       direction:
         signal.action === 'BUY'
           ? PaperTradingSignalDirection.LONG

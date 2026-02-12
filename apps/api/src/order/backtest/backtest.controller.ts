@@ -62,8 +62,8 @@ export class BacktestController {
 
   @Get('datasets')
   @ApiOperation({ summary: 'List available market data sets for backtesting' })
-  async getDatasets(@GetUser() user: User) {
-    return this.backtestService.getDatasets(user);
+  async getDatasets() {
+    return this.backtestService.getDatasets();
   }
 
   @Get(':id')

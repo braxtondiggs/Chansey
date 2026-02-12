@@ -307,6 +307,181 @@ describe('ATRTrailingStopStrategy', () => {
       expect(isNaN(signal.metadata.previousStopLevel as number)).toBe(false);
     });
 
+    it('should generate BUY signal on bullish trend flip', async () => {
+      const prices = createMockPrices(30);
+      // Set up: previous bar triggered (low below stop), current bar recovered
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      // Spike high early to set trailing stop: stop = 130 - 5*2.5 = 117.5
+      prices[15].high = 130;
+      // Previous bar (28): triggers stop - low below 117.5
+      prices[28].avg = 80;
+      prices[28].low = 75;
+      prices[28].high = 85;
+      // Current bar (29): recovered above stop
+      prices[29].avg = 125;
+      prices[29].low = 120;
+      prices[29].high = 130;
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) {
+        atrValues[i] = 5;
+      }
+
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      const buySignals = result.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignals.length).toBeGreaterThan(0);
+      expect(buySignals[0].metadata.signalSource).toBe('trend_flip');
+      expect(buySignals[0].metadata.direction).toBe('long');
+    });
+
+    it('should not generate BUY when both bars are above stop (no spurious re-entries)', async () => {
+      const prices = createMockPrices(30);
+      // Both bars comfortably above the trailing stop
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      // No spike, trailing stop stays low: stop = 105 - 5*2.5 = 92.5
+      // Both bar 28 and 29 have low=95, well above stop
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) {
+        atrValues[i] = 5;
+      }
+
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      const buySignals = result.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignals).toHaveLength(0);
+    });
+
+    it('should generate SELL signal for short entry on bearish trend flip', async () => {
+      const prices = createMockPrices(30);
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      // Short stop = lowestLow + ATR*multiplier = 95 + 5*2.5 = 107.5
+      // Previous bar (28): high above short stop (triggered)
+      prices[28].avg = 110;
+      prices[28].high = 115;
+      prices[28].low = 105;
+      // Current bar (29): price dropped, high below short stop (not triggered)
+      prices[29].avg = 90;
+      prices[29].high = 95;
+      prices[29].low = 85;
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) {
+        atrValues[i] = 5;
+      }
+
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'short', minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      const sellSignals = result.signals.filter(
+        (s) => s.type === SignalType.SELL && s.metadata?.signalSource === 'trend_flip'
+      );
+      expect(sellSignals.length).toBeGreaterThan(0);
+      expect(sellSignals[0].metadata.direction).toBe('short');
+    });
+
+    it('should produce valid entry signal confidence (not NaN, in [0,1])', async () => {
+      const prices = createMockPrices(30);
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      prices[15].high = 130;
+      // Set up trend flip
+      prices[28].avg = 80;
+      prices[28].low = 75;
+      prices[28].high = 85;
+      prices[29].avg = 125;
+      prices[29].low = 120;
+      prices[29].high = 130;
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) {
+        atrValues[i] = 5;
+      }
+
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      const buySignals = result.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignals.length).toBeGreaterThan(0);
+      const signal = buySignals[0];
+      expect(isNaN(signal.confidence)).toBe(false);
+      expect(signal.confidence).toBeGreaterThanOrEqual(0);
+      expect(signal.confidence).toBeLessThanOrEqual(1);
+    });
+
     it('should ratchet long trailing stop when ATR spikes', async () => {
       // Ratcheting prevents the stop from dropping when ATR increases.
       // Previous bar had low ATR → high stop. Current bar has high ATR → lower raw stop.
