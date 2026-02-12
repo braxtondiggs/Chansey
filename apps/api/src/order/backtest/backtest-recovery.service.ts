@@ -25,8 +25,10 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
     @InjectQueue(BACKTEST_QUEUE_NAMES.replayQueue) private readonly replayQueue: Queue
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    await this.recoverOrphanedBacktests();
+  onApplicationBootstrap(): void {
+    this.recoverOrphanedBacktests().catch((error) => {
+      this.logger.error(`Background backtest recovery failed: ${error.message}`, error.stack);
+    });
   }
 
   /**
@@ -34,40 +36,42 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
    * so the existing checkpoint-resume logic can kick in.
    */
   private async recoverOrphanedBacktests(): Promise<void> {
-    this.logger.log('Checking for orphaned RUNNING/PAUSED backtests to recover...');
+    this.logger.log('Checking for orphaned backtests to recover...');
 
     try {
       const orphaned = await this.backtestRepository.find({
         where: {
-          status: In([BacktestStatus.RUNNING, BacktestStatus.PAUSED]),
+          status: In([BacktestStatus.RUNNING, BacktestStatus.PAUSED, BacktestStatus.PENDING]),
           type: In([BacktestType.HISTORICAL, BacktestType.LIVE_REPLAY])
         },
         relations: ['user', 'algorithm', 'marketDataSet']
       });
 
       if (orphaned.length === 0) {
-        this.logger.log('No orphaned RUNNING/PAUSED backtests found');
+        this.logger.log('No orphaned backtests found');
         return;
       }
 
-      this.logger.log(`Found ${orphaned.length} orphaned RUNNING/PAUSED backtest(s) to recover`);
+      this.logger.log(`Found ${orphaned.length} orphaned backtest(s) to recover`);
 
-      for (const backtest of orphaned) {
-        try {
-          await this.recoverSingleBacktest(backtest);
-        } catch (error) {
-          this.logger.error(`Failed to recover backtest ${backtest.id}: ${error.message}`, error.stack);
-          // Mark as permanently failed if recovery itself errors
+      await Promise.allSettled(
+        orphaned.map(async (backtest) => {
           try {
-            await this.backtestRepository.update(backtest.id, {
-              status: BacktestStatus.FAILED,
-              errorMessage: `Recovery failed: ${error.message}`
-            });
-          } catch (markError) {
-            this.logger.error(`Failed to mark backtest ${backtest.id} as failed: ${markError.message}`);
+            await this.recoverSingleBacktest(backtest);
+          } catch (error) {
+            this.logger.error(`Failed to recover backtest ${backtest.id}: ${error.message}`, error.stack);
+            // Mark as permanently failed if recovery itself errors
+            try {
+              await this.backtestRepository.update(backtest.id, {
+                status: BacktestStatus.FAILED,
+                errorMessage: `Recovery failed: ${error.message}`
+              });
+            } catch (markError) {
+              this.logger.error(`Failed to mark backtest ${backtest.id} as failed: ${markError.message}`);
+            }
           }
-        }
-      }
+        })
+      );
 
       this.logger.log('Backtest recovery check complete');
     } catch (error) {
@@ -76,7 +80,21 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
   }
 
   private async recoverSingleBacktest(backtest: Backtest): Promise<void> {
-    const autoResumeCount = (backtest.configSnapshot?.autoResumeCount as number) ?? 0;
+    // PENDING backtests may still have a valid job in the queue — skip if so
+    if (backtest.status === BacktestStatus.PENDING) {
+      const queue = this.getQueueForType(backtest.type);
+      const existingJob = await queue.getJob(backtest.id);
+      if (existingJob) {
+        const jobState = await existingJob.getState();
+        if (jobState === 'waiting' || jobState === 'active' || jobState === 'delayed') {
+          this.logger.log(`Skipping PENDING backtest ${backtest.id} — valid job exists (state: ${jobState})`);
+          return;
+        }
+      }
+    }
+
+    const rawResumeCount = backtest.configSnapshot?.autoResumeCount;
+    const autoResumeCount = typeof rawResumeCount === 'number' ? rawResumeCount : 0;
 
     // Guard against infinite recovery loops
     if (autoResumeCount >= MAX_AUTO_RESUME_COUNT) {
@@ -134,15 +152,6 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
       mode: backtest.type
     };
 
-    // Reset to PENDING so the processor picks it up
-    await this.backtestRepository.update(backtest.id, {
-      status: BacktestStatus.PENDING,
-      configSnapshot: updatedConfigSnapshot as Record<string, any>,
-      checkpointState: backtest.checkpointState,
-      lastCheckpointAt: backtest.lastCheckpointAt,
-      processedTimestampCount: backtest.processedTimestampCount
-    });
-
     const queue = this.getQueueForType(backtest.type);
 
     // Remove any existing job with the same ID to prevent BullMQ jobId collision
@@ -156,10 +165,22 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
       }
     }
 
+    // Enqueue BEFORE updating the DB to avoid orphaned PENDING state on crash.
+    // If queue.add() succeeds but the DB update fails, the backtest stays in its
+    // current status (RUNNING/PAUSED) and recovery will retry on the next restart.
     await queue.add('execute-backtest', payload, {
       jobId: backtest.id,
       removeOnComplete: true,
       removeOnFail: false
+    });
+
+    // Reset to PENDING so the processor picks it up
+    await this.backtestRepository.update(backtest.id, {
+      status: BacktestStatus.PENDING,
+      configSnapshot: updatedConfigSnapshot as Record<string, any>,
+      checkpointState: backtest.checkpointState,
+      lastCheckpointAt: backtest.lastCheckpointAt,
+      processedTimestampCount: backtest.processedTimestampCount
     });
 
     const hasCheckpoint = !!backtest.checkpointState;

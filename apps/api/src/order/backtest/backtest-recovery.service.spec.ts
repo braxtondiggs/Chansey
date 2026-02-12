@@ -34,6 +34,9 @@ function makeCheckpoint(): BacktestCheckpointState {
   };
 }
 
+/** Flush all pending microtasks so fire-and-forget promises settle */
+const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 describe('BacktestRecoveryService', () => {
   let backtestRepository: Record<string, jest.Mock>;
   let historicalQueue: Record<string, jest.Mock>;
@@ -72,7 +75,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     expect(backtestRepository.find).toHaveBeenCalled();
     expect(historicalQueue.add).not.toHaveBeenCalled();
@@ -88,7 +92,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([backtest]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     // Should update status to PENDING with incremented autoResumeCount
     expect(backtestRepository.update).toHaveBeenCalledWith('bt-1', {
@@ -112,6 +117,11 @@ describe('BacktestRecoveryService', () => {
       },
       { jobId: 'bt-1', removeOnComplete: true, removeOnFail: false }
     );
+
+    // queue.add() must happen before DB update to avoid orphaned PENDING
+    const addOrder = historicalQueue.add.mock.invocationCallOrder[0];
+    const updateOrder = backtestRepository.update.mock.invocationCallOrder[0];
+    expect(addOrder).toBeLessThan(updateOrder);
   });
 
   it('recovers without checkpoint', async () => {
@@ -119,7 +129,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([backtest]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     expect(backtestRepository.update).toHaveBeenCalledWith('bt-1', {
       status: BacktestStatus.PENDING,
@@ -130,6 +141,11 @@ describe('BacktestRecoveryService', () => {
     });
 
     expect(historicalQueue.add).toHaveBeenCalled();
+
+    // queue.add() must happen before DB update to avoid orphaned PENDING
+    const addOrder = historicalQueue.add.mock.invocationCallOrder[0];
+    const updateOrder = backtestRepository.update.mock.invocationCallOrder[0];
+    expect(addOrder).toBeLessThan(updateOrder);
   });
 
   it('clears stale checkpoint when age exceeds max', async () => {
@@ -142,7 +158,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([backtest]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     // Stale checkpoint should be cleared
     expect(backtestRepository.update).toHaveBeenCalledWith('bt-1', {
@@ -161,7 +178,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([backtest]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     expect(backtestRepository.update).toHaveBeenCalledWith('bt-1', {
       status: BacktestStatus.FAILED,
@@ -181,7 +199,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([backtest]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     // Should NOT update to PENDING (validation happens before status update)
     const updateCalls = backtestRepository.update.mock.calls;
@@ -200,7 +219,12 @@ describe('BacktestRecoveryService', () => {
     historicalQueue.add.mockRejectedValue(new Error('Redis connection refused'));
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
+
+    // With queue-first ordering, the DB update to PENDING should NOT have happened
+    const pendingCall = backtestRepository.update.mock.calls.find(([, data]) => data.status === BacktestStatus.PENDING);
+    expect(pendingCall).toBeUndefined();
 
     // The outer catch should mark it FAILED
     const failedCall = backtestRepository.update.mock.calls.find(([, data]) => data.status === BacktestStatus.FAILED);
@@ -214,7 +238,8 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([bt1, bt2]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     // bt-fail should be marked FAILED
     const failedCall = backtestRepository.update.mock.calls.find(
@@ -239,9 +264,83 @@ describe('BacktestRecoveryService', () => {
     backtestRepository.find.mockResolvedValue([backtest]);
 
     const service = createService();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await flushPromises();
 
     expect(replayQueue.add).toHaveBeenCalled();
     expect(historicalQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('skips PENDING backtest when valid waiting job exists', async () => {
+    const backtest = makeBacktest({ status: BacktestStatus.PENDING });
+    backtestRepository.find.mockResolvedValue([backtest]);
+    historicalQueue.getJob.mockResolvedValue({
+      getState: jest.fn().mockResolvedValue('waiting')
+    });
+
+    const service = createService();
+    service.onApplicationBootstrap();
+    await flushPromises();
+
+    expect(backtestRepository.update).not.toHaveBeenCalled();
+    expect(historicalQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('recovers orphaned PENDING backtest when no job exists', async () => {
+    const backtest = makeBacktest({ status: BacktestStatus.PENDING });
+    backtestRepository.find.mockResolvedValue([backtest]);
+    historicalQueue.getJob.mockResolvedValue(null);
+
+    const service = createService();
+    service.onApplicationBootstrap();
+    await flushPromises();
+
+    // Should go through the normal recovery flow
+    expect(historicalQueue.add).toHaveBeenCalledWith(
+      'execute-backtest',
+      expect.objectContaining({ backtestId: 'bt-1' }),
+      expect.any(Object)
+    );
+    expect(backtestRepository.update).toHaveBeenCalledWith(
+      'bt-1',
+      expect.objectContaining({
+        status: BacktestStatus.PENDING
+      })
+    );
+  });
+
+  it('recovers PENDING backtest when existing job is in failed state', async () => {
+    const mockJob = {
+      getState: jest.fn().mockResolvedValue('failed'),
+      remove: jest.fn().mockResolvedValue(undefined)
+    };
+    const backtest = makeBacktest({ status: BacktestStatus.PENDING });
+    backtestRepository.find.mockResolvedValue([backtest]);
+
+    // First getJob call (PENDING guard) returns the failed job
+    // Second getJob call (existing job removal) also returns the failed job
+    historicalQueue.getJob.mockResolvedValue(mockJob);
+
+    const service = createService();
+    service.onApplicationBootstrap();
+    await flushPromises();
+
+    // Should remove the old failed job
+    expect(mockJob.remove).toHaveBeenCalled();
+
+    // Should re-queue
+    expect(historicalQueue.add).toHaveBeenCalledWith(
+      'execute-backtest',
+      expect.objectContaining({ backtestId: 'bt-1' }),
+      expect.any(Object)
+    );
+
+    // Should update DB to PENDING
+    expect(backtestRepository.update).toHaveBeenCalledWith(
+      'bt-1',
+      expect.objectContaining({
+        status: BacktestStatus.PENDING
+      })
+    );
   });
 });
