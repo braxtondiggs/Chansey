@@ -80,13 +80,15 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
   }
 
   private async recoverSingleBacktest(backtest: Backtest): Promise<void> {
-    // PENDING backtests may still have a valid job in the queue — skip if so
+    // PENDING backtests may still have a valid job in the queue — skip if so.
+    // However, an "active" job after a restart is stale (the old worker is dead),
+    // so only skip for genuinely queued states (waiting/delayed).
     if (backtest.status === BacktestStatus.PENDING) {
       const queue = this.getQueueForType(backtest.type);
       const existingJob = await queue.getJob(backtest.id);
       if (existingJob) {
         const jobState = await existingJob.getState();
-        if (jobState === 'waiting' || jobState === 'active' || jobState === 'delayed') {
+        if (jobState === 'waiting' || jobState === 'delayed') {
           this.logger.log(`Skipping PENDING backtest ${backtest.id} — valid job exists (state: ${jobState})`);
           return;
         }
@@ -155,15 +157,7 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
     const queue = this.getQueueForType(backtest.type);
 
     // Remove any existing job with the same ID to prevent BullMQ jobId collision
-    const existingJob = await queue.getJob(backtest.id);
-    if (existingJob) {
-      try {
-        await existingJob.remove();
-        this.logger.log(`Removed existing job ${backtest.id} from queue before re-queuing`);
-      } catch (removeError) {
-        this.logger.warn(`Could not remove existing job ${backtest.id}: ${removeError.message}`);
-      }
-    }
+    await this.forceRemoveJob(queue, backtest.id);
 
     // Update DB to PENDING BEFORE enqueuing the job.
     // BullMQ workers are already active (started in onModuleInit, before onApplicationBootstrap),
@@ -190,6 +184,39 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
     this.logger.log(
       `Re-queued backtest ${backtest.id} for recovery (attempt ${autoResumeCount + 1}/${MAX_AUTO_RESUME_COUNT}, checkpoint=${hasCheckpoint})`
     );
+  }
+
+  /**
+   * Force-remove a job from the queue, clearing stale locks from dead workers if needed.
+   * After a deployment, the old worker process is gone but its Redis lock on active jobs
+   * persists until lockDuration expires. job.remove() fails on locked jobs, so we delete
+   * the lock key directly and retry.
+   */
+  private async forceRemoveJob(queue: Queue, jobId: string): Promise<void> {
+    const existingJob = await queue.getJob(jobId);
+    if (!existingJob) return;
+
+    try {
+      await existingJob.remove();
+      this.logger.log(`Removed existing job ${jobId} from queue before re-queuing`);
+      return;
+    } catch (err) {
+      this.logger.log(`Initial remove for job ${jobId} failed (${err.message}), attempting force-remove`);
+    }
+
+    // Force-remove the stale lock via Redis and retry
+    try {
+      const client = await queue.client;
+      const prefix = queue.opts?.prefix ?? 'bull';
+      const lockKey = `${prefix}:${queue.name}:${jobId}:lock`;
+      const deleted = await client.del(lockKey);
+      this.logger.log(`Force-deleted stale lock for job ${jobId} (keys removed: ${deleted})`);
+
+      await existingJob.remove();
+      this.logger.log(`Removed previously-locked job ${jobId} after clearing stale lock`);
+    } catch (forceError) {
+      this.logger.warn(`Could not force-remove job ${jobId}: ${forceError.message}`);
+    }
   }
 
   private getQueueForType(type: BacktestType): Queue {

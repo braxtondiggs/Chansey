@@ -39,13 +39,17 @@ const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve)
 
 describe('BacktestRecoveryService', () => {
   let backtestRepository: Record<string, jest.Mock>;
-  let historicalQueue: Record<string, jest.Mock>;
-  let replayQueue: Record<string, jest.Mock>;
+  let historicalQueue: Record<string, any>;
+  let replayQueue: Record<string, any>;
+
+  let redisClient: Record<string, jest.Mock>;
 
   beforeEach(() => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation();
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    redisClient = { del: jest.fn().mockResolvedValue(1) };
 
     backtestRepository = {
       find: jest.fn().mockResolvedValue([]),
@@ -54,12 +58,18 @@ describe('BacktestRecoveryService', () => {
 
     historicalQueue = {
       add: jest.fn().mockResolvedValue(undefined),
-      getJob: jest.fn().mockResolvedValue(null)
+      getJob: jest.fn().mockResolvedValue(null),
+      client: Promise.resolve(redisClient),
+      opts: { prefix: 'bull' },
+      name: 'backtest-historical'
     };
 
     replayQueue = {
       add: jest.fn().mockResolvedValue(undefined),
-      getJob: jest.fn().mockResolvedValue(null)
+      getJob: jest.fn().mockResolvedValue(null),
+      client: Promise.resolve(redisClient),
+      opts: { prefix: 'bull' },
+      name: 'backtest-replay'
     };
   });
 
@@ -342,5 +352,51 @@ describe('BacktestRecoveryService', () => {
         status: BacktestStatus.PENDING
       })
     );
+  });
+
+  it('recovers PENDING backtest when existing job is active (stale lock from dead worker)', async () => {
+    const mockJob = {
+      getState: jest.fn().mockResolvedValue('active'),
+      remove: jest.fn().mockResolvedValue(undefined)
+    };
+    const backtest = makeBacktest({ status: BacktestStatus.PENDING });
+    backtestRepository.find.mockResolvedValue([backtest]);
+    historicalQueue.getJob.mockResolvedValue(mockJob);
+
+    const service = createService();
+    service.onApplicationBootstrap();
+    await flushPromises();
+
+    // Should NOT skip — active jobs after restart are stale
+    expect(historicalQueue.add).toHaveBeenCalled();
+    expect(backtestRepository.update).toHaveBeenCalledWith(
+      'bt-1',
+      expect.objectContaining({ status: BacktestStatus.PENDING })
+    );
+  });
+
+  it('force-removes stale locked job via Redis when job.remove() fails', async () => {
+    const mockJob = {
+      remove: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Job bt-1 could not be removed because it is locked by another worker'))
+        .mockResolvedValueOnce(undefined)
+    };
+    const backtest = makeBacktest();
+    backtestRepository.find.mockResolvedValue([backtest]);
+    historicalQueue.getJob.mockResolvedValue(mockJob);
+
+    const service = createService();
+    service.onApplicationBootstrap();
+    await flushPromises();
+
+    // Should delete the stale lock key via Redis
+    expect(redisClient.del).toHaveBeenCalledWith('bull:backtest-historical:bt-1:lock');
+
+    // Should retry remove after clearing the lock
+    expect(mockJob.remove).toHaveBeenCalledTimes(2);
+
+    // Should successfully re-queue
+    expect(historicalQueue.add).toHaveBeenCalled();
   });
 });
