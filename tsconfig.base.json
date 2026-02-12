@@ -10,34 +10,17 @@
     "importHelpers": true,
     "target": "ES2022",
     "module": "esnext",
-    "lib": [
-      "ES2022",
-      "dom",
-      "dom.iterable"
-    ],
+    "lib": ["ES2022", "dom", "dom.iterable"],
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@chansey-api/*": [
-        "apps/api/src/*"
-      ],
-      "@chansey-web/*": [
-        "apps/chansey/src/*"
-      ],
-      "@chansey/api-interfaces": [
-        "libs/api-interfaces/src/index.ts"
-      ],
-      "@chansey/shared": [
-        "libs/shared/src/index.ts"
-      ],
-      "@chansey/shared/*": [
-        "libs/shared/src/lib/*"
-      ]
+      "@chansey-api/*": ["apps/api/src/*"],
+      "@chansey-web/*": ["apps/chansey/src/*"],
+      "@chansey/api-interfaces": ["libs/api-interfaces/src/index.ts"],
+      "@chansey/shared": ["libs/shared/src/index.ts"],
+      "@chansey/shared/*": ["libs/shared/src/lib/*"]
     }
   },
-  "exclude": [
-    "node_modules",
-    "tmp"
-  ]
+  "exclude": ["node_modules", "tmp"]
 }

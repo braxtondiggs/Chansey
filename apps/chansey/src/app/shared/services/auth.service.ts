@@ -9,8 +9,6 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
 import { STANDARD_POLICY, queryKeys, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
-import { environment } from '../../../environments/environment';
-
 /**
  * Service for authentication via TanStack Query
  *
@@ -62,13 +60,7 @@ export class AuthService {
   refreshToken(): Observable<boolean> {
     return this.http.post('/api/auth/refresh', {}, { withCredentials: true }).pipe(
       map(() => true),
-      catchError((error) => {
-        console.error('Token refresh failed:', error);
-        if (environment.production) {
-          this.logout();
-        }
-        return of(false);
-      })
+      catchError(() => of(false))
     );
   }
 
@@ -116,8 +108,8 @@ export class AuthService {
   /**
    * Logout and clear session
    */
-  logout(): void {
-    this.queryClient.cancelQueries();
+  async logout(): Promise<void> {
+    await this.queryClient.cancelQueries();
     this.queryClient.clear();
     this.lastAuthCheckTime = 0;
     this.router.navigate(['/login']);

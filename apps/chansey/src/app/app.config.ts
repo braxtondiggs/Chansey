@@ -70,19 +70,10 @@ const providers = [
           refetchOnMount: true
         }
       }
-    })
+    }),
+    ...(environment.production ? [] : [withDevtools(() => ({ loadDevtools: true, buttonPosition: 'bottom-left' }))])
   )
 ];
-
-// Only add devtools in development
-if (!environment.production) {
-  providers.push(
-    provideTanStackQuery(
-      new QueryClient(),
-      withDevtools(() => ({ loadDevtools: true, buttonPosition: 'bottom-left' }))
-    )
-  );
-}
 
 if (environment.production) {
   providers.push(

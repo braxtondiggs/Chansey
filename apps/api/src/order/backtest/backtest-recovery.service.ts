@@ -165,22 +165,25 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
       }
     }
 
-    // Enqueue BEFORE updating the DB to avoid orphaned PENDING state on crash.
-    // If queue.add() succeeds but the DB update fails, the backtest stays in its
-    // current status (RUNNING/PAUSED) and recovery will retry on the next restart.
-    await queue.add('execute-backtest', payload, {
-      jobId: backtest.id,
-      removeOnComplete: true,
-      removeOnFail: false
-    });
-
-    // Reset to PENDING so the processor picks it up
+    // Update DB to PENDING BEFORE enqueuing the job.
+    // BullMQ workers are already active (started in onModuleInit, before onApplicationBootstrap),
+    // so if we enqueue first, the worker can pick up the job before the DB update executes,
+    // see the old RUNNING status, skip the job, and leave the backtest stuck in PENDING.
+    // If a crash occurs between the DB update and queue.add(), the PENDING backtest will have
+    // no job — this is safe because the recovery service already detects orphaned PENDING
+    // backtests with no valid queue job (lines 84-93) and re-queues them on the next restart.
     await this.backtestRepository.update(backtest.id, {
       status: BacktestStatus.PENDING,
       configSnapshot: updatedConfigSnapshot as Record<string, any>,
       checkpointState: backtest.checkpointState,
       lastCheckpointAt: backtest.lastCheckpointAt,
       processedTimestampCount: backtest.processedTimestampCount
+    });
+
+    await queue.add('execute-backtest', payload, {
+      jobId: backtest.id,
+      removeOnComplete: true,
+      removeOnFail: false
     });
 
     const hasCheckpoint = !!backtest.checkpointState;

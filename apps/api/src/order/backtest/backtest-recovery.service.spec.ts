@@ -118,10 +118,10 @@ describe('BacktestRecoveryService', () => {
       { jobId: 'bt-1', removeOnComplete: true, removeOnFail: false }
     );
 
-    // queue.add() must happen before DB update to avoid orphaned PENDING
-    const addOrder = historicalQueue.add.mock.invocationCallOrder[0];
+    // DB update to PENDING must happen before queue.add() to prevent race condition
     const updateOrder = backtestRepository.update.mock.invocationCallOrder[0];
-    expect(addOrder).toBeLessThan(updateOrder);
+    const addOrder = historicalQueue.add.mock.invocationCallOrder[0];
+    expect(updateOrder).toBeLessThan(addOrder);
   });
 
   it('recovers without checkpoint', async () => {
@@ -142,10 +142,10 @@ describe('BacktestRecoveryService', () => {
 
     expect(historicalQueue.add).toHaveBeenCalled();
 
-    // queue.add() must happen before DB update to avoid orphaned PENDING
-    const addOrder = historicalQueue.add.mock.invocationCallOrder[0];
+    // DB update to PENDING must happen before queue.add() to prevent race condition
     const updateOrder = backtestRepository.update.mock.invocationCallOrder[0];
-    expect(addOrder).toBeLessThan(updateOrder);
+    const addOrder = historicalQueue.add.mock.invocationCallOrder[0];
+    expect(updateOrder).toBeLessThan(addOrder);
   });
 
   it('clears stale checkpoint when age exceeds max', async () => {
@@ -222,9 +222,9 @@ describe('BacktestRecoveryService', () => {
     service.onApplicationBootstrap();
     await flushPromises();
 
-    // With queue-first ordering, the DB update to PENDING should NOT have happened
+    // With DB-first ordering, the PENDING update happens before queue.add() fails
     const pendingCall = backtestRepository.update.mock.calls.find(([, data]) => data.status === BacktestStatus.PENDING);
-    expect(pendingCall).toBeUndefined();
+    expect(pendingCall).toBeDefined();
 
     // The outer catch should mark it FAILED
     const failedCall = backtestRepository.update.mock.calls.find(([, data]) => data.status === BacktestStatus.FAILED);
