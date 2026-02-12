@@ -80,8 +80,13 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
 
         const atr = atrResult.values;
 
-        // Generate signals based on trailing stop logic
+        // Generate entry signals based on trend-flip detection, then stop signals
         if (config.tradeDirection === 'long' || config.tradeDirection === 'both') {
+          const longEntry = this.generateLongEntrySignal(coin.id, coin.symbol, priceHistory, atr, config);
+          if (longEntry && longEntry.confidence >= config.minConfidence) {
+            signals.push(longEntry);
+          }
+
           const longSignal = this.generateLongStopSignal(coin.id, coin.symbol, priceHistory, atr, config);
           if (longSignal && longSignal.confidence >= config.minConfidence) {
             signals.push(longSignal);
@@ -89,6 +94,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         }
 
         if (config.tradeDirection === 'short' || config.tradeDirection === 'both') {
+          const shortEntry = this.generateShortEntrySignal(coin.id, coin.symbol, priceHistory, atr, config);
+          if (shortEntry && shortEntry.confidence >= config.minConfidence) {
+            signals.push(shortEntry);
+          }
+
           const shortSignal = this.generateShortStopSignal(coin.id, coin.symbol, priceHistory, atr, config);
           if (shortSignal && shortSignal.confidence >= config.minConfidence) {
             signals.push(shortSignal);
@@ -327,9 +337,166 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   }
 
   /**
+   * Generate BUY entry signal for long positions on bullish trend flip.
+   * A trend flip occurs when the previous bar was below the trailing stop
+   * (triggered) but the current bar is above it (no longer triggered).
+   */
+  private generateLongEntrySignal(
+    coinId: string,
+    coinSymbol: string,
+    prices: PriceSummary[],
+    atr: number[],
+    config: ATRTrailingStopConfig
+  ): TradingSignal | null {
+    const currentIndex = prices.length - 1;
+    if (currentIndex < 1) return null;
+
+    const lookbackStart = Math.max(0, currentIndex - config.atrPeriod);
+
+    if (isNaN(atr[currentIndex]) || isNaN(atr[currentIndex - 1])) {
+      return null;
+    }
+
+    // Check current bar: not triggered (price above stop)
+    const currentState = this.calculateLongTrailingStop(prices, atr, config, lookbackStart, currentIndex);
+    if (currentState.isTriggered) return null;
+
+    // Check previous bar: was triggered (price below stop)
+    const prevLookbackStart = Math.max(0, currentIndex - 1 - config.atrPeriod);
+    const prevState = this.calculateLongTrailingStop(prices, atr, config, prevLookbackStart, currentIndex - 1);
+    if (!prevState.isTriggered) return null;
+
+    // Trend flip detected: price transitioned from below to above trailing stop
+    const currentPrice = prices[currentIndex].avg;
+    const currentATR = atr[currentIndex];
+    const strength = this.calculateEntryStrength(currentPrice, currentState.stopLevel, currentATR);
+    const confidence = this.calculateEntryConfidence(prices, atr);
+
+    return {
+      type: SignalType.BUY,
+      coinId,
+      strength,
+      price: currentPrice,
+      confidence,
+      reason: `Long entry: Bullish trend flip detected. Price (${currentPrice.toFixed(2)}) recovered above trailing stop (${currentState.stopLevel.toFixed(2)}). ATR: ${currentATR.toFixed(4)}`,
+      metadata: {
+        symbol: coinSymbol,
+        currentPrice,
+        stopLevel: currentState.stopLevel,
+        atr: currentATR,
+        atrMultiplier: config.atrMultiplier,
+        direction: 'long',
+        signalSource: 'trend_flip'
+      }
+    };
+  }
+
+  /**
+   * Generate SELL entry signal for short positions on bearish trend flip.
+   * A trend flip occurs when the previous bar was above the trailing stop
+   * (triggered for shorts) but the current bar is below it.
+   */
+  private generateShortEntrySignal(
+    coinId: string,
+    coinSymbol: string,
+    prices: PriceSummary[],
+    atr: number[],
+    config: ATRTrailingStopConfig
+  ): TradingSignal | null {
+    const currentIndex = prices.length - 1;
+    if (currentIndex < 1) return null;
+
+    const lookbackStart = Math.max(0, currentIndex - config.atrPeriod);
+
+    if (isNaN(atr[currentIndex]) || isNaN(atr[currentIndex - 1])) {
+      return null;
+    }
+
+    // Check current bar: not triggered (price below short stop)
+    const currentState = this.calculateShortTrailingStop(prices, atr, config, lookbackStart, currentIndex);
+    if (currentState.isTriggered) return null;
+
+    // Check previous bar: was triggered (price above short stop)
+    const prevLookbackStart = Math.max(0, currentIndex - 1 - config.atrPeriod);
+    const prevState = this.calculateShortTrailingStop(prices, atr, config, prevLookbackStart, currentIndex - 1);
+    if (!prevState.isTriggered) return null;
+
+    // Bearish trend flip detected
+    const currentPrice = prices[currentIndex].avg;
+    const currentATR = atr[currentIndex];
+    const strength = this.calculateEntryStrength(currentPrice, currentState.stopLevel, currentATR);
+    const confidence = this.calculateEntryConfidence(prices, atr);
+
+    return {
+      type: SignalType.SELL,
+      coinId,
+      strength,
+      price: currentPrice,
+      confidence,
+      reason: `Short entry: Bearish trend flip detected. Price (${currentPrice.toFixed(2)}) dropped below trailing stop (${currentState.stopLevel.toFixed(2)}). ATR: ${currentATR.toFixed(4)}`,
+      metadata: {
+        symbol: coinSymbol,
+        currentPrice,
+        stopLevel: currentState.stopLevel,
+        atr: currentATR,
+        atrMultiplier: config.atrMultiplier,
+        direction: 'short',
+        signalSource: 'trend_flip'
+      }
+    };
+  }
+
+  /**
+   * Calculate entry signal strength based on price-to-stop buffer relative to ATR.
+   * Larger buffer from the stop = stronger entry signal.
+   */
+  private calculateEntryStrength(currentPrice: number, stopLevel: number, atr: number): number {
+    if (atr === 0) return 0.5;
+    const buffer = Math.abs(currentPrice - stopLevel);
+    const bufferRatio = buffer / atr;
+    return Math.min(1, Math.max(0.3, bufferRatio * 0.5));
+  }
+
+  /**
+   * Calculate entry confidence based on ATR stability.
+   * More stable ATR = more reliable entry signals.
+   */
+  private calculateEntryConfidence(prices: PriceSummary[], atr: number[]): number {
+    const currentIndex = prices.length - 1;
+    const lookback = 5;
+    const startIndex = Math.max(0, currentIndex - lookback);
+
+    let atrSum = 0;
+    let count = 0;
+    for (let i = startIndex; i <= currentIndex; i++) {
+      if (!isNaN(atr[i])) {
+        atrSum += atr[i];
+        count++;
+      }
+    }
+    const avgATR = count > 0 ? atrSum / count : atr[currentIndex];
+
+    if (!avgATR || avgATR === 0) {
+      return 0.45;
+    }
+
+    let atrVariation = 0;
+    for (let i = startIndex; i <= currentIndex; i++) {
+      if (!isNaN(atr[i])) {
+        atrVariation += Math.abs(atr[i] - avgATR) / avgATR;
+      }
+    }
+    const atrStability = 1 - Math.min(1, count > 0 ? atrVariation / count : 0);
+
+    const baseConfidence = 0.45;
+    return Math.min(1, baseConfidence + atrStability * 0.35);
+  }
+
+  /**
    * Calculate signal strength based on how far price breached stop
    */
   private calculateSignalStrength(currentPrice: number, stopLevel: number, atr: number): number {
+    if (atr === 0) return 0.5;
     const breachAmount = Math.abs(currentPrice - stopLevel);
     const breachRatio = breachAmount / atr;
 
@@ -362,12 +529,15 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
       }
     }
     const avgATR = count > 0 ? atrSum / count : atr[currentIndex];
+    if (!avgATR || avgATR === 0) {
+      return 0.5;
+    }
     for (let i = startIndex; i <= currentIndex; i++) {
       if (!isNaN(atr[i])) {
         atrVariation += Math.abs(atr[i] - avgATR) / avgATR;
       }
     }
-    const atrStability = 1 - Math.min(1, atrVariation / lookback);
+    const atrStability = 1 - Math.min(1, count > 0 ? atrVariation / count : 0);
 
     // Check if stop level has been rising (for longs) or falling (for shorts)
     let stopProgression = 0;
