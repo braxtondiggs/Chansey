@@ -163,3 +163,11 @@ export function isObjectSafe(obj: unknown, options: SanitizeOptions = {}): boole
     return false;
   }
 }
+
+/**
+ * Escapes SQL LIKE wildcard characters (%, _, \) in user input
+ * to prevent wildcard injection in ILIKE/LIKE queries.
+ */
+export function escapeLikeWildcards(input: string): string {
+  return input.replace(/[%_\\]/g, '\\$&');
+}

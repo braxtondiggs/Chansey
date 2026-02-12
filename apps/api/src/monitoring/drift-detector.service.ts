@@ -15,7 +15,6 @@ import { MonitoringService } from './monitoring.service';
 
 import { AuditService } from '../audit/audit.service';
 import { Deployment } from '../strategy/entities/deployment.entity';
-import { PerformanceMetric } from '../strategy/entities/performance-metric.entity';
 
 // Import drift detectors
 
@@ -115,7 +114,6 @@ export class DriftDetectorService {
         eventType: AuditEventType.DRIFT_DETECTED,
         entityType: 'Deployment',
         entityId: deploymentId,
-        userId: 'system',
         beforeState: { driftAlertCount: deployment.driftAlertCount },
         afterState: { driftAlertCount: deployment.driftAlertCount + alerts.length },
         metadata: {

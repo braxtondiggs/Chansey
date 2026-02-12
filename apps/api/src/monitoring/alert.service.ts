@@ -60,7 +60,6 @@ export class AlertService {
       eventType: AuditEventType.ALERT_SENT,
       entityType: 'DriftAlert',
       entityId: alert.id,
-      userId: 'system',
       beforeState: null,
       afterState: {
         alertType: 'drift',
