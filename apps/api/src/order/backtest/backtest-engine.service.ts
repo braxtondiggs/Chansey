@@ -71,6 +71,7 @@ import {
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
 import { RegimeGateService } from '../../market-regime/regime-gate.service';
 import { VolatilityCalculator } from '../../market-regime/volatility.calculator';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
@@ -81,6 +82,7 @@ import {
   OpportunitySellingUserConfig
 } from '../interfaces/opportunity-selling.interface';
 import { PositionAnalysisService } from '../services/position-analysis.service';
+import { DEFAULT_QUOTE_CURRENCY } from '@chansey-api/exchange/constants';
 
 // Default slippage config using shared service
 const DEFAULT_SLIPPAGE_CONFIG: SlippageConfig = {
@@ -501,7 +503,7 @@ export class BacktestEngine {
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
 
     // Resolve quote currency from configSnapshot (default: USDT) with fallback chain
-    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
+    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? DEFAULT_QUOTE_CURRENCY;
     const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
     // Load data from full dataset range for indicator warmup
@@ -1100,7 +1102,7 @@ export class BacktestEngine {
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
 
     // Resolve quote currency from configSnapshot (default: USDT) with fallback chain
-    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
+    const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? DEFAULT_QUOTE_CURRENCY;
     const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
     // Load data from full dataset range for indicator warmup

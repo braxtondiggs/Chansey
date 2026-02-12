@@ -11,17 +11,13 @@ import { AlgorithmActivationService } from '../../algorithm/services/algorithm-a
 import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-context-builder.service';
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
+import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { toErrorInfo } from '../../shared/error.util';
 import { UsersService } from '../../users/users.service';
 import { TradeExecutionService, TradeSignalWithExit } from '../services/trade-execution.service';
 
 const MIN_CONFIDENCE_THRESHOLD = 0.6;
 const ACTIONABLE_SIGNAL_TYPES = new Set([SignalType.BUY, SignalType.SELL]);
-const EXCHANGE_QUOTE_CURRENCY: Record<string, string> = {
-  binance_us: 'USDT',
-  coinbase: 'USD'
-};
-const DEFAULT_QUOTE_CURRENCY = 'USDT';
 
 /**
  * TradeExecutionTask
@@ -121,6 +117,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     }
   }
 
+  private static readonly CONCURRENCY_LIMIT = 5;
+
   /**
    * Handle trade execution for all active algorithm activations
    */
@@ -144,44 +142,39 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
       await job.updateProgress(20);
 
+      const totalActivations = activeActivations.length;
+
+      // Phase 1: Pre-populate portfolio cache (one fetch per unique user)
+      const portfolioCache = new Map<string, number>();
+      const uniqueUserIds = [...new Set(activeActivations.map((a) => a.userId))];
+      for (const userId of uniqueUserIds) {
+        const activation = activeActivations.find((a) => a.userId === userId);
+        portfolioCache.set(userId, await this.fetchPortfolioValue(activation));
+      }
+
+      // Phase 2: Process activations in parallel chunks
       let successCount = 0;
       let failCount = 0;
       let skippedCount = 0;
-
-      const totalActivations = activeActivations.length;
       let processedActivations = 0;
 
-      // Cache portfolio value per user to avoid redundant exchange API calls
-      const portfolioCache = new Map<string, number>();
+      const chunks = this.chunkArray(activeActivations, TradeExecutionTask.CONCURRENCY_LIMIT);
 
-      for (const activation of activeActivations) {
-        try {
-          // Get cached or fetch portfolio value
-          let portfolioValue = portfolioCache.get(activation.userId);
-          if (portfolioValue === undefined) {
-            portfolioValue = await this.fetchPortfolioValue(activation);
-            portfolioCache.set(activation.userId, portfolioValue);
-          }
+      for (const chunk of chunks) {
+        const results = await Promise.allSettled(
+          chunk.map((activation) => this.processActivation(activation, portfolioCache.get(activation.userId) ?? 0))
+        );
 
-          const signal = await this.generateTradeSignal(activation, portfolioValue);
-
-          if (signal) {
-            await this.tradeExecutionService.executeTradeSignal(signal);
-            this.logger.log(
-              `Executed trade for activation ${activation.id} (${activation.algorithm.name}): ${signal.action} ${signal.symbol}`
-            );
-            successCount++;
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            if (result.value === 'executed') successCount++;
+            else skippedCount++;
           } else {
-            this.logger.debug(`No actionable signal for activation ${activation.id} (${activation.algorithm.name})`);
-            skippedCount++;
+            failCount++;
           }
-        } catch (error: unknown) {
-          const err = toErrorInfo(error);
-          this.logger.error(`Failed to execute trade for activation ${activation.id}: ${err.message}`, err.stack);
-          failCount++;
         }
 
-        processedActivations++;
+        processedActivations += chunk.length;
         const progressPercentage = Math.floor(20 + (processedActivations / totalActivations) * 70);
         await job.updateProgress(progressPercentage);
       }
@@ -206,10 +199,39 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
+   * Process a single activation: generate signal and execute trade
+   * @returns 'executed' if a trade was placed, 'skipped' otherwise
+   */
+  private async processActivation(
+    activation: AlgorithmActivation,
+    portfolioValue: number
+  ): Promise<'executed' | 'skipped'> {
+    if (portfolioValue <= 0) {
+      this.logger.warn(
+        `Skipping activation ${activation.id}: portfolio value is $${portfolioValue} (cannot auto-size)`
+      );
+      return 'skipped';
+    }
+
+    const signal = await this.generateTradeSignal(activation, portfolioValue);
+
+    if (signal) {
+      await this.tradeExecutionService.executeTradeSignal(signal);
+      this.logger.log(
+        `Executed trade for activation ${activation.id} (${activation.algorithm.name}): ${signal.action} ${signal.symbol}`
+      );
+      return 'executed';
+    }
+
+    this.logger.debug(`No actionable signal for activation ${activation.id} (${activation.algorithm.name})`);
+    return 'skipped';
+  }
+
+  /**
    * Generate a trade signal for an algorithm activation
    * @returns TradeSignalWithExit or null if no actionable trade
    */
-  async generateTradeSignal(
+  private async generateTradeSignal(
     activation: AlgorithmActivation,
     portfolioValue: number
   ): Promise<TradeSignalWithExit | null> {
@@ -265,20 +287,27 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       symbol,
       quantity: 0,
       autoSize: true,
-      portfolioValue
+      portfolioValue,
+      allocationPercentage: activation.allocationPercentage || 1.0
     };
   }
 
   /**
    * Resolve a coin ID + exchange into a trading symbol (e.g. "BTC/USDT")
    */
-  async resolveTradingSymbol(coinId: string, activation: AlgorithmActivation): Promise<string | null> {
+  private async resolveTradingSymbol(coinId: string, activation: AlgorithmActivation): Promise<string | null> {
     try {
-      const coin = await this.coinService.getCoinById(coinId);
       const exchangeSlug = activation.exchangeKey?.exchange?.slug;
+      if (!exchangeSlug) {
+        this.logger.warn(`Activation ${activation.id} missing exchange relation, cannot resolve symbol`);
+        return null;
+      }
+
+      const coin = await this.coinService.getCoinById(coinId);
       const quoteCurrency = EXCHANGE_QUOTE_CURRENCY[exchangeSlug] || DEFAULT_QUOTE_CURRENCY;
       return `${coin.symbol.toUpperCase()}/${quoteCurrency}`;
-    } catch {
+    } catch (error) {
+      this.logger.warn(`Failed to resolve trading symbol for coin ${coinId}: ${error.message}`);
       return null;
     }
   }
@@ -287,7 +316,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
    * Fetch total portfolio USD value for an activation's user
    * Returns 0 on error for graceful degradation
    */
-  async fetchPortfolioValue(activation: AlgorithmActivation): Promise<number> {
+  private async fetchPortfolioValue(activation: AlgorithmActivation): Promise<number> {
     try {
       const user = await this.usersService.getById(activation.userId, true);
       const balances = await this.balanceService.getUserBalances(user);
@@ -296,5 +325,13 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       this.logger.warn(`Failed to fetch portfolio value for user ${activation.userId}: ${error.message}`);
       return 0;
     }
+  }
+
+  private chunkArray<T>(array: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
   }
 }
