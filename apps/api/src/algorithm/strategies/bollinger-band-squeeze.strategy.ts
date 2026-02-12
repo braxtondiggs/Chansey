@@ -121,12 +121,12 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
    */
   private getConfigWithDefaults(config: Record<string, unknown>): BollingerSqueezeConfig {
     return {
-      period: (config.period as number) || 20,
-      stdDev: (config.stdDev as number) || 2,
-      squeezeThreshold: (config.squeezeThreshold as number) || 0.04, // 4% bandwidth
-      minSqueezeBars: (config.minSqueezeBars as number) || 6,
+      period: (config.period as number) ?? 20,
+      stdDev: (config.stdDev as number) ?? 2,
+      squeezeThreshold: (config.squeezeThreshold as number) ?? 0.04, // 4% bandwidth
+      minSqueezeBars: (config.minSqueezeBars as number) ?? 6,
       breakoutConfirmation: (config.breakoutConfirmation as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) || 0.6
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -148,8 +148,8 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     let totalBandwidth = 0;
 
     // Count consecutive bars in squeeze ending at previous bar (not current)
-    for (let i = currentIndex - 1; i >= 0 && i >= currentIndex - config.minSqueezeBars - 5; i--) {
-      if (isNaN(bandwidth[i])) continue;
+    for (let i = currentIndex - 1; i >= 0 && i >= currentIndex - config.minSqueezeBars * 2; i--) {
+      if (isNaN(bandwidth[i])) break;
 
       if (bandwidth[i] < config.squeezeThreshold) {
         squeezeBars++;
@@ -228,7 +228,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
       }
     }
 
-    const strength = this.calculateSignalStrength(squeezeState, bandwidth, currentIndex, isBullishBreakout);
+    const strength = this.calculateSignalStrength(squeezeState, bandwidth, currentIndex, config);
     const confidence = this.calculateConfidence(
       squeezeState,
       prices,
@@ -291,16 +291,20 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     squeezeState: SqueezeState,
     bandwidth: number[],
     currentIndex: number,
-    isBullish: boolean
+    config: BollingerSqueezeConfig
   ): number {
     // Longer squeezes typically lead to stronger breakouts
-    const squeezeDurationScore = Math.min(1, squeezeState.squeezeBars / 12); // 12 bars = max score
+    const squeezeDurationScore = Math.min(1, squeezeState.squeezeBars / (config.minSqueezeBars * 2));
 
     // Tighter squeezes (lower bandwidth) lead to stronger breakouts
-    const squeezeIntensityScore = Math.min(1, (0.04 - squeezeState.avgBandwidthDuringSqueeze) / 0.03);
+    const squeezeIntensityScore = Math.min(
+      1,
+      (config.squeezeThreshold - squeezeState.avgBandwidthDuringSqueeze) / (config.squeezeThreshold * 0.75)
+    );
 
     // How much bandwidth expanded on breakout
-    const bandwidthExpansion = bandwidth[currentIndex] / squeezeState.avgBandwidthDuringSqueeze;
+    const bandwidthExpansion =
+      squeezeState.avgBandwidthDuringSqueeze > 0 ? bandwidth[currentIndex] / squeezeState.avgBandwidthDuringSqueeze : 1;
     const expansionScore = Math.min(1, (bandwidthExpansion - 1) / 2);
 
     return Math.min(1, Math.max(0.4, (squeezeDurationScore + squeezeIntensityScore + expansionScore) / 3));

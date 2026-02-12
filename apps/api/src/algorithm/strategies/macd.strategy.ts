@@ -102,12 +102,12 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
    */
   private getConfigWithDefaults(config: Record<string, unknown>): MACDConfig {
     return {
-      fastPeriod: (config.fastPeriod as number) || 12,
-      slowPeriod: (config.slowPeriod as number) || 26,
-      signalPeriod: (config.signalPeriod as number) || 9,
+      fastPeriod: (config.fastPeriod as number) ?? 12,
+      slowPeriod: (config.slowPeriod as number) ?? 26,
+      signalPeriod: (config.signalPeriod as number) ?? 9,
       useHistogramConfirmation: (config.useHistogramConfirmation as boolean) ?? true,
-      minHistogramStrength: (config.minHistogramStrength as number) || 0.0001,
-      minConfidence: (config.minConfidence as number) || 0.6
+      minHistogramStrength: (config.minHistogramStrength as number) ?? 0.0001,
+      minConfidence: (config.minConfidence as number) ?? 0.6
     };
   }
 
@@ -115,7 +115,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
    * Check if we have enough data for MACD calculation
    */
   private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: MACDConfig): boolean {
-    const minRequired = config.slowPeriod + config.signalPeriod;
+    const minRequired = config.slowPeriod + config.signalPeriod - 1;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
 
@@ -163,7 +163,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
       (isBearishCrossover && currentHistogram < -config.minHistogramStrength);
 
     if (isBullishCrossover && histogramConfirmed) {
-      const strength = this.calculateSignalStrength(macd, signal, histogram, 'bullish');
+      const strength = this.calculateSignalStrength(macd, histogram);
       const confidence = this.calculateConfidence(macd, signal, histogram, 'bullish');
 
       return {
@@ -187,7 +187,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
     }
 
     if (isBearishCrossover && histogramConfirmed) {
-      const strength = this.calculateSignalStrength(macd, signal, histogram, 'bearish');
+      const strength = this.calculateSignalStrength(macd, histogram);
       const confidence = this.calculateConfidence(macd, signal, histogram, 'bearish');
 
       return {
@@ -216,12 +216,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
   /**
    * Calculate signal strength based on histogram magnitude and crossover velocity
    */
-  private calculateSignalStrength(
-    macd: number[],
-    signal: number[],
-    histogram: number[],
-    direction: 'bullish' | 'bearish'
-  ): number {
+  private calculateSignalStrength(macd: number[], histogram: number[]): number {
     const currentIndex = macd.length - 1;
 
     // Calculate average histogram magnitude for normalization
@@ -234,6 +229,11 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
       }
     }
     const avgMagnitude = count > 0 ? sumMagnitude / count : Math.abs(histogram[currentIndex]);
+
+    // Guard against zero avgMagnitude (all histogram values are 0)
+    if (avgMagnitude === 0) {
+      return 0.3;
+    }
 
     // Strength based on current histogram relative to average
     const currentMagnitude = Math.abs(histogram[currentIndex]);
@@ -274,8 +274,9 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
       }
     }
 
-    const histogramScore = histogramGrowing / recentPeriod;
-    const trendScore = trendingBars / recentPeriod;
+    const validBars = Math.max(1, currentIndex - startIndex);
+    const histogramScore = histogramGrowing / validBars;
+    const trendScore = trendingBars / validBars;
 
     return Math.min(1, (histogramScore + trendScore) / 2 + 0.3);
   }

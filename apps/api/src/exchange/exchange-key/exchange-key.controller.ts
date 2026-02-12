@@ -1,18 +1,18 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Param,
-  Delete,
-  UseGuards,
-  HttpStatus,
   ClassSerializerInterceptor,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Param,
+  Post,
+  UseGuards,
   UseInterceptors
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { CreateExchangeKeyDto, ExchangeKeyResponseDto, UpdateExchangeKeyDto } from './dto';
+import { CreateExchangeKeyDto, ExchangeKeyResponseDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 import { ExchangeKeyService } from './exchange-key.service';
 
@@ -23,7 +23,7 @@ import { User } from '../../users/users.entity';
 @ApiTags('Exchange Keys')
 @Controller('exchange-keys')
 @UseGuards(JwtAuthenticationGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('token')
 @UseInterceptors(ClassSerializerInterceptor)
 export class ExchangeKeyController {
   constructor(private readonly exchangeKeyService: ExchangeKeyService) {}

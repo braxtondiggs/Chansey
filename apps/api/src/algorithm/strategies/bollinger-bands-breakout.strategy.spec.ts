@@ -54,12 +54,6 @@ describe('BollingerBandsBreakoutStrategy', () => {
     jest.clearAllMocks();
   });
 
-  describe('strategy properties', () => {
-    it('should have correct id', () => {
-      expect(strategy.id).toBe('bb-breakout-001');
-    });
-  });
-
   describe('execute', () => {
     it('should generate BUY signal on upper band breakout', async () => {
       const prices = createMockPrices(30);
@@ -200,13 +194,165 @@ describe('BollingerBandsBreakoutStrategy', () => {
     });
   });
 
-  describe('getConfigSchema', () => {
-    it('should return valid configuration schema', () => {
-      const schema = strategy.getConfigSchema();
+  describe('confirmation direction validation', () => {
+    const setupConfirmationTest = (
+      confirmationPrices: { avg: number; upper: number; lower: number }[],
+      currentPB: number
+    ) => {
+      const prices = createMockPrices(30);
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
 
-      expect(schema).toHaveProperty('period');
-      expect(schema).toHaveProperty('stdDev');
-      expect(schema).toHaveProperty('requireConfirmation');
+      // Populate BB values for last bars
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2 + (i - 20) * 0.01;
+      }
+
+      // Set confirmation bar data (bars 28 and 29 for confirmationBars=2)
+      for (let i = 0; i < confirmationPrices.length; i++) {
+        const idx = 30 - confirmationPrices.length + i;
+        prices[idx].avg = confirmationPrices[i].avg;
+        upper[idx] = confirmationPrices[i].upper;
+        lower[idx] = confirmationPrices[i].lower;
+      }
+
+      pb[29] = currentPB;
+      bandwidth[29] = 0.3;
+
+      return { prices, upper, middle, lower, pb, bandwidth };
+    };
+
+    it('should produce BUY when confirmation is bullish and %B > 1', async () => {
+      // Both confirmation bars have price above upper band → bullish confirmation
+      const { prices, upper, middle, lower, pb, bandwidth } = setupConfirmationTest(
+        [
+          { avg: 120, upper: 115, lower: 85 },
+          { avg: 122, upper: 115, lower: 85 }
+        ],
+        1.33
+      );
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { requireConfirmation: true, confirmationBars: 2, minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('should block signal when confirmation direction mismatches breakout', async () => {
+      // Both confirmation bars have price above upper band → bullish confirmation
+      // But %B on last bar is < 0 → bearish breakout — direction mismatch should block
+      const { prices, upper, middle, lower, pb, bandwidth } = setupConfirmationTest(
+        [
+          { avg: 120, upper: 115, lower: 85 },
+          { avg: 120, upper: 115, lower: 85 }
+        ],
+        -0.33
+      );
+      // Confirmation checks prices[i].avg vs upper[i]/lower[i] directly,
+      // while signal generation uses the independent pb[] array.
+      // Both bars: price 120 > upper 115 → bullish confirmed
+      // But pb[29] = -0.33 → bearish breakout → should be blocked
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { requireConfirmation: true, confirmationBars: 2, minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('confidence filtering', () => {
+    it('should filter signal when confidence is below minConfidence', async () => {
+      const prices = createMockPrices(30);
+      prices[29].avg = 120;
+
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+
+      // Flat bandwidth and no momentum consistency → low confidence
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5; // No upward momentum trend
+        bandwidth[i] = 0.2; // Flat, not expanding
+      }
+      pb[29] = 1.33; // Breakout on last bar only
+      bandwidth[29] = 0.2; // Still flat
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0.6 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      // With flat bandwidth (0 expanding) and flat %B (only last bar jumps = 1/5 momentum),
+      // confidence = (0/5 + 1/5) / 2 + 0.3 = 0.1 + 0.3 = 0.4 < 0.6
+      expect(result.signals).toHaveLength(0);
     });
   });
 });

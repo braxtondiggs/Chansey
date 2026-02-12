@@ -75,6 +75,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestService,
     BacktestEngine,
     BacktestStreamService,
+    BacktestResultService,
     SlippageAnalysisService,
     PositionManagementService,
     OrderStateMachineService

@@ -86,6 +86,9 @@ export interface LiveReplayExecuteOptions {
   /** Callback invoked at each checkpoint */
   onCheckpoint?: CheckpointCallback;
 
+  /** Lightweight callback for progress updates (called at most every ~30 seconds) */
+  onHeartbeat?: (index: number, totalTimestamps: number) => Promise<void>;
+
   /** Checkpoint state to resume from (if resuming a previous run) */
   resumeFrom?: BacktestCheckpointState;
 

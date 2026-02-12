@@ -45,8 +45,9 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
 
     try {
       // Get configuration
-      const fastPeriod = (context.config.fastPeriod as number) || 10;
-      const slowPeriod = (context.config.slowPeriod as number) || 20;
+      const fastPeriod = (context.config.fastPeriod as number) ?? 10;
+      const slowPeriod = (context.config.slowPeriod as number) ?? 20;
+      const minConfidence = (context.config.minConfidence as number) ?? 0.7;
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -72,7 +73,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         // Generate signal
         const signal = this.generateCrossoverSignal(coin.id, coin.symbol, priceHistory, fastSMA, slowSMA);
 
-        if (signal) {
+        if (signal && signal.confidence >= minConfidence) {
           signals.push(signal);
         }
 
@@ -105,7 +106,13 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
 
-    if (previousIndex < 0 || isNaN(fastSMA[currentIndex]) || isNaN(slowSMA[currentIndex])) {
+    if (
+      previousIndex < 0 ||
+      isNaN(fastSMA[currentIndex]) ||
+      isNaN(slowSMA[currentIndex]) ||
+      isNaN(fastSMA[previousIndex]) ||
+      isNaN(slowSMA[previousIndex])
+    ) {
       return null;
     }
 
@@ -215,6 +222,6 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
   }
 
   private hasEnoughData(priceHistory: PriceSummary[] | undefined, slowPeriod: number): boolean {
-    return !!priceHistory && priceHistory.length >= slowPeriod;
+    return !!priceHistory && priceHistory.length >= slowPeriod + 1;
   }
 }

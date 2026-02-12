@@ -56,7 +56,7 @@ import {
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
-import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 
 // Default slippage config using shared service
@@ -94,6 +94,8 @@ interface ExecuteOptions {
   checkpointInterval?: number;
   /** Callback invoked at each checkpoint with current state and total timestamp count */
   onCheckpoint?: (state: BacktestCheckpointState, results: CheckpointResults, totalTimestamps: number) => Promise<void>;
+  /** Lightweight callback for progress updates (called at most every ~30 seconds) */
+  onHeartbeat?: (index: number, totalTimestamps: number) => Promise<void>;
   /** Checkpoint state to resume from (if resuming a previous run) */
   resumeFrom?: BacktestCheckpointState;
 }
@@ -144,6 +146,13 @@ export interface OptimizationBacktestResult {
   finalValue?: number;
   /** Downside deviation for Sortino ratio calculation (standard deviation of negative returns only) */
   downsideDeviation?: number;
+}
+
+interface PriceTrackingContext {
+  historyByCoin: Map<string, OHLCCandle[]>;
+  summariesByCoin: Map<string, PriceSummary[]>;
+  indexByCoin: Map<string, number>;
+  windowsByCoin: Map<string, PriceSummary[]>;
 }
 
 @Injectable()
@@ -278,24 +287,7 @@ export class BacktestEngine {
     const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
-    const priceHistoryByCoin = new Map<string, OHLCCandle[]>();
-    const priceSummariesByCoin = new Map<
-      string,
-      { avg: number; coin: string; date: Date; high: number; low: number }[]
-    >();
-    const indexByCoin = new Map<string, number>();
-
-    for (const coinId of coinIds) {
-      const history = historicalPrices
-        .filter((price) => price.coinId === coinId)
-        .sort((a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime());
-      priceHistoryByCoin.set(coinId, history);
-      priceSummariesByCoin.set(
-        coinId,
-        history.map((price) => this.buildPriceSummary(price))
-      );
-      indexByCoin.set(coinId, -1);
-    }
+    const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
 
     this.logger.log(`Processing ${timestamps.length} time periods`);
 
@@ -329,7 +321,16 @@ export class BacktestEngine {
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
 
+    // Track consecutive algorithm failures to detect systematic issues
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // Time-based heartbeat tracking (every ~30 seconds instead of every N iterations)
+    let lastHeartbeatTime = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 30_000;
+
     for (let i = startIndex; i < timestamps.length; i++) {
+      const iterStart = Date.now();
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
 
@@ -340,19 +341,7 @@ export class BacktestEngine {
 
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
-      const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
-      for (const coin of coins) {
-        const history = priceHistoryByCoin.get(coin.id) ?? [];
-        let pointer = indexByCoin.get(coin.id) ?? -1;
-        while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
-          pointer += 1;
-        }
-        indexByCoin.set(coin.id, pointer);
-        if (pointer >= 0) {
-          const summaries = priceSummariesByCoin.get(coin.id) ?? [];
-          priceData[coin.id] = summaries.slice(0, pointer + 1);
-        }
-      }
+      const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
       const context = {
         coins,
@@ -376,11 +365,19 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
+        consecutiveErrors = 0;
       } catch (error) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+        consecutiveErrors++;
+        this.logger.warn(
+          `Algorithm execution failed at ${timestamp.toISOString()} ` +
+            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${error.message}`
+        );
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${error.message}`);
+        }
       }
 
       for (const strategySignal of strategySignals) {
@@ -470,6 +467,20 @@ export class BacktestEngine {
             timestamp: timestamp.toISOString()
           });
         }
+      }
+
+      // Iteration timing telemetry
+      const iterDuration = Date.now() - iterStart;
+      if (iterDuration > 5000) {
+        this.logger.warn(
+          `Slow iteration ${i}/${timestamps.length} took ${iterDuration}ms ` + `at ${timestamp.toISOString()}`
+        );
+      }
+
+      // Lightweight heartbeat for stale detection (every ~30 seconds)
+      if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+        await options.onHeartbeat(i, timestamps.length);
+        lastHeartbeatTime = Date.now();
       }
 
       // Checkpoint callback: save state periodically for resume capability
@@ -641,24 +652,7 @@ export class BacktestEngine {
     const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
-    const priceHistoryByCoin = new Map<string, OHLCCandle[]>();
-    const priceSummariesByCoin = new Map<
-      string,
-      { avg: number; coin: string; date: Date; high: number; low: number }[]
-    >();
-    const indexByCoin = new Map<string, number>();
-
-    for (const coinId of coinIds) {
-      const history = historicalPrices
-        .filter((price) => price.coinId === coinId)
-        .sort((a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime());
-      priceHistoryByCoin.set(coinId, history);
-      priceSummariesByCoin.set(
-        coinId,
-        history.map((price) => this.buildPriceSummary(price))
-      );
-      indexByCoin.set(coinId, -1);
-    }
+    const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
 
     this.logger.log(`Processing ${timestamps.length} time periods with ${delayMs}ms delay between each`);
 
@@ -690,6 +684,14 @@ export class BacktestEngine {
 
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
+
+    // Track consecutive algorithm failures to detect systematic issues
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // Time-based heartbeat tracking (every ~30 seconds)
+    let lastHeartbeatTime = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 30_000;
 
     // Track consecutive pause check failures for resilience
     // If pause checks fail repeatedly, force a pause as a safety measure
@@ -799,19 +801,7 @@ export class BacktestEngine {
 
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
-      const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
-      for (const coin of coins) {
-        const history = priceHistoryByCoin.get(coin.id) ?? [];
-        let pointer = indexByCoin.get(coin.id) ?? -1;
-        while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
-          pointer += 1;
-        }
-        indexByCoin.set(coin.id, pointer);
-        if (pointer >= 0) {
-          const summaries = priceSummariesByCoin.get(coin.id) ?? [];
-          priceData[coin.id] = summaries.slice(0, pointer + 1);
-        }
-      }
+      const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
       const context = {
         coins,
@@ -837,11 +827,19 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
+        consecutiveErrors = 0;
       } catch (error) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+        consecutiveErrors++;
+        this.logger.warn(
+          `Algorithm execution failed at ${timestamp.toISOString()} ` +
+            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${error.message}`
+        );
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${error.message}`);
+        }
       }
 
       for (const strategySignal of strategySignals) {
@@ -933,6 +931,12 @@ export class BacktestEngine {
             replaySpeed: ReplaySpeed[replaySpeed]
           });
         }
+      }
+
+      // Lightweight heartbeat for stale detection (every ~30 seconds)
+      if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+        await options.onHeartbeat(i, timestamps.length);
+        lastHeartbeatTime = Date.now();
       }
 
       // Checkpoint callback: save state periodically for resume capability
@@ -1044,7 +1048,7 @@ export class BacktestEngine {
   /**
    * Build price summary from OHLC candle
    */
-  private buildPriceSummary(candle: OHLCCandle): { avg: number; coin: string; date: Date; high: number; low: number } {
+  private buildPriceSummary(candle: OHLCCandle): PriceSummary {
     return {
       avg: candle.close,
       coin: candle.coinId,
@@ -1052,6 +1056,71 @@ export class BacktestEngine {
       high: candle.high,
       low: candle.low
     };
+  }
+
+  /**
+   * Initialize price tracking state for a set of coins.
+   * Filters historical prices by coinId, sorts by timestamp, pre-computes summaries,
+   * and initializes sliding-window pointers.
+   */
+  private initPriceTracking(historicalPrices: OHLCCandle[], coinIds: string[]): PriceTrackingContext {
+    const historyByCoin = new Map<string, OHLCCandle[]>();
+    const summariesByCoin = new Map<string, PriceSummary[]>();
+    const indexByCoin = new Map<string, number>();
+    const windowsByCoin = new Map<string, PriceSummary[]>();
+
+    // Single-pass grouping: O(prices) instead of O(coins × prices)
+    const pricesByCoin = new Map<string, OHLCCandle[]>();
+    for (const candle of historicalPrices) {
+      let group = pricesByCoin.get(candle.coinId);
+      if (!group) {
+        group = [];
+        pricesByCoin.set(candle.coinId, group);
+      }
+      group.push(candle);
+    }
+
+    for (const coinId of coinIds) {
+      const history = (pricesByCoin.get(coinId) ?? []).sort(
+        (a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime()
+      );
+      historyByCoin.set(coinId, history);
+      summariesByCoin.set(
+        coinId,
+        history.map((price) => this.buildPriceSummary(price))
+      );
+      indexByCoin.set(coinId, -1);
+      windowsByCoin.set(coinId, []);
+    }
+
+    return { historyByCoin, summariesByCoin, indexByCoin, windowsByCoin };
+  }
+
+  /**
+   * Advance per-coin price windows up to and including the given timestamp.
+   *
+   * **Important:** The returned `PriceSummary[]` arrays are shared mutable references
+   * held by `PriceTrackingContext`. Callers (including strategies) must treat them as
+   * read-only. Mutating the arrays would corrupt the sliding-window state for
+   * subsequent iterations.
+   */
+  private advancePriceWindows(ctx: PriceTrackingContext, coins: Coin[], timestamp: Date): PriceSummaryByPeriod {
+    const priceData: PriceSummaryByPeriod = {};
+    for (const coin of coins) {
+      const history = ctx.historyByCoin.get(coin.id) ?? [];
+      const summaries = ctx.summariesByCoin.get(coin.id) ?? [];
+      const window = ctx.windowsByCoin.get(coin.id) ?? [];
+      let pointer = ctx.indexByCoin.get(coin.id) ?? -1;
+      while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
+        pointer += 1;
+        window.push(summaries[pointer]);
+      }
+      ctx.indexByCoin.set(coin.id, pointer);
+      if (window.length > 0) {
+        priceData[coin.id] = window;
+      }
+    }
+    return priceData;
   }
 
   /**
@@ -1494,26 +1563,7 @@ export class BacktestEngine {
     const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
-    // Build price history for algorithm context
-    const priceHistoryByCoin = new Map<string, { avg: number; date: Date; high: number; low: number }[]>();
-    const indexByCoin = new Map<string, number>();
-
-    for (const coinId of coinIds) {
-      const history = historicalPrices
-        .filter((price) => price.coinId === coinId)
-        .sort((a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime())
-        .map((price) => {
-          const summary = this.buildPriceSummary(price);
-          return {
-            avg: summary.avg,
-            date: summary.date,
-            high: summary.high,
-            low: summary.low
-          };
-        });
-      priceHistoryByCoin.set(coinId, history);
-      indexByCoin.set(coinId, -1);
-    }
+    const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
 
     let peakValue = initialCapital;
     let maxDrawdown = 0;
@@ -1529,22 +1579,7 @@ export class BacktestEngine {
 
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
-      // Build price data context for algorithm
-      const priceData: Record<string, { avg: number; coin: string; date: Date; high: number; low: number }[]> = {};
-      for (const coin of coins) {
-        const history = priceHistoryByCoin.get(coin.id) ?? [];
-        let pointer = indexByCoin.get(coin.id) ?? -1;
-        while (pointer + 1 < history.length && history[pointer + 1].date <= timestamp) {
-          pointer += 1;
-        }
-        indexByCoin.set(coin.id, pointer);
-        if (pointer >= 0) {
-          priceData[coin.id] = history.slice(0, pointer + 1).map((h) => ({
-            ...h,
-            coin: coin.id
-          }));
-        }
-      }
+      const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
       // Build algorithm context with optimization parameters
       const context = {

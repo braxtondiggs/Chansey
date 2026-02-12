@@ -57,15 +57,18 @@ export class MACDCalculator extends BaseIndicatorCalculator<CalculatorMACDOption
 
   /**
    * Get the warmup period for MACD
-   * MACD needs slowPeriod + signalPeriod - 1 data points
+   *
+   * This is the number of data points consumed before the first output,
+   * i.e. slowPeriod + signalPeriod - 2. The minimum data length to produce
+   * at least one output is warmup + 1 (slowPeriod + signalPeriod - 1), which
+   * is what validateOptions and strategy hasEnoughData checks enforce.
    *
    * @param options - Options containing period values
-   * @returns Number of warmup data points needed
+   * @returns Number of data points consumed before first output
    */
   getWarmupPeriod(options: Partial<CalculatorMACDOptions>): number {
     const slowPeriod = options.slowPeriod ?? 26;
     const signalPeriod = options.signalPeriod ?? 9;
-    // Need slow EMA warmup + signal EMA warmup
     return slowPeriod + signalPeriod - 2;
   }
 
@@ -84,7 +87,7 @@ export class MACDCalculator extends BaseIndicatorCalculator<CalculatorMACDOption
       throw new Error(`fastPeriod (${options.fastPeriod}) must be less than slowPeriod (${options.slowPeriod})`);
     }
 
-    const minDataPoints = options.slowPeriod + options.signalPeriod;
+    const minDataPoints = options.slowPeriod + options.signalPeriod - 1;
     this.validateDataLength(options.values, minDataPoints);
     this.validateNumericValues(options.values);
   }

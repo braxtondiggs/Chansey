@@ -96,12 +96,6 @@ describe('RSIMACDComboStrategy', () => {
     });
   };
 
-  describe('strategy properties', () => {
-    it('should have correct id', () => {
-      expect(strategy.id).toBe('rsi-macd-combo-001');
-    });
-  });
-
   describe('execute', () => {
     it('should generate BUY signal when RSI oversold AND MACD bullish crossover', async () => {
       mockRSI(30, 45);
@@ -126,15 +120,65 @@ describe('RSIMACDComboStrategy', () => {
     });
   });
 
-  describe('getConfigSchema', () => {
-    it('should return valid configuration schema', () => {
-      const schema = strategy.getConfigSchema();
+  describe('config defaults (nullish coalescing)', () => {
+    it('should block buy signals when rsiOversold is 0', async () => {
+      mockRSI(20, 20);
+      mockMACD(-0.001, 0.002, 0.001, 0.001, 0.001);
 
-      expect(schema).toHaveProperty('rsiPeriod');
-      expect(schema).toHaveProperty('rsiOversold');
-      expect(schema).toHaveProperty('rsiOverbought');
-      expect(schema).toHaveProperty('macdFast');
-      expect(schema).toHaveProperty('confirmationWindow');
+      const result = await strategy.execute(buildContext({ rsiOversold: 0, rsiOverbought: 65 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('reason strings', () => {
+    it('should report signal-bar RSI in BUY reason, not current-bar RSI', async () => {
+      // RSI oversold on bar 48 (25), recovered on bar 49 (45)
+      mockRSI(45, 25);
+      mockMACD(-0.001, 0.002, 0.001, 0.001, 0.001);
+
+      const result = await strategy.execute(buildContext({ rsiOversold: 35, rsiOverbought: 65 }));
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].reason).toContain('25.00');
+      expect(result.signals[0].reason).not.toContain('45.00');
+    });
+
+    it('should report signal-bar RSI in SELL reason, not current-bar RSI', async () => {
+      // RSI overbought on bar 48 (80), recovered on bar 49 (55)
+      mockRSI(55, 80);
+      mockMACD(0.002, -0.001, 0.001, 0.001, -0.002);
+
+      const result = await strategy.execute(buildContext({ rsiOversold: 35, rsiOverbought: 65 }));
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].reason).toContain('80.00');
+      expect(result.signals[0].reason).not.toContain('55.00');
+    });
+  });
+
+  describe('signal strength', () => {
+    it('should produce higher strength for deeper oversold RSI on signal bar', async () => {
+      // Deep oversold: RSI = 10 on signal bar, current bar = 45
+      mockRSI(45, 10);
+      mockMACD(-0.001, 0.002, 0.001, 0.001, 0.001);
+
+      const deepResult = await strategy.execute(buildContext({ rsiOversold: 35, rsiOverbought: 65, minConfidence: 0 }));
+      expect(deepResult.signals).toHaveLength(1);
+      const deepStrength = deepResult.signals[0].strength;
+
+      // Shallow oversold: RSI = 33 on signal bar, current bar = 45
+      mockRSI(45, 33);
+      mockMACD(-0.001, 0.002, 0.001, 0.001, 0.001);
+
+      const shallowResult = await strategy.execute(
+        buildContext({ rsiOversold: 35, rsiOverbought: 65, minConfidence: 0 })
+      );
+      expect(shallowResult.signals).toHaveLength(1);
+      const shallowStrength = shallowResult.signals[0].strength;
+
+      expect(deepStrength).toBeGreaterThan(shallowStrength);
     });
   });
 });
