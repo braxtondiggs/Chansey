@@ -10,6 +10,8 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { withDevtools } from '@tanstack/angular-query-experimental/devtools';
 import { providePrimeNG } from 'primeng/config';
 
+import { isApiError } from '@chansey/shared';
+
 import { appRoutes } from './app.routes';
 import { AuthInterceptor } from './core/interceptors/auth.interceptor';
 
@@ -56,7 +58,13 @@ const providers = [
           staleTime: 1000 * 60 * 5, // 5 minutes
           gcTime: 1000 * 60 * 10, // 10 minutes
           refetchOnWindowFocus: true,
-          retry: 2, // Reduce retry attempts from true (3) to 2
+          retry: (failureCount, error) => {
+            // Don't retry auth errors — authenticatedFetch already handled refresh
+            if (isApiError(error) && (error.statusCode === 401 || error.statusCode === 403)) {
+              return false;
+            }
+            return failureCount < 2;
+          },
           retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000), // Exponential backoff
           refetchOnReconnect: true,
           refetchOnMount: true

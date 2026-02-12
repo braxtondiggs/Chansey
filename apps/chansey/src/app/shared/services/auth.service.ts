@@ -1,13 +1,13 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { QueryClient } from '@tanstack/angular-query-experimental';
 import { Observable, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
+import { catchError, map, switchMap } from 'rxjs/operators';
 
 import { ILogoutResponse, IUser } from '@chansey/api-interfaces';
-import { queryKeys, useAuthMutation, useAuthQuery, STANDARD_POLICY } from '@chansey/shared';
+import { STANDARD_POLICY, queryKeys, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 import { environment } from '../../../environments/environment';
 
@@ -24,6 +24,11 @@ export class AuthService {
   private readonly queryClient = inject(QueryClient);
   private readonly http = inject(HttpClient);
 
+  /** Timestamp of the last successful auth check */
+  private lastAuthCheckTime = 0;
+  /** How long a cached auth check is considered fresh (30 seconds) */
+  private readonly AUTH_FRESHNESS_WINDOW = 30_000;
+
   /**
    * Query current user data
    */
@@ -38,9 +43,12 @@ export class AuthService {
    */
   useLogoutMutation() {
     return useAuthMutation<ILogoutResponse, void>('/api/auth/logout', 'POST', {
-      onSuccess: () => {
+      onSuccess: async () => {
+        // Cancel in-flight queries first to prevent 401 retries after logout
+        await this.queryClient.cancelQueries();
         // Clear all TanStack Query cache to ensure no stale data
         this.queryClient.clear();
+        this.lastAuthCheckTime = 0;
         // Navigate to login page
         this.router.navigate(['/login']);
       },
@@ -69,20 +77,39 @@ export class AuthService {
    * Falls back to making a request if no cached data exists
    */
   isAuthenticated(): Observable<boolean> {
-    // First check if we have cached user data
     const cachedUser = this.queryClient.getQueryData<IUser>(queryKeys.auth.user());
-    if (cachedUser) {
+    const isFresh = Date.now() - this.lastAuthCheckTime < this.AUTH_FRESHNESS_WINDOW;
+
+    // Trust the cache only if user exists AND the check is still fresh
+    if (cachedUser && isFresh) {
       return of(true);
     }
 
-    // If no cache, make a request and update cache
+    // Otherwise re-validate via HTTP; on 401 attempt a token refresh first
     return this.http.get<IUser>('/api/user', { withCredentials: true }).pipe(
       map((user) => {
-        // Cache the user data in TanStack Query
         this.queryClient.setQueryData(queryKeys.auth.user(), user);
+        this.lastAuthCheckTime = Date.now();
         return true;
       }),
-      catchError(() => of(false))
+      catchError((error: HttpErrorResponse) => {
+        // Only attempt refresh on 401 (expired token); other errors mean not authenticated
+        if (error.status !== 401) return of(false);
+
+        return this.refreshToken().pipe(
+          switchMap((refreshed) => {
+            if (!refreshed) return of(false);
+            return this.http.get<IUser>('/api/user', { withCredentials: true }).pipe(
+              map((user) => {
+                this.queryClient.setQueryData(queryKeys.auth.user(), user);
+                this.lastAuthCheckTime = Date.now();
+                return true;
+              }),
+              catchError(() => of(false))
+            );
+          })
+        );
+      })
     );
   }
 
@@ -90,7 +117,9 @@ export class AuthService {
    * Logout and clear session
    */
   logout(): void {
+    this.queryClient.cancelQueries();
     this.queryClient.clear();
+    this.lastAuthCheckTime = 0;
     this.router.navigate(['/login']);
   }
 }
