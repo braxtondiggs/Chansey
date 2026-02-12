@@ -125,7 +125,7 @@ export class PromotionGateService {
       eventType: AuditEventType.GATE_EVALUATION,
       entityType: 'StrategyConfig',
       entityId: strategyConfigId,
-      userId: userId || 'system',
+      userId,
       beforeState: null,
       afterState: {
         canPromote: evaluation.canPromote,

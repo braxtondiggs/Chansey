@@ -1,10 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository, Between } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 
 import { AuditService } from './audit.service';
 import { AuditLog } from './entities/audit-log.entity';
+
+import { PerformanceMetric } from '../strategy/entities/performance-metric.entity';
+import { escapeLikeWildcards } from '../utils/sanitize.util';
+
+interface TimelineEntry {
+  timestamp: Date;
+  category: string;
+  eventType: string;
+  entityType: string;
+  entityId: string;
+  summary: string;
+}
 
 /**
  * AuditQueryService
@@ -20,11 +32,11 @@ import { AuditLog } from './entities/audit-log.entity';
  */
 @Injectable()
 export class AuditQueryService {
-  private readonly logger = new Logger(AuditQueryService.name);
-
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditLogRepository: Repository<AuditLog>,
+    @InjectRepository(PerformanceMetric)
+    private readonly performanceMetricRepo: Repository<PerformanceMetric>,
     private readonly auditService: AuditService
   ) {}
 
@@ -38,7 +50,7 @@ export class AuditQueryService {
     deployments: AuditLog[];
     driftAlerts: AuditLog[];
     riskBreaches: AuditLog[];
-    timeline: any[];
+    timeline: TimelineEntry[];
   }> {
     // Get all events related to this strategy
     const strategyEvents = await this.auditLogRepository.find({
@@ -72,26 +84,19 @@ export class AuditQueryService {
             .getMany()
         : [];
 
-    // Get drift alerts and risk breaches for those deployments
-    const driftAlerts =
+    // Get drift alerts and risk breaches for those deployments (single combined query)
+    const driftAndRiskEvents =
       deploymentIds.length > 0
         ? await this.auditLogRepository
             .createQueryBuilder('audit')
-            .where('audit.eventType = :eventType', { eventType: 'DRIFT_DETECTED' })
+            .where('audit.eventType IN (:...eventTypes)', { eventTypes: ['DRIFT_DETECTED', 'RISK_BREACH'] })
             .andWhere('audit.entityId IN (:...deploymentIds)', { deploymentIds })
             .orderBy('audit.timestamp', 'ASC')
             .getMany()
         : [];
 
-    const riskBreaches =
-      deploymentIds.length > 0
-        ? await this.auditLogRepository
-            .createQueryBuilder('audit')
-            .where('audit.eventType = :eventType', { eventType: 'RISK_BREACH' })
-            .andWhere('audit.entityId IN (:...deploymentIds)', { deploymentIds })
-            .orderBy('audit.timestamp', 'ASC')
-            .getMany()
-        : [];
+    const driftAlerts = driftAndRiskEvents.filter((e) => e.eventType === 'DRIFT_DETECTED');
+    const riskBreaches = driftAndRiskEvents.filter((e) => e.eventType === 'RISK_BREACH');
 
     // Create timeline
     const allEvents = [
@@ -126,7 +131,7 @@ export class AuditQueryService {
    */
   async getDeploymentAuditTrail(deploymentId: string): Promise<{
     deploymentEvents: AuditLog[];
-    performanceSnapshots: any[];
+    performanceSnapshots: PerformanceMetric[];
     driftAlerts: AuditLog[];
     riskBreaches: AuditLog[];
     allocationChanges: AuditLog[];
@@ -137,8 +142,10 @@ export class AuditQueryService {
     const riskBreaches = deploymentEvents.filter((e) => e.eventType === 'RISK_BREACH');
     const allocationChanges = deploymentEvents.filter((e) => e.eventType === 'ALLOCATION_ADJUSTED');
 
-    // TODO: Get performance snapshots from PerformanceMetric entity
-    const performanceSnapshots = [];
+    const performanceSnapshots = await this.performanceMetricRepo.find({
+      where: { deploymentId },
+      order: { date: 'ASC' }
+    });
 
     return {
       deploymentEvents,
@@ -207,11 +214,11 @@ export class AuditQueryService {
     endDate: Date
   ): Promise<{
     period: { start: Date; end: Date };
-    summary: any;
+    summary: { totalEvents: number; eventsByType: Record<string, number>; eventsByEntity: Record<string, number> };
     criticalEvents: AuditLog[];
     automatedDecisions: AuditLog[];
     manualInterventions: AuditLog[];
-    integrityStatus: any;
+    integrityStatus: { verified: number; failed: string[] };
   }> {
     const logs = await this.auditLogRepository.find({
       where: {
@@ -220,18 +227,24 @@ export class AuditQueryService {
       order: { timestamp: 'ASC' }
     });
 
-    // Get statistics
-    const summary = await this.auditService.getAuditStatistics(startDate, endDate);
+    // Compute statistics from already-fetched logs to avoid redundant DB queries
+    const eventsByType: Record<string, number> = {};
+    const eventsByEntity: Record<string, number> = {};
+    for (const log of logs) {
+      eventsByType[log.eventType] = (eventsByType[log.eventType] ?? 0) + 1;
+      eventsByEntity[log.entityType] = (eventsByEntity[log.entityType] ?? 0) + 1;
+    }
+    const summary = { totalEvents: logs.length, eventsByType, eventsByEntity };
 
     // Identify critical events
     const criticalEventTypes = ['STRATEGY_DEMOTED', 'RISK_BREACH', 'DEPLOYMENT_TERMINATED'];
     const criticalEvents = logs.filter((log) => criticalEventTypes.includes(log.eventType));
 
-    // Identify automated decisions (system user)
-    const automatedDecisions = logs.filter((log) => log.userId === 'system');
+    // Identify automated decisions (no userId = system-initiated)
+    const automatedDecisions = logs.filter((log) => log.userId == null);
 
-    // Identify manual interventions (non-system user)
-    const manualInterventions = logs.filter((log) => log.userId !== 'system');
+    // Identify manual interventions (has userId = user-initiated)
+    const manualInterventions = logs.filter((log) => log.userId != null);
 
     // Verify integrity of all logs
     const integrityStatus = await this.auditService.verifyMultipleEntries(logs.map((l) => l.id));
@@ -250,11 +263,21 @@ export class AuditQueryService {
    * Search audit logs with full-text search
    */
   async searchAuditLogs(searchTerm: string, limit = 100): Promise<AuditLog[]> {
+    if (!searchTerm) {
+      throw new BadRequestException('Search term is required');
+    }
+
+    if (searchTerm.length > 500) {
+      throw new BadRequestException('Search term must not exceed 500 characters');
+    }
+
+    const escaped = escapeLikeWildcards(searchTerm);
+
     return await this.auditLogRepository
       .createQueryBuilder('audit')
-      .where('audit.metadata::text ILIKE :searchTerm', { searchTerm: `%${searchTerm}%` })
-      .orWhere('audit.afterState::text ILIKE :searchTerm', { searchTerm: `%${searchTerm}%` })
-      .orWhere('audit.beforeState::text ILIKE :searchTerm', { searchTerm: `%${searchTerm}%` })
+      .where('audit.metadata::text ILIKE :searchTerm', { searchTerm: `%${escaped}%` })
+      .orWhere('audit.afterState::text ILIKE :searchTerm', { searchTerm: `%${escaped}%` })
+      .orWhere('audit.beforeState::text ILIKE :searchTerm', { searchTerm: `%${escaped}%` })
       .orderBy('audit.timestamp', 'DESC')
       .take(limit)
       .getMany();
@@ -312,7 +335,7 @@ export class AuditQueryService {
   /**
    * Generate event summary for timeline
    */
-  private generateEventSummary(event: any): string {
+  private generateEventSummary(event: AuditLog & { category: string }): string {
     const summaries = {
       STRATEGY_CREATED: 'Strategy configuration created',
       STRATEGY_MODIFIED: 'Strategy configuration modified',

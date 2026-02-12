@@ -1,15 +1,15 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
+  Injectable,
+  InternalServerErrorException,
   Logger,
-  InternalServerErrorException
+  NotFoundException
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository, LessThan, MoreThan } from 'typeorm';
+import { LessThan, MoreThan, Repository } from 'typeorm';
 
-import { DeploymentStatus, AuditEventType } from '@chansey/api-interfaces';
+import { AuditEventType, DeploymentStatus } from '@chansey/api-interfaces';
 
 import { Deployment } from './entities/deployment.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
@@ -135,7 +135,7 @@ export class DeploymentService {
           eventType: AuditEventType.STRATEGY_PROMOTED,
           entityType: 'Deployment',
           entityId: savedDeployment.id,
-          userId: approvedBy || 'system',
+          userId: approvedBy,
           beforeState: null,
           afterState: {
             strategyConfigId,
@@ -199,7 +199,7 @@ export class DeploymentService {
           eventType: AuditEventType.DEPLOYMENT_ACTIVATED,
           entityType: 'Deployment',
           entityId: deploymentId,
-          userId: userId || 'system',
+          userId,
           beforeState,
           afterState: activated,
           metadata: { deployedAt: activated.deployedAt }
@@ -248,7 +248,7 @@ export class DeploymentService {
           eventType: AuditEventType.DEPLOYMENT_PAUSED,
           entityType: 'Deployment',
           entityId: deploymentId,
-          userId: userId || 'system',
+          userId,
           beforeState,
           afterState: paused,
           metadata: { reason }
@@ -296,7 +296,7 @@ export class DeploymentService {
           eventType: AuditEventType.DEPLOYMENT_RESUMED,
           entityType: 'Deployment',
           entityId: deploymentId,
-          userId: userId || 'system',
+          userId,
           beforeState,
           afterState: resumed
         });
@@ -346,7 +346,6 @@ export class DeploymentService {
           eventType: AuditEventType.STRATEGY_DEMOTED,
           entityType: 'Deployment',
           entityId: deploymentId,
-          userId: 'system',
           beforeState,
           afterState: demoted,
           metadata: { reason, ...metadata }
@@ -393,7 +392,7 @@ export class DeploymentService {
           eventType: AuditEventType.DEPLOYMENT_TERMINATED,
           entityType: 'Deployment',
           entityId: deploymentId,
-          userId: userId || 'system',
+          userId,
           beforeState,
           afterState: terminated,
           metadata: { reason }
@@ -451,7 +450,7 @@ export class DeploymentService {
           eventType: AuditEventType.ALLOCATION_ADJUSTED,
           entityType: 'Deployment',
           entityId: deploymentId,
-          userId: userId || 'system',
+          userId,
           beforeState,
           afterState: { allocationPercent: newAllocationPercent },
           metadata: { reason }

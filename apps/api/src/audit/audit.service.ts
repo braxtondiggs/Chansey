@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { randomUUID } from 'crypto';
 
-import { AuditEventType, CreateAuditLogDto, AuditTrailQuery } from '@chansey/api-interfaces';
+import { AuditEventType, AuditTrailQuery, CreateAuditLogDto } from '@chansey/api-interfaces';
 
 import { AuditLog } from './entities/audit-log.entity';
 
@@ -170,7 +170,7 @@ export class AuditService {
    * Verify integrity of multiple audit log entries
    */
   async verifyMultipleEntries(auditLogIds: string[]): Promise<{ verified: number; failed: string[] }> {
-    const logs = await this.auditLogRepository.findByIds(auditLogIds);
+    const logs = await this.auditLogRepository.find({ where: { id: In(auditLogIds) } });
     const failed: string[] = [];
     let verified = 0;
 
@@ -218,25 +218,38 @@ export class AuditService {
     eventsByType: Record<string, number>;
     eventsByEntity: Record<string, number>;
   }> {
-    const logs = await this.auditLogRepository
+    const baseQb = this.auditLogRepository
       .createQueryBuilder('audit')
       .where('audit.timestamp >= :startDate', { startDate })
-      .andWhere('audit.timestamp <= :endDate', { endDate })
-      .getMany();
+      .andWhere('audit.timestamp <= :endDate', { endDate });
+
+    const [totalEvents, typeRows, entityRows] = await Promise.all([
+      baseQb.clone().getCount(),
+      baseQb
+        .clone()
+        .select('audit.eventType', 'eventType')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('audit.eventType')
+        .getRawMany<{ eventType: string; count: string }>(),
+      baseQb
+        .clone()
+        .select('audit.entityType', 'entityType')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('audit.entityType')
+        .getRawMany<{ entityType: string; count: string }>()
+    ]);
 
     const eventsByType: Record<string, number> = {};
-    const eventsByEntity: Record<string, number> = {};
-
-    for (const log of logs) {
-      eventsByType[log.eventType] = (eventsByType[log.eventType] || 0) + 1;
-      eventsByEntity[log.entityType] = (eventsByEntity[log.entityType] || 0) + 1;
+    for (const row of typeRows) {
+      eventsByType[row.eventType] = parseInt(row.count, 10);
     }
 
-    return {
-      totalEvents: logs.length,
-      eventsByType,
-      eventsByEntity
-    };
+    const eventsByEntity: Record<string, number> = {};
+    for (const row of entityRows) {
+      eventsByEntity[row.entityType] = parseInt(row.count, 10);
+    }
+
+    return { totalEvents, eventsByType, eventsByEntity };
   }
 
   // ============================================================================
@@ -364,7 +377,6 @@ export class AuditService {
       eventType: AuditEventType.RISK_BREACH,
       entityType: 'Deployment',
       entityId: deploymentId,
-      userId: 'system',
       beforeState: null,
       afterState: details,
       metadata: { breachType },
@@ -387,7 +399,6 @@ export class AuditService {
       eventType: AuditEventType.DRIFT_DETECTED,
       entityType: 'Deployment',
       entityId: deploymentId,
-      userId: 'system',
       beforeState: null,
       afterState: {
         driftAlertId,

@@ -7,9 +7,10 @@ import { AuditService } from './audit.service';
 import { AuditLog } from './entities/audit-log.entity';
 
 import { CryptoService } from '../common/crypto.service';
+import { PerformanceMetric } from '../strategy/entities/performance-metric.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog])],
+  imports: [TypeOrmModule.forFeature([AuditLog, PerformanceMetric])],
   providers: [AuditService, AuditQueryService, CryptoService],
   controllers: [AuditController],
   exports: [AuditService, AuditQueryService, CryptoService]

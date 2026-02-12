@@ -10,5 +10,13 @@
   "proseWrap": "always",
   "plugins": ["prettier-plugin-tailwindcss"],
   "tailwindConfig": "./apps/chansey/tailwind.config.js",
-  "tailwindFunctions": ["clsx", "tw"]
+  "tailwindFunctions": ["clsx", "tw"],
+  "overrides": [
+    {
+      "files": "*.yml",
+      "options": {
+        "singleQuote": true
+      }
+    }
+  ]
 }
