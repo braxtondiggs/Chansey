@@ -13,11 +13,14 @@ Create a GitHub issue: $ARGUMENTS
 - Remote URL: !`git remote get-url origin 2>/dev/null || echo "not a git repo"`
 - Current branch: !`git branch --show-current 2>/dev/null || echo "unknown"`
 - Available labels: !`gh label list --json name --jq '.[].name' 2>/dev/null | tr '\n' ', ' | sed 's/,$//'`
-- Available projects: !`gh project list --owner braxtondiggs --format json --jq '.projects[] | "\(.number): \(.title)"' 2>/dev/null | tr '\n' ', ' | sed 's/,$//'`
+- Available projects:
+  !`gh project list --owner braxtondiggs --format json --jq '.projects[] | "\(.number): \(.title)"' 2>/dev/null | tr '\n' ', ' | sed 's/,$//'`
 
 ## Task Overview
 
-Create a well-structured GitHub issue capturing requirements, context, and implementation notes from the current conversation or planning session. Automatically labels from existing repo labels, adds to GitHub project with AI-determined priority and size.
+Create a well-structured GitHub issue capturing requirements, context, and implementation notes from the current
+conversation or planning session. Automatically labels from existing repo labels, adds to GitHub project with
+AI-determined priority and size.
 
 ## Step 1: Parse Arguments and Detect Repository
 
@@ -28,6 +31,7 @@ git remote get-url origin | sed -E 's/.*[:/]([^/]+)\/([^/.]+)(\.git)?$/\1 \2/'
 ```
 
 **Arguments:**
+
 - `<title>`: Issue title (required, or will be generated from context)
 - `--assignee <user>`: Assign to user
 - `--milestone <name>`: Add to milestone
@@ -39,7 +43,9 @@ git remote get-url origin | sed -E 's/.*[:/]([^/]+)\/([^/.]+)(\.git)?$/\1 \2/'
 ## Step 2: Gather Context
 
 ### From Conversation
+
 Analyze the current conversation to extract:
+
 - Problem description or feature request
 - Requirements discussed
 - Technical considerations mentioned
@@ -47,6 +53,7 @@ Analyze the current conversation to extract:
 - Any code snippets or examples shared
 
 ### From Plan Files (if `--from-plan`)
+
 Check for recent planning artifacts:
 
 ```bash
@@ -56,6 +63,7 @@ ls -la .specify/features/*/plan.md 2>/dev/null | head -5
 ```
 
 Read relevant plan files to extract:
+
 - Feature specification
 - Technical design decisions
 - Implementation notes
@@ -64,6 +72,7 @@ Read relevant plan files to extract:
 ## Step 3: Generate Issue Content
 
 ### Title Guidelines
+
 - Use imperative mood: "Add...", "Fix...", "Update..."
 - Be specific: "Add RSI indicator to strategy builder" not "Add indicator"
 - Include scope if helpful: "[API] Add rate limiting to auth endpoints"
@@ -98,9 +107,6 @@ Read relevant plan files to extract:
 ## Additional Context
 
 [Links, screenshots, related issues, or other relevant information]
-
----
-*Created from Claude Code planning session*
 ```
 
 ## Step 4: Auto-Label from Existing Labels
@@ -115,29 +121,30 @@ gh label list --json name,description --jq '.[] | "\(.name): \(.description)"'
 
 Then match issue content against ONLY these existing labels:
 
-| Content Pattern | Match to Existing Label |
-|-----------------|------------------------|
-| "bug", "fix", "broken", "error", "crash" | `bug` |
-| "add", "new feature", "implement", "create" | `enhancement` |
-| "refactor", "clean up", "restructure" | `refactor` |
-| "docs", "documentation", "readme" | `documentation` |
-| "test", "coverage", "spec", "unit test" | `testing` |
-| "security", "vulnerability", "auth", "permission" | `security` |
-| "performance", "slow", "optimize", "speed" | `performance` |
-| "api", "endpoint", "REST", "controller" | `api` |
-| "ui", "component", "angular", "template" | `frontend` |
-| "nestjs", "service", "module", "provider" | `backend` |
-| "database", "migration", "typeorm", "entity" | `database` |
-| "ci", "deploy", "docker", "pipeline" | `infrastructure` |
-| "algorithm", "indicator", "signal", "strategy" | `algorithms` |
-| "exchange", "ccxt", "binance", "coinbase" | `exchange` |
-| "backtest", "historical", "simulation" | `backtest` |
-| "paper", "simulated", "demo" | `papertest` |
-| "risk", "drawdown", "limit", "safety" | `risk-management` |
-| "monitor", "alert", "drift", "anomaly" | `monitoring` |
-| "strategy", "deploy", "execution" | `strategy` |
+| Content Pattern                                   | Match to Existing Label |
+| ------------------------------------------------- | ----------------------- |
+| "bug", "fix", "broken", "error", "crash"          | `bug`                   |
+| "add", "new feature", "implement", "create"       | `enhancement`           |
+| "refactor", "clean up", "restructure"             | `refactor`              |
+| "docs", "documentation", "readme"                 | `documentation`         |
+| "test", "coverage", "spec", "unit test"           | `testing`               |
+| "security", "vulnerability", "auth", "permission" | `security`              |
+| "performance", "slow", "optimize", "speed"        | `performance`           |
+| "api", "endpoint", "REST", "controller"           | `api`                   |
+| "ui", "component", "angular", "template"          | `frontend`              |
+| "nestjs", "service", "module", "provider"         | `backend`               |
+| "database", "migration", "typeorm", "entity"      | `database`              |
+| "ci", "deploy", "docker", "pipeline"              | `infrastructure`        |
+| "algorithm", "indicator", "signal", "strategy"    | `algorithms`            |
+| "exchange", "ccxt", "binance", "coinbase"         | `exchange`              |
+| "backtest", "historical", "simulation"            | `backtest`              |
+| "paper", "simulated", "demo"                      | `papertest`             |
+| "risk", "drawdown", "limit", "safety"             | `risk-management`       |
+| "monitor", "alert", "drift", "anomaly"            | `monitoring`            |
+| "strategy", "deploy", "execution"                 | `strategy`              |
 
 **Label Selection Rules:**
+
 1. Only select labels that exist in the repository
 2. Select 1-3 most relevant labels (avoid over-labeling)
 3. If no clear match, default to `enhancement` for features or `bug` for issues
@@ -149,14 +156,15 @@ Analyze the issue to determine AI-recommended priority and size for the GitHub p
 
 ### Priority Assessment
 
-| Priority | Criteria |
-|----------|----------|
-| 🌋 **Urgent** | Critical bug, security issue, blocking other work, production impact |
-| 🏔 **High** | Important feature, significant bug, deadline-driven, high user impact |
-| 🏕 **Medium** | Standard feature/bug, moderate impact, normal priority |
-| 🏝 **Low** | Nice-to-have, minor improvement, can wait, low impact |
+| Priority      | Criteria                                                              |
+| ------------- | --------------------------------------------------------------------- |
+| 🌋 **Urgent** | Critical bug, security issue, blocking other work, production impact  |
+| 🏔 **High**   | Important feature, significant bug, deadline-driven, high user impact |
+| 🏕 **Medium** | Standard feature/bug, moderate impact, normal priority                |
+| 🏝 **Low**    | Nice-to-have, minor improvement, can wait, low impact                 |
 
 **Consider:**
+
 - Is this blocking other work?
 - Does it affect production/users?
 - Is there a deadline?
@@ -164,15 +172,16 @@ Analyze the issue to determine AI-recommended priority and size for the GitHub p
 
 ### Size Assessment
 
-| Size | Criteria |
-|------|----------|
+| Size           | Criteria                                                                |
+| -------------- | ----------------------------------------------------------------------- |
 | 🐋 **X-Large** | Major feature, multiple systems, 2+ weeks effort, architectural changes |
-| 🦑 **Large** | Significant feature, multiple files/modules, 1-2 weeks effort |
-| 🐂 **Medium** | Standard feature/fix, several files, few days effort |
-| 🐇 **Small** | Simple change, 1-3 files, day or less effort |
-| 🦔 **Tiny** | Trivial fix, single file, quick change |
+| 🦑 **Large**   | Significant feature, multiple files/modules, 1-2 weeks effort           |
+| 🐂 **Medium**  | Standard feature/fix, several files, few days effort                    |
+| 🐇 **Small**   | Simple change, 1-3 files, day or less effort                            |
+| 🦔 **Tiny**    | Trivial fix, single file, quick change                                  |
 
 **Consider:**
+
 - How many files/modules affected?
 - Does it require database changes?
 - Does it need new APIs or UI components?
@@ -192,6 +201,7 @@ If potential duplicates found, warn user and ask to confirm.
 ## Step 7: Create the Issue
 
 Use `mcp__github__create_issue` with:
+
 - `owner`: Repository owner
 - `repo`: Repository name
 - `title`: Generated or provided title
@@ -268,21 +278,25 @@ gh project item-edit --project-id <project_id> --id $ITEM_ID --field-id <size_fi
 For quick reference when using the default project:
 
 **Project Field IDs:**
+
 - Project ID: `PVT_kwHOAGlYMs4A7M2q`
 - Status Field: `PVTSSF_lAHOAGlYMs4A7M2qzgvkeBE`
 - Priority Field: `PVTSSF_lAHOAGlYMs4A7M2qzgvkeBs`
 - Size Field: `PVTSSF_lAHOAGlYMs4A7M2qzgvkeBw`
 
 **Status Options (always use Exploration for new issues):**
+
 - 🔬 Exploration: `054bea99`
 
 **Priority Options:**
+
 - 🌋 Urgent: `fae9bf39`
 - 🏔 High: `1bd0113f`
 - 🏕 Medium: `12e82a1b`
 - 🏝 Low: `cfa49def`
 
 **Size Options:**
+
 - 🐋 X-Large: `1156815d`
 - 🦑 Large: `b8e3b76b`
 - 🐂 Medium: `bd0eb285`
@@ -292,12 +306,14 @@ For quick reference when using the default project:
 ### Handling Missing Fields
 
 If the target project doesn't have Status, Priority, or Size fields:
+
 - Skip setting that field
 - Warn user: "Note: Project '{name}' doesn't have a {field} field. Skipping."
 
 ## Step 9: Post-Creation
 
 After creating:
+
 1. Display the issue URL
 2. Show issue number for reference
 3. Show project assignment details
@@ -336,13 +352,15 @@ After creating:
 
 **No title or context**: "Error: Please provide a title or ensure there's conversation context to extract from."
 
-**Repository not found**: "Error: Could not detect repository. Specify with: /create-issue --owner foo --repo bar 'Title'"
+**Repository not found**: "Error: Could not detect repository. Specify with: /create-issue --owner foo --repo bar
+'Title'"
 
 **No matching labels**: "Note: No existing labels matched the issue content. Issue created without labels."
 
 **Project not found**: "Error: Project '{name}' not found. Available projects: {list}. Use --no-project to skip."
 
-**Project add failed**: "Warning: Could not add to GitHub project. Issue created successfully. Add manually: gh project item-add <number> --owner braxtondiggs --url {url}"
+**Project add failed**: "Warning: Could not add to GitHub project. Issue created successfully. Add manually: gh project
+item-add <number> --owner braxtondiggs --url {url}"
 
 **Duplicate detected**: "Warning: Similar issue found: #{number} '{title}'. Continue anyway? (y/n)"
 
@@ -401,48 +419,63 @@ Uses "Trading UI" project instead of default "Backtest MVP".
 ## Issue Type Templates
 
 ### Bug Report
+
 ```markdown
 ## Bug Description
+
 [What's happening]
 
 ## Expected Behavior
+
 [What should happen]
 
 ## Steps to Reproduce
+
 1. Step 1
 2. Step 2
 
 ## Environment
+
 - Branch: {current_branch}
 - Node: {node_version}
 ```
 
 ### Feature Request
+
 ```markdown
 ## Summary
+
 [What feature to add]
 
 ## Motivation
+
 [Why it's needed]
 
 ## Proposed Solution
+
 [How to implement]
 
 ## Alternatives Considered
+
 [Other approaches]
 ```
 
 ### Refactoring Task
+
 ```markdown
 ## Current State
+
 [What exists now]
 
 ## Proposed Changes
+
 [What to change]
 
 ## Benefits
+
 [Why refactor]
 
 ## Risks
+
 [What could break]
 ```

@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Job, Queue } from 'bullmq';
 import * as ccxt from 'ccxt';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
@@ -15,6 +15,7 @@ import {
   TrailingActivationType,
   TrailingType
 } from '../interfaces/exit-config.interface';
+import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
 import { PositionManagementService } from '../services/position-management.service';
 
 /**
@@ -23,7 +24,10 @@ import { PositionManagementService } from '../services/position-management.servi
  * BullMQ processor for monitoring positions with trailing stops.
  * Runs every 60 seconds to update trailing stop prices as market moves.
  */
-@Processor('position-monitor')
+@Processor('position-monitor', {
+  concurrency: 1,
+  lockDuration: 120_000
+})
 @Injectable()
 export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(PositionMonitorTask.name);
@@ -33,9 +37,12 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
     @InjectQueue('position-monitor') private readonly positionMonitorQueue: Queue,
     @InjectRepository(PositionExit)
     private readonly positionExitRepo: Repository<PositionExit>,
+    @InjectRepository(Order)
+    private readonly orderRepo: Repository<Order>,
     private readonly positionManagementService: PositionManagementService,
     private readonly exchangeManagerService: ExchangeManagerService,
-    private readonly exchangeKeyService: ExchangeKeyService
+    private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly dataSource: DataSource
   ) {
     super();
   }
@@ -169,7 +176,10 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           for (const symbol of symbols) {
             try {
               const ticker = await exchangeClient.fetchTicker(symbol);
-              tickers[symbol] = ticker.last || 0;
+              const price = ticker.last ?? ticker.close ?? null;
+              if (price != null && price > 0) {
+                tickers[symbol] = price;
+              }
             } catch (tickerError) {
               this.logger.warn(`Failed to fetch ticker for ${symbol}: ${tickerError.message}`);
             }
@@ -179,7 +189,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           for (const pos of positions) {
             try {
               const currentPrice = tickers[pos.symbol];
-              if (!currentPrice) {
+              if (currentPrice == null) {
                 this.logger.warn(`No price available for ${pos.symbol}`);
                 continue;
               }
@@ -284,7 +294,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           position.trailingHighWaterMark = currentPrice;
 
           // Calculate new stop price
-          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, config, side);
+          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, config, side, position.entryAtr);
 
           // Only update if new stop is higher (ratchet mechanism)
           if (newStopPrice > (position.currentTrailingStopPrice || 0)) {
@@ -298,6 +308,10 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
                 await this.updateStopOrderOnExchange(position, newStopPrice, exchangeClient);
               } catch (updateError) {
                 this.logger.warn(`Failed to update stop order on exchange: ${updateError.message}`);
+              }
+
+              if (position.status === PositionExitStatus.ERROR) {
+                return { updated: true, triggered: false };
               }
             }
 
@@ -320,7 +334,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           position.trailingLowWaterMark = currentPrice;
 
           // Calculate new stop price
-          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, config, side);
+          const newStopPrice = this.calculateTrailingStopPrice(currentPrice, config, side, position.entryAtr);
 
           // Only update if new stop is lower (ratchet mechanism for shorts)
           if (newStopPrice < (position.currentTrailingStopPrice || Infinity)) {
@@ -333,6 +347,10 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
                 await this.updateStopOrderOnExchange(position, newStopPrice, exchangeClient);
               } catch (updateError) {
                 this.logger.warn(`Failed to update stop order on exchange: ${updateError.message}`);
+              }
+
+              if (position.status === PositionExitStatus.ERROR) {
+                return { updated: true, triggered: false };
               }
             }
 
@@ -393,7 +411,12 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
   /**
    * Calculate trailing stop price from current price
    */
-  private calculateTrailingStopPrice(currentPrice: number, config: ExitConfig, side: 'BUY' | 'SELL'): number {
+  private calculateTrailingStopPrice(
+    currentPrice: number,
+    config: ExitConfig,
+    side: 'BUY' | 'SELL',
+    entryAtr?: number
+  ): number {
     let trailingDistance: number;
 
     switch (config.trailingType) {
@@ -406,10 +429,13 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
         break;
 
       case TrailingType.ATR: {
-        // For ATR-based trailing, we use the stored ATR value
-        // config.trailingValue is the ATR multiplier
-        const atrValue = config.atrMultiplier || 2.0;
-        trailingDistance = atrValue * config.trailingValue;
+        if (!entryAtr || isNaN(entryAtr)) {
+          trailingDistance = currentPrice * 0.02; // Fallback to 2%
+          this.logger.warn('ATR value unavailable for trailing stop, using 2% fallback');
+          break;
+        }
+        // trailingValue = ATR multiplier, entryAtr = raw ATR reading
+        trailingDistance = entryAtr * config.trailingValue;
         break;
       }
 
@@ -421,36 +447,118 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Update stop order on exchange
+   * Update stop order on exchange using cancel-and-replace pattern.
+   *
+   * Most exchanges don't support modifying stop orders in-place.
+   * This method cancels the existing stop order and places a new one
+   * at the updated price. If the replacement order fails, the position
+   * is marked as ERROR since it is now unprotected.
    */
   private async updateStopOrderOnExchange(
     position: PositionExit,
     newStopPrice: number,
     exchangeClient: ccxt.Exchange
   ): Promise<void> {
-    // Most exchanges don't support modifying stop orders
-    // The typical approach is to cancel and replace
-    // For now, log the update - full implementation would:
-    // 1. Cancel existing stop order
-    // 2. Place new stop order at new price
-    // 3. Update position with new order ID
+    // 1. Check exchange capability
+    if (!exchangeClient.has['createStopOrder'] && !exchangeClient.has['createOrder']) {
+      this.logger.warn(`Exchange does not support stop orders, skipping update for position ${position.id}`);
+      return;
+    }
 
-    this.logger.debug(`Would update stop order ${position.trailingStopOrderId} to new price ${newStopPrice}`);
+    // 2. Look up existing Order entity for the exchange-specific orderId
+    const existingOrder = await this.orderRepo.findOne({
+      where: { id: position.trailingStopOrderId }
+    });
 
-    // TODO: Implement actual order modification
-    // try {
-    //   await exchangeClient.cancelOrder(position.trailingStopOrderId, position.symbol);
-    //   const newOrder = await exchangeClient.createOrder(
-    //     position.symbol,
-    //     'stop_loss',
-    //     position.side === 'BUY' ? 'sell' : 'buy',
-    //     position.quantity,
-    //     undefined,
-    //     { stopPrice: newStopPrice }
-    //   );
-    //   position.trailingStopOrderId = newOrder.id;
-    // } catch (error) {
-    //   throw error;
-    // }
+    if (!existingOrder) {
+      this.logger.warn(
+        `Order ${position.trailingStopOrderId} not found in DB for position ${position.id}, clearing reference`
+      );
+      position.trailingStopOrderId = null;
+      return;
+    }
+
+    // 3. Cancel old stop order on exchange (external, irreversible)
+    try {
+      await exchangeClient.cancelOrder(existingOrder.orderId, position.symbol);
+    } catch (cancelError) {
+      if (cancelError instanceof ccxt.OrderNotFound) {
+        // Order was already filled or cancelled externally
+        this.logger.warn(
+          `Stop order ${existingOrder.orderId} not found on exchange (already filled/cancelled), clearing reference`
+        );
+        position.trailingStopOrderId = null;
+        existingOrder.status = OrderStatus.CANCELED;
+        await this.orderRepo.save(existingOrder);
+        return;
+      }
+      throw cancelError;
+    }
+
+    // 4. Create new stop order on exchange (external, irreversible)
+    const exitSide = position.side === 'BUY' ? 'sell' : 'buy';
+    let ccxtOrder: ccxt.Order;
+
+    try {
+      ccxtOrder = await exchangeClient.createOrder(
+        position.symbol,
+        'stop_loss',
+        exitSide,
+        position.quantity,
+        undefined,
+        { stopPrice: newStopPrice }
+      );
+    } catch (createError) {
+      // CRITICAL: Position is now unprotected — old stop cancelled but new one failed
+      this.logger.error(
+        `CRITICAL: Failed to place replacement stop order for position ${position.id}. ` +
+          `Position is UNPROTECTED. Error: ${createError.message}`
+      );
+      position.status = PositionExitStatus.ERROR;
+      position.trailingStopOrderId = null;
+      position.warnings = [
+        ...(position.warnings || []),
+        `Failed to place replacement stop order at ${newStopPrice}: ${createError.message}`
+      ];
+      await this.positionExitRepo.save(position);
+      throw createError;
+    }
+
+    // 5. Atomically update DB state (all-or-nothing)
+    await this.dataSource.transaction(async (manager) => {
+      // Mark old order CANCELED
+      existingOrder.status = OrderStatus.CANCELED;
+      await manager.save(Order, existingOrder);
+
+      // Save new order
+      const newOrder = manager.create(Order, {
+        symbol: position.symbol,
+        orderId: ccxtOrder.id,
+        clientOrderId: ccxtOrder.clientOrderId || ccxtOrder.id,
+        transactTime: new Date(ccxtOrder.timestamp || Date.now()),
+        quantity: position.quantity,
+        price: 0,
+        executedQuantity: 0,
+        fee: 0,
+        commission: 0,
+        status: OrderStatus.NEW,
+        side: position.side === 'BUY' ? OrderSide.SELL : OrderSide.BUY,
+        type: OrderType.STOP_LOSS,
+        user: position.user,
+        stopPrice: newStopPrice,
+        isAlgorithmicTrade: true,
+        isManual: false,
+        exchangeKeyId: position.exchangeKeyId,
+        info: ccxtOrder.info as Record<string, unknown>
+      });
+      const savedNewOrder = await manager.save(Order, newOrder);
+
+      // Update position reference
+      position.trailingStopOrderId = savedNewOrder.id;
+    });
+
+    this.logger.log(
+      `Stop order updated for position ${position.id}: ${existingOrder.orderId} -> ${ccxtOrder.id} at price ${newStopPrice}`
+    );
   }
 }

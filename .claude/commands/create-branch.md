@@ -62,25 +62,27 @@ Create a branch name following these rules:
 **Rules**:
 
 - Use lowercase with hyphens (kebab-case)
-- Keep it concise but descriptive (3-6 words max)
-- Focus on WHAT was accomplished, not HOW
+- **Keep it short: 3-4 words max after the prefix** (aim for under 30 characters total)
+- Focus on the core noun/subject, not full sentences
 - No issue numbers unless explicitly mentioned
 - Avoid generic names like "update" or "changes"
+- When in doubt, shorter is better
 
 **Good Examples**:
 
-- `feat/add-trading-expert-skill`
-- `fix/rsi-calculation-edge-case`
-- `refactor/extract-indicator-service`
-- `docs/api-endpoint-documentation`
-- `feat/bollinger-band-squeeze-strategy`
+- `feat/stop-order-replace`
+- `fix/atr-nan-handling`
+- `refactor/extract-indicator-base`
+- `docs/api-endpoint-docs`
+- `feat/bb-squeeze-strategy`
 
 **Bad Examples**:
 
+- `feat/add-trading-expert-skill-to-algorithm-builder` (too long)
+- `fix/rsi-calculation-edge-case-with-nan-handling` (too long)
 - `update-files` (too vague)
 - `fix-bug` (not descriptive)
 - `new-feature` (meaningless)
-- `wip` (not descriptive)
 
 ### 4. Validate Branch Name
 
@@ -138,4 +140,4 @@ Changes: Added tests, updated docs, and fixed typos for order service Branch: `c
 
 ### Example 4: Refactoring
 
-Changes: Extracted common indicator logic into shared base class Branch: `refactor/indicator-base-class`
+Changes: Extracted common indicator logic into shared base class Branch: `refactor/extract-indicator-base`
