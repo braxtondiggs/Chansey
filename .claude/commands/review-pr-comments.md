@@ -10,9 +10,9 @@ Review and triage AI bot suggestions on PR: $ARGUMENTS
 
 ## Current State
 
-- Repository: !`git remote get-url origin 2>/dev/null | sed -E 's/.*[:/]([^/]+\/[^/.]+)(\.git)?$/\1/'`
+- Repository: !`gh repo view --json nameWithOwner -q .nameWithOwner`
 - Current branch: !`git branch --show-current`
-- Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d: -f2 | tr -d ' ' || echo "master"`
+- Default branch: !`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`
 
 ## Task
 

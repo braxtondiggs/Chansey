@@ -25,7 +25,8 @@ Create well-formatted commit: $ARGUMENTS
 5. If multiple distinct changes are detected, suggests breaking the commit into multiple smaller commits
 6. For each commit (or the single commit if not split), creates a commit message using conventional commit format
 
-**Note:** Do NOT run lint, build, or test checks manually — the repository has a pre-commit hook that handles this automatically.
+**Note:** Do NOT run lint, build, or test checks manually — the repository has a pre-commit hook that handles this
+automatically.
 
 ## Best Practices for Commits
 
@@ -46,7 +47,8 @@ Create well-formatted commit: $ARGUMENTS
   - `db`: Database related changes
 - **Present tense, imperative mood**: Write commit messages as commands (e.g., "add feature" not "added feature")
 - **Concise first line**: Keep the first line under 72 characters
-- **Link GitHub issues**: When working on a tracked issue, add `Closes #<number>` on a separate line at the bottom of the commit body
+- **Link GitHub issues**: When working on a tracked issue, add `Closes #<number>` on a separate line at the bottom of
+  the commit body
 
 ## Guidelines for Splitting Commits
 
@@ -97,7 +99,8 @@ Example of splitting commits:
 
 ## Command Options
 
-- `--issue <number>` or `-i <number>`: Link the commit to a GitHub issue (adds `Closes #<number>` at the bottom of the commit body)
+- `--issue <number>` or `-i <number>`: Link the commit to a GitHub issue (adds `Closes #<number>` at the bottom of the
+  commit body)
 - `--amend`: Amend the previous commit instead of creating a new one
 
 ## Important Notes
