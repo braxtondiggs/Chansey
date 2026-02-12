@@ -24,6 +24,12 @@ describe('TradeExecutionTask', () => {
   let mockCoinService: any;
   let mockUsersService: any;
 
+  const mockJob = {
+    id: 'job-1',
+    name: 'execute-trades',
+    updateProgress: jest.fn()
+  } as any;
+
   const buildActivation = (overrides: Partial<any> = {}) =>
     ({
       id: 'activation-1',
@@ -49,6 +55,20 @@ describe('TradeExecutionTask', () => {
       updateAllocation: jest.fn(),
       ...overrides
     }) as any;
+
+  /** Helper: configure mocks so a single activation produces an actionable BUY signal */
+  const configureActionableSignal = (
+    coinId = 'coin-1',
+    signalType: SignalType = SignalType.BUY,
+    strength = 0.8,
+    confidence = 0.8
+  ) => {
+    mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [{ type: signalType, coinId, strength, confidence, reason: 'test' }],
+      timestamp: new Date()
+    });
+  };
 
   beforeEach(async () => {
     mockQueue = {
@@ -116,56 +136,68 @@ describe('TradeExecutionTask', () => {
     jest.clearAllMocks();
   });
 
-  describe('generateTradeSignal', () => {
-    it('should return null when algorithm has no strategy configured', async () => {
+  describe('process() — unknown job type', () => {
+    it('should return failure for unknown job type', async () => {
+      const result: any = await task.process({ ...mockJob, name: 'unknown-job' } as any);
+      expect(result).toEqual({ success: false, message: 'Unknown job type: unknown-job' });
+    });
+  });
+
+  describe('signal generation (via process)', () => {
+    it('should skip activation when algorithm has no strategy configured', async () => {
       const activation = buildActivation({
         algorithm: { id: 'algo-1', name: 'No Strategy', strategyId: null, service: null }
       });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
       expect(mockContextBuilder.buildContext).not.toHaveBeenCalled();
     });
 
-    it('should return null when context validation fails', async () => {
+    it('should skip activation when context validation fails', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockContextBuilder.validateContext.mockReturnValue(false);
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
       expect(mockAlgorithmRegistry.executeAlgorithm).not.toHaveBeenCalled();
     });
 
-    it('should return null when algorithm returns success: false', async () => {
+    it('should skip when algorithm returns success: false', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: false,
         signals: [],
         timestamp: new Date()
       });
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
     });
 
-    it('should return null when algorithm returns no signals', async () => {
+    it('should skip when algorithm returns no signals', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: true,
         signals: [],
         timestamp: new Date()
       });
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
     });
 
     it('should filter out HOLD, STOP_LOSS, TAKE_PROFIT signals', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: true,
         signals: [
@@ -176,13 +208,15 @@ describe('TradeExecutionTask', () => {
         timestamp: new Date()
       });
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
     });
 
     it('should filter out signals with confidence below 0.6', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: true,
         signals: [
@@ -192,13 +226,14 @@ describe('TradeExecutionTask', () => {
         timestamp: new Date()
       });
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
     });
 
     it('should select signal with highest strength x confidence', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: true,
         signals: [
@@ -215,169 +250,198 @@ describe('TradeExecutionTask', () => {
         return { id, symbol: 'SOL' };
       });
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).not.toBeNull();
-      expect(result.action).toBe('SELL');
-      expect(result.symbol).toBe('ETH/USDT');
+      expect(result.successCount).toBe(1);
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.action).toBe('SELL');
+      expect(signalArg.symbol).toBe('ETH/USDT');
     });
 
-    it('should return correct TradeSignalWithExit with autoSize: true', async () => {
-      const activation = buildActivation();
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'coin-1', strength: 0.8, confidence: 0.7, reason: 'buy' }],
-        timestamp: new Date()
-      });
+    it('should pass autoSize, portfolioValue, and allocationPercentage in the signal', async () => {
+      const activation = buildActivation({ allocationPercentage: 5 });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockBalanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 25000 });
+      configureActionableSignal();
 
-      const result = await task.generateTradeSignal(activation, 25000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toEqual({
-        algorithmActivationId: 'activation-1',
-        userId: 'user-1',
-        exchangeKeyId: 'key-1',
-        action: 'BUY',
-        symbol: 'BTC/USDT',
-        quantity: 0,
-        autoSize: true,
-        portfolioValue: 25000
-      });
+      expect(result.successCount).toBe(1);
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg).toEqual(
+        expect.objectContaining({
+          algorithmActivationId: 'activation-1',
+          userId: 'user-1',
+          exchangeKeyId: 'key-1',
+          action: 'BUY',
+          symbol: 'BTC/USDT',
+          quantity: 0,
+          autoSize: true,
+          portfolioValue: 25000,
+          allocationPercentage: 5
+        })
+      );
     });
 
     it('should map BUY and SELL signal types correctly', async () => {
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
 
-      // Test BUY
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'coin-1', strength: 0.8, confidence: 0.8, reason: 'buy' }],
-        timestamp: new Date()
-      });
+      // BUY
+      configureActionableSignal('coin-1', SignalType.BUY);
+      await task.process(mockJob);
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].action).toBe('BUY');
 
-      let result = await task.generateTradeSignal(activation, 10000);
-      expect(result.action).toBe('BUY');
+      jest.clearAllMocks();
+      mockJob.updateProgress.mockClear();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
 
-      // Test SELL
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.SELL, coinId: 'coin-1', strength: 0.8, confidence: 0.8, reason: 'sell' }],
-        timestamp: new Date()
-      });
-
-      result = await task.generateTradeSignal(activation, 10000);
-      expect(result.action).toBe('SELL');
+      // SELL
+      configureActionableSignal('coin-1', SignalType.SELL);
+      await task.process(mockJob);
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].action).toBe('SELL');
     });
 
-    it('should return null when coin symbol resolution fails', async () => {
+    it('should skip when coin symbol resolution fails', async () => {
       const activation = buildActivation();
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'unknown-coin', strength: 0.8, confidence: 0.8, reason: 'buy' }],
-        timestamp: new Date()
-      });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal('unknown-coin');
       mockCoinService.getCoinById.mockRejectedValue(new Error('Coin not found'));
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBeNull();
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
     });
 
     it('should use legacy service field when strategyId is missing', async () => {
       const activation = buildActivation({
         algorithm: { id: 'algo-1', name: 'Legacy', strategyId: null, service: 'SomeService' }
       });
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'coin-1', strength: 0.8, confidence: 0.8, reason: 'buy' }],
-        timestamp: new Date()
-      });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
 
-      const result = await task.generateTradeSignal(activation, 10000);
+      const result: any = await task.process(mockJob);
 
-      expect(result).not.toBeNull();
+      expect(result.successCount).toBe(1);
       expect(mockContextBuilder.buildContext).toHaveBeenCalled();
+    });
+
+    it('should default allocationPercentage to 1.0 when not set on activation', async () => {
+      const activation = buildActivation({ allocationPercentage: undefined });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.allocationPercentage).toBe(1.0);
     });
   });
 
-  describe('resolveTradingSymbol', () => {
+  describe('symbol resolution (via process)', () => {
     it('should return "BTC/USDT" for binance_us', async () => {
       const activation = buildActivation({ exchangeKey: { exchange: { slug: 'binance_us' } } });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
 
-      const result = await task.resolveTradingSymbol('coin-1', activation);
+      await task.process(mockJob);
 
-      expect(result).toBe('BTC/USDT');
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USDT');
     });
 
     it('should return "BTC/USD" for coinbase', async () => {
       const activation = buildActivation({ exchangeKey: { exchange: { slug: 'coinbase' } } });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
 
-      const result = await task.resolveTradingSymbol('coin-1', activation);
+      await task.process(mockJob);
 
-      expect(result).toBe('BTC/USD');
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USD');
+    });
+
+    it('should return "BTC/USD" for gdax (Coinbase Pro)', async () => {
+      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'gdax' } } });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USD');
+    });
+
+    it('should return "BTC/USD" for kraken', async () => {
+      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'kraken' } } });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USD');
     });
 
     it('should default to USDT for unknown exchange slugs', async () => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'kraken' } } });
+      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'unknown_exchange' } } });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
 
-      const result = await task.resolveTradingSymbol('coin-1', activation);
+      await task.process(mockJob);
 
-      expect(result).toBe('BTC/USDT');
-    });
-
-    it('should return null when coin not found', async () => {
-      mockCoinService.getCoinById.mockRejectedValue(new Error('Coin not found'));
-      const activation = buildActivation();
-
-      const result = await task.resolveTradingSymbol('unknown-coin', activation);
-
-      expect(result).toBeNull();
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USDT');
     });
 
     it('should uppercase the coin symbol', async () => {
       mockCoinService.getCoinById.mockResolvedValue({ id: 'coin-1', symbol: 'eth' });
       const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
 
-      const result = await task.resolveTradingSymbol('coin-1', activation);
+      await task.process(mockJob);
 
-      expect(result).toBe('ETH/USDT');
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('ETH/USDT');
+    });
+
+    it('should skip when exchange relation is missing (null-safety)', async () => {
+      const activation = buildActivation({ exchangeKey: null });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
     });
   });
 
-  describe('handleExecuteTrades', () => {
-    const mockJob = {
-      id: 'job-1',
-      name: 'execute-trades',
-      updateProgress: jest.fn()
-    } as any;
-
+  describe('handleExecuteTrades (via process)', () => {
     it('should cache portfolio value per user (one balance call for multiple activations)', async () => {
       const activation1 = buildActivation({ id: 'act-1', userId: 'user-1' });
       const activation2 = buildActivation({ id: 'act-2', userId: 'user-1' });
       const activation3 = buildActivation({ id: 'act-3', userId: 'user-2' });
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation1, activation2, activation3]);
 
-      // generateTradeSignal returns null so we test caching without side effects
-      jest.spyOn(task, 'generateTradeSignal').mockResolvedValue(null);
-      jest.spyOn(task, 'fetchPortfolioValue').mockResolvedValue(10000);
+      // Algorithms return no actionable signals so we only test caching
+      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [],
+        timestamp: new Date()
+      });
 
       await task.process(mockJob);
 
-      // user-1 fetched once (cached for second activation), user-2 fetched once
-      expect(task.fetchPortfolioValue).toHaveBeenCalledTimes(2);
+      // user-1 fetched once, user-2 fetched once = 2 total
+      expect(mockUsersService.getById).toHaveBeenCalledTimes(2);
+      expect(mockBalanceService.getUserBalances).toHaveBeenCalledTimes(2);
     });
 
     it('should continue after individual activation failure', async () => {
-      const activation1 = buildActivation({ id: 'act-1' });
-      const activation2 = buildActivation({ id: 'act-2' });
+      const activation1 = buildActivation({ id: 'act-1', algorithmId: 'algo-fail' });
+      const activation2 = buildActivation({ id: 'act-2', algorithmId: 'algo-ok' });
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation1, activation2]);
 
-      jest.spyOn(task, 'fetchPortfolioValue').mockResolvedValue(10000);
-
-      let callCount = 0;
-      jest.spyOn(task, 'generateTradeSignal').mockImplementation(async () => {
-        callCount++;
-        if (callCount === 1) throw new Error('algo failure');
-        return null;
+      mockAlgorithmRegistry.executeAlgorithm.mockImplementation(async (algoId: string) => {
+        if (algoId === 'algo-fail') throw new Error('algo failure');
+        return { success: true, signals: [], timestamp: new Date() };
       });
 
       const result: any = await task.process(mockJob);
@@ -388,32 +452,21 @@ describe('TradeExecutionTask', () => {
     });
 
     it('should return counts: successCount, failCount, skippedCount', async () => {
-      const activations = [
-        buildActivation({ id: 'act-1' }),
-        buildActivation({ id: 'act-2' }),
-        buildActivation({ id: 'act-3' })
-      ];
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue(activations);
+      const activation1 = buildActivation({ id: 'act-1', algorithmId: 'algo-buy' });
+      const activation2 = buildActivation({ id: 'act-2', algorithmId: 'algo-fail' });
+      const activation3 = buildActivation({ id: 'act-3', algorithmId: 'algo-skip' });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation1, activation2, activation3]);
 
-      jest.spyOn(task, 'fetchPortfolioValue').mockResolvedValue(10000);
-
-      let callCount = 0;
-      jest.spyOn(task, 'generateTradeSignal').mockImplementation(async () => {
-        callCount++;
-        if (callCount === 1) {
+      mockAlgorithmRegistry.executeAlgorithm.mockImplementation(async (algoId: string) => {
+        if (algoId === 'algo-buy') {
           return {
-            algorithmActivationId: 'act-1',
-            userId: 'user-1',
-            exchangeKeyId: 'key-1',
-            action: 'BUY' as const,
-            symbol: 'BTC/USDT',
-            quantity: 0,
-            autoSize: true,
-            portfolioValue: 10000
+            success: true,
+            signals: [{ type: SignalType.BUY, coinId: 'coin-1', strength: 0.8, confidence: 0.8, reason: 'buy' }],
+            timestamp: new Date()
           };
         }
-        if (callCount === 2) throw new Error('failure');
-        return null;
+        if (algoId === 'algo-fail') throw new Error('failure');
+        return { success: true, signals: [], timestamp: new Date() };
       });
 
       const result: any = await task.process(mockJob);
@@ -437,37 +490,77 @@ describe('TradeExecutionTask', () => {
         timestamp: expect.any(String)
       });
     });
+
+    it('should process 12 activations across 3 users with only 3 balance fetches', async () => {
+      const activations = [];
+      const userIds = ['user-1', 'user-2', 'user-3'];
+      for (let i = 0; i < 12; i++) {
+        activations.push(
+          buildActivation({
+            id: `act-${i}`,
+            userId: userIds[i % 3],
+            algorithmId: `algo-${i}`
+          })
+        );
+      }
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue(activations);
+
+      // All return no actionable signals
+      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [],
+        timestamp: new Date()
+      });
+
+      await task.process(mockJob);
+
+      // Only 3 unique users → 3 balance fetches
+      expect(mockUsersService.getById).toHaveBeenCalledTimes(3);
+      expect(mockBalanceService.getUserBalances).toHaveBeenCalledTimes(3);
+
+      // All 12 activations processed (as skipped, since no signals)
+      expect(mockAlgorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(12);
+    });
   });
 
-  describe('fetchPortfolioValue', () => {
-    it('should return totalUsdValue on success', async () => {
+  describe('fetchPortfolioValue (via process)', () => {
+    it('should use totalUsdValue from balance service', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockUsersService.getById.mockResolvedValue({ id: 'user-1' });
       mockBalanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 50000 });
+      configureActionableSignal();
 
-      const activation = buildActivation();
-      const result = await task.fetchPortfolioValue(activation);
+      await task.process(mockJob);
 
-      expect(result).toBe(50000);
       expect(mockUsersService.getById).toHaveBeenCalledWith('user-1', true);
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.portfolioValue).toBe(50000);
     });
 
-    it('should return 0 on error', async () => {
-      mockUsersService.getById.mockRejectedValue(new Error('User not found'));
-
+    it('should skip activation when portfolio value is 0 (balance fetch failed)', async () => {
       const activation = buildActivation();
-      const result = await task.fetchPortfolioValue(activation);
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockUsersService.getById.mockRejectedValue(new Error('User not found'));
+      configureActionableSignal();
 
-      expect(result).toBe(0);
+      const result: any = await task.process(mockJob);
+
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
     });
 
-    it('should return 0 when totalUsdValue is null/undefined', async () => {
+    it('should skip activation when totalUsdValue is null', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockUsersService.getById.mockResolvedValue({ id: 'user-1' });
       mockBalanceService.getUserBalances.mockResolvedValue({ totalUsdValue: null });
+      configureActionableSignal();
 
-      const activation = buildActivation();
-      const result = await task.fetchPortfolioValue(activation);
+      const result: any = await task.process(mockJob);
 
-      expect(result).toBe(0);
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
     });
   });
 });

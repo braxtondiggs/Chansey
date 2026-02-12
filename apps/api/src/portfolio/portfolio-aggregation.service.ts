@@ -3,10 +3,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 
 import { CoinService } from '../coin/coin.service';
+import { USD_QUOTE_CURRENCIES } from '../exchange/constants';
 import { RealtimeTickerService } from '../ohlc/services/realtime-ticker.service';
 import { PositionTrackingService } from '../strategy/position-tracking.service';
-
-const USD_QUOTE_CURRENCIES = new Set(['USDT', 'USDC', 'BUSD', 'DAI', 'USD']);
 
 /**
  * Aggregates portfolio data across all algorithmic trading strategies.

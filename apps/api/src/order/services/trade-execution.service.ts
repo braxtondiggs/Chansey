@@ -17,7 +17,8 @@ import {
   InsufficientBalanceException,
   InvalidSymbolException,
   SlippageExceededException,
-  UserNotFoundException
+  UserNotFoundException,
+  ValidationException
 } from '../../common/exceptions';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
@@ -50,6 +51,12 @@ export interface TradeSignalWithExit extends TradeSignal {
   exitConfig?: Partial<ExitConfig>;
   /** Historical price data for ATR-based exit calculations */
   priceData?: PriceSummary[];
+  /** Whether to auto-size the order based on portfolio value */
+  autoSize?: boolean;
+  /** Total portfolio value in USD for auto-sizing */
+  portfolioValue?: number;
+  /** Allocation percentage of portfolio for this trade */
+  allocationPercentage?: number;
 }
 
 /**
@@ -135,12 +142,34 @@ export class TradeExecutionService {
         `Expected price for ${signal.symbol}: ${expectedPrice} (${signal.action === 'BUY' ? 'ask' : 'bid'})`
       );
 
+      // AUTO-SIZE: calculate quantity from portfolio allocation
+      let effectiveQuantity = signal.quantity;
+      if (signal.autoSize && signal.portfolioValue > 0 && signal.allocationPercentage > 0) {
+        if (expectedPrice <= 0) {
+          throw new ValidationException('Cannot auto-size: expected price is zero or negative');
+        }
+        const tradeSizeUsd = (signal.portfolioValue * signal.allocationPercentage) / 100;
+        effectiveQuantity = tradeSizeUsd / expectedPrice;
+        this.logger.log(
+          `Auto-sized: ${signal.allocationPercentage}% of $${signal.portfolioValue.toFixed(2)} = ` +
+            `$${tradeSizeUsd.toFixed(2)} → ${effectiveQuantity.toFixed(8)} ${signal.symbol}`
+        );
+      }
+
+      // GUARD: reject zero-quantity orders before they reach the exchange
+      if (effectiveQuantity <= 0) {
+        throw new ValidationException(
+          `Trade quantity is zero after ${signal.autoSize ? 'auto-sizing' : 'signal'} — ` +
+            `cannot place order for ${signal.symbol}`
+        );
+      }
+
       // PRE-EXECUTION SLIPPAGE CHECK
       if (this.slippageLimits.enabled) {
         const estimatedSlippageBps = await this.estimateSlippageFromOrderBook(
           exchangeClient,
           signal.symbol,
-          signal.quantity,
+          effectiveQuantity,
           signal.action,
           expectedPrice
         );
@@ -162,7 +191,7 @@ export class TradeExecutionService {
 
       // Execute market order via CCXT
       const orderSide = signal.action.toLowerCase() as 'buy' | 'sell';
-      const ccxtOrder = await exchangeClient.createMarketOrder(signal.symbol, orderSide, signal.quantity);
+      const ccxtOrder = await exchangeClient.createMarketOrder(signal.symbol, orderSide, effectiveQuantity);
 
       this.logger.log(`Order executed successfully: ${ccxtOrder.id}`);
 
