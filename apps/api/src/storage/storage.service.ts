@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { Client as MinioClient } from 'minio';
 
+import { Readable } from 'stream';
+
 import { MINIO_CLIENT } from './storage.constants';
 
 @Injectable()
@@ -144,33 +146,21 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
-   * Get a file from MinIO storage
-   * @param objectPath - Path to the object within the bucket (e.g., 'datasets/btc-hourly.csv')
-   * @returns Buffer containing the file contents
+   * Get a file stream from MinIO storage (for large files)
+   * @param objectPath - Path to the object within the bucket
+   * @returns Readable stream of the file contents
    */
-  async getFile(objectPath: string): Promise<Buffer> {
+  async getFileStream(objectPath: string): Promise<Readable> {
     if (!this.isConnected) {
       throw new Error('Storage service is not available');
     }
 
     try {
       const dataStream = await this.minioClient.getObject(this.bucketName, objectPath);
-      const chunks: Buffer[] = [];
-
-      return new Promise((resolve, reject) => {
-        dataStream.on('data', (chunk: Buffer) => chunks.push(chunk));
-        dataStream.on('end', () => {
-          const buffer = Buffer.concat(chunks);
-          this.logger.debug(`File retrieved successfully: ${objectPath} (${buffer.length} bytes)`);
-          resolve(buffer);
-        });
-        dataStream.on('error', (error) => {
-          this.logger.error(`Error reading file stream: ${error.message}`, error.stack);
-          reject(error);
-        });
-      });
+      this.logger.debug(`File stream created: ${objectPath}`);
+      return dataStream;
     } catch (error) {
-      this.logger.error(`Error getting file from storage: ${error.message}`, error.stack);
+      this.logger.error(`Error getting file stream from storage: ${error.message}`, error.stack);
       throw error;
     }
   }

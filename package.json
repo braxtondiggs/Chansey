@@ -113,6 +113,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "coingecko-api-v3": "^0.0.31",
+    "csv-parse": "^6.1.0",
     "date-fns": "^4.1.0",
     "minio": "^8.0.6",
     "nestjs-pino": "^4.5.0",
