@@ -78,8 +78,8 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       if (now - lastUsed > BaseExchangeService.CLIENT_TTL_MS) {
         const client = this.clients.get(key);
         if (client) {
-          client.close().catch(() => {
-            /* empty */
+          client.close().catch((error) => {
+            this.logger.warn(`Best-effort close failed for stale client '${key}': ${error?.message ?? error}`);
           });
         }
         this.clients.delete(key);

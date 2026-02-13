@@ -1268,8 +1268,333 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     // The bug was that pause used trades.length (partial) instead of totalPersistedCounts + trades.length (cumulative)
     expect(pausedCheckpoint.persistedCounts.trades).toBe(3);
 
+    // Sells and winningSells should be persisted (all BUY signals → 0 sells)
+    expect(pausedCheckpoint.persistedCounts.sells).toBe(0);
+    expect(pausedCheckpoint.persistedCounts.winningSells).toBe(0);
+
     // Final metrics should also reflect all trades across checkpoints
     expect(result.finalMetrics.totalTrades).toBe(3);
+  });
+
+  it('persists cumulative sell/winningSell counts across checkpoints for accurate resume winRate', async () => {
+    // Regression test: sell counts must survive checkpoint+resume for correct winRate.
+    // Iteration 0: BUY 1 BTC @ 100 → position opened
+    // Iteration 1: SELL 1 BTC @ 120 → winning sell (realizedPnL = 20)
+    // Iteration 2: BUY 1 BTC @ 120
+    // Iteration 3: SELL 1 BTC @ 110 → losing sell (realizedPnL = -10)
+    // With checkpointInterval=1, arrays are cleared after each checkpoint.
+    // Without the fix, resume would lose sell counts from earlier checkpoints.
+    let callCount = 0;
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // Iteration 0: BUY
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+          });
+        } else if (callCount === 2) {
+          // Iteration 1: SELL (winning)
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.SELL, coinId: 'BTC', quantity: 1, reason: 'take-profit', confidence: 1 }]
+          });
+        } else if (callCount === 3) {
+          // Iteration 2: BUY again
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+          });
+        } else if (callCount === 4) {
+          // Iteration 3: SELL (losing)
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.SELL, coinId: 'BTC', quantity: 1, reason: 'exit', confidence: 1 }]
+          });
+        }
+        return Promise.resolve({ success: true, signals: [] });
+      })
+    };
+
+    // Prices: 100, 120, 120, 110 → first sell wins, second sell loses
+    const candles = [
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        open: 100,
+        high: 130,
+        low: 95,
+        close: 120,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        open: 120,
+        high: 125,
+        low: 115,
+        close: 120,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        open: 120,
+        high: 120,
+        low: 105,
+        close: 110,
+        volume: 1000
+      })
+    ];
+
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    const capturedCheckpoints: any[] = [];
+    const onCheckpoint = jest.fn().mockImplementation((state) => {
+      capturedCheckpoints.push(JSON.parse(JSON.stringify(state)));
+      return Promise.resolve();
+    });
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-sell-counts',
+        name: 'Sell Count Test',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-sells',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T04:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-sells',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        checkpointInterval: 1,
+        onCheckpoint
+      }
+    );
+
+    expect(result.paused).toBe(false);
+
+    // After iteration 1 (BUY + SELL winning): should have 1 sell, 1 winning sell
+    const cp1 = capturedCheckpoints.find((cp) => cp.persistedCounts.sells >= 1);
+    expect(cp1).toBeDefined();
+    expect(cp1.persistedCounts.sells).toBe(1);
+    expect(cp1.persistedCounts.winningSells).toBe(1);
+
+    // Final metrics should reflect 2 sells total, 1 winning → winRate = 0.5
+    expect(result.finalMetrics.totalTrades).toBe(4); // 2 buys + 2 sells
+    expect(result.finalMetrics.winRate).toBeCloseTo(0.5); // 1 winning / 2 sells
+    expect(result.finalMetrics.winningTrades).toBe(1);
+  });
+
+  it('restores sell/winning sell counts on resume for accurate winRate', async () => {
+    // Simulate a backtest that was checkpointed with known sell counts,
+    // then resumed with additional trades. The final winRate must reflect
+    // the full run, not just the resumed portion.
+
+    // Phase 1: Run 2 iterations (BUY then winning SELL), capture checkpoint
+    let phase1CallCount = 0;
+    const phase1Registry = {
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        phase1CallCount++;
+        if (phase1CallCount === 1) {
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+          });
+        } else if (phase1CallCount === 2) {
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.SELL, coinId: 'BTC', quantity: 1, reason: 'take-profit', confidence: 1 }]
+          });
+        }
+        return Promise.resolve({ success: true, signals: [] });
+      })
+    };
+
+    const phase1Candles = [
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        open: 100,
+        high: 130,
+        low: 95,
+        close: 120,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        open: 120,
+        high: 125,
+        low: 115,
+        close: 120,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'e1',
+        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        open: 120,
+        high: 120,
+        low: 105,
+        close: 110,
+        volume: 1000
+      })
+    ];
+
+    const ohlcService1 = { getCandlesByDateRange: jest.fn().mockResolvedValue(phase1Candles) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine1 = createEngine({
+      algorithmRegistry: phase1Registry,
+      marketDataReader,
+      ohlcService: ohlcService1,
+      quoteCurrencyResolver
+    });
+
+    // Pause after 2 iterations to capture checkpoint with 1 winning sell
+    const shouldPause = jest
+      .fn()
+      .mockResolvedValueOnce(false) // i=0 BUY
+      .mockResolvedValueOnce(false) // i=1 SELL
+      .mockResolvedValueOnce(true); // i=2 → pause
+
+    const onPaused = jest.fn().mockResolvedValue(undefined);
+    const onCheckpoint = jest.fn().mockResolvedValue(undefined);
+
+    const phase1Result = await engine1.executeLiveReplayBacktest(
+      {
+        id: 'backtest-resume-winrate',
+        name: 'Resume WinRate',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-resume',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T04:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-resume',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        checkpointInterval: 1,
+        onCheckpoint,
+        shouldPause,
+        onPaused
+      }
+    );
+
+    expect(phase1Result.paused).toBe(true);
+    const checkpoint = phase1Result.pausedCheckpoint!;
+    // Phase 1: 1 BUY + 1 SELL (winning) → sells=1, winningSells=1
+    expect(checkpoint.persistedCounts.sells).toBe(1);
+    expect(checkpoint.persistedCounts.winningSells).toBe(1);
+
+    // Phase 2: Resume from checkpoint. Iterations 2,3 → BUY then losing SELL
+    let phase2CallCount = 0;
+    const phase2Registry = {
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        phase2CallCount++;
+        if (phase2CallCount === 1) {
+          // Iteration 2: BUY
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+          });
+        } else if (phase2CallCount === 2) {
+          // Iteration 3: SELL (losing, price dropped from 120 → 110)
+          return Promise.resolve({
+            success: true,
+            signals: [{ type: SignalType.SELL, coinId: 'BTC', quantity: 1, reason: 'exit', confidence: 1 }]
+          });
+        }
+        return Promise.resolve({ success: true, signals: [] });
+      })
+    };
+
+    const ohlcService2 = { getCandlesByDateRange: jest.fn().mockResolvedValue(phase1Candles) };
+    const engine2 = createEngine({
+      algorithmRegistry: phase2Registry,
+      marketDataReader,
+      ohlcService: ohlcService2,
+      quoteCurrencyResolver
+    });
+
+    const phase2Result = await engine2.executeLiveReplayBacktest(
+      {
+        id: 'backtest-resume-winrate',
+        name: 'Resume WinRate',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-resume',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T04:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-resume',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        resumeFrom: checkpoint
+      }
+    );
+
+    expect(phase2Result.paused).toBe(false);
+    // Full run: 2 sells total (1 winning from phase 1 + 1 losing from phase 2)
+    // winRate should be 1/2 = 0.5, NOT 0/1 = 0 (which would happen without the fix)
+    expect(phase2Result.finalMetrics.winRate).toBeCloseTo(0.5);
+    expect(phase2Result.finalMetrics.winningTrades).toBe(1);
+    // Total trades: 2 from phase 1 (persisted) + 2 from phase 2 = 4
+    expect(phase2Result.finalMetrics.totalTrades).toBe(4);
   });
 });
 
@@ -1305,7 +1630,20 @@ describe('BacktestEngine checkpointing', () => {
       ])
     };
 
-    return (engine as any).buildCheckpointState(1, '2024-01-02T00:00:00.000Z', portfolio, 1250, 0.1, 12345, 2, 3, 4, 5);
+    return (engine as any).buildCheckpointState(
+      1,
+      '2024-01-02T00:00:00.000Z',
+      portfolio,
+      1250,
+      0.1,
+      12345,
+      2,
+      3,
+      4,
+      5,
+      0,
+      0
+    );
   };
 
   it('validates checkpoints with matching checksum', () => {

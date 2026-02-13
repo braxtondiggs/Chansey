@@ -300,7 +300,11 @@ export class BacktestEngine {
         : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
 
     // Lightweight metrics accumulators - avoids keeping full objects in memory after checkpoint
-    const metricsAcc = this.createMetricsAccumulator(totalPersistedCounts.trades);
+    const metricsAcc = this.createMetricsAccumulator(
+      totalPersistedCounts.trades,
+      totalPersistedCounts.sells ?? 0,
+      totalPersistedCounts.winningSells ?? 0
+    );
 
     const coinIds = coins.map((coin) => coin.id);
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
@@ -554,6 +558,7 @@ export class BacktestEngine {
       // Checkpoint callback: save state periodically for resume capability
       const timeSinceLastCheckpoint = i - lastCheckpointIndex;
       if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
+        const currentSells = this.countSells(trades);
         const checkpointState = this.buildCheckpointState(
           i,
           timestamp.toISOString(),
@@ -564,7 +569,9 @@ export class BacktestEngine {
           totalPersistedCounts.trades + trades.length,
           totalPersistedCounts.signals + signals.length,
           totalPersistedCounts.fills + simulatedFills.length,
-          totalPersistedCounts.snapshots + snapshots.length
+          totalPersistedCounts.snapshots + snapshots.length,
+          metricsAcc.totalSellCount + currentSells.sells,
+          metricsAcc.totalWinningSellCount + currentSells.winningSells
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -713,7 +720,11 @@ export class BacktestEngine {
         : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
 
     // Lightweight metrics accumulators - avoids keeping full objects in memory after checkpoint
-    const metricsAcc = this.createMetricsAccumulator(totalPersistedCounts.trades);
+    const metricsAcc = this.createMetricsAccumulator(
+      totalPersistedCounts.trades,
+      totalPersistedCounts.sells ?? 0,
+      totalPersistedCounts.winningSells ?? 0
+    );
 
     const coinIds = coins.map((coin) => coin.id);
     const coinMap = new Map<string, Coin>(coins.map((coin) => [coin.id, coin]));
@@ -804,6 +815,7 @@ export class BacktestEngine {
           consecutivePauseFailures = 0;
 
           if (shouldPauseNow) {
+            const pauseSells = this.countSells(trades);
             const checkpointState = this.buildCheckpointState(
               i - 1, // Last successfully processed index
               timestamps[Math.max(0, i - 1)],
@@ -814,7 +826,9 @@ export class BacktestEngine {
               totalPersistedCounts.trades + trades.length,
               totalPersistedCounts.signals + signals.length,
               totalPersistedCounts.fills + simulatedFills.length,
-              totalPersistedCounts.snapshots + snapshots.length
+              totalPersistedCounts.snapshots + snapshots.length,
+              metricsAcc.totalSellCount + pauseSells.sells,
+              metricsAcc.totalWinningSellCount + pauseSells.winningSells
             );
 
             this.logger.log(`Live replay paused at index ${i - 1}/${timestamps.length}`);
@@ -859,6 +873,7 @@ export class BacktestEngine {
               `Pause check failed ${MAX_CONSECUTIVE_PAUSE_FAILURES} times consecutively, forcing precautionary pause`
             );
 
+            const forcedPauseSells = this.countSells(trades);
             const checkpointState = this.buildCheckpointState(
               i - 1,
               timestamps[Math.max(0, i - 1)],
@@ -869,7 +884,9 @@ export class BacktestEngine {
               totalPersistedCounts.trades + trades.length,
               totalPersistedCounts.signals + signals.length,
               totalPersistedCounts.fills + simulatedFills.length,
-              totalPersistedCounts.snapshots + snapshots.length
+              totalPersistedCounts.snapshots + snapshots.length,
+              metricsAcc.totalSellCount + forcedPauseSells.sells,
+              metricsAcc.totalWinningSellCount + forcedPauseSells.winningSells
             );
 
             if (options.onPaused) {
@@ -1052,6 +1069,7 @@ export class BacktestEngine {
       // Live replay uses more frequent checkpoints (default: 100 vs 500 for historical)
       const timeSinceLastCheckpoint = i - lastCheckpointIndex;
       if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
+        const currentSells = this.countSells(trades);
         const checkpointState = this.buildCheckpointState(
           i,
           timestamp.toISOString(),
@@ -1062,7 +1080,9 @@ export class BacktestEngine {
           totalPersistedCounts.trades + trades.length,
           totalPersistedCounts.signals + signals.length,
           totalPersistedCounts.fills + simulatedFills.length,
-          totalPersistedCounts.snapshots + snapshots.length
+          totalPersistedCounts.snapshots + snapshots.length,
+          metricsAcc.totalSellCount + currentSells.sells,
+          metricsAcc.totalWinningSellCount + currentSells.winningSells
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -1498,11 +1518,15 @@ export class BacktestEngine {
     acc.addSnapshotValues(snapshots.map((s) => s.portfolioValue ?? 0));
   }
 
-  private createMetricsAccumulator(initialTradeCount = 0): MetricsAccumulator {
+  private createMetricsAccumulator(
+    initialTradeCount = 0,
+    initialSellCount = 0,
+    initialWinningSellCount = 0
+  ): MetricsAccumulator {
     const acc: MetricsAccumulator = {
       totalTradeCount: initialTradeCount,
-      totalSellCount: 0,
-      totalWinningSellCount: 0,
+      totalSellCount: initialSellCount,
+      totalWinningSellCount: initialWinningSellCount,
       snapshotValues: [],
       callbacks: {} as MetricsAccumulator['callbacks']
     };
@@ -1597,6 +1621,22 @@ export class BacktestEngine {
   }
 
   /**
+   * Count sell trades and winning sells in an array of trades.
+   * Used to persist cumulative sell counts at checkpoint time.
+   */
+  private countSells(trades: Partial<BacktestTrade>[]): { sells: number; winningSells: number } {
+    let sells = 0,
+      winningSells = 0;
+    for (const t of trades) {
+      if (t.type === TradeType.SELL) {
+        sells++;
+        if ((t.realizedPnL ?? 0) > 0) winningSells++;
+      }
+    }
+    return { sells, winningSells };
+  }
+
+  /**
    * Build a checkpoint state object for persistence.
    * Includes all state needed to resume execution from this point.
    */
@@ -1610,7 +1650,9 @@ export class BacktestEngine {
     tradesCount: number,
     signalsCount: number,
     fillsCount: number,
-    snapshotsCount: number
+    snapshotsCount: number,
+    sellsCount: number,
+    winningSellsCount: number
   ): BacktestCheckpointState {
     // Convert Map-based positions to array format for JSON serialization
     const checkpointPortfolio: CheckpointPortfolio = {
@@ -1646,7 +1688,9 @@ export class BacktestEngine {
         trades: tradesCount,
         signals: signalsCount,
         fills: fillsCount,
-        snapshots: snapshotsCount
+        snapshots: snapshotsCount,
+        sells: sellsCount,
+        winningSells: winningSellsCount
       },
       checksum
     };
