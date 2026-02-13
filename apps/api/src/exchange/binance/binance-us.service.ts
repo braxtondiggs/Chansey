@@ -102,25 +102,31 @@ export class BinanceUSService extends BaseExchangeService {
    * @returns true if validation is successful, false otherwise
    */
   static async validateApiKeys(apiKey: string, secretKey: string): Promise<boolean> {
+    // Create HTTP/HTTPS agents that force IPv4 only
+    const httpsAgent = new https.Agent({
+      family: 4 // Force IPv4
+    });
+
+    // Create a temporary Binance US client with the provided keys
+    const client = new ccxt.binanceus({
+      apiKey,
+      secret: secretKey.replace(/\\n/g, '\n').trim(),
+      enableRateLimit: true,
+      httpsAgent
+    });
+
     try {
-      // Create HTTP/HTTPS agents that force IPv4 only
-      const httpsAgent = new https.Agent({
-        family: 4 // Force IPv4
-      });
-
-      // Create a temporary Binance US client with the provided keys
-      const client = new ccxt.binanceus({
-        apiKey,
-        secret: secretKey.replace(/\\n/g, '\n').trim(),
-        enableRateLimit: true,
-        httpsAgent
-      });
-
       // Try to fetch balance - this will throw an error if the keys are invalid
       await client.fetchBalance();
       return true;
     } catch (error) {
       return false;
+    } finally {
+      try {
+        await client.close();
+      } catch {
+        /* empty */
+      }
     }
   }
 }

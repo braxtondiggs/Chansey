@@ -68,8 +68,6 @@ describe('BacktestEngine.executeTrade', () => {
         ]
       ])
     };
-    const random = () => 0.5;
-
     const sellSignal: TradingSignal = {
       action: 'SELL',
       coinId: 'BTC',
@@ -83,7 +81,7 @@ describe('BacktestEngine.executeTrade', () => {
       portfolio,
       createMarketData('BTC', 15),
       0,
-      random,
+      { next: () => 0.5 },
       noSlippage
     );
 
@@ -643,7 +641,10 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
     })
   ];
 
-  it('maps STOP_LOSS signals to SELL and produces trades', async () => {
+  it.each([
+    { signalType: SignalType.STOP_LOSS, reason: 'stop triggered', label: 'STOP_LOSS' },
+    { signalType: SignalType.TAKE_PROFIT, reason: 'target reached', label: 'TAKE_PROFIT' }
+  ])('maps $label signals to SELL and produces trades', async ({ signalType, reason, label }) => {
     const algorithmRegistry = {
       executeAlgorithm: jest
         .fn()
@@ -655,16 +656,7 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
         })
         .mockResolvedValueOnce({
           success: true,
-          signals: [
-            {
-              type: SignalType.STOP_LOSS,
-              coinId: 'BTC',
-              quantity: 1,
-              strength: 0.8,
-              reason: 'stop triggered',
-              confidence: 0.9
-            }
-          ]
+          signals: [{ type: signalType, coinId: 'BTC', quantity: 1, strength: 0.8, reason, confidence: 0.9 }]
         })
     };
     const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles('BTC')) };
@@ -672,8 +664,8 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
 
     const result = await engine.executeHistoricalBacktest(
       {
-        id: 'bt-stop-loss',
-        name: 'STOP_LOSS Test',
+        id: `bt-${label.toLowerCase()}`,
+        name: `${label} Test`,
         initialCapital: 10000,
         tradingFee: 0,
         startDate: new Date('2024-01-01T00:00:00.000Z'),
@@ -684,71 +676,14 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       [{ id: 'BTC', symbol: 'BTC' } as any],
       {
         dataset: {
-          id: 'dataset-1',
+          id: `dataset-${label.toLowerCase()}`,
           startAt: new Date('2024-01-01T00:00:00.000Z'),
           endAt: new Date('2024-01-01T02:00:00.000Z')
         } as any,
-        deterministicSeed: 'seed-stop-loss'
+        deterministicSeed: `seed-${label.toLowerCase()}`
       }
     );
 
-    // Should have 2 trades: BUY + SELL (from STOP_LOSS)
-    expect(result.trades).toHaveLength(2);
-    expect(result.trades[0].type).toBe('BUY');
-    expect(result.trades[1].type).toBe('SELL');
-    expect(result.signals).toHaveLength(2);
-  });
-
-  it('maps TAKE_PROFIT signals to SELL and produces trades', async () => {
-    const algorithmRegistry = {
-      executeAlgorithm: jest
-        .fn()
-        .mockResolvedValueOnce({
-          success: true,
-          signals: [
-            { type: SignalType.BUY, coinId: 'BTC', quantity: 1, strength: 0.5, reason: 'entry', confidence: 0.8 }
-          ]
-        })
-        .mockResolvedValueOnce({
-          success: true,
-          signals: [
-            {
-              type: SignalType.TAKE_PROFIT,
-              coinId: 'BTC',
-              quantity: 1,
-              strength: 0.8,
-              reason: 'target reached',
-              confidence: 0.9
-            }
-          ]
-        })
-    };
-    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles('BTC')) };
-    const engine = createEngine(algorithmRegistry, ohlcService);
-
-    const result = await engine.executeHistoricalBacktest(
-      {
-        id: 'bt-take-profit',
-        name: 'TAKE_PROFIT Test',
-        initialCapital: 10000,
-        tradingFee: 0,
-        startDate: new Date('2024-01-01T00:00:00.000Z'),
-        endDate: new Date('2024-01-01T02:00:00.000Z'),
-        algorithm: { id: 'algo-1' },
-        configSnapshot: { parameters: {} }
-      } as any,
-      [{ id: 'BTC', symbol: 'BTC' } as any],
-      {
-        dataset: {
-          id: 'dataset-2',
-          startAt: new Date('2024-01-01T00:00:00.000Z'),
-          endAt: new Date('2024-01-01T02:00:00.000Z')
-        } as any,
-        deterministicSeed: 'seed-take-profit'
-      }
-    );
-
-    // Should have 2 trades: BUY + SELL (from TAKE_PROFIT)
     expect(result.trades).toHaveLength(2);
     expect(result.trades[0].type).toBe('BUY');
     expect(result.trades[1].type).toBe('SELL');
@@ -1250,6 +1185,91 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     // Should complete normally since counter resets on success
     expect(result.paused).toBe(false);
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(5);
+  });
+
+  it('includes cumulative counts in pause checkpoint after prior checkpoints', async () => {
+    // Regression test for C1: pause paths must use cumulative counts, not just
+    // the current (post-clear) array lengths, so that resume sees all trades.
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      })
+    };
+
+    // 4 candles → 4 iterations: checkpoint fires after iteration 0, then pause at iteration 2
+    const candles = [0, 1, 2, 3].map(
+      (i) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-01T0${i}:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = {
+      resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' })
+    };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    const onCheckpoint = jest.fn().mockResolvedValue(undefined);
+    // Pause after 3 iterations (indices 0, 1, 2 processed, pause check at start of index 3)
+    const shouldPause = jest
+      .fn()
+      .mockResolvedValueOnce(false) // i=0
+      .mockResolvedValueOnce(false) // i=1
+      .mockResolvedValueOnce(false) // i=2
+      .mockResolvedValueOnce(true); // i=3 → pause
+
+    const onPaused = jest.fn().mockResolvedValue(undefined);
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-c1-regression',
+        name: 'C1 Regression',
+        initialCapital: 100000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-c1',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T04:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-c1',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        checkpointInterval: 1, // checkpoint after every iteration
+        onCheckpoint,
+        shouldPause,
+        onPaused
+      }
+    );
+
+    expect(result.paused).toBe(true);
+    expect(onPaused).toHaveBeenCalledTimes(1);
+
+    // Verify pause checkpoint has cumulative counts, not just partial
+    const pausedCheckpoint = result.pausedCheckpoint!;
+    // Each iteration produces 1 trade (BUY signal always fires), so after 3 iterations → 3 trades
+    // With checkpointInterval=1, arrays get cleared at checkpoints.
+    // The bug was that pause used trades.length (partial) instead of totalPersistedCounts + trades.length (cumulative)
+    expect(pausedCheckpoint.persistedCounts.trades).toBe(3);
+
+    // Final metrics should also reflect all trades across checkpoints
+    expect(result.finalMetrics.totalTrades).toBe(3);
   });
 });
 

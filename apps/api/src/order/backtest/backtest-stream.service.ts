@@ -36,6 +36,7 @@ export interface BacktestTelemetryPayload {
 export class BacktestStreamService implements OnModuleDestroy {
   private readonly logger = new Logger(BacktestStreamService.name);
   private readonly streamKey: string;
+  private readonly streamMaxLen: number;
   private readonly redis: Redis;
 
   constructor(
@@ -43,6 +44,7 @@ export class BacktestStreamService implements OnModuleDestroy {
     private readonly gateway?: BacktestGateway
   ) {
     this.streamKey = config.telemetryStream;
+    this.streamMaxLen = config.telemetryStreamMaxLen;
     this.redis = new Redis({
       host: process.env.REDIS_HOST,
       port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
@@ -60,7 +62,15 @@ export class BacktestStreamService implements OnModuleDestroy {
     };
 
     try {
-      await this.redis.xadd(this.streamKey, '*', 'payload', JSON.stringify(enriched));
+      await this.redis.xadd(
+        this.streamKey,
+        'MAXLEN',
+        '~',
+        String(this.streamMaxLen),
+        '*',
+        'payload',
+        JSON.stringify(enriched)
+      );
     } catch (error) {
       this.logger.error(`Failed to publish telemetry for run ${payload.runId}: ${error?.message ?? error}`);
     }
