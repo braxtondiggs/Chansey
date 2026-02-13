@@ -64,7 +64,7 @@
         <th pSortableColumn="hasStrategy" style="min-width: 8rem">
           Strategy <p-sortIcon field="hasStrategy"></p-sortIcon>
         </th>
-        <th pSortableColumn="weight" style="min-width: 6rem">Weight <p-sortIcon field="weight"></p-sortIcon></th>
+        <th pSortableColumn="weight" style="min-width: 6rem">Score <p-sortIcon field="weight"></p-sortIcon></th>
         <th style="width: 8rem">Actions</th>
       </tr>
     </ng-template>
@@ -95,7 +95,7 @@
             <p-tag value="None" severity="secondary"></p-tag>
           }
         </td>
-        <td>{{ algorithm.weight || '-' }}</td>
+        <td>{{ algorithm.weight !== null && algorithm.weight !== undefined ? algorithm.weight + '/10' : '-' }}</td>
         <td>
           <div class="flex gap-1">
             <p-button

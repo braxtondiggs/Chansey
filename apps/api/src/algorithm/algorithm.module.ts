@@ -13,6 +13,7 @@ import { AlgorithmRegistry } from './registry/algorithm-registry.service';
 import { AlgorithmActivationService } from './services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from './services/algorithm-context-builder.service';
 import { AlgorithmPerformanceService } from './services/algorithm-performance.service';
+import { AlgorithmScoreService } from './services/algorithm-score.service';
 import { ATRTrailingStopStrategy } from './strategies/atr-trailing-stop.strategy';
 import { BollingerBandSqueezeStrategy } from './strategies/bollinger-band-squeeze.strategy';
 import { BollingerBandsBreakoutStrategy } from './strategies/bollinger-bands-breakout.strategy';
@@ -35,6 +36,7 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
+import { Backtest } from '../order/backtest/backtest.entity';
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
@@ -43,7 +45,15 @@ import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Algorithm, AlgorithmActivation, AlgorithmPerformance, Coin, Order, TickerPairs]),
+    TypeOrmModule.forFeature([
+      Algorithm,
+      AlgorithmActivation,
+      AlgorithmPerformance,
+      Backtest,
+      Coin,
+      Order,
+      TickerPairs
+    ]),
     BullModule.registerQueue({ name: 'performance-ranking' }),
     SharedCacheModule,
     IndicatorModule,
@@ -76,6 +86,7 @@ import { UsersModule } from '../users/users.module';
     TripleEMAStrategy,
     EMARSIFilterStrategy,
     ConfluenceStrategy,
+    AlgorithmScoreService,
     PerformanceRankingTask,
 
     // Strategy registration factory

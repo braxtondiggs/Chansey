@@ -5,10 +5,10 @@ on:
     types: [opened, synchronize]
     # Optional: Only run on specific file changes
     paths:
-      - "apps/**"
-      - "libs/**"
-      - "*.json"
-      - "*.md"
+      - 'apps/**'
+      - 'libs/**'
+      - '*.json'
+      - '*.md'
 
 jobs:
   claude-review:
@@ -36,8 +36,6 @@ jobs:
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
-          model: "claude-opus-4-6"
 
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |

@@ -5,7 +5,7 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 
 import { AlgorithmActivationService } from '../../algorithm/services/algorithm-activation.service';
-import { TradeExecutionService, TradeSignal } from '../services/trade-execution.service';
+import { TradeExecutionService, TradeSignal, TradeSignalWithExit } from '../services/trade-execution.service';
 
 /**
  * TradeExecutionTask
@@ -181,16 +181,17 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   /**
    * Generate a trade signal for an algorithm activation
    * This is a placeholder - in production, this should call the actual algorithm strategy
-   * @returns TradeSignal or null if no trade should be executed
+   * @returns TradeSignalWithExit or null if no trade should be executed
    */
-  private async generateTradeSignal(): Promise<TradeSignal | null> {
+  private async generateTradeSignal(): Promise<TradeSignalWithExit | null> {
     // TODO: Integrate with algorithm strategy execution
     // For now, return null to prevent automatic trade execution
     // This should be replaced with actual algorithm signal generation:
     // 1. Call algorithm strategy's analyze() method
     // 2. Check if strategy returns a BUY or SELL signal
-    // 3. Calculate trade size based on allocation percentage
-    // 4. Return trade signal object
+    // 3. Use autoSize: true so executeTradeSignal() calculates quantity from
+    //    the activation's allocation percentage (set by composite-score ranking)
+    // 4. Return trade signal object with autoSize enabled
 
     // Example implementation (commented out to prevent automatic trades):
     /*
@@ -201,13 +202,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       );
 
       if (strategyResult && strategyResult.action !== 'HOLD') {
-        // Calculate portfolio value (simplified - should get from balance service)
-        const portfolioValue = 10000; // TODO: Get actual portfolio value
-        const tradeSize = this.tradeExecutionService.calculateTradeSize(activation, portfolioValue);
-
-        // Get current market price to calculate quantity
-        const ticker = await exchangeClient.fetchTicker(strategyResult.symbol);
-        const quantity = tradeSize / ticker.last;
+        // Get actual portfolio value from balance service
+        const portfolioValue = await this.balanceService.getPortfolioValue(activation.userId);
 
         return {
           algorithmActivationId: activation.id,
@@ -215,7 +211,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           exchangeKeyId: activation.exchangeKeyId,
           action: strategyResult.action,
           symbol: strategyResult.symbol,
-          quantity
+          quantity: 0, // Will be overridden by autoSize
+          autoSize: true,
+          portfolioValue
         };
       }
     } catch (error) {

@@ -77,7 +77,6 @@ export interface CreateAlgorithmDto {
   category?: AlgorithmCategory;
   status?: AlgorithmStatus;
   evaluate?: boolean;
-  weight?: number;
   cron?: string;
   version?: string;
   author?: string;
@@ -92,7 +91,6 @@ export interface UpdateAlgorithmDto {
   category?: AlgorithmCategory;
   status?: AlgorithmStatus;
   evaluate?: boolean;
-  weight?: number;
   cron?: string;
   version?: string;
   author?: string;

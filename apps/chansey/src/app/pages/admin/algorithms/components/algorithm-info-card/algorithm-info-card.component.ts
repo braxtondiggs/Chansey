@@ -43,8 +43,10 @@ import { Algorithm, AlgorithmCategory, AlgorithmStatus } from '@chansey/api-inte
         </div>
 
         <div>
-          <label class="mb-1 block text-sm text-gray-500">Weight</label>
-          <span class="font-medium">{{ algorithm?.weight ?? '-' }}</span>
+          <label class="mb-1 block text-sm text-gray-500">Score</label>
+          <span class="font-medium">{{
+            algorithm?.weight !== null && algorithm?.weight !== undefined ? algorithm?.weight : '-'
+          }}</span>
         </div>
 
         <div class="col-span-2">

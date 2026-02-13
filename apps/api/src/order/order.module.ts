@@ -46,6 +46,7 @@ import { OrderSyncTask } from './tasks/order-sync.task';
 import { PositionMonitorTask } from './tasks/position-monitor.task';
 import { TradeExecutionTask } from './tasks/trade-execution.task';
 
+import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
 import { Algorithm } from '../algorithm/algorithm.entity';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AlgorithmService } from '../algorithm/algorithm.service';
@@ -85,6 +86,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     ConfigModule.forFeature(slippageLimitsConfig),
     TypeOrmModule.forFeature([
       Algorithm,
+      AlgorithmActivation,
       Coin,
       Order,
       OrderStatusHistory,
