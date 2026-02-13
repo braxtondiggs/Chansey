@@ -1,0 +1,150 @@
+# E2E Tests Workflow
+# Runs Playwright auth E2E tests against real API with PostgreSQL and Redis
+# Triggered on PRs and pushes to master when frontend or API code changes
+
+name: E2E Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: chansey
+          POSTGRES_PASSWORD: chansey
+          POSTGRES_DB: chansey_test
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: chansey
+      PGPASSWORD: chansey
+      PGDATABASE: chansey_test
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: e2e-test-jwt-secret-do-not-use-in-production
+      JWT_REFRESH_SECRET: e2e-test-jwt-refresh-secret-do-not-use-in-production
+      COOKIE_SECRET: e2e-test-cookie-secret-do-not-use-in-production!!
+      RESEND_API_KEY: re_test_placeholder_not_real
+      FRONTEND_URL: http://localhost:4200
+      PORT: 3000
+      NODE_ENV: test
+      CHANSEY_API_KEY: e2e-test-api-key
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Build API
+        run: npx nx build api
+
+      - name: Start API server
+        run: node dist/api/main.js &
+        env:
+          HOST: 0.0.0.0
+
+      - name: Wait for API
+        run: |
+          echo "Waiting for API to be ready..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "API is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30 - waiting..."
+            sleep 2
+          done
+          echo "API failed to start!"
+          exit 1
+
+      - name: Seed E2E test user
+        run: node apps/api/scripts/seed-e2e-user.js
+
+      - name: Run E2E tests
+        run: npx nx e2e chansey --configuration=ci
+        env:
+          CI: true
+          BASE_URL: http://localhost:4200
+          API_URL: http://localhost:3000
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: dist/.playwright/apps/chansey/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: dist/.playwright/apps/chansey/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
