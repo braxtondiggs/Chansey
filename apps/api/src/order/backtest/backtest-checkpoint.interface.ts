@@ -25,6 +25,8 @@ export interface PersistedResultsCounts {
   signals: number;
   fills: number;
   snapshots: number;
+  sells?: number;
+  winningSells?: number;
 }
 
 /**

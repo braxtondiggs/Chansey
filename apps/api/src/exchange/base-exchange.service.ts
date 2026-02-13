@@ -1,4 +1,4 @@
-import { Inject, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Inject, InternalServerErrorException, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
@@ -15,9 +15,16 @@ import { User } from '../users/users.entity';
  * Base service for all cryptocurrency exchanges
  * Provides common functionality that can be shared between all exchange implementations
  */
-export abstract class BaseExchangeService {
+export abstract class BaseExchangeService implements OnModuleDestroy {
   protected readonly logger = new Logger(this.constructor.name);
-  protected clients: Map<string, ccxt.Exchange> = new Map(); // Abstract properties that must be implemented by subclasses
+  protected clients: Map<string, ccxt.Exchange> = new Map();
+  private clientLastUsed: Map<string, number> = new Map();
+  /** Stale client TTL: 30 minutes */
+  private static readonly CLIENT_TTL_MS = 30 * 60 * 1000;
+  /** Keys that should never be evicted (long-lived singletons) */
+  private static readonly PERMANENT_KEYS = new Set(['default', 'public']);
+
+  // Abstract properties that must be implemented by subclasses
   protected abstract readonly exchangeSlug: string;
   protected abstract readonly exchangeId: keyof typeof ccxt;
   protected abstract readonly apiKeyConfigName: string;
@@ -31,12 +38,65 @@ export abstract class BaseExchangeService {
     protected readonly exchangeService?: IExchangeService
   ) {}
 
+  async onModuleDestroy(): Promise<void> {
+    const closePromises = [...this.clients.entries()].map(async ([key, client]) => {
+      try {
+        await client.close();
+      } catch (error) {
+        this.logger.warn(`Failed to close CCXT client '${key}': ${error?.message ?? error}`);
+      }
+    });
+    await Promise.allSettled(closePromises);
+    this.clients.clear();
+    this.clientLastUsed.clear();
+  }
+
+  /**
+   * Remove and close a single cached client
+   */
+  protected async removeClient(key: string): Promise<void> {
+    const client = this.clients.get(key);
+    if (client) {
+      try {
+        await client.close();
+      } catch {
+        // Swallow - best-effort cleanup
+      }
+      this.clients.delete(key);
+      this.clientLastUsed.delete(key);
+    }
+  }
+
+  /**
+   * Evict user-specific clients that have been idle longer than CLIENT_TTL_MS.
+   * Called lazily at the start of getClient() - no timers needed.
+   */
+  private evictStaleClients(): void {
+    const now = Date.now();
+    for (const [key, lastUsed] of this.clientLastUsed) {
+      if (BaseExchangeService.PERMANENT_KEYS.has(key)) continue;
+      if (now - lastUsed > BaseExchangeService.CLIENT_TTL_MS) {
+        const client = this.clients.get(key);
+        if (client) {
+          client.close().catch((error) => {
+            this.logger.warn(`Best-effort close failed for stale client '${key}': ${error?.message ?? error}`);
+          });
+        }
+        this.clients.delete(key);
+        this.clientLastUsed.delete(key);
+        this.logger.debug(`Evicted stale CCXT client '${key}' on ${this.exchangeSlug}`);
+      }
+    }
+  }
+
   /**
    * Get a CCXT client for a user or the default client
    * @param user Optional user for fetching their specific API keys
    * @returns A configured CCXT client
    */
   async getClient(user?: User): Promise<ccxt.Exchange> {
+    this.evictStaleClients();
+
     // If no user is provided, return the default client
     if (!user) {
       return this.getDefaultClient();
@@ -69,6 +129,7 @@ export abstract class BaseExchangeService {
               this.clients.set(clientKey, userClient);
             }
 
+            this.clientLastUsed.set(clientKey, Date.now());
             return this.clients.get(clientKey) as ccxt.Exchange;
           }
         }
@@ -211,12 +272,18 @@ export abstract class BaseExchangeService {
    * @throws Error if the keys are invalid
    */
   async validateKeys(apiKey: string, apiSecret: string): Promise<void> {
+    const client = await this.getTemporaryClient(apiKey, apiSecret);
     try {
-      const client = await this.getTemporaryClient(apiKey, apiSecret);
       await client.fetchBalance();
     } catch (error) {
       this.logger.error(`${this.constructor.name} API key validation failed`, error);
       throw new InternalServerErrorException(`Invalid ${this.constructor.name} API keys`);
+    } finally {
+      try {
+        await client.close();
+      } catch {
+        /* empty */
+      }
     }
   }
 

@@ -90,26 +90,32 @@ export class CoinbaseService extends BaseExchangeService {
    * @returns true if validation is successful, false otherwise
    */
   static async validateApiKeys(apiKey: string, secretKey: string): Promise<boolean> {
+    // Create HTTP/HTTPS agents that force IPv4 only
+    const httpsAgent = new https.Agent({
+      family: 4 // Force IPv4
+    });
+
+    // Create a temporary Coinbase client with the provided keys
+    const client = new ccxt.coinbase({
+      apiKey,
+      secret: secretKey.replace(/\\n/g, '\n').trim(),
+      enableRateLimit: true,
+      v3: true, // Use v3 API for Coinbase Pro
+      httpsAgent
+    });
+
     try {
-      // Create HTTP/HTTPS agents that force IPv4 only
-      const httpsAgent = new https.Agent({
-        family: 4 // Force IPv4
-      });
-
-      // Create a temporary Coinbase client with the provided keys
-      const client = new ccxt.coinbase({
-        apiKey,
-        secret: secretKey.replace(/\\n/g, '\n').trim(),
-        enableRateLimit: true,
-        v3: true, // Use v3 API for Coinbase Pro
-        httpsAgent
-      });
-
       // Try to fetch balance - this will throw an error if the keys are invalid
       await client.fetchBalance();
       return true;
     } catch (error) {
       return false;
+    } finally {
+      try {
+        await client.close();
+      } catch {
+        /* empty */
+      }
     }
   }
 
