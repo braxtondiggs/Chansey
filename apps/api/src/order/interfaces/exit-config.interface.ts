@@ -177,7 +177,9 @@ export enum PositionExitStatus {
   /** Exit orders were manually cancelled */
   CANCELLED = 'cancelled',
   /** Exit orders expired (e.g., position closed manually) */
-  EXPIRED = 'expired'
+  EXPIRED = 'expired',
+  /** Exit order update failed (position may be unprotected) */
+  ERROR = 'error'
 }
 
 /**
