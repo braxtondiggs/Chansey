@@ -28,6 +28,7 @@ import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver.service';
 import { BacktestSharedModule } from './backtest/shared';
+import { orderCleanupConfig } from './config/order-cleanup.config';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { PositionExit } from './entities/position-exit.entity';
@@ -36,6 +37,7 @@ import { Order } from './order.entity';
 import { OrderService } from './order.service';
 import { PaperTradingModule } from './paper-trading/paper-trading.module';
 import { OrderCalculationService } from './services/order-calculation.service';
+import { OrderCleanupService } from './services/order-cleanup.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
@@ -82,6 +84,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
   ],
   imports: [
     ConfigModule.forFeature(backtestConfig),
+    ConfigModule.forFeature(orderCleanupConfig),
     ConfigModule.forFeature(slippageLimitsConfig),
     TypeOrmModule.forFeature([
       Algorithm,
@@ -135,6 +138,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     MarketDataReaderService,
     QuoteCurrencyResolverService,
     OrderCalculationService,
+    OrderCleanupService,
     OrderService,
     OrderStateMachineService,
     OrderSyncService,
