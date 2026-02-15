@@ -8,6 +8,7 @@ import { PerformanceMetric } from './entities/performance-metric.entity';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 
 import { Risk } from '../risk/risk.entity';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 /**
@@ -75,8 +76,9 @@ export class PoolStatisticsService {
           status: s.shadowStatus
         }))
       };
-    } catch (error) {
-      this.logger.error(`Failed to get risk statistics for ${riskId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get risk statistics for ${riskId}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -107,8 +109,9 @@ export class PoolStatisticsService {
           activeStrategies: totalStrategies
         }
       };
-    } catch (error) {
-      this.logger.error(`Failed to get all risk statistics: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get all risk statistics: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -139,8 +142,9 @@ export class PoolStatisticsService {
         userCount: risk.enrolledUsers,
         percentage: (risk.enrolledUsers / totalUsers) * 100
       }));
-    } catch (error) {
-      this.logger.error(`Failed to get user distribution: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get user distribution: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -173,8 +177,9 @@ export class PoolStatisticsService {
         capital: risk.totalCapital,
         percentage: (risk.totalCapital / totalCapital) * 100
       }));
-    } catch (error) {
-      this.logger.error(`Failed to get capital distribution: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get capital distribution: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -219,8 +224,9 @@ export class PoolStatisticsService {
 
       // Calculate average return
       return returns.reduce((sum, r) => sum + r, 0) / returns.length;
-    } catch (error) {
-      this.logger.warn(`Failed to calculate average return: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to calculate average return: ${err.message}`);
       return 0;
     }
   }

@@ -48,7 +48,7 @@ export class SecurityAuditService {
       this.logger[logLevel](
         `Security event: ${params.eventType} | User: ${params.userId || params.email || 'unknown'} | Success: ${params.success ?? true}${params.failureReason ? ` | Reason: ${params.failureReason}` : ''}`
       );
-    } catch (error) {
+    } catch (error: unknown) {
       // Don't let audit logging failures break the main flow
       this.logger.error(`Failed to log security event: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

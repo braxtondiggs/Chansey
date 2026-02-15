@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository, In } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
+import { toErrorInfo } from '../shared/error.util';
 import { DeploymentService } from '../strategy/deployment.service';
 import { Deployment } from '../strategy/entities/deployment.entity';
 import { PerformanceMetric } from '../strategy/entities/performance-metric.entity';
@@ -69,15 +70,17 @@ export class PerformanceCalcTask {
         try {
           await this.calculateAndStoreMetrics(deployment);
           successCount++;
-        } catch (error) {
+        } catch (error: unknown) {
           errorsCount++;
-          this.logger.error(`Error calculating metrics for deployment ${deployment.id}: ${error.message}`, error.stack);
+          const err = toErrorInfo(error);
+          this.logger.error(`Error calculating metrics for deployment ${deployment.id}: ${err.message}`, err.stack);
         }
       }
 
       this.logger.log(`Performance metric calculation completed: ${successCount} succeeded, ${errorsCount} errors`);
-    } catch (error) {
-      this.logger.error(`Performance calculation task failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Performance calculation task failed: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -186,8 +189,9 @@ export class PerformanceCalcTask {
 
       await this.calculateAndStoreMetrics(deployment);
       this.logger.log(`Performance metrics calculated for deployment ${deploymentId}`);
-    } catch (error) {
-      this.logger.error(`Error calculating metrics for deployment ${deploymentId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error calculating metrics for deployment ${deploymentId}: ${err.message}`, err.stack);
       throw error;
     }
   }

@@ -74,7 +74,7 @@ export class RiskMonitoringTask {
       if (warningDeployments.length > 0) {
         this.logger.log(`Queued drift detection for ${warningDeployments.length} deployments with warnings`);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to complete risk monitoring:', error);
     }
   }
@@ -116,7 +116,7 @@ export class RiskMonitoringTask {
       }
 
       return evaluation;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(`Emergency risk check failed for deployment ${deploymentId}:`, error);
       throw error;
     }

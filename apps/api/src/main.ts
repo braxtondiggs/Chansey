@@ -14,6 +14,7 @@ import fastifyMultipart from '@fastify/multipart';
 import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
+import { toErrorInfo } from './shared/error.util';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -228,9 +229,10 @@ async function startServer(app: NestFastifyApplication): Promise<void> {
   try {
     await app.listen(port, host);
     app.get(Logger).log(`🚀 Application is running on: http://${host}:${port}/api`);
-  } catch (error) {
+  } catch (error: unknown) {
     // Improved error logging for better diagnostics
-    const errorDetails = error?.stack || error?.message || JSON.stringify(error);
+    const err = toErrorInfo(error);
+    const errorDetails = err.stack || err.message || JSON.stringify(error);
     app.get(Logger).error('Error starting the server:', errorDetails);
     process.exit(1);
   }
@@ -249,8 +251,9 @@ async function startServer(app: NestFastifyApplication): Promise<void> {
     try {
       await Promise.race([shutdownPromise, timeoutPromise]);
       logger.log('Graceful shutdown completed successfully.');
-    } catch (error) {
-      logger.warn(`Forced shutdown after timeout: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      logger.warn(`Forced shutdown after timeout: ${err.message}`);
     }
 
     process.exit(0);

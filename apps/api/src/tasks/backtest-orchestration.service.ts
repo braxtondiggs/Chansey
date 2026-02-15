@@ -31,6 +31,7 @@ import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backte
 import { BacktestService } from '../order/backtest/backtest.service';
 import { CreateBacktestDto } from '../order/backtest/dto/backtest.dto';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
@@ -65,8 +66,9 @@ export class BacktestOrchestrationService {
 
       this.logger.log(`Found ${users.length} eligible users for orchestration`);
       return users;
-    } catch (error) {
-      this.logger.error(`Failed to fetch eligible users: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch eligible users: ${err.message}`, err.stack);
       return [];
     }
   }
@@ -106,14 +108,15 @@ export class BacktestOrchestrationService {
       for (const algorithm of algorithms) {
         try {
           await this.processAlgorithm(user, algorithm, riskConfig, result);
-        } catch (error) {
-          const errorMsg = `Failed to process algorithm ${algorithm.id}: ${error.message}`;
-          this.logger.error(errorMsg, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          const errorMsg = `Failed to process algorithm ${algorithm.id}: ${err.message}`;
+          this.logger.error(errorMsg, err.stack);
           result.errors.push(errorMsg);
           result.skippedAlgorithms.push({
             algorithmId: algorithm.id,
             algorithmName: algorithm.name ?? 'Unknown',
-            reason: error.message
+            reason: err.message
           });
         }
       }
@@ -124,9 +127,10 @@ export class BacktestOrchestrationService {
       );
 
       return result;
-    } catch (error) {
-      const errorMsg = `Failed to orchestrate for user ${userId}: ${error.message}`;
-      this.logger.error(errorMsg, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      const errorMsg = `Failed to orchestrate for user ${userId}: ${err.message}`;
+      this.logger.error(errorMsg, err.stack);
       result.errors.push(errorMsg);
       return result;
     }
@@ -220,8 +224,9 @@ export class BacktestOrchestrationService {
       }
 
       return datasets[0];
-    } catch (error) {
-      this.logger.error(`Failed to select dataset: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to select dataset: ${err.message}`, err.stack);
       return null;
     }
   }

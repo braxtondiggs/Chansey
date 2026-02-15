@@ -8,6 +8,7 @@ import { ExchangeOHLCService } from './exchange-ohlc.service';
 
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeService } from '../../exchange/exchange.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { OHLCService } from '../ohlc.service';
 
 export interface BackfillProgress {
@@ -79,8 +80,9 @@ export class OHLCBackfillService {
     await this.saveProgress(coinId, progress);
 
     // Start the backfill in the background
-    this.performBackfill(coinId, symbol, start, end).catch((error) => {
-      this.logger.error(`Backfill failed for ${coinId}: ${error.message}`);
+    this.performBackfill(coinId, symbol, start, end).catch((error: unknown) => {
+      const err = toErrorInfo(error);
+      this.logger.error(`Backfill failed for ${coinId}: ${err.message}`);
     });
 
     return jobId;
@@ -114,9 +116,12 @@ export class OHLCBackfillService {
 
     await this.updateProgress(coinId, { status: 'in_progress' });
 
-    this.performBackfill(coinId, progress.coinSymbol, progress.currentDate, progress.endDate).catch((error) => {
-      this.logger.error(`Resume backfill failed for ${coinId}: ${error.message}`);
-    });
+    this.performBackfill(coinId, progress.coinSymbol, progress.currentDate, progress.endDate).catch(
+      (error: unknown) => {
+        const err = toErrorInfo(error);
+        this.logger.error(`Resume backfill failed for ${coinId}: ${err.message}`);
+      }
+    );
   }
 
   /**
@@ -211,8 +216,9 @@ export class OHLCBackfillService {
 
             // Start backfill
             await this.startBackfill(coin.id);
-          } catch (error) {
-            this.logger.error(`Failed to start backfill for ${coin.symbol}: ${error.message}`);
+          } catch (error: unknown) {
+            const err = toErrorInfo(error);
+            this.logger.error(`Failed to start backfill for ${coin.symbol}: ${err.message}`);
           }
         })
       );
@@ -286,13 +292,14 @@ export class OHLCBackfillService {
         });
 
         await this.sleep(this.BATCH_DELAY_MS);
-      } catch (error) {
-        this.logger.error(`Backfill error for ${coinId}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Backfill error for ${coinId}: ${err.message}`);
 
         // Save progress for resume
         await this.updateProgress(coinId, {
           status: 'failed',
-          error: error.message
+          error: err.message
         });
 
         throw error;

@@ -280,7 +280,7 @@ export class BacktestMonitoringComponent {
         summary: 'Export Complete',
         detail: `${event.type} exported successfully`
       });
-    } catch (error) {
+    } catch (error: unknown) {
       this.messageService.add({
         severity: 'error',
         summary: 'Export Failed',

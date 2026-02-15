@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../../exchange/exchange.service';
+import { toErrorInfo } from '../../../shared/error.util';
 import { CoinService } from '../../coin.service';
 import { TickerPairStatus, TickerPairs } from '../ticker-pairs.entity';
 import { TickerPairService } from '../ticker-pairs.service';
@@ -93,8 +94,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -171,8 +173,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               }
 
               totalProcessedTickers += tickers.length;
-            } catch (tickerError) {
-              this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${tickerError.message}`);
+            } catch (tickerError: unknown) {
+              const err = toErrorInfo(tickerError);
+              this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
               // If we're on the first page and encounter an error, break out completely
               if (page === 1) break;
 
@@ -309,7 +312,7 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           // Update progress as each exchange is processed
           processedExchanges++;
           await job.updateProgress(40 + Math.floor((processedExchanges / totalExchanges) * 50));
-        } catch (exchangeError) {
+        } catch (exchangeError: unknown) {
           this.logger.error(`Error processing exchange ${exchange.name}:`, exchangeError);
           continue; // Continue with next exchange
         }
@@ -320,17 +323,19 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         try {
           const savedPairs = await this.tickerPair.saveTickerPair(newPairs);
           this.logger.log(`Added ${savedPairs.length} new ticker pairs`);
-        } catch (error) {
-          this.logger.error(`Error saving new ticker pairs: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Error saving new ticker pairs: ${err.message}`);
           // If there's a bulk error, try saving them one by one to identify which ones fail
           let savedCount = 0;
           for (const pair of newPairs) {
             try {
               await this.tickerPair.saveTickerPair([pair]);
               savedCount++;
-            } catch (pairError) {
+            } catch (pairError: unknown) {
+              const pErr = toErrorInfo(pairError);
               this.logger.error(
-                `Failed to save ticker pair ${pair.baseAsset.symbol}${pair.quoteAsset.symbol} for ${pair.exchange.name}: ${pairError.message}`
+                `Failed to save ticker pair ${pair.baseAsset.symbol}${pair.quoteAsset.symbol} for ${pair.exchange.name}: ${pErr.message}`
               );
             }
           }
@@ -341,16 +346,18 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
       // Update existing ticker pairs with error handling
       try {
         await this.tickerPair.saveTickerPair(existingPairs);
-      } catch (error) {
-        this.logger.error(`Error updating existing ticker pairs: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error updating existing ticker pairs: ${err.message}`);
         // If there's a bulk error, try saving them in smaller batches
         const batchSize = 50;
         for (let i = 0; i < existingPairs.length; i += batchSize) {
           const batch = existingPairs.slice(i, i + batchSize);
           try {
             await this.tickerPair.saveTickerPair(batch);
-          } catch (batchError) {
-            this.logger.error(`Failed to save batch of ticker pairs: ${batchError.message}`);
+          } catch (batchError: unknown) {
+            const bErr = toErrorInfo(batchError);
+            this.logger.error(`Failed to save batch of ticker pairs: ${bErr.message}`);
           }
         }
       }
@@ -369,7 +376,7 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         updatedPairs: existingPairs.length,
         executionTimeMs: Date.now() - startTime
       };
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to synchronize ticker pairs:', error);
       throw error;
     }
@@ -402,16 +409,18 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           try {
             await this.exchange.updateExchange(exchange.id, { tickerPairsCount });
             this.logger.debug(`Updated ${exchange.name} ticker pairs count to ${tickerPairsCount}`);
-          } catch (error) {
-            this.logger.error(`Failed to update ticker pairs count for ${exchange.name}: ${error.message}`);
+          } catch (error: unknown) {
+            const err = toErrorInfo(error);
+            this.logger.error(`Failed to update ticker pairs count for ${exchange.name}: ${err.message}`);
           }
         }
       });
 
       await Promise.all(updatePromises);
       this.logger.log('Successfully updated ticker pairs counts for all exchanges');
-    } catch (error) {
-      this.logger.error(`Failed to update exchange ticker pairs counts: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update exchange ticker pairs counts: ${err.message}`);
     }
   }
 

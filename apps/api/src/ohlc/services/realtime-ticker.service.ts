@@ -6,6 +6,7 @@ import { Cache } from 'cache-manager';
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { formatSymbolForExchange } from '../../exchange/utils';
+import { toErrorInfo } from '../../shared/error.util';
 
 export interface TickerPrice {
   coinId: string;
@@ -192,8 +193,9 @@ export class RealtimeTickerService {
             source: exchangeSlug
           };
         }
-      } catch (error) {
-        this.logger.debug(`Failed to fetch ticker from ${exchangeSlug} for ${tradingSymbol}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.debug(`Failed to fetch ticker from ${exchangeSlug} for ${tradingSymbol}: ${err.message}`);
         // Continue to next exchange
       }
     }

@@ -222,7 +222,7 @@ export class CoinsController {
             (coinDetail as any).userHoldings = holdings;
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         // If holdings fetch fails, just return coin detail without holdings
         this.logger.error('Failed to fetch user holdings:', error);
       }

@@ -23,6 +23,7 @@ import { PaperTradingService } from './paper-trading.service';
 
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 // Error types for classification
 class RecoverableError extends Error {
@@ -175,10 +176,11 @@ export class PaperTradingProcessor extends WorkerHost {
       await this.paperTradingService.scheduleTickJob(sessionId, userId, session.tickIntervalMs);
 
       this.logger.log(`Session ${sessionId} started successfully, tick jobs scheduled`);
-    } catch (error) {
-      this.logger.error(`Failed to start session ${sessionId}: ${error.message}`, error.stack);
-      await this.paperTradingService.markFailed(sessionId, error.message);
-      await this.streamService.publishStatus(sessionId, 'failed', error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to start session ${sessionId}: ${err.message}`, err.stack);
+      await this.paperTradingService.markFailed(sessionId, err.message);
+      await this.streamService.publishStatus(sessionId, 'failed', err.message);
     }
   }
 
@@ -269,10 +271,11 @@ export class PaperTradingProcessor extends WorkerHost {
         await this.streamService.publishMetric(sessionId, 'portfolio_value', result.portfolioValue, 'USD');
         await this.streamService.publishMetric(sessionId, 'total_return', session.totalReturn * 100, 'percent');
       }
-    } catch (error) {
-      this.logger.error(`Tick processing error for session ${sessionId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Tick processing error for session ${sessionId}: ${err.message}`, err.stack);
 
-      const classifiedError = classifyError(error);
+      const classifiedError = classifyError(error instanceof Error ? error : new Error(err.message));
 
       if (classifiedError instanceof UnrecoverableError) {
         // Unrecoverable errors should fail the session immediately
@@ -350,8 +353,9 @@ export class PaperTradingProcessor extends WorkerHost {
       });
 
       this.logger.log(`Session ${sessionId} finalized successfully`);
-    } catch (error) {
-      this.logger.error(`Failed to finalize session ${sessionId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to finalize session ${sessionId}: ${err.message}`, err.stack);
     }
   }
 

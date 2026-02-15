@@ -27,6 +27,7 @@ import { CoinService } from '../coin/coin.service';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 /** CCXT order creation parameters */
@@ -102,9 +103,10 @@ export class OrderService {
 
       this.logger.log(`Order created successfully: ${savedOrder.id}`);
       return savedOrder;
-    } catch (error) {
-      this.logger.error(`Order creation failed: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to create order: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Order creation failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to create order: ${err.message}`);
     }
   }
 
@@ -201,9 +203,10 @@ export class OrderService {
 
       this.logger.log(`Order preview calculated for user: ${user.id}`);
       return preview;
-    } catch (error) {
-      this.logger.error(`Order preview failed: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to preview order: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Order preview failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to preview order: ${err.message}`);
     }
   }
 
@@ -309,9 +312,10 @@ export class OrderService {
 
     try {
       return await exchange.createOrder(symbol, orderType, side, quantity, price);
-    } catch (error) {
-      this.logger.error(`Exchange order failed: ${error.message}`);
-      throw new BadRequestException(`Exchange error: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Exchange order failed: ${err.message}`);
+      throw new BadRequestException(`Exchange error: ${err.message}`);
     }
   }
 
@@ -395,8 +399,9 @@ export class OrderService {
       const feeAmount = orderValue * (feeRate as number);
 
       return { feeRate: feeRate as number, feeAmount };
-    } catch (error) {
-      this.logger.warn(`Failed to fetch trading fees from API for ${exchangeSlug}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to fetch trading fees from API for ${exchangeSlug}: ${err.message}`);
 
       // Fallback 1: Try to get fees from exchange.markets (pre-loaded market data)
       try {
@@ -409,8 +414,9 @@ export class OrderService {
           this.logger.debug(`Using market fees for ${exchangeSlug}: ${feeRate} (${isMaker ? 'maker' : 'taker'})`);
           return { feeRate, feeAmount };
         }
-      } catch (marketError) {
-        this.logger.warn(`Failed to get fees from markets for ${exchangeSlug}: ${marketError.message}`);
+      } catch (marketError: unknown) {
+        const err = toErrorInfo(marketError);
+        this.logger.warn(`Failed to get fees from markets for ${exchangeSlug}: ${err.message}`);
       }
 
       // Fallback 2: Use exchange-specific default fees
@@ -469,8 +475,9 @@ export class OrderService {
       }
 
       return 0;
-    } catch (error) {
-      this.logger.warn(`Failed to calculate slippage: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to calculate slippage: ${err.message}`);
       return 0;
     }
   }
@@ -580,8 +587,9 @@ export class OrderService {
           if (estimatedSlippage > 1) {
             warnings.push(`High estimated slippage: ${estimatedSlippage.toFixed(2)}%`);
           }
-        } catch (error) {
-          this.logger.warn(`Failed to calculate slippage: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Failed to calculate slippage: ${err.message}`);
         }
       }
 
@@ -613,9 +621,10 @@ export class OrderService {
       };
 
       return preview;
-    } catch (error) {
-      this.logger.error(`Manual order preview failed: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to preview order: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Manual order preview failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to preview order: ${err.message}`);
     }
   }
 
@@ -801,8 +810,9 @@ export class OrderService {
         quoteCoin = coins.find((c) => c.symbol.toLowerCase() === quoteSymbol.toLowerCase()) || null;
         if (!baseCoin) this.logger.warn(`Base coin ${baseSymbol} not found`);
         if (!quoteCoin) this.logger.warn(`Quote coin ${quoteSymbol} not found`);
-      } catch (error) {
-        this.logger.warn(`Could not find coins for order: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Could not find coins for order: ${err.message}`);
       }
 
       // Create order entity
@@ -852,10 +862,11 @@ export class OrderService {
           try {
             await this.positionManagementService.attachExitOrders(savedOrder, dto.exitConfig);
             this.logger.log(`Exit orders attached for manual order ${savedOrder.id}`);
-          } catch (exitError) {
+          } catch (exitError: unknown) {
+            const err = toErrorInfo(exitError);
             // Log but don't fail the order - the entry order was successful
             this.logger.warn(
-              `Failed to attach exit orders for manual order ${savedOrder.id}: ${exitError.message}. ` +
+              `Failed to attach exit orders for manual order ${savedOrder.id}: ${err.message}. ` +
                 `Manual intervention may be required.`
             );
           }
@@ -863,7 +874,8 @@ export class OrderService {
       }
 
       return savedOrder;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       // Rollback transaction
       await queryRunner.rollbackTransaction();
 
@@ -873,12 +885,12 @@ export class OrderService {
           `CRITICAL: Order created on exchange but failed to save to database. ` +
             `Exchange order ID: ${ccxtOrder.id}, Symbol: ${dto.symbol}, Quantity: ${dto.quantity}. ` +
             `Manual reconciliation required.`,
-          error.stack
+          err.stack
         );
       }
 
-      this.logger.error(`Manual order placement failed: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to place order: ${error.message}`);
+      this.logger.error(`Manual order placement failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to place order: ${err.message}`);
     } finally {
       await queryRunner.release();
     }
@@ -925,13 +937,15 @@ export class OrderService {
           undefined,
           { stopPrice: dto.stopLossPrice }
         );
-      } catch (stopLossError) {
+      } catch (stopLossError: unknown) {
+        const err = toErrorInfo(stopLossError);
         // If stop-loss fails, cancel the take-profit order
-        this.logger.warn(`Stop-loss order failed, canceling take-profit order: ${stopLossError.message}`);
+        this.logger.warn(`Stop-loss order failed, canceling take-profit order: ${err.message}`);
         try {
           await exchange.cancelOrder(takeProfitExchangeOrder.id, dto.symbol);
-        } catch (cancelError) {
-          this.logger.error(`Failed to cancel take-profit order after stop-loss failure: ${cancelError.message}`);
+        } catch (cancelError: unknown) {
+          const cancelErr = toErrorInfo(cancelError);
+          this.logger.error(`Failed to cancel take-profit order after stop-loss failure: ${cancelErr.message}`);
         }
         throw stopLossError;
       }
@@ -945,7 +959,7 @@ export class OrderService {
         const coins = await this.coinService.getMultipleCoinsBySymbol([baseSymbol, quoteSymbol]);
         baseCoin = coins.find((c) => c.symbol.toLowerCase() === baseSymbol.toLowerCase()) || null;
         quoteCoin = coins.find((c) => c.symbol.toLowerCase() === quoteSymbol.toLowerCase()) || null;
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.warn('Could not find coins for OCO order');
       }
 
@@ -1008,7 +1022,8 @@ export class OrderService {
 
       this.logger.log(`OCO order pair created: TP=${savedTpOrder.id}, SL=${savedSlOrder.id}`);
       return savedTpOrder;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       // Rollback transaction
       await queryRunner.rollbackTransaction();
 
@@ -1018,12 +1033,12 @@ export class OrderService {
           `CRITICAL: OCO orders may exist on exchange but failed to save to database. ` +
             `TP Order ID: ${takeProfitExchangeOrder?.id || 'N/A'}, SL Order ID: ${stopLossExchangeOrder?.id || 'N/A'}. ` +
             `Manual reconciliation required.`,
-          error.stack
+          err.stack
         );
       }
 
-      this.logger.error(`OCO order creation failed: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to create OCO order: ${error.message}`);
+      this.logger.error(`OCO order creation failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to create OCO order: ${err.message}`);
     } finally {
       await queryRunner.release();
     }
@@ -1077,12 +1092,13 @@ export class OrderService {
       // Cancel order on exchange
       try {
         await exchange.cancelOrder(order.orderId, order.symbol);
-      } catch (error) {
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
         // Check if order was already filled on exchange
-        if (error.message?.includes('filled') || error.message?.includes('closed')) {
+        if (err.message?.includes('filled') || err.message?.includes('closed')) {
           throw new BadRequestException('Order was filled before cancellation');
         }
-        throw new BadRequestException(`Exchange cancellation failed: ${error.message}`);
+        throw new BadRequestException(`Exchange cancellation failed: ${err.message}`);
       }
 
       // Update order status
@@ -1094,15 +1110,17 @@ export class OrderService {
       if (order.ocoLinkedOrderId) {
         try {
           await this.cancelManualOrder(order.ocoLinkedOrderId, user);
-        } catch (error) {
-          this.logger.warn(`Failed to cancel linked OCO order: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Failed to cancel linked OCO order: ${err.message}`);
         }
       }
 
       this.logger.log(`Order ${orderId} canceled successfully`);
       return savedOrder;
-    } catch (error) {
-      this.logger.error(`Order cancellation failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Order cancellation failed: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -1256,7 +1274,7 @@ export class OrderService {
       try {
         baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
         quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.warn(`Coins not found for ${signal.symbol}`);
       }
 
@@ -1289,9 +1307,10 @@ export class OrderService {
       const savedOrder = await this.orderRepository.save(order);
       this.logger.log(`Algorithmic order created: ${savedOrder.id}`);
       return savedOrder;
-    } catch (error) {
-      this.logger.error(`Algorithmic order failed: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to place algorithmic order: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Algorithmic order failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to place algorithmic order: ${err.message}`);
     }
   }
 }

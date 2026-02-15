@@ -226,7 +226,7 @@ export class TradingStateService implements OnModuleInit {
 
         await this.orderService.cancelManualOrder(order.id, order.user);
         result.successfulCancellations++;
-      } catch (error) {
+      } catch (error: unknown) {
         result.failedCancellations++;
         result.errors.push({
           orderId: order.id,
@@ -269,7 +269,7 @@ export class TradingStateService implements OnModuleInit {
     for (const deployment of activeDeployments) {
       try {
         await this.deploymentService.pauseDeployment(deployment.id, `Global trading halt: ${reason}`, userId);
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.error(
           `Failed to pause deployment ${deployment.id}: ${error instanceof Error ? error.message : error}`
         );

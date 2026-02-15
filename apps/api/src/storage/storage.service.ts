@@ -7,6 +7,8 @@ import { Readable } from 'stream';
 
 import { MINIO_CLIENT } from './storage.constants';
 
+import { toErrorInfo } from '../shared/error.util';
+
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
@@ -41,9 +43,10 @@ export class StorageService implements OnModuleInit {
       await this.checkAndCreateBucket();
       this.isConnected = true;
       this.logger.log('Storage service initialized successfully');
-    } catch (error) {
+    } catch (error: unknown) {
       this.isConnected = false;
-      this.logger.warn(`Storage service unavailable - file uploads disabled: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Storage service unavailable - file uploads disabled: ${err.message}`);
     }
   }
 
@@ -111,8 +114,9 @@ export class StorageService implements OnModuleInit {
       this.logger.log(`File uploaded successfully: ${fileUrl}`);
 
       return fileUrl;
-    } catch (error) {
-      this.logger.error(`Error uploading file: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error uploading file: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -134,8 +138,9 @@ export class StorageService implements OnModuleInit {
 
       await this.minioClient.removeObject(this.bucketName, objectName);
       this.logger.log(`File deleted successfully: ${objectName}`);
-    } catch (error) {
-      this.logger.error(`Error deleting file: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error deleting file: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -159,8 +164,9 @@ export class StorageService implements OnModuleInit {
       const dataStream = await this.minioClient.getObject(this.bucketName, objectPath);
       this.logger.debug(`File stream created: ${objectPath}`);
       return dataStream;
-    } catch (error) {
-      this.logger.error(`Error getting file stream from storage: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting file stream from storage: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -178,8 +184,8 @@ export class StorageService implements OnModuleInit {
     try {
       await this.minioClient.statObject(this.bucketName, objectPath);
       return true;
-    } catch (error) {
-      if (error.code === 'NotFound') {
+    } catch (error: unknown) {
+      if ((error as { code?: string }).code === 'NotFound') {
         return false;
       }
       throw error;
@@ -202,8 +208,8 @@ export class StorageService implements OnModuleInit {
         size: stat.size,
         lastModified: stat.lastModified
       };
-    } catch (error) {
-      if (error.code === 'NotFound') {
+    } catch (error: unknown) {
+      if ((error as { code?: string }).code === 'NotFound') {
         return null;
       }
       throw error;

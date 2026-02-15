@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
@@ -108,10 +109,11 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
           });
 
           bbResult = await Promise.race([bbPromise, timeoutPromise]);
-        } catch (err) {
+        } catch (err: unknown) {
+          const errInfo = toErrorInfo(err);
           this.logger.error(
             `BB Squeeze: calculateBollingerBands failed for ${coin.symbol} ` +
-              `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${err.message}`
+              `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${errInfo.message}`
           );
           continue;
         }
@@ -168,12 +170,13 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         version: this.version,
         signalsGenerated: signals.length
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       this.logger.error(
-        `Bollinger Band Squeeze strategy execution failed after ${Date.now() - executeStart}ms: ${error.message}`,
-        error.stack
+        `Bollinger Band Squeeze strategy execution failed after ${Date.now() - executeStart}ms: ${err.message}`,
+        err.stack
       );
-      return this.createErrorResult(error.message);
+      return this.createErrorResult(err.message);
     }
   }
 

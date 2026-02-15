@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 
 import { OrderSyncService } from './../services/order-sync.service';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { UsersService } from '../../users/users.service';
 
 @Processor('order-queue')
@@ -125,8 +126,9 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
         this.logger.warn(`Unknown job type: ${job.name}`);
         return { success: false, message: `Unknown job type: ${job.name}` };
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -151,8 +153,9 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
         message: 'Cleanup job executed (placeholder implementation)',
         timestamp: new Date().toISOString()
       };
-    } catch (error) {
-      this.logger.error(`Order cleanup failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Order cleanup failed: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -188,8 +191,9 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
         try {
           await this.orderSyncService.syncOrdersForUser(user);
           successCount++;
-        } catch (error) {
-          this.logger.error(`Failed to sync orders for user ${user.id}: ${error.message}`, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Failed to sync orders for user ${user.id}: ${err.message}`, err.stack);
           failCount++;
           // Continue with next user even if one fails
         }
@@ -211,8 +215,9 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
         failCount,
         timestamp: new Date().toISOString()
       };
-    } catch (error) {
-      this.logger.error(`Order synchronization failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Order synchronization failed: ${err.message}`, err.stack);
       throw error;
     }
   }

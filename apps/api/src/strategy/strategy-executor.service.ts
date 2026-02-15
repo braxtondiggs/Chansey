@@ -4,6 +4,7 @@ import { StrategyConfig } from './entities/strategy-config.entity';
 import { UserStrategyPosition } from './entities/user-strategy-position.entity';
 
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
+import { toErrorInfo } from '../shared/error.util';
 
 export interface TradingSignal {
   action: 'buy' | 'sell' | 'hold';
@@ -55,8 +56,9 @@ export class StrategyExecutorService {
       }
 
       return signal;
-    } catch (error) {
-      this.logger.error(`Error executing strategy ${strategy.id}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error executing strategy ${strategy.id}: ${err.message}`);
       return null;
     }
   }

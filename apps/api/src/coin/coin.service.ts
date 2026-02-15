@@ -251,7 +251,7 @@ export class CoinService {
           marketCap: geckoData.market_caps[index]?.[1] || 0
         }));
       }
-    } catch (error) {
+    } catch (error: unknown) {
       throw new CoinNotFoundException(coinId);
     }
   }
@@ -392,9 +392,10 @@ export class CoinService {
       this.logger.debug(`Cached CoinGecko detail for ${coinGeckoId} (TTL: ${CACHE_TTL}s)`);
 
       return coinDetail;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle rate limiting (429) by trying to return cached data
-      if (error?.response?.status === 429) {
+      const errObj = error as any;
+      if (errObj?.response?.status === 429) {
         this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
         const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
         if (cached) {
@@ -404,7 +405,7 @@ export class CoinService {
       }
 
       // Handle 404 - coin not found
-      if (error?.response?.status === 404) {
+      if (errObj?.response?.status === 404) {
         throw new CoinNotFoundException(coinGeckoId, 'slug');
       }
 
@@ -463,11 +464,13 @@ export class CoinService {
       this.logger.debug(`Cached CoinGecko chart for ${coinGeckoId} (${days}d, TTL: ${CACHE_TTL}s)`);
 
       return chartData;
-    } catch (error: any) {
-      this.logger.error(`Error fetching chart data for ${coinGeckoId} (${days}d): ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const errObj = error as any;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error fetching chart data for ${coinGeckoId} (${days}d): ${errMsg}`);
 
       // Handle rate limiting by trying to return cached data
-      if (error?.response?.status === 429) {
+      if (errObj?.response?.status === 429) {
         this.logger.warn(`CoinGecko rate limit hit for chart ${coinGeckoId} (${days}d), attempting to use cached data`);
         const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
         if (cached) {
@@ -477,8 +480,8 @@ export class CoinService {
       }
 
       // Handle network errors and timeouts
-      if (error?.code === 'ECONNREFUSED' || error?.code === 'ETIMEDOUT' || error?.message === 'CoinGecko API timeout') {
-        this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${error?.message ?? error}`);
+      if (errObj?.code === 'ECONNREFUSED' || errObj?.code === 'ETIMEDOUT' || errMsg === 'CoinGecko API timeout') {
+        this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
         // Try to return cached data even if expired
         const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
         if (cached) {
@@ -540,7 +543,7 @@ export class CoinService {
           coin.links = links as any;
           coin.metadataLastUpdated = now;
         }
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.error(
           `Failed to fetch CoinGecko data for ${slug}: ${error instanceof Error ? error.message : error}`
         );
@@ -633,7 +636,7 @@ export class CoinService {
     try {
       // Fetch from CoinGecko with caching
       chartData = await this.fetchMarketChart(coin.slug, days);
-    } catch (error) {
+    } catch (error: unknown) {
       // If CoinGecko fails and no cached data, generate mock data
       this.logger.warn(`Using mock chart data for ${coin.slug} due to API failure`);
       chartData = this.generateMockChartData(coin.currentPrice || 0, days);

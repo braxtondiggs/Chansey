@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository, In } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { AuditService } from '../audit/audit.service';
 import { DriftDetectorService } from '../monitoring/drift-detector.service';
+import { toErrorInfo } from '../shared/error.util';
 import { Deployment } from '../strategy/entities/deployment.entity';
 
 /**
@@ -84,9 +85,10 @@ export class DriftDetectionTask {
           } else {
             this.logger.debug(`No drift detected for deployment ${deployment.id} (${deployment.strategyConfig.name})`);
           }
-        } catch (error) {
+        } catch (error: unknown) {
           errorsCount++;
-          this.logger.error(`Error checking drift for deployment ${deployment.id}: ${error.message}`, error.stack);
+          const err = toErrorInfo(error);
+          this.logger.error(`Error checking drift for deployment ${deployment.id}: ${err.message}`, err.stack);
         }
       }
 
@@ -94,8 +96,9 @@ export class DriftDetectionTask {
         `Drift detection task completed: ${deployments.length} checked, ` +
           `${driftDetectedCount} with drift, ${errorsCount} errors`
       );
-    } catch (error) {
-      this.logger.error(`Drift detection task failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Drift detection task failed: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -128,8 +131,9 @@ export class DriftDetectionTask {
       } else {
         this.logger.log(`No drift detected for deployment ${deploymentId}`);
       }
-    } catch (error) {
-      this.logger.error(`Error checking drift for deployment ${deploymentId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error checking drift for deployment ${deploymentId}: ${err.message}`, err.stack);
       throw error;
     }
   }

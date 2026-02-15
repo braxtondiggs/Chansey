@@ -17,6 +17,7 @@ import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { OrderService } from '../order/order.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 /** Maximum consecutive errors before disabling algo trading for a user */
@@ -85,13 +86,15 @@ export class LiveTradingService implements OnApplicationShutdown {
           await this.executeUserStrategies(user);
           // Clear error strikes on successful execution
           this.userErrorStrikes.delete(user.id);
-        } catch (error) {
-          this.logger.error(`Failed to execute strategies for user ${user.id}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Failed to execute strategies for user ${user.id}: ${err.message}`);
           await this.handleUserError(user, error);
         }
       }
-    } catch (error) {
-      this.logger.error(`Live trading cycle failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Live trading cycle failed: ${err.message}`, err.stack);
     } finally {
       await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockId);
       this.currentLockId = null;
@@ -160,8 +163,9 @@ export class LiveTradingService implements OnApplicationShutdown {
 
           await this.placeOrder(user, strategy.id, signal);
         }
-      } catch (error) {
-        this.logger.error(`Strategy ${strategy.id} execution failed for user ${user.id}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Strategy ${strategy.id} execution failed for user ${user.id}: ${err.message}`);
       }
     }
   }
@@ -202,8 +206,9 @@ export class LiveTradingService implements OnApplicationShutdown {
         signal.price,
         signal.action === 'buy' ? 'buy' : 'sell'
       );
-    } catch (error) {
-      this.logger.error(`Failed to place order for user ${user.id}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to place order for user ${user.id}: ${err.message}`);
       throw error;
     }
   }
@@ -260,15 +265,17 @@ export class LiveTradingService implements OnApplicationShutdown {
             timestamp: new Date(priceData.timestamp),
             volume: undefined // Volume not available from basic price endpoint
           });
-        } catch (error) {
-          this.logger.debug(`Failed to fetch price for ${symbol}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.debug(`Failed to fetch price for ${symbol}: ${err.message}`);
           // Continue with other pairs even if one fails
         }
       }
 
       this.logger.debug(`Fetched market data for ${marketData.length} trading pairs`);
-    } catch (error) {
-      this.logger.warn(`Failed to fetch market data: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to fetch market data: ${err.message}`);
     }
 
     return marketData;
@@ -278,25 +285,27 @@ export class LiveTradingService implements OnApplicationShutdown {
    * Handle user execution errors with strike-based disabling.
    * Users get MAX_ERROR_STRIKES chances before algo trading is disabled.
    */
-  private async handleUserError(user: User, error: Error): Promise<void> {
+  private async handleUserError(user: User, error: unknown): Promise<void> {
+    const errorInfo = toErrorInfo(error);
     const currentStrikes = (this.userErrorStrikes.get(user.id) || 0) + 1;
     this.userErrorStrikes.set(user.id, currentStrikes);
 
     if (currentStrikes >= MAX_ERROR_STRIKES) {
       this.logger.error(
-        `Disabling algo trading for user ${user.id} after ${currentStrikes} consecutive errors: ${error.message}`
+        `Disabling algo trading for user ${user.id} after ${currentStrikes} consecutive errors: ${errorInfo.message}`
       );
 
       try {
         user.algoTradingEnabled = false;
         await this.userRepo.save(user);
         this.userErrorStrikes.delete(user.id);
-      } catch (saveError) {
-        this.logger.error(`Failed to disable algo trading for user ${user.id}: ${saveError.message}`);
+      } catch (saveError: unknown) {
+        const err = toErrorInfo(saveError);
+        this.logger.error(`Failed to disable algo trading for user ${user.id}: ${err.message}`);
       }
     } else {
       this.logger.warn(
-        `User ${user.id} error strike ${currentStrikes}/${MAX_ERROR_STRIKES}: ${error.message}. ` +
+        `User ${user.id} error strike ${currentStrikes}/${MAX_ERROR_STRIKES}: ${errorInfo.message}. ` +
           `Algo trading will be disabled after ${MAX_ERROR_STRIKES - currentStrikes} more errors.`
       );
     }

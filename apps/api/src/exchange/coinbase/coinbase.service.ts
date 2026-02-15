@@ -6,6 +6,7 @@ import * as ccxt from 'ccxt';
 import * as https from 'https';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
@@ -55,8 +56,9 @@ export class CoinbaseService extends BaseExchangeService {
         price: ticker.last?.toString() || '0',
         timestamp: ticker.timestamp
       };
-    } catch (error) {
-      this.logger.error(`Error fetching Coinbase price for ${symbol}`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching Coinbase price for ${symbol}`, err.stack || err.message);
       throw new Error(`Failed to fetch Coinbase price for ${symbol}`);
     }
   }
@@ -108,7 +110,7 @@ export class CoinbaseService extends BaseExchangeService {
       // Try to fetch balance - this will throw an error if the keys are invalid
       await client.fetchBalance();
       return true;
-    } catch (error) {
+    } catch (error: unknown) {
       return false;
     } finally {
       try {
@@ -144,8 +146,9 @@ export class CoinbaseService extends BaseExchangeService {
       }
 
       return assetBalances;
-    } catch (error) {
-      this.logger.error(`Error fetching Coinbase balance for user ${user.id}`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching Coinbase balance for user ${user.id}`, err.stack || err.message);
       return [];
     }
   }

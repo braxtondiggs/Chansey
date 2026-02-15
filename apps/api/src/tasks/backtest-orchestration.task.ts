@@ -19,6 +19,7 @@ import { OrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/backtest-orches
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
+import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
 export class BacktestOrchestrationTask {
@@ -82,8 +83,9 @@ export class BacktestOrchestrationTask {
       }
 
       this.logger.log(`Successfully queued ${eligibleUsers.length} orchestration jobs`);
-    } catch (error) {
-      this.logger.error(`Failed to schedule orchestration: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to schedule orchestration: ${err.message}`, err.stack);
     }
   }
 
@@ -208,8 +210,9 @@ export class BacktestOrchestrationTask {
           `Stale: no heartbeat progress for ${Math.round(thresholdMs / 60000)} min. ` +
             `Last index: ${backtest.checkpointState?.lastProcessedIndex ?? 'unknown'}`
         );
-      } catch (error) {
-        this.logger.error(`Failed to mark stale backtest ${backtest.id} as FAILED: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to mark stale backtest ${backtest.id} as FAILED: ${err.message}`);
       }
     }
 

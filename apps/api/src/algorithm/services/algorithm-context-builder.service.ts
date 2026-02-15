@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm } from '../algorithm.entity';
 import { AlgorithmContext } from '../interfaces';
 
@@ -78,8 +79,9 @@ export class AlgorithmContextBuilder {
 
       this.logger.debug(`Context built successfully for algorithm: ${algorithm.name}`);
       return context;
-    } catch (error) {
-      this.logger.error(`Failed to build context for algorithm ${algorithm.name}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to build context for algorithm ${algorithm.name}: ${err.message}`);
       throw error;
     }
   }

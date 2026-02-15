@@ -5,18 +5,19 @@ import { Repository } from 'typeorm';
 
 import { UsersService } from './../users/users.service';
 import {
-  AssetBalanceDto,
-  ExchangeBalanceDto,
-  HistoricalBalanceDto,
-  BalanceResponseDto,
   AccountValueHistoryDto,
-  AssetDetailsDto
+  AssetBalanceDto,
+  AssetDetailsDto,
+  BalanceResponseDto,
+  ExchangeBalanceDto,
+  HistoricalBalanceDto
 } from './dto';
 import { HistoricalBalance } from './historical-balance.entity';
 
 import { CoinService } from '../coin/coin.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { Exchange } from '../exchange/exchange.entity';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 @Injectable()
@@ -60,8 +61,9 @@ export class BalanceService {
       }
 
       return response;
-    } catch (error) {
-      this.logger.error(`Error getting balances for user: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting balances for user: ${user.id}`, err.stack);
       throw error;
     }
   }
@@ -102,15 +104,16 @@ export class BalanceService {
                 const exchangeService = this.exchangeManagerService.getExchangeService(exchange.slug);
                 // All exchange services now have standardized getBalance method
                 result = await exchangeService.getBalance(user);
-              } catch (serviceError) {
-                this.logger.warn(`No handler for exchange: ${exchange.slug} - ${serviceError.message}`);
+              } catch (serviceError: unknown) {
+                const svcErr = toErrorInfo(serviceError);
+                this.logger.warn(`No handler for exchange: ${exchange.slug} - ${svcErr.message}`);
                 resolve([]);
                 return;
               }
 
               clearTimeout(timer);
               resolve(result);
-            } catch (err) {
+            } catch (err: unknown) {
               clearTimeout(timer);
               reject(err);
             }
@@ -123,8 +126,9 @@ export class BalanceService {
         // Wait for the balance fetch with timeout
         try {
           balances = await balancePromise;
-        } catch (timeoutError) {
-          this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${timeoutError.message}`);
+        } catch (timeoutError: unknown) {
+          const tmErr = toErrorInfo(timeoutError);
+          this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${tmErr.message}`);
           // Add empty balance array for this exchange so we at least have an entry
           exchangeBalances.push({
             id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
@@ -165,8 +169,9 @@ export class BalanceService {
             totalUsdValue,
             timestamp: new Date()
           });
-        } catch (calcError) {
-          this.logger.error(`Error calculating USD values for ${exchange.name}: ${calcError.message}`);
+        } catch (calcError: unknown) {
+          const calcErr = toErrorInfo(calcError);
+          this.logger.error(`Error calculating USD values for ${exchange.name}: ${calcErr.message}`);
           // Add the exchange with balances but zero USD value
           exchangeBalances.push({
             id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
@@ -177,8 +182,9 @@ export class BalanceService {
             timestamp: new Date()
           });
         }
-      } catch (error) {
-        this.logger.error(`Error getting balances from ${exchange.name}: ${error.message}`, error.stack);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error getting balances from ${exchange.name}: ${err.message}`, err.stack);
         // Continue with other exchanges instead of failing completely
       }
     }
@@ -278,8 +284,9 @@ export class BalanceService {
           }
         }
       }
-    } catch (error) {
-      this.logger.error(`Error retrieving historical balances: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error retrieving historical balances: ${err.message}`, err.stack);
       // Return an empty array if we can't get historical data
       return [];
     }
@@ -331,8 +338,9 @@ export class BalanceService {
 
             const response = await this.exchangeManagerService.getPrice(exchangeSlug, symbol);
             price = parseFloat(response.price);
-          } catch (priceError) {
-            this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${priceError.message}`);
+          } catch (priceError: unknown) {
+            const prcErr = toErrorInfo(priceError);
+            this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${prcErr.message}`);
             price = 0;
           }
 
@@ -340,8 +348,9 @@ export class BalanceService {
           const totalAmount = parseFloat(balance.free) + parseFloat(balance.locked);
           balance.usdValue = totalAmount * price;
         }
-      } catch (error) {
-        this.logger.warn(`Unable to calculate USD value for ${balance.asset} on ${exchangeSlug}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Unable to calculate USD value for ${balance.asset} on ${exchangeSlug}: ${err.message}`);
         balance.usdValue = 0;
       }
     }
@@ -458,15 +467,17 @@ export class BalanceService {
       for (const user of users) {
         try {
           await this.storeUserBalances(user);
-        } catch (error) {
-          this.logger.error(`Error storing historical balances for user ${user.id}: ${error.message}`, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Error storing historical balances for user ${user.id}: ${err.message}`, err.stack);
           // Continue with other users instead of failing completely
         }
       }
 
       this.logger.log('Finished storing historical balances');
-    } catch (error) {
-      this.logger.error('Error in historical balance storage task', error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error('Error in historical balance storage task', err.stack);
     }
   }
 
@@ -492,10 +503,9 @@ export class BalanceService {
           this.logger.warn(
             `Retrieved empty exchange balances for user ${user.id}, retrying (${retryCount + 1}/${maxRetries})...`
           );
-        } catch (balanceError) {
-          this.logger.warn(
-            `Error getting balances on attempt ${retryCount + 1}/${maxRetries}: ${balanceError.message}`
-          );
+        } catch (balanceError: unknown) {
+          const balErr = toErrorInfo(balanceError);
+          this.logger.warn(`Error getting balances on attempt ${retryCount + 1}/${maxRetries}: ${balErr.message}`);
           // Only throw on the last attempt
           if (retryCount === maxRetries - 1) {
             throw balanceError;
@@ -541,8 +551,9 @@ export class BalanceService {
       }
 
       this.logger.debug(`Stored historical balances for user ${user.id}`);
-    } catch (error) {
-      this.logger.error(`Error storing balances for user ${user.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error storing balances for user ${user.id}: ${err.message}`, err.stack);
       // Don't rethrow the error to prevent the cron job from failing entirely
     }
   }
@@ -577,8 +588,9 @@ export class BalanceService {
         const user = await this.userService.getById(userRow.userId, true);
         // Note: user.exchanges is already ExchangeKey[] with exchange relation loaded
         users.push(user);
-      } catch (error) {
-        this.logger.warn(`Failed to get user details for ID ${userRow.userId}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Failed to get user details for ID ${userRow.userId}: ${err.message}`);
       }
     }
 
@@ -665,7 +677,7 @@ export class BalanceService {
         // Get current balances from all exchanges
         const currentBalances = await this.getCurrentBalances(user);
         currentValue = currentBalances.reduce((sum, exchange) => sum + exchange.totalUsdValue, 0);
-      } catch (error) {
+      } catch (error: unknown) {
         // If we can't get current balances, use the latest historical value
         this.logger.warn(`Couldn't get current balances, using latest historical value`);
         if (history.length > 0) {
@@ -695,8 +707,9 @@ export class BalanceService {
         currentValue: Math.round(currentValue * 100) / 100, // Round to 2 decimal places
         changePercentage
       };
-    } catch (error) {
-      this.logger.error(`Error getting account value history for user: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting account value history for user: ${user.id}`, err.stack);
       throw error;
     }
   }
@@ -816,8 +829,9 @@ export class BalanceService {
       const assets = Array.from(assetMap.values()).sort((a, b) => b.usdValue - a.usdValue);
 
       return assets as AssetDetailsDto[];
-    } catch (error) {
-      this.logger.error(`Error getting asset details for user: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting asset details for user: ${user.id}`, err.stack);
       throw error;
     }
   }

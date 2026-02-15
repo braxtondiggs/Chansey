@@ -17,6 +17,7 @@ import { StrategyConfig } from './entities/strategy-config.entity';
 import { StrategyScore } from './entities/strategy-score.entity';
 
 import { AuditService } from '../audit/audit.service';
+import { toErrorInfo } from '../shared/error.util';
 
 /**
  * DeploymentService
@@ -151,8 +152,9 @@ export class DeploymentService {
             grade: latestScore.grade
           }
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for deployment ${savedDeployment.id}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for deployment ${savedDeployment.id}: ${err.message}`);
       }
 
       this.logger.log(
@@ -161,11 +163,12 @@ export class DeploymentService {
       );
 
       return savedDeployment;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to create deployment for strategy ${strategyConfigId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create deployment for strategy ${strategyConfigId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to create deployment due to an internal error');
     }
   }
@@ -204,18 +207,20 @@ export class DeploymentService {
           afterState: activated,
           metadata: { deployedAt: activated.deployedAt }
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for activation ${deploymentId}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for activation ${deploymentId}: ${err.message}`);
       }
 
       this.logger.log(`Activated deployment ${deploymentId}`);
 
       return activated;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to activate deployment ${deploymentId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to activate deployment ${deploymentId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to activate deployment due to an internal error');
     }
   }
@@ -253,18 +258,20 @@ export class DeploymentService {
           afterState: paused,
           metadata: { reason }
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for pause ${deploymentId}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for pause ${deploymentId}: ${err.message}`);
       }
 
       this.logger.warn(`Paused deployment ${deploymentId}: ${reason}`);
 
       return paused;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to pause deployment ${deploymentId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to pause deployment ${deploymentId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to pause deployment due to an internal error');
     }
   }
@@ -300,18 +307,20 @@ export class DeploymentService {
           beforeState,
           afterState: resumed
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for resume ${deploymentId}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for resume ${deploymentId}: ${err.message}`);
       }
 
       this.logger.log(`Resumed deployment ${deploymentId}`);
 
       return resumed;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to resume deployment ${deploymentId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to resume deployment ${deploymentId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to resume deployment due to an internal error');
     }
   }
@@ -350,18 +359,20 @@ export class DeploymentService {
           afterState: demoted,
           metadata: { reason, ...metadata }
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for demotion ${deploymentId}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for demotion ${deploymentId}: ${err.message}`);
       }
 
       this.logger.error(`Demoted deployment ${deploymentId}: ${reason}`);
 
       return demoted;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`Failed to demote deployment ${deploymentId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to demote deployment ${deploymentId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to demote deployment due to an internal error');
     }
   }
@@ -397,18 +408,20 @@ export class DeploymentService {
           afterState: terminated,
           metadata: { reason }
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for termination ${deploymentId}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for termination ${deploymentId}: ${err.message}`);
       }
 
       this.logger.warn(`Terminated deployment ${deploymentId}: ${reason}`);
 
       return terminated;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`Failed to terminate deployment ${deploymentId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to terminate deployment ${deploymentId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to terminate deployment due to an internal error');
     }
   }
@@ -455,8 +468,9 @@ export class DeploymentService {
           afterState: { allocationPercent: newAllocationPercent },
           metadata: { reason }
         });
-      } catch (auditError) {
-        this.logger.error(`Failed to create audit log for allocation update ${deploymentId}: ${auditError.message}`);
+      } catch (auditError: unknown) {
+        const err = toErrorInfo(auditError);
+        this.logger.error(`Failed to create audit log for allocation update ${deploymentId}: ${err.message}`);
       }
 
       this.logger.log(
@@ -464,11 +478,12 @@ export class DeploymentService {
       );
 
       return updated;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to update allocation for deployment ${deploymentId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update allocation for deployment ${deploymentId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to update allocation due to an internal error');
     }
   }
@@ -510,18 +525,20 @@ export class DeploymentService {
       // Update deployment aggregate stats
       try {
         await this.updateDeploymentStats(deployment, metricData);
-      } catch (statsError) {
-        this.logger.error(`Failed to update deployment stats for ${deploymentId}: ${statsError.message}`);
+      } catch (statsError: unknown) {
+        const err = toErrorInfo(statsError);
+        this.logger.error(`Failed to update deployment stats for ${deploymentId}: ${err.message}`);
       }
 
       return saved;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException) {
         throw error;
       }
+      const err = toErrorInfo(error);
       this.logger.error(
-        `Failed to record performance metric for deployment ${deploymentId}: ${error.message}`,
-        error.stack
+        `Failed to record performance metric for deployment ${deploymentId}: ${err.message}`,
+        err.stack
       );
       throw new InternalServerErrorException('Failed to record performance metric due to an internal error');
     }

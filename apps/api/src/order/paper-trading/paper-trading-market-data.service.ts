@@ -7,6 +7,7 @@ import { Cache } from 'cache-manager';
 import { paperTradingConfig } from './paper-trading.config';
 
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { toErrorInfo } from '../../shared/error.util';
 import type { User } from '../../users/users.entity';
 
 export interface PriceData {
@@ -87,8 +88,9 @@ export class PaperTradingMarketDataService {
       await this.cacheManager.set(cacheKey, priceData, this.cacheTtlMs);
 
       return priceData;
-    } catch (error) {
-      this.logger.error(`Failed to fetch price for ${symbol} from ${exchangeSlug}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch price for ${symbol} from ${exchangeSlug}: ${err.message}`);
       throw error;
     }
   }
@@ -155,8 +157,9 @@ export class PaperTradingMarketDataService {
       }
 
       return results;
-    } catch (error) {
-      this.logger.error(`Failed to fetch prices from ${exchangeSlug}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch prices from ${exchangeSlug}: ${err.message}`);
       throw error;
     }
   }
@@ -193,8 +196,9 @@ export class PaperTradingMarketDataService {
       await this.cacheManager.set(cacheKey, orderBook, Math.min(this.cacheTtlMs, 2000));
 
       return orderBook;
-    } catch (error) {
-      this.logger.error(`Failed to fetch order book for ${symbol} from ${exchangeSlug}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch order book for ${symbol} from ${exchangeSlug}: ${err.message}`);
       throw error;
     }
   }
@@ -257,8 +261,9 @@ export class PaperTradingMarketDataService {
         slippageBps: slippageBps + marketImpact,
         marketImpact
       };
-    } catch (error) {
-      this.logger.warn(`Failed to calculate slippage for ${symbol}: ${error.message}. Using fixed slippage.`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to calculate slippage for ${symbol}: ${err.message}. Using fixed slippage.`);
 
       // Fallback to fixed slippage
       return {
@@ -283,10 +288,11 @@ export class PaperTradingMarketDataService {
         healthy: true,
         latencyMs: Date.now() - startTime
       };
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       return {
         healthy: false,
-        error: error.message
+        error: err.message
       };
     }
   }

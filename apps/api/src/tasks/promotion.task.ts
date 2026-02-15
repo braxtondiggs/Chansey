@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
@@ -99,7 +99,7 @@ export class PromotionTask {
             this.logger.debug(`Strategy ${strategy.name} rejected for promotion: ${evaluation.failedGates.join(', ')}`);
             results.rejected++;
           }
-        } catch (error) {
+        } catch (error: unknown) {
           this.logger.error(`Error evaluating strategy ${strategy.id} for promotion:`, error);
           results.errors++;
         }
@@ -112,7 +112,7 @@ export class PromotionTask {
           `${results.rejected} rejected, ` +
           `${results.errors} errors`
       );
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to complete promotion evaluation:', error);
     }
   }
@@ -146,7 +146,7 @@ export class PromotionTask {
     try {
       await this.deploymentService.activateDeployment(deploymentId, 'system');
       this.logger.log(`Successfully activated deployment ${deploymentId}`);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(`Failed to activate deployment ${deploymentId}:`, error);
       throw error;
     }

@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { Resend } from 'resend';
 
+import { toErrorInfo } from '../shared/error.util';
+
 export interface EmailOptions {
   to: string;
   subject: string;
@@ -40,8 +42,9 @@ export class EmailService {
 
       this.logger.debug(`Email sent successfully to ${options.to}, ID: ${data?.id}`);
       return true;
-    } catch (error) {
-      this.logger.error(`Email send error: ${error instanceof Error ? error.message : 'Unknown error'}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Email send error: ${err.message}`, err.stack);
       return false;
     }
   }

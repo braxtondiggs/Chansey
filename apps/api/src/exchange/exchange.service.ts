@@ -175,7 +175,7 @@ export class ExchangeService implements IExchangeService {
         if (keys && keys.length > 0 && keys.some((key) => key.isActive)) {
           exchangesWithKeys.push(exchange);
         }
-      } catch (error) {
+      } catch (error: unknown) {
         // Continue if there's an error finding keys for this exchange
       }
     }

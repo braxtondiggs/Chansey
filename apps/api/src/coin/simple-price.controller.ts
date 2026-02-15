@@ -14,6 +14,7 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { SimplePriceRequestDto, SimplePriceResponseDto } from './dto/simple-price-request.dto';
 
+import { toErrorInfo } from '../shared/error.util';
 import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
 import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
@@ -177,8 +178,9 @@ export class SimplePriceController {
       }
 
       return priceData;
-    } catch (error) {
-      this.logger.error(`Failed to fetch prices: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch prices: ${err.message}`, err.stack);
 
       // Re-throw validation errors as-is
       if (error instanceof BadRequestException) {
@@ -186,14 +188,15 @@ export class SimplePriceController {
       }
 
       // Handle CoinGecko API errors
-      if (error.response?.status === 429) {
+      const errObj = error as any;
+      if (errObj?.response?.status === 429) {
         throw new InternalServerErrorException(
           'Rate limit exceeded. Please wait a moment before making another request.'
         );
       }
 
-      if (error.response?.status >= 400 && error.response?.status < 500) {
-        throw new BadRequestException(`Invalid request to CoinGecko API: ${error.message}`);
+      if (errObj?.response?.status >= 400 && errObj?.response?.status < 500) {
+        throw new BadRequestException(`Invalid request to CoinGecko API: ${err.message}`);
       }
 
       // General error fallback

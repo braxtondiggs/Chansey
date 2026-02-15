@@ -8,6 +8,7 @@ import { BalanceService } from '../balance/balance.service';
 import { CoinService } from '../coin/coin.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 @Injectable()
@@ -65,15 +66,16 @@ export class TradingService {
                     total: balanceData.total || 0
                   });
                 }
-              } catch (coinError) {
+              } catch (coinError: unknown) {
                 this.logger.debug(`Coin not found for symbol ${symbol}, skipping`);
               }
             }
           }
 
           return tradingBalances;
-        } catch (exchangeError) {
-          this.logger.warn(`Failed to get balances from exchange ${exchangeId} via CCXT: ${exchangeError.message}`);
+        } catch (exchangeError: unknown) {
+          const exchErr = toErrorInfo(exchangeError);
+          this.logger.warn(`Failed to get balances from exchange ${exchangeId} via CCXT: ${exchErr.message}`);
           // Fall back to balance service
         }
       }
@@ -115,8 +117,9 @@ export class TradingService {
       }
 
       return tradingBalances.filter((balance) => balance.total > 0); // Only return non-zero balances
-    } catch (error) {
-      this.logger.error(`Failed to get trading balances: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get trading balances: ${err.message}`);
       throw error;
     }
   }
@@ -146,7 +149,7 @@ export class TradingService {
           const exchangeManagerService = this.exchangeManagerService.getExchangeService(exchange.slug);
           exchangeClient = await exchangeManagerService.getClient();
           exchangeName = exchange.name;
-        } catch (error) {
+        } catch (error: unknown) {
           this.logger.warn(`Failed to get specific exchange client for ${exchangeId}, falling back to public client`);
         }
       }
@@ -196,16 +199,17 @@ export class TradingService {
       };
 
       return transformedOrderBook;
-    } catch (error) {
+    } catch (error: unknown) {
       // Re-throw BadRequestException with helpful messages
       if (error instanceof BadRequestException) {
         throw error;
       }
 
       // Handle other errors
-      this.logger.error(`Failed to get order book: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get order book: ${err.message}`);
       throw new BadRequestException(
-        `Unable to fetch order book data. ${error.message || 'Exchange may be unavailable.'}`
+        `Unable to fetch order book data. ${err.message || 'Exchange may be unavailable.'}`
       );
     }
   }
@@ -233,7 +237,7 @@ export class TradingService {
           const exchange = await this.exchangeService.findOne(exchangeId);
           const exchangeManagerService = this.exchangeManagerService.getExchangeService(exchange.slug);
           exchangeClient = await exchangeManagerService.getClient();
-        } catch (error) {
+        } catch (error: unknown) {
           this.logger.warn(`Failed to get specific exchange client for ${exchangeId}, falling back to public client`);
         }
       }
@@ -261,8 +265,9 @@ export class TradingService {
         prevClosePrice: ticker.previousClose,
         lastUpdated: ticker.datetime ? new Date(ticker.datetime) : new Date()
       };
-    } catch (error) {
-      this.logger.error(`Failed to get ticker: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get ticker: ${err.message}`);
       throw error;
     }
   }

@@ -17,6 +17,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide, OrderStatus } from '../order.entity';
@@ -55,14 +56,16 @@ export class OrderSyncService {
           const symbolOrders = await client.fetchOrders(symbol, since);
           this.logger.log(`Fetched ${symbolOrders.length} orders for ${symbol}`);
           allOrders.push(...symbolOrders);
-        } catch (error) {
-          this.logger.log(`Failed to fetch orders for ${symbol}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.log(`Failed to fetch orders for ${symbol}: ${err.message}`);
         }
       }
 
       return this.removeDuplicateOrders(allOrders);
-    } catch (error) {
-      this.logger.error(`Failed to fetch historical orders: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch historical orders: ${err.message}`);
       return [];
     }
   }
@@ -91,14 +94,16 @@ export class OrderSyncService {
           const symbolTrades = await client.fetchMyTrades(symbol, since);
           this.logger.log(`Fetched ${symbolTrades.length} trades for ${symbol}`);
           allTrades.push(...symbolTrades);
-        } catch (error) {
-          this.logger.log(`Failed to fetch trades for ${symbol}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.log(`Failed to fetch trades for ${symbol}: ${err.message}`);
         }
       }
 
       return this.removeDuplicateTrades(allTrades);
-    } catch (error) {
-      this.logger.error(`Failed to fetch historical trades: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch historical trades: ${err.message}`);
       return [];
     }
   }
@@ -202,8 +207,9 @@ export class OrderSyncService {
           savedCount++;
           this.logger.debug(`Saved new order ${exchangeOrder.id}`);
         }
-      } catch (error) {
-        this.logger.error(`Failed to process order ${exchangeOrder.id}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to process order ${exchangeOrder.id}: ${err.message}`);
       }
     }
 
@@ -315,9 +321,10 @@ export class OrderSyncService {
         try {
           await this.positionManagementService.handleOcoFill(existingOrder.id);
           this.logger.debug(`Processed OCO fill for order ${existingOrder.id}`);
-        } catch (ocoError) {
+        } catch (ocoError: unknown) {
+          const err = toErrorInfo(ocoError);
           // Log but don't fail the sync - OCO handling is a secondary concern
-          this.logger.warn(`Failed to process OCO fill for order ${existingOrder.id}: ${ocoError.message}`);
+          this.logger.warn(`Failed to process OCO fill for order ${existingOrder.id}: ${err.message}`);
         }
       }
 
@@ -374,8 +381,9 @@ export class OrderSyncService {
 
       await this.orderRepository.save(newOrder);
       return true;
-    } catch (error) {
-      this.logger.error(`Failed to create new order: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create new order: ${err.message}`);
       return false;
     }
   }
@@ -396,8 +404,9 @@ export class OrderSyncService {
       }
 
       return null;
-    } catch (error) {
-      this.logger.error(`Error identifying exchange for order ${exchangeOrder.id}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error identifying exchange for order ${exchangeOrder.id}: ${err.message}`);
       return null;
     }
   }
