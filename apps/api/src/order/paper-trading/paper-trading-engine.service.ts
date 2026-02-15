@@ -25,6 +25,7 @@ import {
 } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import {
   FeeCalculatorService,
   MetricsCalculatorService,
@@ -196,9 +197,10 @@ export class PaperTradingEngineService {
             if (order) {
               ordersExecuted++;
             }
-          } catch (error) {
-            errors.push(`Failed to execute ${signal.action} order for ${signal.symbol}: ${error.message}`);
-            this.logger.warn(`Order execution failed: ${error.message}`);
+          } catch (error: unknown) {
+            const err = toErrorInfo(error);
+            errors.push(`Failed to execute ${signal.action} order for ${signal.symbol}: ${err.message}`);
+            this.logger.warn(`Order execution failed: ${err.message}`);
           }
         }
 
@@ -229,9 +231,10 @@ export class PaperTradingEngineService {
         portfolioValue: finalPortfolioValue,
         prices: priceMap
       };
-    } catch (error) {
-      this.logger.error(`Tick processing failed for session ${session.id}: ${error.message}`, error.stack);
-      errors.push(error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Tick processing failed for session ${session.id}: ${err.message}`, err.stack);
+      errors.push(err.message);
 
       return {
         processed: false,
@@ -289,8 +292,9 @@ export class PaperTradingEngineService {
       }
 
       return [];
-    } catch (error) {
-      this.logger.warn(`Algorithm execution failed: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Algorithm execution failed: ${err.message}`);
       return [];
     }
   }

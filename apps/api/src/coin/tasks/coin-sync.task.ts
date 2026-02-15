@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../exchange/exchange.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 import { CoinService } from '../coin.service';
 
@@ -127,8 +128,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       this.logger.log(`Job ${job.id} completed successfully`);
       return result;
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -187,8 +189,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
             // Apply standard rate limiting to avoid CoinGecko API issues
             await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
             page++;
-          } catch (tickerError) {
-            this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${tickerError.message}`);
+          } catch (tickerError: unknown) {
+            const err = toErrorInfo(tickerError);
+            this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
             // If we're on the first page and encounter an error, break out completely
             if (page === 1) break;
 
@@ -197,8 +200,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
             continue;
           }
         }
-      } catch (error) {
-        this.logger.error(`Error getting tickers for exchange ${exchange.name}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error getting tickers for exchange ${exchange.name}: ${err.message}`);
         continue; // Continue with next exchange
       }
     }
@@ -299,8 +303,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
             try {
               await this.coin.update(id, updates);
               return { success: true };
-            } catch (error) {
-              this.logger.error(`Failed to update coin ${id}: ${error.message}`);
+            } catch (error: unknown) {
+              const err = toErrorInfo(error);
+              this.logger.error(`Failed to update coin ${id}: ${err.message}`);
               return { success: false };
             }
           })
@@ -332,7 +337,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
         removed: uniqueCoinsToRemove.length,
         total: existingCoins.length + newCoins.length - uniqueCoinsToRemove.length
       };
-    } catch (e) {
+    } catch (e: unknown) {
       this.logger.error('Coin sync failed:', e);
       throw e;
     } finally {
@@ -507,9 +512,10 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
               });
               this.logger.debug(`Successfully updated ${symbol}`);
               return { success: true };
-            } catch (error) {
-              this.logger.error(`Failed to update ${symbol}: ${error.message}`);
-              return { success: false, error: error.message };
+            } catch (error: unknown) {
+              const err = toErrorInfo(error);
+              this.logger.error(`Failed to update ${symbol}: ${err.message}`);
+              return { success: false, error: err.message };
             }
           })
         );
@@ -536,7 +542,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
         updatedSuccessfully: updatedCount,
         errors: errorCount
       };
-    } catch (e) {
+    } catch (e: unknown) {
       this.logger.error('Failed to process coin details:', e);
       throw e;
     }

@@ -9,6 +9,7 @@ import { CoinbaseService } from './coinbase/coinbase.service';
 import { EXCHANGE_SERVICE, IBaseExchangeService, IExchangeManagerService, IExchangeService } from './interfaces';
 import { KrakenService } from './kraken/kraken.service';
 
+import { toErrorInfo } from '../shared/error.util';
 import type { User } from '../users/users.entity';
 
 /**
@@ -121,12 +122,13 @@ export class ExchangeManagerService implements IExchangeManagerService {
           success: true,
           data: balances
         });
-      } catch (error) {
-        this.logger.warn(`Failed to get balance from ${exchange.slug}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Failed to get balance from ${exchange.slug}: ${err.message}`);
         results.push({
           exchange: exchange.slug,
           success: false,
-          error: error.message
+          error: err.message
         });
       }
     }

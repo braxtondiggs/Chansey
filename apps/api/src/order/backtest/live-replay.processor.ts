@@ -18,6 +18,7 @@ import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -224,8 +225,9 @@ export class LiveReplayProcessor extends WorkerHost {
 
       await this.backtestResultService.persistSuccess(backtest, results);
       this.metricsService.recordBacktestCompleted(strategyName, 'success');
-    } catch (error) {
-      this.logger.error(`Live replay backtest ${backtestId} failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Live replay backtest ${backtestId} failed: ${err.message}`, err.stack);
 
       // Skip markFailed if already externally failed (e.g. by stale watchdog)
       const current = await this.backtestRepository.findOne({
@@ -233,7 +235,7 @@ export class LiveReplayProcessor extends WorkerHost {
         select: ['id', 'status']
       });
       if (!current || current.status !== BacktestStatus.FAILED) {
-        await this.backtestResultService.markFailed(backtestId, error.message);
+        await this.backtestResultService.markFailed(backtestId, err.message);
       }
       this.metricsService.recordBacktestCompleted(strategyName, 'failed');
     } finally {

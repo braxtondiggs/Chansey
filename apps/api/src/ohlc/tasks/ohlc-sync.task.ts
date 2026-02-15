@@ -9,6 +9,7 @@ import { CoinService } from '../../coin/coin.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
@@ -100,8 +101,9 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
 
       this.logger.log('No symbol mappings found, seeding from popular coins');
       await this.seedSymbolMaps();
-    } catch (error) {
-      this.logger.error(`Failed to check/seed symbol maps: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to check/seed symbol maps: ${err.message}`);
     }
   }
 
@@ -129,8 +131,9 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
         if (!exchangeBySlug.has(slug)) continue;
         try {
           await this.exchangeOHLC.getAvailableSymbols(slug, 'BTC'); // triggers loadMarkets()
-        } catch (error) {
-          this.logger.warn(`Failed to load markets for ${slug}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Failed to load markets for ${slug}: ${err.message}`);
         }
       }
 
@@ -172,14 +175,16 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
             this.logger.warn(`No valid trading pair found for ${coin.symbol} on any exchange, skipping`);
             skipped++;
           }
-        } catch (error) {
-          this.logger.warn(`Failed to create symbol map for ${coin.symbol}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Failed to create symbol map for ${coin.symbol}: ${err.message}`);
         }
       }
 
       this.logger.log(`Seeded ${created} symbol mappings, skipped ${skipped} coins with no valid pairs`);
-    } catch (error) {
-      this.logger.error(`Failed to seed symbol maps: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to seed symbol maps: ${err.message}`);
     }
   }
 
@@ -243,8 +248,9 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
     try {
       return await this.handleOHLCSync(job);
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -309,8 +315,9 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
           } else {
             errorCount++;
           }
-        } catch (error) {
-          this.logger.error(`Failed to sync OHLC for coin ${coinId}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Failed to sync OHLC for coin ${coinId}: ${err.message}`);
           errorCount++;
         }
 
@@ -331,7 +338,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
         successCount,
         errorCount
       };
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('OHLC sync failed:', error);
       throw error;
     }
@@ -375,8 +382,9 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       // Return the close price of the most recent candle
       const latestCandle = result.candles[result.candles.length - 1];
       return { success: true, closePrice: latestCandle.close };
-    } catch (error) {
-      this.logger.warn(`Failed to sync ${mapping.symbol} from ${mapping.exchange?.slug}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to sync ${mapping.symbol} from ${mapping.exchange?.slug}: ${err.message}`);
       await this.ohlcService.incrementFailureCount(mapping.id);
       await this.deactivateIfExceededThreshold(mapping);
       return { success: false };

@@ -1,9 +1,10 @@
-import { Injectable, forwardRef, Inject } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
@@ -43,8 +44,9 @@ export class CoinbaseExchangeService extends BaseExchangeService {
         price: ticker.last?.toString() || '0',
         timestamp: ticker.timestamp
       };
-    } catch (error) {
-      this.logger.error(`Error fetching Coinbase Pro price for ${symbol}`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching Coinbase Pro price for ${symbol}`, err.stack || err.message);
       throw new Error(`Failed to fetch Coinbase Pro price for ${symbol}`);
     }
   }
@@ -81,8 +83,9 @@ export class CoinbaseExchangeService extends BaseExchangeService {
       }
 
       return assetBalances;
-    } catch (error) {
-      this.logger.error(`Error fetching Coinbase Pro balance for user ${user.id}`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching Coinbase Pro balance for user ${user.id}`, err.stack || err.message);
       return [];
     }
   }

@@ -6,6 +6,8 @@ import Redis from 'ioredis';
 import { backtestConfig } from './backtest.config';
 import { BacktestGateway } from './backtest.gateway';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 export type TelemetryScope = 'log' | 'metric' | 'trace' | 'status';
 
 export interface BacktestTelemetryPayload {
@@ -71,14 +73,16 @@ export class BacktestStreamService implements OnModuleDestroy {
         'payload',
         JSON.stringify(enriched)
       );
-    } catch (error) {
-      this.logger.error(`Failed to publish telemetry for run ${payload.runId}: ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to publish telemetry for run ${payload.runId}: ${err.message}`);
     }
 
     try {
       this.gateway?.emit(payload.runId, payload.scope, enriched);
-    } catch (error) {
-      this.logger.warn(`Failed to broadcast telemetry for run ${payload.runId}: ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to broadcast telemetry for run ${payload.runId}: ${err.message}`);
     }
   }
 
@@ -117,8 +121,9 @@ export class BacktestStreamService implements OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     try {
       await this.redis.quit();
-    } catch (error) {
-      this.logger.warn(`Error shutting down telemetry redis connection: ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Error shutting down telemetry redis connection: ${err.message}`);
       this.redis.disconnect();
     }
   }

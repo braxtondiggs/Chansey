@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CronJob } from 'cron';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm, AlgorithmStatus } from '../algorithm.entity';
 import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy } from '../interfaces';
 
@@ -75,8 +76,9 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   async healthCheck(): Promise<boolean> {
     try {
       return this.algorithm?.status === AlgorithmStatus.ACTIVE;
-    } catch (error) {
-      this.logger.error(`Health check failed: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Health check failed: ${err.message}`);
       return false;
     }
   }
@@ -115,9 +117,10 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
         },
         timestamp: new Date()
       };
-    } catch (error) {
-      this.logger.error(`Algorithm execution failed: ${error.message}`, error.stack);
-      return this.createErrorResult(error.message, Date.now() - startTime);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Algorithm execution failed: ${err.message}`, err.stack);
+      return this.createErrorResult(err.message, Date.now() - startTime);
     }
   }
 
@@ -134,8 +137,9 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
       this.cronJob.start();
 
       this.logger.log(`Cron job started with schedule: ${this.algorithm.cron}`);
-    } catch (error) {
-      this.logger.error(`Failed to start cron job: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to start cron job: ${err.message}`);
     }
   }
 
@@ -149,8 +153,9 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
         this.schedulerRegistry.deleteCronJob(jobName);
         this.cronJob = undefined;
         this.logger.log('Cron job stopped');
-      } catch (error) {
-        this.logger.error(`Failed to stop cron job: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to stop cron job: ${err.message}`);
       }
     }
   }

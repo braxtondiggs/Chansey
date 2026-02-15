@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as ccxt from 'ccxt';
 
 import { BinanceUSService } from '../../exchange/binance/binance-us.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 @Injectable()
 export class AddedtoExchangeBinanceService {
@@ -23,8 +24,9 @@ export class AddedtoExchangeBinanceService {
     setInterval(async () => {
       try {
         await this.checkForNewListings();
-      } catch (error) {
-        this.logger.error(`Error checking for new listings: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error checking for new listings: ${err.message}`);
       }
     }, 60000); // Check every minute
   }
@@ -88,8 +90,9 @@ export class AddedtoExchangeBinanceService {
       );
 
       this.logger.log(`Purchase executed for ${formattedSymbol}: ${JSON.stringify(order)}`);
-    } catch (error) {
-      this.logger.error(`Failed to execute purchase for ${symbol}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to execute purchase for ${symbol}: ${err.message}`);
     }
   }
 }

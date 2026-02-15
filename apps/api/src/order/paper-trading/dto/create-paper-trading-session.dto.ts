@@ -15,6 +15,7 @@ import {
   ValidateNested
 } from 'class-validator';
 
+import { toErrorInfo } from '../../../shared/error.util';
 import { sanitizeObject } from '../../../utils/sanitize.util';
 
 const MAX_ALGORITHM_CONFIG_SIZE = 10000; // Maximum JSON string size in bytes
@@ -156,8 +157,9 @@ export class CreatePaperTradingSessionDto {
         allowArrays: true,
         maxArrayLength: 100
       });
-    } catch (error) {
-      throw new BadRequestException(`Invalid algorithmConfig: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      throw new BadRequestException(`Invalid algorithmConfig: ${err.message}`);
     }
 
     // Check total serialized size
@@ -234,8 +236,9 @@ export class UpdatePaperTradingSessionDto {
         allowArrays: true,
         maxArrayLength: 100
       });
-    } catch (error) {
-      throw new BadRequestException(`Invalid algorithmConfig: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      throw new BadRequestException(`Invalid algorithmConfig: ${err.message}`);
     }
 
     // Check total serialized size

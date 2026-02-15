@@ -4,6 +4,8 @@ import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus'
 
 import Redis from 'ioredis';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 /**
  * Health indicator that monitors Redis performance metrics via INFO command.
  * Tracks memory usage, connected clients, and cache hit rate.
@@ -75,11 +77,12 @@ export class RedisHealthIndicator implements OnModuleDestroy {
       }
 
       return indicator.up(result);
-    } catch (error) {
+    } catch (error: unknown) {
       // Reset connection on failure so next health check creates fresh connection
       this.disconnect();
-      this.logger.error(`Redis health check failed: ${error.message}`);
-      return indicator.down({ error: error.message });
+      const err = toErrorInfo(error);
+      this.logger.error(`Redis health check failed: ${err.message}`);
+      return indicator.down({ error: err.message });
     }
   }
 

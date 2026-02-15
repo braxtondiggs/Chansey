@@ -1,9 +1,10 @@
-import { Processor, InjectQueue, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { UsersService } from '../users.service';
 
 @Processor('user-queue')
@@ -68,8 +69,9 @@ export class UsersTaskService extends WorkerHost implements OnModuleInit {
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -90,8 +92,9 @@ export class UsersTaskService extends WorkerHost implements OnModuleInit {
       }
       await job.updateProgress(100);
       return { updated, total: users.length };
-    } catch (error) {
-      this.logger.error('Failed to update user portfolios:', error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error('Failed to update user portfolios:', err.stack);
       throw error;
     }
   }

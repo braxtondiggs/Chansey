@@ -5,6 +5,8 @@ import { Job } from 'bullmq';
 
 import { DriftDetectionTask } from './drift-detection.task';
 
+import { toErrorInfo } from '../shared/error.util';
+
 @Injectable()
 @Processor('drift-detection-queue')
 export class DriftDetectionProcessor extends WorkerHost {
@@ -26,11 +28,12 @@ export class DriftDetectionProcessor extends WorkerHost {
 
       const duration = Date.now() - startTime;
       this.logger.log(`Drift detection job ${job.id} completed for deployment ${deploymentId} in ${duration}ms`);
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       const duration = Date.now() - startTime;
       this.logger.error(
-        `Drift detection job ${job.id} failed for deployment ${deploymentId} after ${duration}ms: ${error.message}`,
-        error.stack
+        `Drift detection job ${job.id} failed for deployment ${deploymentId} after ${duration}ms: ${err.message}`,
+        err.stack
       );
       throw error;
     }

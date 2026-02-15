@@ -5,6 +5,7 @@ import { Job, Queue } from 'bullmq';
 
 import { CoinService } from '../../coin/coin.service';
 import { OHLCBackfillService } from '../../ohlc/services/ohlc-backfill.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 interface HistoricalPriceJobData {
   coinId: string;
@@ -43,8 +44,9 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -115,8 +117,9 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
         message: 'OHLC backfill started',
         backfillJobId: jobId
       };
-    } catch (error) {
-      this.logger.error(`Failed to start OHLC backfill for coin ${coinId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to start OHLC backfill for coin ${coinId}: ${err.message}`, err.stack);
       throw error;
     }
   }

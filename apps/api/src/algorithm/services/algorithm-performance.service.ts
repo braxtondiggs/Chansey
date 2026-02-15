@@ -7,6 +7,7 @@ import { Between, Repository } from 'typeorm';
 import { AlgorithmActivationService } from './algorithm-activation.service';
 
 import { Order, OrderStatus } from '../../order/order.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import { AlgorithmPerformance } from '../algorithm-performance.entity';
 
 /**
@@ -192,8 +193,9 @@ export class AlgorithmPerformanceService {
       });
 
       return result.length > 0 ? result[result.length - 1] : 0;
-    } catch (error) {
-      this.logger.error(`Error calculating volatility: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error calculating volatility: ${err.message}`);
       return 0;
     }
   }

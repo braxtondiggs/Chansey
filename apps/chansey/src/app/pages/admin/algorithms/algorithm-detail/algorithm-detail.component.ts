@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
-import { MessageService, ConfirmationService } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -162,7 +162,7 @@ export class AlgorithmDetailComponent {
 
       // Refresh algorithm data to update metrics
       this.queries.invalidateAlgorithmQueries(this.algorithmId());
-    } catch (error) {
+    } catch (error: unknown) {
       this.messageService.add({
         severity: 'error',
         summary: 'Execution Failed',

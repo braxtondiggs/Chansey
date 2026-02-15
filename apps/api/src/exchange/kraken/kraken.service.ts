@@ -6,6 +6,7 @@ import * as ccxt from 'ccxt';
 import * as https from 'https';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
@@ -61,8 +62,9 @@ export class KrakenService extends BaseExchangeService {
         const lockedAmount = parseFloat(b.locked);
         return freeAmount > 0 || lockedAmount > 0;
       });
-    } catch (error) {
-      this.logger.error(`Error fetching ${this.constructor.name} balances`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
     }
   }
@@ -90,8 +92,9 @@ export class KrakenService extends BaseExchangeService {
         }));
 
       return balances;
-    } catch (error) {
-      this.logger.error(`Error fetching ${this.constructor.name} free balance`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} free balance`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} free balance`);
     }
   }
@@ -120,7 +123,7 @@ export class KrakenService extends BaseExchangeService {
       // Try to fetch balance - this will throw an error if the keys are invalid
       await client.fetchBalance();
       return true;
-    } catch (error) {
+    } catch (error: unknown) {
       return false;
     } finally {
       try {

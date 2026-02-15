@@ -5,6 +5,8 @@ import { Queue, RedisClient } from 'bullmq';
 
 import { backtestConfig } from './backtest.config';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 /** Redis key prefix for pause flags */
 const PAUSE_KEY_PREFIX = 'backtest:pause:';
 
@@ -57,8 +59,9 @@ export class BacktestPauseService implements OnModuleInit, OnModuleDestroy {
     try {
       this.redis = await this.queue.client;
       this.logger.log('BacktestPauseService initialized with shared BullMQ Redis connection');
-    } catch (error) {
-      this.logger.warn(`Failed to get shared Redis client: ${error.message}. Service will operate in degraded mode.`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to get shared Redis client: ${err.message}. Service will operate in degraded mode.`);
     }
   }
 
@@ -96,8 +99,9 @@ export class BacktestPauseService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.redis.set(`${PAUSE_KEY_PREFIX}${backtestId}`, 'true', 'EX', this.pauseKeyTtl);
       this.logger.debug(`Pause flag set for backtest ${backtestId} (TTL: ${this.pauseKeyTtl}s)`);
-    } catch (error) {
-      this.logger.error(`Failed to set pause flag for ${backtestId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to set pause flag for ${backtestId}: ${err.message}`);
       throw error;
     }
   }
@@ -113,8 +117,9 @@ export class BacktestPauseService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.setPauseFlag(backtestId);
       return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      return { success: false, error: err.message };
     }
   }
 
@@ -135,9 +140,10 @@ export class BacktestPauseService implements OnModuleInit, OnModuleDestroy {
     try {
       const value = await this.redis.get(`${PAUSE_KEY_PREFIX}${backtestId}`);
       return value === 'true';
-    } catch (error) {
+    } catch (error: unknown) {
       // Safe default: continue processing if we can't check pause status
-      this.logger.warn(`Failed to check pause flag for ${backtestId}: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to check pause flag for ${backtestId}: ${err.message}`);
       return false;
     }
   }
@@ -161,10 +167,11 @@ export class BacktestPauseService implements OnModuleInit, OnModuleDestroy {
       await this.redis.del(`${PAUSE_KEY_PREFIX}${backtestId}`);
       this.logger.debug(`Pause flag cleared for backtest ${backtestId}`);
       return { success: true };
-    } catch (error) {
+    } catch (error: unknown) {
       // Flag will expire due to TTL if not cleared
-      this.logger.warn(`Failed to clear pause flag for ${backtestId}: ${error.message}`);
-      return { success: false, error: error.message };
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to clear pause flag for ${backtestId}: ${err.message}`);
+      return { success: false, error: err.message };
     }
   }
 }

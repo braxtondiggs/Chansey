@@ -165,7 +165,7 @@ export class LayoutService {
           darkTheme: isDarkMode
         }));
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error loading saved configuration', error);
     }
   }

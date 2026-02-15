@@ -23,6 +23,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { Exchange } from '../../exchange/exchange.entity';
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
@@ -218,23 +219,25 @@ export class TradeExecutionService {
             if (exitResult.warnings && exitResult.warnings.length > 0) {
               this.logger.warn(`Exit order warnings: ${exitResult.warnings.join(', ')}`);
             }
-          } catch (exitError) {
+          } catch (exitError: unknown) {
+            const err = toErrorInfo(exitError);
             // Entry succeeded - log exit failure but don't fail the trade
             this.logger.error(
-              `Failed to attach exit orders to entry ${order.id}: ${exitError.message}. ` +
+              `Failed to attach exit orders to entry ${order.id}: ${err.message}. ` +
                 `Entry order succeeded - manual exit order placement may be required.`,
-              exitError.stack
+              err.stack
             );
           }
         }
       }
 
       return order;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       // Log failures but do not retry (per clarifications)
       this.logger.error(
-        `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${error.message}`,
-        error.stack
+        `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${err.message}`,
+        err.stack
       );
       throw error;
     }
@@ -285,11 +288,12 @@ export class TradeExecutionService {
           throw new InsufficientBalanceException(baseCurrency, available, signal.quantity);
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof AppException) {
         throw error;
       }
-      this.logger.warn(`Failed to verify funds: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to verify funds: ${err.message}`);
       // Continue with order execution even if balance check fails
     }
   }
@@ -337,13 +341,13 @@ export class TradeExecutionService {
 
     try {
       baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.warn(`Base coin ${baseSymbol} not found in database`);
     }
 
     try {
       quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.warn(`Quote coin ${quoteSymbol} not found in database`);
     }
 
@@ -492,8 +496,9 @@ export class TradeExecutionService {
       const slippageBps = this.calculateSlippageBps(expectedPrice, vwap, action);
 
       return Math.abs(slippageBps);
-    } catch (error) {
-      this.logger.warn(`Failed to estimate slippage from order book: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to estimate slippage from order book: ${err.message}`);
       // On error, don't block the trade - return 0 to allow execution
       return 0;
     }

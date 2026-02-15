@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { OrderStatusHistory, OrderTransitionReason } from '../entities/order-status-history.entity';
 import { OrderStatus } from '../order.entity';
 
@@ -161,9 +162,10 @@ export class OrderStateMachineService {
       const saved = await this.historyRepository.save(historyEntry);
       this.logger.debug(`Recorded status transition: ${fromStatus ?? 'null'} -> ${toStatus} for order ${orderId}`);
       return saved;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       // History recording should not block order updates
-      this.logger.error(`Failed to record status history for order ${orderId}: ${error.message}`, error.stack);
+      this.logger.error(`Failed to record status history for order ${orderId}: ${err.message}`, err.stack);
       throw error;
     }
   }

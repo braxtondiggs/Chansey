@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ModuleRef } from '@nestjs/core';
 
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { toErrorInfo } from '../../shared/error.util';
 import { AlgorithmService } from '../algorithm.service';
 import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy } from '../interfaces';
 
@@ -92,8 +93,9 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
     for (const [id, strategy] of this.strategies.entries()) {
       try {
         status[id] = strategy.healthCheck ? await strategy.healthCheck() : true;
-      } catch (error) {
-        this.logger.error(`Health check failed for strategy ${id}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Health check failed for strategy ${id}: ${err.message}`);
         status[id] = false;
       }
     }
@@ -128,8 +130,9 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`No strategy found for algorithm "${algorithm.name}" with service "${algorithm.service}"`);
         }
       }
-    } catch (error) {
-      this.logger.error(`Failed to initialize algorithms: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to initialize algorithms: ${err.message}`);
     }
   }
 
@@ -166,8 +169,9 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`Lazy-initialized algorithm "${algorithm.name}" with strategy "${strategy.name}"`);
         return strategy;
       }
-    } catch (error) {
-      this.logger.error(`Failed to lazy-init algorithm ${algorithmId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to lazy-init algorithm ${algorithmId}: ${err.message}`);
     }
     return undefined;
   }
@@ -181,8 +185,9 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
         if (strategy.onDestroy) {
           await strategy.onDestroy();
         }
-      } catch (error) {
-        this.logger.error(`Failed to destroy strategy ${strategy.id}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to destroy strategy ${strategy.id}: ${err.message}`);
       }
     });
 

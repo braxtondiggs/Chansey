@@ -126,12 +126,12 @@ describe('AppModule', () => {
       expect(module).toBeDefined();
       expect(module.get(AppController)).toBeInstanceOf(AppController);
       expect(module.get(AppService)).toBeInstanceOf(AppService);
-    } catch (error) {
+    } catch (error: unknown) {
       // Log detailed error for debugging
       console.error('Module compilation failed:', error);
-      console.error('Error name:', error.name);
-      console.error('Error message:', error.message);
-      if (error.cause) {
+      console.error('Error name:', error instanceof Error ? error.name : 'unknown');
+      console.error('Error message:', error instanceof Error ? error.message : String(error));
+      if (error instanceof Error && error.cause) {
         console.error('Cause:', error.cause);
       }
       throw error;

@@ -178,7 +178,7 @@ export class CircuitBreakerService {
     try {
       this.checkCircuit(key);
       return false;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof CircuitOpenError) {
         return true;
       }

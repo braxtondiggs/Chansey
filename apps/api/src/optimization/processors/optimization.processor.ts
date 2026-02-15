@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 
 import { Job } from 'bullmq';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { OptimizationOrchestratorService } from '../services';
 
 interface OptimizationJobData {
@@ -33,8 +34,9 @@ export class OptimizationProcessor extends WorkerHost {
     try {
       await this.orchestratorService.executeOptimization(runId, combinations);
       this.logger.log(`Optimization job ${job.id} completed successfully`);
-    } catch (error) {
-      this.logger.error(`Optimization job ${job.id} failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Optimization job ${job.id} failed: ${err.message}`, err.stack);
       throw error;
     }
   }

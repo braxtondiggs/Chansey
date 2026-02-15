@@ -100,7 +100,7 @@ export class DriftDetectorService {
 
           this.logger.warn(`${name} drift detected for deployment ${deploymentId}: ${alert.message}`);
         }
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.error(`Error running ${name} drift detector for deployment ${deploymentId}:`, error);
       }
     }
