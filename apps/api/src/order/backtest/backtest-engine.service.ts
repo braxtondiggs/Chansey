@@ -91,6 +91,10 @@ interface ExecuteOptions {
   deterministicSeed: string;
   telemetryEnabled?: boolean;
 
+  /** Minimum time a position must be held before selling (ms). Default: 24h.
+   *  Risk-control signals (STOP_LOSS, TAKE_PROFIT) always bypass this. */
+  minHoldMs?: number;
+
   // Checkpoint options for resume capability
   /** Number of timestamps between checkpoints (default: 500) */
   checkpointInterval?: number;
@@ -202,6 +206,8 @@ export class BacktestEngine {
   private static readonly MAX_ALLOCATION = 0.2;
   /** Minimum allocation per trade (5% of portfolio) */
   private static readonly MIN_ALLOCATION = 0.05;
+  /** Default minimum hold period before allowing SELL (24 hours in ms) */
+  private static readonly DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
 
   constructor(
     private readonly backtestStream: BacktestStreamService,
@@ -354,6 +360,9 @@ export class BacktestEngine {
         })
       : DEFAULT_SLIPPAGE_CONFIG;
 
+    // Minimum hold period: configurable via options, default 24h
+    const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
+
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
@@ -487,7 +496,8 @@ export class BacktestEngine {
           backtest.tradingFee,
           rng,
           slippageConfig,
-          dailyVolume
+          dailyVolume,
+          minHoldMs
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
@@ -774,6 +784,9 @@ export class BacktestEngine {
         }
       : DEFAULT_SLIPPAGE_CONFIG;
 
+    // Minimum hold period: configurable via options, default 24h
+    const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
+
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
@@ -1003,7 +1016,8 @@ export class BacktestEngine {
           backtest.tradingFee,
           rng,
           slippageConfig,
-          dailyVolume
+          dailyVolume,
+          minHoldMs
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
@@ -1297,7 +1311,8 @@ export class BacktestEngine {
     tradingFee: number,
     rng: SeededRandom,
     slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
-    dailyVolume?: number
+    dailyVolume?: number,
+    minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const basePrice = marketData.prices.get(signal.coinId);
     if (!basePrice) {
@@ -1415,6 +1430,14 @@ export class BacktestEngine {
       // Calculate hold time from entry date
       if (existingPosition.entryDate) {
         holdTimeMs = marketData.timestamp.getTime() - existingPosition.entryDate.getTime();
+      }
+
+      // Enforce minimum hold period to prevent premature exits
+      // Risk control signals (STOP_LOSS, TAKE_PROFIT) bypass this check
+      const isRiskControl =
+        signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT;
+      if (!isRiskControl && minHoldMs > 0 && holdTimeMs !== undefined && holdTimeMs < minHoldMs) {
+        return null;
       }
 
       // Capture cost basis BEFORE modifying position
@@ -1843,7 +1866,8 @@ export class BacktestEngine {
           tradingFee,
           rng,
           DEFAULT_SLIPPAGE_CONFIG,
-          dailyVolume
+          dailyVolume,
+          BacktestEngine.DEFAULT_MIN_HOLD_MS
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });

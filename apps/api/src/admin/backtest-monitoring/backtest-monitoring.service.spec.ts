@@ -35,6 +35,7 @@ const createMockQueryBuilder = () => {
     addGroupBy: jest.fn().mockReturnThis(),
     having: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
+    setParameter: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),

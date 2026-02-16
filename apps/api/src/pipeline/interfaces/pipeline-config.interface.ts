@@ -158,21 +158,21 @@ export interface PipelineProgressionRules {
  */
 export const DEFAULT_PROGRESSION_RULES: PipelineProgressionRules = {
   optimization: {
-    minImprovement: 5 // 5% improvement over baseline
+    minImprovement: 3 // 3% improvement over baseline
   },
   historical: {
-    minSharpeRatio: 1.0,
-    maxDrawdown: 0.25,
-    minWinRate: 0.45
+    minSharpeRatio: 0.5,
+    maxDrawdown: 0.35,
+    minWinRate: 0.35
   },
   liveReplay: {
-    minSharpeRatio: 0.8,
-    maxDrawdown: 0.3,
-    maxDegradation: 20 // Allow 20% degradation from historical
+    minSharpeRatio: 0.4,
+    maxDrawdown: 0.4,
+    maxDegradation: 30 // Allow 30% degradation from historical
   },
   paperTrading: {
-    minSharpeRatio: 0.7,
-    maxDrawdown: 0.35,
+    minSharpeRatio: 0.3,
+    maxDrawdown: 0.45,
     minTotalReturn: 0 // At least break even
   }
 };
