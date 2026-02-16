@@ -37,7 +37,7 @@ export interface Coin {
   marketCapChange24h?: number;
   marketCapChangePercentage24h?: number;
   geckoLastUpdatedAt?: Date;
-  createdAt: Date;
+  createdAt?: Date;
   updatedAt: Date;
 }
 
@@ -132,4 +132,19 @@ export interface CoinDetailResponseDto {
   // Timestamps
   lastUpdated: Date;
   metadataLastUpdated?: Date;
+}
+
+export interface CreateCoinDto {
+  name: string;
+  symbol: string;
+  slug: string;
+  image?: string;
+}
+
+export interface UpdateCoinDto {
+  id: string;
+  name?: string;
+  symbol?: string;
+  slug?: string;
+  image?: string;
 }

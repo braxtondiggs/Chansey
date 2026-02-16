@@ -1,14 +1,7 @@
 import { Injectable } from '@angular/core';
 
+import { VerifyEmailRequest, VerifyEmailResponse } from '@chansey/api-interfaces';
 import { useAuthMutation } from '@chansey/shared';
-
-export interface VerifyEmailResponse {
-  message: string;
-}
-
-export interface VerifyEmailRequest {
-  token: string;
-}
 
 @Injectable({
   providedIn: 'root'

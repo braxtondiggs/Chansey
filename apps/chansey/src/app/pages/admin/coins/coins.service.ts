@@ -2,32 +2,8 @@ import { Injectable, Signal } from '@angular/core';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { queryKeys, useAuthQuery, useAuthMutation, authenticatedFetch, STANDARD_POLICY } from '@chansey/shared';
-
-export interface Coin {
-  id: string;
-  name: string;
-  symbol: string;
-  slug: string;
-  logo: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateCoinDto {
-  name: string;
-  symbol: string;
-  slug: string;
-  logo?: string;
-}
-
-export interface UpdateCoinDto {
-  id: string;
-  name?: string;
-  symbol?: string;
-  slug?: string;
-  logo?: string;
-}
+import { Coin, CreateCoinDto, UpdateCoinDto } from '@chansey/api-interfaces';
+import { authenticatedFetch, queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing coins in admin panel via TanStack Query

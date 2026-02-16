@@ -4,7 +4,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { BehaviorSubject } from 'rxjs';
 
 import {
-  Coin,
+  Balance,
   getExchangeOrderTypeSupport,
   Order,
   OrderPreview,
@@ -17,20 +17,13 @@ import {
 } from '@chansey/api-interfaces';
 import {
   authenticatedFetch,
+  FREQUENT_POLICY,
   queryKeys,
-  useAuthMutation,
-  useAuthQuery,
-  TIME,
   STANDARD_POLICY,
-  FREQUENT_POLICY
+  TIME,
+  useAuthMutation,
+  useAuthQuery
 } from '@chansey/shared';
-
-export interface Balance {
-  coin: Coin;
-  available: number;
-  locked: number;
-  total: number;
-}
 
 export interface OrderBookEntry {
   price: number;

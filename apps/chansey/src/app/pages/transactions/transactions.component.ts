@@ -16,7 +16,9 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { Table, TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { OrderSide, OrderStatus, OrderType, Transaction, TransactionsService } from './transactions.service';
+import { Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interfaces';
+
+import { TransactionsService } from './transactions.service';
 
 @Component({
   selector: 'app-transactions',
@@ -48,7 +50,7 @@ export class TransactionsComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
 
   // State signals
-  transactions = signal<Transaction[]>([]);
+  transactions = signal<Order[]>([]);
   loading = signal<boolean>(true);
   searchText = signal<string>('');
   filterForm: FormGroup;
@@ -61,7 +63,10 @@ export class TransactionsComponent implements OnInit {
   // Filter options
   statusOptions = Object.values(OrderStatus).map((status) => ({ label: status, value: status }));
   sideOptions = Object.values(OrderSide).map((side) => ({ label: side, value: side }));
-  typeOptions = Object.values(OrderType).map((type) => ({ label: type.replace(/_/g, ' '), value: type }));
+  typeOptions = Object.values(OrderType).map((type) => ({
+    label: this.formatType(type),
+    value: type
+  }));
 
   // TanStack Query hooks
   transactionsQuery = this.transactionsService.useTransactions();
@@ -135,6 +140,14 @@ export class TransactionsComponent implements OnInit {
   // Helper method to get appropriate severity for order side
   getSideSeverity(side: OrderSide): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | 'info' {
     return side === OrderSide.BUY ? 'success' : 'danger';
+  }
+
+  // Format underscore-separated type values into title case
+  formatType(type: string): string {
+    return type
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   }
 
   // Apply filters to the table

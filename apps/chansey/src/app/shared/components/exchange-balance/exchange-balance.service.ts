@@ -2,51 +2,8 @@ import { Injectable, Signal } from '@angular/core';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { queryKeys, useAuthQuery, authenticatedFetch, FREQUENT_POLICY, STANDARD_POLICY, TIME } from '@chansey/shared';
-
-export interface ExchangeBalance {
-  asset: string;
-  free: number;
-  locked: number;
-  total: number;
-}
-
-export interface BalanceResponseDto {
-  current: ExchangeBalanceDto[];
-  historical?: HistoricalBalanceDto[];
-  totalUsdValue: number;
-}
-
-export interface ExchangeBalanceDto {
-  id: string;
-  name: string;
-  slug: string;
-  balances: AssetBalanceDto[];
-  totalUsdValue: number;
-  timestamp: Date;
-}
-
-export interface AssetBalanceDto {
-  asset: string;
-  free: string;
-  locked: string;
-  usdValue?: number;
-}
-
-export interface HistoricalBalanceDto extends ExchangeBalanceDto {
-  period: string;
-}
-
-export interface AccountValueDataPoint {
-  datetime: string;
-  value: number;
-}
-
-export interface AccountValueHistoryDto {
-  history: AccountValueDataPoint[];
-  currentValue: number;
-  changePercentage: number;
-}
+import { AccountValueHistoryDto, BalanceResponseDto } from '@chansey/api-interfaces';
+import { authenticatedFetch, FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for exchange balance data via TanStack Query

@@ -2,31 +2,16 @@ import { Injectable, Signal } from '@angular/core';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { Coin } from '@chansey/api-interfaces';
+import { Coin, CreatePortfolioDto, PortfolioItem } from '@chansey/api-interfaces';
 import {
-  queryKeys,
-  useAuthQuery,
-  useAuthMutation,
   authenticatedFetch,
-  STANDARD_POLICY,
   FREQUENT_POLICY,
-  TIME
+  queryKeys,
+  STANDARD_POLICY,
+  TIME,
+  useAuthMutation,
+  useAuthQuery
 } from '@chansey/shared';
-
-// Portfolio DTO interface for creating portfolio items
-interface CreatePortfolioDto {
-  coinId: string;
-  type: 'MANUAL';
-}
-
-// Portfolio item interface for watchlist items
-interface PortfolioItem {
-  id: string;
-  coin: Coin;
-  type: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 /**
  * Service for prices page data via TanStack Query

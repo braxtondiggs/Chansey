@@ -23,3 +23,22 @@ export interface IUser {
   algoCapitalAllocationPercentage?: number;
   algoEnrolledAt?: Date;
 }
+
+export interface IUserProfileUpdate {
+  given_name?: string;
+  family_name?: string;
+  middle_name?: string;
+  nickname?: string;
+  picture?: string;
+  gender?: string;
+  birthdate?: string;
+  phone_number?: string;
+  risk?: string;
+  hide_balance?: boolean;
+}
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+  confirm_new_password: string;
+}

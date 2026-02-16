@@ -1,27 +1,7 @@
 import { Injectable } from '@angular/core';
 
-import { ExchangeKey, IUser } from '@chansey/api-interfaces';
+import { ChangePasswordRequest, ExchangeKey, IUser, IUserProfileUpdate } from '@chansey/api-interfaces';
 import { queryKeys, useAuthMutation } from '@chansey/shared';
-
-export interface IUserProfileUpdate {
-  given_name?: string;
-  family_name?: string;
-  middle_name?: string;
-  nickname?: string;
-  preferred_username?: string;
-  picture?: string;
-  gender?: string;
-  birthdate?: string;
-  phone_number?: string;
-  risk?: string;
-  hide_balance?: boolean;
-}
-
-export interface ChangePasswordRequest {
-  old_password: string;
-  new_password: string;
-  confirm_new_password: string;
-}
 
 /**
  * Service for user profile management via TanStack Query

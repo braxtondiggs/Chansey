@@ -2,26 +2,8 @@ import { Injectable, Signal } from '@angular/core';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { queryKeys, useAuthQuery, useAuthMutation, authenticatedFetch, STANDARD_POLICY } from '@chansey/shared';
-
-export interface Category {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateCategoryDto {
-  name: string;
-  slug: string;
-}
-
-export interface UpdateCategoryDto {
-  id: string;
-  name?: string;
-  slug?: string;
-}
+import { Category, CreateCategoryDto, UpdateCategoryDto } from '@chansey/api-interfaces';
+import { authenticatedFetch, queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing categories in admin panel via TanStack Query

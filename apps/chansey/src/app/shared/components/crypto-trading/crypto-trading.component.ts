@@ -17,6 +17,7 @@ import { TooltipModule } from 'primeng/tooltip';
 import { debounceTime, Subject, takeUntil } from 'rxjs';
 
 import {
+  Balance,
   Exchange,
   OrderPreview,
   OrderSide,
@@ -28,7 +29,7 @@ import {
 } from '@chansey/api-interfaces';
 
 import { AuthService } from '../../services';
-import { Balance, CryptoTradingService } from '../../services/crypto-trading.service';
+import { CryptoTradingService } from '../../services/crypto-trading.service';
 import { ExchangeService } from '../../services/exchange.service';
 
 @Component({

@@ -7,9 +7,7 @@ import { ChartModule } from 'primeng/chart';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { SkeletonModule } from 'primeng/skeleton';
 
-import { AlgorithmPerformance } from '@chansey/api-interfaces';
-
-import { TimePeriod } from '../../services/algorithm-detail.queries';
+import { AlgorithmPerformance, TimePeriod } from '@chansey/api-interfaces';
 
 interface PeriodOption {
   label: string;

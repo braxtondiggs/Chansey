@@ -1,18 +1,7 @@
 import { Injectable } from '@angular/core';
 
-import { queryKeys, useAuthQuery, FREQUENT_POLICY } from '@chansey/shared';
-
-// Asset interface to match response from API
-export interface UserAsset {
-  symbol: string; // Asset symbol (e.g., BTC, ETH)
-  name: string; // Full name (e.g., Bitcoin, Ethereum)
-  quantity: number; // How much of this asset the user owns
-  price: number; // Current price of the asset
-  usdValue: number; // Total USD value (quantity * price)
-  image?: string; // Optional image URL for the asset
-  priceChangePercentage24h?: number; // 24h price change percentage
-  slug?: string; // Coin slug for routing to detail page
-}
+import { UserAsset } from '@chansey/api-interfaces';
+import { FREQUENT_POLICY, queryKeys, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for user assets data via TanStack Query
