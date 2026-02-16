@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, inject, signal, AfterViewInit, effect, computed, OnDestroy } from '@angular/core';
-import { ReactiveFormsModule, FormGroup, FormControl, FormBuilder } from '@angular/forms';
+import { AfterViewInit, Component, computed, effect, inject, Input, OnDestroy, signal } from '@angular/core';
+import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { ChartData, ChartOptions } from 'chart.js';
 import 'chartjs-adapter-date-fns';
@@ -13,14 +13,14 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 
-import { ExchangeKey } from '@chansey/api-interfaces';
+import { AccountValueDataPoint, ExchangeKey } from '@chansey/api-interfaces';
 
 import { ProfileService } from '@chansey-web/app/pages/user/profile/profile.service';
 import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
 import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
 
-import { ExchangeBalanceService, AccountValueDataPoint } from './exchange-balance.service';
+import { ExchangeBalanceService } from './exchange-balance.service';
 
 @Component({
   selector: 'app-exchange-balance',
@@ -96,7 +96,7 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     });
 
     // Add resize listener to update chart when window size changes
-    window.addEventListener('resize', this.handleResize.bind(this));
+    window.addEventListener('resize', this.handleResize);
 
     // Effect to update totalUsdValue signal when balanceQuery data changes
     effect(() => {
@@ -190,7 +190,7 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
         afterDatasetsDraw: (chart: any) => {
           // Don't draw hover line if balance is hidden
           if (balanceHidden) return;
-          
+
           const {
             ctx,
             tooltip,
@@ -222,23 +222,25 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       maintainAspectRatio: false,
       responsive: true,
       aspectRatio: 1,
-      interaction: balanceHidden ? {
-        intersect: false,
-        mode: 'none' as any // Disable all interactions when balance is hidden
-      } : {
-        intersect: false,
-        mode: 'index',
-        axis: 'xy', // Better cross-axis tracking for mobile touch
-        includeInvisible: true // Consider invisible points on mobile scrolling
-      },
+      interaction: balanceHidden
+        ? {
+            intersect: false,
+            mode: 'none' as any // Disable all interactions when balance is hidden
+          }
+        : {
+            intersect: false,
+            mode: 'index',
+            axis: 'xy', // Better cross-axis tracking for mobile touch
+            includeInvisible: true // Consider invisible points on mobile scrolling
+          },
       animation: {
         duration: isMobile ? 0 : this.currentDays() > 30 ? 0 : 400 // Disable animation on mobile for better performance
       },
       elements: {
         point: {
           radius: isMobile ? 0 : this.currentDays() > 30 ? 0 : this.currentDays() > 7 ? 1 : 2, // Hide points on mobile
-          hoverRadius: balanceHidden ? 0 : (isMobile ? 8 : 6), // Disable hover when balance is hidden
-          hitRadius: balanceHidden ? 0 : (isMobile ? 30 : 20) // Disable hit area when balance is hidden
+          hoverRadius: balanceHidden ? 0 : isMobile ? 8 : 6, // Disable hover when balance is hidden
+          hitRadius: balanceHidden ? 0 : isMobile ? 30 : 20 // Disable hit area when balance is hidden
         },
         line: {
           tension: 0.6,
@@ -290,88 +292,90 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       },
 
       plugins: {
-        tooltip: balanceHidden ? {
-          enabled: false // Completely disable tooltip when balance is hidden
-        } : {
-          enabled: false,
-          position: 'nearest',
-          external: function (context: any) {
-            const { chart, tooltip } = context;
-            let tooltipEl = chart.canvas.parentNode.querySelector('div.chartjs-tooltip');
-            if (!tooltipEl) {
-              tooltipEl = document.createElement('div');
-              tooltipEl.classList.add(
-                'chartjs-tooltip',
-                'label-small',
-                'px-2',
-                'py-1',
-                'dark:bg-surface-950',
-                'bg-surface-0',
-                'rounded-[8px]',
-                'opacity-100',
-                'flex',
-                'items-center',
-                'justify-center',
-                'border',
-                'border-surface',
-                'pointer-events-none',
-                'absolute',
-                '-translate-x-1/2',
-                'transition-all',
-                'duration-[0.05s]',
-                'shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)]'
-              );
-              chart.canvas.parentNode.appendChild(tooltipEl);
+        tooltip: balanceHidden
+          ? {
+              enabled: false // Completely disable tooltip when balance is hidden
             }
+          : {
+              enabled: false,
+              position: 'nearest',
+              external: function (context: any) {
+                const { chart, tooltip } = context;
+                let tooltipEl = chart.canvas.parentNode.querySelector('div.chartjs-tooltip');
+                if (!tooltipEl) {
+                  tooltipEl = document.createElement('div');
+                  tooltipEl.classList.add(
+                    'chartjs-tooltip',
+                    'label-small',
+                    'px-2',
+                    'py-1',
+                    'dark:bg-surface-950',
+                    'bg-surface-0',
+                    'rounded-[8px]',
+                    'opacity-100',
+                    'flex',
+                    'items-center',
+                    'justify-center',
+                    'border',
+                    'border-surface',
+                    'pointer-events-none',
+                    'absolute',
+                    '-translate-x-1/2',
+                    'transition-all',
+                    'duration-[0.05s]',
+                    'shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)]'
+                  );
+                  chart.canvas.parentNode.appendChild(tooltipEl);
+                }
 
-            if (tooltip.opacity === 0) {
-              tooltipEl.style.opacity = 0;
-              return;
-            }
+                if (tooltip.opacity === 0) {
+                  tooltipEl.style.opacity = 0;
+                  return;
+                }
 
-            if (tooltip.body) {
-              const bodyLines = tooltip.body.map((b: any) => {
-                const strArr = b.lines[0].split(':');
-                return {
-                  text: strArr[0].trim(),
-                  title: tooltip.title[0].trim(),
-                  value: strArr[1].trim()
-                };
-              });
+                if (tooltip.body) {
+                  const bodyLines = tooltip.body.map((b: any) => {
+                    const strArr = b.lines[0].split(':');
+                    return {
+                      text: strArr[0].trim(),
+                      title: tooltip.title[0].trim(),
+                      value: strArr[1].trim()
+                    };
+                  });
 
-              tooltipEl.innerHTML = '';
-              bodyLines.forEach((body: any) => {
-                const text = document.createElement('div');
+                  tooltipEl.innerHTML = '';
+                  bodyLines.forEach((body: any) => {
+                    const text = document.createElement('div');
+                    const isMobileView = window.innerWidth < 768;
+                    text.appendChild(document.createTextNode(`${body.title} $${body.value}`));
+                    text.classList.add('label-small', 'text-surface-950', 'dark:text-surface-0', 'font-medium');
+                    // Larger font size on mobile for better readability
+                    text.style.fontSize = isMobileView ? '16px' : '14px';
+                    text.style.padding = isMobileView ? '4px 2px' : '0px';
+                    tooltipEl.appendChild(text);
+                  });
+                }
+
+                const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
                 const isMobileView = window.innerWidth < 768;
-                text.appendChild(document.createTextNode(`${body.title} $${body.value}`));
-                text.classList.add('label-small', 'text-surface-950', 'dark:text-surface-0', 'font-medium');
-                // Larger font size on mobile for better readability
-                text.style.fontSize = isMobileView ? '16px' : '14px';
-                text.style.padding = isMobileView ? '4px 2px' : '0px';
-                tooltipEl.appendChild(text);
-              });
-            }
 
-            const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
-            const isMobileView = window.innerWidth < 768;
+                tooltipEl.style.opacity = 1;
 
-            tooltipEl.style.opacity = 1;
-
-            // Adjust tooltip position for mobile devices
-            if (isMobileView) {
-              // On mobile, position tooltip centered horizontally for better visibility
-              tooltipEl.style.left = positionX + chart.width / 2 + 'px';
-              tooltipEl.style.top = positionY + 20 + 'px'; // Position near the top for visibility
-              tooltipEl.style.transform = 'translateX(-50%)';
-              tooltipEl.style.padding = '8px 12px';
-              tooltipEl.style.fontSize = '16px'; // Larger font for mobile
-            } else {
-              // Standard positioning on desktop
-              tooltipEl.style.left = positionX + tooltip.caretX + 'px';
-              tooltipEl.style.top = positionY + tooltip.caretY - 45 + 'px';
-            }
-          }
-        },
+                // Adjust tooltip position for mobile devices
+                if (isMobileView) {
+                  // On mobile, position tooltip centered horizontally for better visibility
+                  tooltipEl.style.left = positionX + chart.width / 2 + 'px';
+                  tooltipEl.style.top = positionY + 20 + 'px'; // Position near the top for visibility
+                  tooltipEl.style.transform = 'translateX(-50%)';
+                  tooltipEl.style.padding = '8px 12px';
+                  tooltipEl.style.fontSize = '16px'; // Larger font for mobile
+                } else {
+                  // Standard positioning on desktop
+                  tooltipEl.style.left = positionX + tooltip.caretX + 'px';
+                  tooltipEl.style.top = positionY + tooltip.caretY - 45 + 'px';
+                }
+              }
+            },
         legend: {
           display: false
         },
@@ -401,16 +405,16 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
   }
 
   // Handle resize events to redraw the chart for responsiveness
-  private handleResize() {
+  private readonly handleResize = () => {
     const data = this.balanceHistoryQuery.data();
     if (data && data.history) {
       this.setChart(data.history);
     }
-  }
+  };
 
   // Cleanup event listener when component is destroyed
   ngOnDestroy() {
-    window.removeEventListener('resize', this.handleResize.bind(this));
+    window.removeEventListener('resize', this.handleResize);
   }
 
   // Toggle balance visibility

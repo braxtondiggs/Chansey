@@ -6,19 +6,18 @@ import {
   AlgorithmDetailResponse,
   AlgorithmExecutionResponse,
   AlgorithmPerformance,
-  AlgorithmStrategy
+  AlgorithmStrategy,
+  TimePeriod
 } from '@chansey/api-interfaces';
 import {
-  queryKeys,
   authenticatedFetch,
-  STANDARD_POLICY,
-  STABLE_POLICY,
-  STATIC_POLICY,
   FREQUENT_POLICY,
+  queryKeys,
+  STABLE_POLICY,
+  STANDARD_POLICY,
+  STATIC_POLICY,
   TIME
 } from '@chansey/shared';
-
-export type TimePeriod = '24h' | '7d' | '30d' | '1y';
 
 /**
  * TanStack Query configuration for algorithm detail pages
