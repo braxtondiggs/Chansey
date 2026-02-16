@@ -113,7 +113,8 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
         metrics: {
           ...result.metrics,
           executionTime,
-          signalsGenerated: result.signals.length
+          signalsGenerated: result.signals.length,
+          confidence: result.metrics?.confidence ?? 0
         },
         timestamp: new Date()
       };

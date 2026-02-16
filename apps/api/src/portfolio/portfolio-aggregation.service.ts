@@ -204,7 +204,7 @@ export class PortfolioAggregationService {
         if (!positionsByStrategy.has(strategyId)) {
           positionsByStrategy.set(strategyId, []);
         }
-        positionsByStrategy.get(strategyId).push(position);
+        positionsByStrategy.get(strategyId)?.push(position);
       }
 
       // Calculate P&L per strategy from already-fetched positions (no extra DB calls)

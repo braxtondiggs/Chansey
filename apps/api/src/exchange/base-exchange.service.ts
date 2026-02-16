@@ -159,6 +159,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getDefaultClient(): Promise<ccxt.Exchange> {
     // Create or return the default client
     if (!this.clients.has('default')) {
+      if (!this.configService) {
+        throw new InternalServerErrorException(`ConfigService is not available in ${this.constructor.name}`);
+      }
       const defaultApiKey = this.configService.get<string>(this.apiKeyConfigName);
       const defaultApiSecret = this.configService.get<string>(this.apiSecretConfigName);
 
@@ -240,7 +243,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       const client = await this.getClient(user);
       const ticker = await client.fetchTicker(formattedSymbol);
 
-      return ticker.last;
+      return ticker.last ?? 0;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Error fetching ${this.constructor.name} price for ${symbol}`, err.stack || err.message);
@@ -259,7 +262,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       const price = await this.getPriceBySymbol(symbol, user);
       return {
         symbol,
-        price: price.toString(),
+        price: (price ?? 0).toString(),
         timestamp: Date.now()
       };
     } catch (error: unknown) {

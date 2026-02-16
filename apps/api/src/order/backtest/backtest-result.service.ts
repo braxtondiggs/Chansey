@@ -249,10 +249,7 @@ export class BacktestResultService {
     } catch (error: unknown) {
       await queryRunner.rollbackTransaction();
       const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to persist incremental results for backtest ${backtest.id}: ${err.message}`,
-        err.stack
-      );
+      this.logger.error(`Failed to persist incremental results for backtest ${backtest.id}: ${err.message}`, err.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -288,8 +285,8 @@ export class BacktestResultService {
    */
   async clearCheckpoint(backtestId: string): Promise<void> {
     await this.backtestRepository.update(backtestId, {
-      checkpointState: null,
-      lastCheckpointAt: null
+      checkpointState: undefined,
+      lastCheckpointAt: undefined
     });
 
     this.logger.debug(`Cleared checkpoint for backtest ${backtestId}`);

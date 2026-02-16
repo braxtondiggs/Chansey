@@ -47,7 +47,9 @@ export class CoinAlertService {
   async delete(coin: string, type: AlertType = 'percent_price') {
     const alerts = await this.get(type);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const { id } = alerts.find(({ currency, note }) => coin === currency && note === 'Chansey');
+    const { id } = alerts.find(
+      ({ currency, note }: { currency: string; note: string }) => coin === currency && note === 'Chansey'
+    );
     if (!id) return;
     const { data } = await firstValueFrom(this.http.delete(`${this.BASE_URL}/${id}`, this.auth));
     return data;

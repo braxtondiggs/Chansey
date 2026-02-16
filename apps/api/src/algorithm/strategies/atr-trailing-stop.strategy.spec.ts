@@ -182,11 +182,13 @@ describe('ATRTrailingStopStrategy', () => {
 
       const result = await strategy.execute(context);
 
-      expect(result.signals.length).toBeGreaterThan(0);
       const signal = result.signals[0];
-      expect(signal.metadata.currentPrice).toBe(80); // low, not avg
-      expect(signal.metadata.avgPrice).toBe(100);
-      expect(signal.metadata.direction).toBe('long');
+      expect(signal).toBeDefined();
+      const { metadata } = signal;
+      expect(metadata).toBeDefined();
+      expect(metadata?.currentPrice).toBe(80); // low, not avg
+      expect(metadata?.avgPrice).toBe(100);
+      expect(metadata?.direction).toBe('long');
     });
 
     it('should use trigger price (high) not avg in short stop signal metadata', async () => {
@@ -225,9 +227,9 @@ describe('ATRTrailingStopStrategy', () => {
 
       expect(result.signals.length).toBeGreaterThan(0);
       const signal = result.signals[0];
-      expect(signal.metadata.currentPrice).toBe(120); // high, not avg
-      expect(signal.metadata.avgPrice).toBe(100);
-      expect(signal.metadata.direction).toBe('short');
+      expect(signal.metadata?.currentPrice).toBe(120); // high, not avg
+      expect(signal.metadata?.avgPrice).toBe(100);
+      expect(signal.metadata?.direction).toBe('short');
     });
 
     it('should respect minConfidence: 0 and not filter out signals', async () => {
@@ -304,7 +306,7 @@ describe('ATRTrailingStopStrategy', () => {
       expect(result.signals.length).toBeGreaterThan(0);
       const signal = result.signals[0];
       expect(isNaN(signal.confidence)).toBe(false);
-      expect(isNaN(signal.metadata.previousStopLevel as number)).toBe(false);
+      expect(isNaN(signal.metadata?.previousStopLevel as number)).toBe(false);
     });
 
     it('should generate BUY signal on bullish trend flip', async () => {
@@ -350,8 +352,8 @@ describe('ATRTrailingStopStrategy', () => {
       expect(result.success).toBe(true);
       const buySignals = result.signals.filter((s) => s.type === SignalType.BUY);
       expect(buySignals.length).toBeGreaterThan(0);
-      expect(buySignals[0].metadata.signalSource).toBe('trend_flip');
-      expect(buySignals[0].metadata.direction).toBe('long');
+      expect(buySignals[0]?.metadata?.signalSource).toBe('trend_flip');
+      expect(buySignals[0]?.metadata?.direction).toBe('long');
     });
 
     it('should not generate BUY when both bars are above stop (no spurious re-entries)', async () => {
@@ -434,7 +436,7 @@ describe('ATRTrailingStopStrategy', () => {
         (s) => s.type === SignalType.SELL && s.metadata?.signalSource === 'trend_flip'
       );
       expect(sellSignals.length).toBeGreaterThan(0);
-      expect(sellSignals[0].metadata.direction).toBe('short');
+      expect(sellSignals[0]?.metadata?.direction).toBe('short');
     });
 
     it('should produce valid entry signal confidence (not NaN, in [0,1])', async () => {
@@ -527,8 +529,8 @@ describe('ATRTrailingStopStrategy', () => {
       const signal = result.signals[0];
 
       // Ratcheted stop should hold at 97.5, not drop to raw 85
-      expect(signal.metadata.stopLevel).toBeGreaterThanOrEqual(signal.metadata.previousStopLevel as number);
-      expect(signal.metadata.stopLevel).toBeCloseTo(97.5, 1);
+      expect(signal.metadata?.stopLevel).toBeGreaterThanOrEqual(signal.metadata?.previousStopLevel as number);
+      expect(signal.metadata?.stopLevel).toBeCloseTo(97.5, 1);
     });
   });
 });

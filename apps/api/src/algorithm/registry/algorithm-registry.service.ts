@@ -120,7 +120,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
       const algorithms = await this.algorithmService.getActiveAlgorithms();
 
       for (const algorithm of algorithms) {
-        const strategy = this.findStrategyByService(algorithm.service, algorithm.strategyId);
+        const strategy = this.findStrategyByService(algorithm.service ?? '', algorithm.strategyId);
 
         if (strategy) {
           await strategy.onInit(algorithm);
@@ -162,7 +162,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
       const algorithm = await this.algorithmService.getAlgorithmById(algorithmId);
       if (!algorithm) return undefined;
 
-      const strategy = this.findStrategyByService(algorithm.service, algorithm.strategyId);
+      const strategy = this.findStrategyByService(algorithm.service ?? '', algorithm.strategyId);
       if (strategy) {
         await strategy.onInit(algorithm);
         this.algorithmToStrategy.set(algorithm.id, strategy.id);

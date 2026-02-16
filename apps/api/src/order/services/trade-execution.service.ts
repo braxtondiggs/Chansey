@@ -341,13 +341,13 @@ export class TradeExecutionService {
 
     try {
       baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
-    } catch (error: unknown) {
+    } catch {
       this.logger.warn(`Base coin ${baseSymbol} not found in database`);
     }
 
     try {
       quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
-    } catch (error: unknown) {
+    } catch {
       this.logger.warn(`Quote coin ${quoteSymbol} not found in database`);
     }
 
@@ -383,7 +383,7 @@ export class TradeExecutionService {
       actualSlippageBps,
       status,
       side: ccxtOrder.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-      type: this.mapCcxtOrderType(ccxtOrder.type),
+      type: this.mapCcxtOrderType(String(ccxtOrder.type ?? '')),
       user,
       baseCoin: baseCoin || undefined,
       quoteCoin: quoteCoin || undefined,
@@ -391,7 +391,16 @@ export class TradeExecutionService {
       algorithmActivationId,
       timeInForce: ccxtOrder.timeInForce,
       remaining: ccxtOrder.remaining,
-      trades: ccxtOrder.trades,
+      trades: ccxtOrder.trades.map((t) => ({
+        id: String(t.id ?? ''),
+        timestamp: Number(t.timestamp ?? 0),
+        price: t.price,
+        amount: Number(t.amount ?? 0),
+        cost: Number(t.cost ?? 0),
+        fee: t.fee ? { cost: Number(t.fee.cost ?? 0), currency: String(t.fee.currency ?? '') } : undefined,
+        side: t.side?.toString(),
+        takerOrMaker: t.takerOrMaker?.toString()
+      })),
       info: ccxtOrder.info
     });
 
@@ -479,15 +488,15 @@ export class TradeExecutionService {
       for (const [price, volume] of relevantSide) {
         if (remainingQuantity <= 0) break;
 
-        const fillQuantity = Math.min(remainingQuantity, volume);
-        totalCost += fillQuantity * price;
+        const fillQuantity = Math.min(remainingQuantity, Number(volume ?? 0));
+        totalCost += fillQuantity * Number(price ?? 0);
         remainingQuantity -= fillQuantity;
       }
 
       // If order book doesn't have enough liquidity, estimate conservatively
       if (remainingQuantity > 0) {
         // Assume worst-case 1% additional slippage for unfilled portion
-        const lastPrice = relevantSide[relevantSide.length - 1][0];
+        const lastPrice = Number(relevantSide[relevantSide.length - 1][0] ?? 0);
         const worstCasePrice = action === 'BUY' ? lastPrice * 1.01 : lastPrice * 0.99;
         totalCost += remainingQuantity * worstCasePrice;
       }

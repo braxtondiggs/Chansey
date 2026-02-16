@@ -413,7 +413,7 @@ describe('BacktestOrchestrationService', () => {
     });
 
     it('should use default risk level when user has no risk', async () => {
-      const userWithoutRisk = { ...mockUser, risk: undefined } as User;
+      const userWithoutRisk = { ...mockUser, risk: undefined } as unknown as User;
       usersService.getById.mockResolvedValueOnce(userWithoutRisk);
       algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
 

@@ -187,8 +187,14 @@ export class PaperTradingMarketDataService {
 
       const orderBook: OrderBook = {
         symbol,
-        bids: rawOrderBook.bids.map(([price, quantity]) => ({ price, quantity })),
-        asks: rawOrderBook.asks.map(([price, quantity]) => ({ price, quantity })),
+        bids: rawOrderBook.bids.map(([price, quantity]) => ({
+          price: Number(price ?? 0),
+          quantity: Number(quantity ?? 0)
+        })),
+        asks: rawOrderBook.asks.map(([price, quantity]) => ({
+          price: Number(price ?? 0),
+          quantity: Number(quantity ?? 0)
+        })),
         timestamp: new Date(rawOrderBook.timestamp ?? Date.now())
       };
 

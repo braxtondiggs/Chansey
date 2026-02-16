@@ -46,16 +46,9 @@ export class StrategyExecutorService {
 
       // TODO: This needs to be updated to use algorithm.execute() with proper AlgorithmContext
       // For now, return null as this integration is incomplete
-      const signal = null;
       this.logger.warn(`Strategy executor needs refactoring to use algorithm.execute() instead of generateSignal()`);
 
-      if (signal) {
-        this.logger.log(
-          `Strategy ${strategy.id} generated ${signal.action} signal for ${signal.symbol} at ${signal.price}`
-        );
-      }
-
-      return signal;
+      return null;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Error executing strategy ${strategy.id}: ${err.message}`);

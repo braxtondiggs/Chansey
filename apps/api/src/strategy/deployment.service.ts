@@ -7,9 +7,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { LessThan, MoreThan, Repository } from 'typeorm';
+import { Between, type FindOptionsWhere, LessThan, MoreThan, type QueryDeepPartialEntity, Repository } from 'typeorm';
 
-import { AuditEventType, DeploymentStatus } from '@chansey/api-interfaces';
+import { AuditEventType, DeploymentStatus, StrategyStatus } from '@chansey/api-interfaces';
 
 import { Deployment } from './entities/deployment.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
@@ -137,7 +137,7 @@ export class DeploymentService {
           entityType: 'Deployment',
           entityId: savedDeployment.id,
           userId: approvedBy,
-          beforeState: null,
+          beforeState: undefined,
           afterState: {
             strategyConfigId,
             allocationPercent,
@@ -193,7 +193,7 @@ export class DeploymentService {
 
       // Update strategy config status
       await this.strategyConfigRepo.update(deployment.strategyConfigId, {
-        status: 'live' as any
+        status: StrategyStatus.LIVE
       });
 
       // Audit log
@@ -328,7 +328,11 @@ export class DeploymentService {
   /**
    * Demote a deployment (automatic due to performance/risk)
    */
-  async demoteDeployment(deploymentId: string, reason: string, metadata?: Record<string, any>): Promise<Deployment> {
+  async demoteDeployment(
+    deploymentId: string,
+    reason: string,
+    metadata?: Record<string, unknown>
+  ): Promise<Deployment> {
     try {
       const deployment = await this.findOne(deploymentId);
 
@@ -346,7 +350,7 @@ export class DeploymentService {
 
       // Update strategy config status
       await this.strategyConfigRepo.update(deployment.strategyConfigId, {
-        status: 'deprecated' as any
+        status: StrategyStatus.DEPRECATED
       });
 
       // Audit log
@@ -394,7 +398,7 @@ export class DeploymentService {
 
       // Update strategy config status
       await this.strategyConfigRepo.update(deployment.strategyConfigId, {
-        status: 'deprecated' as any
+        status: StrategyStatus.DEPRECATED
       });
 
       // Audit log
@@ -577,7 +581,7 @@ export class DeploymentService {
     }
 
     if (Object.keys(updates).length > 0) {
-      await this.deploymentRepo.update(deployment.id, updates);
+      await this.deploymentRepo.update(deployment.id, updates as QueryDeepPartialEntity<Deployment>);
     }
   }
 
@@ -626,10 +630,10 @@ export class DeploymentService {
     startDate?: string,
     endDate?: string
   ): Promise<PerformanceMetric[]> {
-    const where: any = { deploymentId };
+    const where: FindOptionsWhere<PerformanceMetric> = { deploymentId };
 
     if (startDate && endDate) {
-      where.date = MoreThan(startDate) && LessThan(endDate);
+      where.date = Between(startDate, endDate);
     } else if (startDate) {
       where.date = MoreThan(startDate);
     } else if (endDate) {

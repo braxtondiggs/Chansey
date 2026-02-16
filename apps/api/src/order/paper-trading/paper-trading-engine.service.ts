@@ -472,7 +472,7 @@ export class PaperTradingEngineService {
       baseAccount.available -= quantity;
       if (baseAccount.available < 0.00000001) {
         baseAccount.available = 0;
-        baseAccount.averageCost = null;
+        baseAccount.averageCost = undefined;
       }
       await transactionalEntityManager.save(baseAccount);
 

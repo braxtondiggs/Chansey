@@ -220,7 +220,7 @@ function configureGlobalSettings(app: NestFastifyApplication): void {
 }
 
 async function startServer(app: NestFastifyApplication): Promise<void> {
-  const port = parseInt(process.env.PORT, 10) || 3000;
+  const port = parseInt(process.env.PORT ?? '3000', 10);
   const host = process.env.HOST || '0.0.0.0';
 
   // Enable shutdown hooks so NestJS calls onApplicationShutdown lifecycle hooks

@@ -26,10 +26,10 @@ export class StorageService implements OnModuleInit {
     private readonly configService: ConfigService
   ) {
     // Read MinIO configuration from environment variables
-    this.minioHost = this.configService.get<string>('MINIO_HOST');
-    this.minioPort = parseInt(this.configService.get<string>('MINIO_PORT'), 10);
-    this.bucketName = this.configService.get<string>('MINIO_BUCKET_NAME');
-    this.bucketRegion = this.configService.get<string>('MINIO_BUCKET_REGION');
+    this.minioHost = this.configService.get<string>('MINIO_HOST') ?? '';
+    this.minioPort = parseInt(this.configService.get<string>('MINIO_PORT') ?? '9000', 10);
+    this.bucketName = this.configService.get<string>('MINIO_BUCKET_NAME') ?? '';
+    this.bucketRegion = this.configService.get<string>('MINIO_BUCKET_REGION') ?? '';
     this.minioUseSSL = this.configService.get<string>('MINIO_USE_SSL') === 'true';
     // Security: Only enable public access if explicitly configured
     this.enablePublicAccess = this.configService.get<string>('MINIO_ENABLE_PUBLIC_ACCESS') === 'true';

@@ -210,7 +210,7 @@ export class PaperTradingService {
     await this.dataSource.transaction(async (transactionalEntityManager) => {
       session.status = PaperTradingStatus.ACTIVE;
       session.startedAt = session.startedAt ?? new Date();
-      session.pausedAt = null;
+      session.pausedAt = undefined;
       session.consecutiveErrors = 0;
       await transactionalEntityManager.save(session);
 
@@ -271,7 +271,7 @@ export class PaperTradingService {
     // Use transaction to ensure session state and job scheduling are atomic
     await this.dataSource.transaction(async (transactionalEntityManager) => {
       session.status = PaperTradingStatus.ACTIVE;
-      session.pausedAt = null;
+      session.pausedAt = undefined;
       session.consecutiveErrors = 0;
       await transactionalEntityManager.save(session);
 

@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-import { Repository } from 'typeorm';
+import { ObjectLiteral, Repository } from 'typeorm';
 
 import {
   AuditEventType,
@@ -20,7 +20,7 @@ import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.serv
 import { AuditService } from '../audit/audit.service';
 import { MetricsService } from '../metrics/metrics.service';
 
-type MockRepo<T> = jest.Mocked<Repository<T>>;
+type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
 const createStrategy = (overrides: Partial<StrategyConfig> = {}): StrategyConfig =>
   ({

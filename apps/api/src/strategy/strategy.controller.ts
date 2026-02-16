@@ -23,7 +23,7 @@ export class StrategyController {
   @ApiResponse({ status: 201, description: 'Strategy created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 404, description: 'Algorithm not found' })
-  async create(@Body() dto: CreateStrategyConfigDto, @Request() req) {
+  async create(@Body() dto: CreateStrategyConfigDto, @Request() req: any) {
     return this.strategyService.create(dto, req.user?.userId);
   }
 
@@ -46,7 +46,7 @@ export class StrategyController {
   @ApiOperation({ summary: 'Update strategy configuration' })
   @ApiResponse({ status: 200, description: 'Strategy updated successfully' })
   @ApiResponse({ status: 404, description: 'Strategy not found' })
-  async update(@Param('id') id: string, @Body() dto: UpdateStrategyConfigDto, @Request() req) {
+  async update(@Param('id') id: string, @Body() dto: UpdateStrategyConfigDto, @Request() req: any) {
     return this.strategyService.update(id, dto, req.user?.userId);
   }
 
@@ -54,7 +54,7 @@ export class StrategyController {
   @ApiOperation({ summary: 'Delete strategy configuration' })
   @ApiResponse({ status: 204, description: 'Strategy deleted successfully' })
   @ApiResponse({ status: 404, description: 'Strategy not found' })
-  async delete(@Param('id') id: string, @Request() req) {
+  async delete(@Param('id') id: string, @Request() req: any) {
     await this.strategyService.delete(id, req.user?.userId);
     return { message: 'Strategy deleted successfully' };
   }

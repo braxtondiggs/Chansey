@@ -34,7 +34,7 @@ export class AddedtoExchangeBinanceService {
   private async checkForNewListings() {
     // Get all current markets
     const markets = await this.client.fetchMarkets();
-    const currentSymbols = markets.map((market) => market.symbol);
+    const currentSymbols = markets.flatMap((market) => (market?.symbol ? [market.symbol] : []));
 
     // Compare with previously known symbols (you'd need to store this somewhere)
     // For demonstration, we'll simulate finding a new symbol
@@ -71,7 +71,7 @@ export class AddedtoExchangeBinanceService {
 
       // Get current market price
       const ticker = await this.client.fetchTicker(formattedSymbol);
-      const price = ticker.last;
+      const price = ticker.last ?? 0;
 
       // Calculate quantity based on USDT amount
       const quantity = this.USDT_AMOUNT / price;

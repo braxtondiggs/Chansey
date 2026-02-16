@@ -100,7 +100,7 @@ export class CoinController {
     status: HttpStatus.NOT_FOUND,
     description: 'Coin not found.'
   })
-  getCoinBySymbol(@Param() { symbol }): Promise<Coin> {
+  getCoinBySymbol(@Param() { symbol }: { symbol: string }): Promise<Coin | null> {
     return this.coin.getCoinBySymbol(symbol, [CoinRelations.BASE_ASSETS]);
   }
 

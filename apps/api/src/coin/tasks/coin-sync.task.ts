@@ -241,7 +241,10 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log(`Found ${usedCoinSlugs.size} coins used in any ticker pairs`);
 
       const newCoins = geckoCoins
-        .filter((coin) => !existingCoinsMap.has(coin.id) && usedCoinSlugs.has(coin.id))
+        .filter(
+          (coin): coin is typeof coin & { id: string; symbol: string; name: string } =>
+            !!coin.id && !!coin.symbol && !!coin.name && !existingCoinsMap.has(coin.id) && usedCoinSlugs.has(coin.id)
+        )
         .map(({ id: slug, symbol, name }) => ({
           slug,
           symbol: symbol.toLowerCase(),
@@ -251,14 +254,17 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       // Find coins to update (both in CoinGecko and our DB with changed data)
       const coinsToUpdate = [];
       for (const geckoCoin of geckoCoins) {
+        if (!geckoCoin.id) continue;
         const existingCoin = existingCoinsMap.get(geckoCoin.id);
         if (existingCoin) {
+          const geckoSymbol = geckoCoin.symbol?.toLowerCase() ?? '';
+          const geckoName = geckoCoin.name ?? '';
           // Check if basic data needs update
-          if (existingCoin.symbol !== geckoCoin.symbol.toLowerCase() || existingCoin.name !== geckoCoin.name) {
+          if (existingCoin.symbol !== geckoSymbol || existingCoin.name !== geckoName) {
             coinsToUpdate.push({
               id: existingCoin.id,
-              name: geckoCoin.name,
-              symbol: geckoCoin.symbol.toLowerCase()
+              name: geckoName,
+              symbol: geckoSymbol
             });
           }
         }
@@ -266,7 +272,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       // Find coins to remove (coins in our DB but no longer in CoinGecko)
       this.logger.log('Identifying coins for removal...');
-      const geckoCoinsSet = new Set(geckoCoins.map((coin) => coin.id));
+      const geckoCoinsSet = new Set(geckoCoins.map((coin) => coin.id).filter((id): id is string => !!id));
       const missingFromGeckoCoins = existingCoins.filter((coin) => !geckoCoinsSet.has(coin.slug));
       const missingFromGeckoIds = missingFromGeckoCoins.map((coin) => coin.id);
 
@@ -368,10 +374,12 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       const allCoins = await this.coin.getCoins();
 
       // Add trending rank information to coins
-      for (const trendingCoin of trendingResponse.coins) {
-        const existingCoin = allCoins.find((coin) => coin.slug === trendingCoin.item.id);
+      for (const trendingCoin of trendingResponse.coins ?? []) {
+        const itemId = trendingCoin.item?.id;
+        if (!itemId) continue;
+        const existingCoin = allCoins.find((coin) => coin.slug === itemId);
         if (existingCoin) {
-          existingCoin.geckoRank = trendingCoin.item.score;
+          existingCoin.geckoRank = trendingCoin.item?.score;
         }
       }
 
@@ -393,122 +401,175 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                 tickers: false
               });
 
+              const md = coin.market_data;
+              const num = (v: number | null): number | undefined => v ?? undefined;
+
               await this.coin.update(id, {
-                description: coin.description.en,
-                image: coin.image.large || coin.image.small || coin.image.thumb,
-                genesis: coin.genesis_date,
-                totalSupply: sanitizeNumericValue(coin.market_data.total_supply, {
-                  fieldName: `${symbol}.totalSupply`,
-                  allowNegative: false
-                }),
-                totalVolume: sanitizeNumericValue(coin.market_data.total_volume.usd, {
-                  fieldName: `${symbol}.totalVolume`,
-                  allowNegative: false
-                }),
-                circulatingSupply: sanitizeNumericValue(coin.market_data.circulating_supply, {
-                  fieldName: `${symbol}.circulatingSupply`,
-                  allowNegative: false
-                }),
-                maxSupply: sanitizeNumericValue(coin.market_data.max_supply, {
-                  fieldName: `${symbol}.maxSupply`,
-                  allowNegative: false
-                }),
-                marketRank: coin.market_cap_rank,
-                marketCap: sanitizeNumericValue(coin.market_data.market_cap.usd, {
-                  fieldName: `${symbol}.marketCap`,
-                  allowNegative: false
-                }),
-                geckoRank: coin.coingecko_rank ?? geckoRank ?? null,
-                developerScore: sanitizeNumericValue(coin.developer_score, {
-                  maxIntegerDigits: 3,
-                  fieldName: `${symbol}.developerScore`,
-                  allowNegative: false
-                }),
-                communityScore: sanitizeNumericValue(coin.community_score, {
-                  maxIntegerDigits: 3,
-                  fieldName: `${symbol}.communityScore`,
-                  allowNegative: false
-                }),
-                liquidityScore: sanitizeNumericValue(coin.liquidity_score, {
-                  maxIntegerDigits: 3,
-                  fieldName: `${symbol}.liquidityScore`,
-                  allowNegative: false
-                }),
-                publicInterestScore: sanitizeNumericValue(coin.public_interest_score, {
-                  maxIntegerDigits: 3,
-                  fieldName: `${symbol}.publicInterestScore`,
-                  allowNegative: false
-                }),
-                sentimentUp: sanitizeNumericValue(coin.sentiment_votes_up_percentage, {
-                  maxIntegerDigits: 3,
-                  fieldName: `${symbol}.sentimentUp`,
-                  allowNegative: false
-                }),
-                sentimentDown: sanitizeNumericValue(coin.sentiment_votes_down_percentage, {
-                  maxIntegerDigits: 3,
-                  fieldName: `${symbol}.sentimentDown`,
-                  allowNegative: false
-                }),
-                ath: sanitizeNumericValue(coin.market_data.ath.usd, {
-                  maxIntegerDigits: 17,
-                  fieldName: `${symbol}.ath`,
-                  allowNegative: false
-                }),
-                atl: sanitizeNumericValue(coin.market_data.atl.usd, {
-                  maxIntegerDigits: 17,
-                  fieldName: `${symbol}.atl`,
-                  allowNegative: false
-                }),
-                athDate: coin.market_data.ath_date.usd,
-                atlDate: coin.market_data.atl_date.usd,
-                athChange: sanitizeNumericValue(coin.market_data.ath_change_percentage.usd, {
-                  maxIntegerDigits: 4,
-                  fieldName: `${symbol}.athChange`
-                }),
-                atlChange: sanitizeNumericValue(coin.market_data.atl_change_percentage.usd, {
-                  maxIntegerDigits: 9,
-                  fieldName: `${symbol}.atlChange`
-                }),
-                priceChange24h: sanitizeNumericValue(coin.market_data.price_change_24h, {
-                  maxIntegerDigits: 17,
-                  fieldName: `${symbol}.priceChange24h`
-                }),
-                priceChangePercentage24h: sanitizeNumericValue(coin.market_data.price_change_percentage_24h, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage24h`
-                }),
-                priceChangePercentage7d: sanitizeNumericValue(coin.market_data.price_change_percentage_7d, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage7d`
-                }),
-                priceChangePercentage14d: sanitizeNumericValue(coin.market_data.price_change_percentage_14d, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage14d`
-                }),
-                priceChangePercentage30d: sanitizeNumericValue(coin.market_data.price_change_percentage_30d, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage30d`
-                }),
-                priceChangePercentage60d: sanitizeNumericValue(coin.market_data.price_change_percentage_60d, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage60d`
-                }),
-                priceChangePercentage200d: sanitizeNumericValue(coin.market_data.price_change_percentage_200d, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage200d`
-                }),
-                priceChangePercentage1y: sanitizeNumericValue(coin.market_data.price_change_percentage_1y, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.priceChangePercentage1y`
-                }),
-                marketCapChange24h: sanitizeNumericValue(coin.market_data.market_cap_change_24h, {
-                  fieldName: `${symbol}.marketCapChange24h`
-                }),
-                marketCapChangePercentage24h: sanitizeNumericValue(coin.market_data.market_cap_change_percentage_24h, {
-                  maxIntegerDigits: 5,
-                  fieldName: `${symbol}.marketCapChangePercentage24h`
-                }),
-                geckoLastUpdatedAt: coin.market_data.last_updated
+                description: coin.description?.en ?? undefined,
+                image: coin.image?.large ?? coin.image?.small ?? coin.image?.thumb ?? undefined,
+                genesis: coin.genesis_date ?? undefined,
+                totalSupply: num(
+                  sanitizeNumericValue(md?.total_supply, {
+                    fieldName: `${symbol}.totalSupply`,
+                    allowNegative: false
+                  })
+                ),
+                totalVolume: num(
+                  sanitizeNumericValue(md?.total_volume?.usd, {
+                    fieldName: `${symbol}.totalVolume`,
+                    allowNegative: false
+                  })
+                ),
+                circulatingSupply: num(
+                  sanitizeNumericValue(md?.circulating_supply, {
+                    fieldName: `${symbol}.circulatingSupply`,
+                    allowNegative: false
+                  })
+                ),
+                maxSupply: num(
+                  sanitizeNumericValue(md?.max_supply, {
+                    fieldName: `${symbol}.maxSupply`,
+                    allowNegative: false
+                  })
+                ),
+                marketRank: coin.market_cap_rank ?? undefined,
+                marketCap: num(
+                  sanitizeNumericValue(md?.market_cap?.usd, {
+                    fieldName: `${symbol}.marketCap`,
+                    allowNegative: false
+                  })
+                ),
+                geckoRank: coin.coingecko_rank ?? geckoRank ?? undefined,
+                developerScore: num(
+                  sanitizeNumericValue(coin.developer_score, {
+                    maxIntegerDigits: 3,
+                    fieldName: `${symbol}.developerScore`,
+                    allowNegative: false
+                  })
+                ),
+                communityScore: num(
+                  sanitizeNumericValue(coin.community_score, {
+                    maxIntegerDigits: 3,
+                    fieldName: `${symbol}.communityScore`,
+                    allowNegative: false
+                  })
+                ),
+                liquidityScore: num(
+                  sanitizeNumericValue(coin.liquidity_score, {
+                    maxIntegerDigits: 3,
+                    fieldName: `${symbol}.liquidityScore`,
+                    allowNegative: false
+                  })
+                ),
+                publicInterestScore: num(
+                  sanitizeNumericValue(coin.public_interest_score, {
+                    maxIntegerDigits: 3,
+                    fieldName: `${symbol}.publicInterestScore`,
+                    allowNegative: false
+                  })
+                ),
+                sentimentUp: num(
+                  sanitizeNumericValue(coin.sentiment_votes_up_percentage, {
+                    maxIntegerDigits: 3,
+                    fieldName: `${symbol}.sentimentUp`,
+                    allowNegative: false
+                  })
+                ),
+                sentimentDown: num(
+                  sanitizeNumericValue(coin.sentiment_votes_down_percentage, {
+                    maxIntegerDigits: 3,
+                    fieldName: `${symbol}.sentimentDown`,
+                    allowNegative: false
+                  })
+                ),
+                ath: num(
+                  sanitizeNumericValue(md?.ath?.usd, {
+                    maxIntegerDigits: 17,
+                    fieldName: `${symbol}.ath`,
+                    allowNegative: false
+                  })
+                ),
+                atl: num(
+                  sanitizeNumericValue(md?.atl?.usd, {
+                    maxIntegerDigits: 17,
+                    fieldName: `${symbol}.atl`,
+                    allowNegative: false
+                  })
+                ),
+                athDate: md?.ath_date?.usd ?? undefined,
+                atlDate: md?.atl_date?.usd ?? undefined,
+                athChange: num(
+                  sanitizeNumericValue(md?.ath_change_percentage?.usd, {
+                    maxIntegerDigits: 4,
+                    fieldName: `${symbol}.athChange`
+                  })
+                ),
+                atlChange: num(
+                  sanitizeNumericValue(md?.atl_change_percentage?.usd, {
+                    maxIntegerDigits: 9,
+                    fieldName: `${symbol}.atlChange`
+                  })
+                ),
+                priceChange24h: num(
+                  sanitizeNumericValue(md?.price_change_24h, {
+                    maxIntegerDigits: 17,
+                    fieldName: `${symbol}.priceChange24h`
+                  })
+                ),
+                priceChangePercentage24h: num(
+                  sanitizeNumericValue(md?.price_change_percentage_24h, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage24h`
+                  })
+                ),
+                priceChangePercentage7d: num(
+                  sanitizeNumericValue(md?.price_change_percentage_7d, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage7d`
+                  })
+                ),
+                priceChangePercentage14d: num(
+                  sanitizeNumericValue(md?.price_change_percentage_14d, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage14d`
+                  })
+                ),
+                priceChangePercentage30d: num(
+                  sanitizeNumericValue(md?.price_change_percentage_30d, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage30d`
+                  })
+                ),
+                priceChangePercentage60d: num(
+                  sanitizeNumericValue(md?.price_change_percentage_60d, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage60d`
+                  })
+                ),
+                priceChangePercentage200d: num(
+                  sanitizeNumericValue(md?.price_change_percentage_200d, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage200d`
+                  })
+                ),
+                priceChangePercentage1y: num(
+                  sanitizeNumericValue(md?.price_change_percentage_1y, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.priceChangePercentage1y`
+                  })
+                ),
+                marketCapChange24h: num(
+                  sanitizeNumericValue(md?.market_cap_change_24h, {
+                    fieldName: `${symbol}.marketCapChange24h`
+                  })
+                ),
+                marketCapChangePercentage24h: num(
+                  sanitizeNumericValue(md?.market_cap_change_percentage_24h, {
+                    maxIntegerDigits: 5,
+                    fieldName: `${symbol}.marketCapChangePercentage24h`
+                  })
+                ),
+                geckoLastUpdatedAt: md?.last_updated ?? undefined
               });
               this.logger.debug(`Successfully updated ${symbol}`);
               return { success: true };

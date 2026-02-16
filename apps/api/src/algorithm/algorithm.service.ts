@@ -7,6 +7,7 @@ import { Algorithm, AlgorithmStatus } from './algorithm.entity';
 import { CreateAlgorithmDto, UpdateAlgorithmDto } from './dto/';
 
 import { AlgorithmNotFoundException } from '../common/exceptions';
+import { stripNullProps } from '../utils/strip-null-props.util';
 
 @Injectable()
 export class AlgorithmService {
@@ -14,18 +15,12 @@ export class AlgorithmService {
 
   async getAlgorithms(): Promise<Algorithm[]> {
     const algorithms = await this.algorithm.find();
-    return algorithms.map((algorithm) => {
-      Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
-      return algorithm;
-    });
+    return algorithms.map((algorithm) => stripNullProps(algorithm));
   }
 
   async getActiveAlgorithms(): Promise<Algorithm[]> {
     const algorithms = await this.algorithm.find({ where: { status: AlgorithmStatus.ACTIVE } });
-    return algorithms.map((algorithm) => {
-      Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
-      return algorithm;
-    });
+    return algorithms.map((algorithm) => stripNullProps(algorithm));
   }
 
   async getAlgorithmsForTesting(): Promise<Algorithm[]> {
@@ -35,22 +30,18 @@ export class AlgorithmService {
         status: AlgorithmStatus.ACTIVE
       }
     });
-    return algorithms.map((algorithm) => {
-      Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
-      return algorithm;
-    });
+    return algorithms.map((algorithm) => stripNullProps(algorithm));
   }
 
   async getAlgorithmById(algorithmId: string): Promise<Algorithm> {
     const algorithm = await this.algorithm.findOneBy({ id: algorithmId });
     if (!algorithm) throw new AlgorithmNotFoundException(algorithmId);
-    Object.keys(algorithm).forEach((key) => algorithm[key] === null && delete algorithm[key]);
-    return algorithm;
+    return stripNullProps(algorithm);
   }
 
   async create(Algorithm: CreateAlgorithmDto): Promise<Algorithm> {
     const algorithm = await this.algorithm.findOne({ where: { name: ILike(`%${Algorithm.name}%`) } });
-    return algorithm ?? ((await this.algorithm.insert(Algorithm)).generatedMaps[0] as Algorithm);
+    return algorithm ?? ((await this.algorithm.insert(Algorithm as any)).generatedMaps[0] as Algorithm);
   }
 
   async update(algorithmId: string, algorithm: UpdateAlgorithmDto) {

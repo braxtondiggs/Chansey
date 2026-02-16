@@ -42,7 +42,7 @@ export class CoinbaseExchangeService extends BaseExchangeService {
       return {
         symbol: symbol,
         price: ticker.last?.toString() || '0',
-        timestamp: ticker.timestamp
+        timestamp: Number(ticker.timestamp ?? 0)
       };
     } catch (error: unknown) {
       const err = toErrorInfo(error);

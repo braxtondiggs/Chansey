@@ -189,20 +189,28 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               // Extract coin IDs from the ticker data
               const baseId = ticker.coin_id?.toLowerCase();
               const quoteId = ticker.target_coin_id?.toLowerCase();
+              const baseSymbol = String(ticker.base ?? '');
+              const targetSymbol = String(ticker.target ?? '');
+
+              // Skip tickers with missing symbols
+              if (!baseSymbol || !targetSymbol) {
+                this.logger.debug(`Skipping ticker with missing base or target symbol`);
+                continue;
+              }
 
               // Get the coin objects from our database
-              const baseCoin = coinsBySlug.get(baseId);
-              const quoteCoin = coinsBySlug.get(quoteId);
+              const baseCoin = baseId ? coinsBySlug.get(baseId) : undefined;
+              const quoteCoin = quoteId ? coinsBySlug.get(quoteId) : undefined;
 
               // Determine if this is a fiat pair
-              const baseIsFiat = !baseCoin && this.isFiatCurrency(ticker.base);
-              const quoteIsFiat = !quoteCoin && this.isFiatCurrency(ticker.target);
+              const baseIsFiat = !baseCoin && this.isFiatCurrency(baseSymbol);
+              const quoteIsFiat = !quoteCoin && this.isFiatCurrency(targetSymbol);
               const isFiatPair = baseIsFiat || quoteIsFiat;
 
               // Skip if neither coin exists and it's not a fiat pair
               if (!baseCoin && !quoteCoin && !isFiatPair) {
                 this.logger.debug(
-                  `Skipping ticker ${ticker.base}/${ticker.target}: coins not found in database and not fiat pair`
+                  `Skipping ticker ${baseSymbol}/${targetSymbol}: coins not found in database and not fiat pair`
                 );
                 continue;
               }
@@ -210,14 +218,14 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               // Skip if one coin exists but the other doesn't and it's not fiat
               if ((!baseCoin && !baseIsFiat) || (!quoteCoin && !quoteIsFiat)) {
                 this.logger.debug(
-                  `Skipping ticker ${ticker.base}/${ticker.target}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
+                  `Skipping ticker ${baseSymbol}/${targetSymbol}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
                 );
                 continue;
               }
 
               // Create a unique key for this ticker pair
-              const baseKey = baseCoin?.id || ticker.base;
-              const quoteKey = quoteCoin?.id || ticker.target;
+              const baseKey = baseCoin?.id || baseSymbol;
+              const quoteKey = quoteCoin?.id || targetSymbol;
               const pairKey = `${baseKey}-${quoteKey}-${exchange.id}`;
               exchangePairs.add(pairKey);
 
@@ -225,7 +233,7 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               const existingPair = existingPairs.find((p) => {
                 if (isFiatPair) {
                   // For fiat pairs, match by symbol and exchange
-                  const expectedSymbol = `${ticker.base}${ticker.target}`.toUpperCase();
+                  const expectedSymbol = `${baseSymbol}${targetSymbol}`.toUpperCase();
                   return p.symbol === expectedSymbol && p.exchange.id === exchange.id;
                 } else {
                   // For regular pairs, match by coin IDs
@@ -241,10 +249,10 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
                 // Create a new ticker pair
                 const pairData: any = {
                   exchange,
-                  volume: ticker.volume || 0,
+                  volume: Number(ticker.volume ?? 0),
                   tradeUrl: ticker.trade_url,
-                  spreadPercentage: ticker.bid_ask_spread_percentage || 0,
-                  lastTraded: ticker.last_traded_at,
+                  spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? 0),
+                  lastTraded: ticker.last_traded_at ?? new Date(),
                   fetchAt: new Date(),
                   status: DEFAULT_STATUS,
                   isSpotTradingAllowed: DEFAULT_SPOT_TRADING_ALLOWED,
@@ -254,8 +262,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
 
                 if (isFiatPair) {
                   // For fiat pairs, store symbols instead of coin references
-                  pairData.baseAssetSymbol = ticker.base.toLowerCase();
-                  pairData.quoteAssetSymbol = ticker.target.toLowerCase();
+                  pairData.baseAssetSymbol = baseSymbol.toLowerCase();
+                  pairData.quoteAssetSymbol = targetSymbol.toLowerCase();
                   // Only set coin references if they exist
                   if (baseCoin) pairData.baseAsset = baseCoin;
                   if (quoteCoin) pairData.quoteAsset = quoteCoin;
@@ -271,10 +279,10 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               } else {
                 // Update the existing pair with new data
                 Object.assign(existingPair, {
-                  volume: ticker.volume || existingPair.volume,
-                  tradeUrl: ticker.trade_url || existingPair.tradeUrl,
-                  spreadPercentage: ticker.bid_ask_spread_percentage || existingPair.spreadPercentage,
-                  lastTraded: ticker.last_traded_at,
+                  volume: Number(ticker.volume ?? existingPair.volume),
+                  tradeUrl: ticker.trade_url ?? existingPair.tradeUrl,
+                  spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? existingPair.spreadPercentage),
+                  lastTraded: ticker.last_traded_at ?? existingPair.lastTraded,
                   fetchAt: new Date()
                   // Not updating status or trading flags as they should be managed separately
                 });
@@ -335,7 +343,7 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
             } catch (pairError: unknown) {
               const pErr = toErrorInfo(pairError);
               this.logger.error(
-                `Failed to save ticker pair ${pair.baseAsset.symbol}${pair.quoteAsset.symbol} for ${pair.exchange.name}: ${pErr.message}`
+                `Failed to save ticker pair ${pair.baseAsset?.symbol ?? pair.baseAssetSymbol ?? 'unknown'}${pair.quoteAsset?.symbol ?? pair.quoteAssetSymbol ?? 'unknown'} for ${pair.exchange.name}: ${pErr.message}`
               );
             }
           }

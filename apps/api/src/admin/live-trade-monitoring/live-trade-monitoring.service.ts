@@ -399,7 +399,7 @@ export class LiveTradeMonitoringService {
       algorithmId,
       algorithmName: algorithm.name,
       activeActivations: await this.activationRepo.count({ where: { algorithmId, isActive: true } }),
-      totalLiveOrders: liveMetrics.totalTrades || 0,
+      totalLiveOrders: liveMetrics.totalTrades ?? 0,
       backtestId: backtest?.id,
       backtestName: backtest?.name,
       liveMetrics,
@@ -1489,8 +1489,10 @@ export class LiveTradeMonitoringService {
     // Check against backtest if available
     if (backtest) {
       // Sharpe Ratio
-      if (performance.sharpeRatio !== null && backtest.sharpeRatio !== null) {
-        const deviation = this.calculateDeviationPercent(performance.sharpeRatio, backtest.sharpeRatio);
+      if (performance.sharpeRatio != null && backtest.sharpeRatio != null) {
+        const liveSharpe = performance.sharpeRatio;
+        const btSharpe = backtest.sharpeRatio;
+        const deviation = this.calculateDeviationPercent(liveSharpe, btSharpe);
         if (deviation < -DEFAULT_THRESHOLDS.sharpeRatioCritical) {
           alerts.push(
             this.createAlert(
@@ -1498,8 +1500,8 @@ export class LiveTradeMonitoringService {
               AlertType.SHARPE_RATIO_LOW,
               AlertSeverity.CRITICAL,
               'Sharpe Ratio Critical',
-              performance.sharpeRatio,
-              backtest.sharpeRatio,
+              liveSharpe,
+              btSharpe,
               DEFAULT_THRESHOLDS.sharpeRatioCritical,
               deviation
             )
@@ -1511,8 +1513,8 @@ export class LiveTradeMonitoringService {
               AlertType.SHARPE_RATIO_LOW,
               AlertSeverity.WARNING,
               'Sharpe Ratio Below Expected',
-              performance.sharpeRatio,
-              backtest.sharpeRatio,
+              liveSharpe,
+              btSharpe,
               DEFAULT_THRESHOLDS.sharpeRatioWarning,
               deviation
             )
@@ -1521,8 +1523,10 @@ export class LiveTradeMonitoringService {
       }
 
       // Win Rate
-      if (performance.winRate !== null && backtest.winRate !== null) {
-        const deviation = this.calculateDeviationPercent(performance.winRate, backtest.winRate);
+      if (performance.winRate != null && backtest.winRate != null) {
+        const liveWinRate = performance.winRate;
+        const btWinRate = backtest.winRate;
+        const deviation = this.calculateDeviationPercent(liveWinRate, btWinRate);
         if (deviation < -DEFAULT_THRESHOLDS.winRateCritical) {
           alerts.push(
             this.createAlert(
@@ -1530,8 +1534,8 @@ export class LiveTradeMonitoringService {
               AlertType.WIN_RATE_LOW,
               AlertSeverity.CRITICAL,
               'Win Rate Critical',
-              performance.winRate,
-              backtest.winRate,
+              liveWinRate,
+              btWinRate,
               DEFAULT_THRESHOLDS.winRateCritical,
               deviation
             )
@@ -1543,8 +1547,8 @@ export class LiveTradeMonitoringService {
               AlertType.WIN_RATE_LOW,
               AlertSeverity.WARNING,
               'Win Rate Below Expected',
-              performance.winRate,
-              backtest.winRate,
+              liveWinRate,
+              btWinRate,
               DEFAULT_THRESHOLDS.winRateWarning,
               deviation
             )
@@ -1553,8 +1557,10 @@ export class LiveTradeMonitoringService {
       }
 
       // Max Drawdown (higher is worse)
-      if (performance.maxDrawdown !== null && backtest.maxDrawdown !== null) {
-        const deviation = this.calculateDeviationPercent(performance.maxDrawdown, backtest.maxDrawdown);
+      if (performance.maxDrawdown != null && backtest.maxDrawdown != null) {
+        const liveDrawdown = performance.maxDrawdown;
+        const btDrawdown = backtest.maxDrawdown;
+        const deviation = this.calculateDeviationPercent(liveDrawdown, btDrawdown);
         if (deviation > DEFAULT_THRESHOLDS.maxDrawdownCritical) {
           alerts.push(
             this.createAlert(
@@ -1562,8 +1568,8 @@ export class LiveTradeMonitoringService {
               AlertType.DRAWDOWN_HIGH,
               AlertSeverity.CRITICAL,
               'Max Drawdown Critical',
-              performance.maxDrawdown,
-              backtest.maxDrawdown,
+              liveDrawdown,
+              btDrawdown,
               DEFAULT_THRESHOLDS.maxDrawdownCritical,
               deviation
             )
@@ -1575,8 +1581,8 @@ export class LiveTradeMonitoringService {
               AlertType.DRAWDOWN_HIGH,
               AlertSeverity.WARNING,
               'Max Drawdown Above Expected',
-              performance.maxDrawdown,
-              backtest.maxDrawdown,
+              liveDrawdown,
+              btDrawdown,
               DEFAULT_THRESHOLDS.maxDrawdownWarning,
               deviation
             )
@@ -1585,8 +1591,10 @@ export class LiveTradeMonitoringService {
       }
 
       // ROI/Total Return
-      if (performance.roi !== null && backtest.totalReturn !== null) {
-        const deviation = this.calculateDeviationPercent(performance.roi, backtest.totalReturn);
+      if (performance.roi != null && backtest.totalReturn != null) {
+        const liveRoi = performance.roi;
+        const btReturn = backtest.totalReturn;
+        const deviation = this.calculateDeviationPercent(liveRoi, btReturn);
         if (deviation < -DEFAULT_THRESHOLDS.totalReturnCritical) {
           alerts.push(
             this.createAlert(
@@ -1594,8 +1602,8 @@ export class LiveTradeMonitoringService {
               AlertType.RETURN_LOW,
               AlertSeverity.CRITICAL,
               'Return Critical',
-              performance.roi,
-              backtest.totalReturn,
+              liveRoi,
+              btReturn,
               DEFAULT_THRESHOLDS.totalReturnCritical,
               deviation
             )
@@ -1607,8 +1615,8 @@ export class LiveTradeMonitoringService {
               AlertType.RETURN_LOW,
               AlertSeverity.WARNING,
               'Return Below Expected',
-              performance.roi,
-              backtest.totalReturn,
+              liveRoi,
+              btReturn,
               DEFAULT_THRESHOLDS.totalReturnWarning,
               deviation
             )

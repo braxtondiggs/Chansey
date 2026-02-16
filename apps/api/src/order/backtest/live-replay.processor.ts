@@ -145,17 +145,19 @@ export class LiveReplayProcessor extends WorkerHost {
         backtest.status = BacktestStatus.PAUSED;
         backtest.checkpointState = checkpoint;
         backtest.lastCheckpointAt = new Date();
+        const pausedAt = new Date().toISOString();
         backtest.liveReplayState = {
+          replaySpeed: backtest.liveReplayState?.replaySpeed ?? ReplaySpeed.FAST_5X,
           ...backtest.liveReplayState,
           isPaused: true,
-          pausedAt: new Date().toISOString(),
+          pausedAt,
           pauseReason: 'user_requested'
         };
         await this.backtestRepository.save(backtest);
 
         await this.backtestStream.publishStatus(backtest.id, 'paused', undefined, {
           checkpointIndex: checkpoint.lastProcessedIndex,
-          pausedAt: backtest.liveReplayState.pausedAt
+          pausedAt
         });
 
         this.logger.log(`Live replay ${backtestId} paused at checkpoint index ${checkpoint.lastProcessedIndex}`);

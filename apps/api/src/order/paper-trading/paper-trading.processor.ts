@@ -239,8 +239,8 @@ export class PaperTradingProcessor extends WorkerHost {
       }
 
       const currentDrawdown =
-        session.peakPortfolioValue > 0
-          ? (session.peakPortfolioValue - result.portfolioValue) / session.peakPortfolioValue
+        (session.peakPortfolioValue ?? 0) > 0
+          ? ((session.peakPortfolioValue ?? 0) - result.portfolioValue) / (session.peakPortfolioValue ?? 0)
           : 0;
 
       if (currentDrawdown > (session.maxDrawdown ?? 0)) {

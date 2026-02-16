@@ -4,7 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type FindOptionsWhere, type QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { GridSearchService } from './grid-search.service';
 
@@ -642,7 +642,7 @@ export class OptimizationOrchestratorService {
     await this.optimizationRunRepository.update(run.id, {
       combinationsTested,
       progressDetails
-    });
+    } as QueryDeepPartialEntity<OptimizationRun>);
   }
 
   /**
@@ -663,7 +663,7 @@ export class OptimizationOrchestratorService {
     // Update run
     run.status = OptimizationStatus.COMPLETED;
     run.bestScore = bestScore;
-    run.bestParameters = bestParameters;
+    run.bestParameters = bestParameters ?? {};
     run.baselineScore = baselineScore;
     run.improvement = Math.round(improvement * 100) / 100;
     run.completedAt = new Date();
@@ -672,13 +672,13 @@ export class OptimizationOrchestratorService {
 
     // Mark best result
     if (bestParameters) {
-      await this.optimizationResultRepository.update(
-        {
-          optimizationRunId: run.id,
-          parameters: bestParameters as any
-        },
-        { isBest: true }
-      );
+      await this.optimizationResultRepository
+        .createQueryBuilder()
+        .update(OptimizationResult)
+        .set({ isBest: true })
+        .where('optimizationRunId = :runId', { runId: run.id })
+        .andWhere('parameters = :params::jsonb', { params: JSON.stringify(bestParameters) })
+        .execute();
     }
 
     this.logger.log(
@@ -834,7 +834,7 @@ export class OptimizationOrchestratorService {
    * List optimization runs for a strategy
    */
   async listOptimizationRuns(strategyConfigId: string, status?: OptimizationStatus): Promise<OptimizationRun[]> {
-    const where: any = { strategyConfigId };
+    const where: FindOptionsWhere<OptimizationRun> = { strategyConfigId };
     if (status) {
       where.status = status;
     }

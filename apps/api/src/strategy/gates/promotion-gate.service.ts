@@ -128,7 +128,7 @@ export class PromotionGateService {
       entityType: 'StrategyConfig',
       entityId: strategyConfigId,
       userId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         canPromote: evaluation.canPromote,
         gatesPassed: evaluation.gatesPassed,

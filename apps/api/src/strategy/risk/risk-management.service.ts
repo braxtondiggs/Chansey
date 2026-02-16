@@ -112,7 +112,7 @@ export class RiskManagementService {
       entityType: 'Deployment',
       entityId: deploymentId,
       userId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         hasCriticalRisk: evaluation.hasCriticalRisk,
         shouldDemote: evaluation.shouldDemote,

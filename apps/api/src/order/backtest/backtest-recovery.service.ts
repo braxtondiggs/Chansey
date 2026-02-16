@@ -123,8 +123,8 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
         this.logger.warn(
           `Clearing stale checkpoint for backtest ${backtest.id} (age: ${Math.round(checkpointAge / 1000 / 60 / 60)}h)`
         );
-        backtest.checkpointState = null;
-        backtest.lastCheckpointAt = null;
+        backtest.checkpointState = undefined;
+        backtest.lastCheckpointAt = undefined;
         backtest.processedTimestampCount = 0;
       }
     }

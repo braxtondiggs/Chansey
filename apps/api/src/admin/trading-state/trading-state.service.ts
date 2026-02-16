@@ -243,7 +243,7 @@ export class TradingStateService implements OnModuleInit {
       entityType: 'Order',
       entityId: 'bulk_cancellation',
       userId: adminUserId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: result,
       metadata: {
         action: 'cancel_all_orders',
