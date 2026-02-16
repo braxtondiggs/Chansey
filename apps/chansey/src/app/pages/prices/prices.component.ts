@@ -1,11 +1,10 @@
-
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 
-import { Coin } from '@chansey/api-interfaces';
+import { Coin, PortfolioType } from '@chansey/api-interfaces';
 
 import { CryptoTableComponent, CryptoTableConfig } from '@chansey-web/app/shared/components';
 
@@ -61,7 +60,7 @@ export class PricesComponent {
     this.addToWatchlistMutation.mutate(
       {
         coinId: coin.id,
-        type: 'MANUAL'
+        type: PortfolioType.MANUAL
       },
       {
         onSuccess: () => {

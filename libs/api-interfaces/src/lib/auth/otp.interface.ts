@@ -7,3 +7,7 @@ export interface IOtpResponse {
   success: boolean;
   message: string;
 }
+
+export interface OtpResponse {
+  message: string;
+}

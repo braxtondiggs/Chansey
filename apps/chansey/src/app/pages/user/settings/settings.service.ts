@@ -1,10 +1,7 @@
 import { Injectable } from '@angular/core';
 
+import { OtpResponse } from '@chansey/api-interfaces';
 import { queryKeys, useAuthMutation } from '@chansey/shared';
-
-export interface OtpResponse {
-  message: string;
-}
 
 @Injectable({
   providedIn: 'root'

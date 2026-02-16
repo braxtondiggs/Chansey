@@ -23,9 +23,42 @@ export interface Exchange {
   otherUrl2?: string;
   supported: boolean;
   isScraped: boolean;
-  createdAt: Date;
+  createdAt?: Date;
   updatedAt: Date;
   tickers?: TickerPair[];
+  tickerPairsCount?: number;
+}
+
+export interface CreateExchangeDto {
+  name: string;
+  url: string;
+  supported: boolean;
+  slug: string;
+}
+
+export interface UpdateExchangeDto {
+  id: string;
+  name?: string;
+  slug?: string;
+  description?: string;
+  image?: string;
+  country?: string;
+  yearEstablished?: number;
+  trustScore?: number;
+  trustScoreRank?: number;
+  tradeVolume24HBtc?: number;
+  tradeVolume24HNormalized?: number;
+  centralized?: boolean;
+  url?: string;
+  twitter?: string;
+  facebook?: string;
+  reddit?: string;
+  telegram?: string;
+  slack?: string;
+  otherUrl1?: string;
+  otherUrl2?: string;
+  supported?: boolean;
+  isScraped?: boolean;
   tickerPairsCount?: number;
 }
 

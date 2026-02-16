@@ -48,8 +48,8 @@ export interface Order {
   price: number;
   executedQuantity: number;
   cost?: number;
-  fee?: number;
-  commission?: number;
+  fee: number;
+  commission: number;
   feeCurrency?: string;
   gainLoss?: number;
   averagePrice?: number;
@@ -57,8 +57,8 @@ export interface Order {
   side: OrderSide;
   type: OrderType;
   user: IUser;
-  baseCoin: Coin;
-  quoteCoin: Coin;
+  baseCoin?: Coin;
+  quoteCoin?: Coin;
   exchange?: Exchange;
   createdAt: Date;
   updatedAt: Date;

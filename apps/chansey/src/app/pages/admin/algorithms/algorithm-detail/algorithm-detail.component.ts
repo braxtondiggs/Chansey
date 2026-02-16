@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
-import { MessageService, ConfirmationService } from 'primeng/api';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -18,6 +18,7 @@ import {
   AlgorithmExecutionResponse,
   AlgorithmPerformance,
   AlgorithmStrategy,
+  TimePeriod,
   UpdateAlgorithmDto
 } from '@chansey/api-interfaces';
 
@@ -28,7 +29,7 @@ import { ExecutionPanelComponent } from '../components/execution-panel/execution
 import { MetricsCardComponent } from '../components/metrics-card/metrics-card.component';
 import { PerformanceChartComponent } from '../components/performance-chart/performance-chart.component';
 import { StrategyCardComponent } from '../components/strategy-card/strategy-card.component';
-import { AlgorithmDetailQueries, TimePeriod } from '../services/algorithm-detail.queries';
+import { AlgorithmDetailQueries } from '../services/algorithm-detail.queries';
 
 @Component({
   selector: 'app-algorithm-detail',

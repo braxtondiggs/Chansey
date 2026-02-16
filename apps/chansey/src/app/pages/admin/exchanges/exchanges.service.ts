@@ -2,30 +2,8 @@ import { Injectable, Signal } from '@angular/core';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { queryKeys, useAuthQuery, useAuthMutation, authenticatedFetch, STANDARD_POLICY } from '@chansey/shared';
-
-export interface Exchange {
-  id: string;
-  name: string;
-  url: string;
-  supported: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateExchangeDto {
-  name: string;
-  url: string;
-  supported: boolean;
-  slug: string;
-}
-
-export interface UpdateExchangeDto {
-  id: string;
-  name?: string;
-  url?: string;
-  supported?: boolean;
-}
+import { CreateExchangeDto, Exchange, UpdateExchangeDto } from '@chansey/api-interfaces';
+import { authenticatedFetch, queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing exchanges in admin panel via TanStack Query
