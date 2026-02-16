@@ -5,10 +5,10 @@ on:
     types: [opened, synchronize]
     # Optional: Only run on specific file changes
     paths:
-      - "apps/**"
-      - "libs/**"
-      - "*.json"
-      - "*.md"
+      - 'apps/**'
+      - 'libs/**'
+      - '*.json'
+      - '*.md'
 
 jobs:
   claude-review:
@@ -29,15 +29,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+
+      - name: Detect force push
+        id: force-push-check
+        if: github.event.action == 'synchronize'
+        run: |
+          if ! git merge-base --is-ancestor "${{ github.event.before }}" "${{ github.event.after }}" 2>/dev/null; then
+            echo "is_force_push=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run Claude Code Review
+        if: steps.force-push-check.outputs.is_force_push != 'true'
         id: claude-review
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          model: "claude-opus-4-6"
+          model: 'claude-opus-4-6'
 
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
