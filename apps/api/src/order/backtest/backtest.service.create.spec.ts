@@ -160,7 +160,7 @@ describe('BacktestService.createBacktest', () => {
         deterministicSeed: 'seed-1',
         mode: BacktestType.HISTORICAL
       }),
-      { jobId: 'backtest-1', removeOnComplete: true, removeOnFail: false }
+      { jobId: 'backtest-1', removeOnComplete: true, removeOnFail: 50 }
     );
     expect(metricsService.recordBacktestCreated).toHaveBeenCalledWith(BacktestType.HISTORICAL, 'Algo');
   });

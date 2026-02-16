@@ -153,7 +153,7 @@ describe('BacktestService (live replay)', () => {
         deterministicSeed: 'live-seed-1',
         mode: BacktestType.LIVE_REPLAY
       }),
-      { jobId: backtestId, removeOnComplete: true, removeOnFail: false }
+      { jobId: backtestId, removeOnComplete: true, removeOnFail: 50 }
     );
     expect(historicalQueue.add).not.toHaveBeenCalled();
   });

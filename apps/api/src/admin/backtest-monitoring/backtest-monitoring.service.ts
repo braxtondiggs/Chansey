@@ -646,7 +646,7 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.slug', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
             .where('t2.type = :sellType', { sellType: TradeType.SELL }),
@@ -692,12 +692,12 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.id', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
             .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
+        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.signalType');
@@ -730,12 +730,12 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.id', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
             .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
+        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.direction');
@@ -768,12 +768,12 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.id', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
             .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
+        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.instrument')

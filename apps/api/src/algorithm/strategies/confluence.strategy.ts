@@ -60,6 +60,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -70,7 +75,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         }
 
         // Calculate confluence score for this coin
-        const confluenceScore = await this.calculateConfluenceScore(coin.id, priceHistory, config);
+        const confluenceScore = await this.calculateConfluenceScore(coin.id, priceHistory, config, isBacktest);
 
         // Generate trading signal if confluence is met
         const currentPrice = priceHistory[priceHistory.length - 1].avg;
@@ -86,9 +91,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
           signals.push(tradingSignal);
         }
 
-        // Prepare chart data with all indicator values
-        const chartDataForCoin = await this.prepareChartData(coin.id, priceHistory, config);
-        chartData[coin.id] = chartDataForCoin;
+        // Skip chart data in backtest/optimization to avoid massive allocations
+        if (!isBacktest) {
+          const chartDataForCoin = await this.prepareChartData(coin.id, priceHistory, config);
+          chartData[coin.id] = chartDataForCoin;
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -189,7 +196,8 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   private async calculateConfluenceScore(
     coinId: string,
     prices: PriceSummary[],
-    config: ConfluenceConfig
+    config: ConfluenceConfig,
+    skipCache = false
   ): Promise<ConfluenceScore> {
     const currentIndex = prices.length - 1;
     const signals: IndicatorSignal[] = [];
@@ -200,13 +208,13 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     // Calculate all indicators in parallel for performance
     const [ema12Result, ema26Result, rsiResult, macdResult, atrResult, bbResult] = await Promise.all([
       config.ema.enabled
-        ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.fastPeriod }, this)
+        ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.fastPeriod, skipCache }, this)
         : null,
       config.ema.enabled
-        ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.slowPeriod }, this)
+        ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.slowPeriod, skipCache }, this)
         : null,
       config.rsi.enabled
-        ? this.indicatorService.calculateRSI({ coinId, prices, period: config.rsi.period }, this)
+        ? this.indicatorService.calculateRSI({ coinId, prices, period: config.rsi.period, skipCache }, this)
         : null,
       config.macd.enabled
         ? this.indicatorService.calculateMACD(
@@ -215,17 +223,18 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
               prices,
               fastPeriod: config.macd.fastPeriod,
               slowPeriod: config.macd.slowPeriod,
-              signalPeriod: config.macd.signalPeriod
+              signalPeriod: config.macd.signalPeriod,
+              skipCache
             },
             this
           )
         : null,
       config.atr.enabled
-        ? this.indicatorService.calculateATR({ coinId, prices, period: config.atr.period }, this)
+        ? this.indicatorService.calculateATR({ coinId, prices, period: config.atr.period, skipCache }, this)
         : null,
       config.bollingerBands.enabled
         ? this.indicatorService.calculateBollingerBands(
-            { coinId, prices, period: config.bollingerBands.period, stdDev: config.bollingerBands.stdDev },
+            { coinId, prices, period: config.bollingerBands.period, stdDev: config.bollingerBands.stdDev, skipCache },
             this
           )
         : null

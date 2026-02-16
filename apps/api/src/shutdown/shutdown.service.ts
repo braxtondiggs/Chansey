@@ -20,7 +20,9 @@ export class ShutdownService implements OnApplicationShutdown {
 
   constructor(
     @InjectQueue('balance-queue') private readonly balanceQueue: Queue,
+    @InjectQueue('backtest-historical') private readonly backtestHistoricalQueue: Queue,
     @InjectQueue('backtest-orchestration') private readonly backtestOrchestrationQueue: Queue,
+    @InjectQueue('backtest-replay') private readonly backtestReplayQueue: Queue,
     @InjectQueue('category-queue') private readonly categoryQueue: Queue,
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
     @InjectQueue('drift-detection-queue') private readonly driftDetectionQueue: Queue,
@@ -43,7 +45,9 @@ export class ShutdownService implements OnApplicationShutdown {
   private get queues(): { name: string; queue: Queue }[] {
     return [
       { name: 'balance-queue', queue: this.balanceQueue },
+      { name: 'backtest-historical', queue: this.backtestHistoricalQueue },
       { name: 'backtest-orchestration', queue: this.backtestOrchestrationQueue },
+      { name: 'backtest-replay', queue: this.backtestReplayQueue },
       { name: 'category-queue', queue: this.categoryQueue },
       { name: 'coin-queue', queue: this.coinQueue },
       { name: 'drift-detection-queue', queue: this.driftDetectionQueue },

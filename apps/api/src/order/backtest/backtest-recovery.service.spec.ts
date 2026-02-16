@@ -125,7 +125,7 @@ describe('BacktestRecoveryService', () => {
         deterministicSeed: 'seed-1',
         mode: BacktestType.HISTORICAL
       },
-      { jobId: 'bt-1', removeOnComplete: true, removeOnFail: false }
+      { jobId: 'bt-1', removeOnComplete: true, removeOnFail: 50 }
     );
 
     // DB update to PENDING must happen before queue.add() to prevent race condition
