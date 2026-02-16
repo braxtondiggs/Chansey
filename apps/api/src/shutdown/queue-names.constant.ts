@@ -4,7 +4,9 @@
  */
 export const QUEUE_NAMES = [
   'balance-queue',
+  'backtest-historical',
   'backtest-orchestration',
+  'backtest-replay',
   'category-queue',
   'coin-queue',
   'drift-detection-queue',

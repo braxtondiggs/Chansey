@@ -49,6 +49,7 @@ import {
 } from './shared';
 
 import {
+  AlgorithmContext,
   AlgorithmResult,
   SignalType as AlgoSignalType,
   TradingSignal as StrategySignal
@@ -209,6 +210,11 @@ export class BacktestEngine {
   private static readonly MIN_ALLOCATION = 0.05;
   /** Default minimum hold period before allowing SELL (24 hours in ms) */
   private static readonly DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
+  /** Maximum price history entries kept per coin in the sliding window.
+   *  Strategies typically need at most ~200 periods; 500 provides ample margin. */
+  private static readonly MAX_WINDOW_SIZE = 500;
+  /** Per-iteration algorithm execution timeout (ms) */
+  private static readonly ALGORITHM_TIMEOUT_MS = 60_000;
 
   constructor(
     private readonly backtestStream: BacktestStreamService,
@@ -427,22 +433,11 @@ export class BacktestEngine {
       let strategySignals: TradingSignal[] = [];
       try {
         const algoExecStart = Date.now();
-        const ALGORITHM_TIMEOUT_MS = 60_000;
-
-        const algoPromise = this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
-        const algoTimeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `Algorithm execution timed out after ${ALGORITHM_TIMEOUT_MS}ms at iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
-                )
-              ),
-            ALGORITHM_TIMEOUT_MS
-          );
-        });
-
-        const result: AlgorithmResult = await Promise.race([algoPromise, algoTimeoutPromise]);
+        const result = await this.executeAlgorithmWithTimeout(
+          backtest.algorithm.id,
+          context,
+          `iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+        );
 
         const algoExecDuration = Date.now() - algoExecStart;
         if (algoExecDuration > 5000) {
@@ -978,7 +973,12 @@ export class BacktestEngine {
 
       let strategySignals: TradingSignal[] = [];
       try {
-        const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        const result = await this.executeAlgorithmWithTimeout(
+          backtest.algorithm.id,
+          context,
+          `iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+        );
+
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
@@ -1213,6 +1213,36 @@ export class BacktestEngine {
   }
 
   /**
+   * Execute an algorithm with a timeout guard.
+   * Rejects if the algorithm does not resolve within ALGORITHM_TIMEOUT_MS.
+   */
+  private async executeAlgorithmWithTimeout(
+    algorithmId: string,
+    context: AlgorithmContext,
+    iterationLabel: string
+  ): Promise<AlgorithmResult> {
+    const algoPromise = this.algorithmRegistry.executeAlgorithm(algorithmId, context);
+    let algoTimeoutId: NodeJS.Timeout | undefined;
+    const algoTimeoutPromise = new Promise<never>((_, reject) => {
+      algoTimeoutId = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Algorithm execution timed out after ${BacktestEngine.ALGORITHM_TIMEOUT_MS}ms at ${iterationLabel}`
+            )
+          ),
+        BacktestEngine.ALGORITHM_TIMEOUT_MS
+      );
+    });
+
+    try {
+      return await Promise.race([algoPromise, algoTimeoutPromise]);
+    } finally {
+      clearTimeout(algoTimeoutId);
+    }
+  }
+
+  /**
    * Get price value from OHLC candle (uses close price)
    */
   private getPriceValue(candle: OHLCCandle): number {
@@ -1292,6 +1322,11 @@ export class BacktestEngine {
       while (pointer + 1 < coinTimestamps.length && coinTimestamps[pointer + 1] <= timestamp) {
         pointer += 1;
         window.push(summaries[pointer]);
+      }
+      // Trim window to sliding-window size to bound memory growth
+      if (window.length > BacktestEngine.MAX_WINDOW_SIZE) {
+        const excess = window.length - BacktestEngine.MAX_WINDOW_SIZE;
+        window.splice(0, excess);
       }
       ctx.indexByCoin.set(coin.id, pointer);
       if (window.length > 0) {

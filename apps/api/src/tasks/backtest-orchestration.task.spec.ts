@@ -91,7 +91,7 @@ describe('BacktestOrchestrationTask', () => {
           attempts: 3,
           backoff: { type: 'exponential', delay: 60000 },
           removeOnComplete: true,
-          removeOnFail: false
+          removeOnFail: 50
         })
       );
 
@@ -108,7 +108,7 @@ describe('BacktestOrchestrationTask', () => {
           attempts: 3,
           backoff: { type: 'exponential', delay: 60000 },
           removeOnComplete: true,
-          removeOnFail: false
+          removeOnFail: 50
         })
       );
     });
@@ -129,7 +129,7 @@ describe('BacktestOrchestrationTask', () => {
           attempts: 3,
           backoff: { type: 'exponential', delay: 60000 },
           removeOnComplete: true,
-          removeOnFail: false
+          removeOnFail: 50
         })
       );
       expect(result).toEqual({ queued: 1 });

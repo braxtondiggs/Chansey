@@ -78,8 +78,8 @@ export class StrategyEvaluationTask {
             type: 'exponential',
             delay: 5000
           },
-          removeOnComplete: false,
-          removeOnFail: false
+          removeOnComplete: 100,
+          removeOnFail: 50
         }
       );
 

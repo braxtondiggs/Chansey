@@ -31,7 +31,8 @@ describe('LiveReplayProcessor', () => {
     const backtestPauseService = { clearPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
     const metricsService = {
       startBacktestTimer: jest.fn(),
-      recordBacktestCompleted: jest.fn()
+      recordBacktestCompleted: jest.fn(),
+      decrementActiveBacktests: jest.fn()
     };
     const backtestRepository = { findOne: jest.fn(), save: jest.fn() };
     const marketDataSetRepository = { findOne: jest.fn() };
@@ -64,7 +65,8 @@ describe('LiveReplayProcessor', () => {
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
-      recordBacktestCompleted: jest.fn()
+      recordBacktestCompleted: jest.fn(),
+      decrementActiveBacktests: jest.fn()
     };
 
     const processor = createProcessor({ backtestRepository, backtestEngine, metricsService });
@@ -99,7 +101,8 @@ describe('LiveReplayProcessor', () => {
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
-      recordBacktestCompleted: jest.fn()
+      recordBacktestCompleted: jest.fn(),
+      decrementActiveBacktests: jest.fn()
     };
 
     const processor = createProcessor({
@@ -145,7 +148,8 @@ describe('LiveReplayProcessor', () => {
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
-      recordBacktestCompleted: jest.fn()
+      recordBacktestCompleted: jest.fn(),
+      decrementActiveBacktests: jest.fn()
     };
 
     const processor = createProcessor({
@@ -218,7 +222,8 @@ describe('LiveReplayProcessor', () => {
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
-      recordBacktestCompleted: jest.fn()
+      recordBacktestCompleted: jest.fn(),
+      decrementActiveBacktests: jest.fn()
     };
 
     const processor = createProcessor({
@@ -271,7 +276,8 @@ describe('LiveReplayProcessor', () => {
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
-      recordBacktestCompleted: jest.fn()
+      recordBacktestCompleted: jest.fn(),
+      decrementActiveBacktests: jest.fn()
     };
 
     const processor = createProcessor({

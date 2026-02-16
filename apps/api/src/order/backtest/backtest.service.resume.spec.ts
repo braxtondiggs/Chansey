@@ -76,7 +76,7 @@ describe('BacktestService.resumeBacktest', () => {
     expect(queue.add).toHaveBeenCalledWith(
       'execute-backtest',
       { payload: true },
-      { jobId: backtest.id, removeOnComplete: true, removeOnFail: false }
+      { jobId: backtest.id, removeOnComplete: true, removeOnFail: 50 }
     );
     expect(backtestStream.publishStatus).toHaveBeenCalledWith(backtest.id, 'queued', undefined, {
       resumed: true,

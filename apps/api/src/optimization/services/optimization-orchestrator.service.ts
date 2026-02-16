@@ -312,6 +312,11 @@ export class OptimizationOrchestratorService {
           }
         });
 
+        // Release memory between batches to reduce peak RSS
+        if (typeof global.gc === 'function') {
+          global.gc();
+        }
+
         // Update progress after each batch
         await this.updateProgress(run, combinationsProcessed, windows.length, bestScore, bestParameters);
 
