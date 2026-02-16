@@ -188,7 +188,8 @@ export interface OptimizationBacktestResult {
 }
 
 interface PriceTrackingContext {
-  historyByCoin: Map<string, OHLCCandle[]>;
+  /** Only timestamps are stored (not full OHLCCandle objects) to reduce memory. */
+  timestampsByCoin: Map<string, Date[]>;
   summariesByCoin: Map<string, PriceSummary[]>;
   indexByCoin: Map<string, number>;
   windowsByCoin: Map<string, PriceSummary[]>;
@@ -340,6 +341,9 @@ export class BacktestEngine {
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
+
+    // Drop reference to the full candles array — objects still live in pricesByTimestamp
+    historicalPrices = [];
 
     this.logger.log(`Processing ${timestamps.length} time periods`);
 
@@ -606,6 +610,10 @@ export class BacktestEngine {
       }
     }
 
+    // Release large data structures — no longer needed after the main loop.
+    // Clear in-place so GC can reclaim memory during metrics calculation and persistence.
+    this.clearPriceData(pricesByTimestamp, priceCtx);
+
     // Harvest remaining items from final (post-last-checkpoint) arrays
     this.harvestMetrics(trades, snapshots, metricsAcc.callbacks);
 
@@ -760,6 +768,9 @@ export class BacktestEngine {
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
+
+    // Drop reference to the full candles array — objects still live in pricesByTimestamp
+    historicalPrices = [];
 
     this.logger.log(`Processing ${timestamps.length} time periods with ${delayMs}ms delay between each`);
 
@@ -1117,6 +1128,9 @@ export class BacktestEngine {
       }
     }
 
+    // Release large data structures — no longer needed after the main loop.
+    this.clearPriceData(pricesByTimestamp, priceCtx);
+
     // Harvest remaining items from final (post-last-checkpoint) arrays
     this.harvestMetrics(trades, snapshots, metricsAcc.callbacks);
 
@@ -1210,7 +1224,7 @@ export class BacktestEngine {
    * and initializes sliding-window pointers.
    */
   private initPriceTracking(historicalPrices: OHLCCandle[], coinIds: string[]): PriceTrackingContext {
-    const historyByCoin = new Map<string, OHLCCandle[]>();
+    const timestampsByCoin = new Map<string, Date[]>();
     const summariesByCoin = new Map<string, PriceSummary[]>();
     const indexByCoin = new Map<string, number>();
     const windowsByCoin = new Map<string, PriceSummary[]>();
@@ -1230,7 +1244,11 @@ export class BacktestEngine {
       const history = (pricesByCoin.get(coinId) ?? []).sort(
         (a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime()
       );
-      historyByCoin.set(coinId, history);
+      // Store only timestamps (not full candles) to reduce memory footprint
+      timestampsByCoin.set(
+        coinId,
+        history.map((price) => this.getPriceTimestamp(price))
+      );
       summariesByCoin.set(
         coinId,
         history.map((price) => this.buildPriceSummary(price))
@@ -1239,7 +1257,7 @@ export class BacktestEngine {
       windowsByCoin.set(coinId, []);
     }
 
-    return { historyByCoin, summariesByCoin, indexByCoin, windowsByCoin };
+    return { timestampsByCoin, summariesByCoin, indexByCoin, windowsByCoin };
   }
 
   /**
@@ -1253,11 +1271,11 @@ export class BacktestEngine {
   private advancePriceWindows(ctx: PriceTrackingContext, coins: Coin[], timestamp: Date): PriceSummaryByPeriod {
     const priceData: PriceSummaryByPeriod = {};
     for (const coin of coins) {
-      const history = ctx.historyByCoin.get(coin.id) ?? [];
+      const coinTimestamps = ctx.timestampsByCoin.get(coin.id) ?? [];
       const summaries = ctx.summariesByCoin.get(coin.id) ?? [];
       const window = ctx.windowsByCoin.get(coin.id) ?? [];
       let pointer = ctx.indexByCoin.get(coin.id) ?? -1;
-      while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
+      while (pointer + 1 < coinTimestamps.length && coinTimestamps[pointer + 1] <= timestamp) {
         pointer += 1;
         window.push(summaries[pointer]);
       }
@@ -1267,6 +1285,20 @@ export class BacktestEngine {
       }
     }
     return priceData;
+  }
+
+  /**
+   * Clear all price data structures in-place to allow GC to reclaim memory.
+   * Called after the main processing loop when these structures are no longer needed.
+   */
+  private clearPriceData(pricesByTimestamp: Record<string, OHLCCandle[]>, priceCtx: PriceTrackingContext): void {
+    for (const key of Object.keys(pricesByTimestamp)) {
+      delete pricesByTimestamp[key];
+    }
+    priceCtx.timestampsByCoin.clear();
+    priceCtx.summariesByCoin.clear();
+    priceCtx.windowsByCoin.clear();
+    priceCtx.indexByCoin.clear();
   }
 
   /**
@@ -1766,7 +1798,7 @@ export class BacktestEngine {
     const snapshots: { portfolioValue: number; timestamp: Date }[] = [];
 
     const coinIds = coins.map((coin) => coin.id);
-    const historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
+    let historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
 
     if (historicalPrices.length === 0) {
       // Return neutral metrics if no price data
@@ -1785,6 +1817,9 @@ export class BacktestEngine {
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
+
+    // Drop reference to the full candles array — objects still live in pricesByTimestamp
+    historicalPrices = [];
 
     let peakValue = initialCapital;
     let maxDrawdown = 0;
@@ -1867,6 +1902,9 @@ export class BacktestEngine {
         });
       }
     }
+
+    // Release large data structures after the main loop
+    this.clearPriceData(pricesByTimestamp, priceCtx);
 
     // Calculate final metrics
     const finalValue = portfolio.totalValue;
