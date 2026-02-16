@@ -80,6 +80,10 @@ export interface LiveReplayExecuteOptions {
   /** Base interval in milliseconds before speed multiplier (default: 1000ms) */
   baseIntervalMs?: number;
 
+  /** Minimum time a position must be held before selling (ms). Default: 24h.
+   *  Risk-control signals (STOP_LOSS, TAKE_PROFIT) always bypass this. */
+  minHoldMs?: number;
+
   /** Number of timestamps between checkpoints (default: 100 for live replay) */
   checkpointInterval?: number;
 
