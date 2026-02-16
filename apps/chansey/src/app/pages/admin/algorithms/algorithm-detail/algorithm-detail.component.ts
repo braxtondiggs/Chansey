@@ -18,6 +18,7 @@ import {
   AlgorithmExecutionResponse,
   AlgorithmPerformance,
   AlgorithmStrategy,
+  TimePeriod,
   UpdateAlgorithmDto
 } from '@chansey/api-interfaces';
 
@@ -28,7 +29,7 @@ import { ExecutionPanelComponent } from '../components/execution-panel/execution
 import { MetricsCardComponent } from '../components/metrics-card/metrics-card.component';
 import { PerformanceChartComponent } from '../components/performance-chart/performance-chart.component';
 import { StrategyCardComponent } from '../components/strategy-card/strategy-card.component';
-import { AlgorithmDetailQueries, TimePeriod } from '../services/algorithm-detail.queries';
+import { AlgorithmDetailQueries } from '../services/algorithm-detail.queries';
 
 @Component({
   selector: 'app-algorithm-detail',

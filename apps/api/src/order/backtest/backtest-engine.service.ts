@@ -49,6 +49,7 @@ import {
 } from './shared';
 
 import {
+  AlgorithmContext,
   AlgorithmResult,
   SignalType as AlgoSignalType,
   TradingSignal as StrategySignal
@@ -91,6 +92,10 @@ interface ExecuteOptions {
   dataset: MarketDataSet;
   deterministicSeed: string;
   telemetryEnabled?: boolean;
+
+  /** Minimum time a position must be held before selling (ms). Default: 24h.
+   *  Risk-control signals (STOP_LOSS, TAKE_PROFIT) always bypass this. */
+  minHoldMs?: number;
 
   // Checkpoint options for resume capability
   /** Number of timestamps between checkpoints (default: 500) */
@@ -189,7 +194,8 @@ export interface OptimizationBacktestResult {
 }
 
 interface PriceTrackingContext {
-  historyByCoin: Map<string, OHLCCandle[]>;
+  /** Only timestamps are stored (not full OHLCCandle objects) to reduce memory. */
+  timestampsByCoin: Map<string, Date[]>;
   summariesByCoin: Map<string, PriceSummary[]>;
   indexByCoin: Map<string, number>;
   windowsByCoin: Map<string, PriceSummary[]>;
@@ -203,6 +209,13 @@ export class BacktestEngine {
   private static readonly MAX_ALLOCATION = 0.2;
   /** Minimum allocation per trade (5% of portfolio) */
   private static readonly MIN_ALLOCATION = 0.05;
+  /** Default minimum hold period before allowing SELL (24 hours in ms) */
+  private static readonly DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
+  /** Maximum price history entries kept per coin in the sliding window.
+   *  Strategies typically need at most ~200 periods; 500 provides ample margin. */
+  private static readonly MAX_WINDOW_SIZE = 500;
+  /** Per-iteration algorithm execution timeout (ms) */
+  private static readonly ALGORITHM_TIMEOUT_MS = 60_000;
 
   constructor(
     private readonly backtestStream: BacktestStreamService,
@@ -342,6 +355,9 @@ export class BacktestEngine {
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
 
+    // Drop reference to the full candles array — objects still live in pricesByTimestamp
+    historicalPrices = [];
+
     this.logger.log(`Processing ${timestamps.length} time periods`);
 
     // Build slippage config from backtest configSnapshot using shared service
@@ -354,6 +370,9 @@ export class BacktestEngine {
           volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
         })
       : DEFAULT_SLIPPAGE_CONFIG;
+
+    // Minimum hold period: configurable via options, default 24h
+    const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
@@ -415,22 +434,11 @@ export class BacktestEngine {
       let strategySignals: TradingSignal[] = [];
       try {
         const algoExecStart = Date.now();
-        const ALGORITHM_TIMEOUT_MS = 60_000;
-
-        const algoPromise = this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
-        const algoTimeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `Algorithm execution timed out after ${ALGORITHM_TIMEOUT_MS}ms at iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
-                )
-              ),
-            ALGORITHM_TIMEOUT_MS
-          );
-        });
-
-        const result: AlgorithmResult = await Promise.race([algoPromise, algoTimeoutPromise]);
+        const result = await this.executeAlgorithmWithTimeout(
+          backtest.algorithm.id,
+          context,
+          `iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+        );
 
         const algoExecDuration = Date.now() - algoExecStart;
         if (algoExecDuration > 5000) {
@@ -489,7 +497,8 @@ export class BacktestEngine {
           backtest.tradingFee,
           rng,
           slippageConfig,
-          dailyVolume
+          dailyVolume,
+          minHoldMs
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
@@ -607,6 +616,10 @@ export class BacktestEngine {
         );
       }
     }
+
+    // Release large data structures — no longer needed after the main loop.
+    // Clear in-place so GC can reclaim memory during metrics calculation and persistence.
+    this.clearPriceData(pricesByTimestamp, priceCtx);
 
     // Harvest remaining items from final (post-last-checkpoint) arrays
     this.harvestMetrics(trades, snapshots, metricsAcc.callbacks);
@@ -763,6 +776,9 @@ export class BacktestEngine {
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
 
+    // Drop reference to the full candles array — objects still live in pricesByTimestamp
+    historicalPrices = [];
+
     this.logger.log(`Processing ${timestamps.length} time periods with ${delayMs}ms delay between each`);
 
     // Build slippage config from backtest configSnapshot
@@ -775,6 +791,9 @@ export class BacktestEngine {
           volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
         }
       : DEFAULT_SLIPPAGE_CONFIG;
+
+    // Minimum hold period: configurable via options, default 24h
+    const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
@@ -957,7 +976,12 @@ export class BacktestEngine {
 
       let strategySignals: TradingSignal[] = [];
       try {
-        const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        const result = await this.executeAlgorithmWithTimeout(
+          backtest.algorithm.id,
+          context,
+          `iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+        );
+
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
@@ -1007,7 +1031,8 @@ export class BacktestEngine {
           backtest.tradingFee,
           rng,
           slippageConfig,
-          dailyVolume
+          dailyVolume,
+          minHoldMs
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
@@ -1121,6 +1146,9 @@ export class BacktestEngine {
       }
     }
 
+    // Release large data structures — no longer needed after the main loop.
+    this.clearPriceData(pricesByTimestamp, priceCtx);
+
     // Harvest remaining items from final (post-last-checkpoint) arrays
     this.harvestMetrics(trades, snapshots, metricsAcc.callbacks);
 
@@ -1189,6 +1217,36 @@ export class BacktestEngine {
   }
 
   /**
+   * Execute an algorithm with a timeout guard.
+   * Rejects if the algorithm does not resolve within ALGORITHM_TIMEOUT_MS.
+   */
+  private async executeAlgorithmWithTimeout(
+    algorithmId: string,
+    context: AlgorithmContext,
+    iterationLabel: string
+  ): Promise<AlgorithmResult> {
+    const algoPromise = this.algorithmRegistry.executeAlgorithm(algorithmId, context);
+    let algoTimeoutId: NodeJS.Timeout | undefined;
+    const algoTimeoutPromise = new Promise<never>((_, reject) => {
+      algoTimeoutId = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Algorithm execution timed out after ${BacktestEngine.ALGORITHM_TIMEOUT_MS}ms at ${iterationLabel}`
+            )
+          ),
+        BacktestEngine.ALGORITHM_TIMEOUT_MS
+      );
+    });
+
+    try {
+      return await Promise.race([algoPromise, algoTimeoutPromise]);
+    } finally {
+      clearTimeout(algoTimeoutId);
+    }
+  }
+
+  /**
    * Get price value from OHLC candle (uses close price)
    */
   private getPriceValue(candle: OHLCCandle): number {
@@ -1214,7 +1272,7 @@ export class BacktestEngine {
    * and initializes sliding-window pointers.
    */
   private initPriceTracking(historicalPrices: OHLCCandle[], coinIds: string[]): PriceTrackingContext {
-    const historyByCoin = new Map<string, OHLCCandle[]>();
+    const timestampsByCoin = new Map<string, Date[]>();
     const summariesByCoin = new Map<string, PriceSummary[]>();
     const indexByCoin = new Map<string, number>();
     const windowsByCoin = new Map<string, PriceSummary[]>();
@@ -1234,7 +1292,11 @@ export class BacktestEngine {
       const history = (pricesByCoin.get(coinId) ?? []).sort(
         (a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime()
       );
-      historyByCoin.set(coinId, history);
+      // Store only timestamps (not full candles) to reduce memory footprint
+      timestampsByCoin.set(
+        coinId,
+        history.map((price) => this.getPriceTimestamp(price))
+      );
       summariesByCoin.set(
         coinId,
         history.map((price) => this.buildPriceSummary(price))
@@ -1243,7 +1305,7 @@ export class BacktestEngine {
       windowsByCoin.set(coinId, []);
     }
 
-    return { historyByCoin, summariesByCoin, indexByCoin, windowsByCoin };
+    return { timestampsByCoin, summariesByCoin, indexByCoin, windowsByCoin };
   }
 
   /**
@@ -1257,13 +1319,18 @@ export class BacktestEngine {
   private advancePriceWindows(ctx: PriceTrackingContext, coins: Coin[], timestamp: Date): PriceSummaryByPeriod {
     const priceData: PriceSummaryByPeriod = {};
     for (const coin of coins) {
-      const history = ctx.historyByCoin.get(coin.id) ?? [];
+      const coinTimestamps = ctx.timestampsByCoin.get(coin.id) ?? [];
       const summaries = ctx.summariesByCoin.get(coin.id) ?? [];
       const window = ctx.windowsByCoin.get(coin.id) ?? [];
       let pointer = ctx.indexByCoin.get(coin.id) ?? -1;
-      while (pointer + 1 < history.length && this.getPriceTimestamp(history[pointer + 1]) <= timestamp) {
+      while (pointer + 1 < coinTimestamps.length && coinTimestamps[pointer + 1] <= timestamp) {
         pointer += 1;
         window.push(summaries[pointer]);
+      }
+      // Trim window to sliding-window size to bound memory growth
+      if (window.length > BacktestEngine.MAX_WINDOW_SIZE) {
+        const excess = window.length - BacktestEngine.MAX_WINDOW_SIZE;
+        window.splice(0, excess);
       }
       ctx.indexByCoin.set(coin.id, pointer);
       if (window.length > 0) {
@@ -1271,6 +1338,20 @@ export class BacktestEngine {
       }
     }
     return priceData;
+  }
+
+  /**
+   * Clear all price data structures in-place to allow GC to reclaim memory.
+   * Called after the main processing loop when these structures are no longer needed.
+   */
+  private clearPriceData(pricesByTimestamp: Record<string, OHLCCandle[]>, priceCtx: PriceTrackingContext): void {
+    for (const key of Object.keys(pricesByTimestamp)) {
+      delete pricesByTimestamp[key];
+    }
+    priceCtx.timestampsByCoin.clear();
+    priceCtx.summariesByCoin.clear();
+    priceCtx.windowsByCoin.clear();
+    priceCtx.indexByCoin.clear();
   }
 
   /**
@@ -1301,7 +1382,8 @@ export class BacktestEngine {
     tradingFee: number,
     rng: SeededRandom,
     slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
-    dailyVolume?: number
+    dailyVolume?: number,
+    minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const basePrice = marketData.prices.get(signal.coinId);
     if (!basePrice) {
@@ -1419,6 +1501,14 @@ export class BacktestEngine {
       // Calculate hold time from entry date
       if (existingPosition.entryDate) {
         holdTimeMs = marketData.timestamp.getTime() - existingPosition.entryDate.getTime();
+      }
+
+      // Enforce minimum hold period to prevent premature exits
+      // Risk control signals (STOP_LOSS, TAKE_PROFIT) bypass this check
+      const isRiskControl =
+        signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT;
+      if (!isRiskControl && minHoldMs > 0 && holdTimeMs !== undefined && holdTimeMs < minHoldMs) {
+        return null;
       }
 
       // Capture cost basis BEFORE modifying position
@@ -1770,7 +1860,7 @@ export class BacktestEngine {
     const snapshots: { portfolioValue: number; timestamp: Date }[] = [];
 
     const coinIds = coins.map((coin) => coin.id);
-    const historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
+    let historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
 
     if (historicalPrices.length === 0) {
       // Return neutral metrics if no price data
@@ -1789,6 +1879,9 @@ export class BacktestEngine {
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
+
+    // Drop reference to the full candles array — objects still live in pricesByTimestamp
+    historicalPrices = [];
 
     let peakValue = initialCapital;
     let maxDrawdown = 0;
@@ -1848,7 +1941,8 @@ export class BacktestEngine {
           tradingFee,
           rng,
           DEFAULT_SLIPPAGE_CONFIG,
-          dailyVolume
+          dailyVolume,
+          BacktestEngine.DEFAULT_MIN_HOLD_MS
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
@@ -1872,6 +1966,9 @@ export class BacktestEngine {
         });
       }
     }
+
+    // Release large data structures after the main loop
+    this.clearPriceData(pricesByTimestamp, priceCtx);
 
     // Calculate final metrics
     const finalValue = portfolio.totalValue;

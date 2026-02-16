@@ -239,7 +239,14 @@ export class LiveReplayProcessor extends WorkerHost {
       }
       this.metricsService.recordBacktestCompleted(strategyName, 'failed');
     } finally {
+      this.metricsService.decrementActiveBacktests(mode ?? 'live_replay');
       endTimer();
+
+      // Request V8 to perform a full GC and release memory back to the OS.
+      // Requires --expose-gc flag (set in start:prod script).
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
     }
   }
 

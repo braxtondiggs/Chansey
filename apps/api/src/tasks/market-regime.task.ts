@@ -57,7 +57,7 @@ export class MarketRegimeTask {
             delay: 3000
           },
           removeOnComplete: true,
-          removeOnFail: false
+          removeOnFail: 50
         }
       );
 

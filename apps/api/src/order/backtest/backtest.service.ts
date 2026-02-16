@@ -234,7 +234,7 @@ export class BacktestService implements OnModuleInit {
       await targetQueue.add('execute-backtest', jobPayload, {
         jobId: savedBacktest.id,
         removeOnComplete: true,
-        removeOnFail: false
+        removeOnFail: 50
       });
 
       return this.mapRunDetail(savedBacktest);
@@ -1122,7 +1122,7 @@ export class BacktestService implements OnModuleInit {
       await queue.add('execute-backtest', payload, {
         jobId: backtest.id,
         removeOnComplete: true,
-        removeOnFail: false
+        removeOnFail: 50
       });
 
       try {

@@ -239,6 +239,12 @@ export class BacktestProcessor extends WorkerHost {
       // Decrement active backtest count
       this.metricsService.decrementActiveBacktests(mode ?? 'historical');
       endTimer();
+
+      // Request V8 to perform a full GC and release memory back to the OS.
+      // Requires --expose-gc flag (set in start:prod script).
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
     }
   }
 

@@ -183,7 +183,7 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
     await queue.add('execute-backtest', payload, {
       jobId: backtest.id,
       removeOnComplete: true,
-      removeOnFail: false
+      removeOnFail: 50
     });
 
     const hasCheckpoint = !!backtest.checkpointState;

@@ -261,7 +261,7 @@
         <td>
           <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
         </td>
-        <td>{{ transaction.type.replace('_', ' ') }}</td>
+        <td>{{ formatType(transaction.type) }}</td>
         <td>${{ transaction.price | number: '1.2-2' }}</td>
         <td>{{ transaction.quantity | number: '1.2-8' }}</td>
         <td>

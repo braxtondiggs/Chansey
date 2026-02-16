@@ -8,6 +8,7 @@ import { OrderSyncService } from './../services/order-sync.service';
 
 import { toErrorInfo } from '../../shared/error.util';
 import { UsersService } from '../../users/users.service';
+import { OrderCleanupService } from '../services/order-cleanup.service';
 
 @Processor('order-queue')
 @Injectable()
@@ -17,6 +18,7 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('order-queue') private readonly orderQueue: Queue,
+    private readonly orderCleanupService: OrderCleanupService,
     private readonly orderSyncService: OrderSyncService,
     private readonly usersService: UsersService
   ) {
@@ -142,15 +144,20 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
       await job.updateProgress(10);
       this.logger.log('Starting order cleanup job');
 
-      // TODO: Implement actual cleanup logic (e.g., remove old orders, cancelled orders, etc.)
-      // For now, this is a placeholder that prevents the "Unknown job type" warning
+      await job.updateProgress(20);
+      const result = await this.orderCleanupService.cleanup();
+      await job.updateProgress(90);
+
+      this.logger.log(
+        `Order cleanup completed: ${result.deletedOrders} deleted, ` +
+          `${result.nulledPositionExitRefs} refs nulled, ${result.skippedActiveRefs} skipped`
+      );
 
       await job.updateProgress(100);
-      this.logger.log('Order cleanup job completed');
 
       return {
         success: true,
-        message: 'Cleanup job executed (placeholder implementation)',
+        ...result,
         timestamp: new Date().toISOString()
       };
     } catch (error: unknown) {

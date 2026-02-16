@@ -69,7 +69,7 @@ export class PipelineOrchestrationTask {
             delay: 60000 // 1 minute base delay
           },
           removeOnComplete: true,
-          removeOnFail: false // Keep failed jobs for inspection
+          removeOnFail: 50 // Keep last 50 failed jobs for inspection
         });
 
         this.logger.debug(`Queued pipeline orchestration for user ${user.id} with ${delay}ms delay`);
@@ -107,7 +107,7 @@ export class PipelineOrchestrationTask {
           delay: 60000
         },
         removeOnComplete: true,
-        removeOnFail: false
+        removeOnFail: 50
       });
 
       return { queued: 1 };

@@ -1318,6 +1318,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     };
 
     // Prices: 100, 120, 120, 110 → first sell wins, second sell loses
+    // Timestamps spaced 25h apart so positions satisfy min hold period (24h)
     const candles = [
       new OHLCCandle({
         coinId: 'BTC',
@@ -1332,7 +1333,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'e1',
-        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        timestamp: new Date('2024-01-02T01:00:00.000Z'),
         open: 100,
         high: 130,
         low: 95,
@@ -1342,7 +1343,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'e1',
-        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        timestamp: new Date('2024-01-03T02:00:00.000Z'),
         open: 120,
         high: 125,
         low: 115,
@@ -1352,7 +1353,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'e1',
-        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        timestamp: new Date('2024-01-04T03:00:00.000Z'),
         open: 120,
         high: 120,
         low: 105,
@@ -1380,7 +1381,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         initialCapital: 10000,
         tradingFee: 0,
         startDate: new Date('2024-01-01T00:00:00.000Z'),
-        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        endDate: new Date('2024-01-05T00:00:00.000Z'),
         algorithm: { id: 'algo-1' },
         configSnapshot: { parameters: {} }
       } as any,
@@ -1389,7 +1390,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         dataset: {
           id: 'dataset-sells',
           startAt: new Date('2024-01-01T00:00:00.000Z'),
-          endAt: new Date('2024-01-01T04:00:00.000Z')
+          endAt: new Date('2024-01-05T00:00:00.000Z')
         } as any,
         deterministicSeed: 'seed-sells',
         replaySpeed: ReplaySpeed.MAX_SPEED,
@@ -1437,6 +1438,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       })
     };
 
+    // Timestamps spaced 25h apart so positions satisfy min hold period (24h)
     const phase1Candles = [
       new OHLCCandle({
         coinId: 'BTC',
@@ -1451,7 +1453,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'e1',
-        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        timestamp: new Date('2024-01-02T01:00:00.000Z'),
         open: 100,
         high: 130,
         low: 95,
@@ -1461,7 +1463,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'e1',
-        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        timestamp: new Date('2024-01-03T02:00:00.000Z'),
         open: 120,
         high: 125,
         low: 115,
@@ -1471,7 +1473,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'e1',
-        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        timestamp: new Date('2024-01-04T03:00:00.000Z'),
         open: 120,
         high: 120,
         low: 105,
@@ -1508,7 +1510,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         initialCapital: 10000,
         tradingFee: 0,
         startDate: new Date('2024-01-01T00:00:00.000Z'),
-        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        endDate: new Date('2024-01-05T00:00:00.000Z'),
         algorithm: { id: 'algo-1' },
         configSnapshot: { parameters: {} }
       } as any,
@@ -1517,7 +1519,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         dataset: {
           id: 'dataset-resume',
           startAt: new Date('2024-01-01T00:00:00.000Z'),
-          endAt: new Date('2024-01-01T04:00:00.000Z')
+          endAt: new Date('2024-01-05T00:00:00.000Z')
         } as any,
         deterministicSeed: 'seed-resume',
         replaySpeed: ReplaySpeed.MAX_SPEED,
@@ -1571,7 +1573,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         initialCapital: 10000,
         tradingFee: 0,
         startDate: new Date('2024-01-01T00:00:00.000Z'),
-        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        endDate: new Date('2024-01-05T00:00:00.000Z'),
         algorithm: { id: 'algo-1' },
         configSnapshot: { parameters: {} }
       } as any,
@@ -1580,7 +1582,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         dataset: {
           id: 'dataset-resume',
           startAt: new Date('2024-01-01T00:00:00.000Z'),
-          endAt: new Date('2024-01-01T04:00:00.000Z')
+          endAt: new Date('2024-01-05T00:00:00.000Z')
         } as any,
         deterministicSeed: 'seed-resume',
         replaySpeed: ReplaySpeed.MAX_SPEED,

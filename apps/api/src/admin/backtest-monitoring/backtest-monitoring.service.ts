@@ -596,12 +596,16 @@ export class BacktestMonitoringService {
     const qb = this.signalRepo
       .createQueryBuilder('s')
       .select('COUNT(*)', 'totalSignals')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = '${SignalType.ENTRY}')`, 'entryCount')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = '${SignalType.EXIT}')`, 'exitCount')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = '${SignalType.ADJUSTMENT}')`, 'adjustmentCount')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = '${SignalType.RISK_CONTROL}')`, 'riskControlCount')
+      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :entryType)`, 'entryCount')
+      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :exitType)`, 'exitCount')
+      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :adjustmentType)`, 'adjustmentCount')
+      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :riskControlType)`, 'riskControlCount')
       .addSelect('AVG(s.confidence)', 'avgConfidence')
-      .where('s.backtestId IN (:...backtestIds)', { backtestIds });
+      .where('s.backtestId IN (:...backtestIds)', { backtestIds })
+      .setParameter('entryType', SignalType.ENTRY)
+      .setParameter('exitType', SignalType.EXIT)
+      .setParameter('adjustmentType', SignalType.ADJUSTMENT)
+      .setParameter('riskControlType', SignalType.RISK_CONTROL);
 
     const result = await qb.getRawOne();
 
@@ -642,10 +646,10 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.slug', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .where(`t2.type = '${TradeType.SELL}'`),
+            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
         't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
       )
@@ -688,12 +692,12 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.slug', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .where(`t2.type = '${TradeType.SELL}'`),
+            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
+        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.signalType');
@@ -726,12 +730,12 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.slug', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .where(`t2.type = '${TradeType.SELL}'`),
+            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
+        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.direction');
@@ -764,12 +768,12 @@ export class BacktestMonitoringService {
             .addSelect('t2.realizedPnL', 'realizedPnL')
             .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
             .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('bc.slug', 'instrument')
+            .addSelect('CAST(bc.id AS text)', 'instrument')
             .from(BacktestTrade, 't2')
             .leftJoin('t2.baseCoin', 'bc')
-            .where(`t2.type = '${TradeType.SELL}'`),
+            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
         't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
+        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.instrument')
@@ -796,9 +800,11 @@ export class BacktestMonitoringService {
       .select('COUNT(*)', 'totalTrades')
       .addSelect('SUM(t.totalValue)', 'totalVolume')
       .addSelect('SUM(t.fee)', 'totalFees')
-      .addSelect(`COUNT(*) FILTER (WHERE t.type = '${TradeType.BUY}')`, 'buyCount')
-      .addSelect(`COUNT(*) FILTER (WHERE t.type = '${TradeType.SELL}')`, 'sellCount')
-      .where('t.backtestId IN (:...backtestIds)', { backtestIds });
+      .addSelect(`COUNT(*) FILTER (WHERE t.type = :buyType)`, 'buyCount')
+      .addSelect(`COUNT(*) FILTER (WHERE t.type = :sellType)`, 'sellCount')
+      .where('t.backtestId IN (:...backtestIds)', { backtestIds })
+      .setParameter('buyType', TradeType.BUY)
+      .setParameter('sellType', TradeType.SELL);
 
     const result = await qb.getRawOne();
 
@@ -824,7 +830,7 @@ export class BacktestMonitoringService {
       .addSelect(`AVG(CASE WHEN t.realizedPnL < 0 THEN t.realizedPnL ELSE NULL END)`, 'avgLoss')
       .addSelect(`SUM(t.realizedPnL)`, 'totalRealizedPnL')
       .where('t.backtestId IN (:...backtestIds)', { backtestIds })
-      .andWhere(`t.type = '${TradeType.SELL}'`);
+      .andWhere('t.type = :sellType', { sellType: TradeType.SELL });
 
     const result = await qb.getRawOne();
 
@@ -960,14 +966,15 @@ export class BacktestMonitoringService {
       .leftJoin('t.quoteCoin', 'qc')
       .select(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
       .addSelect('COUNT(*)', 'tradeCount')
-      .addSelect(`SUM(t.realizedPnLPercent) FILTER (WHERE t.type = '${TradeType.SELL}')`, 'totalReturn')
+      .addSelect(`SUM(t.realizedPnLPercent) FILTER (WHERE t.type = :sellType)`, 'totalReturn')
       .addSelect(
-        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END) FILTER (WHERE t.type = '${TradeType.SELL}')`,
+        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END) FILTER (WHERE t.type = :sellType)`,
         'winRate'
       )
       .addSelect('SUM(t.totalValue)', 'totalVolume')
-      .addSelect(`SUM(t.realizedPnL) FILTER (WHERE t.type = '${TradeType.SELL}')`, 'totalPnL')
+      .addSelect(`SUM(t.realizedPnL) FILTER (WHERE t.type = :sellType)`, 'totalPnL')
       .where('t.backtestId IN (:...backtestIds)', { backtestIds })
+      .setParameter('sellType', TradeType.SELL)
       .groupBy('bc.symbol')
       .addGroupBy('qc.symbol')
       .orderBy('SUM(t.totalValue)', 'DESC')
