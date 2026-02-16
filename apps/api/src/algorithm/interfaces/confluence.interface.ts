@@ -26,8 +26,8 @@ export interface EMAIndicatorConfig extends IndicatorConfig {
  */
 export interface RSIIndicatorConfig extends IndicatorConfig {
   period: number; // Default: 14
-  buyThreshold: number; // Default: 40 (RSI < 40 = room to run up)
-  sellThreshold: number; // Default: 60 (RSI > 60 = room to fall)
+  buyThreshold: number; // Default: 48 (RSI > 48 = upward momentum, trend-following)
+  sellThreshold: number; // Default: 52 (RSI < 52 = weak momentum, trend-following)
 }
 
 /**
@@ -44,7 +44,7 @@ export interface MACDIndicatorConfig extends IndicatorConfig {
  */
 export interface ATRIndicatorConfig extends IndicatorConfig {
   period: number; // Default: 14
-  volatilityThresholdMultiplier: number; // Default: 1.5 (filter when ATR > avg * multiplier)
+  volatilityThresholdMultiplier: number; // Default: 2.0 (filter when ATR > avg * multiplier)
 }
 
 /**
@@ -53,8 +53,8 @@ export interface ATRIndicatorConfig extends IndicatorConfig {
 export interface BollingerBandsIndicatorConfig extends IndicatorConfig {
   period: number; // Default: 20
   stdDev: number; // Default: 2
-  buyThreshold: number; // Default: 0.2 (%B < 0.2 = near lower band = bullish)
-  sellThreshold: number; // Default: 0.8 (%B > 0.8 = near upper band = bearish)
+  buyThreshold: number; // Default: 0.55 (%B > 0.55 = pushing upper band, trend-following)
+  sellThreshold: number; // Default: 0.45 (%B < 0.45 = pushing lower band, trend-following)
 }
 
 /**
@@ -62,7 +62,8 @@ export interface BollingerBandsIndicatorConfig extends IndicatorConfig {
  */
 export interface ConfluenceConfig {
   // Core confluence settings
-  minConfluence: number; // 2-5, number of indicators that must agree
+  minConfluence: number; // 2-5, number of indicators that must agree for BUY
+  minSellConfluence: number; // Minimum indicators that must agree for SELL (default: minConfluence + 1)
   minConfidence: number; // 0-1, minimum confidence to generate signal
 
   // Individual indicator configurations

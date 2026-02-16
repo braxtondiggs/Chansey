@@ -26,9 +26,10 @@ import {
  * - Mean Reversion: Bollinger Bands (identify extremes)
  *
  * Signals are only generated when minConfluence indicators agree.
+ * SELL requires higher confluence than BUY (asymmetric) to reduce premature exits.
  *
- * BUY: EMA12 > EMA26 + RSI > 60 + MACD positive + ATR normal + BB %B > 0.8
- * SELL: EMA12 < EMA26 + RSI < 40 + MACD negative + ATR normal + BB %B < 0.2
+ * BUY (minConfluence=2): EMA12 > EMA26 + RSI > 50 + MACD positive + ATR normal + BB %B > 0.5
+ * SELL (minSellConfluence=3): EMA12 < EMA26 + RSI < 50 + MACD negative + ATR normal + BB %B < 0.5
  */
 @Injectable()
 export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
@@ -105,9 +106,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    * Get configuration with defaults
    */
   private getConfigWithDefaults(config: Record<string, unknown>): ConfluenceConfig {
+    const minConfluence = (config.minConfluence as number) ?? 2;
     return {
-      minConfluence: (config.minConfluence as number) ?? 3,
-      minConfidence: (config.minConfidence as number) ?? 0.65,
+      minConfluence,
+      minSellConfluence: (config.minSellConfluence as number) ?? Math.min(minConfluence + 1, 4),
+      minConfidence: (config.minConfidence as number) ?? 0.5,
 
       ema: {
         enabled: config.emaEnabled !== false,
@@ -118,8 +121,8 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       rsi: {
         enabled: config.rsiEnabled !== false,
         period: (config.rsiPeriod as number) ?? 14,
-        buyThreshold: (config.rsiBuyThreshold as number) ?? 55,
-        sellThreshold: (config.rsiSellThreshold as number) ?? 45
+        buyThreshold: (config.rsiBuyThreshold as number) ?? 48,
+        sellThreshold: (config.rsiSellThreshold as number) ?? 52
       },
 
       macd: {
@@ -132,15 +135,15 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       atr: {
         enabled: config.atrEnabled !== false,
         period: (config.atrPeriod as number) ?? 14,
-        volatilityThresholdMultiplier: (config.atrVolatilityMultiplier as number) ?? 1.5
+        volatilityThresholdMultiplier: (config.atrVolatilityMultiplier as number) ?? 2.0
       },
 
       bollingerBands: {
         enabled: config.bbEnabled !== false,
         period: (config.bbPeriod as number) ?? 20,
         stdDev: (config.bbStdDev as number) ?? 2,
-        buyThreshold: (config.bbBuyThreshold as number) ?? 0.7,
-        sellThreshold: (config.bbSellThreshold as number) ?? 0.3
+        buyThreshold: (config.bbBuyThreshold as number) ?? 0.55,
+        sellThreshold: (config.bbSellThreshold as number) ?? 0.45
       }
     };
   }
@@ -294,13 +297,14 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     }
 
     // Determine direction based on confluence
+    // Asymmetric thresholds: SELL requires higher confluence than BUY to reduce premature exits
     let direction: 'buy' | 'sell' | 'hold' = 'hold';
     let confluenceCount = 0;
 
     if (buyCount >= config.minConfluence && buyCount > sellCount && !isVolatilityFiltered) {
       direction = 'buy';
       confluenceCount = buyCount;
-    } else if (sellCount >= config.minConfluence && sellCount > buyCount && !isVolatilityFiltered) {
+    } else if (sellCount >= config.minSellConfluence && sellCount > buyCount && !isVolatilityFiltered) {
       direction = 'sell';
       confluenceCount = sellCount;
     }
@@ -498,20 +502,24 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     const effectiveAvg = avgHistogram > 0 ? avgHistogram : Math.abs(currentHistogram);
     const normalizedStrength = effectiveAvg > 0 ? Math.min(1, Math.abs(currentHistogram) / (effectiveAvg * 2)) : 0.5;
 
-    if (currentHistogram > 0 && histogramMomentum >= 0) {
+    // Momentum bonus: add strength if histogram direction and momentum agree
+    const momentumBonus =
+      (currentHistogram > 0 && histogramMomentum >= 0) || (currentHistogram < 0 && histogramMomentum <= 0) ? 0.15 : 0;
+
+    if (currentHistogram > 0) {
       return {
         name: 'MACD',
         signal: 'bullish',
-        strength: Math.min(1, normalizedStrength + 0.3),
-        reason: `Bullish oscillator: MACD histogram positive (${currentHistogram.toFixed(4)}) with upward momentum`,
+        strength: Math.min(1, normalizedStrength + 0.3 + momentumBonus),
+        reason: `Bullish oscillator: MACD histogram positive (${currentHistogram.toFixed(4)})${histogramMomentum >= 0 ? ' with upward momentum' : ''}`,
         values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
       };
-    } else if (currentHistogram < 0 && histogramMomentum <= 0) {
+    } else if (currentHistogram < 0) {
       return {
         name: 'MACD',
         signal: 'bearish',
-        strength: Math.min(1, normalizedStrength + 0.3),
-        reason: `Bearish oscillator: MACD histogram negative (${currentHistogram.toFixed(4)}) with downward momentum`,
+        strength: Math.min(1, normalizedStrength + 0.3 + momentumBonus),
+        reason: `Bearish oscillator: MACD histogram negative (${currentHistogram.toFixed(4)})${histogramMomentum <= 0 ? ' with downward momentum' : ''}`,
         values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
       };
     } else {
@@ -519,7 +527,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         name: 'MACD',
         signal: 'neutral',
         strength: 0.3,
-        reason: `Mixed oscillator: MACD histogram (${currentHistogram.toFixed(4)}) with conflicting momentum`,
+        reason: `Neutral oscillator: MACD histogram at zero`,
         values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
       };
     }
@@ -808,14 +816,22 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       // Core confluence settings
       minConfluence: {
         type: 'number',
+        default: 2,
+        min: 2,
+        max: 4,
+        description: 'Minimum number of directional indicators that must agree for BUY (2-4). ATR is a filter only.'
+      },
+      minSellConfluence: {
+        type: 'number',
         default: 3,
         min: 2,
         max: 4,
-        description: 'Minimum number of directional indicators that must agree (2-4). ATR is a filter only.'
+        description:
+          'Minimum number of directional indicators that must agree for SELL (2-4). Higher than minConfluence to reduce premature exits.'
       },
       minConfidence: {
         type: 'number',
-        default: 0.65,
+        default: 0.5,
         min: 0,
         max: 1,
         description: 'Minimum confidence required to generate signal'
@@ -831,16 +847,16 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       rsiPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'RSI calculation period' },
       rsiBuyThreshold: {
         type: 'number',
-        default: 55,
-        min: 45,
+        default: 48,
+        min: 40,
         max: 70,
         description: 'RSI threshold for bullish (RSI > threshold confirms upward momentum)'
       },
       rsiSellThreshold: {
         type: 'number',
-        default: 45,
+        default: 52,
         min: 30,
-        max: 55,
+        max: 60,
         description: 'RSI threshold for bearish (RSI < threshold confirms weak momentum)'
       },
 
@@ -855,7 +871,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       atrPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'ATR calculation period' },
       atrVolatilityMultiplier: {
         type: 'number',
-        default: 1.5,
+        default: 2.0,
         min: 1.0,
         max: 3.0,
         description: 'ATR threshold multiplier (filter when ATR > avg * multiplier)'
@@ -867,16 +883,16 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       bbStdDev: { type: 'number', default: 2, min: 1, max: 3, description: 'Standard deviation multiplier' },
       bbBuyThreshold: {
         type: 'number',
-        default: 0.7,
-        min: 0.5,
+        default: 0.55,
+        min: 0.3,
         max: 1,
         description: '%B threshold for bullish (> value = price pushing upper band, confirms uptrend)'
       },
       bbSellThreshold: {
         type: 'number',
-        default: 0.3,
+        default: 0.45,
         min: 0,
-        max: 0.5,
+        max: 0.7,
         description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
       }
     };
@@ -910,6 +926,15 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       this.logger.warn(
         `minConfluence (${config.minConfluence}) exceeds enabled directional indicators (${directionalCount}). ` +
           `No signals can be generated. Either reduce minConfluence or enable more indicators.`
+      );
+      return false;
+    }
+
+    // Validate minSellConfluence doesn't exceed available directional indicators
+    if (config.minSellConfluence > directionalCount) {
+      this.logger.warn(
+        `minSellConfluence (${config.minSellConfluence}) exceeds enabled directional indicators (${directionalCount}). ` +
+          `No SELL signals can be generated. Either reduce minSellConfluence or enable more indicators.`
       );
       return false;
     }
