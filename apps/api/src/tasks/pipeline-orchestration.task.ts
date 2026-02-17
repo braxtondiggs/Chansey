@@ -21,6 +21,8 @@ import {
 } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
+import { toErrorInfo } from '../shared/error.util';
+
 @Injectable()
 export class PipelineOrchestrationTask {
   private readonly logger = new Logger(PipelineOrchestrationTask.name);
@@ -74,8 +76,9 @@ export class PipelineOrchestrationTask {
       }
 
       this.logger.log(`Successfully queued ${eligibleUsers.length} pipeline orchestration jobs`);
-    } catch (error) {
-      this.logger.error(`Failed to schedule pipeline orchestration: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to schedule pipeline orchestration: ${err.message}`, err.stack);
     }
   }
 

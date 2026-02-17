@@ -336,7 +336,7 @@ export class AuditQueryService {
    * Generate event summary for timeline
    */
   private generateEventSummary(event: AuditLog & { category: string }): string {
-    const summaries = {
+    const summaries: Record<string, string> = {
       STRATEGY_CREATED: 'Strategy configuration created',
       STRATEGY_MODIFIED: 'Strategy configuration modified',
       BACKTEST_COMPLETED: `Backtest completed with ${event.afterState?.totalTrades || 'N/A'} trades`,

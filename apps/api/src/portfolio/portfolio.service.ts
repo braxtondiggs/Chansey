@@ -101,7 +101,7 @@ export class PortfolioService {
           `Skipping historical price job for coin ${portfolioDto.coinId}: only ${candleCount} OHLC candles in database (minimum 100 required)`
         );
       }
-    } catch (error) {
+    } catch (error: unknown) {
       // Log error but don't fail the portfolio creation
       this.logger.error(
         `Failed to queue historical price job for coin ${portfolioDto.coinId}: ${error instanceof Error ? error.message : 'Unknown error'}`,

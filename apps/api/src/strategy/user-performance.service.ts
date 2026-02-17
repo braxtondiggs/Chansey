@@ -7,6 +7,7 @@ import { UserStrategyPosition } from './entities/user-strategy-position.entity';
 import { PositionTrackingService } from './position-tracking.service';
 
 import { Order, OrderSide, OrderStatus } from '../order/order.entity';
+import { toErrorInfo } from '../shared/error.util';
 
 /**
  * Tracks and calculates performance metrics for users' algorithmic trading.
@@ -62,8 +63,9 @@ export class UserPerformanceService {
         activePositions,
         totalCapitalDeployed
       };
-    } catch (error) {
-      this.logger.error(`Failed to get algo performance for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get algo performance for user ${userId}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -145,8 +147,9 @@ export class UserPerformanceService {
       }
 
       return result;
-    } catch (error) {
-      this.logger.error(`Failed to get historical performance for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get historical performance for user ${userId}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -185,8 +188,9 @@ export class UserPerformanceService {
 
       // Sort by total P&L descending
       return strategyPerformance.sort((a, b) => b.totalPnL - a.totalPnL);
-    } catch (error) {
-      this.logger.error(`Failed to get performance by strategy for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get performance by strategy for user ${userId}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -284,8 +288,9 @@ export class UserPerformanceService {
       if (capitalDeployed === 0) return 0;
 
       return (totalPnL / capitalDeployed) * 100;
-    } catch (error) {
-      this.logger.error(`Failed to calculate monthly return: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to calculate monthly return: ${err.message}`);
       return 0;
     }
   }
@@ -324,8 +329,9 @@ export class UserPerformanceService {
       if (capitalDeployed === 0) return 0;
 
       return (totalPnL / capitalDeployed) * 100;
-    } catch (error) {
-      this.logger.error(`Failed to calculate weekly return: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to calculate weekly return: ${err.message}`);
       return 0;
     }
   }

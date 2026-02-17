@@ -292,7 +292,7 @@ export class AuditService {
       entityType: 'BacktestRun',
       entityId: backtestRunId,
       userId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         strategyConfigId,
         totalReturn: results.totalReturn,
@@ -319,7 +319,7 @@ export class AuditService {
       entityType: 'StrategyConfig',
       entityId: strategyConfigId,
       userId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         canPromote: evaluation.canPromote,
         gatesPassed: evaluation.gatesPassed,
@@ -377,7 +377,7 @@ export class AuditService {
       eventType: AuditEventType.RISK_BREACH,
       entityType: 'Deployment',
       entityId: deploymentId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: details,
       metadata: { breachType },
       correlationId
@@ -399,7 +399,7 @@ export class AuditService {
       eventType: AuditEventType.DRIFT_DETECTED,
       entityType: 'Deployment',
       entityId: deploymentId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         driftAlertId,
         driftType,
@@ -477,9 +477,9 @@ export class AuditService {
         entityId: currentEntry.entityId,
         timestamp: currentEntry.timestamp,
         integrity: currentEntry.integrity,
-        chainHash: currentEntry.chainHash
+        chainHash: currentEntry.chainHash ?? undefined
       },
-      previousEntry ? { chainHash: previousEntry.chainHash } : null
+      previousEntry?.chainHash ? { chainHash: previousEntry.chainHash } : null
     );
   }
 
@@ -518,7 +518,7 @@ export class AuditService {
         entityId: entry.entityId,
         timestamp: entry.timestamp,
         integrity: entry.integrity,
-        chainHash: entry.chainHash
+        chainHash: entry.chainHash ?? undefined
       }))
     );
 

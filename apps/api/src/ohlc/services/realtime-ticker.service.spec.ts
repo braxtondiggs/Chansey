@@ -212,7 +212,7 @@ describe('RealtimeTickerService', () => {
       fetchTicker: jest.fn().mockResolvedValue({ last: 42 })
     };
 
-    exchangeManager.getPublicClient.mockImplementation(async (slug: string) => {
+    exchangeManager.getPublicClient.mockImplementation(async (slug?: string) => {
       if (slug === 'binance_us') return binanceClient as any;
       if (slug === 'gdax') return gdaxClient as any;
       return krakenClient as any;

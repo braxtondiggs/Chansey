@@ -3,8 +3,9 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
-import { CoinGeckoClient, ExchangeId as GeckoExchange } from 'coingecko-api-v3';
+import { CoinGeckoClient } from 'coingecko-api-v3';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { Exchange } from '../exchange.entity';
 import { ExchangeService } from '../exchange.service';
 
@@ -71,8 +72,9 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -82,7 +84,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log('Starting Exchange Sync');
       await job.updateProgress(10);
       const existingExchanges = await this.exchange.getExchanges();
-      let allApiExchanges = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let allApiExchanges: any[] = [];
       let page = 1;
 
       // Fetch all pages
@@ -145,16 +148,17 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log(`Processing ${allApiExchanges.length} exchanges after deduplication`);
       await job.updateProgress(50);
 
-      const mapExchange = (ex: GeckoExchange, existing?: Exchange) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapExchange = (ex: any, existing?: Exchange) =>
         new Exchange({
           ...existing,
           name: ex.name,
-          slug: (ex as any).id,
+          slug: ex.id,
           url: ex.url,
           image: ex.image,
-          country: ex.country,
+          country: ex.country ?? undefined,
           yearEstablished: ex.year_established,
-          trustScore: ex.trust_score,
+          trustScore: ex.trust_score ?? undefined,
           trustScoreRank: ex.trust_score_rank,
           tradeVolume24HBtc: ex.trade_volume_24h_btc,
           tradeVolume24HNormalized: ex.trade_volume_24h_btc_normalized,
@@ -195,7 +199,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
           this.logger.log(
             `Added ${insertedExchanges.length} exchanges: ${insertedExchanges.map(({ name }) => name).join(', ')}`
           );
-        } catch (err) {
+        } catch (insertError: unknown) {
+          const err = toErrorInfo(insertError);
           this.logger.error(`Error inserting new exchanges: ${err.message}`);
         }
       }
@@ -203,7 +208,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
         try {
           await this.exchange.updateMany(updatedExchanges);
           this.logger.log(`Updated ${updatedExchanges.length} exchanges`);
-        } catch (err) {
+        } catch (updateError: unknown) {
+          const err = toErrorInfo(updateError);
           this.logger.error(`Error updating exchanges: ${err.message}`);
         }
       }
@@ -211,7 +217,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
         try {
           await this.exchange.removeMany(missingExchanges);
           this.logger.log(`Removed ${missingExchanges.length} obsolete exchanges`);
-        } catch (err) {
+        } catch (removeError: unknown) {
+          const err = toErrorInfo(removeError);
           this.logger.error(`Error removing exchanges: ${err.message}`);
         }
       }
@@ -222,8 +229,9 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
         removed: missingExchanges.length,
         total: allApiExchanges.length
       };
-    } catch (e) {
-      this.logger.error('Exchange sync failed:', e);
+    } catch (e: unknown) {
+      const errInfo = toErrorInfo(e);
+      this.logger.error(`Exchange sync failed: ${errInfo.message}`, errInfo.stack);
       // BullMQ handles failed jobs automatically
       throw e;
     } finally {

@@ -56,7 +56,7 @@ export class TickerPairService {
     });
   }
 
-  async getBasePairsById(id: string): Promise<TickerPairs> {
+  async getBasePairsById(id: string): Promise<TickerPairs | null> {
     return this.pairs.findOne({
       where: { id },
       relations: ['baseAsset', 'quoteAsset']

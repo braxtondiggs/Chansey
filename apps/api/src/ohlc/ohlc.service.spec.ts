@@ -1,10 +1,10 @@
-import { Repository } from 'typeorm';
+import { ObjectLiteral, Repository } from 'typeorm';
 
 import { ExchangeSymbolMap } from './exchange-symbol-map.entity';
 import { OHLCCandle } from './ohlc-candle.entity';
 import { OHLCService } from './ohlc.service';
 
-type MockRepo<T> = jest.Mocked<Repository<T>>;
+type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
 const createQueryBuilder = () => ({
   select: jest.fn().mockReturnThis(),

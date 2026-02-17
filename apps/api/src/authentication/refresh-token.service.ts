@@ -48,7 +48,7 @@ export class RefreshTokenService {
         refreshToken: newRefreshToken,
         rememberMe: rememberMe
       };
-    } catch (error) {
+    } catch (error: unknown) {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }

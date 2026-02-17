@@ -80,7 +80,7 @@ export class ExchangeKey {
     if (!this.apiKey || this.apiKey === this.decryptedApiKey) return;
     const iv = randomBytes(16);
     const salt = randomBytes(16);
-    const key = (await promisify(scrypt)(process.env.JWT_SECRET, salt, 32)) as Buffer;
+    const key = (await promisify(scrypt)(process.env.JWT_SECRET ?? '', salt, 32)) as Buffer;
     const cipher = createCipheriv('aes-256-cbc', key, iv);
     this.apiKey = `${iv.toString('hex')}:${salt.toString('hex')}:${Buffer.concat([
       cipher.update(this.apiKey),
@@ -94,7 +94,7 @@ export class ExchangeKey {
     if (!this.secretKey || this.secretKey === this.decryptedSecretKey) return;
     const iv = randomBytes(16);
     const salt = randomBytes(16);
-    const key = (await promisify(scrypt)(process.env.JWT_SECRET, salt, 32)) as Buffer;
+    const key = (await promisify(scrypt)(process.env.JWT_SECRET ?? '', salt, 32)) as Buffer;
     const cipher = createCipheriv('aes-256-cbc', key, iv);
     this.secretKey = `${iv.toString('hex')}:${salt.toString('hex')}:${Buffer.concat([
       cipher.update(this.secretKey),
@@ -107,7 +107,7 @@ export class ExchangeKey {
     const [ivs, salts, apiKey] = this.apiKey.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
-    const key = scryptSync(process.env.JWT_SECRET, salt, 32);
+    const key = scryptSync(process.env.JWT_SECRET ?? '', salt, 32);
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(apiKey, 'hex'), decipher.final()]).toString();
@@ -118,7 +118,7 @@ export class ExchangeKey {
     const [ivs, salts, secretKey] = this.secretKey.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
-    const key = scryptSync(process.env.JWT_SECRET, salt, 32);
+    const key = scryptSync(process.env.JWT_SECRET ?? '', salt, 32);
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(secretKey, 'hex'), decipher.final()]).toString();

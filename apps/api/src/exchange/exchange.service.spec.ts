@@ -62,7 +62,7 @@ describe('ExchangeService', () => {
 
   it('gets exchanges with supported filtering and removes nulls', async () => {
     exchangeRepository.find.mockResolvedValueOnce([
-      { id: '1', name: 'Binance', supported: true, description: null } as Exchange
+      { id: '1', name: 'Binance', supported: true, description: null } as unknown as Exchange
     ]);
 
     const result = await service.getExchanges({ supported: true });

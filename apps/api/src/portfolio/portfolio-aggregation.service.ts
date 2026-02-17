@@ -80,7 +80,7 @@ export class PortfolioAggregationService {
           priceMap.set(symbol, price);
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.warn(
         `Failed to fetch current prices, will fall back to avg prices: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -176,7 +176,7 @@ export class PortfolioAggregationService {
         realizedPnL: totalRealizedPnL.toNumber(),
         unrealizedPnL: totalUnrealizedPnL.toNumber()
       };
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
         `Failed to get aggregated portfolio for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined
@@ -204,7 +204,7 @@ export class PortfolioAggregationService {
         if (!positionsByStrategy.has(strategyId)) {
           positionsByStrategy.set(strategyId, []);
         }
-        positionsByStrategy.get(strategyId).push(position);
+        positionsByStrategy.get(strategyId)?.push(position);
       }
 
       // Calculate P&L per strategy from already-fetched positions (no extra DB calls)
@@ -244,7 +244,7 @@ export class PortfolioAggregationService {
       }
 
       return breakdown;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
         `Failed to get positions by strategy for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined
@@ -280,7 +280,7 @@ export class PortfolioAggregationService {
         percentage: new Decimal(position.currentValue).div(portfolio.totalValue).times(100).toNumber(),
         quantity: position.quantity
       }));
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
         `Failed to get allocation breakdown for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined

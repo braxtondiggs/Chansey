@@ -52,7 +52,7 @@ export class OrderValidationService {
   /**
    * Transform CCXT market info into Binance-compatible format
    */
-  transformMarketToSymbolInfo(market: ccxt.Market) {
+  transformMarketToSymbolInfo(market: ccxt.MarketInterface) {
     return {
       symbol: market.id,
       status: market.active ? 'TRADING' : 'BREAK',

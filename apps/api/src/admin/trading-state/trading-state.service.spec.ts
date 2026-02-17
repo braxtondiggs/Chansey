@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { ObjectLiteral, Repository } from 'typeorm';
 
 import { AuditEventType } from '@chansey/api-interfaces';
 
@@ -15,7 +15,7 @@ import { Order, OrderStatus } from '../../order/order.entity';
 import { OrderService } from '../../order/order.service';
 import { DeploymentService } from '../../strategy/deployment.service';
 
-type MockRepo<T> = jest.Mocked<Repository<T>>;
+type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
 const createTradingState = (overrides: Partial<TradingState> = {}): TradingState => {
   const now = new Date();

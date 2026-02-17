@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import * as ccxt from 'ccxt';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { OrderStatus, OrderType } from '../order.entity';
 
 interface OrderInfo {
@@ -188,8 +189,9 @@ export class OrderCalculationService {
       }
 
       return { base: marketSymbol.toUpperCase(), quote: '' };
-    } catch (error) {
-      this.logger.error(`Failed to extract coin symbols from ${marketSymbol}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to extract coin symbols from ${marketSymbol}: ${err.message}`);
       return { base: marketSymbol.toUpperCase(), quote: '' };
     }
   }

@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../exchange/exchange.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 import { CoinService } from '../coin.service';
 
@@ -127,8 +128,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       this.logger.log(`Job ${job.id} completed successfully`);
       return result;
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -187,8 +189,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
             // Apply standard rate limiting to avoid CoinGecko API issues
             await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
             page++;
-          } catch (tickerError) {
-            this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${tickerError.message}`);
+          } catch (tickerError: unknown) {
+            const err = toErrorInfo(tickerError);
+            this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
             // If we're on the first page and encounter an error, break out completely
             if (page === 1) break;
 
@@ -197,8 +200,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
             continue;
           }
         }
-      } catch (error) {
-        this.logger.error(`Error getting tickers for exchange ${exchange.name}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error getting tickers for exchange ${exchange.name}: ${err.message}`);
         continue; // Continue with next exchange
       }
     }
@@ -237,7 +241,10 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log(`Found ${usedCoinSlugs.size} coins used in any ticker pairs`);
 
       const newCoins = geckoCoins
-        .filter((coin) => !existingCoinsMap.has(coin.id) && usedCoinSlugs.has(coin.id))
+        .filter(
+          (coin): coin is typeof coin & { id: string; symbol: string; name: string } =>
+            !!coin.id && !!coin.symbol && !!coin.name && !existingCoinsMap.has(coin.id) && usedCoinSlugs.has(coin.id)
+        )
         .map(({ id: slug, symbol, name }) => ({
           slug,
           symbol: symbol.toLowerCase(),
@@ -247,14 +254,17 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       // Find coins to update (both in CoinGecko and our DB with changed data)
       const coinsToUpdate = [];
       for (const geckoCoin of geckoCoins) {
+        if (!geckoCoin.id) continue;
         const existingCoin = existingCoinsMap.get(geckoCoin.id);
         if (existingCoin) {
+          const geckoSymbol = geckoCoin.symbol?.toLowerCase() ?? '';
+          const geckoName = geckoCoin.name ?? '';
           // Check if basic data needs update
-          if (existingCoin.symbol !== geckoCoin.symbol.toLowerCase() || existingCoin.name !== geckoCoin.name) {
+          if (existingCoin.symbol !== geckoSymbol || existingCoin.name !== geckoName) {
             coinsToUpdate.push({
               id: existingCoin.id,
-              name: geckoCoin.name,
-              symbol: geckoCoin.symbol.toLowerCase()
+              name: geckoName,
+              symbol: geckoSymbol
             });
           }
         }
@@ -262,7 +272,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       // Find coins to remove (coins in our DB but no longer in CoinGecko)
       this.logger.log('Identifying coins for removal...');
-      const geckoCoinsSet = new Set(geckoCoins.map((coin) => coin.id));
+      const geckoCoinsSet = new Set(geckoCoins.map((coin) => coin.id).filter((id): id is string => !!id));
       const missingFromGeckoCoins = existingCoins.filter((coin) => !geckoCoinsSet.has(coin.slug));
       const missingFromGeckoIds = missingFromGeckoCoins.map((coin) => coin.id);
 
@@ -299,8 +309,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
             try {
               await this.coin.update(id, updates);
               return { success: true };
-            } catch (error) {
-              this.logger.error(`Failed to update coin ${id}: ${error.message}`);
+            } catch (error: unknown) {
+              const err = toErrorInfo(error);
+              this.logger.error(`Failed to update coin ${id}: ${err.message}`);
               return { success: false };
             }
           })
@@ -332,8 +343,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
         removed: uniqueCoinsToRemove.length,
         total: existingCoins.length + newCoins.length - uniqueCoinsToRemove.length
       };
-    } catch (e) {
-      this.logger.error('Coin sync failed:', e);
+    } catch (e: unknown) {
+      const errInfo = toErrorInfo(e);
+      this.logger.error(`Coin sync failed: ${errInfo.message}`, errInfo.stack);
       throw e;
     } finally {
       await job.updateProgress(100); // Job complete
@@ -363,10 +375,12 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       const allCoins = await this.coin.getCoins();
 
       // Add trending rank information to coins
-      for (const trendingCoin of trendingResponse.coins) {
-        const existingCoin = allCoins.find((coin) => coin.slug === trendingCoin.item.id);
+      for (const trendingCoin of trendingResponse.coins ?? []) {
+        const itemId = trendingCoin.item?.id;
+        if (!itemId) continue;
+        const existingCoin = allCoins.find((coin) => coin.slug === itemId);
         if (existingCoin) {
-          existingCoin.geckoRank = trendingCoin.item.score;
+          existingCoin.geckoRank = trendingCoin.item?.score;
         }
       }
 
@@ -388,28 +402,30 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                 tickers: false
               });
 
+              const md = coin.market_data;
+
               await this.coin.update(id, {
-                description: coin.description.en,
-                image: coin.image.large || coin.image.small || coin.image.thumb,
-                genesis: coin.genesis_date,
-                totalSupply: sanitizeNumericValue(coin.market_data.total_supply, {
+                description: coin.description?.en ?? null,
+                image: coin.image?.large ?? coin.image?.small ?? coin.image?.thumb ?? null,
+                genesis: coin.genesis_date ?? null,
+                totalSupply: sanitizeNumericValue(md?.total_supply, {
                   fieldName: `${symbol}.totalSupply`,
                   allowNegative: false
                 }),
-                totalVolume: sanitizeNumericValue(coin.market_data.total_volume.usd, {
+                totalVolume: sanitizeNumericValue(md?.total_volume?.usd, {
                   fieldName: `${symbol}.totalVolume`,
                   allowNegative: false
                 }),
-                circulatingSupply: sanitizeNumericValue(coin.market_data.circulating_supply, {
+                circulatingSupply: sanitizeNumericValue(md?.circulating_supply, {
                   fieldName: `${symbol}.circulatingSupply`,
                   allowNegative: false
                 }),
-                maxSupply: sanitizeNumericValue(coin.market_data.max_supply, {
+                maxSupply: sanitizeNumericValue(md?.max_supply, {
                   fieldName: `${symbol}.maxSupply`,
                   allowNegative: false
                 }),
-                marketRank: coin.market_cap_rank,
-                marketCap: sanitizeNumericValue(coin.market_data.market_cap.usd, {
+                marketRank: coin.market_cap_rank ?? null,
+                marketCap: sanitizeNumericValue(md?.market_cap?.usd, {
                   fieldName: `${symbol}.marketCap`,
                   allowNegative: false
                 }),
@@ -444,72 +460,73 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
                   fieldName: `${symbol}.sentimentDown`,
                   allowNegative: false
                 }),
-                ath: sanitizeNumericValue(coin.market_data.ath.usd, {
+                ath: sanitizeNumericValue(md?.ath?.usd, {
                   maxIntegerDigits: 17,
                   fieldName: `${symbol}.ath`,
                   allowNegative: false
                 }),
-                atl: sanitizeNumericValue(coin.market_data.atl.usd, {
+                atl: sanitizeNumericValue(md?.atl?.usd, {
                   maxIntegerDigits: 17,
                   fieldName: `${symbol}.atl`,
                   allowNegative: false
                 }),
-                athDate: coin.market_data.ath_date.usd,
-                atlDate: coin.market_data.atl_date.usd,
-                athChange: sanitizeNumericValue(coin.market_data.ath_change_percentage.usd, {
+                athDate: md?.ath_date?.usd ?? null,
+                atlDate: md?.atl_date?.usd ?? null,
+                athChange: sanitizeNumericValue(md?.ath_change_percentage?.usd, {
                   maxIntegerDigits: 4,
                   fieldName: `${symbol}.athChange`
                 }),
-                atlChange: sanitizeNumericValue(coin.market_data.atl_change_percentage.usd, {
+                atlChange: sanitizeNumericValue(md?.atl_change_percentage?.usd, {
                   maxIntegerDigits: 9,
                   fieldName: `${symbol}.atlChange`
                 }),
-                priceChange24h: sanitizeNumericValue(coin.market_data.price_change_24h, {
+                priceChange24h: sanitizeNumericValue(md?.price_change_24h, {
                   maxIntegerDigits: 17,
                   fieldName: `${symbol}.priceChange24h`
                 }),
-                priceChangePercentage24h: sanitizeNumericValue(coin.market_data.price_change_percentage_24h, {
+                priceChangePercentage24h: sanitizeNumericValue(md?.price_change_percentage_24h, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage24h`
                 }),
-                priceChangePercentage7d: sanitizeNumericValue(coin.market_data.price_change_percentage_7d, {
+                priceChangePercentage7d: sanitizeNumericValue(md?.price_change_percentage_7d, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage7d`
                 }),
-                priceChangePercentage14d: sanitizeNumericValue(coin.market_data.price_change_percentage_14d, {
+                priceChangePercentage14d: sanitizeNumericValue(md?.price_change_percentage_14d, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage14d`
                 }),
-                priceChangePercentage30d: sanitizeNumericValue(coin.market_data.price_change_percentage_30d, {
+                priceChangePercentage30d: sanitizeNumericValue(md?.price_change_percentage_30d, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage30d`
                 }),
-                priceChangePercentage60d: sanitizeNumericValue(coin.market_data.price_change_percentage_60d, {
+                priceChangePercentage60d: sanitizeNumericValue(md?.price_change_percentage_60d, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage60d`
                 }),
-                priceChangePercentage200d: sanitizeNumericValue(coin.market_data.price_change_percentage_200d, {
+                priceChangePercentage200d: sanitizeNumericValue(md?.price_change_percentage_200d, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage200d`
                 }),
-                priceChangePercentage1y: sanitizeNumericValue(coin.market_data.price_change_percentage_1y, {
+                priceChangePercentage1y: sanitizeNumericValue(md?.price_change_percentage_1y, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.priceChangePercentage1y`
                 }),
-                marketCapChange24h: sanitizeNumericValue(coin.market_data.market_cap_change_24h, {
+                marketCapChange24h: sanitizeNumericValue(md?.market_cap_change_24h, {
                   fieldName: `${symbol}.marketCapChange24h`
                 }),
-                marketCapChangePercentage24h: sanitizeNumericValue(coin.market_data.market_cap_change_percentage_24h, {
+                marketCapChangePercentage24h: sanitizeNumericValue(md?.market_cap_change_percentage_24h, {
                   maxIntegerDigits: 5,
                   fieldName: `${symbol}.marketCapChangePercentage24h`
                 }),
-                geckoLastUpdatedAt: coin.market_data.last_updated
+                geckoLastUpdatedAt: md?.last_updated ?? null
               });
               this.logger.debug(`Successfully updated ${symbol}`);
               return { success: true };
-            } catch (error) {
-              this.logger.error(`Failed to update ${symbol}: ${error.message}`);
-              return { success: false, error: error.message };
+            } catch (error: unknown) {
+              const err = toErrorInfo(error);
+              this.logger.error(`Failed to update ${symbol}: ${err.message}`);
+              return { success: false, error: err.message };
             }
           })
         );
@@ -536,8 +553,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
         updatedSuccessfully: updatedCount,
         errors: errorCount
       };
-    } catch (e) {
-      this.logger.error('Failed to process coin details:', e);
+    } catch (e: unknown) {
+      const errInfo = toErrorInfo(e);
+      this.logger.error(`Failed to process coin details: ${errInfo.message}`, errInfo.stack);
       throw e;
     }
   }

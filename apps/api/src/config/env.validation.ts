@@ -132,7 +132,7 @@ export function validateEnv(config: Record<string, unknown>): Env {
 
   try {
     return envSchema.parse(config);
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       const missingVars: string[] = [];
       const invalidVars: string[] = [];

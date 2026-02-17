@@ -163,7 +163,7 @@ export class AlgorithmDetailComponent {
 
       // Refresh algorithm data to update metrics
       this.queries.invalidateAlgorithmQueries(this.algorithmId());
-    } catch (error) {
+    } catch (error: unknown) {
       this.messageService.add({
         severity: 'error',
         summary: 'Execution Failed',

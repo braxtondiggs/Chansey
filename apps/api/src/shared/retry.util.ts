@@ -163,7 +163,7 @@ export async function withRetry<T>(operation: () => Promise<T>, options: RetryOp
         attempts,
         totalDelayMs
       };
-    } catch (error) {
+    } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
       // Check if we should retry

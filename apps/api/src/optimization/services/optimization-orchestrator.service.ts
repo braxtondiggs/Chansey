@@ -4,7 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type FindOptionsWhere, type QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { GridSearchService } from './grid-search.service';
 
@@ -13,6 +13,7 @@ import { BacktestEngine, OptimizationBacktestConfig } from '../../order/backtest
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
+import { toErrorInfo } from '../../shared/error.util';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { OptimizationResult, WindowResult } from '../entities/optimization-result.entity';
 import { OptimizationProgressDetails, OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
@@ -332,10 +333,11 @@ export class OptimizationOrchestratorService {
 
       // Finalize run
       await this.finalizeOptimization(run, bestScore, bestParameters, baselineScore);
-    } catch (error) {
-      this.logger.error(`Optimization run ${runId} failed: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Optimization run ${runId} failed: ${err.message}`);
       run.status = OptimizationStatus.FAILED;
-      run.errorMessage = error.message;
+      run.errorMessage = err.message;
       run.completedAt = new Date();
       await this.optimizationRunRepository.save(run);
       throw error;
@@ -480,8 +482,9 @@ export class OptimizationOrchestratorService {
         tradeCount: result.tradeCount,
         downsideDeviation: result.downsideDeviation
       };
-    } catch (error) {
-      throw new Error(`Backtest failed for ${startDate.toISOString()}-${endDate.toISOString()}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      throw new Error(`Backtest failed for ${startDate.toISOString()}-${endDate.toISOString()}: ${err.message}`);
     }
   }
 
@@ -639,7 +642,7 @@ export class OptimizationOrchestratorService {
     await this.optimizationRunRepository.update(run.id, {
       combinationsTested,
       progressDetails
-    });
+    } as QueryDeepPartialEntity<OptimizationRun>);
   }
 
   /**
@@ -660,7 +663,7 @@ export class OptimizationOrchestratorService {
     // Update run
     run.status = OptimizationStatus.COMPLETED;
     run.bestScore = bestScore;
-    run.bestParameters = bestParameters;
+    run.bestParameters = bestParameters ?? {};
     run.baselineScore = baselineScore;
     run.improvement = Math.round(improvement * 100) / 100;
     run.completedAt = new Date();
@@ -669,13 +672,13 @@ export class OptimizationOrchestratorService {
 
     // Mark best result
     if (bestParameters) {
-      await this.optimizationResultRepository.update(
-        {
-          optimizationRunId: run.id,
-          parameters: bestParameters as any
-        },
-        { isBest: true }
-      );
+      await this.optimizationResultRepository
+        .createQueryBuilder()
+        .update(OptimizationResult)
+        .set({ isBest: true })
+        .where('optimizationRunId = :runId', { runId: run.id })
+        .andWhere('parameters = :params::jsonb', { params: JSON.stringify(bestParameters) })
+        .execute();
     }
 
     this.logger.log(
@@ -831,7 +834,7 @@ export class OptimizationOrchestratorService {
    * List optimization runs for a strategy
    */
   async listOptimizationRuns(strategyConfigId: string, status?: OptimizationStatus): Promise<OptimizationRun[]> {
-    const where: any = { strategyConfigId };
+    const where: FindOptionsWhere<OptimizationRun> = { strategyConfigId };
     if (status) {
       where.status = status;
     }

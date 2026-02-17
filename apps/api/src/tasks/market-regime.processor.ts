@@ -5,6 +5,8 @@ import { Job } from 'bullmq';
 
 import { MarketRegimeTask } from './market-regime.task';
 
+import { toErrorInfo } from '../shared/error.util';
+
 @Injectable()
 @Processor('regime-check-queue')
 export class MarketRegimeProcessor extends WorkerHost {
@@ -26,11 +28,12 @@ export class MarketRegimeProcessor extends WorkerHost {
 
       const duration = Date.now() - startTime;
       this.logger.log(`Regime check job ${job.id} completed for ${asset} in ${duration}ms`);
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       const duration = Date.now() - startTime;
       this.logger.error(
-        `Regime check job ${job.id} failed for ${asset} after ${duration}ms: ${error.message}`,
-        error.stack
+        `Regime check job ${job.id} failed for ${asset} after ${duration}ms: ${err.message}`,
+        err.stack
       );
       throw error;
     }

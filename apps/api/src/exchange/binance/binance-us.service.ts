@@ -6,8 +6,10 @@ import * as ccxt from 'ccxt';
 import * as https from 'https';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
+import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -17,6 +19,7 @@ export class BinanceUSService extends BaseExchangeService {
   protected readonly exchangeId: keyof typeof ccxt = 'binanceus';
   protected readonly apiKeyConfigName = 'BINANCE_API_KEY';
   protected readonly apiSecretConfigName = 'BINANCE_API_SECRET';
+  readonly quoteAsset = 'USDT';
 
   constructor(
     configService?: ConfigService,
@@ -47,24 +50,24 @@ export class BinanceUSService extends BaseExchangeService {
         type: 'spot' // Ensure we're getting spot account balances
       });
 
-      const balances = Object.entries(balanceData.total).map(([asset, total]) => {
-        const free = balanceData.free[asset]?.toString() || '0';
-        const locked = (parseFloat(total.toString()) - parseFloat(free)).toString();
-        return {
-          asset,
-          free,
-          locked
-        };
-      });
+      const assetBalances: AssetBalanceDto[] = [];
 
-      // Return assets that have either free or locked balance greater than zero
-      return balances.filter((b) => {
-        const freeAmount = parseFloat(b.free);
-        const lockedAmount = parseFloat(b.locked);
-        return freeAmount > 0 || lockedAmount > 0;
-      });
-    } catch (error) {
-      this.logger.error(`Error fetching ${this.constructor.name} balances`, error.stack || error.message);
+      for (const [asset, balance] of Object.entries(balanceData)) {
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
+
+        const total = Number(balance.total ?? 0);
+        const free = Number(balance.free ?? 0);
+        const locked = total - free;
+
+        if (free > 0 || locked > 0) {
+          assetBalances.push({ asset, free: free.toString(), locked: locked.toString() });
+        }
+      }
+
+      return assetBalances;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
     }
   }
@@ -79,18 +82,23 @@ export class BinanceUSService extends BaseExchangeService {
       const client = await this.getClient(user);
       const balanceData = await client.fetchBalance();
 
-      // Transform to match original format and filter for USD/USDT
-      const balances = Object.entries(balanceData.free)
-        .filter(([asset, amount]) => (asset === 'USD' || asset === 'USDT') && parseFloat(amount.toString()) > 0)
-        .map(([asset, free]) => ({
-          asset,
-          free: free.toString(),
-          locked: (parseFloat(balanceData.total[asset]?.toString() || '0') - parseFloat(free.toString())).toString()
-        }));
+      const balances: AssetBalanceDto[] = [];
+
+      for (const [asset, balance] of Object.entries(balanceData)) {
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
+        if (asset !== 'USD' && asset !== 'USDT') continue;
+
+        const free = Number(balance.free ?? 0);
+        if (free > 0) {
+          const total = Number(balance.total ?? 0);
+          balances.push({ asset, free: free.toString(), locked: (total - free).toString() });
+        }
+      }
 
       return balances;
-    } catch (error) {
-      this.logger.error(`Error fetching ${this.constructor.name} free balance`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} free balance`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} free balance`);
     }
   }
@@ -119,7 +127,7 @@ export class BinanceUSService extends BaseExchangeService {
       // Try to fetch balance - this will throw an error if the keys are invalid
       await client.fetchBalance();
       return true;
-    } catch (error) {
+    } catch (error: unknown) {
       return false;
     } finally {
       try {

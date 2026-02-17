@@ -16,6 +16,7 @@ import {
 } from './backtest.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 
 export interface BacktestFinalMetrics {
@@ -117,11 +118,12 @@ export class BacktestResultService {
 
       await queryRunner.commitTransaction();
       this.logger.log(`Backtest ${backtest.id} results persisted successfully`);
-    } catch (error) {
+    } catch (error: unknown) {
       await queryRunner.rollbackTransaction();
+      const err = toErrorInfo(error);
       this.logger.error(
-        `Failed to persist backtest ${backtest.id} results: ${error.message}`,
-        error.stack ?? 'no stack trace'
+        `Failed to persist backtest ${backtest.id} results: ${err.message}`,
+        err.stack ?? 'no stack trace'
       );
       // Log the values being saved for debugging
       this.logger.error(
@@ -244,12 +246,10 @@ export class BacktestResultService {
           `${results.trades?.length ?? 0} trades, ${results.signals?.length ?? 0} signals, ` +
           `${results.simulatedFills?.length ?? 0} fills, ${results.snapshots?.length ?? 0} snapshots`
       );
-    } catch (error) {
+    } catch (error: unknown) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `Failed to persist incremental results for backtest ${backtest.id}: ${error.message}`,
-        error.stack
-      );
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to persist incremental results for backtest ${backtest.id}: ${err.message}`, err.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -285,8 +285,8 @@ export class BacktestResultService {
    */
   async clearCheckpoint(backtestId: string): Promise<void> {
     await this.backtestRepository.update(backtestId, {
-      checkpointState: null,
-      lastCheckpointAt: null
+      checkpointState: undefined,
+      lastCheckpointAt: undefined
     });
 
     this.logger.debug(`Cleared checkpoint for backtest ${backtestId}`);

@@ -4,6 +4,7 @@ import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { AlgorithmActivationService } from '../services/algorithm-activation.service';
 import { AlgorithmPerformanceService } from '../services/algorithm-performance.service';
 
@@ -93,8 +94,9 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
         this.logger.warn(`Unknown job type: ${job.name}`);
         return { success: false, message: `Unknown job type: ${job.name}` };
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -137,10 +139,11 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
           userIds.add(activation.userId);
 
           this.logger.debug(`Calculated performance for activation ${activation.id} (${activation.algorithm.name})`);
-        } catch (error) {
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
           this.logger.error(
-            `Failed to calculate performance for activation ${activation.id}: ${error.message}`,
-            error.stack
+            `Failed to calculate performance for activation ${activation.id}: ${err.message}`,
+            err.stack
           );
           // Continue with next activation even if one fails
         }
@@ -163,8 +166,9 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
           await this.algorithmPerformanceService.calculateRankings(userId);
           usersRanked++;
           this.logger.debug(`Calculated rankings for user ${userId}`);
-        } catch (error) {
-          this.logger.error(`Failed to calculate rankings for user ${userId}: ${error.message}`, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Failed to calculate rankings for user ${userId}: ${err.message}`, err.stack);
           // Continue with next user even if one fails
         }
 
@@ -185,8 +189,9 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
         usersRanked,
         timestamp: new Date().toISOString()
       };
-    } catch (error) {
-      this.logger.error(`Performance calculation failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Performance calculation failed: ${err.message}`, err.stack);
       throw error;
     }
   }

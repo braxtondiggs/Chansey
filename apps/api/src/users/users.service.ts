@@ -13,6 +13,7 @@ import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.servic
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Risk } from '../risk/risk.entity';
+import { toErrorInfo } from '../shared/error.util';
 import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
 
 @Injectable()
@@ -50,8 +51,9 @@ export class UsersService {
 
       this.logger.debug(`User created with ID: ${savedUser.id}`);
       return savedUser;
-    } catch (error) {
-      this.logger.error(`Failed to create user`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create user`, err.stack);
       throw new InternalServerErrorException('Failed to create user');
     }
   }
@@ -60,8 +62,9 @@ export class UsersService {
     try {
       const updatedUser = await this.updateLocalProfile(updateUserDto, user);
       return this.getProfile(updatedUser);
-    } catch (error) {
-      this.logger.error(`Failed to update user with ID: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update user with ID: ${user.id}`, err.stack);
       throw new InternalServerErrorException('Failed to update user');
     }
   }
@@ -85,8 +88,9 @@ export class UsersService {
       this.logger.debug(`Local profile updated for user ID: ${user.id}`);
 
       return updatedUser;
-    } catch (error) {
-      this.logger.error(`Failed to update local profile for user ID: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update local profile for user ID: ${user.id}`, err.stack);
       throw new InternalServerErrorException('Failed to update local profile');
     }
   }
@@ -101,8 +105,9 @@ export class UsersService {
         ...user,
         exchanges
       };
-    } catch (error) {
-      this.logger.error(`User not found with ID: ${id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`User not found with ID: ${id}`, err.stack);
       throw new NotFoundException(`User with ID ${id} not found`);
     }
   }
@@ -118,8 +123,9 @@ export class UsersService {
   async findAll() {
     try {
       return await this.user.find();
-    } catch (error) {
-      this.logger.error(`Failed to retrieve all users`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to retrieve all users`, err.stack);
       throw new InternalServerErrorException('Failed to retrieve users');
     }
   }
@@ -136,8 +142,9 @@ export class UsersService {
         roles: user.roles || dbUser.roles || [Role.USER],
         exchanges
       };
-    } catch (error) {
-      this.logger.error(`Failed to get user profile: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get user profile: ${user.id}`, err.stack);
       throw new InternalServerErrorException('Failed to retrieve user profile');
     }
   }
@@ -165,8 +172,9 @@ export class UsersService {
   private async getRiskLevel(riskId: string) {
     try {
       return await this.risk.findOneOrFail({ where: { id: riskId } });
-    } catch (error) {
-      this.logger.error(`Risk level not found with ID: ${riskId}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Risk level not found with ID: ${riskId}`, err.stack);
       throw new NotFoundException(`Risk level with ID ${riskId} not found`);
     }
   }
@@ -181,10 +189,19 @@ export class UsersService {
         .where('key.isActive = :isActive', { isActive: true })
         .getMany();
 
-      this.logger.debug(`Found ${users.length} users with active exchange keys`);
-      return users;
-    } catch (error) {
-      this.logger.error(`Failed to fetch users with active exchange keys: ${error.message}`, error.stack);
+      // Load supported exchange keys for each user in parallel
+      const usersWithKeys = await Promise.all(
+        users.map(async (user) => {
+          const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+          return { ...user, exchanges };
+        })
+      );
+
+      this.logger.debug(`Found ${usersWithKeys.length} users with active exchange keys`);
+      return usersWithKeys;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch users with active exchange keys: ${err.message}`, err.stack);
       return [];
     }
   }
@@ -206,8 +223,9 @@ export class UsersService {
 
       this.logger.log(`User ${userId} enrolled in algo trading with ${capitalAllocationPercentage}% allocation`);
       return user;
-    } catch (error) {
-      this.logger.error(`Failed to enroll user ${userId} in algo trading: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to enroll user ${userId} in algo trading: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to enroll in algo trading');
     }
   }
@@ -222,8 +240,9 @@ export class UsersService {
 
       this.logger.log(`User ${userId} paused algo trading (positions kept open)`);
       return user;
-    } catch (error) {
-      this.logger.error(`Failed to pause algo trading for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to pause algo trading for user ${userId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to pause algo trading');
     }
   }
@@ -242,8 +261,9 @@ export class UsersService {
 
       this.logger.log(`User ${userId} resumed algo trading`);
       return user;
-    } catch (error) {
-      this.logger.error(`Failed to resume algo trading for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to resume algo trading for user ${userId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to resume algo trading');
     }
   }
@@ -258,8 +278,9 @@ export class UsersService {
 
       this.logger.log(`User ${userId} updated algo capital allocation to ${newPercentage}%`);
       return user;
-    } catch (error) {
-      this.logger.error(`Failed to update algo capital for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update algo capital for user ${userId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to update capital allocation');
     }
   }
@@ -287,8 +308,9 @@ export class UsersService {
         activeStrategies,
         exchangeKeyId: exchanges?.[0]?.id || null
       };
-    } catch (error) {
-      this.logger.error(`Failed to get algo trading status for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get algo trading status for user ${userId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to get algo trading status');
     }
   }

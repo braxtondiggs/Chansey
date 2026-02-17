@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { Job, Queue } from 'bullmq';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { OHLCService } from '../ohlc.service';
 
 @Processor('ohlc-prune-queue')
@@ -84,8 +85,9 @@ export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
     try {
       return await this.handlePrune(job);
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -132,8 +134,9 @@ export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
       );
 
       return summary;
-    } catch (error) {
-      this.logger.error('OHLC prune failed:', error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`OHLC prune failed: ${err.message}`, err.stack);
       throw error;
     }
   }

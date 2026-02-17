@@ -9,6 +9,7 @@ import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { Roles } from '../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
+import { toErrorInfo } from '../shared/error.util';
 import { StrategyEvaluationTask } from '../tasks/strategy-evaluation.task';
 
 /**
@@ -178,9 +179,10 @@ export class AdminPoolController {
       try {
         await this.strategyEvaluationTask.triggerEvaluation(strategyId);
         queuedCount++;
-      } catch (error) {
+      } catch (error: unknown) {
         // Log but continue with other strategies
-        console.error(`Failed to queue strategy ${strategyId} for rebalance: ${error.message}`);
+        const err = toErrorInfo(error);
+        console.error(`Failed to queue strategy ${strategyId} for rebalance: ${err.message}`);
       }
     }
     return queuedCount;

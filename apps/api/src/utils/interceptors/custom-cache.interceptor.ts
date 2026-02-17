@@ -16,6 +16,8 @@ import { Cache } from 'cache-manager';
 import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 /**
  * @see [Caching](https://docs.nestjs.com/techniques/caching)
  *
@@ -76,10 +78,11 @@ export class CustomCacheInterceptor implements NestInterceptor {
               await this.cacheManager.set(key, response);
               Logger.log(`Caching result with key: ${key} (no TTL specified)`, 'CacheInterceptor');
             }
-          } catch (err) {
+          } catch (err: unknown) {
+            const errInfo = toErrorInfo(err);
             Logger.error(
               `An error has occurred when inserting "key: ${key}", "value: ${JSON.stringify(response).substring(0, 100) + '...'}"`,
-              err.stack,
+              errInfo.stack,
               'CacheInterceptor'
             );
           }

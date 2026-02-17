@@ -12,6 +12,7 @@ import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.serv
 import { BacktestEngine } from '../order/backtest/backtest-engine.service';
 import { Risk } from '../risk/risk.entity';
 import { ScoringService } from '../scoring/scoring.service';
+import { toErrorInfo } from '../shared/error.util';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
 import { StrategyService } from '../strategy/strategy.service';
@@ -84,8 +85,9 @@ export class StrategyEvaluationTask {
       );
 
       this.logger.log(`Queued strategy ${strategyConfigId} for evaluation`);
-    } catch (error) {
-      this.logger.error(`Failed to queue strategy ${strategyConfigId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to queue strategy ${strategyConfigId}: ${err.message}`);
     }
   }
 
@@ -114,8 +116,9 @@ export class StrategyEvaluationTask {
 
       // Assign strategy to risk pool based on performance metrics
       await this.assignStrategyToRiskPool(strategyConfigId);
-    } catch (error) {
-      this.logger.error(`Failed to evaluate strategy ${strategyConfigId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to evaluate strategy ${strategyConfigId}: ${err.message}`);
       await this.strategyService.updateStatus(strategyConfigId, StrategyStatus.FAILED);
       throw error;
     }
@@ -229,8 +232,9 @@ export class StrategyEvaluationTask {
           `Strategy ${strategyConfigId} assigned to Risk Level ${riskLevel} (Score: ${score.overallScore}, Count: ${currentCount + 1}/${MAX_STRATEGIES_PER_LEVEL})`
         );
       });
-    } catch (error) {
-      this.logger.error(`Failed to assign strategy ${strategyConfigId} to risk level: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to assign strategy ${strategyConfigId} to risk level: ${err.message}`);
       throw error;
     }
   }
@@ -338,8 +342,9 @@ export class StrategyEvaluationTask {
   async updateHeartbeatMetrics() {
     try {
       await this.strategyService.updateHeartbeatMetrics();
-    } catch (error) {
-      this.logger.error(`Failed to update heartbeat metrics: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update heartbeat metrics: ${err.message}`);
     }
   }
 
@@ -363,8 +368,9 @@ export class StrategyEvaluationTask {
           `Found ${failingStrategies.length} strategies with multiple heartbeat failures: ${failingStrategies.map((s) => `${s.name} (${s.heartbeatFailures} failures)`).join(', ')}`
         );
       }
-    } catch (error) {
-      this.logger.error(`Failed to check stale strategies: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to check stale strategies: ${err.message}`);
     }
   }
 }

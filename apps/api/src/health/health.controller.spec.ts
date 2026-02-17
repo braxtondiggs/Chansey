@@ -19,7 +19,7 @@ import {
 
 describe('HealthController', () => {
   let controller: HealthController;
-  let config: { get: jest.Mock };
+  let config: { get: jest.Mock; getOrThrow: jest.Mock };
   let health: { check: jest.Mock };
   let memory: { checkHeap: jest.Mock };
   let microservice: { pingCheck: jest.Mock };
@@ -32,27 +32,29 @@ describe('HealthController', () => {
   let redisPerformance: { isHealthy: jest.Mock };
 
   beforeEach(async () => {
+    const mockConfigGet = (key: string) => {
+      switch (key) {
+        case 'REDIS_HOST':
+          return 'redis.local';
+        case 'REDIS_USER':
+          return 'redis-user';
+        case 'REDIS_PASSWORD':
+          return 'redis-pass';
+        case 'REDIS_PORT':
+          return '6379';
+        case 'REDIS_TLS':
+          return 'true';
+        case 'MINIO_HOST':
+          return 'minio.local';
+        case 'MINIO_PORT':
+          return '9000';
+        default:
+          return undefined;
+      }
+    };
     config = {
-      get: jest.fn((key: string) => {
-        switch (key) {
-          case 'REDIS_HOST':
-            return 'redis.local';
-          case 'REDIS_USER':
-            return 'redis-user';
-          case 'REDIS_PASSWORD':
-            return 'redis-pass';
-          case 'REDIS_PORT':
-            return '6379';
-          case 'REDIS_TLS':
-            return 'true';
-          case 'MINIO_HOST':
-            return 'minio.local';
-          case 'MINIO_PORT':
-            return '9000';
-          default:
-            return undefined;
-        }
-      })
+      get: jest.fn(mockConfigGet),
+      getOrThrow: jest.fn(mockConfigGet)
     };
     health = { check: jest.fn().mockResolvedValue({ status: 'ok' }) };
     memory = { checkHeap: jest.fn().mockResolvedValue({}) };

@@ -12,7 +12,7 @@ import { RedisConfig } from './config/redis.config';
     CacheModule.registerAsync({
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => {
-        const redis = configService.get<RedisConfig>('redis');
+        const redis = configService.getOrThrow<RedisConfig>('redis');
         return {
           stores: [
             new Keyv({

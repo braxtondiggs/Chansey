@@ -61,14 +61,14 @@ import { TradingModule } from './trading/trading.module';
     // TypeORM with ConfigService
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => configService.get('database')
+      useFactory: (configService: ConfigService) => configService.getOrThrow('database')
     }),
 
     // BullMQ with ConfigService
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const redis = configService.get<RedisConfig>('redis');
+        const redis = configService.getOrThrow<RedisConfig>('redis');
         return {
           connection: {
             family: 0,

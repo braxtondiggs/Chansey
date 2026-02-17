@@ -93,7 +93,7 @@ describe('LiveReplayProcessor', () => {
       status: BacktestStatus.PENDING,
       type: BacktestType.LIVE_REPLAY
     } as any;
-    const dataset = { id: 'dataset-2', replayCapable: false, instrumentUniverse: ['BTC'] } as MarketDataSet;
+    const dataset = { id: 'dataset-2', replayCapable: false, instrumentUniverse: ['BTC'] } as unknown as MarketDataSet;
 
     const backtestRepository = { findOne: jest.fn().mockResolvedValue(backtest), save: jest.fn() };
     const marketDataSetRepository = { findOne: jest.fn().mockResolvedValue(dataset) };
@@ -132,7 +132,11 @@ describe('LiveReplayProcessor', () => {
   });
 
   it('runs a replay-capable backtest and persists success', async () => {
-    const dataset = { id: 'dataset-3', replayCapable: true, instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = {
+      id: 'dataset-3',
+      replayCapable: true,
+      instrumentUniverse: ['BTCUSDT']
+    } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-3',
       status: BacktestStatus.PENDING,
@@ -198,7 +202,11 @@ describe('LiveReplayProcessor', () => {
       lastProcessedIndex: 50,
       persistedCounts: { trades: 5, signals: 10, fills: 5, snapshots: 2 }
     };
-    const dataset = { id: 'dataset-resume', replayCapable: true, instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = {
+      id: 'dataset-resume',
+      replayCapable: true,
+      instrumentUniverse: ['BTCUSDT']
+    } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-resume',
       status: BacktestStatus.PENDING,
@@ -259,7 +267,7 @@ describe('LiveReplayProcessor', () => {
   });
 
   it('marks failed when instrument universe cannot be resolved', async () => {
-    const dataset = { id: 'dataset-4', replayCapable: true, instrumentUniverse: [] } as MarketDataSet;
+    const dataset = { id: 'dataset-4', replayCapable: true, instrumentUniverse: [] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-4',
       status: BacktestStatus.PENDING,

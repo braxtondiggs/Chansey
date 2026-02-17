@@ -7,6 +7,7 @@ import { AxiosError } from 'axios';
 import { Job, Queue } from 'bullmq';
 import { firstValueFrom, retry, timeout } from 'rxjs';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { CategoryService } from '../category.service';
 
 @Processor('category-queue')
@@ -83,8 +84,9 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -146,7 +148,7 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
         removed: missingCategories.length,
         total: apiCategories.length
       };
-    } catch (e) {
+    } catch (e: unknown) {
       if (e instanceof AxiosError) {
         const errorDetails = {
           status: e.response?.status,
@@ -155,7 +157,8 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
         };
         this.logger.error(`Category sync failed: ${e.message}`, errorDetails);
       } else {
-        this.logger.error(`Category sync failed: ${e.message}`);
+        const err = toErrorInfo(e);
+        this.logger.error(`Category sync failed: ${err.message}`);
       }
       throw e;
     } finally {

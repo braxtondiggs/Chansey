@@ -12,7 +12,7 @@ export interface RedisConfig {
 export const redisConfig = registerAs(
   'redis',
   (): RedisConfig => ({
-    host: process.env.REDIS_HOST,
+    host: process.env.REDIS_HOST ?? '',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     username: process.env.REDIS_USER || undefined,
     password: process.env.REDIS_PASSWORD || undefined,

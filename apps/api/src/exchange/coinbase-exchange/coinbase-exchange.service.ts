@@ -1,11 +1,13 @@
-import { Injectable, forwardRef, Inject } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
+import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -15,6 +17,7 @@ export class CoinbaseExchangeService extends BaseExchangeService {
   protected readonly exchangeId: keyof typeof ccxt = 'coinbaseexchange';
   protected readonly apiKeyConfigName = 'COINBASE_EXCHANGE_API_KEY';
   protected readonly apiSecretConfigName = 'COINBASE_EXCHANGE_API_SECRET';
+  readonly quoteAsset = 'USD';
 
   constructor(
     configService?: ConfigService,
@@ -41,10 +44,11 @@ export class CoinbaseExchangeService extends BaseExchangeService {
       return {
         symbol: symbol,
         price: ticker.last?.toString() || '0',
-        timestamp: ticker.timestamp
+        timestamp: Number(ticker.timestamp ?? 0)
       };
-    } catch (error) {
-      this.logger.error(`Error fetching Coinbase Pro price for ${symbol}`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching Coinbase Pro price for ${symbol}`, err.stack || err.message);
       throw new Error(`Failed to fetch Coinbase Pro price for ${symbol}`);
     }
   }
@@ -66,9 +70,7 @@ export class CoinbaseExchangeService extends BaseExchangeService {
       const assetBalances: AssetBalanceDto[] = [];
 
       for (const [asset, balance] of Object.entries(balances)) {
-        if (asset === 'info' || asset === 'free' || asset === 'used' || asset === 'total') {
-          continue; // Skip metadata fields
-        }
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
 
         // const balanceData = balance as { total?: string; free?: string; used?: string };
         if (balance.total && parseFloat(balance.total.toString()) > 0) {
@@ -81,8 +83,9 @@ export class CoinbaseExchangeService extends BaseExchangeService {
       }
 
       return assetBalances;
-    } catch (error) {
-      this.logger.error(`Error fetching Coinbase Pro balance for user ${user.id}`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching Coinbase Pro balance for user ${user.id}`, err.stack || err.message);
       return [];
     }
   }

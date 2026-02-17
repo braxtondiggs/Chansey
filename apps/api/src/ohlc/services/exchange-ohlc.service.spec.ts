@@ -4,7 +4,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 
 const createClient = (overrides: Partial<any> = {}) => ({
   has: { fetchOHLCV: true },
-  markets: undefined,
+  markets: undefined as any,
   loadMarkets: jest.fn().mockResolvedValue(undefined),
   fetchOHLCV: jest.fn(),
   ...overrides

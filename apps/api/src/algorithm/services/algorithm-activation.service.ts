@@ -69,7 +69,7 @@ export class AlgorithmActivationService {
       allocationPercentage: 1.0, // Default 1% allocation
       config,
       activatedAt: new Date(),
-      deactivatedAt: null
+      deactivatedAt: undefined
     });
 
     return await this.algorithmActivationRepository.save(activation);

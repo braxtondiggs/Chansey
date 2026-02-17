@@ -30,7 +30,7 @@ export class CoinWithPriceDto {
     example: 'https://example.com/images/bitcoin.png',
     required: false
   })
-  image?: string;
+  image?: string | null;
 
   @ApiProperty({
     description: 'Current price of the coin in USD',
@@ -38,5 +38,5 @@ export class CoinWithPriceDto {
     required: false,
     type: Number
   })
-  currentPrice?: number;
+  currentPrice?: number | null;
 }

@@ -104,7 +104,7 @@ export class MeanReversionService {
     const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
     const variance = returns.reduce((a, b) => a + Math.pow(b - meanReturn, 2), 0) / returns.length;
 
-    return (Math.sqrt(variance) * PeriodMs[range]) / 6000;
+    return (Math.sqrt(variance) * PeriodMs[range as keyof typeof PeriodMs]) / 6000;
   }
 
   private getThreshold(volatility: number) {

@@ -97,7 +97,7 @@ export class ExponentialMovingAverageService {
       emaValues.push(ema);
     }
 
-    return emaValues.reverse();
+    return emaValues.filter((v): v is number => v !== null).reverse();
   }
 
   getChartData(prices: PriceSummary[]): ChartData {

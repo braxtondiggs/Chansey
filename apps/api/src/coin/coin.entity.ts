@@ -51,7 +51,7 @@ export class Coin {
     example: 'Bitcoin is a decentralized digital currency...',
     required: false
   })
-  description?: string;
+  description?: string | null;
 
   @Column({ nullable: true })
   @ApiProperty({
@@ -59,7 +59,7 @@ export class Coin {
     example: 'https://example.com/images/bitcoin.png',
     required: false
   })
-  image?: string;
+  image?: string | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   @ApiProperty({
@@ -67,7 +67,7 @@ export class Coin {
     example: '2009-01-03T00:00:00.000Z',
     required: false
   })
-  genesis?: Date;
+  genesis?: Date | null;
 
   @Column({ type: 'int', nullable: true })
   @ApiProperty({
@@ -75,7 +75,7 @@ export class Coin {
     example: 1,
     required: false
   })
-  marketRank?: number;
+  marketRank?: number | null;
 
   @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -84,7 +84,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  totalSupply?: number;
+  totalSupply?: number | null;
 
   @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -93,7 +93,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  circulatingSupply?: number;
+  circulatingSupply?: number | null;
 
   @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -102,7 +102,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  maxSupply?: number;
+  maxSupply?: number | null;
 
   @Column({ type: 'int', nullable: true })
   @ApiProperty({
@@ -110,7 +110,7 @@ export class Coin {
     example: 1,
     required: false
   })
-  geckoRank?: number;
+  geckoRank?: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
@@ -119,7 +119,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  developerScore?: number;
+  developerScore?: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
@@ -128,7 +128,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  communityScore?: number;
+  communityScore?: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
@@ -137,7 +137,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  liquidityScore?: number;
+  liquidityScore?: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
@@ -146,7 +146,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  publicInterestScore?: number;
+  publicInterestScore?: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
@@ -155,7 +155,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  sentimentUp?: number;
+  sentimentUp?: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
@@ -164,7 +164,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  sentimentDown?: number;
+  sentimentDown?: number | null;
 
   @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -173,7 +173,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  ath?: number;
+  ath?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, default: null })
   @ApiProperty({
@@ -182,7 +182,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  athChange?: number;
+  athChange?: number | null;
 
   @Column({ type: 'timestamptz', nullable: true, default: null })
   @ApiProperty({
@@ -191,7 +191,7 @@ export class Coin {
     required: false,
     type: Date
   })
-  athDate?: Date;
+  athDate?: Date | null;
 
   @Column({ type: 'decimal', precision: 25, scale: 8, default: null })
   @ApiProperty({
@@ -200,7 +200,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  atl?: number;
+  atl?: number | null;
 
   @Column({ type: 'decimal', precision: 15, scale: 6, default: null })
   @ApiProperty({
@@ -209,7 +209,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  atlChange?: number;
+  atlChange?: number | null;
 
   @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -218,7 +218,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  totalVolume?: number;
+  totalVolume?: number | null;
 
   @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -227,7 +227,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  marketCap?: number;
+  marketCap?: number | null;
 
   @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -236,7 +236,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChange24h?: number;
+  priceChange24h?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -245,7 +245,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage24h?: number;
+  priceChangePercentage24h?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -254,7 +254,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage7d?: number;
+  priceChangePercentage7d?: number | null;
 
   @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -263,7 +263,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  currentPrice?: number;
+  currentPrice?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -272,7 +272,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage14d?: number;
+  priceChangePercentage14d?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -281,7 +281,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage30d?: number;
+  priceChangePercentage30d?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -290,7 +290,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage60d?: number;
+  priceChangePercentage60d?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -299,7 +299,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage200d?: number;
+  priceChangePercentage200d?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -308,7 +308,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  priceChangePercentage1y?: number;
+  priceChangePercentage1y?: number | null;
 
   @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
   @ApiProperty({
@@ -317,7 +317,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  marketCapChange24h?: number;
+  marketCapChange24h?: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
   @ApiProperty({
@@ -326,7 +326,7 @@ export class Coin {
     required: false,
     type: Number
   })
-  marketCapChangePercentage24h?: number;
+  marketCapChangePercentage24h?: number | null;
 
   @Column({ type: 'timestamptz', default: null })
   @ApiProperty({
@@ -335,7 +335,7 @@ export class Coin {
     required: false,
     type: Date
   })
-  atlDate?: Date;
+  atlDate?: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true, default: null })
   @ApiProperty({
@@ -344,7 +344,7 @@ export class Coin {
     required: false,
     type: Date
   })
-  geckoLastUpdatedAt?: Date;
+  geckoLastUpdatedAt?: Date | null;
 
   @Column({ type: 'jsonb', nullable: true, default: null })
   @ApiProperty({
@@ -366,7 +366,7 @@ export class Coin {
     reposUrl?: {
       github?: string[];
     };
-  };
+  } | null;
 
   @Column({ type: 'timestamptz', nullable: true, default: null })
   @ApiProperty({
@@ -375,7 +375,7 @@ export class Coin {
     required: false,
     type: Date
   })
-  metadataLastUpdated?: Date;
+  metadataLastUpdated?: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz', select: false })
   @ApiProperty({

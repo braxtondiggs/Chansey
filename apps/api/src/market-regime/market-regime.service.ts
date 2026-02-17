@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
 import {
+  DEFAULT_VOLATILITY_CONFIG,
   MarketRegimeType,
   REGIME_THRESHOLDS,
-  VolatilityConfig,
-  DEFAULT_VOLATILITY_CONFIG
+  VolatilityConfig
 } from '@chansey/api-interfaces';
 
 import { MarketRegime } from './entities/market-regime.entity';
@@ -59,7 +59,11 @@ export class MarketRegimeService {
     }
 
     // Return current regime
-    return this.getCurrentRegime(asset);
+    const finalRegime = await this.getCurrentRegime(asset);
+    if (!finalRegime) {
+      throw new Error(`Failed to detect or create market regime for ${asset}`);
+    }
+    return finalRegime;
   }
 
   /**
@@ -67,7 +71,7 @@ export class MarketRegimeService {
    */
   async getCurrentRegime(asset: string): Promise<MarketRegime | null> {
     return this.marketRegimeRepo.findOne({
-      where: { asset, effectiveUntil: null },
+      where: { asset, effectiveUntil: IsNull() },
       order: { detectedAt: 'DESC' }
     });
   }

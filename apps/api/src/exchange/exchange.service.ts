@@ -9,6 +9,7 @@ import { EXCHANGE_KEY_SERVICE, IExchangeKeyService, IExchangeService } from './i
 
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeNotFoundException } from '../common/exceptions/resource';
+import { stripNullProps } from '../utils/strip-null-props.util';
 
 @Injectable()
 export class ExchangeService implements IExchangeService {
@@ -34,10 +35,7 @@ export class ExchangeService implements IExchangeService {
   async getExchanges({ supported }: { supported?: boolean } = {}): Promise<Exchange[]> {
     const where = supported !== undefined ? { supported } : {};
     const exchanges = await this.exchange.find({ where, order: { name: 'ASC' } });
-    return exchanges.map((exchange) => {
-      Object.keys(exchange).forEach((key) => exchange[key] === null && delete exchange[key]);
-      return exchange;
-    });
+    return exchanges.map((exchange) => stripNullProps(exchange));
   }
 
   async getExchangeById(exchangeId: string): Promise<Exchange> {
@@ -175,7 +173,7 @@ export class ExchangeService implements IExchangeService {
         if (keys && keys.length > 0 && keys.some((key) => key.isActive)) {
           exchangesWithKeys.push(exchange);
         }
-      } catch (error) {
+      } catch {
         // Continue if there's an error finding keys for this exchange
       }
     }

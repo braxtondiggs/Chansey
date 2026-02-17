@@ -11,104 +11,104 @@ export class UpdateCoinDto {
   symbol?: string;
 
   @IsString()
-  description?: string;
+  description?: string | null;
 
   @IsUrl()
-  image?: string;
+  image?: string | null;
 
   @IsDateString()
-  genesis?: Date;
+  genesis?: Date | null;
 
   @IsNumber()
-  totalSupply?: number;
+  totalSupply?: number | null;
 
   @IsNumber()
-  totalVolume?: number;
+  totalVolume?: number | null;
 
   @IsNumber()
-  circulatingSupply?: number;
+  circulatingSupply?: number | null;
 
   @IsNumber()
-  maxSupply?: number;
+  maxSupply?: number | null;
 
   @IsNumber()
-  marketRank?: number;
+  marketRank?: number | null;
 
   @IsNumber()
-  marketCap?: number;
+  marketCap?: number | null;
 
   @IsNumber()
-  geckoRank?: number;
+  geckoRank?: number | null;
 
   @IsDecimal()
-  developerScore?: number;
+  developerScore?: number | null;
 
   @IsDecimal()
-  communityScore?: number;
+  communityScore?: number | null;
 
   @IsDecimal()
-  liquidityScore?: number;
+  liquidityScore?: number | null;
 
   @IsDecimal()
-  publicInterestScore?: number;
+  publicInterestScore?: number | null;
 
   @IsDecimal()
-  sentimentUp?: number;
+  sentimentUp?: number | null;
 
   @IsDecimal()
-  sentimentDown?: number;
+  sentimentDown?: number | null;
 
   @IsDecimal()
-  ath?: number;
+  ath?: number | null;
 
   @IsDecimal()
-  atl?: number;
+  atl?: number | null;
 
   @IsDateString()
-  athDate?: Date;
+  athDate?: Date | null;
 
   @IsDateString()
-  atlDate?: Date;
+  atlDate?: Date | null;
 
   @IsDecimal()
-  athChange?: number;
+  athChange?: number | null;
 
   @IsDecimal()
-  atlChange?: number;
+  atlChange?: number | null;
 
   @IsDecimal()
-  priceChange24h?: number;
+  priceChange24h?: number | null;
 
   @IsDecimal()
-  priceChangePercentage24h?: number;
+  priceChangePercentage24h?: number | null;
 
   @IsDecimal()
-  priceChangePercentage7d?: number;
+  priceChangePercentage7d?: number | null;
 
   @IsDecimal()
-  priceChangePercentage14d?: number;
+  priceChangePercentage14d?: number | null;
 
   @IsDecimal()
-  priceChangePercentage30d?: number;
+  priceChangePercentage30d?: number | null;
 
   @IsDecimal()
-  priceChangePercentage60d?: number;
+  priceChangePercentage60d?: number | null;
 
   @IsDecimal()
-  priceChangePercentage200d?: number;
+  priceChangePercentage200d?: number | null;
 
   @IsDecimal()
-  priceChangePercentage1y?: number;
+  priceChangePercentage1y?: number | null;
 
   @IsDecimal()
-  currentPrice?: number;
+  currentPrice?: number | null;
 
   @IsDecimal()
-  marketCapChange24h?: number;
+  marketCapChange24h?: number | null;
 
   @IsDecimal()
-  marketCapChangePercentage24h?: number;
+  marketCapChangePercentage24h?: number | null;
 
   @IsDate()
-  geckoLastUpdatedAt?: Date;
+  geckoLastUpdatedAt?: Date | null;
 }

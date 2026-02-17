@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { BacktestMonitoringService } from './backtest-monitoring.service';
 import { ExportFormat } from './dto/backtest-listing.dto';
@@ -20,7 +20,7 @@ import {
   TradeType
 } from '../../order/backtest/backtest.entity';
 
-type MockRepo<T> = Partial<jest.Mocked<Repository<T>>>;
+type MockRepo<T extends ObjectLiteral> = Partial<jest.Mocked<Repository<T>>>;
 
 const createMockQueryBuilder = () => {
   const qb: Partial<SelectQueryBuilder<any>> = {

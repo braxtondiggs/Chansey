@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { Pipeline } from '../entities/pipeline.entity';
 import { PipelineStatus } from '../interfaces';
 import { PipelineJobData, PipelineOrchestratorService } from '../services/pipeline-orchestrator.service';
@@ -48,13 +49,14 @@ export class PipelineProcessor extends WorkerHost {
       await this.orchestratorService.executeStage(pipelineId, stage);
 
       this.logger.log(`Pipeline ${pipelineId} stage ${stage} execution started`);
-    } catch (error) {
-      this.logger.error(`Pipeline ${pipelineId} stage ${stage} failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Pipeline ${pipelineId} stage ${stage} failed: ${err.message}`, err.stack);
 
       // Update pipeline status to failed
       await this.pipelineRepository.update(pipelineId, {
         status: PipelineStatus.FAILED,
-        failureReason: error.message,
+        failureReason: err.message,
         completedAt: new Date()
       });
 

@@ -2,7 +2,7 @@ import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
-import { Repository } from 'typeorm';
+import { QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { Exchange } from '@chansey/api-interfaces';
 
@@ -17,6 +17,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide, OrderStatus } from '../order.entity';
@@ -55,14 +56,16 @@ export class OrderSyncService {
           const symbolOrders = await client.fetchOrders(symbol, since);
           this.logger.log(`Fetched ${symbolOrders.length} orders for ${symbol}`);
           allOrders.push(...symbolOrders);
-        } catch (error) {
-          this.logger.log(`Failed to fetch orders for ${symbol}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.log(`Failed to fetch orders for ${symbol}: ${err.message}`);
         }
       }
 
       return this.removeDuplicateOrders(allOrders);
-    } catch (error) {
-      this.logger.error(`Failed to fetch historical orders: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch historical orders: ${err.message}`);
       return [];
     }
   }
@@ -91,14 +94,16 @@ export class OrderSyncService {
           const symbolTrades = await client.fetchMyTrades(symbol, since);
           this.logger.log(`Fetched ${symbolTrades.length} trades for ${symbol}`);
           allTrades.push(...symbolTrades);
-        } catch (error) {
-          this.logger.log(`Failed to fetch trades for ${symbol}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.log(`Failed to fetch trades for ${symbol}: ${err.message}`);
         }
       }
 
       return this.removeDuplicateTrades(allTrades);
-    } catch (error) {
-      this.logger.error(`Failed to fetch historical trades: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch historical trades: ${err.message}`);
       return [];
     }
   }
@@ -136,10 +141,10 @@ export class OrderSyncService {
       const syntheticOrder: ccxt.Order = {
         id: firstTrade.order || `trade_${groupKey}`,
         clientOrderId: firstTrade.order || undefined,
-        datetime: firstTrade.datetime,
-        timestamp: firstTrade.timestamp,
-        lastTradeTimestamp: Math.max(...groupTrades.map((t) => t.timestamp || 0)),
-        symbol: firstTrade.symbol,
+        datetime: firstTrade.datetime ?? new Date(firstTrade.timestamp ?? 0).toISOString(),
+        timestamp: firstTrade.timestamp ?? 0,
+        lastTradeTimestamp: Math.max(...groupTrades.map((t) => t.timestamp ?? 0)),
+        symbol: firstTrade.symbol ?? '',
         type: 'market', // Trades are typically market executions
         timeInForce: undefined,
         amount: totalAmount,
@@ -152,12 +157,12 @@ export class OrderSyncService {
         status: 'closed', // Trades represent completed executions
         postOnly: false, // Trades are not post-only since they already executed
         reduceOnly: false, // Trades are not reduce-only by default
-        fee: groupTrades.reduce(
+        fee: groupTrades.reduce<ccxt.FeeInterface>(
           (sum, t) => {
             if (t.fee) {
               return {
-                cost: (sum.cost || 0) + (t.fee.cost || 0),
-                currency: t.fee.currency || sum.currency
+                cost: (Number(sum.cost) || 0) + (Number(t.fee.cost) || 0),
+                currency: t.fee.currency ?? sum.currency
               };
             }
             return sum;
@@ -202,8 +207,9 @@ export class OrderSyncService {
           savedCount++;
           this.logger.debug(`Saved new order ${exchangeOrder.id}`);
         }
-      } catch (error) {
-        this.logger.error(`Failed to process order ${exchangeOrder.id}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to process order ${exchangeOrder.id}: ${err.message}`);
       }
     }
 
@@ -245,7 +251,7 @@ export class OrderSyncService {
   }
 
   private async updateExistingOrder(existingOrder: Order, exchangeOrder: ccxt.Order): Promise<boolean> {
-    const newStatus = this.calculationService.mapCcxtStatusToOrderStatus(exchangeOrder.status);
+    const newStatus = this.calculationService.mapCcxtStatusToOrderStatus(String(exchangeOrder.status ?? 'open'));
     const newExecutedQuantity = exchangeOrder.filled || exchangeOrder.amount || 0;
     const feeData = this.calculationService.extractFeeData(exchangeOrder);
     const newPrice = this.calculationService.calculateOrderPrice(exchangeOrder);
@@ -308,16 +314,17 @@ export class OrderSyncService {
     }
 
     if (hasChanges) {
-      await this.orderRepository.update(existingOrder.id, updateData);
+      await this.orderRepository.update(existingOrder.id, updateData as QueryDeepPartialEntity<Order>);
 
       // Handle OCO fill detection: when an exit order fills, cancel the linked order
       if (previousStatus !== OrderStatus.FILLED && newStatus === OrderStatus.FILLED && this.positionManagementService) {
         try {
           await this.positionManagementService.handleOcoFill(existingOrder.id);
           this.logger.debug(`Processed OCO fill for order ${existingOrder.id}`);
-        } catch (ocoError) {
+        } catch (ocoError: unknown) {
+          const err = toErrorInfo(ocoError);
           // Log but don't fail the sync - OCO handling is a secondary concern
-          this.logger.warn(`Failed to process OCO fill for order ${existingOrder.id}: ${ocoError.message}`);
+          this.logger.warn(`Failed to process OCO fill for order ${existingOrder.id}: ${err.message}`);
         }
       }
 
@@ -331,7 +338,7 @@ export class OrderSyncService {
     try {
       // Get coin information
       const { base: coinSymbol } = this.calculationService.extractCoinSymbol(exchangeOrder.symbol);
-      const coin = await this.coinService.getCoinBySymbol(coinSymbol, null, false);
+      const coin = await this.coinService.getCoinBySymbol(coinSymbol, undefined, false);
 
       // Calculate order data
       const price = this.calculationService.calculateOrderPrice(exchangeOrder);
@@ -343,39 +350,40 @@ export class OrderSyncService {
       const exchange = await this.getExchangeForOrder(exchangeOrder, exchangeName);
 
       // Get trading pair coins
-      const { baseCoin, quoteCoin } = await this.getTradingPairCoins(exchangeOrder.symbol, coin);
+      const { baseCoin, quoteCoin } = await this.getTradingPairCoins(exchangeOrder.symbol, coin ?? undefined);
 
       // Extract algorithmic trading fields
       const algorithmicFields = this.extractAlgorithmicTradingFields(exchangeOrder);
 
       const newOrder = this.orderRepository.create({
         clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id.toString(),
-        baseCoin,
-        quoteCoin,
+        baseCoin: baseCoin ?? undefined,
+        quoteCoin: quoteCoin ?? undefined,
         executedQuantity: exchangeOrder.filled || 0,
         orderId: exchangeOrder.id.toString(),
         price: price || 0,
         quantity: exchangeOrder.amount || 0,
         side: exchangeOrder.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-        status: this.calculationService.mapCcxtStatusToOrderStatus(exchangeOrder.status),
+        status: this.calculationService.mapCcxtStatusToOrderStatus(String(exchangeOrder.status ?? 'open')),
         symbol: exchangeOrder.symbol,
         transactTime: new Date(exchangeOrder.timestamp),
-        type: this.calculationService.mapCcxtOrderTypeToOrderType(exchangeOrder.type),
+        type: this.calculationService.mapCcxtOrderTypeToOrderType(String(exchangeOrder.type ?? 'market')),
         user,
-        cost: cost > 0 ? cost : null,
+        cost: cost > 0 ? cost : undefined,
         fee: feeData.fee || 0,
         commission: feeData.commission || 0,
         feeCurrency: feeData.feeCurrency,
-        gainLoss: gainLoss,
-        averagePrice: exchangeOrder.average || null,
-        exchange: exchange,
+        gainLoss: gainLoss ?? undefined,
+        averagePrice: exchangeOrder.average ?? undefined,
+        exchange: exchange ?? undefined,
         ...algorithmicFields
       });
 
       await this.orderRepository.save(newOrder);
       return true;
-    } catch (error) {
-      this.logger.error(`Failed to create new order: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create new order: ${err.message}`);
       return false;
     }
   }
@@ -396,8 +404,9 @@ export class OrderSyncService {
       }
 
       return null;
-    } catch (error) {
-      this.logger.error(`Error identifying exchange for order ${exchangeOrder.id}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error identifying exchange for order ${exchangeOrder.id}: ${err.message}`);
       return null;
     }
   }
@@ -411,8 +420,8 @@ export class OrderSyncService {
       const tickerPair = await this.tickerPairService.getTickerPairBySymbol(baseCoinSymbol, quoteCoinSymbol);
 
       if (tickerPair) {
-        const baseCoin = await this.coinService.getCoinById(tickerPair.baseAsset.id);
-        const quoteCoin = await this.coinService.getCoinById(tickerPair.quoteAsset.id);
+        const baseCoin = tickerPair.baseAsset ? await this.coinService.getCoinById(tickerPair.baseAsset.id) : null;
+        const quoteCoin = tickerPair.quoteAsset ? await this.coinService.getCoinById(tickerPair.quoteAsset.id) : null;
         return { baseCoin, quoteCoin };
       }
 
@@ -473,14 +482,14 @@ export class OrderSyncService {
     // Store trades and info as JSONB
     if (exchangeOrder.trades && exchangeOrder.trades.length > 0) {
       fields.trades = exchangeOrder.trades.map((trade) => ({
-        id: trade.id,
-        timestamp: trade.timestamp,
-        amount: trade.amount,
+        id: String(trade.id ?? ''),
+        timestamp: Number(trade.timestamp ?? 0),
+        amount: Number(trade.amount ?? 0),
         price: trade.price,
-        cost: trade.cost,
-        side: trade.side,
-        fee: trade.fee ? { cost: trade.fee.cost, currency: trade.fee.currency } : null,
-        takerOrMaker: trade.takerOrMaker
+        cost: Number(trade.cost ?? 0),
+        side: trade.side ?? undefined,
+        fee: trade.fee ? { cost: Number(trade.fee.cost ?? 0), currency: String(trade.fee.currency ?? '') } : undefined,
+        takerOrMaker: trade.takerOrMaker ?? undefined
       }));
 
       const lastTrade = exchangeOrder.trades[exchangeOrder.trades.length - 1];
@@ -514,11 +523,12 @@ export class OrderSyncService {
 
   private removeDuplicateTrades(trades: ccxt.Trade[]): ccxt.Trade[] {
     const uniqueTrades: ccxt.Trade[] = [];
-    const seenTradeIds = new Set<string | number>();
+    const seenTradeIds = new Set<string>();
 
     for (const trade of trades) {
-      if (!seenTradeIds.has(trade.id)) {
-        seenTradeIds.add(trade.id);
+      const tradeId = String(trade.id ?? '');
+      if (tradeId && !seenTradeIds.has(tradeId)) {
+        seenTradeIds.add(tradeId);
         uniqueTrades.push(trade);
       }
     }

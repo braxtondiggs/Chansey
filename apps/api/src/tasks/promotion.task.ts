@@ -1,11 +1,12 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { toErrorInfo } from '../shared/error.util';
 import { DeploymentService } from '../strategy/deployment.service';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { PromotionGateService } from '../strategy/gates/promotion-gate.service';
@@ -99,8 +100,9 @@ export class PromotionTask {
             this.logger.debug(`Strategy ${strategy.name} rejected for promotion: ${evaluation.failedGates.join(', ')}`);
             results.rejected++;
           }
-        } catch (error) {
-          this.logger.error(`Error evaluating strategy ${strategy.id} for promotion:`, error);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Error evaluating strategy ${strategy.id} for promotion: ${err.message}`, err.stack);
           results.errors++;
         }
       }
@@ -112,8 +114,9 @@ export class PromotionTask {
           `${results.rejected} rejected, ` +
           `${results.errors} errors`
       );
-    } catch (error) {
-      this.logger.error('Failed to complete promotion evaluation:', error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to complete promotion evaluation: ${err.message}`, err.stack);
     }
   }
 
@@ -146,8 +149,9 @@ export class PromotionTask {
     try {
       await this.deploymentService.activateDeployment(deploymentId, 'system');
       this.logger.log(`Successfully activated deployment ${deploymentId}`);
-    } catch (error) {
-      this.logger.error(`Failed to activate deployment ${deploymentId}:`, error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to activate deployment ${deploymentId}: ${err.message}`, err.stack);
       throw error;
     }
   }

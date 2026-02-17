@@ -454,7 +454,7 @@ export class IndicatorService {
     try {
       const cached = await this.withTimeout(this.cacheManager.get<T>(key), null as T | undefined);
       return cached ?? null;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.warn(`Cache get failed for key ${key}:`, error);
       return null;
     }
@@ -466,7 +466,7 @@ export class IndicatorService {
   private async setInCache<T>(key: string, value: T): Promise<void> {
     try {
       await this.withTimeout(this.cacheManager.set(key, value, INDICATOR_CACHE_CONFIG.DEFAULT_TTL), undefined);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.warn(`Cache set failed for key ${key}:`, error);
     }
   }

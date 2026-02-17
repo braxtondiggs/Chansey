@@ -281,7 +281,7 @@ describe('OrderService', () => {
     });
 
     it('should throw BadRequestException for invalid coin ID', async () => {
-      coinService.getCoinById.mockResolvedValue(null);
+      coinService.getCoinById.mockResolvedValue(null as any);
 
       await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(BadRequestException);
       await expect(service.createOrder(mockOrderDto, mockUser)).rejects.toThrow(

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
 
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 type ExchangeStatus = 'healthy' | 'slow' | 'unhealthy';
 
@@ -46,11 +47,12 @@ export class ExchangeHealthIndicator {
     const checkPromises = this.exchanges.map(async ({ slug, pair }) => {
       try {
         return { slug, result: await this.checkExchange(slug, pair) };
-      } catch (error) {
-        this.logger.warn(`Exchange ${slug} health check failed: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Exchange ${slug} health check failed: ${err.message}`);
         return {
           slug,
-          result: { latencyMs: -1, status: 'unhealthy' as ExchangeStatus, error: error.message }
+          result: { latencyMs: -1, status: 'unhealthy' as ExchangeStatus, error: err.message }
         };
       }
     });
@@ -102,15 +104,16 @@ export class ExchangeHealthIndicator {
       }
 
       return { latencyMs, status };
-    } catch (error) {
+    } catch (error: unknown) {
       // Clear timeout on error to prevent memory leak
       if (timeoutId) clearTimeout(timeoutId);
 
+      const err = toErrorInfo(error);
       const latencyMs = Date.now() - startTime;
       return {
         latencyMs,
         status: 'unhealthy',
-        error: error.message
+        error: err.message
       };
     }
   }

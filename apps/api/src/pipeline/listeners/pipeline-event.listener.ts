@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 
+import { toErrorInfo } from '../../shared/error.util';
 import {
   BacktestCompletedEvent,
   OptimizationCompletedEvent,
@@ -32,11 +33,9 @@ export class PipelineEventListener {
         payload.bestScore,
         payload.improvement
       );
-    } catch (error) {
-      this.logger.error(
-        `Failed to handle optimization completion for run ${payload.runId}: ${error.message}`,
-        error.stack
-      );
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to handle optimization completion for run ${payload.runId}: ${err.message}`, err.stack);
     }
   }
 
@@ -49,11 +48,9 @@ export class PipelineEventListener {
 
     try {
       await this.orchestratorService.handleBacktestComplete(payload.backtestId, payload.type, payload.metrics);
-    } catch (error) {
-      this.logger.error(
-        `Failed to handle backtest completion for ${payload.backtestId}: ${error.message}`,
-        error.stack
-      );
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to handle backtest completion for ${payload.backtestId}: ${err.message}`, err.stack);
     }
   }
 
@@ -78,10 +75,11 @@ export class PipelineEventListener {
         payload.metrics,
         payload.stoppedReason
       );
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       this.logger.error(
-        `Failed to handle paper trading completion for session ${payload.sessionId}: ${error.message}`,
-        error.stack
+        `Failed to handle paper trading completion for session ${payload.sessionId}: ${err.message}`,
+        err.stack
       );
     }
   }

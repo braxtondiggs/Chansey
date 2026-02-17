@@ -8,6 +8,8 @@ import { Cluster, Redis } from 'ioredis';
 import { paperTradingConfig } from './paper-trading.config';
 import { PaperTradingGateway } from './paper-trading.gateway';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 export type TelemetryScope = 'log' | 'metric' | 'trace' | 'status' | 'tick' | 'order' | 'balance';
 
 export interface PaperTradingTelemetryPayload {
@@ -116,8 +118,9 @@ export class PaperTradingStreamService implements OnModuleInit, OnModuleDestroy 
       });
 
       await this.redis.connect();
-    } catch (error) {
-      this.logger.error(`Failed to initialize Redis connection: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to initialize Redis connection: ${err.message}`);
       this.isConnected = false;
     }
   }
@@ -142,16 +145,18 @@ export class PaperTradingStreamService implements OnModuleInit, OnModuleDestroy 
           'payload',
           JSON.stringify(enriched)
         );
-      } catch (error) {
-        this.logger.error(`Failed to publish telemetry for session ${payload.sessionId}: ${error?.message ?? error}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to publish telemetry for session ${payload.sessionId}: ${err.message}`);
       }
     }
 
     // Always try to broadcast via WebSocket gateway
     try {
       this.gateway?.emit(payload.sessionId, payload.scope, enriched);
-    } catch (error) {
-      this.logger.warn(`Failed to broadcast telemetry for session ${payload.sessionId}: ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to broadcast telemetry for session ${payload.sessionId}: ${err.message}`);
     }
   }
 
@@ -227,8 +232,9 @@ export class PaperTradingStreamService implements OnModuleInit, OnModuleDestroy 
     if (this.redis && !cacheStore?.client) {
       try {
         await this.redis.quit();
-      } catch (error) {
-        this.logger.warn(`Error shutting down telemetry redis connection: ${error?.message ?? error}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Error shutting down telemetry redis connection: ${err.message}`);
         this.redis.disconnect();
       }
     }

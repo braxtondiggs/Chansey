@@ -112,11 +112,11 @@ describe('PortfolioController', () => {
       getPerformanceByStrategy: performanceService.getPerformanceByStrategy
     } as const;
 
-    methodMap[serviceMethod].mockResolvedValue(resultValue as any);
+    (methodMap as Record<string, any>)[serviceMethod].mockResolvedValue(resultValue as any);
 
     const result = await (controller as any)[method](mockUser as any);
 
     expect(result).toEqual(resultValue);
-    expect(methodMap[serviceMethod]).toHaveBeenCalledWith(mockUser.id);
+    expect((methodMap as Record<string, any>)[serviceMethod]).toHaveBeenCalledWith(mockUser.id);
   });
 });

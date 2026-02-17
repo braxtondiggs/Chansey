@@ -13,15 +13,16 @@ import { PortfolioCapacityGate } from './portfolio-capacity.gate';
 import { PositiveReturnsGate } from './positive-returns.gate';
 import {
   IPromotionGate,
+  PromotionGateContext,
   PromotionGateEvaluation,
-  PromotionGateResult,
-  PromotionGateContext
+  PromotionGateResult
 } from './promotion-gate.interface';
 import { VolatilityCapGate } from './volatility-cap.gate';
 import { WFAConsistencyGate } from './wfa-consistency.gate';
 
 import { AuditService } from '../../audit/audit.service';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { BacktestRun } from '../entities/backtest-run.entity';
 import { Deployment } from '../entities/deployment.entity';
 import { StrategyConfig } from '../entities/strategy-config.entity';
@@ -104,14 +105,15 @@ export class PromotionGateService {
         gateResults.push(result);
 
         this.logger.debug(`Gate ${gate.name}: ${result.passed ? 'PASS' : 'FAIL'} - ${result.message}`);
-      } catch (error) {
-        this.logger.error(`Error evaluating gate ${gate.name}:`, error);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error evaluating gate ${gate.name}: ${err.message}`, err.stack);
         gateResults.push({
           gateName: gate.name,
           passed: false,
           actualValue: 'ERROR',
           requiredValue: 'N/A',
-          message: `Gate evaluation failed: ${error.message}`,
+          message: `Gate evaluation failed: ${err.message}`,
           severity: 'critical'
         });
       }
@@ -126,7 +128,7 @@ export class PromotionGateService {
       entityType: 'StrategyConfig',
       entityId: strategyConfigId,
       userId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         canPromote: evaluation.canPromote,
         gatesPassed: evaluation.gatesPassed,
@@ -203,8 +205,9 @@ export class PromotionGateService {
     try {
       const regime = await this.marketRegimeService.getCurrentRegime('BTC');
       currentMarketRegime = regime?.regime;
-    } catch (error) {
-      this.logger.warn(`Failed to fetch market regime: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to fetch market regime: ${err.message}`);
     }
 
     return {

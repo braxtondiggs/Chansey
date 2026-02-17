@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { In, LessThan, Repository } from 'typeorm';
+import { In, LessThan, type QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { ExchangeSymbolMap } from './exchange-symbol-map.entity';
 import {
@@ -87,7 +87,7 @@ export class OHLCService {
    */
   async saveCandles(candles: Partial<OHLCCandle>[]): Promise<void> {
     if (candles.length === 0) return;
-    await this.ohlcRepository.insert(candles);
+    await this.ohlcRepository.insert(candles as QueryDeepPartialEntity<OHLCCandle>[]);
   }
 
   /**
@@ -97,7 +97,7 @@ export class OHLCService {
     if (candles.length === 0) return;
 
     // Use upsert to handle conflicts on (coinId, timestamp, exchangeId)
-    await this.ohlcRepository.upsert(candles, {
+    await this.ohlcRepository.upsert(candles as QueryDeepPartialEntity<OHLCCandle>[], {
       conflictPaths: ['coinId', 'timestamp', 'exchangeId'],
       skipUpdateIfNoValuesChanged: true
     });
@@ -333,7 +333,7 @@ export class OHLCService {
     });
 
     if (existing) {
-      await this.symbolMapRepository.update(existing.id, mapping);
+      await this.symbolMapRepository.update(existing.id, mapping as QueryDeepPartialEntity<ExchangeSymbolMap>);
       return { ...existing, ...mapping } as ExchangeSymbolMap;
     }
 

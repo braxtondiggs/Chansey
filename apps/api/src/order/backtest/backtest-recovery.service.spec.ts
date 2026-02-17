@@ -13,8 +13,8 @@ function makeBacktest(overrides: Partial<Backtest> = {}): Backtest {
     algorithm: { id: 'algo-1' },
     marketDataSet: { id: 'ds-1' },
     configSnapshot: {},
-    checkpointState: null,
-    lastCheckpointAt: null,
+    checkpointState: undefined,
+    lastCheckpointAt: undefined,
     processedTimestampCount: 0,
     deterministicSeed: 'seed-1',
     ...overrides
@@ -145,8 +145,8 @@ describe('BacktestRecoveryService', () => {
     expect(backtestRepository.update).toHaveBeenCalledWith('bt-1', {
       status: BacktestStatus.PENDING,
       configSnapshot: expect.objectContaining({ autoResumeCount: 1 }),
-      checkpointState: null,
-      lastCheckpointAt: null,
+      checkpointState: undefined,
+      lastCheckpointAt: undefined,
       processedTimestampCount: 0
     });
 
@@ -175,8 +175,8 @@ describe('BacktestRecoveryService', () => {
     expect(backtestRepository.update).toHaveBeenCalledWith('bt-1', {
       status: BacktestStatus.PENDING,
       configSnapshot: expect.objectContaining({ autoResumeCount: 1 }),
-      checkpointState: null,
-      lastCheckpointAt: null,
+      checkpointState: undefined,
+      lastCheckpointAt: undefined,
       processedTimestampCount: 0
     });
   });
@@ -201,9 +201,9 @@ describe('BacktestRecoveryService', () => {
 
   it('marks FAILED when required relations are missing', async () => {
     const backtest = makeBacktest({
-      user: null,
-      algorithm: null,
-      marketDataSet: null,
+      user: undefined,
+      algorithm: undefined,
+      marketDataSet: undefined,
       configSnapshot: {}
     });
     backtestRepository.find.mockResolvedValue([backtest]);
@@ -243,7 +243,7 @@ describe('BacktestRecoveryService', () => {
   });
 
   it('continues recovering other backtests when one fails', async () => {
-    const bt1 = makeBacktest({ id: 'bt-fail', user: null, configSnapshot: {} });
+    const bt1 = makeBacktest({ id: 'bt-fail', user: undefined, configSnapshot: {} });
     const bt2 = makeBacktest({ id: 'bt-ok' });
     backtestRepository.find.mockResolvedValue([bt1, bt2]);
 
