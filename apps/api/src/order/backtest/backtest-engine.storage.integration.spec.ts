@@ -7,10 +7,12 @@ import {
   MetricsCalculatorService,
   PortfolioStateService,
   PositionManagerService,
+  SignalThrottleService,
   SlippageService
 } from './shared';
 
 import { SignalType } from '../../algorithm/interfaces';
+import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
@@ -23,6 +25,7 @@ const feeCalculator = new FeeCalculatorService();
 const positionManager = new PositionManagerService();
 const metricsCalculator = new MetricsCalculatorService(sharpeCalculator, drawdownCalculator);
 const portfolioState = new PortfolioStateService();
+const signalThrottle = new SignalThrottleService();
 
 describe('BacktestEngine storage flow', () => {
   /** Build a MarketDataReaderService backed by a mock storage that streams the given CSV */
@@ -68,7 +71,8 @@ describe('BacktestEngine storage flow', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      signalThrottle
     );
   };
 
@@ -89,14 +93,16 @@ describe('BacktestEngine storage flow', () => {
     ...overrides
   });
 
-  it('loads CSV-backed market data and runs the backtest loop', async () => {
-    const csv = [
+  /** Helper: create a 2-row BTC CSV */
+  const twoRowCsv = () =>
+    [
       'timestamp,open,high,low,close,volume,symbol',
       '2024-01-01T00:00:00Z,100,105,95,102,1000,BTC',
       '2024-01-01T01:00:00Z,102,110,101,108,1100,BTC'
     ].join('\n');
 
-    const { marketDataReader, storageService } = createCSVReader(csv);
+  it('reads CSV from storage and produces trades matching signal count', async () => {
+    const { marketDataReader, storageService } = createCSVReader(twoRowCsv());
 
     const algorithmRegistry = {
       executeAlgorithm: jest
@@ -151,15 +157,15 @@ describe('BacktestEngine storage flow', () => {
       }
     );
 
-    // Verify storage path was used (not database)
+    // Storage path was used, not database
     expect(storageService.getFileStats).toHaveBeenCalledWith('datasets/btc.csv');
     expect(storageService.getFileStream).toHaveBeenCalledWith('datasets/btc.csv');
     expect(ohlcService.getCandlesByDateRange).not.toHaveBeenCalled();
 
-    // Verify quote currency resolution
+    // Quote currency resolved from configSnapshot
     expect(quoteCurrencyResolver.resolveQuoteCurrency).toHaveBeenCalledWith('USDC');
 
-    // Verify algorithm was called for each timestamp with correct context
+    // Algorithm invoked once per timestamp with config & metadata passthrough
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledWith(
       'algo-1',
@@ -173,12 +179,13 @@ describe('BacktestEngine storage flow', () => {
       })
     );
 
-    // Verify result structure
-    expect(result.snapshots.length).toBeGreaterThan(0);
+    // One BUY signal → exactly one trade and one fill
     expect(result.trades).toHaveLength(1);
     expect(result.trades[0].quoteCoin?.symbol).toBe('USDC');
     expect(result.simulatedFills).toHaveLength(1);
     expect(result.simulatedFills[0].slippageBps).toBe(50);
+    // 2 timestamps with every-24th snapshots → both timestamps captured (indices 0 and 1 are both < 24)
+    expect(result.snapshots).toHaveLength(2);
   });
 
   it('falls back to database candles when dataset has no storage location', async () => {
@@ -276,5 +283,174 @@ describe('BacktestEngine storage flow', () => {
         } as any
       })
     ).rejects.toThrow('No historical price data available');
+  });
+
+  it('aborts after 10 consecutive algorithm failures', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockRejectedValue(new Error('algo crash'))
+    };
+
+    // Need enough candles to reach 10 failures — generate 11 rows
+    const rows = ['timestamp,open,high,low,close,volume,symbol'];
+    for (let h = 0; h < 11; h++) {
+      rows.push(`2024-01-01T${String(h).padStart(2, '0')}:00:00Z,100,105,95,102,1000,BTC`);
+    }
+    const { marketDataReader: mdr11 } = createCSVReader(rows.join('\n'));
+
+    const engine = createEngine({
+      algorithmRegistry,
+      marketDataReader: mdr11
+    });
+
+    await expect(
+      engine.executeHistoricalBacktest(
+        baseBacktest({ endDate: new Date('2024-01-01T11:00:00Z') }) as any,
+        [{ id: 'BTC', symbol: 'BTC' } as any],
+        {
+          deterministicSeed: 'seed',
+          dataset: {
+            id: 'ds',
+            storageLocation: 'datasets/test.csv',
+            instrumentUniverse: ['BTC'],
+            startAt: new Date('2024-01-01T00:00:00Z'),
+            endAt: new Date('2024-01-01T11:00:00Z')
+          } as any
+        }
+      )
+    ).rejects.toThrow('Algorithm failed 10 consecutive times');
+
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(10);
+  });
+
+  it('re-throws AlgorithmNotRegisteredException immediately', async () => {
+    const rows = ['timestamp,open,high,low,close,volume,symbol', '2024-01-01T00:00:00Z,100,105,95,102,1000,BTC'].join(
+      '\n'
+    );
+    const { marketDataReader } = createCSVReader(rows);
+
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockRejectedValue(new AlgorithmNotRegisteredException('algo-1'))
+    };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader });
+
+    await expect(
+      engine.executeHistoricalBacktest(baseBacktest() as any, [{ id: 'BTC', symbol: 'BTC' } as any], {
+        deterministicSeed: 'seed',
+        dataset: {
+          id: 'ds',
+          storageLocation: 'datasets/test.csv',
+          instrumentUniverse: ['BTC'],
+          startAt: new Date('2024-01-01T00:00:00Z'),
+          endAt: new Date('2024-01-01T01:00:00Z')
+        } as any
+      })
+    ).rejects.toThrow(AlgorithmNotRegisteredException);
+
+    // Should fail on first call — no retries
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+  });
+
+  it('executes a BUY then SELL sequence and records two trades', async () => {
+    // 3 candles: BUY at T0, hold at T1, SELL at T2
+    const csv = [
+      'timestamp,open,high,low,close,volume,symbol',
+      '2024-01-01T00:00:00Z,100,105,95,100,1000,BTC',
+      '2024-01-01T01:00:00Z,100,110,95,105,1100,BTC',
+      '2024-01-01T02:00:00Z,105,115,100,110,1200,BTC'
+    ].join('\n');
+
+    const { marketDataReader } = createCSVReader(csv);
+
+    const algorithmRegistry = {
+      executeAlgorithm: jest
+        .fn()
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 2, confidence: 0.9, reason: 'entry' }],
+          timestamp: new Date()
+        })
+        .mockResolvedValueOnce({ success: true, signals: [], timestamp: new Date() })
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [{ type: SignalType.SELL, coinId: 'BTC', quantity: 2, confidence: 0.8, reason: 'exit' }],
+          timestamp: new Date()
+        })
+    };
+
+    const engine = createEngine({
+      algorithmRegistry,
+      marketDataReader
+    });
+
+    const result = await engine.executeHistoricalBacktest(
+      baseBacktest({
+        endDate: new Date('2024-01-01T03:00:00Z'),
+        configSnapshot: { parameters: {}, run: {}, slippage: { model: 'fixed', fixedBps: 0 } }
+      }) as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        deterministicSeed: 'seed',
+        // Disable min hold period so the SELL at T2 isn't blocked
+        minHoldMs: 0,
+        dataset: {
+          id: 'ds',
+          storageLocation: 'datasets/test.csv',
+          instrumentUniverse: ['BTC'],
+          startAt: new Date('2024-01-01T00:00:00Z'),
+          endAt: new Date('2024-01-01T03:00:00Z')
+        } as any
+      } as any
+    );
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.simulatedFills).toHaveLength(2);
+    // First trade is BUY, second is SELL
+    expect(result.trades[0].type).toBe('BUY');
+    expect(result.trades[1].type).toBe('SELL');
+    // Final value should differ from initial capital (price moved 100→110)
+    expect(result.finalMetrics.finalValue).not.toBe(1000);
+  });
+
+  it('invokes onCheckpoint callback at the configured interval', async () => {
+    // Generate enough candles to trigger checkpoint (interval=2 for testing)
+    const rows = ['timestamp,open,high,low,close,volume,symbol'];
+    for (let h = 0; h < 5; h++) {
+      rows.push(`2024-01-01T${String(h).padStart(2, '0')}:00:00Z,100,105,95,102,1000,BTC`);
+    }
+    const { marketDataReader } = createCSVReader(rows.join('\n'));
+
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+
+    const onCheckpoint = jest.fn().mockResolvedValue(undefined);
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader });
+
+    await engine.executeHistoricalBacktest(
+      baseBacktest({ endDate: new Date('2024-01-01T05:00:00Z') }) as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        deterministicSeed: 'seed',
+        checkpointInterval: 2,
+        onCheckpoint,
+        dataset: {
+          id: 'ds',
+          storageLocation: 'datasets/test.csv',
+          instrumentUniverse: ['BTC'],
+          startAt: new Date('2024-01-01T00:00:00Z'),
+          endAt: new Date('2024-01-01T05:00:00Z')
+        } as any
+      }
+    );
+
+    // 5 timestamps with interval=2: checkpoints at index 1, 3 (every 2 timestamps)
+    expect(onCheckpoint).toHaveBeenCalled();
+    // Each checkpoint receives (state, results, totalTimestamps)
+    const [state, , totalTimestamps] = onCheckpoint.mock.calls[0];
+    expect(state).toHaveProperty('lastProcessedIndex');
+    expect(state).toHaveProperty('portfolio');
+    expect(totalTimestamps).toBe(5);
   });
 });

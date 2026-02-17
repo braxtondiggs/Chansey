@@ -26,8 +26,8 @@ export interface EMAIndicatorConfig extends IndicatorConfig {
  */
 export interface RSIIndicatorConfig extends IndicatorConfig {
   period: number; // Default: 14
-  buyThreshold: number; // Default: 48 (RSI > 48 = upward momentum, trend-following)
-  sellThreshold: number; // Default: 52 (RSI < 52 = weak momentum, trend-following)
+  buyThreshold: number; // Default: 55 (RSI > 55 = upward momentum, trend-following)
+  sellThreshold: number; // Default: 45 (RSI < 45 = weak momentum, trend-following)
 }
 
 /**
@@ -63,7 +63,7 @@ export interface BollingerBandsIndicatorConfig extends IndicatorConfig {
 export interface ConfluenceConfig {
   // Core confluence settings
   minConfluence: number; // 2-5, number of indicators that must agree for BUY
-  minSellConfluence: number; // Minimum indicators that must agree for SELL (default: minConfluence + 1)
+  minSellConfluence: number; // Minimum indicators that must agree for SELL (default: same as minConfluence)
   minConfidence: number; // 0-1, minimum confidence to generate signal
 
   // Individual indicator configurations
