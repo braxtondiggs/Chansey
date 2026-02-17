@@ -189,8 +189,16 @@ export class UsersService {
         .where('key.isActive = :isActive', { isActive: true })
         .getMany();
 
-      this.logger.debug(`Found ${users.length} users with active exchange keys`);
-      return users;
+      // Load supported exchange keys for each user in parallel
+      const usersWithKeys = await Promise.all(
+        users.map(async (user) => {
+          const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+          return { ...user, exchanges };
+        })
+      );
+
+      this.logger.debug(`Found ${usersWithKeys.length} users with active exchange keys`);
+      return usersWithKeys;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch users with active exchange keys: ${err.message}`, err.stack);

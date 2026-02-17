@@ -169,24 +169,21 @@ export class BalanceService {
 
     try {
       for (const period of periods) {
-        // Get the timestamp for the requested period
         const timestamp = this.getHistoricalTimestamp(period);
+        const { start, end } = this.getWindowForPeriod(period, timestamp);
 
-        // Query the database for historical balances closest to the timestamp
-        const storedBalances = await this.historicalBalanceRepository.find({
-          where: { userId: user.id },
-          // Find records closest to the target timestamp
-          order: { timestamp: 'DESC' }
-          // We can use a custom query to get the closest match to our target timestamp
-          // But for simplicity, we'll just get records after this timestamp for now
-        });
+        // Query only within the relevant time window instead of loading all rows
+        const storedBalances = await this.historicalBalanceRepository
+          .createQueryBuilder('hb')
+          .leftJoinAndSelect('hb.exchange', 'exchange')
+          .where('hb.userId = :userId', { userId: user.id })
+          .andWhere('hb.timestamp BETWEEN :start AND :end', { start, end })
+          .orderBy('hb.timestamp', 'DESC')
+          .getMany();
 
-        // If we have stored historical data
         if (storedBalances.length > 0) {
-          // Group by exchange
           const exchangeGroups = this.groupByExchange(storedBalances);
 
-          // For each exchange, find the closest record to our target timestamp
           for (const balances of Object.values(exchangeGroups)) {
             // Sort by timestamp difference to find the closest match
             balances.sort(
@@ -195,10 +192,8 @@ export class BalanceService {
                 Math.abs(b.timestamp.getTime() - timestamp.getTime())
             );
 
-            // Use the closest match
             const closest = balances[0];
 
-            // Convert to DTO format
             const historicalDto: HistoricalBalanceDto = {
               id: closest.id,
               slug: closest.exchange.slug,
@@ -223,11 +218,38 @@ export class BalanceService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Error retrieving historical balances: ${err.message}`, err.stack);
-      // Return an empty array if we can't get historical data
       return [];
     }
 
     return historicalBalances;
+  }
+
+  /**
+   * Get a search window around the target timestamp based on the period
+   */
+  private getWindowForPeriod(period: string, target: Date): { start: Date; end: Date } {
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    let marginMs: number;
+
+    switch (period) {
+      case '24h':
+        marginMs = 1 * MS_PER_DAY;
+        break;
+      case '7d':
+        marginMs = 2 * MS_PER_DAY;
+        break;
+      case '30d':
+        marginMs = 5 * MS_PER_DAY;
+        break;
+      default:
+        marginMs = 1 * MS_PER_DAY;
+        break;
+    }
+
+    return {
+      start: new Date(target.getTime() - marginMs),
+      end: new Date(target.getTime() + marginMs)
+    };
   }
 
   /**
@@ -250,7 +272,7 @@ export class BalanceService {
    * Calculate USD values for each asset in parallel (returns new array, does not mutate input)
    */
   private async calculateUsdValues(balances: AssetBalanceDto[], exchangeSlug: string): Promise<AssetBalanceDto[]> {
-    const quoteAsset = exchangeSlug === 'binance_us' ? 'USDT' : 'USD';
+    const quoteAsset = this.exchangeManagerService.getQuoteAsset(exchangeSlug);
 
     return Promise.all(
       balances.map(async (balance): Promise<AssetBalanceDto> => {
@@ -352,17 +374,20 @@ export class BalanceService {
 
     try {
       // Get all users with active exchange keys
-      const users = await this.getUsersWithActiveExchangeKeys();
+      const users = await this.userService.getUsersWithActiveExchangeKeys();
       this.logger.log(`Found ${users.length} users with active exchange keys`);
 
-      // Store balances for each user
-      for (const user of users) {
-        try {
-          await this.storeUserBalances(user);
-        } catch (error: unknown) {
-          const err = toErrorInfo(error);
-          this.logger.error(`Error storing historical balances for user ${user.id}: ${err.message}`, err.stack);
-          // Continue with other users instead of failing completely
+      // Process users in parallel chunks to limit concurrent exchange API calls
+      const CHUNK_SIZE = 5;
+      for (let i = 0; i < users.length; i += CHUNK_SIZE) {
+        const chunk = users.slice(i, i + CHUNK_SIZE);
+        const results = await Promise.allSettled(chunk.map((user) => this.storeUserBalances(user)));
+        for (let j = 0; j < results.length; j++) {
+          const result = results[j];
+          if (result.status === 'rejected') {
+            const err = toErrorInfo(result.reason);
+            this.logger.error(`Error storing historical balances for user ${chunk[j].id}: ${err.message}`, err.stack);
+          }
         }
       }
 
@@ -387,16 +412,13 @@ export class BalanceService {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           exchangeBalances = await this.getCurrentBalances(user);
-          if (exchangeBalances.length > 0) break;
-          this.logger.warn(`Empty balances for user ${user.id}, attempt ${attempt}/${maxRetries}`);
+          break; // Success (empty or not) — no retry needed
         } catch (balanceError: unknown) {
           if (attempt === maxRetries) throw balanceError;
           const err = toErrorInfo(balanceError);
           this.logger.warn(
             `Balance fetch failed for user ${user.id}, attempt ${attempt}/${maxRetries}: ${err.message}`
           );
-        }
-        if (attempt < maxRetries) {
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
         }
       }
@@ -432,45 +454,6 @@ export class BalanceService {
       const err = toErrorInfo(error);
       this.logger.error(`Error storing balances for user ${user.id}: ${err.message}`, err.stack);
     }
-  }
-
-  /**
-   * Get all users who have active exchange keys
-   * This is a temporary implementation - in a real application,
-   * you would fetch this from your user service
-   */
-  private async getUsersWithActiveExchangeKeys(): Promise<User[]> {
-    // This is a placeholder - you'll need to implement this to fetch
-    // actual users who have active exchange keys
-    // For example, you might query the database directly or use a user service
-
-    // For testing purposes, we'll return a test user if one is available
-    const userIds = await this.historicalBalanceRepository.manager
-      .createQueryBuilder()
-      .select('DISTINCT "userId"')
-      .from('exchange_key', 'ek')
-      .where('ek."isActive" = :isActive', { isActive: true })
-      .getRawMany();
-
-    if (userIds.length === 0) {
-      this.logger.warn('No users found with active exchange keys');
-      return [];
-    }
-
-    // Fetch full user details for each userId
-    const users: User[] = [];
-    for (const userRow of userIds) {
-      try {
-        const user = await this.userService.getById(userRow.userId, true);
-        // Note: user.exchanges is already ExchangeKey[] with exchange relation loaded
-        users.push(user);
-      } catch (error: unknown) {
-        const err = toErrorInfo(error);
-        this.logger.warn(`Failed to get user details for ID ${userRow.userId}: ${err.message}`);
-      }
-    }
-
-    return users;
   }
 
   /**

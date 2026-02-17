@@ -17,6 +17,7 @@ export class CoinbaseExchangeService extends BaseExchangeService {
   protected readonly exchangeId: keyof typeof ccxt = 'coinbaseexchange';
   protected readonly apiKeyConfigName = 'COINBASE_EXCHANGE_API_KEY';
   protected readonly apiSecretConfigName = 'COINBASE_EXCHANGE_API_SECRET';
+  readonly quoteAsset = 'USD';
 
   constructor(
     configService?: ConfigService,

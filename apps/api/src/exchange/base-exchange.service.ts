@@ -30,6 +30,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   protected abstract readonly exchangeId: keyof typeof ccxt;
   protected abstract readonly apiKeyConfigName: string;
   protected abstract readonly apiSecretConfigName: string;
+  abstract readonly quoteAsset: string;
 
   constructor(
     protected readonly configService?: ConfigService,

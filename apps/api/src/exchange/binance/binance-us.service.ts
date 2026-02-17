@@ -19,6 +19,7 @@ export class BinanceUSService extends BaseExchangeService {
   protected readonly exchangeId: keyof typeof ccxt = 'binanceus';
   protected readonly apiKeyConfigName = 'BINANCE_API_KEY';
   protected readonly apiSecretConfigName = 'BINANCE_API_SECRET';
+  readonly quoteAsset = 'USDT';
 
   constructor(
     configService?: ConfigService,

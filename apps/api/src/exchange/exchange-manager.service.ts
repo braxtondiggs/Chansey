@@ -94,6 +94,15 @@ export class ExchangeManagerService implements IExchangeManagerService {
   }
 
   /**
+   * Get the quote asset for a specific exchange (e.g. 'USDT' for Binance, 'USD' for Coinbase)
+   * @param exchangeSlug Exchange identifier
+   * @returns The quote asset string
+   */
+  getQuoteAsset(exchangeSlug: string): string {
+    return this.getExchangeService(exchangeSlug).quoteAsset;
+  }
+
+  /**
    * Format symbol for a specific exchange using the base service implementation
    * @param exchangeSlug Exchange identifier
    * @param symbol Raw symbol to format

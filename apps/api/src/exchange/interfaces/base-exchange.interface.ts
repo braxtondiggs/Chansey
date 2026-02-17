@@ -13,6 +13,7 @@ export const BASE_EXCHANGE_SERVICE = Symbol('BASE_EXCHANGE_SERVICE');
  * Used to break circular dependencies between exchange-related services
  */
 export interface IBaseExchangeService {
+  readonly quoteAsset: string;
   getClient(user?: User): Promise<ccxt.Exchange>;
   getDefaultClient(): Promise<ccxt.Exchange>;
   getPublicClient(): Promise<ccxt.Exchange>;

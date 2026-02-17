@@ -19,6 +19,7 @@ export class KrakenService extends BaseExchangeService {
   protected readonly exchangeId: keyof typeof ccxt = 'kraken';
   protected readonly apiKeyConfigName = 'KRAKEN_API_KEY';
   protected readonly apiSecretConfigName = 'KRAKEN_API_SECRET';
+  readonly quoteAsset = 'USD';
 
   constructor(
     configService?: ConfigService,
