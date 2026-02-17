@@ -59,7 +59,11 @@ export class MarketRegimeService {
     }
 
     // Return current regime
-    return this.getCurrentRegime(asset).then((regime) => regime!);
+    const finalRegime = await this.getCurrentRegime(asset);
+    if (!finalRegime) {
+      throw new Error(`Failed to detect or create market regime for ${asset}`);
+    }
+    return finalRegime;
   }
 
   /**

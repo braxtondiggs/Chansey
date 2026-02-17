@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 
 import { SecurityAuditLog, SecurityEventType } from './security-audit.entity';
 
@@ -234,7 +234,7 @@ export class SecurityAuditService {
       where: {
         email,
         eventType: SecurityEventType.LOGIN_FAILED,
-        createdAt: { $gte: since } as any
+        createdAt: MoreThanOrEqual(since)
       }
     });
 

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { ILike, Repository } from 'typeorm';
+import { ILike, QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { Algorithm, AlgorithmStatus } from './algorithm.entity';
 import { CreateAlgorithmDto, UpdateAlgorithmDto } from './dto/';
@@ -41,7 +41,10 @@ export class AlgorithmService {
 
   async create(Algorithm: CreateAlgorithmDto): Promise<Algorithm> {
     const algorithm = await this.algorithm.findOne({ where: { name: ILike(`%${Algorithm.name}%`) } });
-    return algorithm ?? ((await this.algorithm.insert(Algorithm as any)).generatedMaps[0] as Algorithm);
+    return (
+      algorithm ??
+      ((await this.algorithm.insert(Algorithm as QueryDeepPartialEntity<Algorithm>)).generatedMaps[0] as Algorithm)
+    );
   }
 
   async update(algorithmId: string, algorithm: UpdateAlgorithmDto) {

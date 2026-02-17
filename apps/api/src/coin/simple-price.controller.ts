@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { AxiosError } from 'axios';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { SimplePriceRequestDto, SimplePriceResponseDto } from './dto/simple-price-request.dto';
@@ -188,15 +189,16 @@ export class SimplePriceController {
       }
 
       // Handle CoinGecko API errors
-      const errObj = error as any;
-      if (errObj?.response?.status === 429) {
-        throw new InternalServerErrorException(
-          'Rate limit exceeded. Please wait a moment before making another request.'
-        );
-      }
+      if (error instanceof AxiosError) {
+        if (error.response?.status === 429) {
+          throw new InternalServerErrorException(
+            'Rate limit exceeded. Please wait a moment before making another request.'
+          );
+        }
 
-      if (errObj?.response?.status >= 400 && errObj?.response?.status < 500) {
-        throw new BadRequestException(`Invalid request to CoinGecko API: ${err.message}`);
+        if (error.response?.status && error.response.status >= 400 && error.response.status < 500) {
+          throw new BadRequestException(`Invalid request to CoinGecko API: ${err.message}`);
+        }
       }
 
       // General error fallback

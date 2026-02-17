@@ -103,12 +103,13 @@ export class BalanceService {
       return this.buildExchangeBalanceDto(exchange);
     }
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
         () => reject(new Error(`Timeout getting balances from ${exchange.name} after ${EXCHANGE_TIMEOUT_MS}ms`)),
         EXCHANGE_TIMEOUT_MS
-      )
-    );
+      );
+    });
 
     let balances: AssetBalanceDto[];
     try {
@@ -117,6 +118,8 @@ export class BalanceService {
       const tmErr = toErrorInfo(timeoutError);
       this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${tmErr.message}`);
       return this.buildExchangeBalanceDto(exchange);
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (balances.length === 0) {

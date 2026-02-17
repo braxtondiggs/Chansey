@@ -16,6 +16,7 @@ import { Queue } from 'bullmq';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { ParameterSpace } from '../../optimization/interfaces/parameter-space.interface';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
@@ -861,7 +862,7 @@ export class PipelineOrchestratorService {
     // Start optimization run
     const run = await this.optimizationService.startOptimization(
       pipeline.strategyConfigId,
-      pipeline.strategyConfig.parameters as any, // Parameter space from strategy
+      pipeline.strategyConfig.parameters as unknown as ParameterSpace, // Parameter space from strategy
       {
         method: 'grid_search',
         maxCombinations: config.maxCombinations,
