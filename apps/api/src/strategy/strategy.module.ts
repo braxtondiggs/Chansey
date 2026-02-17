@@ -44,6 +44,7 @@ import { BalanceModule } from '../balance/balance.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
+import { SignalThrottleService } from '../order/backtest/shared/throttle';
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
 import { Risk } from '../risk/risk.entity';
@@ -81,6 +82,7 @@ import { User } from '../users/users.entity';
     PositionTrackingService,
     CapitalAllocationService,
     StrategyExecutorService,
+    SignalThrottleService,
     LiveTradingService,
     UserPerformanceService,
     PoolStatisticsService,

@@ -24,13 +24,13 @@ import {
  * - Momentum: RSI 14 (overbought/oversold conditions)
  * - Oscillator: MACD (confirm trend momentum)
  * - Volatility: ATR 14 (filter choppy markets)
- * - Mean Reversion: Bollinger Bands (identify extremes)
+ * - Trend Confirmation: Bollinger Bands (breakout/breakdown via %B)
  *
  * Signals are only generated when minConfluence indicators agree.
- * SELL requires higher confluence than BUY (asymmetric) to reduce premature exits.
+ * BUY and SELL use symmetric confluence thresholds by default.
  *
- * BUY (minConfluence=2): EMA12 > EMA26 + RSI > 50 + MACD positive + ATR normal + BB %B > 0.5
- * SELL (minSellConfluence=3): EMA12 < EMA26 + RSI < 50 + MACD negative + ATR normal + BB %B < 0.5
+ * BUY (minConfluence=2): EMA12 > EMA26 + RSI > 55 + MACD positive + ATR normal + BB %B > 0.55
+ * SELL (minSellConfluence=2): EMA12 < EMA26 + RSI < 45 + MACD negative + ATR normal + BB %B < 0.45
  */
 @Injectable()
 export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
@@ -118,7 +118,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     const minConfluence = (config.minConfluence as number) ?? 2;
     return {
       minConfluence,
-      minSellConfluence: (config.minSellConfluence as number) ?? Math.min(minConfluence + 1, 4),
+      minSellConfluence: (config.minSellConfluence as number) ?? minConfluence,
       minConfidence: (config.minConfidence as number) ?? 0.5,
 
       ema: {
@@ -130,8 +130,8 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       rsi: {
         enabled: config.rsiEnabled !== false,
         period: (config.rsiPeriod as number) ?? 14,
-        buyThreshold: (config.rsiBuyThreshold as number) ?? 48,
-        sellThreshold: (config.rsiSellThreshold as number) ?? 52
+        buyThreshold: (config.rsiBuyThreshold as number) ?? 55,
+        sellThreshold: (config.rsiSellThreshold as number) ?? 45
       },
 
       macd: {
@@ -277,7 +277,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       else if (macdSignal.signal === 'bearish') sellCount++;
     }
 
-    // Evaluate Bollinger Bands (Mean Reversion)
+    // Evaluate Bollinger Bands (Trend Confirmation)
     if (config.bollingerBands.enabled && bbResult) {
       totalEnabled++;
       const bbSignal = this.evaluateBollingerBandsSignal(
@@ -308,7 +308,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     }
 
     // Determine direction based on confluence
-    // Asymmetric thresholds: SELL requires higher confluence than BUY to reduce premature exits
+    // Symmetric thresholds by default: BUY and SELL require the same confluence count
     let direction: 'buy' | 'sell' | 'hold' = 'hold';
     let confluenceCount = 0;
 
@@ -807,7 +807,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         histogram: macdResult?.histogram[index],
         // Volatility indicator
         atr: atrResult?.values[index],
-        // Mean reversion indicators
+        // Trend confirmation indicators
         bbUpper: bbResult?.upper[index],
         bbMiddle: bbResult?.middle[index],
         bbLower: bbResult?.lower[index],
@@ -834,11 +834,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       },
       minSellConfluence: {
         type: 'number',
-        default: 3,
+        default: 2,
         min: 2,
         max: 4,
         description:
-          'Minimum number of directional indicators that must agree for SELL (2-4). Higher than minConfluence to reduce premature exits.'
+          'Minimum number of directional indicators that must agree for SELL (2-4). Defaults to same as minConfluence for symmetric thresholds.'
       },
       minConfidence: {
         type: 'number',
@@ -858,14 +858,14 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       rsiPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'RSI calculation period' },
       rsiBuyThreshold: {
         type: 'number',
-        default: 48,
+        default: 55,
         min: 40,
         max: 70,
         description: 'RSI threshold for bullish (RSI > threshold confirms upward momentum)'
       },
       rsiSellThreshold: {
         type: 'number',
-        default: 52,
+        default: 45,
         min: 30,
         max: 60,
         description: 'RSI threshold for bearish (RSI < threshold confirms weak momentum)'
@@ -888,8 +888,8 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         description: 'ATR threshold multiplier (filter when ATR > avg * multiplier)'
       },
 
-      // Bollinger Bands (Mean Reversion) settings
-      bbEnabled: { type: 'boolean', default: true, description: 'Enable Bollinger Bands mean reversion indicator' },
+      // Bollinger Bands (Trend Confirmation) settings
+      bbEnabled: { type: 'boolean', default: true, description: 'Enable Bollinger Bands trend confirmation indicator' },
       bbPeriod: { type: 'number', default: 20, min: 10, max: 50, description: 'Bollinger Bands calculation period' },
       bbStdDev: { type: 'number', default: 2, min: 1, max: 3, description: 'Standard deviation multiplier' },
       bbBuyThreshold: {

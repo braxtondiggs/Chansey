@@ -53,7 +53,7 @@ export class Coin {
   })
   description?: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   @ApiProperty({
     description: "URL to the coin's image",
     example: 'https://example.com/images/bitcoin.png',

@@ -4,6 +4,7 @@ import { StrategyConfig } from './entities/strategy-config.entity';
 import { UserStrategyPosition } from './entities/user-strategy-position.entity';
 
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
+import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
 import { toErrorInfo } from '../shared/error.util';
 
 export interface TradingSignal {
@@ -29,7 +30,23 @@ export interface MarketData {
 export class StrategyExecutorService {
   private readonly logger = new Logger(StrategyExecutorService.name);
 
-  constructor(private readonly algorithmRegistry: AlgorithmRegistry) {}
+  /** Per-strategy throttle state persisted across cron cycles (keyed by strategy config ID) */
+  private readonly throttleStates = new Map<string, ThrottleState>();
+
+  constructor(
+    private readonly algorithmRegistry: AlgorithmRegistry,
+    private readonly signalThrottle: SignalThrottleService
+  ) {}
+
+  /** Get or create throttle state for a strategy */
+  private getThrottleState(strategyId: string): ThrottleState {
+    let state = this.throttleStates.get(strategyId);
+    if (!state) {
+      state = this.signalThrottle.createState();
+      this.throttleStates.set(strategyId, state);
+    }
+    return state;
+  }
 
   async executeStrategy(
     strategy: StrategyConfig,

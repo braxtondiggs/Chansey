@@ -90,7 +90,28 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
     return {
       enabled: { type: 'boolean', default: true },
       weight: { type: 'number', default: 1.0, min: 0, max: 10 },
-      riskLevel: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' }
+      riskLevel: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' },
+      cooldownMs: {
+        type: 'number',
+        default: 86400000,
+        min: 0,
+        max: 604800000,
+        description: 'Signal cooldown per coin+direction (ms)'
+      },
+      maxTradesPerDay: {
+        type: 'number',
+        default: 6,
+        min: 0,
+        max: 50,
+        description: 'Max trades per 24h window'
+      },
+      minSellPercent: {
+        type: 'number',
+        default: 0.5,
+        min: 0,
+        max: 1.0,
+        description: 'Minimum sell percentage per signal'
+      }
     };
   }
 

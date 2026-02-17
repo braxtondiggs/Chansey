@@ -1,3 +1,5 @@
+import { SerializableThrottleState } from './shared/throttle/signal-throttle.interface';
+
 /**
  * Position state within a portfolio checkpoint.
  */
@@ -54,6 +56,9 @@ export interface BacktestCheckpointState {
 
   /** Counts of results persisted to database at checkpoint time */
   persistedCounts: PersistedResultsCounts;
+
+  /** Signal throttle state for resume capability */
+  throttleState?: SerializableThrottleState;
 
   /** SHA256 checksum (first 16 chars) for data integrity verification */
   checksum: string;

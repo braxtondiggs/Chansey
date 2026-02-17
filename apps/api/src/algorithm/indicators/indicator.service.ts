@@ -243,7 +243,7 @@ export class IndicatorService {
         originalLength
       ),
       bandwidth: this.padArray(
-        rawResults.map((r) => r.bandwidth ?? NaN),
+        rawResults.map((r) => (r.middle !== 0 ? (r.upper - r.lower) / r.middle : NaN)),
         originalLength
       ),
       validCount: rawResults.length,

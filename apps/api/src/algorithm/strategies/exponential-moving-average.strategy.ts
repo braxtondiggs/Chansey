@@ -48,6 +48,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       // Get configuration with defaults
       const fastPeriod = (context.config.fastPeriod as number) || 12;
       const slowPeriod = (context.config.slowPeriod as number) || 26;
+      const crossoverLookback = Math.max(1, Math.min(10, (context.config.crossoverLookback as number) || 3));
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -71,7 +72,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         const ema26 = ema26Result.values;
 
         // Generate signals based on EMA crossover
-        const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, ema12, ema26);
+        const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, ema12, ema26, crossoverLookback);
 
         if (signal) {
           signals.push(signal);
@@ -94,52 +95,68 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   }
 
   /**
-   * Generate trading signal based on EMA crossover
+   * Generate trading signal based on EMA crossover within a lookback window.
+   * Scans newest → oldest so the most recent crossover takes priority.
    */
   private generateSignal(
     coinId: string,
     coinSymbol: string,
     prices: PriceSummary[],
     ema12: number[],
-    ema26: number[]
+    ema26: number[],
+    crossoverLookback: number
   ): TradingSignal | null {
-    const currentIndex = prices.length - 1;
-    const previousIndex = currentIndex - 1;
+    const lastIndex = prices.length - 1;
 
-    if (previousIndex < 0 || isNaN(ema12[currentIndex]) || isNaN(ema26[currentIndex])) {
+    if (lastIndex < 1 || isNaN(ema12[lastIndex]) || isNaN(ema26[lastIndex])) {
       return null;
     }
 
-    const currentPrice = prices[currentIndex].avg;
-    const currentEma12 = ema12[currentIndex];
-    const currentEma26 = ema26[currentIndex];
-    const previousEma12 = ema12[previousIndex];
-    const previousEma26 = ema26[previousIndex];
+    // Scan from most recent bar backward through the lookback window
+    for (let offset = 0; offset < crossoverLookback; offset++) {
+      const barIndex = lastIndex - offset;
+      const prevIndex = barIndex - 1;
 
-    // Check for crossover signals
-    const isBullishCrossover = previousEma12 <= previousEma26 && currentEma12 > currentEma26;
-    const isBearishCrossover = previousEma12 >= previousEma26 && currentEma12 < currentEma26;
+      if (
+        prevIndex < 0 ||
+        isNaN(ema12[barIndex]) ||
+        isNaN(ema26[barIndex]) ||
+        isNaN(ema12[prevIndex]) ||
+        isNaN(ema26[prevIndex])
+      ) {
+        continue;
+      }
 
-    if (isBullishCrossover) {
-      // Golden cross - buy signal
-      return {
-        type: SignalType.BUY,
-        coinId,
-        strength: this.calculateSignalStrength(currentPrice, currentEma12, currentEma26),
-        price: currentPrice,
-        confidence: this.calculateConfidence(prices, ema12, ema26, 'bullish'),
-        reason: `Bullish EMA crossover: EMA12 (${currentEma12.toFixed(4)}) crossed above EMA26 (${currentEma26.toFixed(4)})`,
-        metadata: {
-          symbol: coinSymbol,
-          ema12: currentEma12,
-          ema26: currentEma26,
-          crossoverType: 'golden'
-        }
-      };
-    }
+      const isBullishCrossover = ema12[prevIndex] <= ema26[prevIndex] && ema12[barIndex] > ema26[barIndex];
+      const isBearishCrossover = ema12[prevIndex] >= ema26[prevIndex] && ema12[barIndex] < ema26[barIndex];
 
-    if (isBearishCrossover) {
-      // Death cross - sell signal
+      if (!isBullishCrossover && !isBearishCrossover) {
+        continue;
+      }
+
+      // Use current-bar (latest) price/EMAs for strength/confidence
+      const currentPrice = prices[lastIndex].avg;
+      const currentEma12 = ema12[lastIndex];
+      const currentEma26 = ema26[lastIndex];
+
+      if (isBullishCrossover) {
+        return {
+          type: SignalType.BUY,
+          coinId,
+          strength: this.calculateSignalStrength(currentPrice, currentEma12, currentEma26),
+          price: currentPrice,
+          confidence: this.calculateConfidence(prices, ema12, ema26, 'bullish'),
+          reason: `Bullish EMA crossover: EMA12 (${currentEma12.toFixed(4)}) crossed above EMA26 (${currentEma26.toFixed(4)})`,
+          metadata: {
+            symbol: coinSymbol,
+            ema12: currentEma12,
+            ema26: currentEma26,
+            crossoverType: 'golden',
+            crossoverBarsAgo: offset
+          }
+        };
+      }
+
       return {
         type: SignalType.SELL,
         coinId,
@@ -151,12 +168,12 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
           symbol: coinSymbol,
           ema12: currentEma12,
           ema26: currentEma26,
-          crossoverType: 'death'
+          crossoverType: 'death',
+          crossoverBarsAgo: offset
         }
       };
     }
 
-    // No clear signal
     return null;
   }
 
@@ -226,6 +243,13 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       ...super.getConfigSchema(),
       fastPeriod: { type: 'number', default: 12, min: 5, max: 50 },
       slowPeriod: { type: 'number', default: 26, min: 10, max: 100 },
+      crossoverLookback: {
+        type: 'number',
+        default: 3,
+        min: 1,
+        max: 10,
+        description: 'Number of bars to scan for crossover events'
+      },
       minConfidence: { type: 'number', default: 0.6, min: 0, max: 1 },
       enableStopLoss: { type: 'boolean', default: true },
       stopLossPercentage: { type: 'number', default: 0.05, min: 0.01, max: 0.2 }
