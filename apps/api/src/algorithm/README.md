@@ -149,44 +149,45 @@ The Algorithm module:
 **BUY Signal** (when configured minimum indicators agree):
 
 - **EMA**: EMA12 > EMA26 (bullish trend)
-- **RSI**: RSI < 40 (oversold, room to run up)
+- **RSI**: RSI > 55 (strong upward momentum confirms trend)
 - **MACD**: Histogram positive with upward momentum
 - **ATR**: Volatility within normal range (filter, not directional)
-- **Bollinger Bands**: %B < 0.2 (price near lower band, mean reversion opportunity)
+- **Bollinger Bands**: %B > 0.55 (price pushing upper band, confirms uptrend)
 
 **SELL Signal** (when configured minimum indicators agree):
 
 - **EMA**: EMA12 < EMA26 (bearish trend)
-- **RSI**: RSI > 60 (overbought, room to fall)
+- **RSI**: RSI < 45 (weak momentum confirms downtrend)
 - **MACD**: Histogram negative with downward momentum
 - **ATR**: Volatility within normal range (filter, not directional)
-- **Bollinger Bands**: %B > 0.8 (price near upper band, mean reversion opportunity)
+- **Bollinger Bands**: %B < 0.45 (price pushing lower band, confirms downtrend)
 
 #### Configuration Options
 
-| Option                    | Type    | Default | Description                                     |
-| ------------------------- | ------- | ------- | ----------------------------------------------- |
-| `minConfluence`           | number  | 3       | Number of indicators that must agree (2-5)      |
-| `minConfidence`           | number  | 0.65    | Minimum confidence threshold to generate signal |
-| `emaEnabled`              | boolean | true    | Enable EMA trend indicator                      |
-| `emaFastPeriod`           | number  | 12      | Fast EMA period                                 |
-| `emaSlowPeriod`           | number  | 26      | Slow EMA period                                 |
-| `rsiEnabled`              | boolean | true    | Enable RSI momentum indicator                   |
-| `rsiPeriod`               | number  | 14      | RSI calculation period                          |
-| `rsiBuyThreshold`         | number  | 40      | RSI threshold for bullish signal                |
-| `rsiSellThreshold`        | number  | 60      | RSI threshold for bearish signal                |
-| `macdEnabled`             | boolean | true    | Enable MACD oscillator                          |
-| `macdFastPeriod`          | number  | 12      | MACD fast EMA period                            |
-| `macdSlowPeriod`          | number  | 26      | MACD slow EMA period                            |
-| `macdSignalPeriod`        | number  | 9       | MACD signal line period                         |
-| `atrEnabled`              | boolean | true    | Enable ATR volatility filter                    |
-| `atrPeriod`               | number  | 14      | ATR calculation period                          |
-| `atrVolatilityMultiplier` | number  | 1.5     | Max ATR multiplier before filtering signals     |
-| `bbEnabled`               | boolean | true    | Enable Bollinger Bands mean reversion           |
-| `bbPeriod`                | number  | 20      | Bollinger Bands calculation period              |
-| `bbStdDev`                | number  | 2       | Standard deviation multiplier                   |
-| `bbBuyThreshold`          | number  | 0.2     | %B threshold for bullish signal                 |
-| `bbSellThreshold`         | number  | 0.8     | %B threshold for bearish signal                 |
+| Option                    | Type    | Default | Description                                                |
+| ------------------------- | ------- | ------- | ---------------------------------------------------------- |
+| `minConfluence`           | number  | 3       | Number of indicators that must agree for BUY (2-5)         |
+| `minSellConfluence`       | number  | 3       | Number of indicators that must agree for SELL (2-5)        |
+| `minConfidence`           | number  | 0.65    | Minimum confidence threshold to generate signal            |
+| `emaEnabled`              | boolean | true    | Enable EMA trend indicator                                 |
+| `emaFastPeriod`           | number  | 12      | Fast EMA period                                            |
+| `emaSlowPeriod`           | number  | 26      | Slow EMA period                                            |
+| `rsiEnabled`              | boolean | true    | Enable RSI momentum indicator                              |
+| `rsiPeriod`               | number  | 14      | RSI calculation period                                     |
+| `rsiBuyThreshold`         | number  | 55      | RSI threshold for bullish signal (trend-following)         |
+| `rsiSellThreshold`        | number  | 45      | RSI threshold for bearish signal (trend-following)         |
+| `macdEnabled`             | boolean | true    | Enable MACD oscillator                                     |
+| `macdFastPeriod`          | number  | 12      | MACD fast EMA period                                       |
+| `macdSlowPeriod`          | number  | 26      | MACD slow EMA period                                       |
+| `macdSignalPeriod`        | number  | 9       | MACD signal line period                                    |
+| `atrEnabled`              | boolean | true    | Enable ATR volatility filter                               |
+| `atrPeriod`               | number  | 14      | ATR calculation period                                     |
+| `atrVolatilityMultiplier` | number  | 1.5     | Max ATR multiplier before filtering signals                |
+| `bbEnabled`               | boolean | true    | Enable Bollinger Bands                                     |
+| `bbPeriod`                | number  | 20      | Bollinger Bands calculation period                         |
+| `bbStdDev`                | number  | 2       | Standard deviation multiplier                              |
+| `bbBuyThreshold`          | number  | 0.55    | %B threshold for bullish signal (price pushing upper band) |
+| `bbSellThreshold`         | number  | 0.45    | %B threshold for bearish signal (price pushing lower band) |
 
 ## How Algorithms Work
 
