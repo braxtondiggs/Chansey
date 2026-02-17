@@ -54,18 +54,19 @@ export class AddOpportunitySelling1738800000000 implements MigrationInterface {
       ADD COLUMN "enableOpportunitySelling" boolean NOT NULL DEFAULT false
     `);
 
-    await queryRunner.query(`
-      ALTER TABLE "user"
-      ADD COLUMN "opportunitySellingConfig" jsonb NOT NULL DEFAULT '${JSON.stringify({
-        minOpportunityConfidence: 0.7,
-        minHoldingPeriodHours: 48,
-        protectGainsAbovePercent: 15,
-        protectedCoins: [],
-        minOpportunityAdvantagePercent: 10,
-        maxLiquidationPercent: 30,
-        useAlgorithmRanking: true
-      })}'
-    `);
+    const defaultConfig = JSON.stringify({
+      minOpportunityConfidence: 0.7,
+      minHoldingPeriodHours: 48,
+      protectGainsAbovePercent: 15,
+      protectedCoins: [],
+      minOpportunityAdvantagePercent: 10,
+      maxLiquidationPercent: 30,
+      useAlgorithmRanking: true
+    });
+
+    await queryRunner.query(
+      `ALTER TABLE "user" ADD COLUMN "opportunitySellingConfig" jsonb NOT NULL DEFAULT $$${defaultConfig}$$`
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

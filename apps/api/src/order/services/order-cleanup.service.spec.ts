@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { OrderCleanupService } from './order-cleanup.service';
 
 import { OrderCleanupConfig, orderCleanupConfig } from '../config/order-cleanup.config';
+import { OpportunitySellEvaluation } from '../entities/opportunity-sell-evaluation.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import { Order, OrderStatus } from '../order.entity';
 
@@ -18,6 +19,7 @@ describe('OrderCleanupService', () => {
     stalePendingCancelDays: 30,
     batchSize: 500,
     batchDelayMs: 0, // no delay in tests
+    evaluationRetentionDays: 90,
     dryRun: false
   };
 
@@ -47,6 +49,19 @@ describe('OrderCleanupService', () => {
 
   const mockPositionExitRepo = {
     createQueryBuilder: jest.fn().mockReturnValue(mockPeQb)
+  };
+
+  // Query builder mocks for evaluation repo
+  const mockEvalQb = {
+    where: jest.fn().mockReturnThis(),
+    getCount: jest.fn().mockResolvedValue(0),
+    delete: jest.fn().mockReturnThis(),
+    from: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue({ affected: 0 })
+  };
+
+  const mockEvaluationRepo = {
+    createQueryBuilder: jest.fn().mockReturnValue(mockEvalQb)
   };
 
   // Transaction manager mocks
@@ -82,6 +97,7 @@ describe('OrderCleanupService', () => {
         OrderCleanupService,
         { provide: getRepositoryToken(Order), useValue: mockOrderRepo },
         { provide: getRepositoryToken(PositionExit), useValue: mockPositionExitRepo },
+        { provide: getRepositoryToken(OpportunitySellEvaluation), useValue: mockEvaluationRepo },
         { provide: DataSource, useValue: mockDataSource },
         { provide: orderCleanupConfig.KEY, useFactory: () => config }
       ]
@@ -97,6 +113,9 @@ describe('OrderCleanupService', () => {
     mockPeQb.getMany.mockResolvedValue([]);
     mockPeQb.getCount.mockResolvedValue(0);
     mockPositionExitRepo.createQueryBuilder.mockReturnValue(mockPeQb);
+    mockEvalQb.getCount.mockResolvedValue(0);
+    mockEvalQb.execute.mockResolvedValue({ affected: 0 });
+    mockEvaluationRepo.createQueryBuilder.mockReturnValue(mockEvalQb);
     mockTxUpdateQb.execute.mockResolvedValue({ affected: 0 });
     mockTxDeleteQb.execute.mockResolvedValue({ affected: 0 });
 
@@ -123,6 +142,7 @@ describe('OrderCleanupService', () => {
       expect(result.nulledPositionExitRefs).toBe(0);
       expect(result.deletedPositionExits).toBe(0);
       expect(result.skippedActiveRefs).toBe(0);
+      expect(result.deletedEvaluations).toBe(0);
       expect(mockOrderRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
@@ -137,6 +157,7 @@ describe('OrderCleanupService', () => {
       expect(result.nulledPositionExitRefs).toBe(0);
       expect(result.deletedPositionExits).toBe(0);
       expect(result.skippedActiveRefs).toBe(0);
+      expect(result.deletedEvaluations).toBe(0);
       expect(mockDataSource.transaction).not.toHaveBeenCalled();
     });
   });

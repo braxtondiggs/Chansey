@@ -10,6 +10,10 @@ import { User } from './users.entity';
 
 import { CoinService } from '../coin/coin.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
+import {
+  DEFAULT_OPPORTUNITY_SELLING_CONFIG,
+  OpportunitySellingUserConfig
+} from '../order/interfaces/opportunity-selling.interface';
 import { PortfolioType } from '../portfolio/portfolio-type.enum';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { Risk } from '../risk/risk.entity';
@@ -302,16 +306,13 @@ export class UsersService {
 
       // Merge only the provided config fields into the existing config
       const { enabled, ...configFields } = dto;
-      const existingConfig = user.opportunitySellingConfig ?? {};
-      const updatedConfig = { ...existingConfig };
-
-      for (const [key, value] of Object.entries(configFields)) {
-        if (value !== undefined) {
-          (updatedConfig as any)[key] = value;
-        }
-      }
-
-      user.opportunitySellingConfig = updatedConfig as User['opportunitySellingConfig'];
+      const defined = Object.fromEntries(
+        Object.entries(configFields).filter(([, v]) => v !== undefined)
+      ) as Partial<OpportunitySellingUserConfig>;
+      user.opportunitySellingConfig = {
+        ...(user.opportunitySellingConfig ?? DEFAULT_OPPORTUNITY_SELLING_CONFIG),
+        ...defined
+      };
 
       if (enabled !== undefined) {
         user.enableOpportunitySelling = enabled;

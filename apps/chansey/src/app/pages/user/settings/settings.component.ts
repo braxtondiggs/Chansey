@@ -767,7 +767,8 @@ export class SettingsComponent implements OnInit {
     const payload: Record<string, unknown> = {};
 
     const protectedSlugs: string[] = (formValues.protectedCoins ?? []).map((c: Coin) => c.slug);
-    if (JSON.stringify(protectedSlugs) !== JSON.stringify(currentData.config.protectedCoins)) {
+    const currentSet = new Set(currentData.config.protectedCoins);
+    if (protectedSlugs.length !== currentSet.size || !protectedSlugs.every((slug) => currentSet.has(slug))) {
       payload['protectedCoins'] = protectedSlugs;
     }
     if (formValues.maxLiquidationPercent !== currentData.config.maxLiquidationPercent) {

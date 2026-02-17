@@ -32,6 +32,9 @@ export interface OrderCleanupConfig {
   /** Delay in ms between batches to reduce DB pressure. Default: 100 */
   batchDelayMs: number;
 
+  /** Days to retain opportunity sell evaluations. Default: 90 */
+  evaluationRetentionDays: number;
+
   /** When true, log what would be deleted without executing deletes. Default: false */
   dryRun: boolean;
 }
@@ -44,6 +47,7 @@ export const orderCleanupConfig = registerAs(
     stalePendingCancelDays: parseInteger(process.env.ORDER_CLEANUP_STALE_PENDING_CANCEL_DAYS, 30),
     batchSize: parseInteger(process.env.ORDER_CLEANUP_BATCH_SIZE, 500),
     batchDelayMs: parseNonNegativeInteger(process.env.ORDER_CLEANUP_BATCH_DELAY_MS, 100),
+    evaluationRetentionDays: parseInteger(process.env.ORDER_CLEANUP_EVALUATION_RETENTION_DAYS, 90),
     dryRun: process.env.ORDER_CLEANUP_DRY_RUN === 'true'
   })
 );

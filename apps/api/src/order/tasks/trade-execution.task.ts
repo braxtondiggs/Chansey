@@ -5,7 +5,6 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 
 import { AlgorithmActivationService } from '../../algorithm/services/algorithm-activation.service';
-import { OpportunitySellService } from '../services/opportunity-sell.service';
 import { TradeExecutionService, TradeSignal } from '../services/trade-execution.service';
 
 /**
@@ -23,8 +22,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('trade-execution') private readonly tradeExecutionQueue: Queue,
     private readonly tradeExecutionService: TradeExecutionService,
-    private readonly algorithmActivationService: AlgorithmActivationService,
-    private readonly opportunitySellService: OpportunitySellService
+    private readonly algorithmActivationService: AlgorithmActivationService
   ) {
     super();
   }

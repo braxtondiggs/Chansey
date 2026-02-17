@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
 import { orderCleanupConfig } from '../config/order-cleanup.config';
+import { OpportunitySellEvaluation } from '../entities/opportunity-sell-evaluation.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import { PositionExitStatus } from '../interfaces/exit-config.interface';
 import { Order, OrderStatus } from '../order.entity';
@@ -14,6 +15,7 @@ export interface CleanupResult {
   nulledPositionExitRefs: number;
   deletedPositionExits: number;
   skippedActiveRefs: number;
+  deletedEvaluations: number;
   dryRun: boolean;
 }
 
@@ -31,6 +33,8 @@ export class OrderCleanupService {
     private readonly dataSource: DataSource,
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     @InjectRepository(PositionExit) private readonly positionExitRepo: Repository<PositionExit>,
+    @InjectRepository(OpportunitySellEvaluation)
+    private readonly evaluationRepo: Repository<OpportunitySellEvaluation>,
     @Inject(orderCleanupConfig.KEY) private readonly config: ConfigType<typeof orderCleanupConfig>
   ) {}
 
@@ -42,6 +46,7 @@ export class OrderCleanupService {
         nulledPositionExitRefs: 0,
         deletedPositionExits: 0,
         skippedActiveRefs: 0,
+        deletedEvaluations: 0,
         dryRun: false
       };
     }
@@ -51,6 +56,7 @@ export class OrderCleanupService {
       nulledPositionExitRefs: 0,
       deletedPositionExits: 0,
       skippedActiveRefs: 0,
+      deletedEvaluations: 0,
       dryRun: this.config.dryRun
     };
 
@@ -83,11 +89,15 @@ export class OrderCleanupService {
       }
     }
 
+    // Clean up old opportunity sell evaluations
+    result.deletedEvaluations = await this.cleanupOldEvaluations();
+
     this.logger.log(
       `Cleanup complete: ${result.deletedOrders} orders deleted, ` +
         `${result.nulledPositionExitRefs} position exit refs nulled, ` +
         `${result.deletedPositionExits} position exits deleted, ` +
-        `${result.skippedActiveRefs} skipped (active position refs)`
+        `${result.skippedActiveRefs} skipped (active position refs), ` +
+        `${result.deletedEvaluations} evaluations deleted`
     );
 
     return result;
@@ -120,7 +130,13 @@ export class OrderCleanupService {
   }
 
   private async processBatch(batchIds: string[]): Promise<Omit<CleanupResult, 'dryRun'>> {
-    const batchResult = { deletedOrders: 0, nulledPositionExitRefs: 0, deletedPositionExits: 0, skippedActiveRefs: 0 };
+    const batchResult = {
+      deletedOrders: 0,
+      nulledPositionExitRefs: 0,
+      deletedPositionExits: 0,
+      skippedActiveRefs: 0,
+      deletedEvaluations: 0
+    };
 
     if (batchIds.length === 0) return batchResult;
 
@@ -218,5 +234,27 @@ export class OrderCleanupService {
     });
 
     return batchResult;
+  }
+
+  private async cleanupOldEvaluations(): Promise<number> {
+    const cutoff = new Date(Date.now() - this.config.evaluationRetentionDays * 24 * 60 * 60 * 1000);
+
+    if (this.config.dryRun) {
+      const count = await this.evaluationRepo
+        .createQueryBuilder('eval')
+        .where('eval.evaluatedAt < :cutoff', { cutoff })
+        .getCount();
+      this.logger.log(`[DRY RUN] Would delete ${count} old opportunity sell evaluations`);
+      return count;
+    }
+
+    const result = await this.evaluationRepo
+      .createQueryBuilder()
+      .delete()
+      .from(OpportunitySellEvaluation)
+      .where('"evaluatedAt" < :cutoff', { cutoff })
+      .execute();
+
+    return result.affected ?? 0;
   }
 }

@@ -516,7 +516,7 @@ export class BacktestEngine {
 
         // Opportunity selling: if BUY failed (likely insufficient cash), attempt to sell positions to fund it
         if (!tradeResult && strategySignal.action === 'BUY' && oppSellingEnabled) {
-          const oppResult = this.attemptOpportunitySelling(
+          const oppResult = await this.attemptOpportunitySelling(
             strategySignal,
             portfolio,
             marketData,
@@ -529,7 +529,8 @@ export class BacktestEngine {
             backtest,
             timestamp,
             trades,
-            simulatedFills
+            simulatedFills,
+            dailyVolume
           );
 
           if (oppResult) {
@@ -1612,6 +1613,7 @@ export class BacktestEngine {
         realizedPnLPercent,
         costBasis,
         metadata: {
+          ...(signal.metadata ?? {}),
           reason: signal.reason,
           confidence: signal.confidence ?? 0,
           basePrice, // Original price before slippage
@@ -1645,7 +1647,7 @@ export class BacktestEngine {
    *
    * @returns true if sells were executed and the buy should be re-attempted
    */
-  private attemptOpportunitySelling(
+  private async attemptOpportunitySelling(
     buySignal: TradingSignal,
     portfolio: Portfolio,
     marketData: MarketData,
@@ -1658,8 +1660,9 @@ export class BacktestEngine {
     backtest: Backtest,
     timestamp: Date,
     trades: Partial<BacktestTrade>[],
-    simulatedFills: Partial<SimulatedOrderFill>[]
-  ): boolean {
+    simulatedFills: Partial<SimulatedOrderFill>[],
+    dailyVolume?: number
+  ): Promise<boolean> {
     const buyConfidence = buySignal.confidence ?? 0;
 
     // Gate: confidence threshold
@@ -1692,11 +1695,57 @@ export class BacktestEngine {
 
     const shortfall = totalRequired - portfolio.cashBalance;
 
-    // Score all positions
+    // Score and rank eligible positions
+    const eligible = this.scoreEligiblePositions(
+      portfolio,
+      buySignal.coinId,
+      buyConfidence,
+      config,
+      marketData,
+      timestamp
+    );
+    if (eligible.length === 0) return false;
+
+    // Execute sells to cover the shortfall
+    const maxSellValue = (portfolio.totalValue * config.maxLiquidationPercent) / 100;
+    return this.executeSellPlan(
+      eligible,
+      shortfall,
+      maxSellValue,
+      buySignal,
+      buyConfidence,
+      totalRequired,
+      portfolio,
+      marketData,
+      tradingFee,
+      rng,
+      slippageConfig,
+      coinMap,
+      quoteCoin,
+      backtest,
+      timestamp,
+      trades,
+      simulatedFills,
+      dailyVolume
+    );
+  }
+
+  /**
+   * Score all portfolio positions for opportunity selling eligibility.
+   * Returns sorted candidates (lowest score = sell first).
+   */
+  private scoreEligiblePositions(
+    portfolio: Portfolio,
+    buyCoinId: string,
+    buyConfidence: number,
+    config: OpportunitySellingUserConfig,
+    marketData: MarketData,
+    timestamp: Date
+  ): { coinId: string; score: number; quantity: number; price: number }[] {
     const eligible: { coinId: string; score: number; quantity: number; price: number }[] = [];
 
     for (const [coinId, position] of portfolio.positions) {
-      if (coinId === buySignal.coinId) continue;
+      if (coinId === buyCoinId) continue;
       if (config.protectedCoins.includes(coinId)) continue;
 
       const currentPrice = marketData.prices.get(coinId);
@@ -1715,17 +1764,42 @@ export class BacktestEngine {
       }
     }
 
-    if (eligible.length === 0) return false;
-
     // Sort by score ASC (lowest = sell first)
     eligible.sort((a, b) => a.score - b.score);
+    return eligible;
+  }
 
-    const maxSellValue = (portfolio.totalValue * config.maxLiquidationPercent) / 100;
+  /**
+   * Execute sells from ranked candidates to cover a cash shortfall.
+   * Appends resulting trades and fills to the provided arrays.
+   *
+   * @returns true if any sells were executed
+   */
+  private async executeSellPlan(
+    candidates: { coinId: string; score: number; quantity: number; price: number }[],
+    shortfall: number,
+    maxSellValue: number,
+    buySignal: TradingSignal,
+    buyConfidence: number,
+    totalRequired: number,
+    portfolio: Portfolio,
+    marketData: MarketData,
+    tradingFee: number,
+    rng: SeededRandom,
+    slippageConfig: SlippageConfig,
+    coinMap: Map<string, Coin>,
+    quoteCoin: Coin,
+    backtest: Backtest,
+    timestamp: Date,
+    trades: Partial<BacktestTrade>[],
+    simulatedFills: Partial<SimulatedOrderFill>[],
+    dailyVolume?: number
+  ): Promise<boolean> {
     let remainingShortfall = shortfall;
     let totalSellValue = 0;
     let sellExecuted = false;
 
-    for (const candidate of eligible) {
+    for (const candidate of candidates) {
       if (remainingShortfall <= 0 || totalSellValue >= maxSellValue) break;
 
       const maxByShortfall = remainingShortfall / candidate.price;
@@ -1740,11 +1814,29 @@ export class BacktestEngine {
         quantity,
         reason: `Opportunity sell: freeing cash for ${buySignal.coinId} buy (confidence=${(buyConfidence * 100).toFixed(0)}%)`,
         confidence: buyConfidence,
-        metadata: { opportunitySell: true, buyTargetCoin: buySignal.coinId }
+        metadata: {
+          opportunitySell: true,
+          buyTargetCoin: buySignal.coinId,
+          buyConfidence,
+          shortfall,
+          totalRequired,
+          eligibleCount: candidates.length,
+          candidateScore: candidate.score,
+          remainingShortfall
+        }
       };
 
-      // Use a 0 minHoldMs so the sell isn't blocked by hold period (already checked by scoring)
-      const sellResult = this.executeSellImmediate(sellSignal, portfolio, marketData, tradingFee, rng, slippageConfig);
+      // Use minHoldMs=0 so the sell isn't blocked by hold period (already checked by scoring)
+      const sellResult = await this.executeTrade(
+        sellSignal,
+        portfolio,
+        marketData,
+        tradingFee,
+        rng,
+        slippageConfig,
+        dailyVolume,
+        0
+      );
       if (sellResult) {
         const { trade, slippageBps } = sellResult;
         const baseCoin = coinMap.get(candidate.coinId);
@@ -1770,83 +1862,6 @@ export class BacktestEngine {
     }
 
     return sellExecuted;
-  }
-
-  /**
-   * Execute a sell trade immediately without minimum hold period enforcement.
-   * Used by opportunity selling where hold period was already validated during scoring.
-   */
-  private executeSellImmediate(
-    signal: TradingSignal,
-    portfolio: Portfolio,
-    marketData: MarketData,
-    tradingFee: number,
-    rng: SeededRandom,
-    slippageConfig: SlippageConfig
-  ): { trade: Partial<BacktestTrade>; slippageBps: number } | null {
-    const basePrice = marketData.prices.get(signal.coinId);
-    if (!basePrice) return null;
-
-    const existingPosition = portfolio.positions.get(signal.coinId);
-    if (!existingPosition || existingPosition.quantity === 0) return null;
-
-    const quantity = Math.min(signal.quantity ?? existingPosition.quantity, existingPosition.quantity);
-
-    // Calculate slippage
-    const slippageResult = this.slippageService.calculateSlippage(
-      { price: basePrice, quantity, isBuy: false },
-      slippageConfig
-    );
-    const price = slippageResult.executionPrice;
-    const slippageBps = slippageResult.slippageBps;
-
-    const totalValue = quantity * price;
-    const costBasis = existingPosition.averagePrice;
-    const realizedPnL = (price - costBasis) * quantity;
-    const realizedPnLPercent = costBasis > 0 ? (price - costBasis) / costBasis : 0;
-
-    let holdTimeMs: number | undefined;
-    if (existingPosition.entryDate) {
-      holdTimeMs = marketData.timestamp.getTime() - existingPosition.entryDate.getTime();
-    }
-
-    existingPosition.quantity -= quantity;
-    existingPosition.totalValue = existingPosition.quantity * price;
-    portfolio.cashBalance += totalValue;
-
-    if (existingPosition.quantity === 0) {
-      portfolio.positions.delete(signal.coinId);
-    } else {
-      portfolio.positions.set(signal.coinId, existingPosition);
-    }
-
-    const feeConfig = this.feeCalculator.fromFlatRate(tradingFee);
-    const feeResult = this.feeCalculator.calculateFee({ tradeValue: totalValue }, feeConfig);
-    portfolio.cashBalance -= feeResult.fee;
-    portfolio.totalValue =
-      portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, marketData.prices);
-
-    return {
-      trade: {
-        type: TradeType.SELL,
-        quantity,
-        price,
-        totalValue,
-        fee: feeResult.fee,
-        realizedPnL,
-        realizedPnLPercent,
-        costBasis,
-        metadata: {
-          reason: signal.reason,
-          confidence: signal.confidence ?? 0,
-          basePrice,
-          slippageBps,
-          opportunitySell: true,
-          ...(holdTimeMs !== undefined && { holdTimeMs })
-        }
-      } as Partial<BacktestTrade>,
-      slippageBps
-    };
   }
 
   /**

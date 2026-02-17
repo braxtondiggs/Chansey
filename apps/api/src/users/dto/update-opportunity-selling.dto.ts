@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 import { OpportunitySellingUserConfig } from '../../order/interfaces/opportunity-selling.interface';
@@ -59,6 +60,7 @@ export class UpdateOpportunitySellingConfigDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Type(() => String)
   protectedCoins?: string[];
 
   @ApiPropertyOptional({
