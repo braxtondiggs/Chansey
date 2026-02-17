@@ -45,7 +45,7 @@ export class Coin {
   })
   symbol: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   @ApiProperty({
     description: 'Description of the coin',
     example: 'Bitcoin is a decentralized digital currency...',
@@ -53,7 +53,7 @@ export class Coin {
   })
   description?: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   @ApiProperty({
     description: "URL to the coin's image",
     example: 'https://example.com/images/bitcoin.png',
