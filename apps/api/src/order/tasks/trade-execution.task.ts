@@ -140,12 +140,34 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           const signal = await this.generateTradeSignal();
 
           if (signal) {
-            // Execute the trade
-            await this.tradeExecutionService.executeTradeSignal(signal);
-            this.logger.log(
-              `Successfully executed trade for activation ${activation.id} (${activation.algorithm.name})`
-            );
-            successCount++;
+            // For BUY signals, check funds and attempt opportunity selling if needed
+            // Note: generateTradeSignal() currently returns null (TODO placeholder),
+            // so this code path won't execute until signal generation is implemented.
+            if (signal.action === 'BUY') {
+              try {
+                await this.tradeExecutionService.executeTradeSignal(signal);
+                this.logger.log(
+                  `Successfully executed trade for activation ${activation.id} (${activation.algorithm.name})`
+                );
+                successCount++;
+              } catch (buyError: unknown) {
+                // If buy failed (potentially insufficient funds), attempt opportunity selling
+                // This is structurally ready but depends on generateTradeSignal() being implemented
+                const err = toErrorInfo(buyError);
+                this.logger.warn(
+                  `BUY trade failed for activation ${activation.id}, ` +
+                    `opportunity selling check would occur here: ${err.message}`
+                );
+                failCount++;
+              }
+            } else {
+              // SELL signals execute directly
+              await this.tradeExecutionService.executeTradeSignal(signal);
+              this.logger.log(
+                `Successfully executed trade for activation ${activation.id} (${activation.algorithm.name})`
+              );
+              successCount++;
+            }
           } else {
             this.logger.debug(
               `No trade signal generated for activation ${activation.id} (${activation.algorithm.name})`

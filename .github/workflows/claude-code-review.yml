@@ -46,8 +46,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          model: 'claude-opus-4-6'
-
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
             Please review this pull request. If this is a follow-up review (synchronize event),

@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { $t, updatePreset, updateSurfacePalette } from '@primeng/themes';
@@ -6,6 +6,7 @@ import Aura from '@primeng/themes/aura';
 import Lara from '@primeng/themes/lara';
 import Nora from '@primeng/themes/nora';
 import { ConfirmationService, MessageService } from 'primeng/api';
+import { AutoCompleteModule } from 'primeng/autocomplete';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -15,9 +16,12 @@ import { PanelModule } from 'primeng/panel';
 import { PasswordModule } from 'primeng/password';
 import { RadioButtonModule } from 'primeng/radiobutton';
 import { SelectButtonModule } from 'primeng/selectbutton';
+import { SliderModule } from 'primeng/slider';
 import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
+
+import { Coin } from '@chansey/api-interfaces';
 
 import { AuthService } from '@chansey-web/app/shared/services/auth.service';
 import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
@@ -54,6 +58,7 @@ declare type SurfacesType = {
   selector: 'app-settings',
   standalone: true,
   imports: [
+    AutoCompleteModule,
     ButtonModule,
     CardModule,
     ConfirmDialogModule,
@@ -65,6 +70,7 @@ declare type SurfacesType = {
     RadioButtonModule,
     ReactiveFormsModule,
     SelectButtonModule,
+    SliderModule,
     TabsModule,
     ToastModule,
     ToggleSwitchModule
@@ -84,6 +90,9 @@ export class SettingsComponent implements OnInit {
   readonly userQuery = this.authService.useUser();
   readonly enableOtpMutation = this.settingsService.useEnableOtpMutation();
   readonly disableOtpMutation = this.settingsService.useDisableOtpMutation();
+  readonly coinsQuery = this.settingsService.useCoinsQuery();
+  readonly opportunitySellingQuery = this.settingsService.useOpportunitySellingQuery();
+  readonly updateOpportunitySellingMutation = this.settingsService.useUpdateOpportunitySellingMutation();
 
   darkMode = this.layoutService.isDarkTheme();
   compactMode = false;
@@ -102,6 +111,15 @@ export class SettingsComponent implements OnInit {
   securityForm: FormGroup = this.fb.group({
     twoFactorAuth: new FormControl({ value: false, disabled: false })
   });
+
+  opportunitySellingForm: FormGroup = this.fb.group({
+    enabled: new FormControl(false),
+    protectedCoins: new FormControl([]),
+    maxLiquidationPercent: new FormControl(30)
+  });
+
+  private opportunitySellingInitialized = false;
+  protectedCoinSuggestions: Coin[] = [];
 
   // Theme related properties
   presets = Object.keys(presets);
@@ -261,6 +279,27 @@ export class SettingsComponent implements OnInit {
 
   // Primary color options
   primaryColors: SurfacesType[] = [];
+
+  constructor() {
+    effect(() => {
+      const data = this.opportunitySellingQuery.data();
+      const coins = this.coinsQuery.data();
+      if (data && coins && !this.opportunitySellingInitialized) {
+        this.opportunitySellingInitialized = true;
+        const protectedCoinObjects = data.config.protectedCoins
+          .map((slug) => coins.find((c) => c.slug === slug))
+          .filter((c): c is Coin => !!c);
+        this.opportunitySellingForm.patchValue(
+          {
+            enabled: data.enabled,
+            protectedCoins: protectedCoinObjects,
+            maxLiquidationPercent: data.config.maxLiquidationPercent
+          },
+          { emitEvent: false }
+        );
+      }
+    });
+  }
 
   ngOnInit(): void {
     const userData = this.userQuery.data();
@@ -678,5 +717,89 @@ export class SettingsComponent implements OnInit {
   cancelDisable2FA(): void {
     this.showPasswordDialog.set(false);
     this.disablePassword = '';
+  }
+
+  searchProtectedCoins(event: { query: string }): void {
+    const coins = this.coinsQuery.data();
+    if (!coins) {
+      this.protectedCoinSuggestions = [];
+      return;
+    }
+    const query = event.query.toLowerCase();
+    const selected: Coin[] = this.opportunitySellingForm.get('protectedCoins')?.value ?? [];
+    const selectedSlugs = new Set(selected.map((c) => c.slug));
+    this.protectedCoinSuggestions = coins
+      .filter(
+        (c) =>
+          !selectedSlugs.has(c.slug) && (c.name.toLowerCase().includes(query) || c.symbol.toLowerCase().includes(query))
+      )
+      .slice(0, 10);
+  }
+
+  toggleOpportunitySelling(event: { checked: boolean }): void {
+    this.updateOpportunitySellingMutation.mutate(
+      { enabled: event.checked },
+      {
+        onSuccess: () => {
+          this.messageService.add({
+            severity: event.checked ? 'success' : 'warn',
+            summary: event.checked ? 'Enabled' : 'Disabled',
+            detail: `Opportunity selling has been ${event.checked ? 'enabled' : 'disabled'}`
+          });
+        },
+        onError: (error: Error) => {
+          this.opportunitySellingForm.get('enabled')?.setValue(!event.checked, { emitEvent: false });
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error?.message || 'Failed to update opportunity selling'
+          });
+        }
+      }
+    );
+  }
+
+  saveOpportunitySelling(): void {
+    const currentData = this.opportunitySellingQuery.data();
+    if (!currentData) return;
+
+    const formValues = this.opportunitySellingForm.value;
+    const payload: Record<string, unknown> = {};
+
+    const protectedSlugs: string[] = (formValues.protectedCoins ?? []).map((c: Coin) => c.slug);
+    const currentSet = new Set(currentData.config.protectedCoins);
+    if (protectedSlugs.length !== currentSet.size || !protectedSlugs.every((slug) => currentSet.has(slug))) {
+      payload['protectedCoins'] = protectedSlugs;
+    }
+    if (formValues.maxLiquidationPercent !== currentData.config.maxLiquidationPercent) {
+      payload['maxLiquidationPercent'] = formValues.maxLiquidationPercent;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      this.messageService.add({
+        severity: 'info',
+        summary: 'No Changes',
+        detail: 'No configuration changes detected'
+      });
+      return;
+    }
+
+    this.updateOpportunitySellingMutation.mutate(payload, {
+      onSuccess: () => {
+        this.opportunitySellingInitialized = false;
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Saved',
+          detail: 'Opportunity selling configuration updated'
+        });
+      },
+      onError: (error: Error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: error?.message || 'Failed to save configuration'
+        });
+      }
+    });
   }
 }

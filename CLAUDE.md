@@ -117,6 +117,8 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - TypeORM with PostgreSQL
 - Migration files in `apps/api/src/migrations/`
 - Entities use decorators for database mapping
+- **NEVER use `uuid_generate_v4()`** in migrations — it requires the `uuid-ossp` extension which is not available.
+  **Always use `gen_random_uuid()`** instead (built into PostgreSQL 13+ natively)
 
 ### Queue Management
 

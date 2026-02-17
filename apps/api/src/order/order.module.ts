@@ -30,17 +30,20 @@ import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver
 import { BacktestSharedModule } from './backtest/shared';
 import { orderCleanupConfig } from './config/order-cleanup.config';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
+import { OpportunitySellEvaluation } from './entities/opportunity-sell-evaluation.entity';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { PositionExit } from './entities/position-exit.entity';
 import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
 import { PaperTradingModule } from './paper-trading/paper-trading.module';
+import { OpportunitySellService } from './services/opportunity-sell.service';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderCleanupService } from './services/order-cleanup.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
+import { PositionAnalysisService } from './services/position-analysis.service';
 import { PositionManagementService } from './services/position-management.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 import { TradeExecutionService } from './services/trade-execution.service';
@@ -48,6 +51,7 @@ import { OrderSyncTask } from './tasks/order-sync.task';
 import { PositionMonitorTask } from './tasks/position-monitor.task';
 import { TradeExecutionTask } from './tasks/trade-execution.task';
 
+import { AlgorithmPerformance } from '../algorithm/algorithm-performance.entity';
 import { Algorithm } from '../algorithm/algorithm.entity';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AlgorithmService } from '../algorithm/algorithm.service';
@@ -80,7 +84,9 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestResultService,
     SlippageAnalysisService,
     PositionManagementService,
-    OrderStateMachineService
+    OrderStateMachineService,
+    OpportunitySellService,
+    PositionAnalysisService
   ],
   imports: [
     ConfigModule.forFeature(backtestConfig),
@@ -88,9 +94,11 @@ const BACKTEST_DEFAULTS = backtestConfig();
     ConfigModule.forFeature(slippageLimitsConfig),
     TypeOrmModule.forFeature([
       Algorithm,
+      AlgorithmPerformance,
       Coin,
       Order,
       OrderStatusHistory,
+      OpportunitySellEvaluation,
       User,
       TickerPairs,
       Backtest,
@@ -137,6 +145,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     DatasetValidatorService,
     MarketDataReaderService,
     QuoteCurrencyResolverService,
+    OpportunitySellService,
     OrderCalculationService,
     OrderCleanupService,
     OrderService,
@@ -144,6 +153,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OrderSyncService,
     OrderSyncTask,
     OrderValidationService,
+    PositionAnalysisService,
     PositionManagementService,
     PositionMonitorTask,
     SlippageAnalysisService,

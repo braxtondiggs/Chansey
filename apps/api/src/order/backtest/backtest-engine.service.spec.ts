@@ -15,6 +15,9 @@ import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { PositionAnalysisService } from '../services/position-analysis.service';
+
+const positionAnalysis = new PositionAnalysisService();
 
 // Create shared service instances for tests
 const sharpeCalculator = new SharpeRatioCalculator();
@@ -39,6 +42,7 @@ describe('BacktestEngine.executeTrade', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
+      positionAnalysis,
       signalThrottle
     );
 
@@ -696,6 +700,7 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
+      positionAnalysis,
       signalThrottle
     );
 
@@ -785,6 +790,7 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
+      positionAnalysis,
       signalThrottle
     );
 
@@ -943,6 +949,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
+      positionAnalysis,
       signalThrottle
     );
 
@@ -1696,6 +1703,7 @@ describe('BacktestEngine checkpointing', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
+      positionAnalysis,
       signalThrottle
     );
 
@@ -1810,6 +1818,7 @@ describe('BacktestEngine warmup / date range separation', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
+      positionAnalysis,
       signalThrottle
     );
 
