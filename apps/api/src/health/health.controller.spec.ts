@@ -29,7 +29,7 @@ describe('HealthController', () => {
   let databasePool: { isHealthy: jest.Mock };
   let exchange: { isHealthy: jest.Mock };
   let ohlc: { isHealthy: jest.Mock };
-  let redisPerformance: { isHealthy: jest.Mock };
+  let redisPerformance: { pingCheck: jest.Mock; isHealthy: jest.Mock };
 
   beforeEach(async () => {
     const mockConfigGet = (key: string) => {
@@ -65,7 +65,7 @@ describe('HealthController', () => {
     databasePool = { isHealthy: jest.fn().mockResolvedValue({}) };
     exchange = { isHealthy: jest.fn().mockResolvedValue({}) };
     ohlc = { isHealthy: jest.fn().mockResolvedValue({}) };
-    redisPerformance = { isHealthy: jest.fn().mockResolvedValue({}) };
+    redisPerformance = { pingCheck: jest.fn().mockResolvedValue({}), isHealthy: jest.fn().mockResolvedValue({}) };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
@@ -108,28 +108,13 @@ describe('HealthController', () => {
     expect(databasePool.isHealthy).toHaveBeenCalledWith('database_pool');
 
     await checks[2]();
-    expect(microservice.pingCheck).toHaveBeenNthCalledWith(
-      1,
-      'redis',
-      expect.objectContaining({
-        transport: expect.anything(),
-        options: {
-          family: 0,
-          host: 'redis.local',
-          username: 'redis-user',
-          password: 'redis-pass',
-          port: 6379,
-          tls: {}
-        }
-      })
-    );
+    expect(redisPerformance.pingCheck).toHaveBeenCalledWith('redis');
 
     await checks[3]();
     expect(redisPerformance.isHealthy).toHaveBeenCalledWith('redis_performance');
 
     await checks[4]();
-    expect(microservice.pingCheck).toHaveBeenNthCalledWith(
-      2,
+    expect(microservice.pingCheck).toHaveBeenCalledWith(
       'minio',
       expect.objectContaining({
         transport: expect.anything(),

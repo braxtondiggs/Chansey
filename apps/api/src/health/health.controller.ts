@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RedisOptions, TcpClientOptions, Transport } from '@nestjs/microservices';
+import { TcpClientOptions, Transport } from '@nestjs/microservices';
 import { ApiExcludeController } from '@nestjs/swagger';
 import {
   DiskHealthIndicator,
@@ -47,18 +47,7 @@ export class HealthController {
       () => this.databasePool.isHealthy('database_pool'),
 
       // Redis connectivity
-      () =>
-        this.microservice.pingCheck<RedisOptions & { options: { family?: number } }>('redis', {
-          transport: Transport.REDIS,
-          options: {
-            family: 0,
-            host: this.config.get('REDIS_HOST'),
-            username: this.config.get('REDIS_USER'),
-            password: this.config.get('REDIS_PASSWORD'),
-            port: parseInt(this.config.getOrThrow('REDIS_PORT')),
-            tls: this.config.get('REDIS_TLS') === 'true' ? {} : undefined
-          }
-        }),
+      () => this.redisPerformance.pingCheck('redis'),
 
       // Redis performance metrics
       () => this.redisPerformance.isHealthy('redis_performance'),
