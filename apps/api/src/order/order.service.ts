@@ -952,8 +952,8 @@ export class OrderService {
         try {
           await exchange.cancelOrder(takeProfitExchangeOrder.id, dto.symbol);
         } catch (cancelError: unknown) {
-          const cancelErr = toErrorInfo(cancelError);
-          this.logger.error(`Failed to cancel take-profit order after stop-loss failure: ${cancelErr.message}`);
+          const innerErr = toErrorInfo(cancelError);
+          this.logger.error(`Failed to cancel take-profit order after stop-loss failure: ${innerErr.message}`);
         }
         throw stopLossError;
       }

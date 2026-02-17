@@ -1,3 +1,5 @@
+import { QueryFailedError } from 'typeorm';
+
 import { createHash } from 'node:crypto';
 
 import { BacktestService } from './backtest.service';
@@ -192,9 +194,9 @@ describe('BacktestService – default dataset', () => {
       };
       marketDataSetRepo.createQueryBuilder.mockReturnValue(queryBuilder);
 
-      // save throws unique constraint violation
-      const uniqueError = new Error('duplicate key value violates unique constraint');
-      (uniqueError as any).code = '23505';
+      // save throws unique constraint violation (must be QueryFailedError for isUniqueConstraintViolation)
+      const driverError = { code: '23505' };
+      const uniqueError = new QueryFailedError('INSERT INTO ...', [], driverError as unknown as Error);
       marketDataSetRepo.save.mockRejectedValue(uniqueError);
 
       const result = await service.ensureDefaultDatasetExists();

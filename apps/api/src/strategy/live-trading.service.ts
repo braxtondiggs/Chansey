@@ -286,13 +286,13 @@ export class LiveTradingService implements OnApplicationShutdown {
    * Users get MAX_ERROR_STRIKES chances before algo trading is disabled.
    */
   private async handleUserError(user: User, error: unknown): Promise<void> {
-    const errorInfo = toErrorInfo(error);
+    const err = toErrorInfo(error);
     const currentStrikes = (this.userErrorStrikes.get(user.id) || 0) + 1;
     this.userErrorStrikes.set(user.id, currentStrikes);
 
     if (currentStrikes >= MAX_ERROR_STRIKES) {
       this.logger.error(
-        `Disabling algo trading for user ${user.id} after ${currentStrikes} consecutive errors: ${errorInfo.message}`
+        `Disabling algo trading for user ${user.id} after ${currentStrikes} consecutive errors: ${err.message}`
       );
 
       try {
@@ -300,12 +300,12 @@ export class LiveTradingService implements OnApplicationShutdown {
         await this.userRepo.save(user);
         this.userErrorStrikes.delete(user.id);
       } catch (saveError: unknown) {
-        const err = toErrorInfo(saveError);
-        this.logger.error(`Failed to disable algo trading for user ${user.id}: ${err.message}`);
+        const innerErr = toErrorInfo(saveError);
+        this.logger.error(`Failed to disable algo trading for user ${user.id}: ${innerErr.message}`);
       }
     } else {
       this.logger.warn(
-        `User ${user.id} error strike ${currentStrikes}/${MAX_ERROR_STRIKES}: ${errorInfo.message}. ` +
+        `User ${user.id} error strike ${currentStrikes}/${MAX_ERROR_STRIKES}: ${err.message}. ` +
           `Algo trading will be disabled after ${MAX_ERROR_STRIKES - currentStrikes} more errors.`
       );
     }

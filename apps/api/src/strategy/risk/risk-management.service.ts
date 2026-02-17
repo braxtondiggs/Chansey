@@ -90,8 +90,8 @@ export class RiskManagementService {
 
         this.logger.debug(`Risk check ${check.name}: ${result.passed ? 'PASS' : 'FAIL'} - ${result.message}`);
       } catch (error: unknown) {
-        this.logger.error(`Error evaluating risk check ${check.name}:`, error);
         const err = toErrorInfo(error);
+        this.logger.error(`Error evaluating risk check ${check.name}: ${err.message}`, err.stack);
         checkResults.push({
           checkName: check.name,
           passed: false,
@@ -154,7 +154,8 @@ export class RiskManagementService {
         const evaluation = await this.evaluateRisks(deployment.id);
         evaluations.push(evaluation);
       } catch (error: unknown) {
-        this.logger.error(`Failed to evaluate risks for deployment ${deployment.id}:`, error);
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to evaluate risks for deployment ${deployment.id}: ${err.message}`, err.stack);
       }
     }
 

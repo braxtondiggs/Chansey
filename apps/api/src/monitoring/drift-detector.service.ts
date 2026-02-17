@@ -14,6 +14,7 @@ import { DriftAlert } from './entities/drift-alert.entity';
 import { MonitoringService } from './monitoring.service';
 
 import { AuditService } from '../audit/audit.service';
+import { toErrorInfo } from '../shared/error.util';
 import { Deployment } from '../strategy/entities/deployment.entity';
 
 // Import drift detectors
@@ -101,7 +102,11 @@ export class DriftDetectorService {
           this.logger.warn(`${name} drift detected for deployment ${deploymentId}: ${alert.message}`);
         }
       } catch (error: unknown) {
-        this.logger.error(`Error running ${name} drift detector for deployment ${deploymentId}:`, error);
+        const err = toErrorInfo(error);
+        this.logger.error(
+          `Error running ${name} drift detector for deployment ${deploymentId}: ${err.message}`,
+          err.stack
+        );
       }
     }
 

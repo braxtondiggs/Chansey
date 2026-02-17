@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { toErrorInfo } from '../shared/error.util';
 import { DeploymentService } from '../strategy/deployment.service';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { PromotionGateService } from '../strategy/gates/promotion-gate.service';
@@ -100,7 +101,8 @@ export class PromotionTask {
             results.rejected++;
           }
         } catch (error: unknown) {
-          this.logger.error(`Error evaluating strategy ${strategy.id} for promotion:`, error);
+          const err = toErrorInfo(error);
+          this.logger.error(`Error evaluating strategy ${strategy.id} for promotion: ${err.message}`, err.stack);
           results.errors++;
         }
       }
@@ -113,7 +115,8 @@ export class PromotionTask {
           `${results.errors} errors`
       );
     } catch (error: unknown) {
-      this.logger.error('Failed to complete promotion evaluation:', error);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to complete promotion evaluation: ${err.message}`, err.stack);
     }
   }
 
@@ -147,7 +150,8 @@ export class PromotionTask {
       await this.deploymentService.activateDeployment(deploymentId, 'system');
       this.logger.log(`Successfully activated deployment ${deploymentId}`);
     } catch (error: unknown) {
-      this.logger.error(`Failed to activate deployment ${deploymentId}:`, error);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to activate deployment ${deploymentId}: ${err.message}`, err.stack);
       throw error;
     }
   }

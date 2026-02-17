@@ -64,7 +64,7 @@ import {
 } from '../../common/exceptions/resource';
 import { MetricsService } from '../../metrics/metrics.service';
 import { OHLCService } from '../../ohlc/ohlc.service';
-import { toErrorInfo } from '../../shared/error.util';
+import { isUniqueConstraintViolation, toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
@@ -414,8 +414,7 @@ export class BacktestService implements OnModuleInit {
           dataset = await this.marketDataSetRepository.save(newDataset);
         } catch (error: unknown) {
           // Unique constraint violation (23505) means another caller created it concurrently
-          const dbError = error as Record<string, any>;
-          if (dbError?.code === '23505' || dbError?.driverError?.code === '23505') {
+          if (isUniqueConstraintViolation(error)) {
             this.logger.debug('Concurrent dataset creation detected, fetching existing dataset');
             dataset = await this.marketDataSetRepository
               .createQueryBuilder('dataset')

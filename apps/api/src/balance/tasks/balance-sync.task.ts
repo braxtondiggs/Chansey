@@ -107,7 +107,8 @@ export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
         message: 'Historical balances stored successfully'
       };
     } catch (error: unknown) {
-      this.logger.error('Historical balance storage failed:', error);
+      const err = toErrorInfo(error);
+      this.logger.error(`Historical balance storage failed: ${err.message}`, err.stack);
       throw error;
     }
   }

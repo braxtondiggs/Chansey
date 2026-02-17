@@ -21,6 +21,7 @@ import { CoinResponseDto, CoinWithPriceDto } from './dto';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { OrderService } from '../order/order.service';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 @ApiTags('Coin')
@@ -224,7 +225,8 @@ export class CoinsController {
         }
       } catch (error: unknown) {
         // If holdings fetch fails, just return coin detail without holdings
-        this.logger.error('Failed to fetch user holdings:', error);
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to fetch user holdings: ${err.message}`, err.stack);
       }
     }
 

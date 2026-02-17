@@ -321,7 +321,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           processedExchanges++;
           await job.updateProgress(40 + Math.floor((processedExchanges / totalExchanges) * 50));
         } catch (exchangeError: unknown) {
-          this.logger.error(`Error processing exchange ${exchange.name}:`, exchangeError);
+          const errInfo = toErrorInfo(exchangeError);
+          this.logger.error(`Error processing exchange ${exchange.name}: ${errInfo.message}`, errInfo.stack);
           continue; // Continue with next exchange
         }
       }
@@ -341,9 +342,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               await this.tickerPair.saveTickerPair([pair]);
               savedCount++;
             } catch (pairError: unknown) {
-              const pErr = toErrorInfo(pairError);
+              const innerErr = toErrorInfo(pairError);
               this.logger.error(
-                `Failed to save ticker pair ${pair.baseAsset?.symbol ?? pair.baseAssetSymbol ?? 'unknown'}${pair.quoteAsset?.symbol ?? pair.quoteAssetSymbol ?? 'unknown'} for ${pair.exchange.name}: ${pErr.message}`
+                `Failed to save ticker pair ${pair.baseAsset?.symbol ?? pair.baseAssetSymbol ?? 'unknown'}${pair.quoteAsset?.symbol ?? pair.quoteAssetSymbol ?? 'unknown'} for ${pair.exchange.name}: ${innerErr.message}`
               );
             }
           }
@@ -364,8 +365,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           try {
             await this.tickerPair.saveTickerPair(batch);
           } catch (batchError: unknown) {
-            const bErr = toErrorInfo(batchError);
-            this.logger.error(`Failed to save batch of ticker pairs: ${bErr.message}`);
+            const innerErr = toErrorInfo(batchError);
+            this.logger.error(`Failed to save batch of ticker pairs: ${innerErr.message}`);
           }
         }
       }
@@ -385,7 +386,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         executionTimeMs: Date.now() - startTime
       };
     } catch (error: unknown) {
-      this.logger.error('Failed to synchronize ticker pairs:', error);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to synchronize ticker pairs: ${err.message}`, err.stack);
       throw error;
     }
   }

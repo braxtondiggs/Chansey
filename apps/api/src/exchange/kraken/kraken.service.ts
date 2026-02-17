@@ -9,6 +9,7 @@ import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
+import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -49,7 +50,7 @@ export class KrakenService extends BaseExchangeService {
       const assetBalances: AssetBalanceDto[] = [];
 
       for (const [asset, balance] of Object.entries(balanceData)) {
-        if (['info', 'free', 'used', 'total', 'timestamp', 'datetime'].includes(asset)) continue;
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
 
         const total = Number(balance.total ?? 0);
         const free = Number(balance.free ?? 0);
@@ -81,7 +82,7 @@ export class KrakenService extends BaseExchangeService {
       const balances: AssetBalanceDto[] = [];
 
       for (const [asset, balance] of Object.entries(balanceData)) {
-        if (['info', 'free', 'used', 'total', 'timestamp', 'datetime'].includes(asset)) continue;
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
         // Kraken uses ZUSD for USD
         if (asset !== 'USD' && asset !== 'ZUSD' && asset !== 'USDT') continue;
 

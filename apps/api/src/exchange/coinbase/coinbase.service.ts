@@ -9,6 +9,7 @@ import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
+import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -131,9 +132,7 @@ export class CoinbaseService extends BaseExchangeService {
       const assetBalances: AssetBalanceDto[] = [];
 
       for (const [asset, balance] of Object.entries(balances)) {
-        if (asset === 'info' || asset === 'free' || asset === 'used' || asset === 'total') {
-          continue; // Skip metadata fields
-        }
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
 
         // const balanceData = balance as { total?: string; free?: string; used?: string };
         if (balance.total && parseFloat(balance.total.toString()) > 0) {

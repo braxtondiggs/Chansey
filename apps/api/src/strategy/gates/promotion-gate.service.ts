@@ -106,8 +106,8 @@ export class PromotionGateService {
 
         this.logger.debug(`Gate ${gate.name}: ${result.passed ? 'PASS' : 'FAIL'} - ${result.message}`);
       } catch (error: unknown) {
-        this.logger.error(`Error evaluating gate ${gate.name}:`, error);
         const err = toErrorInfo(error);
+        this.logger.error(`Error evaluating gate ${gate.name}: ${err.message}`, err.stack);
         gateResults.push({
           gateName: gate.name,
           passed: false,

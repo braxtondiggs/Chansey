@@ -2,7 +2,7 @@ import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
-import { Repository } from 'typeorm';
+import { QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { Exchange } from '@chansey/api-interfaces';
 
@@ -314,10 +314,7 @@ export class OrderSyncService {
     }
 
     if (hasChanges) {
-      await this.orderRepository.update(
-        existingOrder.id,
-        updateData as Parameters<typeof this.orderRepository.update>[1]
-      );
+      await this.orderRepository.update(existingOrder.id, updateData as QueryDeepPartialEntity<Order>);
 
       // Handle OCO fill detection: when an exit order fills, cancel the linked order
       if (previousStatus !== OrderStatus.FILLED && newStatus === OrderStatus.FILLED && this.positionManagementService) {

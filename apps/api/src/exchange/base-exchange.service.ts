@@ -203,7 +203,8 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     try {
       return this.createClient(apiKey, apiSecret.replace(/\\n/g, '\n').trim());
     } catch (error: unknown) {
-      this.logger.error(`Failed to create temporary ${this.constructor.name} client`, error);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create temporary ${this.constructor.name} client: ${err.message}`, err.stack);
       throw new InternalServerErrorException(`Could not create ${this.constructor.name} client with provided keys`);
     }
   }
@@ -286,7 +287,8 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     try {
       await client.fetchBalance();
     } catch (error: unknown) {
-      this.logger.error(`${this.constructor.name} API key validation failed`, error);
+      const err = toErrorInfo(error);
+      this.logger.error(`${this.constructor.name} API key validation failed: ${err.message}`, err.stack);
       throw new InternalServerErrorException(`Invalid ${this.constructor.name} API keys`);
     } finally {
       try {

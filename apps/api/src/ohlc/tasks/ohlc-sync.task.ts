@@ -339,7 +339,8 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
         errorCount
       };
     } catch (error: unknown) {
-      this.logger.error('OHLC sync failed:', error);
+      const err = toErrorInfo(error);
+      this.logger.error(`OHLC sync failed: ${err.message}`, err.stack);
       throw error;
     }
   }

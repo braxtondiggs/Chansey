@@ -135,7 +135,8 @@ export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
 
       return summary;
     } catch (error: unknown) {
-      this.logger.error('OHLC prune failed:', error);
+      const err = toErrorInfo(error);
+      this.logger.error(`OHLC prune failed: ${err.message}`, err.stack);
       throw error;
     }
   }

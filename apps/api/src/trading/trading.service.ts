@@ -7,16 +7,15 @@ import { OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
 import { BalanceService } from '../balance/balance.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { CCXT_BALANCE_META_KEYS } from '../exchange/ccxt-balance.util';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
-/** CCXT metadata keys that appear alongside real asset entries in fetchBalance() */
-const CCXT_BALANCE_META_KEYS = new Set(['info', 'free', 'used', 'total', 'timestamp', 'datetime']);
-
 @Injectable()
 export class TradingService {
+  private static readonly DEFAULT_PUBLIC_EXCHANGE = { slug: 'binance_us', name: 'Binance US' } as const;
   private readonly logger = new Logger(TradingService.name);
 
   constructor(
@@ -139,9 +138,10 @@ export class TradingService {
       }
     }
 
+    const { slug, name } = TradingService.DEFAULT_PUBLIC_EXCHANGE;
     return {
-      client: await this.exchangeManagerService.getPublicClient(),
-      name: 'Binance'
+      client: await this.exchangeManagerService.getPublicClient(slug),
+      name
     };
   }
 

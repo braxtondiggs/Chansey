@@ -98,8 +98,8 @@ export class BalanceService {
     try {
       exchangeService = this.exchangeManagerService.getExchangeService(exchange.slug);
     } catch (serviceError: unknown) {
-      const svcErr = toErrorInfo(serviceError);
-      this.logger.warn(`No handler for exchange: ${exchange.slug} - ${svcErr.message}`);
+      const err = toErrorInfo(serviceError);
+      this.logger.warn(`No handler for exchange: ${exchange.slug} - ${err.message}`);
       return this.buildExchangeBalanceDto(exchange);
     }
 
@@ -115,8 +115,8 @@ export class BalanceService {
     try {
       balances = await Promise.race([exchangeService.getBalance(user), timeoutPromise]);
     } catch (timeoutError: unknown) {
-      const tmErr = toErrorInfo(timeoutError);
-      this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${tmErr.message}`);
+      const err = toErrorInfo(timeoutError);
+      this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${err.message}`);
       return this.buildExchangeBalanceDto(exchange);
     } finally {
       clearTimeout(timeoutId);
@@ -133,8 +133,8 @@ export class BalanceService {
       pricedBalances = await this.calculateUsdValues(balances, exchange.slug);
       totalUsdValue = pricedBalances.reduce((sum, asset) => sum + (asset.usdValue ?? 0), 0);
     } catch (calcError: unknown) {
-      const calcErr = toErrorInfo(calcError);
-      this.logger.error(`Error calculating USD values for ${exchange.name}: ${calcErr.message}`);
+      const err = toErrorInfo(calcError);
+      this.logger.error(`Error calculating USD values for ${exchange.name}: ${err.message}`);
     }
 
     return this.buildExchangeBalanceDto(exchange, pricedBalances, totalUsdValue);
@@ -265,8 +265,8 @@ export class BalanceService {
           const response = await this.exchangeManagerService.getPrice(exchangeSlug, symbol);
           return { ...balance, usdValue: totalAmount * parseFloat(response.price) };
         } catch (priceError: unknown) {
-          const prcErr = toErrorInfo(priceError);
-          this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${prcErr.message}`);
+          const err = toErrorInfo(priceError);
+          this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${err.message}`);
           return { ...balance, usdValue: 0 };
         }
       })
@@ -391,9 +391,9 @@ export class BalanceService {
           this.logger.warn(`Empty balances for user ${user.id}, attempt ${attempt}/${maxRetries}`);
         } catch (balanceError: unknown) {
           if (attempt === maxRetries) throw balanceError;
-          const balErr = toErrorInfo(balanceError);
+          const err = toErrorInfo(balanceError);
           this.logger.warn(
-            `Balance fetch failed for user ${user.id}, attempt ${attempt}/${maxRetries}: ${balErr.message}`
+            `Balance fetch failed for user ${user.id}, attempt ${attempt}/${maxRetries}: ${err.message}`
           );
         }
         if (attempt < maxRetries) {
@@ -678,7 +678,7 @@ export class BalanceService {
           } else {
             const coin = coinDetailsMap.get(symbol.toUpperCase());
             assetMap.set(symbol, {
-              image: coin?.image,
+              image: coin?.image ?? undefined,
               name: coin?.name ?? symbol,
               slug: coin?.slug ?? symbol.toLowerCase(),
               price: quantity > 0 ? usdValue / quantity : 0,

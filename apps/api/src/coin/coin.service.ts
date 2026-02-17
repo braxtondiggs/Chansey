@@ -2,6 +2,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { AxiosError } from 'axios';
 import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
@@ -89,6 +90,8 @@ export class CoinService {
     });
   }
 
+  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail?: true): Promise<Coin>;
+  async getCoinBySymbol(symbol: string, relations: CoinRelations[] | undefined, fail: false): Promise<Coin | null>;
   async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin | null> {
     // Handle USD as a special case
     if (symbol.toLowerCase() === 'usd') {
@@ -219,7 +222,7 @@ export class CoinService {
   }
 
   async clearRank() {
-    await this.coin.createQueryBuilder().update().set({ geckoRank: undefined }).execute();
+    await this.coin.createQueryBuilder().update().set({ geckoRank: null }).execute();
   }
 
   async remove(coinId: string) {
@@ -395,20 +398,21 @@ export class CoinService {
 
       return coinDetail;
     } catch (error: unknown) {
-      // Handle rate limiting (429) by trying to return cached data
-      const errObj = error as { response?: { status?: number } };
-      if (errObj?.response?.status === 429) {
-        this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
-        const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
-        if (cached) {
-          this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
-          return cached;
+      if (error instanceof AxiosError) {
+        // Handle rate limiting (429) by trying to return cached data
+        if (error.response?.status === 429) {
+          this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
+          const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
+          if (cached) {
+            this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
+            return cached;
+          }
         }
-      }
 
-      // Handle 404 - coin not found
-      if (errObj?.response?.status === 404) {
-        throw new CoinNotFoundException(coinGeckoId, 'slug');
+        // Handle 404 - coin not found
+        if (error.response?.status === 404) {
+          throw new CoinNotFoundException(coinGeckoId, 'slug');
+        }
       }
 
       throw error;
@@ -467,24 +471,37 @@ export class CoinService {
 
       return chartData;
     } catch (error: unknown) {
-      const errObj = error as { response?: { status?: number }; code?: string };
       const errMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error fetching chart data for ${coinGeckoId} (${days}d): ${errMsg}`);
 
-      // Handle rate limiting by trying to return cached data
-      if (errObj?.response?.status === 429) {
-        this.logger.warn(`CoinGecko rate limit hit for chart ${coinGeckoId} (${days}d), attempting to use cached data`);
-        const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
-        if (cached) {
-          this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to rate limit`);
-          return cached;
+      if (error instanceof AxiosError) {
+        // Handle rate limiting by trying to return cached data
+        if (error.response?.status === 429) {
+          this.logger.warn(
+            `CoinGecko rate limit hit for chart ${coinGeckoId} (${days}d), attempting to use cached data`
+          );
+          const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+          if (cached) {
+            this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to rate limit`);
+            return cached;
+          }
+        }
+
+        // Handle network errors and timeouts
+        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+          this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
+          const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+          if (cached) {
+            this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to network error`);
+            return cached;
+          }
+          throw new Error('Unable to fetch chart data. Please try again later.');
         }
       }
 
-      // Handle network errors and timeouts
-      if (errObj?.code === 'ECONNREFUSED' || errObj?.code === 'ETIMEDOUT' || errMsg === 'CoinGecko API timeout') {
+      // Handle timeout from our own Promise.race
+      if (errMsg === 'CoinGecko API timeout') {
         this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
-        // Try to return cached data even if expired
         const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
         if (cached) {
           this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to network error`);
@@ -564,11 +581,11 @@ export class CoinService {
       priceChange24h: coin.priceChange24h || 0,
       priceChange24hPercent: coin.priceChangePercentage24h || 0,
       marketCap: coin.marketCap || 0,
-      marketCapRank: coin.marketRank,
+      marketCapRank: coin.marketRank ?? undefined,
       volume24h: coin.totalVolume || 0,
       circulatingSupply: coin.circulatingSupply || 0,
-      totalSupply: coin.totalSupply,
-      maxSupply: coin.maxSupply,
+      totalSupply: coin.totalSupply ?? undefined,
+      maxSupply: coin.maxSupply ?? undefined,
       description: coin.description || '',
       links: (coin.links as CoinLinksDto) || {
         homepage: [],
@@ -577,7 +594,7 @@ export class CoinService {
         repositoryUrl: []
       },
       lastUpdated: coin.updatedAt,
-      metadataLastUpdated: coin.metadataLastUpdated
+      metadataLastUpdated: coin.metadataLastUpdated ?? undefined
     };
 
     return response;

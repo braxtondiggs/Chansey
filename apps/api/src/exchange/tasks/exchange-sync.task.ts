@@ -230,7 +230,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
         total: allApiExchanges.length
       };
     } catch (e: unknown) {
-      this.logger.error('Exchange sync failed:', e);
+      const errInfo = toErrorInfo(e);
+      this.logger.error(`Exchange sync failed: ${errInfo.message}`, errInfo.stack);
       // BullMQ handles failed jobs automatically
       throw e;
     } finally {
