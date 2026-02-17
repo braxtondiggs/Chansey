@@ -60,7 +60,7 @@ export class AlertService {
       eventType: AuditEventType.ALERT_SENT,
       entityType: 'DriftAlert',
       entityId: alert.id,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         alertType: 'drift',
         driftType: alert.driftType,
@@ -176,14 +176,14 @@ Critical Alerts Require Immediate Attention!
    */
   private getAlertRecipients(severity: string): string[] {
     // TODO: Load from configuration
-    const recipients = {
+    const recipients: Record<string, string[]> = {
       critical: ['admin@example.com', 'trading-team@example.com'],
       high: ['admin@example.com'],
       medium: ['admin@example.com'],
       low: ['admin@example.com']
     };
 
-    return recipients[severity] || recipients.low;
+    return recipients[severity] || recipients['low'];
   }
 
   /**

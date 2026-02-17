@@ -27,6 +27,7 @@ import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
+import { toErrorInfo } from '../shared/error.util';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
@@ -69,8 +70,9 @@ export class PipelineOrchestrationService {
 
       this.logger.log(`Found ${users.length} eligible users for pipeline orchestration`);
       return users;
-    } catch (error) {
-      this.logger.error(`Failed to fetch eligible users: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch eligible users: ${err.message}`, err.stack);
       return [];
     }
   }
@@ -92,8 +94,9 @@ export class PipelineOrchestrationService {
       });
 
       return exchangeKey;
-    } catch (error) {
-      this.logger.error(`Failed to get exchange key for user ${userId}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get exchange key for user ${userId}: ${err.message}`, err.stack);
       return null;
     }
   }
@@ -111,8 +114,9 @@ export class PipelineOrchestrationService {
 
       this.logger.log(`Found ${configs.length} eligible strategy configs for pipeline orchestration`);
       return configs;
-    } catch (error) {
-      this.logger.error(`Failed to fetch strategy configs: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch strategy configs: ${err.message}`, err.stack);
       return [];
     }
   }
@@ -187,14 +191,15 @@ export class PipelineOrchestrationService {
       for (const strategyConfig of strategyConfigs) {
         try {
           await this.processStrategyConfig(user, strategyConfig, exchangeKey, riskLevel, result);
-        } catch (error) {
-          const errorMsg = `Failed to process strategy config ${strategyConfig.id}: ${error.message}`;
-          this.logger.error(errorMsg, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          const errorMsg = `Failed to process strategy config ${strategyConfig.id}: ${err.message}`;
+          this.logger.error(errorMsg, err.stack);
           result.errors.push(errorMsg);
           result.skippedConfigs.push({
             strategyConfigId: strategyConfig.id,
             strategyName: strategyConfig.name ?? 'Unknown',
-            reason: error.message
+            reason: err.message
           });
         }
       }
@@ -205,9 +210,10 @@ export class PipelineOrchestrationService {
       );
 
       return result;
-    } catch (error) {
-      const errorMsg = `Failed to orchestrate pipelines for user ${userId}: ${error.message}`;
-      this.logger.error(errorMsg, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      const errorMsg = `Failed to orchestrate pipelines for user ${userId}: ${err.message}`;
+      this.logger.error(errorMsg, err.stack);
       result.errors.push(errorMsg);
       return result;
     }

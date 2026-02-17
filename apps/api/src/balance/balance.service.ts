@@ -5,19 +5,21 @@ import { Repository } from 'typeorm';
 
 import { UsersService } from './../users/users.service';
 import {
-  AssetBalanceDto,
-  ExchangeBalanceDto,
-  HistoricalBalanceDto,
-  BalanceResponseDto,
   AccountValueHistoryDto,
-  AssetDetailsDto
+  AssetBalanceDto,
+  AssetDetailsDto,
+  BalanceResponseDto,
+  ExchangeBalanceDto,
+  HistoricalBalanceDto
 } from './dto';
 import { HistoricalBalance } from './historical-balance.entity';
 
 import { CoinService } from '../coin/coin.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
-import { Exchange } from '../exchange/exchange.entity';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
+
+const EXCHANGE_TIMEOUT_MS = 15_000;
 
 @Injectable()
 export class BalanceService {
@@ -60,130 +62,100 @@ export class BalanceService {
       }
 
       return response;
-    } catch (error) {
-      this.logger.error(`Error getting balances for user: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting balances for user: ${user.id}`, err.stack);
       throw error;
     }
   }
 
   /**
-   * Get current balances from all connected exchanges
-   * @param user The user to get balances for
-   * @returns Balance information from all connected exchanges
+   * Get current balances from all connected exchanges in parallel
    */
   private async getCurrentBalances(user: User): Promise<ExchangeBalanceDto[]> {
-    const exchangeBalances: ExchangeBalanceDto[] = [];
-    const timeout = 15000;
+    const activeExchanges = user.exchanges.filter((e) => e.isActive);
 
-    // Get balances from each exchange key
-    for (const exchange of user.exchanges) {
-      // Skip inactive exchange keys
-      if (!exchange.isActive) {
-        continue;
-      }
+    const results = await Promise.allSettled(
+      activeExchanges.map((exchange) => this.fetchExchangeBalance(exchange, user))
+    );
 
-      try {
-        let balances: AssetBalanceDto[] = [];
-        let totalUsdValue = 0;
+    return results.map((result, i) => {
+      if (result.status === 'fulfilled') return result.value;
+      const err = toErrorInfo(result.reason);
+      this.logger.error(`Error getting balances from ${activeExchanges[i].name}: ${err.message}`, err.stack);
+      return this.buildExchangeBalanceDto(activeExchanges[i]);
+    });
+  }
 
-        // Create a promise that will resolve with the balances or reject after timeout
-        const balancePromise = new Promise<AssetBalanceDto[]>((resolve, reject) => {
-          const timer = setTimeout(() => {
-            reject(new Error(`Timeout getting balances from ${exchange.name} after ${timeout}ms`));
-          }, timeout);
-
-          // Create a separate function to handle the async balance fetching
-          const fetchBalances = async () => {
-            try {
-              let result: AssetBalanceDto[] = [];
-
-              // Get the appropriate service for this exchange using ExchangeManagerService
-              try {
-                const exchangeService = this.exchangeManagerService.getExchangeService(exchange.slug);
-                // All exchange services now have standardized getBalance method
-                result = await exchangeService.getBalance(user);
-              } catch (serviceError) {
-                this.logger.warn(`No handler for exchange: ${exchange.slug} - ${serviceError.message}`);
-                resolve([]);
-                return;
-              }
-
-              clearTimeout(timer);
-              resolve(result);
-            } catch (err) {
-              clearTimeout(timer);
-              reject(err);
-            }
-          };
-
-          // Start the async operation
-          fetchBalances();
-        });
-
-        // Wait for the balance fetch with timeout
-        try {
-          balances = await balancePromise;
-        } catch (timeoutError) {
-          this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${timeoutError.message}`);
-          // Add empty balance array for this exchange so we at least have an entry
-          exchangeBalances.push({
-            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
-            slug: exchange.slug,
-            name: exchange.name,
-            balances: [],
-            totalUsdValue: 0,
-            timestamp: new Date()
-          });
-          continue; // Skip to next exchange
-        }
-
-        // Skip exchanges with empty balances
-        if (balances.length === 0) {
-          this.logger.warn(`No balances retrieved for exchange ${exchange.name}`);
-          // Still add an entry with empty balances to maintain exchange record
-          exchangeBalances.push({
-            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
-            slug: exchange.slug,
-            name: exchange.name,
-            balances: [],
-            totalUsdValue: 0,
-            timestamp: new Date()
-          });
-          continue;
-        }
-
-        // Calculate USD value for each asset and the total with timeout protection
-        try {
-          balances = await this.calculateUsdValues(balances, exchange.slug);
-          totalUsdValue = balances.reduce((sum, asset) => sum + (asset.usdValue || 0), 0);
-
-          exchangeBalances.push({
-            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
-            slug: exchange.slug,
-            name: exchange.name,
-            balances,
-            totalUsdValue,
-            timestamp: new Date()
-          });
-        } catch (calcError) {
-          this.logger.error(`Error calculating USD values for ${exchange.name}: ${calcError.message}`);
-          // Add the exchange with balances but zero USD value
-          exchangeBalances.push({
-            id: exchange.exchangeId, // Use the actual exchange ID, not the exchange key ID
-            slug: exchange.slug,
-            name: exchange.name,
-            balances,
-            totalUsdValue: 0,
-            timestamp: new Date()
-          });
-        }
-      } catch (error) {
-        this.logger.error(`Error getting balances from ${exchange.name}: ${error.message}`, error.stack);
-        // Continue with other exchanges instead of failing completely
-      }
+  /**
+   * Fetch balance for a single exchange with timeout protection
+   */
+  private async fetchExchangeBalance(
+    exchange: { exchangeId: string; slug: string; name: string },
+    user: User
+  ): Promise<ExchangeBalanceDto> {
+    let exchangeService;
+    try {
+      exchangeService = this.exchangeManagerService.getExchangeService(exchange.slug);
+    } catch (serviceError: unknown) {
+      const err = toErrorInfo(serviceError);
+      this.logger.warn(`No handler for exchange: ${exchange.slug} - ${err.message}`);
+      return this.buildExchangeBalanceDto(exchange);
     }
 
-    return exchangeBalances;
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error(`Timeout getting balances from ${exchange.name} after ${EXCHANGE_TIMEOUT_MS}ms`)),
+        EXCHANGE_TIMEOUT_MS
+      );
+    });
+
+    let balances: AssetBalanceDto[];
+    try {
+      balances = await Promise.race([exchangeService.getBalance(user), timeoutPromise]);
+    } catch (timeoutError: unknown) {
+      const err = toErrorInfo(timeoutError);
+      this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${err.message}`);
+      return this.buildExchangeBalanceDto(exchange);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (balances.length === 0) {
+      this.logger.warn(`No balances retrieved for exchange ${exchange.name}`);
+      return this.buildExchangeBalanceDto(exchange);
+    }
+
+    let pricedBalances = balances;
+    let totalUsdValue = 0;
+    try {
+      pricedBalances = await this.calculateUsdValues(balances, exchange.slug);
+      totalUsdValue = pricedBalances.reduce((sum, asset) => sum + (asset.usdValue ?? 0), 0);
+    } catch (calcError: unknown) {
+      const err = toErrorInfo(calcError);
+      this.logger.error(`Error calculating USD values for ${exchange.name}: ${err.message}`);
+    }
+
+    return this.buildExchangeBalanceDto(exchange, pricedBalances, totalUsdValue);
+  }
+
+  /**
+   * Build a standardized ExchangeBalanceDto
+   */
+  private buildExchangeBalanceDto(
+    exchange: { exchangeId: string; slug: string; name: string },
+    balances: AssetBalanceDto[] = [],
+    totalUsdValue = 0
+  ): ExchangeBalanceDto {
+    return {
+      id: exchange.exchangeId,
+      slug: exchange.slug,
+      name: exchange.name,
+      balances,
+      totalUsdValue,
+      timestamp: new Date()
+    };
   }
 
   /**
@@ -197,25 +169,22 @@ export class BalanceService {
 
     try {
       for (const period of periods) {
-        // Get the timestamp for the requested period
         const timestamp = this.getHistoricalTimestamp(period);
+        const { start, end } = this.getWindowForPeriod(period, timestamp);
 
-        // Query the database for historical balances closest to the timestamp
-        const storedBalances = await this.historicalBalanceRepository.find({
-          where: { userId: user.id },
-          // Find records closest to the target timestamp
-          order: { timestamp: 'DESC' }
-          // We can use a custom query to get the closest match to our target timestamp
-          // But for simplicity, we'll just get records after this timestamp for now
-        });
+        // Query only within the relevant time window instead of loading all rows
+        const storedBalances = await this.historicalBalanceRepository
+          .createQueryBuilder('hb')
+          .leftJoinAndSelect('hb.exchange', 'exchange')
+          .where('hb.userId = :userId', { userId: user.id })
+          .andWhere('hb.timestamp BETWEEN :start AND :end', { start, end })
+          .orderBy('hb.timestamp', 'DESC')
+          .getMany();
 
-        // If we have stored historical data
         if (storedBalances.length > 0) {
-          // Group by exchange
           const exchangeGroups = this.groupByExchange(storedBalances);
 
-          // For each exchange, find the closest record to our target timestamp
-          for (const [, balances] of Object.entries(exchangeGroups)) {
+          for (const balances of Object.values(exchangeGroups)) {
             // Sort by timestamp difference to find the closest match
             balances.sort(
               (a, b) =>
@@ -223,10 +192,8 @@ export class BalanceService {
                 Math.abs(b.timestamp.getTime() - timestamp.getTime())
             );
 
-            // Use the closest match
             const closest = balances[0];
 
-            // Convert to DTO format
             const historicalDto: HistoricalBalanceDto = {
               id: closest.id,
               slug: closest.exchange.slug,
@@ -245,46 +212,44 @@ export class BalanceService {
             historicalBalances.push(historicalDto);
           }
         } else {
-          // Fallback to simulated data if we don't have real historical data
-          this.logger.warn(`No historical data found for user ${user.id} for period ${period}. Using simulated data.`);
-
-          const currentBalances = await this.getCurrentBalances(user);
-          for (const exchangeBalance of currentBalances) {
-            // Create a simulated historical balance
-            const historicalBalance: HistoricalBalanceDto = {
-              ...exchangeBalance,
-              balances: JSON.parse(JSON.stringify(exchangeBalance.balances)),
-              period,
-              timestamp
-            };
-
-            // Apply a random adjustment factor to simulate different historical values
-            const adjustmentFactor = this.getAdjustmentFactor(period);
-            historicalBalance.balances.forEach((balance) => {
-              const freeBigNumber = parseFloat(balance.free);
-              const lockedBigNumber = parseFloat(balance.locked);
-
-              balance.free = (freeBigNumber * adjustmentFactor).toString();
-              balance.locked = (lockedBigNumber * adjustmentFactor).toString();
-
-              if (balance.usdValue) {
-                balance.usdValue *= adjustmentFactor;
-              }
-            });
-
-            historicalBalance.totalUsdValue *= adjustmentFactor;
-
-            historicalBalances.push(historicalBalance);
-          }
+          this.logger.warn(`No historical data found for user ${user.id} for period ${period}`);
         }
       }
-    } catch (error) {
-      this.logger.error(`Error retrieving historical balances: ${error.message}`, error.stack);
-      // Return an empty array if we can't get historical data
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error retrieving historical balances: ${err.message}`, err.stack);
       return [];
     }
 
     return historicalBalances;
+  }
+
+  /**
+   * Get a search window around the target timestamp based on the period
+   */
+  private getWindowForPeriod(period: string, target: Date): { start: Date; end: Date } {
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    let marginMs: number;
+
+    switch (period) {
+      case '24h':
+        marginMs = 1 * MS_PER_DAY;
+        break;
+      case '7d':
+        marginMs = 2 * MS_PER_DAY;
+        break;
+      case '30d':
+        marginMs = 5 * MS_PER_DAY;
+        break;
+      default:
+        marginMs = 1 * MS_PER_DAY;
+        break;
+    }
+
+    return {
+      start: new Date(target.getTime() - marginMs),
+      end: new Date(target.getTime() + marginMs)
+    };
   }
 
   /**
@@ -304,49 +269,30 @@ export class BalanceService {
   }
 
   /**
-   * Calculate USD values for each asset using the ExchangeManagerService
-   * @param balances The balances to calculate USD values for
-   * @param exchangeSlug The exchange slug
-   * @returns Balances with USD values added
+   * Calculate USD values for each asset in parallel (returns new array, does not mutate input)
    */
   private async calculateUsdValues(balances: AssetBalanceDto[], exchangeSlug: string): Promise<AssetBalanceDto[]> {
-    for (const balance of balances) {
-      try {
+    const quoteAsset = this.exchangeManagerService.getQuoteAsset(exchangeSlug);
+
+    return Promise.all(
+      balances.map(async (balance): Promise<AssetBalanceDto> => {
+        const totalAmount = parseFloat(balance.free) + parseFloat(balance.locked);
+
         if (balance.asset === 'USDT' || balance.asset === 'USD') {
-          // Stablecoins are already in USD
-          balance.usdValue = parseFloat(balance.free) + parseFloat(balance.locked);
-        } else {
-          // For other assets, fetch the current price using ExchangeManagerService
-          let price = 0;
-          let symbol = '';
-
-          try {
-            // Use appropriate symbol format for each exchange
-            if (exchangeSlug === 'binance_us') {
-              symbol = `${balance.asset}/USDT`;
-            } else {
-              // Coinbase exchanges use USD quotes
-              symbol = `${balance.asset}/USD`;
-            }
-
-            const response = await this.exchangeManagerService.getPrice(exchangeSlug, symbol);
-            price = parseFloat(response.price);
-          } catch (priceError) {
-            this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${priceError.message}`);
-            price = 0;
-          }
-
-          // Calculate USD value
-          const totalAmount = parseFloat(balance.free) + parseFloat(balance.locked);
-          balance.usdValue = totalAmount * price;
+          return { ...balance, usdValue: totalAmount };
         }
-      } catch (error) {
-        this.logger.warn(`Unable to calculate USD value for ${balance.asset} on ${exchangeSlug}: ${error.message}`);
-        balance.usdValue = 0;
-      }
-    }
 
-    return balances;
+        const symbol = `${balance.asset}/${quoteAsset}`;
+        try {
+          const response = await this.exchangeManagerService.getPrice(exchangeSlug, symbol);
+          return { ...balance, usdValue: totalAmount * parseFloat(response.price) };
+        } catch (priceError: unknown) {
+          const err = toErrorInfo(priceError);
+          this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${err.message}`);
+          return { ...balance, usdValue: 0 };
+        }
+      })
+    );
   }
 
   /**
@@ -366,29 +312,6 @@ export class BalanceService {
         return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       default:
         return now;
-    }
-  }
-
-  /**
-   * Get a random adjustment factor for historical balances
-   * @param period The period to get an adjustment factor for
-   * @returns A number between 0.5 and 1.5 to adjust balances by
-   */
-  private getAdjustmentFactor(period: string): number {
-    // In a real implementation, you'd have actual historical data
-    // This is just to simulate different values for demo purposes
-    switch (period) {
-      case '24h':
-        // 24h values are relatively close to current values
-        return 0.9 + Math.random() * 0.2; // 0.9 to 1.1
-      case '7d':
-        // 7d values can be more different
-        return 0.8 + Math.random() * 0.4; // 0.8 to 1.2
-      case '30d':
-        // 30d values can be significantly different
-        return 0.7 + Math.random() * 0.6; // 0.7 to 1.3
-      default:
-        return 1;
     }
   }
 
@@ -451,22 +374,27 @@ export class BalanceService {
 
     try {
       // Get all users with active exchange keys
-      const users = await this.getUsersWithActiveExchangeKeys();
+      const users = await this.userService.getUsersWithActiveExchangeKeys();
       this.logger.log(`Found ${users.length} users with active exchange keys`);
 
-      // Store balances for each user
-      for (const user of users) {
-        try {
-          await this.storeUserBalances(user);
-        } catch (error) {
-          this.logger.error(`Error storing historical balances for user ${user.id}: ${error.message}`, error.stack);
-          // Continue with other users instead of failing completely
+      // Process users in parallel chunks to limit concurrent exchange API calls
+      const CHUNK_SIZE = 5;
+      for (let i = 0; i < users.length; i += CHUNK_SIZE) {
+        const chunk = users.slice(i, i + CHUNK_SIZE);
+        const results = await Promise.allSettled(chunk.map((user) => this.storeUserBalances(user)));
+        for (let j = 0; j < results.length; j++) {
+          const result = results[j];
+          if (result.status === 'rejected') {
+            const err = toErrorInfo(result.reason);
+            this.logger.error(`Error storing historical balances for user ${chunk[j].id}: ${err.message}`, err.stack);
+          }
         }
       }
 
       this.logger.log('Finished storing historical balances');
-    } catch (error) {
-      this.logger.error('Error in historical balance storage task', error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error('Error in historical balance storage task', err.stack);
     }
   }
 
@@ -475,64 +403,45 @@ export class BalanceService {
    * @param user The user to store balances for
    */
   async storeUserBalances(user: User) {
-    try {
-      // Get current balances for the user with retry mechanism
-      let exchangeBalances: ExchangeBalanceDto[] = [];
-      let retryCount = 0;
-      const maxRetries = 3;
-      const retryDelay = 5000; // 5 seconds between retries
+    const maxRetries = 3;
+    const retryDelay = 5000;
 
-      while (retryCount < maxRetries) {
+    try {
+      let exchangeBalances: ExchangeBalanceDto[] = [];
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           exchangeBalances = await this.getCurrentBalances(user);
-          // If we got balances successfully, break the retry loop
-          if (exchangeBalances.length > 0) {
-            break;
-          }
+          break; // Success (empty or not) — no retry needed
+        } catch (balanceError: unknown) {
+          if (attempt === maxRetries) throw balanceError;
+          const err = toErrorInfo(balanceError);
           this.logger.warn(
-            `Retrieved empty exchange balances for user ${user.id}, retrying (${retryCount + 1}/${maxRetries})...`
+            `Balance fetch failed for user ${user.id}, attempt ${attempt}/${maxRetries}: ${err.message}`
           );
-        } catch (balanceError) {
-          this.logger.warn(
-            `Error getting balances on attempt ${retryCount + 1}/${maxRetries}: ${balanceError.message}`
-          );
-          // Only throw on the last attempt
-          if (retryCount === maxRetries - 1) {
-            throw balanceError;
-          }
-        }
-
-        retryCount++;
-        if (retryCount < maxRetries) {
-          // Wait before next retry
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
         }
       }
 
-      // Only proceed with storage if we have valid balances
       if (exchangeBalances.length === 0) {
-        this.logger.warn(`No exchange balances retrieved for user ${user.id} after ${maxRetries} attempts`);
+        this.logger.warn(`No balances for user ${user.id} after ${maxRetries} attempts`);
         return;
       }
 
-      // Store each exchange's balances separately
       for (const exchangeBalance of exchangeBalances) {
-        // Only store balances if we have actual data
         if (exchangeBalance.balances.length === 0) {
-          this.logger.warn(`Skipping storage for exchange ${exchangeBalance.name} - no balance data available`);
+          this.logger.warn(`Skipping storage for exchange ${exchangeBalance.name} - no balance data`);
           continue;
         }
 
         const historicalBalance = new HistoricalBalance();
-        historicalBalance.user = user;
         historicalBalance.userId = user.id;
-        historicalBalance.exchange = { id: exchangeBalance.id } as Exchange;
         historicalBalance.exchangeId = exchangeBalance.id;
         historicalBalance.balances = exchangeBalance.balances.map((b) => ({
           asset: b.asset,
           free: b.free,
           locked: b.locked,
-          usdValue: b.usdValue || 0 // Ensure usdValue is always provided
+          usdValue: b.usdValue ?? 0
         }));
         historicalBalance.totalUsdValue = exchangeBalance.totalUsdValue;
         historicalBalance.timestamp = new Date();
@@ -541,48 +450,10 @@ export class BalanceService {
       }
 
       this.logger.debug(`Stored historical balances for user ${user.id}`);
-    } catch (error) {
-      this.logger.error(`Error storing balances for user ${user.id}: ${error.message}`, error.stack);
-      // Don't rethrow the error to prevent the cron job from failing entirely
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error storing balances for user ${user.id}: ${err.message}`, err.stack);
     }
-  }
-
-  /**
-   * Get all users who have active exchange keys
-   * This is a temporary implementation - in a real application,
-   * you would fetch this from your user service
-   */
-  private async getUsersWithActiveExchangeKeys(): Promise<User[]> {
-    // This is a placeholder - you'll need to implement this to fetch
-    // actual users who have active exchange keys
-    // For example, you might query the database directly or use a user service
-
-    // For testing purposes, we'll return a test user if one is available
-    const userIds = await this.historicalBalanceRepository.manager
-      .createQueryBuilder()
-      .select('DISTINCT "userId"')
-      .from('exchange_key', 'ek')
-      .where('ek."isActive" = :isActive', { isActive: true })
-      .getRawMany();
-
-    if (userIds.length === 0) {
-      this.logger.warn('No users found with active exchange keys');
-      return [];
-    }
-
-    // Fetch full user details for each userId
-    const users: User[] = [];
-    for (const userRow of userIds) {
-      try {
-        const user = await this.userService.getById(userRow.userId, true);
-        // Note: user.exchanges is already ExchangeKey[] with exchange relation loaded
-        users.push(user);
-      } catch (error) {
-        this.logger.warn(`Failed to get user details for ID ${userRow.userId}: ${error.message}`);
-      }
-    }
-
-    return users;
   }
 
   /**
@@ -665,7 +536,7 @@ export class BalanceService {
         // Get current balances from all exchanges
         const currentBalances = await this.getCurrentBalances(user);
         currentValue = currentBalances.reduce((sum, exchange) => sum + exchange.totalUsdValue, 0);
-      } catch (error) {
+      } catch {
         // If we can't get current balances, use the latest historical value
         this.logger.warn(`Couldn't get current balances, using latest historical value`);
         if (history.length > 0) {
@@ -695,8 +566,9 @@ export class BalanceService {
         currentValue: Math.round(currentValue * 100) / 100, // Round to 2 decimal places
         changePercentage
       };
-    } catch (error) {
-      this.logger.error(`Error getting account value history for user: ${user.id}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting account value history for user: ${user.id}`, err.stack);
       throw error;
     }
   }
@@ -766,44 +638,34 @@ export class BalanceService {
    */
   async getUserAssetDetails(user: User): Promise<AssetDetailsDto[]> {
     try {
-      // Get current balances from all exchanges
       const currentBalances = await this.getCurrentBalances(user);
-
-      // Create a map to aggregate assets across exchanges
-      const assetMap = new Map<string, Partial<AssetDetailsDto>>();
-      const symbols = currentBalances.map((exchange) => exchange.balances.map((balance) => balance.asset)).flat();
+      const assetMap = new Map<string, AssetDetailsDto>();
+      const symbols = currentBalances.flatMap((exchange) => exchange.balances.map((b) => b.asset));
 
       const coinDetails = await this.coinService.getMultipleCoinsBySymbol(symbols);
-      // Create a map of coin details by symbol for easy lookup
       const coinDetailsMap = new Map(coinDetails.map((coin) => [coin.symbol.toUpperCase(), coin]));
 
-      // Process all exchanges and their assets
       for (const exchange of currentBalances) {
         for (const balance of exchange.balances) {
-          // Skip assets with zero balance
           const quantity = parseFloat(balance.free) + parseFloat(balance.locked);
           if (quantity <= 0) continue;
 
           const symbol = balance.asset;
-          const usdValue = balance.usdValue || 0;
-          const price = quantity > 0 ? usdValue / quantity : 0;
-          const coin = coinDetailsMap.get(symbol.toUpperCase());
+          const usdValue = balance.usdValue ?? 0;
 
-          // If asset already exists in map, update quantities
-          if (assetMap.has(symbol)) {
-            const existingAsset = assetMap.get(symbol);
-            existingAsset.quantity += quantity;
-            existingAsset.usdValue += usdValue;
-            // Recalculate average price
-            existingAsset.price = existingAsset.quantity > 0 ? existingAsset.usdValue / existingAsset.quantity : 0;
+          const existing = assetMap.get(symbol);
+          if (existing) {
+            existing.quantity += quantity;
+            existing.usdValue += usdValue;
+            existing.price = existing.quantity > 0 ? existing.usdValue / existing.quantity : 0;
           } else {
-            // Create new asset entry
+            const coin = coinDetailsMap.get(symbol.toUpperCase());
             assetMap.set(symbol, {
-              image: coin?.image,
-              name: coin?.name,
-              slug: coin?.slug,
-              price,
-              priceChangePercentage24h: coin?.priceChangePercentage24h,
+              image: coin?.image ?? undefined,
+              name: coin?.name ?? symbol,
+              slug: coin?.slug ?? symbol.toLowerCase(),
+              price: quantity > 0 ? usdValue / quantity : 0,
+              priceChangePercentage24h: coin?.priceChangePercentage24h ?? 0,
               quantity,
               symbol,
               usdValue
@@ -812,12 +674,10 @@ export class BalanceService {
         }
       }
 
-      // Convert map to array and sort by USD value (highest first)
-      const assets = Array.from(assetMap.values()).sort((a, b) => b.usdValue - a.usdValue);
-
-      return assets as AssetDetailsDto[];
-    } catch (error) {
-      this.logger.error(`Error getting asset details for user: ${user.id}`, error.stack);
+      return Array.from(assetMap.values()).sort((a, b) => b.usdValue - a.usdValue);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error getting asset details for user: ${user.id}`, err.stack);
       throw error;
     }
   }

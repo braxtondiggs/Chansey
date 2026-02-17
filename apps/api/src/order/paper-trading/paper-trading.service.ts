@@ -210,7 +210,7 @@ export class PaperTradingService {
     await this.dataSource.transaction(async (transactionalEntityManager) => {
       session.status = PaperTradingStatus.ACTIVE;
       session.startedAt = session.startedAt ?? new Date();
-      session.pausedAt = null;
+      session.pausedAt = undefined;
       session.consecutiveErrors = 0;
       await transactionalEntityManager.save(session);
 
@@ -271,7 +271,7 @@ export class PaperTradingService {
     // Use transaction to ensure session state and job scheduling are atomic
     await this.dataSource.transaction(async (transactionalEntityManager) => {
       session.status = PaperTradingStatus.ACTIVE;
-      session.pausedAt = null;
+      session.pausedAt = undefined;
       session.consecutiveErrors = 0;
       await transactionalEntityManager.save(session);
 
@@ -617,10 +617,11 @@ export class PaperTradingService {
       // Use the new BullMQ v5+ API for removing job schedulers
       await this.paperTradingQueue.removeJobScheduler(jobId);
       this.logger.debug(`Removed tick job ${jobId}`);
-    } catch (error) {
+    } catch (error: unknown) {
       // Job scheduler might not exist if session was never started
-      if (!error.message?.includes('Job scheduler') && !error.message?.includes('not found')) {
-        this.logger.warn(`Failed to remove tick job ${jobId}: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!msg.includes('Job scheduler') && !msg.includes('not found')) {
+        this.logger.warn(`Failed to remove tick job ${jobId}: ${msg}`);
       }
     }
   }

@@ -97,8 +97,8 @@ describe('BacktestService.resumeBacktest', () => {
 
     await service.resumeBacktest({ id: 'user-1' } as any, backtest.id);
 
-    expect(backtest.checkpointState).toBeNull();
-    expect(backtest.lastCheckpointAt).toBeNull();
+    expect(backtest.checkpointState).toBeUndefined();
+    expect(backtest.lastCheckpointAt).toBeUndefined();
     expect(backtest.processedTimestampCount).toBe(0);
     expect(backtestRepository.save).toHaveBeenCalledWith(backtest);
     expect(backtestStream.publishStatus).toHaveBeenCalledWith(backtest.id, 'queued', undefined, {

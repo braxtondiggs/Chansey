@@ -59,7 +59,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('runs a pending backtest and persists success', async () => {
-    const dataset = { id: 'dataset-1', instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = { id: 'dataset-1', instrumentUniverse: ['BTCUSDT'] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-1',
       status: BacktestStatus.PENDING,
@@ -131,7 +131,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('marks failed when instrument universe cannot be resolved', async () => {
-    const dataset = { id: 'dataset-2', instrumentUniverse: [] } as MarketDataSet;
+    const dataset = { id: 'dataset-2', instrumentUniverse: [] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-2',
       status: BacktestStatus.PENDING,
@@ -178,7 +178,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('uses total timestamps from engine for checkpoint progress and persistence', async () => {
-    const dataset = { id: 'dataset-4', instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = { id: 'dataset-4', instrumentUniverse: ['BTCUSDT'] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-4',
       status: BacktestStatus.PENDING,
@@ -243,7 +243,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('cleans up orphaned results before resuming from a checkpoint', async () => {
-    const dataset = { id: 'dataset-3', instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = { id: 'dataset-3', instrumentUniverse: ['BTCUSDT'] } as unknown as MarketDataSet;
     const checkpointState = {
       lastProcessedIndex: 2,
       lastProcessedTimestamp: '2024-01-01T00:00:00.000Z',

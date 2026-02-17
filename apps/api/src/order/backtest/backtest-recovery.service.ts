@@ -10,6 +10,8 @@ import { backtestConfig } from './backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 /** Maximum number of automatic recovery attempts before permanently failing a backtest */
@@ -26,8 +28,9 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
-    this.recoverOrphanedBacktests().catch((error) => {
-      this.logger.error(`Background backtest recovery failed: ${error.message}`, error.stack);
+    this.recoverOrphanedBacktests().catch((error: unknown) => {
+      const err = toErrorInfo(error);
+      this.logger.error(`Background backtest recovery failed: ${err.message}`, err.stack);
     });
   }
 
@@ -58,24 +61,27 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
         orphaned.map(async (backtest) => {
           try {
             await this.recoverSingleBacktest(backtest);
-          } catch (error) {
-            this.logger.error(`Failed to recover backtest ${backtest.id}: ${error.message}`, error.stack);
+          } catch (error: unknown) {
+            const err = toErrorInfo(error);
+            this.logger.error(`Failed to recover backtest ${backtest.id}: ${err.message}`, err.stack);
             // Mark as permanently failed if recovery itself errors
             try {
               await this.backtestRepository.update(backtest.id, {
                 status: BacktestStatus.FAILED,
-                errorMessage: `Recovery failed: ${error.message}`
+                errorMessage: `Recovery failed: ${err.message}`
               });
-            } catch (markError) {
-              this.logger.error(`Failed to mark backtest ${backtest.id} as failed: ${markError.message}`);
+            } catch (markError: unknown) {
+              const err = toErrorInfo(markError);
+              this.logger.error(`Failed to mark backtest ${backtest.id} as failed: ${err.message}`);
             }
           }
         })
       );
 
       this.logger.log('Backtest recovery check complete');
-    } catch (error) {
-      this.logger.error(`Backtest recovery check failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Backtest recovery check failed: ${err.message}`, err.stack);
     }
   }
 
@@ -117,8 +123,8 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
         this.logger.warn(
           `Clearing stale checkpoint for backtest ${backtest.id} (age: ${Math.round(checkpointAge / 1000 / 60 / 60)}h)`
         );
-        backtest.checkpointState = null;
-        backtest.lastCheckpointAt = null;
+        backtest.checkpointState = undefined;
+        backtest.lastCheckpointAt = undefined;
         backtest.processedTimestampCount = 0;
       }
     }
@@ -200,7 +206,8 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
       await existingJob.remove();
       this.logger.log(`Removed existing job ${jobId} from queue before re-queuing`);
       return;
-    } catch (err) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       this.logger.log(`Initial remove for job ${jobId} failed (${err.message}), attempting force-remove`);
     }
 
@@ -214,8 +221,9 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
 
       await existingJob.remove();
       this.logger.log(`Removed previously-locked job ${jobId} after clearing stale lock`);
-    } catch (forceError) {
-      this.logger.warn(`Could not force-remove job ${jobId}: ${forceError.message}`);
+    } catch (forceError: unknown) {
+      const err = toErrorInfo(forceError);
+      this.logger.warn(`Could not force-remove job ${jobId}: ${err.message}`);
     }
   }
 

@@ -2,9 +2,10 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { AxiosError } from 'axios';
 import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { CoinDetailResponseDto, CoinLinksDto, MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
 
@@ -14,6 +15,7 @@ import { CreateCoinDto, UpdateCoinDto } from './dto/';
 import { ErrorCode, ValidationException } from '../common/exceptions';
 import { CoinNotFoundException } from '../common/exceptions/resource';
 import { User } from '../users/users.entity';
+import { stripNullProps } from '../utils/strip-null-props.util';
 
 interface HistoricalDataPoint {
   timestamp: number;
@@ -55,16 +57,13 @@ export class CoinService {
 
   async getCoins() {
     const coins = await this.coin.find({ order: { marketRank: 'ASC' } });
-    return coins.map((coin) => {
-      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
-      return coin;
-    });
+    return coins.map((coin) => stripNullProps(coin));
   }
 
   async getCoinById(coinId: string, relations?: CoinRelations[]): Promise<Coin> {
     const coin = await this.coin.findOne({ where: { id: coinId }, relations });
     if (!coin) throw new CoinNotFoundException(coinId);
-    Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+    stripNullProps(coin);
     return coin;
   }
 
@@ -86,12 +85,14 @@ export class CoinService {
       relations
     });
     return coins.map((coin) => {
-      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+      stripNullProps(coin);
       return coin;
     });
   }
 
-  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin> {
+  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail?: true): Promise<Coin>;
+  async getCoinBySymbol(symbol: string, relations: CoinRelations[] | undefined, fail: false): Promise<Coin | null>;
+  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin | null> {
     // Handle USD as a special case
     if (symbol.toLowerCase() === 'usd') {
       // Create a virtual USD coin
@@ -103,11 +104,11 @@ export class CoinService {
         image: 'https://flagcdn.com/w80/us.png', // American flag as requested
         description:
           'The United States dollar is the official currency of the United States and several other countries.',
-        totalSupply: null,
-        circulatingSupply: null,
-        maxSupply: null,
-        marketCap: null,
-        priceChangePercentage24h: null
+        totalSupply: undefined,
+        circulatingSupply: undefined,
+        maxSupply: undefined,
+        marketCap: undefined,
+        priceChangePercentage24h: undefined
         // Add other properties as needed
       });
       return usdCoin;
@@ -119,7 +120,9 @@ export class CoinService {
       relations
     });
     if (!coin && fail) throw new CoinNotFoundException(symbol, 'symbol');
-    Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+    if (coin) {
+      stripNullProps(coin);
+    }
     return coin;
   }
 
@@ -163,10 +166,10 @@ export class CoinService {
         image: 'https://flagcdn.com/w80/us.png', // American flag as requested
         description:
           'The United States dollar is the official currency of the United States and several other countries.',
-        totalSupply: null,
-        circulatingSupply: null,
-        maxSupply: null,
-        marketCap: null
+        totalSupply: undefined,
+        circulatingSupply: undefined,
+        maxSupply: undefined,
+        marketCap: undefined
         // Add other properties as needed
       });
       coins.push(usdCoin);
@@ -185,14 +188,14 @@ export class CoinService {
 
     // Clean null values from all coins
     return coins.map((coin) => {
-      Object.keys(coin).forEach((key) => coin[key] === null && delete coin[key]);
+      stripNullProps(coin);
       return coin;
     });
   }
 
   async create(Coin: CreateCoinDto): Promise<Coin> {
     const coin = await this.coin.findOne({ where: { slug: Coin.slug } });
-    return coin ?? ((await this.coin.insert(Coin)).generatedMaps[0] as Coin);
+    return coin ?? ((await this.coin.insert(Coin as QueryDeepPartialEntity<Coin>)).generatedMaps[0] as Coin);
   }
 
   async createMany(coins: CreateCoinDto[]): Promise<Coin[]> {
@@ -204,14 +207,14 @@ export class CoinService {
 
     if (newCoins.length === 0) return [];
 
-    const result = await this.coin.insert(newCoins);
+    const result = await this.coin.insert(newCoins as QueryDeepPartialEntity<Coin>[]);
     return result.generatedMaps as Coin[];
   }
 
   async update(coinId: string, coin: UpdateCoinDto) {
     const data = await this.getCoinById(coinId);
     if (!data) throw new CoinNotFoundException(coinId);
-    return await this.coin.save(new Coin({ ...data, ...coin }));
+    return await this.coin.save(new Coin({ ...data, ...coin }) as QueryDeepPartialEntity<Coin> & Coin);
   }
 
   async updateCurrentPrice(coinId: string, price: number): Promise<void> {
@@ -243,15 +246,17 @@ export class CoinService {
         interval: 'daily'
       });
 
-      if (geckoData?.prices?.length > 0) {
-        return geckoData.prices.map((point: [number, number], index: number) => ({
+      if (geckoData?.prices && geckoData.prices.length > 0) {
+        return geckoData.prices.map((point: number[], index: number) => ({
           timestamp: point[0],
           price: point[1],
-          volume: geckoData.total_volumes[index]?.[1] || 0,
-          marketCap: geckoData.market_caps[index]?.[1] || 0
+          volume: (geckoData.total_volumes as number[][] | undefined)?.[index]?.[1] ?? 0,
+          marketCap: (geckoData.market_caps as number[][] | undefined)?.[index]?.[1] ?? 0
         }));
       }
-    } catch (error) {
+
+      return [];
+    } catch (error: unknown) {
       throw new CoinNotFoundException(coinId);
     }
   }
@@ -392,20 +397,22 @@ export class CoinService {
       this.logger.debug(`Cached CoinGecko detail for ${coinGeckoId} (TTL: ${CACHE_TTL}s)`);
 
       return coinDetail;
-    } catch (error: any) {
-      // Handle rate limiting (429) by trying to return cached data
-      if (error?.response?.status === 429) {
-        this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
-        const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
-        if (cached) {
-          this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
-          return cached;
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        // Handle rate limiting (429) by trying to return cached data
+        if (error.response?.status === 429) {
+          this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
+          const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
+          if (cached) {
+            this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
+            return cached;
+          }
         }
-      }
 
-      // Handle 404 - coin not found
-      if (error?.response?.status === 404) {
-        throw new CoinNotFoundException(coinGeckoId, 'slug');
+        // Handle 404 - coin not found
+        if (error.response?.status === 404) {
+          throw new CoinNotFoundException(coinGeckoId, 'slug');
+        }
       }
 
       throw error;
@@ -463,23 +470,38 @@ export class CoinService {
       this.logger.debug(`Cached CoinGecko chart for ${coinGeckoId} (${days}d, TTL: ${CACHE_TTL}s)`);
 
       return chartData;
-    } catch (error: any) {
-      this.logger.error(`Error fetching chart data for ${coinGeckoId} (${days}d): ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error fetching chart data for ${coinGeckoId} (${days}d): ${errMsg}`);
 
-      // Handle rate limiting by trying to return cached data
-      if (error?.response?.status === 429) {
-        this.logger.warn(`CoinGecko rate limit hit for chart ${coinGeckoId} (${days}d), attempting to use cached data`);
-        const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
-        if (cached) {
-          this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to rate limit`);
-          return cached;
+      if (error instanceof AxiosError) {
+        // Handle rate limiting by trying to return cached data
+        if (error.response?.status === 429) {
+          this.logger.warn(
+            `CoinGecko rate limit hit for chart ${coinGeckoId} (${days}d), attempting to use cached data`
+          );
+          const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+          if (cached) {
+            this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to rate limit`);
+            return cached;
+          }
+        }
+
+        // Handle network errors and timeouts
+        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+          this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
+          const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+          if (cached) {
+            this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to network error`);
+            return cached;
+          }
+          throw new Error('Unable to fetch chart data. Please try again later.');
         }
       }
 
-      // Handle network errors and timeouts
-      if (error?.code === 'ECONNREFUSED' || error?.code === 'ETIMEDOUT' || error?.message === 'CoinGecko API timeout') {
-        this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${error?.message ?? error}`);
-        // Try to return cached data even if expired
+      // Handle timeout from our own Promise.race
+      if (errMsg === 'CoinGecko API timeout') {
+        this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
         const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
         if (cached) {
           this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to network error`);
@@ -521,12 +543,12 @@ export class CoinService {
 
         // Update database with fresh metadata
         if (geckoData) {
-          const links: CoinLinksDto = {
-            homepage: geckoData.links?.homepage || [],
-            blockchainSite: geckoData.links?.blockchain_site?.filter((url: string) => url) || [],
-            officialForumUrl: geckoData.links?.official_forum_url || [],
-            subredditUrl: geckoData.links?.subreddit_url || undefined,
-            repositoryUrl: geckoData.links?.repos_url?.github || []
+          const links: Coin['links'] = {
+            homepage: geckoData.links?.homepage ?? [],
+            blockchainSite: geckoData.links?.blockchain_site?.filter((url: string) => url) ?? [],
+            officialForumUrl: geckoData.links?.official_forum_url ?? [],
+            subredditUrl: geckoData.links?.subreddit_url ?? undefined,
+            reposUrl: { github: geckoData.links?.repos_url?.github ?? [] }
           };
 
           await this.coin.update(coin.id, {
@@ -537,10 +559,10 @@ export class CoinService {
 
           // Update local coin object
           coin.description = geckoData.description?.en || coin.description;
-          coin.links = links as any;
+          coin.links = links;
           coin.metadataLastUpdated = now;
         }
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.error(
           `Failed to fetch CoinGecko data for ${slug}: ${error instanceof Error ? error.message : error}`
         );
@@ -559,11 +581,11 @@ export class CoinService {
       priceChange24h: coin.priceChange24h || 0,
       priceChange24hPercent: coin.priceChangePercentage24h || 0,
       marketCap: coin.marketCap || 0,
-      marketCapRank: coin.marketRank,
+      marketCapRank: coin.marketRank ?? undefined,
       volume24h: coin.totalVolume || 0,
       circulatingSupply: coin.circulatingSupply || 0,
-      totalSupply: coin.totalSupply,
-      maxSupply: coin.maxSupply,
+      totalSupply: coin.totalSupply ?? undefined,
+      maxSupply: coin.maxSupply ?? undefined,
       description: coin.description || '',
       links: (coin.links as CoinLinksDto) || {
         homepage: [],
@@ -572,7 +594,7 @@ export class CoinService {
         repositoryUrl: []
       },
       lastUpdated: coin.updatedAt,
-      metadataLastUpdated: coin.metadataLastUpdated
+      metadataLastUpdated: coin.metadataLastUpdated ?? undefined
     };
 
     return response;
@@ -633,7 +655,7 @@ export class CoinService {
     try {
       // Fetch from CoinGecko with caching
       chartData = await this.fetchMarketChart(coin.slug, days);
-    } catch (error) {
+    } catch (error: unknown) {
       // If CoinGecko fails and no cached data, generate mock data
       this.logger.warn(`Using mock chart data for ${coin.slug} due to API failure`);
       chartData = this.generateMockChartData(coin.currentPrice || 0, days);

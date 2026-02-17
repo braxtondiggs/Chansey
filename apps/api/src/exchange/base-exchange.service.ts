@@ -9,6 +9,7 @@ import * as https from 'https';
 import { EXCHANGE_KEY_SERVICE, EXCHANGE_SERVICE, IExchangeKeyService, IExchangeService } from './interfaces';
 
 import { AssetBalanceDto } from '../balance/dto/balance-response.dto';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 /**
@@ -29,6 +30,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   protected abstract readonly exchangeId: keyof typeof ccxt;
   protected abstract readonly apiKeyConfigName: string;
   protected abstract readonly apiSecretConfigName: string;
+  abstract readonly quoteAsset: string;
 
   constructor(
     protected readonly configService?: ConfigService,
@@ -42,8 +44,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     const closePromises = [...this.clients.entries()].map(async ([key, client]) => {
       try {
         await client.close();
-      } catch (error) {
-        this.logger.warn(`Failed to close CCXT client '${key}': ${error?.message ?? error}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Failed to close CCXT client '${key}': ${err.message}`);
       }
     });
     await Promise.allSettled(closePromises);
@@ -78,8 +81,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       if (now - lastUsed > BaseExchangeService.CLIENT_TTL_MS) {
         const client = this.clients.get(key);
         if (client) {
-          client.close().catch((error) => {
-            this.logger.warn(`Best-effort close failed for stale client '${key}': ${error?.message ?? error}`);
+          client.close().catch((error: unknown) => {
+            const err = toErrorInfo(error);
+            this.logger.warn(`Best-effort close failed for stale client '${key}': ${err.message}`);
           });
         }
         this.clients.delete(key);
@@ -133,12 +137,13 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
             return this.clients.get(clientKey) as ccxt.Exchange;
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
         this.logger.error(
-          `Failed to get user exchange keys for user ${user.id} on ${this.exchangeSlug}: ${error.message}`
+          `Failed to get user exchange keys for user ${user.id} on ${this.exchangeSlug}: ${err.message}`
         );
         throw new InternalServerErrorException(
-          `Failed to get user exchange keys for ${this.exchangeSlug}: ${error.message}`
+          `Failed to get user exchange keys for ${this.exchangeSlug}: ${err.message}`
         );
       }
     }
@@ -155,6 +160,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getDefaultClient(): Promise<ccxt.Exchange> {
     // Create or return the default client
     if (!this.clients.has('default')) {
+      if (!this.configService) {
+        throw new InternalServerErrorException(`ConfigService is not available in ${this.constructor.name}`);
+      }
       const defaultApiKey = this.configService.get<string>(this.apiKeyConfigName);
       const defaultApiSecret = this.configService.get<string>(this.apiSecretConfigName);
 
@@ -195,8 +203,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getTemporaryClient(apiKey: string, apiSecret: string): Promise<ccxt.Exchange> {
     try {
       return this.createClient(apiKey, apiSecret.replace(/\\n/g, '\n').trim());
-    } catch (error) {
-      this.logger.error(`Failed to create temporary ${this.constructor.name} client`, error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create temporary ${this.constructor.name} client: ${err.message}`, err.stack);
       throw new InternalServerErrorException(`Could not create ${this.constructor.name} client with provided keys`);
     }
   }
@@ -217,8 +226,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     try {
       const balances = await this.getBalance(user);
       return balances.filter((b) => (b.asset === 'USD' || b.asset === 'USDC') && parseFloat(b.free) > 0);
-    } catch (error) {
-      this.logger.error(`Error fetching ${this.constructor.name} free balance`, error.stack || error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} free balance`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} free balance`);
     }
   }
@@ -235,9 +245,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       const client = await this.getClient(user);
       const ticker = await client.fetchTicker(formattedSymbol);
 
-      return ticker.last;
-    } catch (error) {
-      this.logger.error(`Error fetching ${this.constructor.name} price for ${symbol}`, error.stack || error.message);
+      return ticker.last ?? 0;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} price for ${symbol}`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} price for ${symbol}`);
     }
   }
@@ -253,13 +264,14 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       const price = await this.getPriceBySymbol(symbol, user);
       return {
         symbol,
-        price: price.toString(),
+        price: (price ?? 0).toString(),
         timestamp: Date.now()
       };
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       this.logger.error(
         `Error fetching ${this.constructor.name} standardized price for ${symbol}`,
-        error.stack || error.message
+        err.stack || err.message
       );
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} price for ${symbol}`);
     }
@@ -275,8 +287,9 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     const client = await this.getTemporaryClient(apiKey, apiSecret);
     try {
       await client.fetchBalance();
-    } catch (error) {
-      this.logger.error(`${this.constructor.name} API key validation failed`, error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`${this.constructor.name} API key validation failed: ${err.message}`, err.stack);
       throw new InternalServerErrorException(`Invalid ${this.constructor.name} API keys`);
     } finally {
       try {

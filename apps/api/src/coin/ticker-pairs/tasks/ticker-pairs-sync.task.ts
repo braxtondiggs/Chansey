@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../../exchange/exchange.service';
+import { toErrorInfo } from '../../../shared/error.util';
 import { CoinService } from '../../coin.service';
 import { TickerPairStatus, TickerPairs } from '../ticker-pairs.entity';
 import { TickerPairService } from '../ticker-pairs.service';
@@ -93,8 +94,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -171,8 +173,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               }
 
               totalProcessedTickers += tickers.length;
-            } catch (tickerError) {
-              this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${tickerError.message}`);
+            } catch (tickerError: unknown) {
+              const err = toErrorInfo(tickerError);
+              this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
               // If we're on the first page and encounter an error, break out completely
               if (page === 1) break;
 
@@ -186,20 +189,28 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               // Extract coin IDs from the ticker data
               const baseId = ticker.coin_id?.toLowerCase();
               const quoteId = ticker.target_coin_id?.toLowerCase();
+              const baseSymbol = String(ticker.base ?? '');
+              const targetSymbol = String(ticker.target ?? '');
+
+              // Skip tickers with missing symbols
+              if (!baseSymbol || !targetSymbol) {
+                this.logger.debug(`Skipping ticker with missing base or target symbol`);
+                continue;
+              }
 
               // Get the coin objects from our database
-              const baseCoin = coinsBySlug.get(baseId);
-              const quoteCoin = coinsBySlug.get(quoteId);
+              const baseCoin = baseId ? coinsBySlug.get(baseId) : undefined;
+              const quoteCoin = quoteId ? coinsBySlug.get(quoteId) : undefined;
 
               // Determine if this is a fiat pair
-              const baseIsFiat = !baseCoin && this.isFiatCurrency(ticker.base);
-              const quoteIsFiat = !quoteCoin && this.isFiatCurrency(ticker.target);
+              const baseIsFiat = !baseCoin && this.isFiatCurrency(baseSymbol);
+              const quoteIsFiat = !quoteCoin && this.isFiatCurrency(targetSymbol);
               const isFiatPair = baseIsFiat || quoteIsFiat;
 
               // Skip if neither coin exists and it's not a fiat pair
               if (!baseCoin && !quoteCoin && !isFiatPair) {
                 this.logger.debug(
-                  `Skipping ticker ${ticker.base}/${ticker.target}: coins not found in database and not fiat pair`
+                  `Skipping ticker ${baseSymbol}/${targetSymbol}: coins not found in database and not fiat pair`
                 );
                 continue;
               }
@@ -207,14 +218,14 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               // Skip if one coin exists but the other doesn't and it's not fiat
               if ((!baseCoin && !baseIsFiat) || (!quoteCoin && !quoteIsFiat)) {
                 this.logger.debug(
-                  `Skipping ticker ${ticker.base}/${ticker.target}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
+                  `Skipping ticker ${baseSymbol}/${targetSymbol}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
                 );
                 continue;
               }
 
               // Create a unique key for this ticker pair
-              const baseKey = baseCoin?.id || ticker.base;
-              const quoteKey = quoteCoin?.id || ticker.target;
+              const baseKey = baseCoin?.id || baseSymbol;
+              const quoteKey = quoteCoin?.id || targetSymbol;
               const pairKey = `${baseKey}-${quoteKey}-${exchange.id}`;
               exchangePairs.add(pairKey);
 
@@ -222,7 +233,7 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               const existingPair = existingPairs.find((p) => {
                 if (isFiatPair) {
                   // For fiat pairs, match by symbol and exchange
-                  const expectedSymbol = `${ticker.base}${ticker.target}`.toUpperCase();
+                  const expectedSymbol = `${baseSymbol}${targetSymbol}`.toUpperCase();
                   return p.symbol === expectedSymbol && p.exchange.id === exchange.id;
                 } else {
                   // For regular pairs, match by coin IDs
@@ -238,10 +249,10 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
                 // Create a new ticker pair
                 const pairData: any = {
                   exchange,
-                  volume: ticker.volume || 0,
+                  volume: Number(ticker.volume ?? 0),
                   tradeUrl: ticker.trade_url,
-                  spreadPercentage: ticker.bid_ask_spread_percentage || 0,
-                  lastTraded: ticker.last_traded_at,
+                  spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? 0),
+                  lastTraded: ticker.last_traded_at ?? new Date(),
                   fetchAt: new Date(),
                   status: DEFAULT_STATUS,
                   isSpotTradingAllowed: DEFAULT_SPOT_TRADING_ALLOWED,
@@ -251,8 +262,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
 
                 if (isFiatPair) {
                   // For fiat pairs, store symbols instead of coin references
-                  pairData.baseAssetSymbol = ticker.base.toLowerCase();
-                  pairData.quoteAssetSymbol = ticker.target.toLowerCase();
+                  pairData.baseAssetSymbol = baseSymbol.toLowerCase();
+                  pairData.quoteAssetSymbol = targetSymbol.toLowerCase();
                   // Only set coin references if they exist
                   if (baseCoin) pairData.baseAsset = baseCoin;
                   if (quoteCoin) pairData.quoteAsset = quoteCoin;
@@ -268,10 +279,10 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
               } else {
                 // Update the existing pair with new data
                 Object.assign(existingPair, {
-                  volume: ticker.volume || existingPair.volume,
-                  tradeUrl: ticker.trade_url || existingPair.tradeUrl,
-                  spreadPercentage: ticker.bid_ask_spread_percentage || existingPair.spreadPercentage,
-                  lastTraded: ticker.last_traded_at,
+                  volume: Number(ticker.volume ?? existingPair.volume),
+                  tradeUrl: ticker.trade_url ?? existingPair.tradeUrl,
+                  spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? existingPair.spreadPercentage),
+                  lastTraded: ticker.last_traded_at ?? existingPair.lastTraded,
                   fetchAt: new Date()
                   // Not updating status or trading flags as they should be managed separately
                 });
@@ -309,8 +320,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           // Update progress as each exchange is processed
           processedExchanges++;
           await job.updateProgress(40 + Math.floor((processedExchanges / totalExchanges) * 50));
-        } catch (exchangeError) {
-          this.logger.error(`Error processing exchange ${exchange.name}:`, exchangeError);
+        } catch (exchangeError: unknown) {
+          const errInfo = toErrorInfo(exchangeError);
+          this.logger.error(`Error processing exchange ${exchange.name}: ${errInfo.message}`, errInfo.stack);
           continue; // Continue with next exchange
         }
       }
@@ -320,17 +332,19 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         try {
           const savedPairs = await this.tickerPair.saveTickerPair(newPairs);
           this.logger.log(`Added ${savedPairs.length} new ticker pairs`);
-        } catch (error) {
-          this.logger.error(`Error saving new ticker pairs: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Error saving new ticker pairs: ${err.message}`);
           // If there's a bulk error, try saving them one by one to identify which ones fail
           let savedCount = 0;
           for (const pair of newPairs) {
             try {
               await this.tickerPair.saveTickerPair([pair]);
               savedCount++;
-            } catch (pairError) {
+            } catch (pairError: unknown) {
+              const innerErr = toErrorInfo(pairError);
               this.logger.error(
-                `Failed to save ticker pair ${pair.baseAsset.symbol}${pair.quoteAsset.symbol} for ${pair.exchange.name}: ${pairError.message}`
+                `Failed to save ticker pair ${pair.baseAsset?.symbol ?? pair.baseAssetSymbol ?? 'unknown'}${pair.quoteAsset?.symbol ?? pair.quoteAssetSymbol ?? 'unknown'} for ${pair.exchange.name}: ${innerErr.message}`
               );
             }
           }
@@ -341,16 +355,18 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
       // Update existing ticker pairs with error handling
       try {
         await this.tickerPair.saveTickerPair(existingPairs);
-      } catch (error) {
-        this.logger.error(`Error updating existing ticker pairs: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error updating existing ticker pairs: ${err.message}`);
         // If there's a bulk error, try saving them in smaller batches
         const batchSize = 50;
         for (let i = 0; i < existingPairs.length; i += batchSize) {
           const batch = existingPairs.slice(i, i + batchSize);
           try {
             await this.tickerPair.saveTickerPair(batch);
-          } catch (batchError) {
-            this.logger.error(`Failed to save batch of ticker pairs: ${batchError.message}`);
+          } catch (batchError: unknown) {
+            const innerErr = toErrorInfo(batchError);
+            this.logger.error(`Failed to save batch of ticker pairs: ${innerErr.message}`);
           }
         }
       }
@@ -369,8 +385,9 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
         updatedPairs: existingPairs.length,
         executionTimeMs: Date.now() - startTime
       };
-    } catch (error) {
-      this.logger.error('Failed to synchronize ticker pairs:', error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to synchronize ticker pairs: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -402,16 +419,18 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
           try {
             await this.exchange.updateExchange(exchange.id, { tickerPairsCount });
             this.logger.debug(`Updated ${exchange.name} ticker pairs count to ${tickerPairsCount}`);
-          } catch (error) {
-            this.logger.error(`Failed to update ticker pairs count for ${exchange.name}: ${error.message}`);
+          } catch (error: unknown) {
+            const err = toErrorInfo(error);
+            this.logger.error(`Failed to update ticker pairs count for ${exchange.name}: ${err.message}`);
           }
         }
       });
 
       await Promise.all(updatePromises);
       this.logger.log('Successfully updated ticker pairs counts for all exchanges');
-    } catch (error) {
-      this.logger.error(`Failed to update exchange ticker pairs counts: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update exchange ticker pairs counts: ${err.message}`);
     }
   }
 

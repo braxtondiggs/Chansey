@@ -6,6 +6,8 @@ import { access, constants } from 'fs/promises';
 
 import { MarketDataSet } from './market-data-set.entity';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 /**
  * Validation error with error code and message.
  */
@@ -150,12 +152,13 @@ export class DatasetValidatorService {
       }
 
       return { valid: true, message: 'Checksum verified' };
-    } catch (error) {
-      this.logger.warn(`Unable to verify checksum for dataset ${dataset.id}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Unable to verify checksum for dataset ${dataset.id}: ${err.message}`);
       return {
         valid: true,
         message: 'Checksum verification skipped due to error',
-        warning: `Checksum verification failed: ${error.message}`
+        warning: `Checksum verification failed: ${err.message}`
       };
     }
   }

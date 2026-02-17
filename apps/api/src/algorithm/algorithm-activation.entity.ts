@@ -147,7 +147,7 @@ export class AlgorithmActivation {
   activate(): void {
     this.isActive = true;
     this.activatedAt = new Date();
-    this.deactivatedAt = null;
+    this.deactivatedAt = undefined;
   }
 
   /**

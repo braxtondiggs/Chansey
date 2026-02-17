@@ -7,6 +7,7 @@ import { Between, Repository } from 'typeorm';
 import { AlgorithmActivationService } from './algorithm-activation.service';
 
 import { Order, OrderStatus } from '../../order/order.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import { AlgorithmPerformance } from '../algorithm-performance.entity';
 
 /**
@@ -60,7 +61,7 @@ export class AlgorithmPerformanceService {
         volatility: 0,
         alpha: 0,
         beta: 0,
-        rank: null,
+        rank: undefined,
         calculatedAt: new Date()
       });
 
@@ -93,7 +94,7 @@ export class AlgorithmPerformanceService {
       volatility: Number(volatility.toFixed(4)),
       alpha: Number(alpha.toFixed(4)),
       beta: Number(beta.toFixed(4)),
-      rank: null, // Will be set by calculateRankings()
+      rank: undefined, // Will be set by calculateRankings()
       calculatedAt: new Date()
     });
 
@@ -192,8 +193,9 @@ export class AlgorithmPerformanceService {
       });
 
       return result.length > 0 ? result[result.length - 1] : 0;
-    } catch (error) {
-      this.logger.error(`Error calculating volatility: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error calculating volatility: ${err.message}`);
       return 0;
     }
   }
@@ -321,10 +323,10 @@ export class AlgorithmPerformanceService {
       }
     }
 
-    // Sort by rank (nulls last)
+    // Sort by rank (undefined/nulls last)
     return performances.sort((a, b) => {
-      if (a.rank === null) return 1;
-      if (b.rank === null) return -1;
+      if (a.rank == null) return 1;
+      if (b.rank == null) return -1;
       return a.rank - b.rank;
     });
   }

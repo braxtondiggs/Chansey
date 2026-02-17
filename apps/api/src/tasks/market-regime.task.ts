@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 
 import { CoinService } from '../coin/coin.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
+import { toErrorInfo } from '../shared/error.util';
 
 /**
  * Market Regime Check Task
@@ -61,8 +62,9 @@ export class MarketRegimeTask {
       );
 
       this.logger.log(`Queued regime check for ${asset}`);
-    } catch (error) {
-      this.logger.error(`Failed to queue regime check for ${asset}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to queue regime check for ${asset}: ${err.message}`);
     }
   }
 
@@ -82,8 +84,9 @@ export class MarketRegimeTask {
       await this.marketRegimeService.detectRegime(asset, priceData);
 
       this.logger.log(`Regime check complete for ${asset}`);
-    } catch (error) {
-      this.logger.error(`Failed to check regime for ${asset}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to check regime for ${asset}: ${err.message}`);
       throw error;
     }
   }
@@ -132,8 +135,9 @@ export class MarketRegimeTask {
       }
 
       return prices;
-    } catch (error) {
-      this.logger.error(`Failed to fetch price data for ${asset}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch price data for ${asset}: ${err.message}`);
       return this.generateFallbackPriceData(days);
     }
   }

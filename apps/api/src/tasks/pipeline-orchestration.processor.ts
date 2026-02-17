@@ -13,6 +13,8 @@ import { Job } from 'bullmq';
 import { PipelineOrchestrationJobData, PipelineOrchestrationResult } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
+import { toErrorInfo } from '../shared/error.util';
+
 @Injectable()
 @Processor('pipeline-orchestration')
 export class PipelineOrchestrationProcessor extends WorkerHost {
@@ -47,11 +49,12 @@ export class PipelineOrchestrationProcessor extends WorkerHost {
       );
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       const duration = Date.now() - startTime;
       this.logger.error(
-        `Pipeline orchestration job ${job.id} failed for user ${userId} after ${duration}ms: ${error.message}`,
-        error.stack
+        `Pipeline orchestration job ${job.id} failed for user ${userId} after ${duration}ms: ${err.message}`,
+        err.stack
       );
       throw error;
     }

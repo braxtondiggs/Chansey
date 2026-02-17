@@ -349,7 +349,7 @@ export class LiveTradeMonitoringComponent {
         summary: 'Export Complete',
         detail: 'Orders exported successfully'
       });
-    } catch (error) {
+    } catch (error: unknown) {
       this.messageService.add({
         severity: 'error',
         summary: 'Export Failed',

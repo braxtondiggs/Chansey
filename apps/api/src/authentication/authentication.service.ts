@@ -221,7 +221,9 @@ export class AuthenticationService {
       if (!isPasswordValid) {
         // Increment failed attempts
         const newFailedAttempts = (user.failedLoginAttempts || 0) + 1;
-        const updateData: Partial<User> = { failedLoginAttempts: newFailedAttempts };
+        const updateData: { failedLoginAttempts: number; lockedUntil?: Date } = {
+          failedLoginAttempts: newFailedAttempts
+        };
 
         // Audit log: failed login
         await this.securityAudit.logLoginFailed(email, 'Invalid password', undefined, undefined, user.id);

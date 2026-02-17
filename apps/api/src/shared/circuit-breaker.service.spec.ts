@@ -159,7 +159,7 @@ describe('CircuitBreakerService', () => {
       try {
         service.checkCircuit('test-exchange');
         fail('Expected CircuitOpenError');
-      } catch (error) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(CircuitOpenError);
         const circuitError = error as CircuitOpenError;
         expect(circuitError.circuitKey).toBe('test-exchange');

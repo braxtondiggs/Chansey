@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsDateString, IsUUID, registerDecorator, ValidationOptions } from 'class-validator';
+import { IsDateString, IsUUID, registerDecorator, ValidationArguments, ValidationOptions } from 'class-validator';
 
 /** Maximum allowed date range in days */
 const MAX_DATE_RANGE_DAYS = 365;
@@ -17,7 +17,7 @@ function IsAfterStartDate(property: string, validationOptions?: ValidationOption
       constraints: [property],
       options: validationOptions,
       validator: {
-        validate(value: string, args) {
+        validate(value: string, args: ValidationArguments) {
           const [relatedPropertyName] = args.constraints;
           const startValue = (args.object as Record<string, string>)[relatedPropertyName];
           if (!startValue || !value) return true;
@@ -66,7 +66,7 @@ function IsWithinMaxDateRange(startProperty: string, maxDays: number, validation
       constraints: [startProperty, maxDays],
       options: validationOptions,
       validator: {
-        validate(value: string, args) {
+        validate(value: string, args: ValidationArguments) {
           const [relatedPropertyName, maxDaysAllowed] = args.constraints;
           const startValue = (args.object as Record<string, string>)[relatedPropertyName];
           if (!startValue || !value) return true;
@@ -74,7 +74,7 @@ function IsWithinMaxDateRange(startProperty: string, maxDays: number, validation
           const diffDays = diffMs / (1000 * 60 * 60 * 24);
           return diffDays <= maxDaysAllowed;
         },
-        defaultMessage(args) {
+        defaultMessage(args: ValidationArguments) {
           return `Date range cannot exceed ${args.constraints[1]} days`;
         }
       }

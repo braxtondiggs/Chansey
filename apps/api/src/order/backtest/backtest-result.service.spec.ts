@@ -497,8 +497,8 @@ describe('BacktestResultService', () => {
       await service.clearCheckpoint('backtest-2');
 
       expect(mockBacktestRepository.update).toHaveBeenCalledWith('backtest-2', {
-        checkpointState: null,
-        lastCheckpointAt: null
+        checkpointState: undefined,
+        lastCheckpointAt: undefined
       });
     });
   });

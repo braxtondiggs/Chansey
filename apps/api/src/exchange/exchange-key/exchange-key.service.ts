@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { CreateExchangeKeyDto, SupportedExchangeKeyDto } from './dto';
 import { ExchangeKey } from './exchange-key.entity';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { ExchangeManagerService } from '../exchange-manager.service';
 import { ExchangeService } from '../exchange.service';
@@ -214,7 +215,7 @@ export class ExchangeKeyService implements IExchangeKeyService {
       }
 
       return isValid;
-    } catch (error) {
+    } catch (error: unknown) {
       // Validation failed, return false instead of throwing an exception
       // The caller will handle setting isActive to false
       return false;
@@ -238,8 +239,9 @@ export class ExchangeKeyService implements IExchangeKeyService {
 
       await this.userRepository.save(user);
       this.logger.log(`Auto-enabled algo trading for user ${userId}`);
-    } catch (error) {
-      this.logger.error(`Failed to auto-enable algo trading for ${userId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to auto-enable algo trading for ${userId}: ${err.message}`);
     }
   }
 
@@ -260,8 +262,9 @@ export class ExchangeKeyService implements IExchangeKeyService {
 
       await this.userRepository.save(user);
       this.logger.log(`Auto-disabled algo trading for user ${userId} - last key removed`);
-    } catch (error) {
-      this.logger.error(`Failed to auto-disable algo trading for ${userId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to auto-disable algo trading for ${userId}: ${err.message}`);
     }
   }
 }

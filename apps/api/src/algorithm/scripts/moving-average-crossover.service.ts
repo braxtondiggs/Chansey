@@ -74,7 +74,7 @@ export class MovingAverageCrossoverService {
 
     for (let index = interval; index <= prices.length; index++) {
       const sum = prices.slice(index - interval, index).reduce((acc, { avg }) => acc + avg, 0);
-      results.push((sum / interval).toFixed(2));
+      results.push(Number((sum / interval).toFixed(2)));
     }
 
     return results.reverse();

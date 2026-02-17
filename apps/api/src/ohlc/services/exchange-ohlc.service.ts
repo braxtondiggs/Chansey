@@ -108,7 +108,7 @@ export class ExchangeOHLCService {
           await this.sleep(backoffMs);
           backoffMs *= 2;
         }
-      } catch (error) {
+      } catch (error: unknown) {
         lastError = error instanceof Error ? error.message : 'Unknown error';
         this.logger.warn(`OHLC fetch attempt ${attempt}/${retries} failed for ${exchangeSlug}: ${lastError}`);
 
@@ -188,7 +188,7 @@ export class ExchangeOHLCService {
         exchangeSlug,
         candles
       };
-    } catch (error) {
+    } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.warn(`OHLC fetch failed for ${exchangeSlug}/${symbol}: ${message}`);
 
@@ -245,7 +245,7 @@ export class ExchangeOHLCService {
       });
 
       return symbols;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.warn(`Failed to get available symbols for ${baseAsset} on ${exchangeSlug}: ${error}`);
       return [];
     }

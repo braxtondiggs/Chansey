@@ -5,6 +5,7 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 
 import { AlgorithmActivationService } from '../../algorithm/services/algorithm-activation.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { TradeExecutionService, TradeSignal } from '../services/trade-execution.service';
 
 /**
@@ -93,8 +94,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         this.logger.warn(`Unknown job type: ${job.name}`);
         return { success: false, message: `Unknown job type: ${job.name}` };
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -149,8 +151,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
               `No trade signal generated for activation ${activation.id} (${activation.algorithm.name})`
             );
           }
-        } catch (error) {
-          this.logger.error(`Failed to execute trade for activation ${activation.id}: ${error.message}`, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Failed to execute trade for activation ${activation.id}: ${err.message}`, err.stack);
           failCount++;
           // Continue with next activation even if one fails
         }
@@ -172,8 +175,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         failCount,
         timestamp: new Date().toISOString()
       };
-    } catch (error) {
-      this.logger.error(`Trade execution failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Trade execution failed: ${err.message}`, err.stack);
       throw error;
     }
   }

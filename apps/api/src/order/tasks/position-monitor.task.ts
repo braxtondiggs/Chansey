@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
   ExitConfig,
@@ -107,8 +108,9 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
         this.logger.warn(`Unknown job type: ${job.name}`);
         return { success: false, message: `Unknown job type: ${job.name}` };
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -170,8 +172,9 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
             try {
               const ticker = await exchangeClient.fetchTicker(symbol);
               tickers[symbol] = ticker.last || 0;
-            } catch (tickerError) {
-              this.logger.warn(`Failed to fetch ticker for ${symbol}: ${tickerError.message}`);
+            } catch (tickerError: unknown) {
+              const err = toErrorInfo(tickerError);
+              this.logger.warn(`Failed to fetch ticker for ${symbol}: ${err.message}`);
             }
           }
 
@@ -188,16 +191,18 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
 
               if (result.updated) updated++;
               if (result.triggered) triggered++;
-            } catch (posError) {
-              this.logger.error(`Failed to update trailing stop for position ${pos.id}: ${posError.message}`);
+            } catch (posError: unknown) {
+              const err = toErrorInfo(posError);
+              this.logger.error(`Failed to update trailing stop for position ${pos.id}: ${err.message}`);
             }
 
             processedPositions++;
             const progressPercentage = Math.floor(20 + (processedPositions / totalPositions) * 70);
             await job.updateProgress(progressPercentage);
           }
-        } catch (exchangeError) {
-          this.logger.error(`Failed to process positions for exchange ${exchangeKeyId}: ${exchangeError.message}`);
+        } catch (exchangeError: unknown) {
+          const err = toErrorInfo(exchangeError);
+          this.logger.error(`Failed to process positions for exchange ${exchangeKeyId}: ${err.message}`);
           processedPositions += positions.length;
         }
       }
@@ -214,8 +219,9 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
         triggered,
         timestamp: new Date().toISOString()
       };
-    } catch (error) {
-      this.logger.error(`Position monitoring failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Position monitoring failed: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -296,8 +302,9 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
             if (position.trailingStopOrderId) {
               try {
                 await this.updateStopOrderOnExchange(position, newStopPrice, exchangeClient);
-              } catch (updateError) {
-                this.logger.warn(`Failed to update stop order on exchange: ${updateError.message}`);
+              } catch (updateError: unknown) {
+                const err = toErrorInfo(updateError);
+                this.logger.warn(`Failed to update stop order on exchange: ${err.message}`);
               }
             }
 
@@ -331,8 +338,9 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
             if (position.trailingStopOrderId) {
               try {
                 await this.updateStopOrderOnExchange(position, newStopPrice, exchangeClient);
-              } catch (updateError) {
-                this.logger.warn(`Failed to update stop order on exchange: ${updateError.message}`);
+              } catch (updateError: unknown) {
+                const err = toErrorInfo(updateError);
+                this.logger.warn(`Failed to update stop order on exchange: ${err.message}`);
               }
             }
 

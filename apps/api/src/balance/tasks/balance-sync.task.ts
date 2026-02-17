@@ -4,6 +4,7 @@ import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { BalanceService } from '../balance.service';
 
 @Processor('balance-queue')
@@ -79,8 +80,9 @@ export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
-    } catch (error) {
-      this.logger.error(`Failed to process job ${job.id}: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
     }
   }
@@ -104,8 +106,9 @@ export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
         status: 'completed',
         message: 'Historical balances stored successfully'
       };
-    } catch (error) {
-      this.logger.error('Historical balance storage failed:', error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Historical balance storage failed: ${err.message}`, err.stack);
       throw error;
     }
   }
