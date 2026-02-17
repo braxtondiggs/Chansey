@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 
 import { Role } from '@chansey/api-interfaces';
 
-import { UpdateUserDto } from './dto';
+import { UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
 import { User } from './users.entity';
 
 import { CoinService } from '../coin/coin.service';
@@ -290,6 +290,62 @@ export class UsersService {
     } catch (error) {
       this.logger.error(`Failed to get algo trading status for user ${userId}: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to get algo trading status');
+    }
+  }
+
+  async updateOpportunitySellingConfig(
+    userId: string,
+    dto: UpdateOpportunitySellingConfigDto
+  ): Promise<{ enabled: boolean; config: User['opportunitySellingConfig'] }> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+
+      // Merge only the provided config fields into the existing config
+      const { enabled, ...configFields } = dto;
+      const existingConfig = user.opportunitySellingConfig ?? {};
+      const updatedConfig = { ...existingConfig };
+
+      for (const [key, value] of Object.entries(configFields)) {
+        if (value !== undefined) {
+          (updatedConfig as any)[key] = value;
+        }
+      }
+
+      user.opportunitySellingConfig = updatedConfig as User['opportunitySellingConfig'];
+
+      if (enabled !== undefined) {
+        user.enableOpportunitySelling = enabled;
+      }
+
+      await this.user.save(user);
+
+      this.logger.log(`User ${userId} updated opportunity selling config (enabled=${user.enableOpportunitySelling})`);
+
+      return {
+        enabled: user.enableOpportunitySelling,
+        config: user.opportunitySellingConfig
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update opportunity selling config for user ${userId}: ${error.message}`,
+        error.stack
+      );
+      throw new InternalServerErrorException('Failed to update opportunity selling config');
+    }
+  }
+
+  async getOpportunitySellingConfig(
+    userId: string
+  ): Promise<{ enabled: boolean; config: User['opportunitySellingConfig'] }> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+      return {
+        enabled: user.enableOpportunitySelling,
+        config: user.opportunitySellingConfig
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get opportunity selling config for user ${userId}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to get opportunity selling config');
     }
   }
 }

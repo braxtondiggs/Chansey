@@ -2,6 +2,21 @@ import { Role } from './role.enum';
 
 import { ExchangeKey } from '../exchange/exchange.interface';
 
+export interface OpportunitySellingUserConfig {
+  minOpportunityConfidence: number;
+  minHoldingPeriodHours: number;
+  protectGainsAbovePercent: number;
+  protectedCoins: string[];
+  minOpportunityAdvantagePercent: number;
+  maxLiquidationPercent: number;
+  useAlgorithmRanking: boolean;
+}
+
+export interface OpportunitySellingStatusResponse {
+  enabled: boolean;
+  config: OpportunitySellingUserConfig;
+}
+
 export interface IUser {
   id: string;
   email: string;
@@ -22,6 +37,8 @@ export interface IUser {
   algoTradingEnabled?: boolean;
   algoCapitalAllocationPercentage?: number;
   algoEnrolledAt?: Date;
+  enableOpportunitySelling?: boolean;
+  opportunitySellingConfig?: OpportunitySellingUserConfig;
 }
 
 export interface IUserProfileUpdate {

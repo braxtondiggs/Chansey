@@ -14,6 +14,7 @@ import { SignalType } from '../../algorithm/interfaces';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { PositionAnalysisService } from '../services/position-analysis.service';
 
 // Create shared service instances for tests
 const sharpeCalculator = new SharpeRatioCalculator();
@@ -68,7 +69,8 @@ describe('BacktestEngine storage flow', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      new PositionAnalysisService()
     );
   };
 

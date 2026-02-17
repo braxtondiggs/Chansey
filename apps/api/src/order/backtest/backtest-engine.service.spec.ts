@@ -14,6 +14,9 @@ import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { PositionAnalysisService } from '../services/position-analysis.service';
+
+const positionAnalysis = new PositionAnalysisService();
 
 // Create shared service instances for tests
 const sharpeCalculator = new SharpeRatioCalculator();
@@ -36,7 +39,8 @@ describe('BacktestEngine.executeTrade', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      positionAnalysis
     );
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
@@ -615,7 +619,8 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      positionAnalysis
     );
 
   const createCandles = (coinId: string) => [
@@ -703,7 +708,8 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      positionAnalysis
     );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
@@ -860,7 +866,8 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      positionAnalysis
     );
 
   const createCandles = () => [
@@ -1612,7 +1619,8 @@ describe('BacktestEngine checkpointing', () => {
       feeCalculator,
       positionManager,
       metricsCalculator,
-      portfolioState
+      portfolioState,
+      positionAnalysis
     );
 
   const createCheckpoint = (engine: BacktestEngine) => {

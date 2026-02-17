@@ -59,6 +59,11 @@ import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
+import {
+  DEFAULT_OPPORTUNITY_SELLING_CONFIG,
+  OpportunitySellingUserConfig
+} from '../interfaces/opportunity-selling.interface';
+import { PositionAnalysisService } from '../services/position-analysis.service';
 
 // Default slippage config using shared service
 const DEFAULT_SLIPPAGE_CONFIG: SlippageConfig = {
@@ -95,6 +100,11 @@ interface ExecuteOptions {
   /** Minimum time a position must be held before selling (ms). Default: 24h.
    *  Risk-control signals (STOP_LOSS, TAKE_PROFIT) always bypass this. */
   minHoldMs?: number;
+
+  /** Enable opportunity-based selling for this backtest run (default: false) */
+  enableOpportunitySelling?: boolean;
+  /** Opportunity selling configuration (uses DEFAULT_OPPORTUNITY_SELLING_CONFIG if not provided) */
+  opportunitySellingConfig?: OpportunitySellingUserConfig;
 
   // Checkpoint options for resume capability
   /** Number of timestamps between checkpoints (default: 500) */
@@ -228,7 +238,8 @@ export class BacktestEngine {
     private readonly feeCalculator: FeeCalculatorService,
     private readonly positionManager: PositionManagerService,
     private readonly metricsCalculator: MetricsCalculatorService,
-    private readonly portfolioState: PortfolioStateService
+    private readonly portfolioState: PortfolioStateService,
+    private readonly positionAnalysis: PositionAnalysisService
   ) {}
 
   /**
@@ -373,6 +384,10 @@ export class BacktestEngine {
     // Minimum hold period: configurable via options, default 24h
     const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
+    // Opportunity selling config
+    const oppSellingEnabled = options.enableOpportunitySelling ?? false;
+    const oppSellingConfig = options.opportunitySellingConfig ?? DEFAULT_OPPORTUNITY_SELLING_CONFIG;
+
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
@@ -488,7 +503,7 @@ export class BacktestEngine {
         // Extract volume from current candle for volume-based slippage calculation
         const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
 
-        const tradeResult = await this.executeTrade(
+        let tradeResult = await this.executeTrade(
           strategySignal,
           portfolio,
           marketData,
@@ -498,6 +513,40 @@ export class BacktestEngine {
           dailyVolume,
           minHoldMs
         );
+
+        // Opportunity selling: if BUY failed (likely insufficient cash), attempt to sell positions to fund it
+        if (!tradeResult && strategySignal.action === 'BUY' && oppSellingEnabled) {
+          const oppResult = this.attemptOpportunitySelling(
+            strategySignal,
+            portfolio,
+            marketData,
+            backtest.tradingFee,
+            rng,
+            slippageConfig,
+            oppSellingConfig,
+            coinMap,
+            quoteCoin,
+            backtest,
+            timestamp,
+            trades,
+            simulatedFills
+          );
+
+          if (oppResult) {
+            // Re-attempt the buy after sells freed up cash
+            tradeResult = await this.executeTrade(
+              strategySignal,
+              portfolio,
+              marketData,
+              backtest.tradingFee,
+              rng,
+              slippageConfig,
+              dailyVolume,
+              minHoldMs
+            );
+          }
+        }
+
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
 
@@ -1585,6 +1634,219 @@ export class BacktestEngine {
       };
     }
     return holdings;
+  }
+
+  /**
+   * Attempt opportunity selling: score existing positions, sell the weakest ones
+   * to free up cash for a higher-confidence buy signal.
+   *
+   * Operates directly on the in-memory portfolio. Sell trades and fills are
+   * appended to the provided arrays.
+   *
+   * @returns true if sells were executed and the buy should be re-attempted
+   */
+  private attemptOpportunitySelling(
+    buySignal: TradingSignal,
+    portfolio: Portfolio,
+    marketData: MarketData,
+    tradingFee: number,
+    rng: SeededRandom,
+    slippageConfig: SlippageConfig,
+    config: OpportunitySellingUserConfig,
+    coinMap: Map<string, Coin>,
+    quoteCoin: Coin,
+    backtest: Backtest,
+    timestamp: Date,
+    trades: Partial<BacktestTrade>[],
+    simulatedFills: Partial<SimulatedOrderFill>[]
+  ): boolean {
+    const buyConfidence = buySignal.confidence ?? 0;
+
+    // Gate: confidence threshold
+    if (buyConfidence < config.minOpportunityConfidence) return false;
+
+    // Estimate the required buy amount
+    const buyPrice = marketData.prices.get(buySignal.coinId);
+    if (!buyPrice) return false;
+
+    let requiredAmount: number;
+    if (buySignal.quantity) {
+      requiredAmount = buySignal.quantity * buyPrice;
+    } else if (buySignal.percentage) {
+      requiredAmount = portfolio.totalValue * buySignal.percentage;
+    } else if (buySignal.confidence !== undefined) {
+      const alloc =
+        BacktestEngine.MIN_ALLOCATION +
+        buySignal.confidence * (BacktestEngine.MAX_ALLOCATION - BacktestEngine.MIN_ALLOCATION);
+      requiredAmount = portfolio.totalValue * alloc;
+    } else {
+      requiredAmount = portfolio.totalValue * BacktestEngine.MIN_ALLOCATION;
+    }
+
+    // Fee estimate
+    const feeConfig = this.feeCalculator.fromFlatRate(tradingFee);
+    const estFee = this.feeCalculator.calculateFee({ tradeValue: requiredAmount }, feeConfig).fee;
+    const totalRequired = requiredAmount + estFee;
+
+    if (portfolio.cashBalance >= totalRequired) return false; // No shortfall
+
+    const shortfall = totalRequired - portfolio.cashBalance;
+
+    // Score all positions
+    const eligible: { coinId: string; score: number; quantity: number; price: number }[] = [];
+
+    for (const [coinId, position] of portfolio.positions) {
+      if (coinId === buySignal.coinId) continue;
+      if (config.protectedCoins.includes(coinId)) continue;
+
+      const currentPrice = marketData.prices.get(coinId);
+      if (!currentPrice || currentPrice <= 0) continue;
+
+      const score = this.positionAnalysis.calculatePositionSellScore(
+        position,
+        currentPrice,
+        buyConfidence,
+        config,
+        timestamp
+      );
+
+      if (score.eligible) {
+        eligible.push({ coinId, score: score.totalScore, quantity: position.quantity, price: currentPrice });
+      }
+    }
+
+    if (eligible.length === 0) return false;
+
+    // Sort by score ASC (lowest = sell first)
+    eligible.sort((a, b) => a.score - b.score);
+
+    const maxSellValue = (portfolio.totalValue * config.maxLiquidationPercent) / 100;
+    let remainingShortfall = shortfall;
+    let totalSellValue = 0;
+    let sellExecuted = false;
+
+    for (const candidate of eligible) {
+      if (remainingShortfall <= 0 || totalSellValue >= maxSellValue) break;
+
+      const maxByShortfall = remainingShortfall / candidate.price;
+      const maxByLiquidation = (maxSellValue - totalSellValue) / candidate.price;
+      const quantity = Math.min(candidate.quantity, maxByShortfall, maxByLiquidation);
+      if (quantity <= 0) continue;
+
+      // Execute the sell on the in-memory portfolio
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: candidate.coinId,
+        quantity,
+        reason: `Opportunity sell: freeing cash for ${buySignal.coinId} buy (confidence=${(buyConfidence * 100).toFixed(0)}%)`,
+        confidence: buyConfidence,
+        metadata: { opportunitySell: true, buyTargetCoin: buySignal.coinId }
+      };
+
+      // Use a 0 minHoldMs so the sell isn't blocked by hold period (already checked by scoring)
+      const sellResult = this.executeSellImmediate(sellSignal, portfolio, marketData, tradingFee, rng, slippageConfig);
+      if (sellResult) {
+        const { trade, slippageBps } = sellResult;
+        const baseCoin = coinMap.get(candidate.coinId);
+
+        trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin: baseCoin || undefined, quoteCoin });
+        simulatedFills.push({
+          orderType: SimulatedOrderType.MARKET,
+          status: SimulatedOrderStatus.FILLED,
+          filledQuantity: trade.quantity,
+          averagePrice: trade.price,
+          fees: trade.fee,
+          slippageBps,
+          executionTimestamp: timestamp,
+          instrument: candidate.coinId,
+          metadata: { ...(trade.metadata ?? {}), opportunitySell: true },
+          backtest
+        });
+
+        totalSellValue += (trade.quantity ?? 0) * (trade.price ?? 0);
+        remainingShortfall -= (trade.quantity ?? 0) * (trade.price ?? 0);
+        sellExecuted = true;
+      }
+    }
+
+    return sellExecuted;
+  }
+
+  /**
+   * Execute a sell trade immediately without minimum hold period enforcement.
+   * Used by opportunity selling where hold period was already validated during scoring.
+   */
+  private executeSellImmediate(
+    signal: TradingSignal,
+    portfolio: Portfolio,
+    marketData: MarketData,
+    tradingFee: number,
+    rng: SeededRandom,
+    slippageConfig: SlippageConfig
+  ): { trade: Partial<BacktestTrade>; slippageBps: number } | null {
+    const basePrice = marketData.prices.get(signal.coinId);
+    if (!basePrice) return null;
+
+    const existingPosition = portfolio.positions.get(signal.coinId);
+    if (!existingPosition || existingPosition.quantity === 0) return null;
+
+    const quantity = Math.min(signal.quantity ?? existingPosition.quantity, existingPosition.quantity);
+
+    // Calculate slippage
+    const slippageResult = this.slippageService.calculateSlippage(
+      { price: basePrice, quantity, isBuy: false },
+      slippageConfig
+    );
+    const price = slippageResult.executionPrice;
+    const slippageBps = slippageResult.slippageBps;
+
+    const totalValue = quantity * price;
+    const costBasis = existingPosition.averagePrice;
+    const realizedPnL = (price - costBasis) * quantity;
+    const realizedPnLPercent = costBasis > 0 ? (price - costBasis) / costBasis : 0;
+
+    let holdTimeMs: number | undefined;
+    if (existingPosition.entryDate) {
+      holdTimeMs = marketData.timestamp.getTime() - existingPosition.entryDate.getTime();
+    }
+
+    existingPosition.quantity -= quantity;
+    existingPosition.totalValue = existingPosition.quantity * price;
+    portfolio.cashBalance += totalValue;
+
+    if (existingPosition.quantity === 0) {
+      portfolio.positions.delete(signal.coinId);
+    } else {
+      portfolio.positions.set(signal.coinId, existingPosition);
+    }
+
+    const feeConfig = this.feeCalculator.fromFlatRate(tradingFee);
+    const feeResult = this.feeCalculator.calculateFee({ tradeValue: totalValue }, feeConfig);
+    portfolio.cashBalance -= feeResult.fee;
+    portfolio.totalValue =
+      portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, marketData.prices);
+
+    return {
+      trade: {
+        type: TradeType.SELL,
+        quantity,
+        price,
+        totalValue,
+        fee: feeResult.fee,
+        realizedPnL,
+        realizedPnLPercent,
+        costBasis,
+        metadata: {
+          reason: signal.reason,
+          confidence: signal.confidence ?? 0,
+          basePrice,
+          slippageBps,
+          opportunitySell: true,
+          ...(holdTimeMs !== undefined && { holdTimeMs })
+        }
+      } as Partial<BacktestTrade>,
+      slippageBps
+    };
   }
 
   /**

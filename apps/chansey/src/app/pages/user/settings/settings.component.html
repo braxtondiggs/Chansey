@@ -4,6 +4,7 @@
       <p-tab value="0"><i class="pi pi-palette mr-2"></i>Appearance</p-tab>
       <p-tab value="1"><i class="pi pi-bell mr-2"></i>Notification</p-tab>
       <p-tab value="2"><i class="pi pi-shield mr-2"></i> Privacy & Security</p-tab>
+      <p-tab value="3"><i class="pi pi-chart-line mr-2"></i>Trading</p-tab>
     </p-tablist>
     <p-tabpanels>
       <p-tabpanel value="0">
@@ -227,6 +228,84 @@
             </div>
           </form>
         </p-panel>
+      </p-tabpanel>
+    </p-tabpanels>
+
+    <p-tabpanels>
+      <p-tabpanel value="3">
+        <form [formGroup]="opportunitySellingForm">
+          <p-panel header="Opportunity Selling" [toggleable]="false">
+            <div class="flex flex-row justify-between py-3">
+              <div class="mb-2 md:mb-0">
+                <div class="text-900 mb-1 text-lg font-semibold">Enable Opportunity Selling</div>
+                <div class="text-600 text-sm">
+                  When a strong buy opportunity appears but you don't have enough cash, the system can automatically
+                  sell your weakest-performing positions to fund the purchase.
+                </div>
+              </div>
+              <p-toggleswitch
+                formControlName="enabled"
+                (onChange)="toggleOpportunitySelling($event)"
+                class="mt-2 md:mt-0"
+              />
+            </div>
+          </p-panel>
+
+          @if (opportunitySellingForm.get('enabled')?.value) {
+            <p-panel header="Configuration" [toggleable]="true" class="mt-3">
+              <div class="flex flex-col gap-6">
+                <!-- Protected Coins -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-900 font-semibold">Never Sell These Coins</label>
+                  <p-autocomplete
+                    formControlName="protectedCoins"
+                    [multiple]="true"
+                    [suggestions]="protectedCoinSuggestions"
+                    (completeMethod)="searchProtectedCoins($event)"
+                    optionLabel="name"
+                    placeholder="Search for a coin..."
+                    class="w-full"
+                  >
+                    <ng-template #item let-coin>
+                      <div class="flex items-center gap-2">
+                        @if (coin.image) {
+                          <img [src]="coin.image" [alt]="coin.name" class="h-5 w-5 rounded-full" />
+                        }
+                        <span>{{ coin.name }}</span>
+                        <span class="text-surface-500 text-xs uppercase">{{ coin.symbol }}</span>
+                      </div>
+                    </ng-template>
+                  </p-autocomplete>
+                  <span class="text-600 text-xs">These coins will never be sold, even if they are underperforming</span>
+                </div>
+
+                <!-- Max Liquidation -->
+                <div class="flex flex-col gap-2">
+                  <div class="flex items-center justify-between">
+                    <label class="text-900 font-semibold">Max Sell Limit</label>
+                    <span class="text-primary font-semibold"
+                      >{{ opportunitySellingForm.get('maxLiquidationPercent')?.value }}%</span
+                    >
+                  </div>
+                  <p-slider formControlName="maxLiquidationPercent" [min]="1" [max]="100" [step]="1" />
+                  <span class="text-600 text-xs"
+                    >The most of your portfolio that can be sold at once to fund a new opportunity</span
+                  >
+                </div>
+
+                <!-- Save Button -->
+                <div class="flex justify-end pt-2">
+                  <p-button
+                    label="Save"
+                    icon="pi pi-save"
+                    [loading]="updateOpportunitySellingMutation.isPending()"
+                    (click)="saveOpportunitySelling()"
+                  />
+                </div>
+              </div>
+            </p-panel>
+          }
+        </form>
       </p-tabpanel>
     </p-tabpanels>
   </p-tabs>

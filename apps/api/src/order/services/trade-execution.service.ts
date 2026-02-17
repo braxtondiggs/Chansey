@@ -258,6 +258,34 @@ export class TradeExecutionService {
   }
 
   /**
+   * Check if the user has sufficient funds for a trade without throwing.
+   * Returns the available balance and whether it's sufficient.
+   */
+  async checkFundsAvailable(
+    exchangeClient: ccxt.Exchange,
+    signal: TradeSignal
+  ): Promise<{ sufficient: boolean; available: number; required: number }> {
+    try {
+      const balance = await exchangeClient.fetchBalance();
+      const [baseCurrency, quoteCurrency] = signal.symbol.split('/');
+
+      if (signal.action === 'BUY') {
+        const ticker = await exchangeClient.fetchTicker(signal.symbol);
+        const requiredAmount = signal.quantity * (ticker.last || 0);
+        const available = balance[quoteCurrency]?.free || 0;
+        return { sufficient: available >= requiredAmount, available, required: requiredAmount };
+      } else {
+        const available = balance[baseCurrency]?.free || 0;
+        return { sufficient: available >= signal.quantity, available, required: signal.quantity };
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to check funds: ${error.message}`);
+      // On error, assume sufficient to not block execution
+      return { sufficient: true, available: 0, required: 0 };
+    }
+  }
+
+  /**
    * Verify user has sufficient funds for the trade
    * @param exchangeClient - CCXT exchange client
    * @param signal - Trade signal
