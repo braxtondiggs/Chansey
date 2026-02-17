@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  OnModuleDestroy,
   OnModuleInit,
   Optional
 } from '@nestjs/common';
@@ -70,7 +71,7 @@ import { User } from '../../users/users.entity';
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 @Injectable()
-export class BacktestService implements OnModuleInit {
+export class BacktestService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BacktestService.name);
 
   constructor(
@@ -103,6 +104,18 @@ export class BacktestService implements OnModuleInit {
     this.ensureDefaultDatasetExists().catch((err) => {
       this.logger.warn(`Failed to initialize default dataset on startup: ${err.message}`);
     });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.clearDatasetCache();
+  }
+
+  /**
+   * Clear the in-memory dataset cache to release references.
+   * Called by processors after backtest completion to reduce idle memory.
+   */
+  clearDatasetCache(): void {
+    this.defaultDatasetCache = null;
   }
 
   /**

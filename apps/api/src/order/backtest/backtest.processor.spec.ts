@@ -32,6 +32,7 @@ describe('BacktestProcessor', () => {
       coinResolver: any;
       backtestStream: any;
       backtestResultService: any;
+      backtestService: any;
       metricsService: any;
     }> = {}
   ) => {
@@ -39,6 +40,7 @@ describe('BacktestProcessor', () => {
     const coinResolver = { resolveCoins: jest.fn() };
     const backtestStream = { publishStatus: jest.fn(), publishLog: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
+    const backtestService = { clearDatasetCache: jest.fn() };
     const metricsService = createMockMetricsService();
     const backtestRepository = { findOne: jest.fn(), save: jest.fn() };
     const marketDataSetRepository = { findOne: jest.fn() };
@@ -48,6 +50,7 @@ describe('BacktestProcessor', () => {
       overrides.coinResolver ?? (coinResolver as any),
       overrides.backtestStream ?? (backtestStream as any),
       overrides.backtestResultService ?? (backtestResultService as any),
+      overrides.backtestService ?? (backtestService as any),
       overrides.metricsService ?? (metricsService as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)

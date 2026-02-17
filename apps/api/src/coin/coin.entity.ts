@@ -45,7 +45,7 @@ export class Coin {
   })
   symbol: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   @ApiProperty({
     description: 'Description of the coin',
     example: 'Bitcoin is a decentralized digital currency...',
