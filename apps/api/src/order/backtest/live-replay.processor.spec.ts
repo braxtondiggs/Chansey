@@ -21,6 +21,7 @@ describe('LiveReplayProcessor', () => {
       backtestStream: any;
       backtestResultService: any;
       backtestPauseService: any;
+      backtestService: any;
       metricsService: any;
     }> = {}
   ) => {
@@ -29,6 +30,7 @@ describe('LiveReplayProcessor', () => {
     const backtestStream = { publishStatus: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
     const backtestPauseService = { clearPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
+    const backtestService = { clearDatasetCache: jest.fn() };
     const metricsService = {
       startBacktestTimer: jest.fn(),
       recordBacktestCompleted: jest.fn(),
@@ -43,6 +45,7 @@ describe('LiveReplayProcessor', () => {
       overrides.backtestStream ?? (backtestStream as any),
       overrides.backtestResultService ?? (backtestResultService as any),
       overrides.backtestPauseService ?? (backtestPauseService as any),
+      overrides.backtestService ?? (backtestService as any),
       overrides.metricsService ?? (metricsService as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)
