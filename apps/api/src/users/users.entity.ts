@@ -14,6 +14,10 @@ import {
 import { Role } from '@chansey/api-interfaces';
 
 import type { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
+import {
+  DEFAULT_OPPORTUNITY_SELLING_CONFIG,
+  OpportunitySellingUserConfig
+} from '../order/interfaces/opportunity-selling.interface';
 import type { Order } from '../order/order.entity';
 import type { Portfolio } from '../portfolio/portfolio.entity';
 import type { Risk } from '../risk/risk.entity';
@@ -126,6 +130,13 @@ export class User {
 
   @Column({ type: 'timestamptz', nullable: true })
   algoEnrolledAt?: Date;
+
+  // Opportunity selling settings
+  @Column({ default: false })
+  enableOpportunitySelling: boolean;
+
+  @Column({ type: 'jsonb', default: () => `'${JSON.stringify(DEFAULT_OPPORTUNITY_SELLING_CONFIG)}'` })
+  opportunitySellingConfig: OpportunitySellingUserConfig;
 
   // Runtime-only fields (not persisted to database)
   rememberMe: boolean;

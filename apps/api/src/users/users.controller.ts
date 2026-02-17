@@ -18,7 +18,9 @@ import { FastifyRequest } from 'fastify';
 import {
   AlgoTradingStatusDto,
   EnrollInAlgoTradingDto,
+  OpportunitySellingStatusDto,
   UpdateAlgoCapitalDto,
+  UpdateOpportunitySellingConfigDto,
   UpdateUserDto,
   UserResponseDto
 } from './dto';
@@ -193,5 +195,31 @@ export class UserController {
   })
   async getAlgoTradingStatus(@GetUser() user: User) {
     return this.user.getAlgoTradingStatus(user.id);
+  }
+
+  @Patch('opportunity-selling/config')
+  @ApiOperation({
+    summary: 'Update opportunity selling configuration',
+    description: 'Update opportunity selling settings. Only provided fields are merged into the existing configuration.'
+  })
+  @ApiOkResponse({
+    description: 'Opportunity selling configuration updated successfully.',
+    type: OpportunitySellingStatusDto
+  })
+  async updateOpportunitySellingConfig(@Body() dto: UpdateOpportunitySellingConfigDto, @GetUser() user: User) {
+    return this.user.updateOpportunitySellingConfig(user.id, dto);
+  }
+
+  @Get('opportunity-selling/config')
+  @ApiOperation({
+    summary: 'Get opportunity selling configuration',
+    description: 'Retrieve current opportunity selling settings and enabled status.'
+  })
+  @ApiOkResponse({
+    description: 'Opportunity selling configuration retrieved successfully.',
+    type: OpportunitySellingStatusDto
+  })
+  async getOpportunitySellingConfig(@GetUser() user: User) {
+    return this.user.getOpportunitySellingConfig(user.id);
   }
 }
