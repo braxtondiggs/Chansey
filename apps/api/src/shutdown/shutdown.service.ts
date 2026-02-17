@@ -3,6 +3,8 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 
 import { Queue } from 'bullmq';
 
+import { toErrorInfo } from '../shared/error.util';
+
 /**
  * Graceful shutdown service that ensures BullMQ jobs complete
  * before the application terminates during deployment.
@@ -91,8 +93,9 @@ export class ShutdownService implements OnApplicationShutdown {
       try {
         await queue.pause();
         this.logger.debug(`Paused queue: ${name}`);
-      } catch (error) {
-        this.logger.warn(`Failed to pause queue ${name}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Failed to pause queue ${name}: ${err.message}`);
       }
     });
 
@@ -153,8 +156,9 @@ export class ShutdownService implements OnApplicationShutdown {
         try {
           const count = await queue.getActiveCount();
           return { name, count };
-        } catch (error) {
-          this.logger.warn(`Failed to get active count for ${name}: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Failed to get active count for ${name}: ${err.message}`);
           return { name, count: 0 };
         }
       })

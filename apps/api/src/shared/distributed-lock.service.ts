@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 import { randomUUID } from 'crypto';
 
 import { LOCK_DEFAULTS, LOCK_REDIS_DB } from './distributed-lock.constants';
+import { toErrorInfo } from './error.util';
 
 export interface LockOptions {
   key: string;
@@ -84,8 +85,9 @@ export class DistributedLockService implements OnModuleDestroy {
           this.logger.debug(`Lock acquired: ${key} (lockId: ${lockId.substring(0, 8)}...)`);
           return { acquired: true, lockId };
         }
-      } catch (error) {
-        this.logger.error(`Failed to acquire lock ${key}: ${error.message}`);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to acquire lock ${key}: ${err.message}`);
         return { acquired: false, lockId: null };
       }
 
@@ -119,8 +121,9 @@ export class DistributedLockService implements OnModuleDestroy {
       }
 
       return released;
-    } catch (error) {
-      this.logger.error(`Failed to release lock ${key}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to release lock ${key}: ${err.message}`);
       return false;
     }
   }
@@ -137,8 +140,9 @@ export class DistributedLockService implements OnModuleDestroy {
         lockId,
         ttlMs: ttl > 0 ? ttl : null
       };
-    } catch (error) {
-      this.logger.error(`Failed to get lock info for ${key}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get lock info for ${key}: ${err.message}`);
       return { exists: false, lockId: null, ttlMs: null };
     }
   }
@@ -150,8 +154,9 @@ export class DistributedLockService implements OnModuleDestroy {
     try {
       const result = await this.redis.eval(this.EXTEND_SCRIPT, 1, key, lockId, ttlMs);
       return result === 1;
-    } catch (error) {
-      this.logger.error(`Failed to extend lock ${key}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to extend lock ${key}: ${err.message}`);
       return false;
     }
   }
@@ -164,8 +169,9 @@ export class DistributedLockService implements OnModuleDestroy {
     try {
       await this.redis.quit();
       this.logger.log('Distributed lock Redis connection closed');
-    } catch (error) {
-      this.logger.warn(`Error closing Redis connection: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Error closing Redis connection: ${err.message}`);
       this.redis.disconnect();
     }
   }

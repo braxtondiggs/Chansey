@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
@@ -97,9 +98,10 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
         version: this.version,
         signalsGenerated: signals.length
       });
-    } catch (error) {
-      this.logger.error(`EMA RSI Filter strategy execution failed: ${error.message}`, error.stack);
-      return this.createErrorResult(error.message);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`EMA RSI Filter strategy execution failed: ${err.message}`, err.stack);
+      return this.createErrorResult(err.message);
     }
   }
 

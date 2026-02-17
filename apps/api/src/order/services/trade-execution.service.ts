@@ -23,6 +23,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { Exchange } from '../../exchange/exchange.entity';
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
@@ -218,23 +219,25 @@ export class TradeExecutionService {
             if (exitResult.warnings && exitResult.warnings.length > 0) {
               this.logger.warn(`Exit order warnings: ${exitResult.warnings.join(', ')}`);
             }
-          } catch (exitError) {
+          } catch (exitError: unknown) {
+            const err = toErrorInfo(exitError);
             // Entry succeeded - log exit failure but don't fail the trade
             this.logger.error(
-              `Failed to attach exit orders to entry ${order.id}: ${exitError.message}. ` +
+              `Failed to attach exit orders to entry ${order.id}: ${err.message}. ` +
                 `Entry order succeeded - manual exit order placement may be required.`,
-              exitError.stack
+              err.stack
             );
           }
         }
       }
 
       return order;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       // Log failures but do not retry (per clarifications)
       this.logger.error(
-        `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${error.message}`,
-        error.stack
+        `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${err.message}`,
+        err.stack
       );
       throw error;
     }
@@ -278,8 +281,9 @@ export class TradeExecutionService {
         const available = balance[baseCurrency]?.free || 0;
         return { sufficient: available >= signal.quantity, available, required: signal.quantity };
       }
-    } catch (error) {
-      this.logger.warn(`Failed to check funds: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to check funds: ${err.message}`);
       // On error, assume sufficient to not block execution
       return { sufficient: true, available: 0, required: 0 };
     }
@@ -313,11 +317,12 @@ export class TradeExecutionService {
           throw new InsufficientBalanceException(baseCurrency, available, signal.quantity);
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof AppException) {
         throw error;
       }
-      this.logger.warn(`Failed to verify funds: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to verify funds: ${err.message}`);
       // Continue with order execution even if balance check fails
     }
   }
@@ -365,13 +370,13 @@ export class TradeExecutionService {
 
     try {
       baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
-    } catch (error) {
+    } catch {
       this.logger.warn(`Base coin ${baseSymbol} not found in database`);
     }
 
     try {
       quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
-    } catch (error) {
+    } catch {
       this.logger.warn(`Quote coin ${quoteSymbol} not found in database`);
     }
 
@@ -407,7 +412,7 @@ export class TradeExecutionService {
       actualSlippageBps,
       status,
       side: ccxtOrder.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-      type: this.mapCcxtOrderType(ccxtOrder.type),
+      type: this.mapCcxtOrderType(String(ccxtOrder.type ?? '')),
       user,
       baseCoin: baseCoin || undefined,
       quoteCoin: quoteCoin || undefined,
@@ -415,7 +420,16 @@ export class TradeExecutionService {
       algorithmActivationId,
       timeInForce: ccxtOrder.timeInForce,
       remaining: ccxtOrder.remaining,
-      trades: ccxtOrder.trades,
+      trades: ccxtOrder.trades.map((t) => ({
+        id: String(t.id ?? ''),
+        timestamp: Number(t.timestamp ?? 0),
+        price: t.price,
+        amount: Number(t.amount ?? 0),
+        cost: Number(t.cost ?? 0),
+        fee: t.fee ? { cost: Number(t.fee.cost ?? 0), currency: String(t.fee.currency ?? '') } : undefined,
+        side: t.side?.toString(),
+        takerOrMaker: t.takerOrMaker?.toString()
+      })),
       info: ccxtOrder.info
     });
 
@@ -503,15 +517,15 @@ export class TradeExecutionService {
       for (const [price, volume] of relevantSide) {
         if (remainingQuantity <= 0) break;
 
-        const fillQuantity = Math.min(remainingQuantity, volume);
-        totalCost += fillQuantity * price;
+        const fillQuantity = Math.min(remainingQuantity, Number(volume ?? 0));
+        totalCost += fillQuantity * Number(price ?? 0);
         remainingQuantity -= fillQuantity;
       }
 
       // If order book doesn't have enough liquidity, estimate conservatively
       if (remainingQuantity > 0) {
         // Assume worst-case 1% additional slippage for unfilled portion
-        const lastPrice = relevantSide[relevantSide.length - 1][0];
+        const lastPrice = Number(relevantSide[relevantSide.length - 1][0] ?? 0);
         const worstCasePrice = action === 'BUY' ? lastPrice * 1.01 : lastPrice * 0.99;
         totalCost += remainingQuantity * worstCasePrice;
       }
@@ -520,8 +534,9 @@ export class TradeExecutionService {
       const slippageBps = this.calculateSlippageBps(expectedPrice, vwap, action);
 
       return Math.abs(slippageBps);
-    } catch (error) {
-      this.logger.warn(`Failed to estimate slippage from order book: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to estimate slippage from order book: ${err.message}`);
       // On error, don't block the trade - return 0 to allow execution
       return 0;
     }

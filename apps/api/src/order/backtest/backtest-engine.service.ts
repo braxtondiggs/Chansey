@@ -59,6 +59,7 @@ import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
+import { toErrorInfo } from '../../shared/error.util';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   OpportunitySellingUserConfig
@@ -466,17 +467,18 @@ export class BacktestEngine {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
         consecutiveErrors = 0;
-      } catch (error) {
+      } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
+        const err = toErrorInfo(error);
         consecutiveErrors++;
         this.logger.warn(
           `Algorithm execution failed at ${timestamp.toISOString()} ` +
-            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${error.message}`
+            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${err.message}`
         );
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${error.message}`);
+          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${err.message}`);
         }
       }
 
@@ -929,10 +931,11 @@ export class BacktestEngine {
               pausedCheckpoint: checkpointState
             };
           }
-        } catch (pauseError) {
+        } catch (pauseError: unknown) {
+          const err = toErrorInfo(pauseError);
           consecutivePauseFailures++;
           this.logger.warn(
-            `Pause check failed at index ${i} (attempt ${consecutivePauseFailures}/${MAX_CONSECUTIVE_PAUSE_FAILURES}): ${pauseError.message}`
+            `Pause check failed at index ${i} (attempt ${consecutivePauseFailures}/${MAX_CONSECUTIVE_PAUSE_FAILURES}): ${err.message}`
           );
 
           // If pause checks fail repeatedly, force a precautionary pause
@@ -1033,17 +1036,18 @@ export class BacktestEngine {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
         consecutiveErrors = 0;
-      } catch (error) {
+      } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
+        const err = toErrorInfo(error);
         consecutiveErrors++;
         this.logger.warn(
           `Algorithm execution failed at ${timestamp.toISOString()} ` +
-            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${error.message}`
+            `(${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${err.message}`
         );
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${error.message}`);
+          throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${err.message}`);
         }
       }
 
@@ -2194,12 +2198,13 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
-      } catch (error) {
+      } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
         // Log but continue - optimization should be resilient to occasional failures
-        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${error.message}`);
+        const err = toErrorInfo(error);
+        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${err.message}`);
       }
 
       for (const strategySignal of strategySignals) {

@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  OnModuleDestroy,
   OnModuleInit,
   Optional
 } from '@nestjs/common';
@@ -64,12 +65,13 @@ import {
 } from '../../common/exceptions/resource';
 import { MetricsService } from '../../metrics/metrics.service';
 import { OHLCService } from '../../ohlc/ohlc.service';
+import { isUniqueConstraintViolation, toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 @Injectable()
-export class BacktestService implements OnModuleInit {
+export class BacktestService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BacktestService.name);
 
   constructor(
@@ -102,6 +104,18 @@ export class BacktestService implements OnModuleInit {
     this.ensureDefaultDatasetExists().catch((err) => {
       this.logger.warn(`Failed to initialize default dataset on startup: ${err.message}`);
     });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.clearDatasetCache();
+  }
+
+  /**
+   * Clear the in-memory dataset cache to release references.
+   * Called by processors after backtest completion to reduce idle memory.
+   */
+  clearDatasetCache(): void {
+    this.defaultDatasetCache = null;
   }
 
   /**
@@ -218,8 +232,9 @@ export class BacktestService implements OnModuleInit {
           deterministicSeed,
           warningFlags
         });
-      } catch (streamError) {
-        this.logger.warn(`Failed to publish backtest stream status: ${streamError.message}`);
+      } catch (streamError: unknown) {
+        const err = toErrorInfo(streamError);
+        this.logger.warn(`Failed to publish backtest stream status: ${err.message}`);
       }
 
       const jobPayload = this.buildJobPayload(savedBacktest, {
@@ -236,11 +251,12 @@ export class BacktestService implements OnModuleInit {
       });
 
       return this.mapRunDetail(savedBacktest);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to create backtest: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to create backtest: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to create backtest due to an internal error');
     }
   }
@@ -409,9 +425,9 @@ export class BacktestService implements OnModuleInit {
         try {
           const newDataset = this.marketDataSetRepository.create(datasetFields);
           dataset = await this.marketDataSetRepository.save(newDataset);
-        } catch (error) {
+        } catch (error: unknown) {
           // Unique constraint violation (23505) means another caller created it concurrently
-          if (error?.code === '23505' || error?.driverError?.code === '23505') {
+          if (isUniqueConstraintViolation(error)) {
             this.logger.debug('Concurrent dataset creation detected, fetching existing dataset');
             dataset = await this.marketDataSetRepository
               .createQueryBuilder('dataset')
@@ -437,10 +453,9 @@ export class BacktestService implements OnModuleInit {
       }
 
       return dataset;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(`Failed to ensure default dataset exists: ${message}`, stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to ensure default dataset exists: ${err.message}`, err.stack);
       return null;
     }
   }
@@ -773,11 +788,12 @@ export class BacktestService implements OnModuleInit {
 
       Object.assign(backtest, updateDto);
       return this.backtestRepository.save(backtest);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to update backtest ${backtestId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update backtest ${backtestId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to update backtest due to an internal error');
     }
   }
@@ -794,11 +810,12 @@ export class BacktestService implements OnModuleInit {
       }
 
       await this.backtestRepository.remove(backtest);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to delete backtest ${backtestId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to delete backtest ${backtestId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to delete backtest due to an internal error');
     }
   }
@@ -857,11 +874,12 @@ export class BacktestService implements OnModuleInit {
           quoteCoin: { symbol: trade.quoteCoin?.symbol, name: trade.quoteCoin?.name }
         }))
       };
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to get backtest performance ${backtestId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get backtest performance ${backtestId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to get backtest performance due to an internal error');
     }
   }
@@ -1006,11 +1024,12 @@ export class BacktestService implements OnModuleInit {
 
       // Record cancellation metric
       this.metricsService?.recordBacktestCancelled(backtest.algorithm?.name ?? 'unknown');
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to cancel backtest ${backtestId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to cancel backtest ${backtestId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to cancel backtest due to an internal error');
     }
   }
@@ -1050,16 +1069,18 @@ export class BacktestService implements OnModuleInit {
           'info',
           'Pause requested. Backtest will pause at the next checkpoint.'
         );
-      } catch (streamError) {
-        this.logger.warn(`Failed to publish pause request status for backtest ${backtestId}: ${streamError.message}`);
+      } catch (streamError: unknown) {
+        const err = toErrorInfo(streamError);
+        this.logger.warn(`Failed to publish pause request status for backtest ${backtestId}: ${err.message}`);
       }
 
       this.logger.log(`Pause requested for backtest ${backtestId}`);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to pause backtest ${backtestId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to pause backtest ${backtestId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to pause backtest due to an internal error');
     }
   }
@@ -1086,8 +1107,8 @@ export class BacktestService implements OnModuleInit {
           this.logger.warn(
             `Clearing stale checkpoint for backtest ${backtestId} (age: ${Math.round(checkpointAge / 1000 / 60 / 60)}h)`
           );
-          backtest.checkpointState = null;
-          backtest.lastCheckpointAt = null;
+          backtest.checkpointState = undefined;
+          backtest.lastCheckpointAt = undefined;
           backtest.processedTimestampCount = 0;
         } else {
           hasValidCheckpoint = true;
@@ -1122,16 +1143,18 @@ export class BacktestService implements OnModuleInit {
           hasCheckpoint: hasValidCheckpoint,
           checkpointIndex: hasValidCheckpoint ? backtest.checkpointState?.lastProcessedIndex : undefined
         });
-      } catch (streamError) {
-        this.logger.warn(`Failed to publish resume status for backtest ${backtestId}: ${streamError.message}`);
+      } catch (streamError: unknown) {
+        const err = toErrorInfo(streamError);
+        this.logger.warn(`Failed to publish resume status for backtest ${backtestId}: ${err.message}`);
       }
 
       return backtest;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Failed to resume backtest ${backtestId}: ${error.message}`, error.stack);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to resume backtest ${backtestId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to resume backtest due to an internal error');
     }
   }

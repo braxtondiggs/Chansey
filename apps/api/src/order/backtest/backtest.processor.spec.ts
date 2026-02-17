@@ -32,6 +32,7 @@ describe('BacktestProcessor', () => {
       coinResolver: any;
       backtestStream: any;
       backtestResultService: any;
+      backtestService: any;
       metricsService: any;
     }> = {}
   ) => {
@@ -39,6 +40,7 @@ describe('BacktestProcessor', () => {
     const coinResolver = { resolveCoins: jest.fn() };
     const backtestStream = { publishStatus: jest.fn(), publishLog: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
+    const backtestService = { clearDatasetCache: jest.fn() };
     const metricsService = createMockMetricsService();
     const backtestRepository = { findOne: jest.fn(), save: jest.fn() };
     const marketDataSetRepository = { findOne: jest.fn() };
@@ -48,6 +50,7 @@ describe('BacktestProcessor', () => {
       overrides.coinResolver ?? (coinResolver as any),
       overrides.backtestStream ?? (backtestStream as any),
       overrides.backtestResultService ?? (backtestResultService as any),
+      overrides.backtestService ?? (backtestService as any),
       overrides.metricsService ?? (metricsService as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)
@@ -59,7 +62,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('runs a pending backtest and persists success', async () => {
-    const dataset = { id: 'dataset-1', instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = { id: 'dataset-1', instrumentUniverse: ['BTCUSDT'] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-1',
       status: BacktestStatus.PENDING,
@@ -131,7 +134,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('marks failed when instrument universe cannot be resolved', async () => {
-    const dataset = { id: 'dataset-2', instrumentUniverse: [] } as MarketDataSet;
+    const dataset = { id: 'dataset-2', instrumentUniverse: [] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-2',
       status: BacktestStatus.PENDING,
@@ -178,7 +181,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('uses total timestamps from engine for checkpoint progress and persistence', async () => {
-    const dataset = { id: 'dataset-4', instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = { id: 'dataset-4', instrumentUniverse: ['BTCUSDT'] } as unknown as MarketDataSet;
     const backtest = {
       id: 'backtest-4',
       status: BacktestStatus.PENDING,
@@ -243,7 +246,7 @@ describe('BacktestProcessor', () => {
   });
 
   it('cleans up orphaned results before resuming from a checkpoint', async () => {
-    const dataset = { id: 'dataset-3', instrumentUniverse: ['BTCUSDT'] } as MarketDataSet;
+    const dataset = { id: 'dataset-3', instrumentUniverse: ['BTCUSDT'] } as unknown as MarketDataSet;
     const checkpointState = {
       lastProcessedIndex: 2,
       lastProcessedTimestamp: '2024-01-01T00:00:00.000Z',

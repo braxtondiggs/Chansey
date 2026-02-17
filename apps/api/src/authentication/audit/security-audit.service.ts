@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 
 import { SecurityAuditLog, SecurityEventType } from './security-audit.entity';
 
@@ -48,7 +48,7 @@ export class SecurityAuditService {
       this.logger[logLevel](
         `Security event: ${params.eventType} | User: ${params.userId || params.email || 'unknown'} | Success: ${params.success ?? true}${params.failureReason ? ` | Reason: ${params.failureReason}` : ''}`
       );
-    } catch (error) {
+    } catch (error: unknown) {
       // Don't let audit logging failures break the main flow
       this.logger.error(`Failed to log security event: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -234,7 +234,7 @@ export class SecurityAuditService {
       where: {
         email,
         eventType: SecurityEventType.LOGIN_FAILED,
-        createdAt: { $gte: since } as any
+        createdAt: MoreThanOrEqual(since)
       }
     });
 

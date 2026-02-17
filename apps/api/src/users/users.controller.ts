@@ -96,7 +96,7 @@ export class UserController {
       if (user.picture && user.picture.includes(this.storage.getMinioEndpoint())) {
         try {
           await this.storage.deleteFile(user.picture);
-        } catch (error) {
+        } catch (error: unknown) {
           // Log but continue even if deletion fails
           this.logger.error(
             `Error deleting old profile image: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -106,7 +106,7 @@ export class UserController {
 
       // Update user profile with the new image URL
       return this.user.update({ picture: fileUrl }, user);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(`Error processing file upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
@@ -124,7 +124,7 @@ export class UserController {
   async get(@GetUser() user: User) {
     try {
       return await this.user.getProfile(user);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(`Error fetching user profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Fall back to the basic user data if fetch fails
       return user;

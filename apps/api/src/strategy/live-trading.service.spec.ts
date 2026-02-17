@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { ObjectLiteral, Repository } from 'typeorm';
 
 import { CapitalAllocationService } from './capital-allocation.service';
 import { LiveTradingService } from './live-trading.service';
@@ -17,7 +17,7 @@ import { LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
 import { User } from '../users/users.entity';
 
-type MockRepo<T> = jest.Mocked<Repository<T>>;
+type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
 const createUser = (overrides: Partial<User> = {}): User =>
   ({

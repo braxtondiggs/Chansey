@@ -21,6 +21,7 @@ import { CoinResponseDto, CoinWithPriceDto } from './dto';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { OrderService } from '../order/order.service';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 @ApiTags('Coin')
@@ -100,7 +101,7 @@ export class CoinController {
     status: HttpStatus.NOT_FOUND,
     description: 'Coin not found.'
   })
-  getCoinBySymbol(@Param() { symbol }): Promise<Coin> {
+  getCoinBySymbol(@Param() { symbol }: { symbol: string }): Promise<Coin | null> {
     return this.coin.getCoinBySymbol(symbol, [CoinRelations.BASE_ASSETS]);
   }
 
@@ -222,9 +223,10 @@ export class CoinsController {
             (coinDetail as any).userHoldings = holdings;
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         // If holdings fetch fails, just return coin detail without holdings
-        this.logger.error('Failed to fetch user holdings:', error);
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to fetch user holdings: ${err.message}`, err.stack);
       }
     }
 

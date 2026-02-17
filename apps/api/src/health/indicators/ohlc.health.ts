@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
 
 import { OHLCService } from '../../ohlc/ohlc.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 type DataFreshness = 'fresh' | 'stale' | 'critical' | 'no_data';
 
@@ -74,9 +75,10 @@ export class OHLCHealthIndicator {
       }
 
       return indicator.up(result);
-    } catch (error) {
-      this.logger.error(`OHLC health check failed: ${error.message}`);
-      return indicator.down({ error: error.message });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`OHLC health check failed: ${err.message}`);
+      return indicator.down({ error: err.message });
     }
   }
 }

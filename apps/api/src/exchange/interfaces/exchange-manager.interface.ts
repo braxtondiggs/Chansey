@@ -19,6 +19,7 @@ export interface IExchangeManagerService {
     user?: User
   ): Promise<{ symbol: string; price: string; timestamp: number }>;
   getBalance(exchangeSlug: string, user: User): Promise<AssetBalanceDto[]>;
+  getQuoteAsset(exchangeSlug: string): string;
   formatSymbol(exchangeSlug: string, symbol: string): string;
   getBalancesFromAllExchanges(user: User): Promise<
     Array<{

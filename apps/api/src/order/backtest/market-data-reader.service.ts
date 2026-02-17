@@ -13,6 +13,7 @@ import * as path from 'path';
 
 import { MarketDataSet } from './market-data-set.entity';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { StorageService } from '../../storage/storage.service';
 
 /**
@@ -301,8 +302,8 @@ export class MarketDataReaderService {
           if (parsed) {
             data.push(parsed);
           }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+        } catch (error: unknown) {
+          const message = toErrorInfo(error).message;
           if (errors.length < 1000) {
             errors.push(`Line ${row._lineNumber}: ${message}`);
           } else if (errors.length === 1000) {

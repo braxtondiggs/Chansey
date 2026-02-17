@@ -14,10 +14,12 @@ import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
+import { BacktestService } from './backtest.service';
 import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -36,6 +38,7 @@ export class LiveReplayProcessor extends WorkerHost {
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
     private readonly backtestPauseService: BacktestPauseService,
+    private readonly backtestService: BacktestService,
     private readonly metricsService: MetricsService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
@@ -144,17 +147,19 @@ export class LiveReplayProcessor extends WorkerHost {
         backtest.status = BacktestStatus.PAUSED;
         backtest.checkpointState = checkpoint;
         backtest.lastCheckpointAt = new Date();
+        const pausedAt = new Date().toISOString();
         backtest.liveReplayState = {
+          replaySpeed: backtest.liveReplayState?.replaySpeed ?? ReplaySpeed.FAST_5X,
           ...backtest.liveReplayState,
           isPaused: true,
-          pausedAt: new Date().toISOString(),
+          pausedAt,
           pauseReason: 'user_requested'
         };
         await this.backtestRepository.save(backtest);
 
         await this.backtestStream.publishStatus(backtest.id, 'paused', undefined, {
           checkpointIndex: checkpoint.lastProcessedIndex,
-          pausedAt: backtest.liveReplayState.pausedAt
+          pausedAt
         });
 
         this.logger.log(`Live replay ${backtestId} paused at checkpoint index ${checkpoint.lastProcessedIndex}`);
@@ -224,8 +229,9 @@ export class LiveReplayProcessor extends WorkerHost {
 
       await this.backtestResultService.persistSuccess(backtest, results);
       this.metricsService.recordBacktestCompleted(strategyName, 'success');
-    } catch (error) {
-      this.logger.error(`Live replay backtest ${backtestId} failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Live replay backtest ${backtestId} failed: ${err.message}`, err.stack);
 
       // Skip markFailed if already externally failed (e.g. by stale watchdog)
       const current = await this.backtestRepository.findOne({
@@ -233,12 +239,15 @@ export class LiveReplayProcessor extends WorkerHost {
         select: ['id', 'status']
       });
       if (!current || current.status !== BacktestStatus.FAILED) {
-        await this.backtestResultService.markFailed(backtestId, error.message);
+        await this.backtestResultService.markFailed(backtestId, err.message);
       }
       this.metricsService.recordBacktestCompleted(strategyName, 'failed');
     } finally {
       this.metricsService.decrementActiveBacktests(mode ?? 'live_replay');
       endTimer();
+
+      // Release cached dataset reference so it can be garbage-collected
+      this.backtestService.clearDatasetCache();
 
       // Request V8 to perform a full GC and release memory back to the OS.
       // Requires --expose-gc flag (set in start:prod script).

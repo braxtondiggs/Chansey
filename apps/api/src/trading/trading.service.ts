@@ -5,13 +5,17 @@ import * as ccxt from 'ccxt';
 import { OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
 
 import { BalanceService } from '../balance/balance.service';
+import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { CCXT_BALANCE_META_KEYS } from '../exchange/ccxt-balance.util';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
+import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 @Injectable()
 export class TradingService {
+  private static readonly DEFAULT_PUBLIC_EXCHANGE = { slug: 'binance_us', name: 'Binance US' } as const;
   private readonly logger = new Logger(TradingService.name);
 
   constructor(
@@ -21,249 +25,204 @@ export class TradingService {
     private readonly exchangeManagerService: ExchangeManagerService
   ) {}
 
-  /**
-   * Get trading balances for a user (optionally filtered by exchange)
-   * @param user The user to get balances for
-   * @param exchangeId Optional exchange ID to filter balances
-   * @returns Array of trading balances
-   */
   async getTradingBalances(user: User, exchangeId?: string): Promise<TradingBalanceDto[]> {
     this.logger.log(`Getting trading balances for user: ${user.id}, exchange: ${exchangeId || 'all'}`);
 
     try {
-      // If exchangeId is specified, try to get balances directly from that exchange via CCXT
       if (exchangeId) {
-        try {
-          const exchange = await this.exchangeService.findOne(exchangeId);
-          const exchangeManagerService = this.exchangeManagerService.getExchangeService(exchange.slug);
-          const exchangeClient = await exchangeManagerService.getClient(user);
-
-          // Fetch balances directly from exchange using CCXT
-          const ccxtBalances = await exchangeClient.fetchBalance();
-          const tradingBalances: TradingBalanceDto[] = [];
-
-          // Transform CCXT balance format to our DTO format
-          for (const [symbol, balance] of Object.entries(ccxtBalances)) {
-            if (symbol === 'info' || symbol === 'free' || symbol === 'used' || symbol === 'total') {
-              continue; // Skip CCXT metadata
-            }
-
-            const balanceData = balance as ccxt.Balance;
-            if (balanceData.total && balanceData.total > 0) {
-              try {
-                const coin = await this.coinService.getCoinBySymbol(symbol);
-                if (coin) {
-                  tradingBalances.push({
-                    coin: {
-                      id: coin.id,
-                      name: coin.name,
-                      symbol: coin.symbol,
-                      slug: coin.slug
-                    },
-                    available: balanceData.free || 0,
-                    locked: balanceData.used || 0,
-                    total: balanceData.total || 0
-                  });
-                }
-              } catch (coinError) {
-                this.logger.debug(`Coin not found for symbol ${symbol}, skipping`);
-              }
-            }
-          }
-
-          return tradingBalances;
-        } catch (exchangeError) {
-          this.logger.warn(`Failed to get balances from exchange ${exchangeId} via CCXT: ${exchangeError.message}`);
-          // Fall back to balance service
-        }
+        const ccxtBalances = await this.fetchCcxtBalances(user, exchangeId);
+        if (ccxtBalances) return ccxtBalances;
       }
 
-      // Fall back to using the balance service
-      const balanceResponse = await this.balanceService.getUserBalances(user);
-      let exchangeBalances = balanceResponse.current;
-
-      // Filter by exchange if specified
-      if (exchangeId) {
-        exchangeBalances = exchangeBalances.filter((exchange) => exchange.id === exchangeId);
-        if (exchangeBalances.length === 0) {
-          throw new NotFoundException(`Exchange with ID ${exchangeId} not found or user has no access`);
-        }
-      }
-
-      // Transform to trading balance format
-      const tradingBalances: TradingBalanceDto[] = [];
-
-      for (const exchange of exchangeBalances) {
-        for (const asset of exchange.balances) {
-          // Find coin information
-          const coin = await this.coinService.getCoinBySymbol(asset.asset);
-
-          if (coin) {
-            tradingBalances.push({
-              coin: {
-                id: coin.id,
-                name: coin.name,
-                symbol: coin.symbol,
-                slug: coin.slug
-              },
-              available: parseFloat(asset.free),
-              locked: parseFloat(asset.locked),
-              total: parseFloat(asset.free) + parseFloat(asset.locked)
-            });
-          }
-        }
-      }
-
-      return tradingBalances.filter((balance) => balance.total > 0); // Only return non-zero balances
-    } catch (error) {
-      this.logger.error(`Failed to get trading balances: ${error.message}`);
+      return this.fetchBalancesFromService(user, exchangeId);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get trading balances: ${err.message}`);
       throw error;
     }
   }
 
-  /**
-   * Get order book for a trading pair
-   * @param symbol Trading pair symbol (e.g., "BTC/USDT")
-   * @param exchangeId Optional exchange ID
-   * @returns Order book data
-   */
   async getOrderBook(symbol: string, exchangeId?: string): Promise<OrderBookDto> {
     this.logger.log(`Getting order book for symbol: ${symbol}, exchange: ${exchangeId || 'default'}`);
 
+    this.validateSymbol(symbol);
+
     try {
-      // Validate symbol format
-      if (!symbol || !symbol.includes('/')) {
-        throw new BadRequestException('Symbol must be in format "BASE/QUOTE" (e.g., "BTC/USDT")');
+      const { client, name: exchangeName } = await this.resolveExchangeClient(exchangeId);
+
+      if (!client.markets) {
+        await client.loadMarkets();
       }
 
-      let exchangeClient: ccxt.Exchange | null = null;
-      let exchangeName = 'Binance';
-
-      // If exchangeId is provided, try to get the specific exchange
-      if (exchangeId) {
-        try {
-          const exchange = await this.exchangeService.findOne(exchangeId);
-          const exchangeManagerService = this.exchangeManagerService.getExchangeService(exchange.slug);
-          exchangeClient = await exchangeManagerService.getClient();
-          exchangeName = exchange.name;
-        } catch (error) {
-          this.logger.warn(`Failed to get specific exchange client for ${exchangeId}, falling back to public client`);
-        }
-      }
-
-      // If no specific exchange or failed to get it, use a public-only client
-      // This is secure because it never exposes API keys - only public endpoints
-      if (!exchangeClient) {
-        exchangeClient = await this.exchangeManagerService.getPublicClient();
-      }
-
-      // Load markets if not already loaded
-      if (!exchangeClient.markets) {
-        await exchangeClient.loadMarkets();
-      }
-
-      // Validate trading pair is available on the exchange
-      if (!exchangeClient.markets[symbol]) {
+      if (!client.markets[symbol]) {
         throw new BadRequestException(
           `Trading pair ${symbol} is not available on ${exchangeName}. Please select a different trading pair or exchange.`
         );
       }
 
-      // Check if the market is active
-      const market = exchangeClient.markets[symbol];
+      const market = client.markets[symbol];
       if (!market.active) {
         throw new BadRequestException(
           `Trading for ${symbol} is currently suspended on ${exchangeName}. Please try a different trading pair.`
         );
       }
 
-      // Fetch order book from the exchange
-      const orderBook = await exchangeClient.fetchOrderBook(symbol, 10); // Limit to 10 levels
+      const orderBook = await client.fetchOrderBook(symbol, 10);
 
-      // Transform CCXT order book format to our DTO format
-      const transformedOrderBook: OrderBookDto = {
-        bids: orderBook.bids.map(([price, quantity]) => ({
-          price,
-          quantity,
-          total: price * quantity
-        })),
-        asks: orderBook.asks.map(([price, quantity]) => ({
-          price,
-          quantity,
-          total: price * quantity
-        })),
+      return {
+        bids: orderBook.bids.map(([price, quantity]) => this.toOrderBookEntry(price, quantity)),
+        asks: orderBook.asks.map(([price, quantity]) => this.toOrderBookEntry(price, quantity)),
         lastUpdated: orderBook.datetime ? new Date(orderBook.datetime) : new Date()
       };
+    } catch (error: unknown) {
+      if (error instanceof BadRequestException) throw error;
 
-      return transformedOrderBook;
-    } catch (error) {
-      // Re-throw BadRequestException with helpful messages
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
-      // Handle other errors
-      this.logger.error(`Failed to get order book: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get order book: ${err.message}`);
       throw new BadRequestException(
-        `Unable to fetch order book data. ${error.message || 'Exchange may be unavailable.'}`
+        `Unable to fetch order book data. ${err.message || 'Exchange may be unavailable.'}`
       );
     }
   }
 
-  /**
-   * Get ticker data for a symbol
-   * @param symbol Trading pair symbol (e.g., "BTC/USDT")
-   * @param exchangeId Optional exchange ID
-   * @returns Ticker data
-   */
   async getTicker(symbol: string, exchangeId?: string): Promise<TickerDto> {
     this.logger.log(`Getting ticker for symbol: ${symbol}, exchange: ${exchangeId || 'default'}`);
 
+    this.validateSymbol(symbol);
+
     try {
-      // Validate symbol format
-      if (!symbol || !symbol.includes('/')) {
-        throw new BadRequestException('Symbol must be in format "BASE/QUOTE" (e.g., "BTC/USDT")');
-      }
+      const { client } = await this.resolveExchangeClient(exchangeId);
+      const ticker = await client.fetchTicker(symbol);
 
-      let exchangeClient: ccxt.Exchange | null = null;
-
-      // If exchangeId is provided, try to get the specific exchange
-      if (exchangeId) {
-        try {
-          const exchange = await this.exchangeService.findOne(exchangeId);
-          const exchangeManagerService = this.exchangeManagerService.getExchangeService(exchange.slug);
-          exchangeClient = await exchangeManagerService.getClient();
-        } catch (error) {
-          this.logger.warn(`Failed to get specific exchange client for ${exchangeId}, falling back to public client`);
-        }
-      }
-
-      // If no specific exchange or failed to get it, use a public-only client
-      // This is secure because it never exposes API keys - only public endpoints
-      if (!exchangeClient) {
-        exchangeClient = await this.exchangeManagerService.getPublicClient();
-      }
-
-      // Fetch ticker from the exchange
-      const ticker = await exchangeClient.fetchTicker(symbol);
-
-      // Transform to our format
       return {
         symbol,
-        price: ticker.last,
-        priceChange: ticker.change,
-        priceChangePercent: ticker.percentage,
-        high24h: ticker.high,
-        low24h: ticker.low,
-        volume24h: ticker.baseVolume,
-        quoteVolume24h: ticker.quoteVolume,
-        openPrice: ticker.open,
-        prevClosePrice: ticker.previousClose,
+        price: Number(ticker.last ?? 0),
+        priceChange: ticker.change != null ? Number(ticker.change) : undefined,
+        priceChangePercent: ticker.percentage != null ? Number(ticker.percentage) : undefined,
+        high24h: ticker.high != null ? Number(ticker.high) : undefined,
+        low24h: ticker.low != null ? Number(ticker.low) : undefined,
+        volume24h: ticker.baseVolume != null ? Number(ticker.baseVolume) : undefined,
+        quoteVolume24h: ticker.quoteVolume != null ? Number(ticker.quoteVolume) : undefined,
+        openPrice: ticker.open != null ? Number(ticker.open) : undefined,
+        prevClosePrice: ticker.previousClose != null ? Number(ticker.previousClose) : undefined,
         lastUpdated: ticker.datetime ? new Date(ticker.datetime) : new Date()
       };
-    } catch (error) {
-      this.logger.error(`Failed to get ticker: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get ticker: ${err.message}`);
       throw error;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private validateSymbol(symbol: string): void {
+    if (!symbol || !symbol.includes('/')) {
+      throw new BadRequestException('Symbol must be in format "BASE/QUOTE" (e.g., "BTC/USDT")');
+    }
+  }
+
+  /**
+   * Resolve an exchange CCXT client, falling back to a keyless public client.
+   */
+  private async resolveExchangeClient(exchangeId?: string): Promise<{ client: ccxt.Exchange; name: string }> {
+    if (exchangeId) {
+      try {
+        const exchange = await this.exchangeService.findOne(exchangeId);
+        const service = this.exchangeManagerService.getExchangeService(exchange.slug);
+        return { client: await service.getClient(), name: exchange.name };
+      } catch (error: unknown) {
+        this.logger.warn(`Failed to get exchange client for ${exchangeId}, falling back to public client`);
+      }
+    }
+
+    const { slug, name } = TradingService.DEFAULT_PUBLIC_EXCHANGE;
+    return {
+      client: await this.exchangeManagerService.getPublicClient(slug),
+      name
+    };
+  }
+
+  /**
+   * Try to fetch balances directly from an exchange via CCXT.
+   * Returns null when the attempt fails so the caller can fall back.
+   */
+  private async fetchCcxtBalances(user: User, exchangeId: string): Promise<TradingBalanceDto[] | null> {
+    try {
+      const exchange = await this.exchangeService.findOne(exchangeId);
+      const service = this.exchangeManagerService.getExchangeService(exchange.slug);
+      const client = await service.getClient(user);
+      const ccxtBalances = await client.fetchBalance();
+
+      const balances: TradingBalanceDto[] = [];
+
+      for (const [symbol, balance] of Object.entries(ccxtBalances)) {
+        if (CCXT_BALANCE_META_KEYS.has(symbol)) continue;
+
+        const balanceData = balance as ccxt.Balance;
+        if (!balanceData.total || balanceData.total <= 0) continue;
+
+        const coin = await this.coinService.getCoinBySymbol(symbol);
+        if (!coin) continue;
+
+        balances.push(this.toTradingBalance(coin, balanceData.free || 0, balanceData.used || 0, balanceData.total));
+      }
+
+      return balances;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to get balances from exchange ${exchangeId} via CCXT: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch balances via the internal BalanceService (DB-backed).
+   */
+  private async fetchBalancesFromService(user: User, exchangeId?: string): Promise<TradingBalanceDto[]> {
+    const balanceResponse = await this.balanceService.getUserBalances(user);
+    let exchangeBalances = balanceResponse.current;
+
+    if (exchangeId) {
+      exchangeBalances = exchangeBalances.filter((e) => e.id === exchangeId);
+      if (exchangeBalances.length === 0) {
+        throw new NotFoundException(`Exchange with ID ${exchangeId} not found or user has no access`);
+      }
+    }
+
+    const balances: TradingBalanceDto[] = [];
+
+    for (const exchange of exchangeBalances) {
+      for (const asset of exchange.balances) {
+        const coin = await this.coinService.getCoinBySymbol(asset.asset);
+        if (!coin) continue;
+
+        const free = parseFloat(asset.free);
+        const locked = parseFloat(asset.locked);
+        const total = free + locked;
+        if (total <= 0) continue;
+
+        balances.push(this.toTradingBalance(coin, free, locked, total));
+      }
+    }
+
+    return balances;
+  }
+
+  private toTradingBalance(coin: Coin, available: number, locked: number, total: number): TradingBalanceDto {
+    return {
+      coin: { id: coin.id, name: coin.name, symbol: coin.symbol, slug: coin.slug },
+      available,
+      locked,
+      total
+    };
+  }
+
+  private toOrderBookEntry(price: number | undefined, quantity: number | undefined) {
+    const p = Number(price ?? 0);
+    const q = Number(quantity ?? 0);
+    return { price: p, quantity: q, total: p * q };
   }
 }

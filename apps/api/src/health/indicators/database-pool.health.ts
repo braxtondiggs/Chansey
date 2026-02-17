@@ -3,6 +3,8 @@ import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus'
 
 import { DataSource } from 'typeorm';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 interface PoolStats {
   activeConnections: number;
   idleConnections: number;
@@ -46,9 +48,10 @@ export class DatabasePoolHealthIndicator {
       }
 
       return indicator.up(result);
-    } catch (error) {
-      this.logger.error(`Database pool health check failed: ${error.message}`);
-      return indicator.down({ error: error.message });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Database pool health check failed: ${err.message}`);
+      return indicator.down({ error: err.message });
     }
   }
 

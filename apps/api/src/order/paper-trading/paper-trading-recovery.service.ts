@@ -2,6 +2,8 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 
 import { PaperTradingService } from './paper-trading.service';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 @Injectable()
 export class PaperTradingRecoveryService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PaperTradingRecoveryService.name);
@@ -37,21 +39,24 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
           await this.paperTradingService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
 
           this.logger.log(`Recovered paper trading session ${session.id}`);
-        } catch (error) {
-          this.logger.error(`Failed to recover paper trading session ${session.id}: ${error.message}`, error.stack);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Failed to recover paper trading session ${session.id}: ${err.message}`, err.stack);
 
           // Mark as failed if recovery fails
           try {
-            await this.paperTradingService.markFailed(session.id, `Recovery failed: ${error.message}`);
-          } catch (markError) {
-            this.logger.error(`Failed to mark session ${session.id} as failed: ${markError.message}`);
+            await this.paperTradingService.markFailed(session.id, `Recovery failed: ${err.message}`);
+          } catch (markError: unknown) {
+            const err = toErrorInfo(markError);
+            this.logger.error(`Failed to mark session ${session.id} as failed: ${err.message}`);
           }
         }
       }
 
       this.logger.log(`Paper trading session recovery complete`);
-    } catch (error) {
-      this.logger.error(`Paper trading session recovery failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Paper trading session recovery failed: ${err.message}`, err.stack);
     }
   }
 }

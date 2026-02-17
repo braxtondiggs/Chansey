@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 
 import { Socket } from 'socket.io';
 
+import { toErrorInfo } from '../../shared/error.util';
 import { UsersService } from '../../users/users.service';
 
 interface AccessTokenPayload {
@@ -57,8 +58,9 @@ export class WsJwtAuthenticationGuard implements CanActivate {
       // Attach user to socket data for later use
       client.data.user = user;
       return true;
-    } catch (error) {
-      this.logger.debug(`WebSocket authentication failed: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.debug(`WebSocket authentication failed: ${err.message}`);
       client.emit('error', { message: 'Authentication failed' });
       return false;
     }

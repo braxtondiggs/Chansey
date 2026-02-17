@@ -12,10 +12,12 @@ import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
+import { BacktestService } from './backtest.service';
 import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { toErrorInfo } from '../../shared/error.util';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -33,6 +35,7 @@ export class BacktestProcessor extends WorkerHost {
     private readonly coinResolver: CoinResolverService,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
+    private readonly backtestService: BacktestService,
     private readonly metricsService: MetricsService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
@@ -214,8 +217,9 @@ export class BacktestProcessor extends WorkerHost {
         maxDrawdown: results.finalMetrics.maxDrawdown,
         tradeCount: results.finalMetrics.totalTrades
       });
-    } catch (error) {
-      this.logger.error(`Historical backtest ${backtestId} failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Historical backtest ${backtestId} failed: ${err.message}`, err.stack);
 
       // Skip markFailed if already externally failed (e.g. by stale watchdog)
       const current = await this.backtestRepository.findOne({
@@ -223,12 +227,12 @@ export class BacktestProcessor extends WorkerHost {
         select: ['id', 'status']
       });
       if (!current || current.status !== BacktestStatus.FAILED) {
-        await this.backtestResultService.markFailed(backtestId, error.message);
+        await this.backtestResultService.markFailed(backtestId, err.message);
       }
       this.metricsService.recordBacktestCompleted(strategyName, 'failed');
 
       // Categorize error type for metrics
-      const errorType = this.categorizeError(error);
+      const errorType = this.categorizeError(err);
       this.metricsService.recordBacktestError(strategyName, errorType);
 
       // Clear progress metric on failure
@@ -237,6 +241,9 @@ export class BacktestProcessor extends WorkerHost {
       // Decrement active backtest count
       this.metricsService.decrementActiveBacktests(mode ?? 'historical');
       endTimer();
+
+      // Release cached dataset reference so it can be garbage-collected
+      this.backtestService.clearDatasetCache();
 
       // Request V8 to perform a full GC and release memory back to the OS.
       // Requires --expose-gc flag (set in start:prod script).
@@ -249,9 +256,10 @@ export class BacktestProcessor extends WorkerHost {
   /**
    * Categorize error for metrics tracking
    */
-  private categorizeError(
-    error: Error
-  ):
+  private categorizeError(error: {
+    message: string;
+    stack?: string;
+  }):
     | 'algorithm_not_found'
     | 'data_load_failed'
     | 'persistence_failed'

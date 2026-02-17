@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
+import { toErrorInfo } from '../shared/error.util';
 import { DeploymentService } from '../strategy/deployment.service';
 import { RiskManagementService } from '../strategy/risk/risk-management.service';
 
@@ -74,8 +75,9 @@ export class RiskMonitoringTask {
       if (warningDeployments.length > 0) {
         this.logger.log(`Queued drift detection for ${warningDeployments.length} deployments with warnings`);
       }
-    } catch (error) {
-      this.logger.error('Failed to complete risk monitoring:', error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to complete risk monitoring: ${err.message}`, err.stack);
     }
   }
 
@@ -116,8 +118,9 @@ export class RiskMonitoringTask {
       }
 
       return evaluation;
-    } catch (error) {
-      this.logger.error(`Emergency risk check failed for deployment ${deploymentId}:`, error);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Emergency risk check failed for deployment ${deploymentId}: ${err.message}`, err.stack);
       throw error;
     }
   }

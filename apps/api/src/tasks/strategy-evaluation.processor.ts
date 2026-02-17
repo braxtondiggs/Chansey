@@ -6,6 +6,8 @@ import { Job } from 'bullmq';
 import { PromotionTask } from './promotion.task';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
 
+import { toErrorInfo } from '../shared/error.util';
+
 type EvaluateStrategyJob = { strategyConfigId: string };
 type ActivateDeploymentJob = { deploymentId: string; strategyName: string };
 
@@ -46,9 +48,10 @@ export class StrategyEvaluationProcessor extends WorkerHost {
 
       const duration = Date.now() - startTime;
       this.logger.log(`Job ${job.id} (${job.name}) completed in ${duration}ms`);
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       const duration = Date.now() - startTime;
-      this.logger.error(`Job ${job.id} (${job.name}) failed after ${duration}ms: ${error.message}`, error.stack);
+      this.logger.error(`Job ${job.id} (${job.name}) failed after ${duration}ms: ${err.message}`, err.stack);
       throw error;
     }
   }

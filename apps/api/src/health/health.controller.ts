@@ -55,7 +55,7 @@ export class HealthController {
             host: this.config.get('REDIS_HOST'),
             username: this.config.get('REDIS_USER'),
             password: this.config.get('REDIS_PASSWORD'),
-            port: parseInt(this.config.get('REDIS_PORT')),
+            port: parseInt(this.config.getOrThrow('REDIS_PORT')),
             tls: this.config.get('REDIS_TLS') === 'true' ? {} : undefined
           }
         }),
@@ -70,7 +70,7 @@ export class HealthController {
           timeout: 15000,
           options: {
             host: this.config.get('MINIO_HOST'),
-            port: parseInt(this.config.get('MINIO_PORT'))
+            port: parseInt(this.config.getOrThrow('MINIO_PORT'))
           }
         }),
 

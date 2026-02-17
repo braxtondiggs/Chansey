@@ -21,8 +21,8 @@ describe('QuoteCurrencyResolverService', () => {
       slug: symbol.toLowerCase()
     }) as Coin;
 
-  const createService = (coinService: Partial<CoinService>) =>
-    new QuoteCurrencyResolverService(coinService as CoinService);
+  const createService = (coinService: { getCoinBySymbol: jest.Mock }) =>
+    new QuoteCurrencyResolverService(coinService as unknown as CoinService);
 
   describe('resolveQuoteCurrency', () => {
     it('returns preferred currency when available', async () => {

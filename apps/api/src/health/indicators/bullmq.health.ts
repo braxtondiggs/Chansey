@@ -4,6 +4,8 @@ import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus'
 
 import { Queue } from 'bullmq';
 
+import { toErrorInfo } from '../../shared/error.util';
+
 interface QueueStats {
   waiting: number;
   failed: number;
@@ -90,9 +92,10 @@ export class BullMQHealthIndicator {
       }
 
       return indicator.up(result);
-    } catch (error) {
-      this.logger.error(`BullMQ health check failed: ${error.message}`);
-      return indicator.down({ error: error.message });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`BullMQ health check failed: ${err.message}`);
+      return indicator.down({ error: err.message });
     }
   }
 }

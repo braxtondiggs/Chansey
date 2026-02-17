@@ -14,6 +14,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { CircuitBreakerService, CircuitOpenError } from '../../shared/circuit-breaker.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { isTransientError, withRetry } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { PositionExit } from '../entities/position-exit.entity';
@@ -102,7 +103,7 @@ export class PositionManagementService {
     // Check circuit breaker first (fail-fast)
     try {
       this.circuitBreaker.checkCircuit(circuitKey);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof CircuitOpenError) {
         this.logger.warn(`${operationName} blocked by circuit breaker for ${exchangeSlug}: ${error.message}`);
       }
@@ -236,14 +237,15 @@ export class PositionManagementService {
           await this.executeWithResilience(exchangeSlug, () => exchangeClient!.loadMarkets(), 'loadMarkets');
           // Get market limits for quantity validation
           marketLimits = this.getMarketLimits(exchangeClient, entryOrder.symbol);
-        } catch (clientError) {
+        } catch (clientError: unknown) {
+          const err = toErrorInfo(clientError);
           // Log but continue - we can still create tracking orders without exchange
           if (clientError instanceof CircuitOpenError) {
             warnings.push(`Exchange ${exchangeSlug} circuit open - orders will be tracked locally`);
           } else {
-            warnings.push(`Exchange client initialization failed: ${clientError.message}`);
+            warnings.push(`Exchange client initialization failed: ${err.message}`);
           }
-          this.logger.warn(`Exchange client unavailable for ${exchangeSlug}: ${clientError.message}`);
+          this.logger.warn(`Exchange client unavailable for ${exchangeSlug}: ${err.message}`);
           exchangeClient = null;
         }
       }
@@ -312,9 +314,10 @@ export class PositionManagementService {
             queryRunner,
             exchangeSlug
           );
-        } catch (slError) {
-          warnings.push(`Stop loss placement failed: ${slError.message}`);
-          this.logger.warn(`Failed to place stop loss: ${slError.message}`);
+        } catch (slError: unknown) {
+          const err = toErrorInfo(slError);
+          warnings.push(`Stop loss placement failed: ${err.message}`);
+          this.logger.warn(`Failed to place stop loss: ${err.message}`);
         }
       }
 
@@ -337,9 +340,10 @@ export class PositionManagementService {
             queryRunner,
             exchangeSlug
           );
-        } catch (tpError) {
-          warnings.push(`Take profit placement failed: ${tpError.message}`);
-          this.logger.warn(`Failed to place take profit: ${tpError.message}`);
+        } catch (tpError: unknown) {
+          const err = toErrorInfo(tpError);
+          warnings.push(`Take profit placement failed: ${err.message}`);
+          this.logger.warn(`Failed to place take profit: ${err.message}`);
         }
       }
 
@@ -351,8 +355,9 @@ export class PositionManagementService {
           try {
             await this.linkOcoOrdersNative(stopLossOrder, takeProfitOrder, exchangeClient);
             ocoLinked = true;
-          } catch (ocoError) {
-            warnings.push(`Native OCO linking failed: ${ocoError.message}`);
+          } catch (ocoError: unknown) {
+            const err = toErrorInfo(ocoError);
+            warnings.push(`Native OCO linking failed: ${err.message}`);
             // Will use simulated OCO via position monitor
           }
         }
@@ -418,10 +423,11 @@ export class PositionManagementService {
         ocoLinked,
         warnings: warnings.length > 0 ? warnings : undefined
       };
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to attach exit orders: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to attach exit orders: ${error.message}`);
+      this.logger.error(`Failed to attach exit orders: ${err.message}`, err.stack);
+      throw new BadRequestException(`Failed to attach exit orders: ${err.message}`);
     } finally {
       await queryRunner.release();
     }
@@ -718,8 +724,9 @@ export class PositionManagementService {
         pricePrecision: market.precision?.price ?? 8,
         amountPrecision: market.precision?.amount ?? 8
       };
-    } catch (error) {
-      this.logger.warn(`Failed to get market limits for ${symbol}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to get market limits for ${symbol}: ${err.message}`);
       return null;
     }
   }
@@ -957,8 +964,9 @@ export class PositionManagementService {
       }
 
       return undefined;
-    } catch (error) {
-      this.logger.error(`ATR calculation failed: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`ATR calculation failed: ${err.message}`);
       return undefined;
     }
   }
@@ -984,8 +992,9 @@ export class PositionManagementService {
       if (!quoteCoin) {
         this.logger.debug(`Quote coin ${quoteSymbol} not found in database`);
       }
-    } catch (error) {
-      this.logger.warn(`Could not lookup coins for symbol ${symbol}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Could not lookup coins for symbol ${symbol}: ${err.message}`);
     }
 
     return { baseCoin, quoteCoin };
@@ -1019,8 +1028,9 @@ export class PositionManagementService {
             ),
           'createStopLossOrder'
         );
-      } catch (exchangeError) {
-        this.logger.warn(`Exchange stop loss creation failed: ${exchangeError.message}`);
+      } catch (exchangeError: unknown) {
+        const err = toErrorInfo(exchangeError);
+        this.logger.warn(`Exchange stop loss creation failed: ${err.message}`);
         // Will create a tracking order for monitoring
       }
     }
@@ -1082,8 +1092,9 @@ export class PositionManagementService {
             ),
           'createTakeProfitOrder'
         );
-      } catch (exchangeError) {
-        this.logger.warn(`Exchange take profit creation failed: ${exchangeError.message}`);
+      } catch (exchangeError: unknown) {
+        const err = toErrorInfo(exchangeError);
+        this.logger.warn(`Exchange take profit creation failed: ${err.message}`);
       }
     }
 
@@ -1215,8 +1226,9 @@ export class PositionManagementService {
               'cancelOrder'
             );
           }
-        } catch (cancelError) {
-          this.logger.warn(`Exchange order cancellation failed: ${cancelError.message}`);
+        } catch (cancelError: unknown) {
+          const err = toErrorInfo(cancelError);
+          this.logger.warn(`Exchange order cancellation failed: ${err.message}`);
         }
       }
 
@@ -1225,8 +1237,9 @@ export class PositionManagementService {
       await this.orderRepo.save(order);
 
       this.logger.log(`Order ${orderId} cancelled`);
-    } catch (error) {
-      this.logger.error(`Failed to cancel order ${orderId}: ${error.message}`);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to cancel order ${orderId}: ${err.message}`);
     }
   }
 

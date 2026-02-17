@@ -8,11 +8,12 @@ import { AuditEventType } from '@chansey/api-interfaces';
 import { ConsecutiveLossesCheck } from './consecutive-losses.check';
 import { DailyLossLimitCheck } from './daily-loss-limit.check';
 import { DrawdownBreachCheck } from './drawdown-breach.check';
-import { IRiskCheck, RiskEvaluation, RiskCheckResult } from './risk-check.interface';
+import { IRiskCheck, RiskCheckResult, RiskEvaluation } from './risk-check.interface';
 import { SharpeDegradationCheck } from './sharpe-degradation.check';
 import { VolatilitySpikeCheck } from './volatility-spike.check';
 
 import { AuditService } from '../../audit/audit.service';
+import { toErrorInfo } from '../../shared/error.util';
 import { DeploymentService } from '../deployment.service';
 import { Deployment } from '../entities/deployment.entity';
 import { PerformanceMetric } from '../entities/performance-metric.entity';
@@ -88,15 +89,16 @@ export class RiskManagementService {
         checkResults.push(result);
 
         this.logger.debug(`Risk check ${check.name}: ${result.passed ? 'PASS' : 'FAIL'} - ${result.message}`);
-      } catch (error) {
-        this.logger.error(`Error evaluating risk check ${check.name}:`, error);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error evaluating risk check ${check.name}: ${err.message}`, err.stack);
         checkResults.push({
           checkName: check.name,
           passed: false,
           actualValue: 'ERROR',
           threshold: 'N/A',
           severity: 'critical',
-          message: `Check evaluation failed: ${error.message}`
+          message: `Check evaluation failed: ${err.message}`
         });
       }
     }
@@ -110,7 +112,7 @@ export class RiskManagementService {
       entityType: 'Deployment',
       entityId: deploymentId,
       userId,
-      beforeState: null,
+      beforeState: undefined,
       afterState: {
         hasCriticalRisk: evaluation.hasCriticalRisk,
         shouldDemote: evaluation.shouldDemote,
@@ -151,8 +153,9 @@ export class RiskManagementService {
       try {
         const evaluation = await this.evaluateRisks(deployment.id);
         evaluations.push(evaluation);
-      } catch (error) {
-        this.logger.error(`Failed to evaluate risks for deployment ${deployment.id}:`, error);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to evaluate risks for deployment ${deployment.id}: ${err.message}`, err.stack);
       }
     }
 

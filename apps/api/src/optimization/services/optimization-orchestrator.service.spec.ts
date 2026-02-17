@@ -2,7 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, ObjectLiteral, Repository } from 'typeorm';
 
 import { WindowMetrics } from '@chansey/api-interfaces';
 
@@ -18,7 +18,7 @@ import { OptimizationResult } from '../entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 import { OptimizationConfig, ParameterSpace } from '../interfaces';
 
-type MockRepo<T> = jest.Mocked<Repository<T>>;
+type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
 // Helper to create a valid OptimizationConfig with all required fields
 const createValidConfig = (overrides: Partial<OptimizationConfig> = {}): OptimizationConfig => ({
@@ -720,7 +720,7 @@ describe('OptimizationOrchestratorService', () => {
         id: 'run-1',
         status: OptimizationStatus.COMPLETED,
         bestParameters: null
-      } as OptimizationRun;
+      } as unknown as OptimizationRun;
       optimizationRunRepo.findOne.mockResolvedValue(run);
 
       await expect(service.applyBestParameters('run-1')).rejects.toThrow('No best parameters found');

@@ -13,6 +13,8 @@ import { Job } from 'bullmq';
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { OrchestrationJobData, OrchestrationResult } from './dto/backtest-orchestration.dto';
 
+import { toErrorInfo } from '../shared/error.util';
+
 @Injectable()
 @Processor('backtest-orchestration')
 export class BacktestOrchestrationProcessor extends WorkerHost {
@@ -47,11 +49,12 @@ export class BacktestOrchestrationProcessor extends WorkerHost {
       );
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
       const duration = Date.now() - startTime;
       this.logger.error(
-        `Orchestration job ${job.id} failed for user ${userId} after ${duration}ms: ${error.message}`,
-        error.stack
+        `Orchestration job ${job.id} failed for user ${userId} after ${duration}ms: ${err.message}`,
+        err.stack
       );
       throw error;
     }

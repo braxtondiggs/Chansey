@@ -2,6 +2,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { AxiosError, AxiosHeaders } from 'axios';
 import { Repository } from 'typeorm';
 
 import { Coin } from './coin.entity';
@@ -192,8 +193,14 @@ describe('CoinService - Detail Page Unit Tests (TDD)', () => {
     });
 
     it('should handle API rate limiting (429 response)', async () => {
-      // Mock 429 response
-      const rateLimitError = { response: { status: 429 } };
+      // Mock 429 response using a real AxiosError instance
+      const rateLimitError = new AxiosError('Rate limited', '429', undefined, undefined, {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: {},
+        config: { headers: new AxiosHeaders() },
+        data: {}
+      });
 
       cacheManager.get.mockResolvedValueOnce(null);
       cacheManager.get.mockResolvedValueOnce({ id: 'bitcoin' });
@@ -211,7 +218,13 @@ describe('CoinService - Detail Page Unit Tests (TDD)', () => {
     });
 
     it('should handle 404 coin not found', async () => {
-      const notFoundError = { response: { status: 404 } };
+      const notFoundError = new AxiosError('Not Found', '404', undefined, undefined, {
+        status: 404,
+        statusText: 'Not Found',
+        headers: {},
+        config: { headers: new AxiosHeaders() },
+        data: {}
+      });
 
       geckoMock.coinId.mockRejectedValueOnce(notFoundError);
 
