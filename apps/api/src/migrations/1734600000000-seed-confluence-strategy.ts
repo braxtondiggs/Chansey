@@ -21,7 +21,7 @@ export class SeedConfluenceStrategy1734600000000 implements MigrationInterface {
         '1.0.0',
         'Chansey Team',
         10.0,
-        '{"parameters": {"minConfluence": 3, "minConfidence": 0.65, "emaEnabled": true, "emaFastPeriod": 12, "emaSlowPeriod": 26, "rsiEnabled": true, "rsiPeriod": 14, "rsiBuyThreshold": 55, "rsiSellThreshold": 45, "macdEnabled": true, "macdFastPeriod": 12, "macdSlowPeriod": 26, "macdSignalPeriod": 9, "atrEnabled": true, "atrPeriod": 14, "atrVolatilityMultiplier": 1.5, "bbEnabled": true, "bbPeriod": 20, "bbStdDev": 2, "bbBuyThreshold": 0.7, "bbSellThreshold": 0.3}, "settings": {"timeout": 30000, "retries": 3, "enableLogging": true}}'::jsonb,
+        '{"parameters": {"minConfluence": 3, "minSellConfluence": 3, "minConfidence": 0.65, "emaEnabled": true, "emaFastPeriod": 12, "emaSlowPeriod": 26, "rsiEnabled": true, "rsiPeriod": 14, "rsiBuyThreshold": 55, "rsiSellThreshold": 45, "macdEnabled": true, "macdFastPeriod": 12, "macdSlowPeriod": 26, "macdSignalPeriod": 9, "atrEnabled": true, "atrPeriod": 14, "atrVolatilityMultiplier": 1.5, "bbEnabled": true, "bbPeriod": 20, "bbStdDev": 2, "bbBuyThreshold": 0.55, "bbSellThreshold": 0.45}, "settings": {"timeout": 30000, "retries": 3, "enableLogging": true}}'::jsonb,
         '{"totalExecutions": 0, "successfulExecutions": 0, "failedExecutions": 0, "successRate": 0, "averageExecutionTime": 0, "errorCount": 0}'::jsonb,
         NOW(),
         NOW()

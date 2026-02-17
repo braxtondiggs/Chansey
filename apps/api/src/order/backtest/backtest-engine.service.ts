@@ -37,14 +37,19 @@ import { MarketDataSet } from './market-data-set.entity';
 import { QuoteCurrencyResolverService } from './quote-currency-resolver.service';
 import { SeededRandom } from './seeded-random';
 import {
+  DEFAULT_THROTTLE_CONFIG,
   FeeCalculatorService,
   MetricsCalculatorService,
   Portfolio,
   PortfolioStateService,
   PositionManagerService,
+  SerializableThrottleState,
   SlippageModelType as SharedSlippageModelType,
+  SignalThrottleConfig,
+  SignalThrottleService,
   SlippageConfig,
   SlippageService,
+  ThrottleState,
   TimeframeType
 } from './shared';
 
@@ -240,8 +245,24 @@ export class BacktestEngine {
     private readonly positionManager: PositionManagerService,
     private readonly metricsCalculator: MetricsCalculatorService,
     private readonly portfolioState: PortfolioStateService,
-    private readonly positionAnalysis: PositionAnalysisService
+    private readonly positionAnalysis: PositionAnalysisService,
+    private readonly signalThrottle: SignalThrottleService
   ) {}
+
+  /**
+   * Resolve throttle config from strategy parameters, falling back to defaults.
+   */
+  private resolveThrottleConfig(params?: Record<string, unknown>): SignalThrottleConfig {
+    const clamp = (val: unknown, fallback: number, min: number, max: number): number => {
+      const n = typeof val === 'number' && isFinite(val) ? val : fallback;
+      return Math.max(min, Math.min(max, n));
+    };
+    return {
+      cooldownMs: clamp(params?.cooldownMs, DEFAULT_THROTTLE_CONFIG.cooldownMs, 0, 604_800_000),
+      maxTradesPerDay: clamp(params?.maxTradesPerDay, DEFAULT_THROTTLE_CONFIG.maxTradesPerDay, 0, 50),
+      minSellPercent: clamp(params?.minSellPercent, DEFAULT_THROTTLE_CONFIG.minSellPercent, 0, 1)
+    };
+  }
 
   /**
    * Map legacy slippage model type string to shared enum
@@ -338,23 +359,30 @@ export class BacktestEngine {
     const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
     const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
-    // Determine data source: storage file (CSV) or database (Price table)
-    const startDate = options.dataset.startAt ?? backtest.startDate;
-    const endDate = options.dataset.endAt ?? backtest.endDate;
+    // Load data from full dataset range for indicator warmup
+    const dataLoadStartDate = options.dataset.startAt ?? backtest.startDate;
+    const dataLoadEndDate = options.dataset.endAt ?? backtest.endDate;
+    // Trading boundaries: always use the backtest's configured dates
+    const tradingStartDate = backtest.startDate;
+    const tradingEndDate = backtest.endDate;
 
     let historicalPrices: OHLCCandle[];
 
     if (this.marketDataReader.hasStorageLocation(options.dataset)) {
       // Use CSV data from MinIO storage
       this.logger.log(`Reading market data from storage: ${options.dataset.storageLocation}`);
-      const marketDataResult = await this.marketDataReader.readMarketData(options.dataset, startDate, endDate);
+      const marketDataResult = await this.marketDataReader.readMarketData(
+        options.dataset,
+        dataLoadStartDate,
+        dataLoadEndDate
+      );
       historicalPrices = this.convertOHLCVToCandles(marketDataResult.data);
       this.logger.log(
         `Loaded ${historicalPrices.length} candle records from storage (${marketDataResult.dateRange.start.toISOString()} to ${marketDataResult.dateRange.end.toISOString()})`
       );
     } else {
       // Fall back to database OHLC table
-      historicalPrices = await this.getHistoricalPrices(coinIds, startDate, endDate);
+      historicalPrices = await this.getHistoricalPrices(coinIds, dataLoadStartDate, dataLoadEndDate);
     }
 
     if (historicalPrices.length === 0) {
@@ -369,7 +397,21 @@ export class BacktestEngine {
     // Drop reference to the full candles array — objects still live in pricesByTimestamp
     historicalPrices = [];
 
-    this.logger.log(`Processing ${timestamps.length} time periods`);
+    // Calculate warmup vs trading boundaries
+    const tradingStartIndex = timestamps.findIndex((ts) => new Date(ts) >= tradingStartDate);
+    const tradingEndIdx = (() => {
+      let lastIdx = timestamps.length - 1;
+      while (lastIdx >= 0 && new Date(timestamps[lastIdx]) > tradingEndDate) lastIdx--;
+      return lastIdx;
+    })();
+    const effectiveTradingStartIndex = tradingStartIndex >= 0 ? tradingStartIndex : 0;
+    // Trim timestamps to not exceed the trading end date
+    const effectiveTimestampCount = tradingEndIdx + 1;
+    const tradingTimestampCount = effectiveTimestampCount - effectiveTradingStartIndex;
+
+    this.logger.log(
+      `Processing ${timestamps.length} time periods (warmup: ${effectiveTradingStartIndex}, trading: ${tradingTimestampCount})`
+    );
 
     // Build slippage config from backtest configSnapshot using shared service
     const slippageSnapshot = backtest.configSnapshot?.slippage;
@@ -389,13 +431,32 @@ export class BacktestEngine {
     const oppSellingEnabled = options.enableOpportunitySelling ?? false;
     const oppSellingConfig = options.opportunitySellingConfig ?? DEFAULT_OPPORTUNITY_SELLING_CONFIG;
 
+    // Signal throttle: resolve config from strategy parameters, init or restore state
+    const throttleConfig = this.resolveThrottleConfig(
+      backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
+    );
+    let throttleState: ThrottleState;
+    if (isResuming && options.resumeFrom?.throttleState) {
+      throttleState = this.signalThrottle.deserialize(options.resumeFrom.throttleState);
+    } else {
+      throttleState = this.signalThrottle.createState();
+    }
+
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
     if (isResuming) {
       this.logger.log(
-        `Resuming from index ${startIndex} of ${timestamps.length} (${((startIndex / timestamps.length) * 100).toFixed(1)}% complete)`
+        `Resuming from index ${startIndex} of ${effectiveTimestampCount} (${((startIndex / effectiveTimestampCount) * 100).toFixed(1)}% complete)`
       );
+
+      // Fast-forward price windows to the resume point so indicators have correct history
+      if (startIndex > 0) {
+        for (let j = 0; j < startIndex; j++) {
+          this.advancePriceWindows(priceCtx, coins, new Date(timestamps[j]));
+        }
+        this.logger.log(`Fast-forwarded price windows through ${startIndex} timestamps for resume`);
+      }
     }
 
     // Track result counts at last checkpoint for proper slicing during incremental persistence
@@ -416,19 +477,50 @@ export class BacktestEngine {
     let lastHeartbeatTime = Date.now();
     const HEARTBEAT_INTERVAL_MS = 30_000;
 
-    for (let i = startIndex; i < timestamps.length; i++) {
+    for (let i = startIndex; i < effectiveTimestampCount; i++) {
       const iterStart = Date.now();
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
+      const isWarmup = i < effectiveTradingStartIndex;
 
       const marketData: MarketData = {
         timestamp,
         prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
+      // Always update portfolio values and advance price windows (needed for indicator warmup)
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
+
+      // During warmup: run algorithm to prime internal state but skip trading/recording
+      if (isWarmup) {
+        const context = {
+          coins,
+          priceData,
+          timestamp,
+          config: backtest.configSnapshot?.parameters ?? {},
+          positions: Object.fromEntries(
+            [...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity])
+          ),
+          availableBalance: portfolio.cashBalance,
+          metadata: {
+            datasetId: options.dataset.id,
+            deterministicSeed: options.deterministicSeed,
+            backtestId: backtest.id
+          }
+        };
+        try {
+          await this.executeAlgorithmWithTimeout(
+            backtest.algorithm.id,
+            context,
+            `warmup ${i}/${effectiveTradingStartIndex} (${timestamp.toISOString()})`
+          );
+        } catch {
+          // Warmup failures are non-fatal — algorithm just won't have primed state
+        }
+        continue;
+      }
 
       const context = {
         coins,
@@ -452,13 +544,13 @@ export class BacktestEngine {
         const result = await this.executeAlgorithmWithTimeout(
           backtest.algorithm.id,
           context,
-          `iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+          `iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
         );
 
         const algoExecDuration = Date.now() - algoExecStart;
         if (algoExecDuration > 5000) {
           this.logger.warn(
-            `Slow algorithm execution at iteration ${i}/${timestamps.length}: ${algoExecDuration}ms ` +
+            `Slow algorithm execution at iteration ${i}/${effectiveTimestampCount}: ${algoExecDuration}ms ` +
               `(${backtest.algorithm.id}, ${timestamp.toISOString()})`
           );
         }
@@ -481,6 +573,14 @@ export class BacktestEngine {
           throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${err.message}`);
         }
       }
+
+      // Apply signal throttle: cooldowns, daily cap, min sell %
+      strategySignals = this.signalThrottle.filterSignals(
+        strategySignals,
+        throttleState,
+        throttleConfig,
+        timestamp.getTime()
+      );
 
       for (const strategySignal of strategySignals) {
         const signalRecord: Partial<BacktestSignal> = {
@@ -584,7 +684,8 @@ export class BacktestEngine {
         maxDrawdown = currentDrawdown;
       }
 
-      if (i % 24 === 0 || i === timestamps.length - 1) {
+      const tradingRelativeIdx = i - effectiveTradingStartIndex;
+      if (tradingRelativeIdx % 24 === 0 || i === effectiveTimestampCount - 1) {
         snapshots.push({
           timestamp,
           portfolioValue: portfolio.totalValue,
@@ -606,13 +707,14 @@ export class BacktestEngine {
       const iterDuration = Date.now() - iterStart;
       if (iterDuration > 5000) {
         this.logger.warn(
-          `Slow iteration ${i}/${timestamps.length} took ${iterDuration}ms ` + `at ${timestamp.toISOString()}`
+          `Slow iteration ${i}/${effectiveTimestampCount} took ${iterDuration}ms ` + `at ${timestamp.toISOString()}`
         );
       }
 
       // Lightweight heartbeat for stale detection (every ~30 seconds)
+      // Report progress relative to trading period
       if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
-        await options.onHeartbeat(i, timestamps.length);
+        await options.onHeartbeat(tradingRelativeIdx, tradingTimestampCount);
         lastHeartbeatTime = Date.now();
       }
 
@@ -632,7 +734,8 @@ export class BacktestEngine {
           totalPersistedCounts.fills + simulatedFills.length,
           totalPersistedCounts.snapshots + snapshots.length,
           metricsAcc.totalSellCount + currentSells.sells,
-          metricsAcc.totalWinningSellCount + currentSells.winningSells
+          metricsAcc.totalWinningSellCount + currentSells.winningSells,
+          this.signalThrottle.serialize(throttleState)
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -643,8 +746,8 @@ export class BacktestEngine {
           snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
         };
 
-        // Pass total timestamps count to callback for accurate progress reporting
-        await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
+        // Pass trading timestamp count to callback for accurate progress reporting
+        await options.onCheckpoint(checkpointState, checkpointResults, tradingTimestampCount);
 
         // Harvest metrics from current arrays into accumulators before clearing
         this.harvestMetrics(trades, snapshots, metricsAcc.callbacks);
@@ -662,7 +765,7 @@ export class BacktestEngine {
         lastCheckpointIndex = i;
 
         this.logger.debug(
-          `Checkpoint saved at index ${i}/${timestamps.length} (${((i / timestamps.length) * 100).toFixed(1)}%)`
+          `Checkpoint saved at index ${i}/${effectiveTimestampCount} (${((tradingRelativeIdx / tradingTimestampCount) * 100).toFixed(1)}%)`
         );
       }
     }
@@ -798,23 +901,30 @@ export class BacktestEngine {
     const preferredQuoteCurrency = (backtest.configSnapshot?.run?.quoteCurrency as string) ?? 'USDT';
     const quoteCoin = await this.quoteCurrencyResolver.resolveQuoteCurrency(preferredQuoteCurrency);
 
-    // Determine data source: storage file (CSV) or database (Price table)
-    const startDate = options.dataset.startAt ?? backtest.startDate;
-    const endDate = options.dataset.endAt ?? backtest.endDate;
+    // Load data from full dataset range for indicator warmup
+    const dataLoadStartDate = options.dataset.startAt ?? backtest.startDate;
+    const dataLoadEndDate = options.dataset.endAt ?? backtest.endDate;
+    // Trading boundaries: always use the backtest's configured dates
+    const tradingStartDate = backtest.startDate;
+    const tradingEndDate = backtest.endDate;
 
     let historicalPrices: OHLCCandle[];
 
     if (this.marketDataReader.hasStorageLocation(options.dataset)) {
       // Use CSV data from MinIO storage
       this.logger.log(`Reading market data from storage: ${options.dataset.storageLocation}`);
-      const marketDataResult = await this.marketDataReader.readMarketData(options.dataset, startDate, endDate);
+      const marketDataResult = await this.marketDataReader.readMarketData(
+        options.dataset,
+        dataLoadStartDate,
+        dataLoadEndDate
+      );
       historicalPrices = this.convertOHLCVToCandles(marketDataResult.data);
       this.logger.log(
         `Loaded ${historicalPrices.length} candle records from storage (${marketDataResult.dateRange.start.toISOString()} to ${marketDataResult.dateRange.end.toISOString()})`
       );
     } else {
       // Fall back to database OHLC table
-      historicalPrices = await this.getHistoricalPrices(coinIds, startDate, endDate);
+      historicalPrices = await this.getHistoricalPrices(coinIds, dataLoadStartDate, dataLoadEndDate);
     }
 
     if (historicalPrices.length === 0) {
@@ -829,13 +939,26 @@ export class BacktestEngine {
     // Drop reference to the full candles array — objects still live in pricesByTimestamp
     historicalPrices = [];
 
-    this.logger.log(`Processing ${timestamps.length} time periods with ${delayMs}ms delay between each`);
+    // Calculate warmup vs trading boundaries
+    const tradingStartIndex = timestamps.findIndex((ts) => new Date(ts) >= tradingStartDate);
+    const tradingEndIdx = (() => {
+      let lastIdx = timestamps.length - 1;
+      while (lastIdx >= 0 && new Date(timestamps[lastIdx]) > tradingEndDate) lastIdx--;
+      return lastIdx;
+    })();
+    const effectiveTradingStartIndex = tradingStartIndex >= 0 ? tradingStartIndex : 0;
+    const effectiveTimestampCount = tradingEndIdx + 1;
+    const tradingTimestampCount = effectiveTimestampCount - effectiveTradingStartIndex;
+
+    this.logger.log(
+      `Processing ${timestamps.length} time periods with ${delayMs}ms delay (warmup: ${effectiveTradingStartIndex}, trading: ${tradingTimestampCount})`
+    );
 
     // Build slippage config from backtest configSnapshot
     const slippageSnapshot = backtest.configSnapshot?.slippage;
     const slippageConfig: SlippageConfig = slippageSnapshot
       ? {
-          type: (slippageSnapshot.model as SharedSlippageModelType) ?? SharedSlippageModelType.FIXED,
+          type: this.mapSlippageModelType(slippageSnapshot.model as string),
           fixedBps: slippageSnapshot.fixedBps ?? 5,
           baseSlippageBps: slippageSnapshot.baseBps ?? 5,
           volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
@@ -845,13 +968,32 @@ export class BacktestEngine {
     // Minimum hold period: configurable via options, default 24h
     const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
+    // Signal throttle: resolve config from strategy parameters, init or restore state
+    const throttleConfig = this.resolveThrottleConfig(
+      backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
+    );
+    let throttleState: ThrottleState;
+    if (isResuming && options.resumeFrom?.throttleState) {
+      throttleState = this.signalThrottle.deserialize(options.resumeFrom.throttleState);
+    } else {
+      throttleState = this.signalThrottle.createState();
+    }
+
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
     if (isResuming) {
       this.logger.log(
-        `Resuming from index ${startIndex} of ${timestamps.length} (${((startIndex / timestamps.length) * 100).toFixed(1)}% complete)`
+        `Resuming from index ${startIndex} of ${effectiveTimestampCount} (${((startIndex / effectiveTimestampCount) * 100).toFixed(1)}% complete)`
       );
+
+      // Fast-forward price windows to the resume point so indicators have correct history
+      if (startIndex > 0) {
+        for (let j = 0; j < startIndex; j++) {
+          this.advancePriceWindows(priceCtx, coins, new Date(timestamps[j]));
+        }
+        this.logger.log(`Fast-forwarded price windows through ${startIndex} timestamps for resume`);
+      }
     }
 
     // Track result counts at last checkpoint for proper slicing during incremental persistence
@@ -876,7 +1018,7 @@ export class BacktestEngine {
     const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
     let consecutivePauseFailures = 0;
 
-    for (let i = startIndex; i < timestamps.length; i++) {
+    for (let i = startIndex; i < effectiveTimestampCount; i++) {
       // Check for pause request BEFORE processing this timestamp
       if (options.shouldPause) {
         try {
@@ -899,7 +1041,8 @@ export class BacktestEngine {
               totalPersistedCounts.fills + simulatedFills.length,
               totalPersistedCounts.snapshots + snapshots.length,
               metricsAcc.totalSellCount + pauseSells.sells,
-              metricsAcc.totalWinningSellCount + pauseSells.winningSells
+              metricsAcc.totalWinningSellCount + pauseSells.winningSells,
+              this.signalThrottle.serialize(throttleState)
             );
 
             this.logger.log(`Live replay paused at index ${i - 1}/${timestamps.length}`);
@@ -958,7 +1101,8 @@ export class BacktestEngine {
               totalPersistedCounts.fills + simulatedFills.length,
               totalPersistedCounts.snapshots + snapshots.length,
               metricsAcc.totalSellCount + forcedPauseSells.sells,
-              metricsAcc.totalWinningSellCount + forcedPauseSells.winningSells
+              metricsAcc.totalWinningSellCount + forcedPauseSells.winningSells,
+              this.signalThrottle.serialize(throttleState)
             );
 
             if (options.onPaused) {
@@ -989,22 +1133,55 @@ export class BacktestEngine {
         }
       }
 
-      // Apply pacing delay (except for the first timestamp and MAX_SPEED)
-      if (delayMs > 0 && i > startIndex) {
-        await this.delay(delayMs);
-      }
-
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
+      const isWarmup = i < effectiveTradingStartIndex;
 
       const marketData: MarketData = {
         timestamp,
         prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
       };
 
+      // Always update portfolio values and advance price windows (needed for indicator warmup)
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
+
+      // During warmup: run algorithm to prime internal state but skip trading/recording
+      if (isWarmup) {
+        const context = {
+          coins,
+          priceData,
+          timestamp,
+          config: backtest.configSnapshot?.parameters ?? {},
+          positions: Object.fromEntries(
+            [...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity])
+          ),
+          availableBalance: portfolio.cashBalance,
+          metadata: {
+            datasetId: options.dataset.id,
+            deterministicSeed: options.deterministicSeed,
+            backtestId: backtest.id,
+            isLiveReplay: true,
+            replaySpeed: replaySpeed
+          }
+        };
+        try {
+          await this.executeAlgorithmWithTimeout(
+            backtest.algorithm.id,
+            context,
+            `warmup ${i}/${effectiveTradingStartIndex} (${timestamp.toISOString()})`
+          );
+        } catch {
+          // Warmup failures are non-fatal
+        }
+        continue;
+      }
+
+      // Apply pacing delay (except for the first trading timestamp and MAX_SPEED)
+      if (delayMs > 0 && i > Math.max(startIndex, effectiveTradingStartIndex)) {
+        await this.delay(delayMs);
+      }
 
       const context = {
         coins,
@@ -1029,7 +1206,7 @@ export class BacktestEngine {
         const result = await this.executeAlgorithmWithTimeout(
           backtest.algorithm.id,
           context,
-          `iteration ${i}/${timestamps.length} (${timestamp.toISOString()})`
+          `iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
         );
 
         if (result.success && result.signals?.length) {
@@ -1050,6 +1227,14 @@ export class BacktestEngine {
           throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${err.message}`);
         }
       }
+
+      // Apply signal throttle: cooldowns, daily cap, min sell %
+      strategySignals = this.signalThrottle.filterSignals(
+        strategySignals,
+        throttleState,
+        throttleConfig,
+        timestamp.getTime()
+      );
 
       for (const strategySignal of strategySignals) {
         const signalRecord: Partial<BacktestSignal> = {
@@ -1118,7 +1303,8 @@ export class BacktestEngine {
         maxDrawdown = currentDrawdown;
       }
 
-      if (i % 24 === 0 || i === timestamps.length - 1) {
+      const tradingRelativeIdx = i - effectiveTradingStartIndex;
+      if (tradingRelativeIdx % 24 === 0 || i === effectiveTimestampCount - 1) {
         snapshots.push({
           timestamp,
           portfolioValue: portfolio.totalValue,
@@ -1139,8 +1325,9 @@ export class BacktestEngine {
       }
 
       // Lightweight heartbeat for stale detection (every ~30 seconds)
+      // Report progress relative to trading period
       if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
-        await options.onHeartbeat(i, timestamps.length);
+        await options.onHeartbeat(tradingRelativeIdx, tradingTimestampCount);
         lastHeartbeatTime = Date.now();
       }
 
@@ -1161,7 +1348,8 @@ export class BacktestEngine {
           totalPersistedCounts.fills + simulatedFills.length,
           totalPersistedCounts.snapshots + snapshots.length,
           metricsAcc.totalSellCount + currentSells.sells,
-          metricsAcc.totalWinningSellCount + currentSells.winningSells
+          metricsAcc.totalWinningSellCount + currentSells.winningSells,
+          this.signalThrottle.serialize(throttleState)
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -1172,8 +1360,8 @@ export class BacktestEngine {
           snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
         };
 
-        // Pass total timestamps count to callback for accurate progress reporting
-        await options.onCheckpoint(checkpointState, checkpointResults, timestamps.length);
+        // Pass trading timestamp count to callback for accurate progress reporting
+        await options.onCheckpoint(checkpointState, checkpointResults, tradingTimestampCount);
 
         // Harvest metrics from current arrays into accumulators before clearing
         this.harvestMetrics(trades, snapshots, metricsAcc.callbacks);
@@ -1191,7 +1379,7 @@ export class BacktestEngine {
         lastCheckpointIndex = i;
 
         this.logger.debug(
-          `Live replay checkpoint saved at index ${i}/${timestamps.length} (${((i / timestamps.length) * 100).toFixed(1)}%)`
+          `Live replay checkpoint saved at index ${i}/${effectiveTimestampCount} (${((tradingRelativeIdx / tradingTimestampCount) * 100).toFixed(1)}%)`
         );
       }
     }
@@ -1978,7 +2166,8 @@ export class BacktestEngine {
     positionCount: number,
     peakValue: number,
     maxDrawdown: number,
-    rngState: number
+    rngState: number,
+    throttleStateJson?: string
   ): string {
     return JSON.stringify({
       lastProcessedIndex,
@@ -1987,7 +2176,8 @@ export class BacktestEngine {
       positionCount,
       peakValue,
       maxDrawdown,
-      rngState
+      rngState,
+      ...(throttleStateJson !== undefined && { throttleState: throttleStateJson })
     });
   }
 
@@ -2023,7 +2213,8 @@ export class BacktestEngine {
     fillsCount: number,
     snapshotsCount: number,
     sellsCount: number,
-    winningSellsCount: number
+    winningSellsCount: number,
+    serializedThrottleState?: SerializableThrottleState
   ): BacktestCheckpointState {
     // Convert Map-based positions to array format for JSON serialization
     const checkpointPortfolio: CheckpointPortfolio = {
@@ -2036,6 +2227,9 @@ export class BacktestEngine {
       }))
     };
 
+    // Serialize throttle state to JSON for checksum inclusion (before computing checksum)
+    const throttleStateJson = serializedThrottleState ? JSON.stringify(serializedThrottleState) : undefined;
+
     // Build checksum for data integrity verification using centralized helper
     const checksumData = this.buildChecksumData(
       lastProcessedIndex,
@@ -2044,7 +2238,8 @@ export class BacktestEngine {
       portfolio.positions.size,
       peakValue,
       maxDrawdown,
-      rngState
+      rngState,
+      throttleStateJson
     );
     const checksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
 
@@ -2063,7 +2258,8 @@ export class BacktestEngine {
         sells: sellsCount,
         winningSells: winningSellsCount
       },
-      checksum
+      checksum,
+      ...(serializedThrottleState && { throttleState: serializedThrottleState })
     };
   }
 
@@ -2090,6 +2286,7 @@ export class BacktestEngine {
     }
 
     // Verify checksum integrity using centralized helper for consistency
+    const throttleStateJson = checkpoint.throttleState ? JSON.stringify(checkpoint.throttleState) : undefined;
     const checksumData = this.buildChecksumData(
       checkpoint.lastProcessedIndex,
       checkpoint.lastProcessedTimestamp,
@@ -2097,7 +2294,8 @@ export class BacktestEngine {
       checkpoint.portfolio.positions.length,
       checkpoint.peakValue,
       checkpoint.maxDrawdown,
-      checkpoint.rngState
+      checkpoint.rngState,
+      throttleStateJson
     );
     const expectedChecksum = createHash('sha256').update(checksumData).digest('hex').substring(0, 16);
 
@@ -2163,6 +2361,10 @@ export class BacktestEngine {
     let peakValue = initialCapital;
     let maxDrawdown = 0;
 
+    // Signal throttle: resolve config from optimization parameters
+    const throttleConfig = this.resolveThrottleConfig(config.parameters);
+    const throttleState = this.signalThrottle.createState();
+
     for (let i = 0; i < timestamps.length; i++) {
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
@@ -2206,6 +2408,14 @@ export class BacktestEngine {
         const err = toErrorInfo(error);
         this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${err.message}`);
       }
+
+      // Apply signal throttle: cooldowns, daily cap, min sell %
+      strategySignals = this.signalThrottle.filterSignals(
+        strategySignals,
+        throttleState,
+        throttleConfig,
+        timestamp.getTime()
+      );
 
       for (const strategySignal of strategySignals) {
         // Extract volume from current candle for volume-based slippage calculation

@@ -101,7 +101,9 @@ describe('ExponentialMovingAverageStrategy', () => {
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(expectedType);
-      expect(result.signals[0].reason).toBeDefined();
+      expect(result.signals[0].reason).toContain('EMA crossover');
+      expect(result.signals[0].coinId).toBe('btc');
+      expect(result.signals[0].price).toBe(105);
     });
 
     it('should return no signals when no crossover occurs', async () => {
@@ -113,6 +115,36 @@ describe('ExponentialMovingAverageStrategy', () => {
       slow[28] = 10;
       fast[29] = 13;
       slow[29] = 11;
+
+      mockEmaValues(fast, slow);
+
+      const result = await strategy.execute(buildContext(prices));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should return error result when indicator service throws', async () => {
+      const prices = createMockPrices(30, 100, 105);
+      indicatorService.calculateEMA.mockRejectedValueOnce(new Error('Redis connection failed'));
+
+      const result = await strategy.execute(buildContext(prices));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Redis connection failed');
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should return no signal when EMA values are NaN at last index', async () => {
+      const prices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+
+      // Only populate earlier bars, leave last index as NaN
+      fast[27] = 10;
+      slow[27] = 11;
+      fast[28] = 12;
+      slow[28] = 11;
 
       mockEmaValues(fast, slow);
 
@@ -209,6 +241,106 @@ describe('ExponentialMovingAverageStrategy', () => {
       expect(signal.strength).toBeLessThanOrEqual(1);
       expect(signal.confidence).toBeGreaterThanOrEqual(0);
       expect(signal.confidence).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe('crossover lookback window', () => {
+    it('should detect crossover 2 bars ago with default lookback=3', async () => {
+      const prices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+
+      // Crossover happened 2 bars ago (index 27→28), not at the last bar
+      fast[26] = 10;
+      slow[26] = 11; // fast < slow
+      fast[27] = 12;
+      slow[27] = 11; // fast > slow → bullish crossover
+      fast[28] = 13;
+      slow[28] = 12; // still bullish, no new crossover
+      fast[29] = 14;
+      slow[29] = 13; // still bullish
+
+      mockEmaValues(fast, slow);
+
+      const result = await strategy.execute(buildContext(prices, { crossoverLookback: 3 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+      expect(result.signals[0].metadata?.crossoverBarsAgo).toBe(2);
+    });
+
+    it('should NOT detect crossover outside the lookback window', async () => {
+      const prices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+
+      // Crossover happened 3 bars ago (index 26→27), lookback=2 only checks bars 29 and 28
+      fast[25] = 10;
+      slow[25] = 11;
+      fast[26] = 12;
+      slow[26] = 11; // crossover at index 26
+      fast[27] = 13;
+      slow[27] = 12;
+      fast[28] = 14;
+      slow[28] = 13;
+      fast[29] = 15;
+      slow[29] = 14;
+
+      mockEmaValues(fast, slow);
+
+      const result = await strategy.execute(buildContext(prices, { crossoverLookback: 2 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should be backward-compatible with crossoverLookback=1 (single-bar check)', async () => {
+      const prices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+
+      // Crossover at the last bar only
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+
+      mockEmaValues(fast, slow);
+
+      const result = await strategy.execute(buildContext(prices, { crossoverLookback: 1 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+      expect(result.signals[0].metadata?.crossoverBarsAgo).toBe(0);
+    });
+
+    it('should prioritize most recent crossover when multiple exist in window', async () => {
+      const prices = createMockPrices(30, 100, 90);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+
+      // Bullish crossover at bar 27 (2 bars ago)
+      fast[26] = 10;
+      slow[26] = 11;
+      fast[27] = 12;
+      slow[27] = 11;
+      // Bearish crossover at bar 29 (most recent, 0 bars ago)
+      fast[28] = 11;
+      slow[28] = 10;
+      fast[29] = 9;
+      slow[29] = 10;
+
+      mockEmaValues(fast, slow);
+
+      const result = await strategy.execute(buildContext(prices, { crossoverLookback: 3 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      // Most recent (bearish at bar 29) should win
+      expect(result.signals[0].type).toBe(SignalType.SELL);
+      expect(result.signals[0].metadata?.crossoverBarsAgo).toBe(0);
     });
   });
 

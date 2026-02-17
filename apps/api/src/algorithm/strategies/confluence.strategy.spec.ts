@@ -54,12 +54,13 @@ describe('ConfluenceStrategy', () => {
     jest.clearAllMocks();
   });
 
-  const buildContext = (config: Record<string, any> = {}) =>
+  const buildContext = (config: Record<string, any> = {}, overrides: Partial<AlgorithmContext> = {}) =>
     ({
       coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
       priceData: { btc: createMockPrices(50) as any },
       timestamp: new Date(),
-      config
+      config,
+      ...overrides
     }) as AlgorithmContext;
 
   // Helper to mock EMA values (fast and slow)
@@ -153,7 +154,7 @@ describe('ConfluenceStrategy', () => {
     mockRSI(65); // RSI > 55 (strong upward momentum confirms trend)
     mockMACD(0.002, 0.001); // Positive histogram with upward momentum
     mockATR(1.0, 1.0); // Normal volatility
-    mockBollingerBands(0.85); // %B > 0.7 (price pushing upper band, confirms uptrend)
+    mockBollingerBands(0.85); // %B > 0.55 (price pushing upper band, confirms uptrend)
   };
 
   // Setup all indicators for bearish scenario (trend-confirming)
@@ -162,11 +163,11 @@ describe('ConfluenceStrategy', () => {
     mockRSI(35); // RSI < 45 (weak momentum confirms downtrend)
     mockMACD(-0.002, -0.001); // Negative histogram with downward momentum
     mockATR(1.0, 1.0); // Normal volatility
-    mockBollingerBands(0.15); // %B < 0.3 (price pushing lower band, confirms downtrend)
+    mockBollingerBands(0.15); // %B < 0.45 (price pushing lower band, confirms downtrend)
   };
 
   describe('execute - signal generation', () => {
-    it('should generate BUY signal when all 5 indicators agree bullish', async () => {
+    it('should generate BUY signal when all indicators agree bullish', async () => {
       setupBullishIndicators();
 
       const result = await strategy.execute(buildContext({ minConfluence: 3 }));
@@ -178,7 +179,7 @@ describe('ConfluenceStrategy', () => {
       expect(result.signals[0].metadata?.confluenceCount).toBeGreaterThanOrEqual(3);
     });
 
-    it('should generate SELL signal when all 5 indicators agree bearish', async () => {
+    it('should generate SELL signal when all indicators agree bearish', async () => {
       setupBearishIndicators();
 
       const result = await strategy.execute(buildContext({ minConfluence: 3 }));
@@ -189,8 +190,7 @@ describe('ConfluenceStrategy', () => {
       expect(result.signals[0].reason).toContain('Confluence SELL');
     });
 
-    it('should return no signals when only 2 indicators agree (minConfluence=3)', async () => {
-      // Disable ATR so it doesn't add to confluence count as neutral
+    it('should return no signals when confluence threshold not met', async () => {
       mockEMA(105, 100); // Bullish
       mockRSI(65); // Bullish (RSI > 55)
       mockMACD(-0.002, -0.001); // Bearish (conflicting)
@@ -212,7 +212,7 @@ describe('ConfluenceStrategy', () => {
       const result = await strategy.execute(buildContext({ minConfluence: 3 }));
 
       expect(result.success).toBe(true);
-      expect(result.signals).toHaveLength(0); // Filtered by ATR
+      expect(result.signals).toHaveLength(0);
     });
 
     it('should respect minConfidence threshold', async () => {
@@ -221,70 +221,86 @@ describe('ConfluenceStrategy', () => {
       const result = await strategy.execute(buildContext({ minConfluence: 3, minConfidence: 1.1 }));
 
       expect(result.success).toBe(true);
-      expect(result.signals).toHaveLength(0); // Filtered if confidence < threshold
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should hold when buy and sell counts are equal', async () => {
+      mockEMA(105, 100); // Bullish
+      mockRSI(35); // Bearish
+      mockMACD(0.002, 0.001); // Bullish
+      mockBollingerBands(0.15); // Bearish
+
+      const result = await strategy.execute(buildContext({ minConfluence: 2, atrEnabled: false }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0); // 2 buy vs 2 sell → hold
     });
   });
 
   describe('execute - indicator disabling', () => {
-    it('should work with EMA disabled', async () => {
-      mockRSI(65);
-      mockMACD(0.002, 0.001);
-      mockATR(1.0, 1.0);
-      mockBollingerBands(0.85);
+    it.each([
+      {
+        label: 'EMA',
+        configKey: 'emaEnabled',
+        calculatorKey: 'calculateEMA' as const,
+        setup: () => {
+          mockRSI(65);
+          mockMACD(0.002, 0.001);
+          mockATR(1.0, 1.0);
+          mockBollingerBands(0.85);
+        }
+      },
+      {
+        label: 'RSI',
+        configKey: 'rsiEnabled',
+        calculatorKey: 'calculateRSI' as const,
+        setup: () => {
+          mockEMA(105, 100);
+          mockMACD(0.002, 0.001);
+          mockATR(1.0, 1.0);
+          mockBollingerBands(0.85);
+        }
+      },
+      {
+        label: 'MACD',
+        configKey: 'macdEnabled',
+        calculatorKey: 'calculateMACD' as const,
+        setup: () => {
+          mockEMA(105, 100);
+          mockRSI(65);
+          mockATR(1.0, 1.0);
+          mockBollingerBands(0.85);
+        }
+      },
+      {
+        label: 'ATR',
+        configKey: 'atrEnabled',
+        calculatorKey: 'calculateATR' as const,
+        setup: () => {
+          mockEMA(105, 100);
+          mockRSI(65);
+          mockMACD(0.002, 0.001);
+          mockBollingerBands(0.85);
+        }
+      },
+      {
+        label: 'Bollinger Bands',
+        configKey: 'bbEnabled',
+        calculatorKey: 'calculateBollingerBands' as const,
+        setup: () => {
+          mockEMA(105, 100);
+          mockRSI(65);
+          mockMACD(0.002, 0.001);
+          mockATR(1.0, 1.0);
+        }
+      }
+    ])('should skip $label calculation when disabled', async ({ configKey, calculatorKey, setup }) => {
+      setup();
 
-      const result = await strategy.execute(buildContext({ emaEnabled: false, minConfluence: 3 }));
+      const result = await strategy.execute(buildContext({ [configKey]: false, minConfluence: 3 }));
 
       expect(result.success).toBe(true);
-      // Should still work with 4 indicators
-      expect(indicatorService.calculateEMA).not.toHaveBeenCalled();
-    });
-
-    it('should work with RSI disabled', async () => {
-      mockEMA(105, 100);
-      mockMACD(0.002, 0.001);
-      mockATR(1.0, 1.0);
-      mockBollingerBands(0.85);
-
-      const result = await strategy.execute(buildContext({ rsiEnabled: false, minConfluence: 3 }));
-
-      expect(result.success).toBe(true);
-      expect(indicatorService.calculateRSI).not.toHaveBeenCalled();
-    });
-
-    it('should work with MACD disabled', async () => {
-      mockEMA(105, 100);
-      mockRSI(65);
-      mockATR(1.0, 1.0);
-      mockBollingerBands(0.85);
-
-      const result = await strategy.execute(buildContext({ macdEnabled: false, minConfluence: 3 }));
-
-      expect(result.success).toBe(true);
-      expect(indicatorService.calculateMACD).not.toHaveBeenCalled();
-    });
-
-    it('should work with ATR disabled', async () => {
-      mockEMA(105, 100);
-      mockRSI(65);
-      mockMACD(0.002, 0.001);
-      mockBollingerBands(0.85);
-
-      const result = await strategy.execute(buildContext({ atrEnabled: false, minConfluence: 3 }));
-
-      expect(result.success).toBe(true);
-      expect(indicatorService.calculateATR).not.toHaveBeenCalled();
-    });
-
-    it('should work with Bollinger Bands disabled', async () => {
-      mockEMA(105, 100);
-      mockRSI(65);
-      mockMACD(0.002, 0.001);
-      mockATR(1.0, 1.0);
-
-      const result = await strategy.execute(buildContext({ bbEnabled: false, minConfluence: 3 }));
-
-      expect(result.success).toBe(true);
-      expect(indicatorService.calculateBollingerBands).not.toHaveBeenCalled();
+      expect(indicatorService[calculatorKey]).not.toHaveBeenCalled();
     });
   });
 
@@ -294,30 +310,26 @@ describe('ConfluenceStrategy', () => {
 
       const result = await strategy.execute(buildContext());
 
-      expect(result.success).toBe(true);
-      expect(result.chartData).toBeDefined();
-      expect(result.chartData?.btc).toBeDefined();
-      expect(result.chartData?.btc.length).toBeGreaterThan(0);
+      expect(result.chartData?.btc).toHaveLength(50);
 
-      const lastPoint = result.chartData?.btc[result.chartData?.btc.length - 1];
-      expect(lastPoint?.metadata).toBeDefined();
-      expect(lastPoint?.metadata?.ema12).toBeDefined();
-      expect(lastPoint?.metadata?.ema26).toBeDefined();
-      expect(lastPoint?.metadata?.rsi).toBeDefined();
-      expect(lastPoint?.metadata?.macd).toBeDefined();
-      expect(lastPoint?.metadata?.atr).toBeDefined();
-      expect(lastPoint?.metadata?.percentB).toBeDefined();
+      const lastPoint = result.chartData!.btc[49];
+      expect(lastPoint.metadata?.ema12).toBe(105);
+      expect(lastPoint.metadata?.ema26).toBe(100);
+      expect(lastPoint.metadata?.rsi).toBe(65);
+      expect(lastPoint.metadata?.atr).toBe(1.0);
+      expect(lastPoint.metadata?.percentB).toBe(0.85);
+      expect(lastPoint.metadata?.macd).toBeDefined();
     });
-  });
 
-  describe('configuration', () => {
-    it('should apply default values correctly', async () => {
+    it('should omit chart data in backtest mode', async () => {
       setupBullishIndicators();
 
-      const result = await strategy.execute(buildContext({}));
+      const result = await strategy.execute(
+        buildContext({ minConfluence: 3 }, { metadata: { backtestId: 'bt-123' } } as any)
+      );
 
       expect(result.success).toBe(true);
-      // Default minConfluence is 3, should work with defaults
+      expect(result.chartData?.btc).toBeUndefined();
     });
   });
 
@@ -340,7 +352,7 @@ describe('ConfluenceStrategy', () => {
     it('should return false when insufficient data', () => {
       const context = {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
-        priceData: { btc: createMockPrices(5) as any }, // Only 5 data points
+        priceData: { btc: createMockPrices(5) as any },
         timestamp: new Date(),
         config: {}
       } as AlgorithmContext;
@@ -381,10 +393,20 @@ describe('ConfluenceStrategy', () => {
 
       expect(strategy.canExecute(context)).toBe(false);
     });
+
+    it('should return false when minSellConfluence exceeds enabled directional indicators', () => {
+      const context = buildContext({
+        minConfluence: 2,
+        minSellConfluence: 5,
+        emaEnabled: false,
+        rsiEnabled: false
+      });
+      expect(strategy.canExecute(context)).toBe(false);
+    });
   });
 
   describe('edge cases', () => {
-    it('should handle insufficient data gracefully', async () => {
+    it('should skip coins with insufficient data and still succeed', async () => {
       const context = {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: createMockPrices(5) as any },
@@ -398,7 +420,7 @@ describe('ConfluenceStrategy', () => {
       expect(result.signals).toHaveLength(0);
     });
 
-    it('should handle multiple coins', async () => {
+    it('should produce signals and chart data for multiple coins', async () => {
       setupBullishIndicators();
 
       const context = {
@@ -417,13 +439,71 @@ describe('ConfluenceStrategy', () => {
       const result = await strategy.execute(context);
 
       expect(result.success).toBe(true);
-      expect(result.chartData?.btc).toBeDefined();
-      expect(result.chartData?.eth).toBeDefined();
+      expect(result.chartData?.btc).toHaveLength(50);
+      expect(result.chartData?.eth).toHaveLength(50);
+    });
+
+    it('should return error result when indicator service throws', async () => {
+      indicatorService.calculateEMA.mockRejectedValue(new Error('Service unavailable'));
+
+      const result = await strategy.execute(buildContext({ minConfluence: 3 }));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Service unavailable');
+      expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('symmetric sell thresholds', () => {
+    it('should generate SELL when 3/4 indicators are bearish with BB neutral', async () => {
+      mockEMA(95, 100, 101, 100); // Bearish
+      mockRSI(35); // Bearish (RSI < 45)
+      mockMACD(-0.002, -0.001); // Bearish
+      mockATR(1.0, 1.0); // Normal volatility
+      mockBollingerBands(0.5); // Neutral (between 0.45 and 0.55)
+
+      const result = await strategy.execute(buildContext({ minConfluence: 2 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.SELL);
+      expect(result.signals[0].metadata?.confluenceCount).toBe(3);
+    });
+
+    it('should complete a buy-sell cycle without trapping positions', async () => {
+      // Phase 1: Bullish setup -> BUY
+      setupBullishIndicators();
+      const buyResult = await strategy.execute(buildContext({ minConfluence: 2 }));
+
+      expect(buyResult.signals).toHaveLength(1);
+      expect(buyResult.signals[0].type).toBe(SignalType.BUY);
+
+      // Phase 2: Bearish setup -> SELL
+      setupBearishIndicators();
+      const sellResult = await strategy.execute(buildContext({ minConfluence: 2 }));
+
+      expect(sellResult.signals).toHaveLength(1);
+      expect(sellResult.signals[0].type).toBe(SignalType.SELL);
+    });
+
+    it('should use symmetric defaults so 2 bearish indicators produce SELL', async () => {
+      mockEMA(95, 100, 101, 100); // Bearish
+      mockRSI(50); // Neutral
+      mockMACD(-0.002, -0.001); // Bearish
+      mockATR(1.0, 1.0); // Normal volatility
+      mockBollingerBands(0.5); // Neutral
+
+      const result = await strategy.execute(buildContext({}));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.SELL);
+      expect(result.signals[0].metadata?.confluenceCount).toBe(2);
     });
   });
 
   describe('signal metadata', () => {
-    it('should include indicator breakdown in metadata', async () => {
+    it('should include indicator breakdown and agreeing indicators in metadata', async () => {
       setupBullishIndicators();
 
       const result = await strategy.execute(buildContext({ minConfluence: 3 }));
@@ -431,10 +511,15 @@ describe('ConfluenceStrategy', () => {
       expect(result.signals).toHaveLength(1);
       const signal = result.signals[0];
 
-      expect(signal.metadata?.indicatorBreakdown).toBeDefined();
-      expect(Array.isArray(signal.metadata?.indicatorBreakdown)).toBe(true);
-      expect(signal.metadata?.agreeingIndicators).toBeDefined();
-      expect(Array.isArray(signal.metadata?.agreeingIndicators)).toBe(true);
+      const breakdown = signal.metadata?.indicatorBreakdown as any[];
+      expect(breakdown).toHaveLength(5); // EMA + RSI + MACD + BB + ATR
+      expect(breakdown.every((b: any) => b.name && b.signal && typeof b.strength === 'number')).toBe(true);
+
+      const agreeing = signal.metadata?.agreeingIndicators as string[];
+      expect(agreeing).toContain('EMA');
+      expect(agreeing).toContain('RSI');
+      expect(agreeing).toContain('MACD');
+      expect(agreeing).toContain('BB');
     });
   });
 });

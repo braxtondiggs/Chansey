@@ -5,6 +5,7 @@ import { MetricsCalculatorService } from './metrics';
 import { PortfolioStateService } from './portfolio';
 import { PositionManagerService } from './positions';
 import { SlippageService } from './slippage';
+import { SignalThrottleService } from './throttle';
 
 import { DrawdownCalculator } from '../../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calculator';
@@ -24,6 +25,7 @@ import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calc
  * - PositionManagerService: Position lifecycle management
  * - MetricsCalculatorService: Performance metrics with proper timeframe awareness
  * - PortfolioStateService: Portfolio state management and checkpointing
+ * - SignalThrottleService: Signal frequency throttling (cooldown, daily cap, min sell %)
  */
 @Module({
   providers: [
@@ -33,6 +35,7 @@ import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calc
     PositionManagerService,
     MetricsCalculatorService,
     PortfolioStateService,
+    SignalThrottleService,
 
     // Dependencies for MetricsCalculatorService
     SharpeRatioCalculator,
@@ -44,6 +47,7 @@ import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calc
     PositionManagerService,
     MetricsCalculatorService,
     PortfolioStateService,
+    SignalThrottleService,
     SharpeRatioCalculator,
     DrawdownCalculator
   ]

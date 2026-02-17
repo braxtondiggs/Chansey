@@ -109,6 +109,7 @@ describe('BollingerBandSqueezeStrategy', () => {
       expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(SignalType.BUY);
       expect(result.signals[0].reason).toContain('Bullish squeeze breakout');
+      expect(result.signals[0].metadata?.currentBandwidth).not.toBeNaN();
     });
 
     it('should return no signals when in squeeze (not breaking out)', async () => {
@@ -302,9 +303,95 @@ describe('BollingerBandSqueezeStrategy', () => {
       const result = await strategy.execute(context);
 
       expect(result.success).toBe(true);
-      expect(result.signals.length).toBeGreaterThan(0);
+      expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(SignalType.SELL);
       expect(result.signals[0].reason).toContain('Bearish squeeze breakout');
+    });
+
+    it('should return no signals when breakout confirmation fails', async () => {
+      const prices = createMockPrices(40);
+      // Price above middle (bullish direction) but declining (fails confirmation)
+      prices[39].avg = 102;
+      prices[38].avg = 110;
+
+      const upper = Array(40).fill(NaN);
+      const middle = Array(40).fill(NaN);
+      const lower = Array(40).fill(NaN);
+      const pb = Array(40).fill(NaN);
+      const bandwidth = Array(40).fill(NaN);
+
+      for (let i = 20; i < 40; i++) {
+        upper[i] = 110;
+        middle[i] = 100;
+        lower[i] = 90;
+        pb[i] = 0.5;
+        if (i >= 25 && i < 39) {
+          bandwidth[i] = 0.03;
+        } else {
+          bandwidth[i] = 0.15;
+        }
+      }
+      bandwidth[39] = 0.05;
+      pb[39] = 0.55; // Above middle → bullish, but price declining
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 20,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { squeezeThreshold: 0.04, minSqueezeBars: 6 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should handle calculateBollingerBands failure gracefully', async () => {
+      const prices = createMockPrices(40);
+
+      indicatorService.calculateBollingerBands.mockRejectedValue(new Error('Calculation failed'));
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: {}
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should skip coins with insufficient price data', async () => {
+      const prices = createMockPrices(10); // Need period(20) + minSqueezeBars(6) + 5 = 31
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: {}
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+      expect(indicatorService.calculateBollingerBands).not.toHaveBeenCalled();
     });
 
     it('should return no signals when bandwidth is normal (no squeeze)', async () => {

@@ -5,6 +5,7 @@ import {
   MetricsCalculatorService,
   PortfolioStateService,
   PositionManagerService,
+  SignalThrottleService,
   SlippageModelType,
   SlippageService
 } from './shared';
@@ -26,6 +27,7 @@ const feeCalculator = new FeeCalculatorService();
 const positionManager = new PositionManagerService();
 const metricsCalculator = new MetricsCalculatorService(sharpeCalculator, drawdownCalculator);
 const portfolioState = new PortfolioStateService();
+const signalThrottle = new SignalThrottleService();
 
 describe('BacktestEngine.executeTrade', () => {
   const createEngine = () =>
@@ -40,7 +42,8 @@ describe('BacktestEngine.executeTrade', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
-      positionAnalysis
+      positionAnalysis,
+      signalThrottle
     );
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
@@ -605,6 +608,83 @@ describe('BacktestEngine.executeTrade', () => {
       expect(lowResult?.trade.quantity).toBeCloseTo(2.5);
     });
   });
+
+  describe('Min hold period enforcement', () => {
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const entryDate = new Date('2024-01-01T00:00:00.000Z');
+
+    const createHeldPortfolio = (): Portfolio => ({
+      cashBalance: 0,
+      totalValue: 1000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000, entryDate }]])
+    });
+
+    it('rejects SELL when position held less than minHoldMs', async () => {
+      const engine = createEngine();
+      const portfolio = createHeldPortfolio();
+      // 12 hours after entry — within the 24h default hold period
+      const sellTimestamp = new Date('2024-01-01T12:00:00.000Z');
+
+      const result = await (engine as any).executeTrade(
+        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
+        portfolio,
+        { timestamp: sellTimestamp, prices: new Map([['BTC', 120]]) },
+        0,
+        { next: () => 0.5 },
+        noSlippage,
+        undefined,
+        TWENTY_FOUR_HOURS_MS
+      );
+
+      expect(result).toBeNull();
+      expect(portfolio.positions.get('BTC')?.quantity).toBe(10); // Unchanged
+    });
+
+    it.each([
+      { type: SignalType.STOP_LOSS, label: 'STOP_LOSS' },
+      { type: SignalType.TAKE_PROFIT, label: 'TAKE_PROFIT' }
+    ])('allows $label SELL even within min hold period', async ({ type }) => {
+      const engine = createEngine();
+      const portfolio = createHeldPortfolio();
+      // 1 hour after entry — well within the 24h hold period
+      const sellTimestamp = new Date('2024-01-01T01:00:00.000Z');
+
+      const result = await (engine as any).executeTrade(
+        { action: 'SELL', coinId: 'BTC', quantity: 10, reason: 'risk exit', originalType: type },
+        portfolio,
+        { timestamp: sellTimestamp, prices: new Map([['BTC', 80]]) },
+        0,
+        { next: () => 0.5 },
+        noSlippage,
+        undefined,
+        TWENTY_FOUR_HOURS_MS
+      );
+
+      expect(result).toBeTruthy();
+      expect(result.trade.quantity).toBe(10);
+    });
+
+    it('allows SELL after min hold period has elapsed', async () => {
+      const engine = createEngine();
+      const portfolio = createHeldPortfolio();
+      // 25 hours after entry — beyond the 24h hold period
+      const sellTimestamp = new Date('2024-01-02T01:00:00.000Z');
+
+      const result = await (engine as any).executeTrade(
+        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
+        portfolio,
+        { timestamp: sellTimestamp, prices: new Map([['BTC', 120]]) },
+        0,
+        { next: () => 0.5 },
+        noSlippage,
+        undefined,
+        TWENTY_FOUR_HOURS_MS
+      );
+
+      expect(result).toBeTruthy();
+      expect(result.trade.quantity).toBe(5);
+    });
+  });
 });
 
 describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
@@ -620,7 +700,8 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
-      positionAnalysis
+      positionAnalysis,
+      signalThrottle
     );
 
   const createCandles = (coinId: string) => [
@@ -709,7 +790,8 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
-      positionAnalysis
+      positionAnalysis,
+      signalThrottle
     );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
@@ -867,7 +949,8 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
-      positionAnalysis
+      positionAnalysis,
+      signalThrottle
     );
 
   const createCandles = () => [
@@ -1247,7 +1330,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         startDate: new Date('2024-01-01T00:00:00.000Z'),
         endDate: new Date('2024-01-01T04:00:00.000Z'),
         algorithm: { id: 'algo-1' },
-        configSnapshot: { parameters: {} }
+        configSnapshot: { parameters: { cooldownMs: 0, maxTradesPerDay: 0 } }
       } as any,
       [{ id: 'BTC', symbol: 'BTC' } as any],
       {
@@ -1620,7 +1703,8 @@ describe('BacktestEngine checkpointing', () => {
       positionManager,
       metricsCalculator,
       portfolioState,
-      positionAnalysis
+      positionAnalysis,
+      signalThrottle
     );
 
   const createCheckpoint = (engine: BacktestEngine) => {
@@ -1718,5 +1802,363 @@ describe('BacktestEngine checkpointing', () => {
       })
     );
     expect(restored.totalValue).toBe(1200);
+  });
+});
+
+describe('BacktestEngine warmup / date range separation', () => {
+  const createEngine = (algorithmRegistry: any, ohlcService: any) =>
+    new BacktestEngine(
+      { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
+      algorithmRegistry,
+      ohlcService,
+      { hasStorageLocation: jest.fn().mockReturnValue(false) } as any,
+      { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) } as any,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState,
+      positionAnalysis,
+      signalThrottle
+    );
+
+  it('does not trade before backtest.startDate when dataset is broader', async () => {
+    // Dataset: Jan 1-4, Backtest trading window: Jan 3-4
+    // Jan 1-2 should be warmup only (no trades/signals)
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      })
+    };
+
+    const candles = [1, 2, 3, 4].map(
+      (day) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-warmup',
+        name: 'Warmup Test',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-03T00:00:00.000Z'), // Trading starts Jan 3
+        endDate: new Date('2024-01-04T00:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-warmup',
+          startAt: new Date('2024-01-01T00:00:00.000Z'), // Dataset starts Jan 1
+          endAt: new Date('2024-01-04T00:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-warmup'
+      }
+    );
+
+    // Should only have trades from Jan 3 and Jan 4 (2 trading periods)
+    expect(result.trades).toHaveLength(2);
+    for (const trade of result.trades) {
+      expect((trade.executedAt as Date).getTime()).toBeGreaterThanOrEqual(
+        new Date('2024-01-03T00:00:00.000Z').getTime()
+      );
+    }
+
+    // Algorithm is called for all 4 timestamps (2 warmup + 2 trading)
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(4);
+  });
+
+  it('produces no snapshots during warmup period', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] })
+    };
+
+    const candles = [1, 2, 3, 4].map(
+      (day) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-no-warmup-snap',
+        name: 'No Warmup Snapshots',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-03T00:00:00.000Z'),
+        endDate: new Date('2024-01-04T00:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-no-snap',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-04T00:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-no-snap'
+      }
+    );
+
+    // All snapshots should be within the trading window
+    for (const snapshot of result.snapshots) {
+      expect((snapshot.timestamp as Date).getTime()).toBeGreaterThanOrEqual(
+        new Date('2024-01-03T00:00:00.000Z').getTime()
+      );
+    }
+  });
+
+  it('does not trade after backtest.endDate even if dataset extends further', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      })
+    };
+
+    const candles = [1, 2, 3, 4].map(
+      (day) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-end-trim',
+        name: 'End Date Trim',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-02T00:00:00.000Z'), // End before dataset ends
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-end-trim',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-04T00:00:00.000Z') // Dataset extends to Jan 4
+        } as any,
+        deterministicSeed: 'seed-end-trim'
+      }
+    );
+
+    // Should only have trades from Jan 1 and Jan 2
+    expect(result.trades).toHaveLength(2);
+    for (const trade of result.trades) {
+      expect((trade.executedAt as Date).getTime()).toBeLessThanOrEqual(new Date('2024-01-02T00:00:00.000Z').getTime());
+    }
+  });
+
+  it('behaves identically when dataset and backtest dates match', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      })
+    };
+
+    const candles = [
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 100,
+        volume: 1000
+      })
+    ];
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-matching',
+        name: 'Matching Dates',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: { cooldownMs: 0, maxTradesPerDay: 0 } }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-matching',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-matching'
+      }
+    );
+
+    // No warmup, all periods are trading — 2 trades expected
+    expect(result.trades).toHaveLength(2);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports progress relative to trading period in checkpoints', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      })
+    };
+
+    // 4 candles: 2 warmup + 2 trading
+    const candles = [1, 2, 3, 4].map(
+      (day) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const onCheckpoint = jest.fn().mockResolvedValue(undefined);
+
+    await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-progress',
+        name: 'Progress Test',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-03T00:00:00.000Z'),
+        endDate: new Date('2024-01-04T00:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-progress',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-04T00:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-progress',
+        checkpointInterval: 1,
+        onCheckpoint
+      }
+    );
+
+    // Checkpoint totalTimestamps should reflect trading period (2), not full dataset (4)
+    if (onCheckpoint.mock.calls.length > 0) {
+      const [, , totalTimestamps] = onCheckpoint.mock.calls[0];
+      expect(totalTimestamps).toBe(2);
+    }
+  });
+
+  it('live replay: no trades before backtest.startDate with broader dataset', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      })
+    };
+
+    const candles = [1, 2, 3, 4].map(
+      (day) =>
+        new OHLCCandle({
+          coinId: 'BTC',
+          exchangeId: 'exchange-1',
+          timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
+          open: 100,
+          high: 110,
+          low: 90,
+          close: 100,
+          volume: 1000
+        })
+    );
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'bt-live-warmup',
+        name: 'Live Replay Warmup',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-03T00:00:00.000Z'),
+        endDate: new Date('2024-01-04T00:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-live-warmup',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-04T00:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-live-warmup',
+        replaySpeed: ReplaySpeed.MAX_SPEED
+      }
+    );
+
+    // Should only have trades from Jan 3 and Jan 4
+    expect(result.trades).toHaveLength(2);
+    for (const trade of result.trades) {
+      expect((trade.executedAt as Date).getTime()).toBeGreaterThanOrEqual(
+        new Date('2024-01-03T00:00:00.000Z').getTime()
+      );
+    }
+    expect(result.paused).toBe(false);
   });
 });

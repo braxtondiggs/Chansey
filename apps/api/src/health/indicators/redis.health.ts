@@ -48,6 +48,28 @@ export class RedisHealthIndicator implements OnModuleDestroy {
   }
 
   /**
+   * Check basic Redis connectivity via PING.
+   * Reuses a single persistent connection instead of the microservice transport
+   * which creates (and leaks) new pub/sub connections on every call.
+   */
+  async pingCheck(key: string): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check(key);
+    try {
+      const client = this.getClient();
+      const result = await client.ping();
+      if (result !== 'PONG') {
+        return indicator.down({ message: `Unexpected PING response: ${result}` });
+      }
+      return indicator.up({ status: 'up' });
+    } catch (error: unknown) {
+      this.disconnect();
+      const err = toErrorInfo(error);
+      this.logger.error(`Redis ping failed: ${err.message}`);
+      return indicator.down({ message: err.message });
+    }
+  }
+
+  /**
    * Check Redis performance metrics
    * Fails if memory usage exceeds 90%
    */
