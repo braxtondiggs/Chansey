@@ -19,6 +19,10 @@ export const databaseConfig = registerAs(
     migrationsRun: process.env.NODE_ENV === 'production',
     synchronize: process.env.NODE_ENV !== 'production',
     logging: process.env.NODE_ENV !== 'production',
-    uuidExtension: 'pgcrypto'
+    uuidExtension: 'pgcrypto',
+    extra: {
+      max: parseInt(process.env.PG_POOL_MAX || '20', 10),
+      idleTimeoutMillis: parseInt(process.env.PG_POOL_IDLE_TIMEOUT_MS || '30000', 10)
+    }
   })
 );

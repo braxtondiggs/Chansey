@@ -12,6 +12,7 @@ import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
+import { BacktestService } from './backtest.service';
 import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
@@ -34,6 +35,7 @@ export class BacktestProcessor extends WorkerHost {
     private readonly coinResolver: CoinResolverService,
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
+    private readonly backtestService: BacktestService,
     private readonly metricsService: MetricsService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
@@ -240,6 +242,9 @@ export class BacktestProcessor extends WorkerHost {
       this.metricsService.decrementActiveBacktests(mode ?? 'historical');
       endTimer();
 
+      // Release cached dataset reference so it can be garbage-collected
+      this.backtestService.clearDatasetCache();
+
       // Request V8 to perform a full GC and release memory back to the OS.
       // Requires --expose-gc flag (set in start:prod script).
       if (typeof global.gc === 'function') {
@@ -251,9 +256,10 @@ export class BacktestProcessor extends WorkerHost {
   /**
    * Categorize error for metrics tracking
    */
-  private categorizeError(
-    error: { message: string; stack?: string }
-  ):
+  private categorizeError(error: {
+    message: string;
+    stack?: string;
+  }):
     | 'algorithm_not_found'
     | 'data_load_failed'
     | 'persistence_failed'
