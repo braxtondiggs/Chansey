@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 
 import {
   DEFAULT_VOLATILITY_CONFIG,
+  determineVolatilityRegime,
   MarketRegimeType,
-  REGIME_THRESHOLDS,
   VolatilityConfig
 } from '@chansey/api-interfaces';
 
@@ -88,18 +88,11 @@ export class MarketRegimeService {
   }
 
   /**
-   * Determine regime type from volatility percentile
+   * Determine regime type from volatility percentile.
+   * Delegates to shared utility.
    */
   private determineRegime(percentile: number): MarketRegimeType {
-    if (percentile >= REGIME_THRESHOLDS[MarketRegimeType.EXTREME].min) {
-      return MarketRegimeType.EXTREME;
-    } else if (percentile >= REGIME_THRESHOLDS[MarketRegimeType.HIGH_VOLATILITY].min) {
-      return MarketRegimeType.HIGH_VOLATILITY;
-    } else if (percentile >= REGIME_THRESHOLDS[MarketRegimeType.NORMAL].min) {
-      return MarketRegimeType.NORMAL;
-    } else {
-      return MarketRegimeType.LOW_VOLATILITY;
-    }
+    return determineVolatilityRegime(percentile);
   }
 
   /**
@@ -142,7 +135,8 @@ export class MarketRegimeService {
     volatility: number,
     percentile: number,
     config: VolatilityConfig,
-    previousRegimeId?: string
+    previousRegimeId?: string,
+    compositeData?: { compositeRegime: string; trendAboveSma: boolean; btcPrice: number; sma200Value: number }
   ): Promise<MarketRegime> {
     const marketRegime = this.marketRegimeRepo.create({
       asset,
@@ -153,7 +147,8 @@ export class MarketRegimeService {
       metadata: {
         calculationMethod: `${config.rollingDays}-day-rolling-${config.method}`,
         lookbackDays: config.lookbackDays,
-        dataPoints: config.lookbackDays
+        dataPoints: config.lookbackDays,
+        ...compositeData
       }
     });
 
@@ -179,7 +174,7 @@ export class MarketRegimeService {
     startDate.setDate(startDate.getDate() - days);
 
     const regimes = await this.marketRegimeRepo.find({
-      where: { asset },
+      where: { asset, detectedAt: MoreThanOrEqual(startDate) },
       order: { detectedAt: 'DESC' }
     });
 

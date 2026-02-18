@@ -67,6 +67,38 @@ export const REGIME_THRESHOLDS = {
 } as const;
 
 /**
+ * Classify composite regime from volatility regime and BTC trend.
+ * Pure function — shared by live and backtest paths.
+ */
+export function classifyCompositeRegime(
+  volatilityRegime: MarketRegimeType,
+  trendAboveSma: boolean
+): CompositeRegimeType {
+  if (!trendAboveSma) {
+    return volatilityRegime === MarketRegimeType.EXTREME ? CompositeRegimeType.EXTREME : CompositeRegimeType.BEAR;
+  }
+  return volatilityRegime === MarketRegimeType.HIGH_VOLATILITY || volatilityRegime === MarketRegimeType.EXTREME
+    ? CompositeRegimeType.NEUTRAL
+    : CompositeRegimeType.BULL;
+}
+
+/**
+ * Determine volatility regime from a percentile value.
+ * Pure function — shared by live detection and backtest inline calculations.
+ */
+export function determineVolatilityRegime(percentile: number): MarketRegimeType {
+  if (percentile >= REGIME_THRESHOLDS[MarketRegimeType.EXTREME].min) {
+    return MarketRegimeType.EXTREME;
+  } else if (percentile >= REGIME_THRESHOLDS[MarketRegimeType.HIGH_VOLATILITY].min) {
+    return MarketRegimeType.HIGH_VOLATILITY;
+  } else if (percentile >= REGIME_THRESHOLDS[MarketRegimeType.NORMAL].min) {
+    return MarketRegimeType.NORMAL;
+  } else {
+    return MarketRegimeType.LOW_VOLATILITY;
+  }
+}
+
+/**
  * Volatility calculation configuration
  */
 export interface VolatilityConfig {
@@ -82,3 +114,37 @@ export const DEFAULT_VOLATILITY_CONFIG: VolatilityConfig = {
   annualizationFactor: 365,
   method: 'standard'
 };
+
+/**
+ * Composite regime combining volatility + BTC trend
+ */
+export enum CompositeRegimeType {
+  BULL = 'bull', // low/normal vol + above 200 SMA
+  NEUTRAL = 'neutral', // high/extreme vol + above 200 SMA
+  BEAR = 'bear', // any vol + below 200 SMA
+  EXTREME = 'extreme' // extreme vol + below 200 SMA
+}
+
+/**
+ * Decision from the regime gate filter
+ */
+export interface RegimeGateDecision {
+  allowed: boolean;
+  compositeRegime: CompositeRegimeType;
+  volatilityRegime: MarketRegimeType;
+  trendAboveSma: boolean;
+  signalAction: string;
+  reason: string;
+  timestamp: Date;
+}
+
+/**
+ * Extended metadata that includes composite regime data.
+ * Stored in the existing JSONB `metadata` column — backward-compatible.
+ */
+export interface CompositeRegimeMetadata extends MarketRegimeMetadata {
+  compositeRegime: CompositeRegimeType;
+  trendAboveSma: boolean;
+  btcPrice: number;
+  sma200Value: number;
+}

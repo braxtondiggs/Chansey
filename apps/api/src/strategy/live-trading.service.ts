@@ -14,6 +14,8 @@ import { BalanceService } from '../balance/balance.service';
 import { ExchangeBalanceDto } from '../balance/dto';
 import { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
+import { CompositeRegimeService } from '../market-regime/composite-regime.service';
+import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { OrderService } from '../order/order.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
@@ -45,7 +47,9 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly balanceService: BalanceService,
     private readonly lockService: DistributedLockService,
     private readonly exchangeManager: ExchangeManagerService,
-    private readonly tradingStateService: TradingStateService
+    private readonly tradingStateService: TradingStateService,
+    private readonly compositeRegimeService: CompositeRegimeService,
+    private readonly regimeGateService: RegimeGateService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -142,6 +146,12 @@ export class LiveTradingService implements OnApplicationShutdown {
 
     const marketData = await this.fetchMarketData();
 
+    const compositeRegime = this.compositeRegimeService.getCompositeRegime();
+    const volatilityRegime = this.compositeRegimeService.getVolatilityRegime();
+    const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
+    const overrideActive = this.compositeRegimeService.isOverrideActive();
+    let gateBlockedCount = 0;
+
     for (const strategy of strategies) {
       try {
         const allocatedCapital = capitalMap.get(strategy.id) || 0;
@@ -161,12 +171,31 @@ export class LiveTradingService implements OnApplicationShutdown {
             continue;
           }
 
+          // Regime gate: block BUY signals in bear/extreme regimes
+          const gateDecision = this.regimeGateService.filterLiveSignal(
+            signal.action,
+            compositeRegime,
+            overrideActive,
+            volatilityRegime,
+            trendAboveSma
+          );
+          if (!gateDecision.allowed) {
+            gateBlockedCount++;
+            continue;
+          }
+
           await this.placeOrder(user, strategy.id, signal);
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
         this.logger.error(`Strategy ${strategy.id} execution failed for user ${user.id}: ${err.message}`);
       }
+    }
+
+    if (gateBlockedCount > 0) {
+      this.logger.log(
+        `Regime gate blocked ${gateBlockedCount} signal(s) for user ${user.id} (regime=${compositeRegime})`
+      );
     }
   }
 
