@@ -28,6 +28,8 @@ export interface BacktestFinalMetrics {
   totalTrades: number;
   winningTrades: number;
   winRate: number;
+  profitFactor: number;
+  volatility: number;
 }
 
 @Injectable()
@@ -106,6 +108,12 @@ export class BacktestResultService {
         totalTrades: sanitizedMetrics.totalTrades,
         winningTrades: sanitizedMetrics.winningTrades,
         winRate: sanitizedMetrics.winRate,
+        // Merge profitFactor/volatility into JSONB column (cast needed for TypeORM's deep partial typing)
+        performanceMetrics: {
+          ...(backtest.performanceMetrics ?? {}),
+          profitFactor: sanitizedMetrics.profitFactor,
+          volatility: sanitizedMetrics.volatility
+        } as any,
         status: BacktestStatus.COMPLETED,
         completedAt: new Date()
       });
@@ -155,7 +163,9 @@ export class BacktestResultService {
           totalReturn: results.finalMetrics.totalReturn,
           maxDrawdown: results.finalMetrics.maxDrawdown,
           winRate: results.finalMetrics.winRate,
-          totalTrades: results.finalMetrics.totalTrades
+          totalTrades: results.finalMetrics.totalTrades,
+          profitFactor: results.finalMetrics.profitFactor,
+          volatility: results.finalMetrics.volatility
         }
       });
     }
@@ -177,7 +187,9 @@ export class BacktestResultService {
       maxDrawdown: sanitizeNumericValue(metrics.maxDrawdown, { maxIntegerDigits: 4, fieldName: 'maxDrawdown' }) ?? 0,
       totalTrades: Number.isFinite(metrics.totalTrades) ? metrics.totalTrades : 0,
       winningTrades: Number.isFinite(metrics.winningTrades) ? metrics.winningTrades : 0,
-      winRate: sanitizeNumericValue(metrics.winRate, { maxIntegerDigits: 4, fieldName: 'winRate' }) ?? 0
+      winRate: sanitizeNumericValue(metrics.winRate, { maxIntegerDigits: 4, fieldName: 'winRate' }) ?? 0,
+      profitFactor: sanitizeNumericValue(metrics.profitFactor, { maxIntegerDigits: 4, fieldName: 'profitFactor' }) ?? 1,
+      volatility: sanitizeNumericValue(metrics.volatility, { maxIntegerDigits: 4, fieldName: 'volatility' }) ?? 0
     };
   }
 
