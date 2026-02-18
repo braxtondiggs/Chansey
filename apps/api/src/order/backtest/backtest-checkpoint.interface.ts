@@ -29,6 +29,8 @@ export interface PersistedResultsCounts {
   snapshots: number;
   sells?: number;
   winningSells?: number;
+  grossProfit?: number;
+  grossLoss?: number;
 }
 
 /**

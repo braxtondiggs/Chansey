@@ -15,12 +15,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 
+import { MarketRegimeType } from '@chansey/api-interfaces';
+
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { ParameterSpace } from '../../optimization/interfaces/parameter-space.interface';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
+import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
 import { CreatePipelineInput, PipelineFiltersDto } from '../dto';
@@ -34,6 +38,7 @@ import {
   PIPELINE_EVENTS,
   PaperTradingStageResult,
   PipelineProgressionRules,
+  PipelineScoreResult,
   PipelineStage,
   PipelineStageResults,
   PipelineStatus,
@@ -68,6 +73,10 @@ export class PipelineOrchestratorService {
     private readonly backtestService: BacktestService,
     @Inject(forwardRef(() => PaperTradingService))
     private readonly paperTradingService: PaperTradingService,
+    @Inject(forwardRef(() => ScoringService))
+    private readonly scoringService: ScoringService,
+    @Inject(forwardRef(() => MarketRegimeService))
+    private readonly marketRegimeService: MarketRegimeService,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource
   ) {}
@@ -493,6 +502,8 @@ export class PipelineOrchestratorService {
       maxDrawdown: number;
       winRate: number;
       totalTrades: number;
+      profitFactor: number;
+      volatility: number;
     }
   ): Promise<void> {
     // Find pipeline with this backtest
@@ -519,7 +530,13 @@ export class PipelineOrchestratorService {
       const result: HistoricalStageResult = {
         backtestId,
         status: 'COMPLETED',
-        ...metrics,
+        sharpeRatio: metrics.sharpeRatio,
+        totalReturn: metrics.totalReturn,
+        maxDrawdown: metrics.maxDrawdown,
+        winRate: metrics.winRate,
+        totalTrades: metrics.totalTrades,
+        profitFactor: metrics.profitFactor,
+        volatility: metrics.volatility,
         initialCapital: pipeline.stageConfig.historical.initialCapital,
         finalValue: pipeline.stageConfig.historical.initialCapital * (1 + metrics.totalReturn),
         annualizedReturn: metrics.totalReturn, // Simplified
@@ -541,7 +558,13 @@ export class PipelineOrchestratorService {
       const result: LiveReplayStageResult = {
         backtestId,
         status: 'COMPLETED',
-        ...metrics,
+        sharpeRatio: metrics.sharpeRatio,
+        totalReturn: metrics.totalReturn,
+        maxDrawdown: metrics.maxDrawdown,
+        winRate: metrics.winRate,
+        totalTrades: metrics.totalTrades,
+        profitFactor: metrics.profitFactor,
+        volatility: metrics.volatility,
         initialCapital: pipeline.stageConfig.liveReplay.initialCapital,
         finalValue: pipeline.stageConfig.liveReplay.initialCapital * (1 + metrics.totalReturn),
         annualizedReturn: metrics.totalReturn,
@@ -558,18 +581,40 @@ export class PipelineOrchestratorService {
       };
     }
 
-    await this.pipelineRepository.save(pipeline);
+    if (type === 'HISTORICAL') {
+      await this.pipelineRepository.save(pipeline);
 
-    // Evaluate progression
-    const thresholds =
-      type === 'HISTORICAL' ? pipeline.progressionRules.historical : pipeline.progressionRules.liveReplay;
-
-    const { passed, failures } = this.evaluateStageProgression(metrics, thresholds);
-
-    if (passed) {
+      // AUTO-ADVANCE: Historical stage always advances to LIVE_REPLAY regardless of metrics.
+      // The actual quality gate happens after LIVE_REPLAY using the scoring service.
+      this.logger.log(`Pipeline ${pipeline.id}: HISTORICAL auto-advancing to LIVE_REPLAY`);
       await this.advanceToNextStage(pipeline);
     } else {
-      await this.failPipeline(pipeline, `${type} backtest did not meet thresholds: ${failures.join('; ')}`);
+      // SCORE-BASED GATE at LIVE_REPLAY
+      const scoreResult = await this.calculatePipelineScore(pipeline, metrics);
+
+      // Store score on pipeline entity — single save persists both stageResults and score data
+      pipeline.pipelineScore = scoreResult.overallScore;
+      pipeline.scoreGrade = scoreResult.grade;
+      pipeline.scoringRegime = scoreResult.regime;
+      pipeline.scoreDetails = scoreResult.componentScores as unknown as Record<string, unknown>;
+      pipeline.stageResults = {
+        ...pipeline.stageResults,
+        scoring: scoreResult
+      };
+      await this.pipelineRepository.save(pipeline);
+
+      const minimumScore = pipeline.progressionRules.minimumPipelineScore ?? 30;
+      if (scoreResult.overallScore >= minimumScore) {
+        this.logger.log(
+          `Pipeline ${pipeline.id}: LIVE_REPLAY score ${scoreResult.overallScore.toFixed(1)} >= ${minimumScore}, advancing`
+        );
+        await this.advanceToNextStage(pipeline);
+      } else {
+        await this.failPipeline(
+          pipeline,
+          `LIVE_REPLAY score ${scoreResult.overallScore.toFixed(1)} < minimum ${minimumScore}`
+        );
+      }
     }
   }
 
@@ -804,14 +849,24 @@ export class PipelineOrchestratorService {
   }
 
   /**
-   * Generate deployment recommendation based on stage results
+   * Generate deployment recommendation based on stage results.
+   * Uses pipeline score when available (new score-based gating),
+   * falls back to legacy metric checks for backward compatibility.
    */
   private generateRecommendation(stageResults?: PipelineStageResults): DeploymentRecommendation {
     if (!stageResults) {
       return DeploymentRecommendation.DO_NOT_DEPLOY;
     }
 
-    // Check if all stages passed
+    // Use score-based recommendation if pipeline score is available
+    const pipelineScore = stageResults.scoring?.overallScore;
+    if (pipelineScore !== undefined) {
+      if (pipelineScore >= 70) return DeploymentRecommendation.DEPLOY;
+      if (pipelineScore >= 30) return DeploymentRecommendation.NEEDS_REVIEW;
+      return DeploymentRecommendation.DO_NOT_DEPLOY;
+    }
+
+    // Fallback: legacy metric-based recommendation for older pipelines
     const allStagesPassed =
       stageResults.optimization?.status === 'COMPLETED' &&
       stageResults.historical?.status === 'COMPLETED' &&
@@ -822,7 +877,6 @@ export class PipelineOrchestratorService {
       return DeploymentRecommendation.DO_NOT_DEPLOY;
     }
 
-    // Check for high degradation across stages (historical to paper trading)
     const historicalReturn = stageResults.historical?.totalReturn ?? 0;
     const paperTradingReturn = stageResults.paperTrading?.totalReturn ?? 0;
 
@@ -830,12 +884,10 @@ export class PipelineOrchestratorService {
       ((historicalReturn - paperTradingReturn) / Math.max(Math.abs(historicalReturn), 0.01)) * 100
     );
 
-    // Check final metrics quality
     const finalSharpe = stageResults.paperTrading?.sharpeRatio ?? 0;
     const finalDrawdown = stageResults.paperTrading?.maxDrawdown ?? 1;
     const finalWinRate = stageResults.paperTrading?.winRate ?? 0;
 
-    // Strong metrics = DEPLOY
     if (
       finalSharpe >= 1.0 &&
       finalDrawdown <= 0.25 &&
@@ -846,12 +898,74 @@ export class PipelineOrchestratorService {
       return DeploymentRecommendation.DEPLOY;
     }
 
-    // Acceptable but not great = NEEDS_REVIEW
     if (finalSharpe >= 0.5 && finalDrawdown <= 0.4 && finalWinRate >= 0.4 && avgDegradation <= 40) {
       return DeploymentRecommendation.NEEDS_REVIEW;
     }
 
     return DeploymentRecommendation.DO_NOT_DEPLOY;
+  }
+
+  /**
+   * Calculate pipeline score using the scoring service and market regime
+   */
+  private async calculatePipelineScore(
+    pipeline: Pipeline,
+    metrics: {
+      sharpeRatio: number;
+      totalReturn: number;
+      maxDrawdown: number;
+      winRate: number;
+      totalTrades: number;
+      profitFactor: number;
+      volatility: number;
+    }
+  ): Promise<PipelineScoreResult> {
+    // Compute WFA degradation between historical and live replay totalReturn
+    const historicalReturn = pipeline.stageResults?.historical?.totalReturn ?? 0;
+    const degradation =
+      historicalReturn !== 0 ? ((historicalReturn - metrics.totalReturn) / Math.abs(historicalReturn)) * 100 : 0;
+
+    // Fetch current BTC market regime (graceful fallback).
+    // BTC is used as the crypto market bellwether; deriving the traded asset would
+    // require loading additional backtest/marketDataSet relations for marginal benefit.
+    let regimeType: MarketRegimeType | undefined;
+    try {
+      const regime = await this.marketRegimeService.getCurrentRegime('BTC');
+      regimeType = regime?.regime;
+    } catch (error) {
+      this.logger.warn(`Failed to fetch market regime, using no modifier: ${error}`);
+    }
+
+    // Build scoring metrics — compute calmarRatio from live replay metrics
+    const calmarRatio = metrics.maxDrawdown !== 0 ? metrics.totalReturn / Math.abs(metrics.maxDrawdown) : 0;
+
+    const scoringMetrics = {
+      sharpeRatio: metrics.sharpeRatio,
+      calmarRatio,
+      maxDrawdown: metrics.maxDrawdown,
+      winRate: metrics.winRate,
+      profitFactor: metrics.profitFactor,
+      totalTrades: metrics.totalTrades,
+      totalReturn: metrics.totalReturn,
+      volatility: metrics.volatility
+    };
+
+    // Negative degradation means live replay outperformed historical; WFA degradation
+    // only penalizes, so clamping to 0 is intentional.
+    const result = this.scoringService.calculateScoreFromMetrics(scoringMetrics, Math.max(0, degradation), {
+      marketRegime: regimeType
+    });
+
+    return {
+      overallScore: result.overallScore,
+      grade: result.grade,
+      componentScores: result.componentScores,
+      regimeModifier: result.regimeModifier,
+      regime: regimeType ?? 'unknown',
+      degradation,
+      warnings: result.warnings,
+      calculatedAt: new Date().toISOString()
+    };
   }
 
   // Stage execution methods

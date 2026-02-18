@@ -19,6 +19,7 @@ import { Backtest } from '../../order/backtest/backtest.entity';
 import { PaperTradingSession } from '../../order/paper-trading/entities/paper-trading-session.entity';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
+import { ColumnNumericTransformer } from '../../utils/transformers/columnNumeric.transformer';
 import {
   DeploymentRecommendation,
   PipelineProgressionRules,
@@ -155,6 +156,22 @@ export class Pipeline {
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Comprehensive final summary report', required: false })
   summaryReport?: PipelineSummaryReport;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Composite pipeline score (0-100)', required: false })
+  pipelineScore?: number;
+
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  @ApiProperty({ description: 'Letter grade (A-F)', required: false })
+  scoreGrade?: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  @ApiProperty({ description: 'Market regime at time of scoring', required: false })
+  scoringRegime?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: 'Component score breakdown', required: false })
+  scoreDetails?: Record<string, unknown>;
 
   @IsString()
   @IsOptional()

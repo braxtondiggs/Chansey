@@ -1,3 +1,5 @@
+import { ComponentScores, StrategyGrade } from '@chansey/api-interfaces';
+
 import { DeploymentRecommendation, PipelineStage } from './pipeline-config.interface';
 
 /**
@@ -80,6 +82,20 @@ export interface PaperTradingStageResult extends BaseStageMetrics {
 }
 
 /**
+ * Score result calculated at LIVE_REPLAY gate
+ */
+export interface PipelineScoreResult {
+  overallScore: number;
+  grade: StrategyGrade;
+  componentScores: ComponentScores;
+  regimeModifier: number;
+  regime: string;
+  degradation: number;
+  warnings: string[];
+  calculatedAt: string;
+}
+
+/**
  * Combined stage results
  */
 export interface PipelineStageResults {
@@ -87,6 +103,7 @@ export interface PipelineStageResults {
   historical?: HistoricalStageResult;
   liveReplay?: LiveReplayStageResult;
   paperTrading?: PaperTradingStageResult;
+  scoring?: PipelineScoreResult;
 }
 
 /**
@@ -139,6 +156,15 @@ export interface PipelineSummaryReport {
 
   /** Consistency score measuring variance across stages (0-100, higher = more consistent) */
   consistencyScore: number;
+
+  /** Pipeline composite score (if available) */
+  pipelineScore?: number;
+
+  /** Score grade (if available) */
+  scoreGrade?: string;
+
+  /** Market regime at time of scoring (if available) */
+  scoringRegime?: string;
 
   /** Any warnings or anomalies detected */
   warnings: PipelineWarning[];

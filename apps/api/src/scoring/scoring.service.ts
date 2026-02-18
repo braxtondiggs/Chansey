@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { ComponentScores, GRADE_RANGES, StrategyGrade } from '@chansey/api-interfaces';
+import { ComponentScores, GRADE_RANGES, MarketRegimeType, StrategyGrade } from '@chansey/api-interfaces';
 
 import { CalmarRatioCalculator } from './metrics/calmar-ratio.calculator';
 import { ProfitFactorCalculator } from './metrics/profit-factor.calculator';
@@ -89,6 +89,61 @@ export class ScoringService {
     );
 
     return saved;
+  }
+
+  /**
+   * Calculate score from raw metrics without persisting to DB.
+   * Bridges pipeline entities (Backtest) with scoring system (BacktestRun).
+   */
+  calculateScoreFromMetrics(
+    metrics: {
+      sharpeRatio: number;
+      calmarRatio: number;
+      maxDrawdown: number;
+      winRate: number;
+      profitFactor: number;
+      totalTrades: number;
+      totalReturn: number;
+      volatility: number;
+    },
+    wfaDegradation: number,
+    options?: { marketRegime?: MarketRegimeType }
+  ): {
+    overallScore: number;
+    grade: StrategyGrade;
+    componentScores: ComponentScores;
+    warnings: string[];
+    regimeModifier: number;
+  } {
+    const componentScores = this.calculateComponentScores(metrics, wfaDegradation);
+    const baseScore = this.calculateOverallScore(componentScores);
+    const regimeModifier = this.getRegimeModifier(options?.marketRegime);
+    const overallScore = Math.max(0, Math.min(100, baseScore + regimeModifier));
+    const grade = this.determineGrade(overallScore);
+    const warnings = this.generateWarnings(componentScores, metrics, wfaDegradation);
+
+    return { overallScore, grade, componentScores, warnings, regimeModifier };
+  }
+
+  /**
+   * Get score modifier based on market regime.
+   * Higher volatility regimes get a bonus since strategies that perform
+   * acceptably in volatile markets are more valuable.
+   */
+  private getRegimeModifier(regime?: MarketRegimeType): number {
+    if (!regime) return 0;
+    switch (regime) {
+      case MarketRegimeType.EXTREME:
+        return 15;
+      case MarketRegimeType.HIGH_VOLATILITY:
+        return 10;
+      case MarketRegimeType.NORMAL:
+        return 0;
+      case MarketRegimeType.LOW_VOLATILITY:
+        return -5;
+      default:
+        return 0;
+    }
   }
 
   /**

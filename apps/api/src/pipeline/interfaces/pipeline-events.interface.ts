@@ -23,6 +23,8 @@ export interface BacktestCompletedEvent {
     maxDrawdown: number;
     winRate: number;
     totalTrades: number;
+    profitFactor: number;
+    volatility: number;
   };
 }
 

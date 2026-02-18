@@ -8,17 +8,21 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 
+import { StrategyGrade } from '@chansey/api-interfaces';
+
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
 
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
+import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
 import { CreatePipelineInput } from '../dto';
 import { Pipeline } from '../entities/pipeline.entity';
-import { DEFAULT_PROGRESSION_RULES, PipelineStage, PipelineStatus } from '../interfaces';
+import { DEFAULT_PROGRESSION_RULES, DeploymentRecommendation, PipelineStage, PipelineStatus } from '../interfaces';
 import { pipelineConfig } from '../pipeline.config';
 
 describe('PipelineOrchestratorService', () => {
@@ -28,6 +32,8 @@ describe('PipelineOrchestratorService', () => {
   let exchangeKeyRepository: jest.Mocked<Repository<ExchangeKey>>;
   let pipelineQueue: jest.Mocked<Queue>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
+  let scoringService: jest.Mocked<ScoringService>;
+  let marketRegimeService: jest.Mocked<MarketRegimeService>;
 
   const mockUser: User = {
     id: 'user-123',
@@ -89,6 +95,23 @@ describe('PipelineOrchestratorService', () => {
     strategyConfigId: 'strategy-123',
     exchangeKeyId: 'exchange-key-123',
     stageConfig: mockPipeline.stageConfig
+  };
+
+  /** Default mock score result returned by ScoringService.calculateScoreFromMetrics */
+  const mockScoreResult = {
+    overallScore: 55,
+    grade: StrategyGrade.C,
+    componentScores: {
+      sharpeRatio: { value: 1.0, score: 75, weight: 0.25, percentile: 0 },
+      calmarRatio: { value: 1.0, score: 75, weight: 0.15, percentile: 0 },
+      winRate: { value: 0.5, score: 50, weight: 0.1, percentile: 0 },
+      profitFactor: { value: 1.0, score: 25, weight: 0.1, percentile: 0 },
+      wfaDegradation: { value: 10, score: 100, weight: 0.2, percentile: 0 },
+      stability: { value: 50, score: 75, weight: 0.1, percentile: 0 },
+      correlation: { value: 0, score: 100, weight: 0.1, percentile: 0 }
+    },
+    warnings: [],
+    regimeModifier: 0
   };
 
   beforeEach(async () => {
@@ -162,6 +185,18 @@ describe('PipelineOrchestratorService', () => {
           }
         },
         {
+          provide: ScoringService,
+          useValue: {
+            calculateScoreFromMetrics: jest.fn().mockReturnValue(mockScoreResult)
+          }
+        },
+        {
+          provide: MarketRegimeService,
+          useValue: {
+            getCurrentRegime: jest.fn().mockResolvedValue({ regime: 'normal' })
+          }
+        },
+        {
           provide: EventEmitter2,
           useValue: {
             emit: jest.fn()
@@ -182,6 +217,8 @@ describe('PipelineOrchestratorService', () => {
     exchangeKeyRepository = module.get(getRepositoryToken(ExchangeKey));
     pipelineQueue = module.get(getQueueToken('pipeline'));
     eventEmitter = module.get(EventEmitter2);
+    scoringService = module.get(ScoringService);
+    marketRegimeService = module.get(MarketRegimeService);
   });
 
   describe('createPipeline', () => {
@@ -380,27 +417,372 @@ describe('PipelineOrchestratorService', () => {
   });
 
   describe('handleBacktestComplete', () => {
-    it('should advance to live replay after historical backtest', async () => {
+    it.each([
+      {
+        scenario: 'good metrics',
+        backtestId: 'backtest-123',
+        metrics: {
+          sharpeRatio: 1.5,
+          totalReturn: 0.15,
+          maxDrawdown: 0.1,
+          winRate: 0.55,
+          totalTrades: 50,
+          profitFactor: 2.0,
+          volatility: 0.3
+        }
+      },
+      {
+        scenario: 'terrible metrics',
+        backtestId: 'backtest-bad',
+        metrics: {
+          sharpeRatio: -1,
+          totalReturn: -0.5,
+          maxDrawdown: 0.8,
+          winRate: 0.1,
+          totalTrades: 5,
+          profitFactor: 0.5,
+          volatility: 0.8
+        }
+      }
+    ])('should auto-advance HISTORICAL to LIVE_REPLAY with $scenario', async ({ backtestId, metrics }) => {
       const runningPipeline = {
         ...mockPipeline,
         status: PipelineStatus.RUNNING,
         currentStage: PipelineStage.HISTORICAL,
-        historicalBacktestId: 'backtest-123',
+        historicalBacktestId: backtestId,
         user: mockUser
       };
       pipelineRepository.findOne.mockResolvedValue(runningPipeline);
       pipelineRepository.save.mockResolvedValue(runningPipeline);
 
-      await service.handleBacktestComplete('backtest-123', 'HISTORICAL', {
-        sharpeRatio: 1.5,
-        totalReturn: 0.15,
-        maxDrawdown: 0.1,
-        winRate: 0.55,
-        totalTrades: 50
-      });
+      await service.handleBacktestComplete(backtestId, 'HISTORICAL', metrics);
 
       expect(pipelineRepository.save).toHaveBeenCalled();
-      expect(eventEmitter.emit).toHaveBeenCalled();
+      expect(pipelineQueue.add).toHaveBeenCalledWith(
+        'execute-stage',
+        expect.objectContaining({ stage: PipelineStage.LIVE_REPLAY }),
+        expect.any(Object)
+      );
+      expect(scoringService.calculateScoreFromMetrics).not.toHaveBeenCalled();
+    });
+
+    it('should advance LIVE_REPLAY to PAPER_TRADE when score >= 30', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-lr-123',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.15 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        ...mockScoreResult,
+        overallScore: 55
+      });
+
+      await service.handleBacktestComplete('backtest-lr-123', 'LIVE_REPLAY', {
+        sharpeRatio: 1.0,
+        totalReturn: 0.12,
+        maxDrawdown: 0.15,
+        winRate: 0.5,
+        totalTrades: 50,
+        profitFactor: 1.5,
+        volatility: 0.25
+      });
+
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalled();
+      expect(pipelineQueue.add).toHaveBeenCalledWith(
+        'execute-stage',
+        expect.objectContaining({ stage: PipelineStage.PAPER_TRADE }),
+        expect.any(Object)
+      );
+    });
+
+    it('should fail LIVE_REPLAY when score < 30', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-lr-fail',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.15 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        ...mockScoreResult,
+        overallScore: 20,
+        grade: StrategyGrade.F
+      });
+
+      await service.handleBacktestComplete('backtest-lr-fail', 'LIVE_REPLAY', {
+        sharpeRatio: -0.5,
+        totalReturn: -0.3,
+        maxDrawdown: 0.6,
+        winRate: 0.2,
+        totalTrades: 10,
+        profitFactor: 0.3,
+        volatility: 0.7
+      });
+
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('score 20.0 < minimum 30')
+        })
+      );
+    });
+
+    it('should apply regime modifier correctly', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-lr-regime',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.15 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      marketRegimeService.getCurrentRegime.mockResolvedValue({ regime: 'extreme' } as any);
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        ...mockScoreResult,
+        overallScore: 45,
+        regimeModifier: 15
+      });
+
+      await service.handleBacktestComplete('backtest-lr-regime', 'LIVE_REPLAY', {
+        sharpeRatio: 0.5,
+        totalReturn: 0.05,
+        maxDrawdown: 0.2,
+        winRate: 0.45,
+        totalTrades: 30,
+        profitFactor: 1.1,
+        volatility: 0.35
+      });
+
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(
+        expect.objectContaining({ sharpeRatio: 0.5 }),
+        expect.any(Number),
+        { marketRegime: 'extreme' }
+      );
+    });
+
+    it('should gracefully handle regime service failure with modifier=0', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-lr-no-regime',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.15 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      marketRegimeService.getCurrentRegime.mockRejectedValue(new Error('Redis unavailable'));
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        ...mockScoreResult,
+        overallScore: 55,
+        regimeModifier: 0
+      });
+
+      await service.handleBacktestComplete('backtest-lr-no-regime', 'LIVE_REPLAY', {
+        sharpeRatio: 1.0,
+        totalReturn: 0.12,
+        maxDrawdown: 0.15,
+        winRate: 0.5,
+        totalTrades: 50,
+        profitFactor: 1.5,
+        volatility: 0.25
+      });
+
+      // Should still work — calls scoring with undefined regime
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), expect.any(Number), {
+        marketRegime: undefined
+      });
+      // Should advance (score 55 >= 30)
+      expect(pipelineQueue.add).toHaveBeenCalledWith(
+        'execute-stage',
+        expect.objectContaining({ stage: PipelineStage.PAPER_TRADE }),
+        expect.any(Object)
+      );
+    });
+
+    it('should store score on pipeline entity', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-lr-store',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.15 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        ...mockScoreResult,
+        overallScore: 72,
+        grade: StrategyGrade.B
+      });
+
+      await service.handleBacktestComplete('backtest-lr-store', 'LIVE_REPLAY', {
+        sharpeRatio: 1.5,
+        totalReturn: 0.2,
+        maxDrawdown: 0.1,
+        winRate: 0.6,
+        totalTrades: 80,
+        profitFactor: 2.5,
+        volatility: 0.2
+      });
+
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pipelineScore: 72,
+          scoreGrade: StrategyGrade.B,
+          scoringRegime: 'normal'
+        })
+      );
+    });
+
+    it('should pass score exactly 30 (>= 30)', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-lr-edge',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.1 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        ...mockScoreResult,
+        overallScore: 30,
+        grade: StrategyGrade.F
+      });
+
+      await service.handleBacktestComplete('backtest-lr-edge', 'LIVE_REPLAY', {
+        sharpeRatio: 0.3,
+        totalReturn: 0.02,
+        maxDrawdown: 0.25,
+        winRate: 0.4,
+        totalTrades: 20,
+        profitFactor: 1.0,
+        volatility: 0.4
+      });
+
+      // Score exactly 30 should pass
+      expect(pipelineQueue.add).toHaveBeenCalledWith(
+        'execute-stage',
+        expect.objectContaining({ stage: PipelineStage.PAPER_TRADE }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('recommendation based on score', () => {
+    it('should recommend DEPLOY when score >= 70', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        progressionRules: {
+          ...DEFAULT_PROGRESSION_RULES,
+          paperTrading: { minSharpeRatio: 0.3, minTotalReturn: 0, maxDrawdown: 0.5, minWinRate: 0.3 }
+        },
+        stageResults: {
+          optimization: { status: 'COMPLETED' },
+          historical: { status: 'COMPLETED', totalReturn: 0.2 },
+          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 },
+          scoring: { overallScore: 75, grade: StrategyGrade.B }
+        }
+      } as Pipeline;
+
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handlePaperTradingComplete(
+        'session-1',
+        runningPipeline.id,
+        {
+          initialCapital: 10000,
+          currentPortfolioValue: 12000,
+          totalReturn: 0.17,
+          totalReturnPercent: 17,
+          maxDrawdown: 0.15,
+          sharpeRatio: 1.5,
+          winRate: 0.6,
+          totalTrades: 80,
+          winningTrades: 48,
+          losingTrades: 32,
+          totalFees: 10,
+          durationHours: 168
+        },
+        'duration_reached'
+      );
+
+      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DEPLOY);
+    });
+
+    it('should recommend NEEDS_REVIEW when score 30-69', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        progressionRules: {
+          ...DEFAULT_PROGRESSION_RULES,
+          paperTrading: { minSharpeRatio: 0.3, minTotalReturn: 0, maxDrawdown: 0.5, minWinRate: 0.3 }
+        },
+        stageResults: {
+          optimization: { status: 'COMPLETED' },
+          historical: { status: 'COMPLETED', totalReturn: 0.1 },
+          liveReplay: { status: 'COMPLETED', totalReturn: 0.08 },
+          scoring: { overallScore: 50, grade: StrategyGrade.C }
+        }
+      } as Pipeline;
+
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handlePaperTradingComplete(
+        'session-2',
+        runningPipeline.id,
+        {
+          initialCapital: 10000,
+          currentPortfolioValue: 10800,
+          totalReturn: 0.07,
+          totalReturnPercent: 7,
+          maxDrawdown: 0.2,
+          sharpeRatio: 0.6,
+          winRate: 0.45,
+          totalTrades: 40,
+          winningTrades: 18,
+          losingTrades: 22,
+          totalFees: 5,
+          durationHours: 168
+        },
+        'duration_reached'
+      );
+
+      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.NEEDS_REVIEW);
     });
   });
 
@@ -488,6 +870,50 @@ describe('PipelineOrchestratorService', () => {
 
       expect(runningPipeline.status).toBe(PipelineStatus.COMPLETED);
       expect(eventEmitter.emit).toHaveBeenCalled();
+    });
+
+    it('should fail pipeline when paper trading thresholds not met', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        progressionRules: {
+          ...DEFAULT_PROGRESSION_RULES,
+          paperTrading: { minSharpeRatio: 1.0, minTotalReturn: 0.05, maxDrawdown: 0.2, minWinRate: 0.5 }
+        },
+        stageResults: {
+          optimization: { status: 'COMPLETED' },
+          historical: { status: 'COMPLETED', totalReturn: 0.2 },
+          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 }
+        }
+      } as Pipeline;
+
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handlePaperTradingComplete(
+        'session-fail',
+        runningPipeline.id,
+        {
+          initialCapital: 10000,
+          currentPortfolioValue: 9000,
+          totalReturn: -0.1,
+          totalReturnPercent: -10,
+          maxDrawdown: 0.35,
+          sharpeRatio: 0.2,
+          winRate: 0.3,
+          totalTrades: 20,
+          winningTrades: 6,
+          losingTrades: 14,
+          totalFees: 5,
+          durationHours: 168
+        },
+        'duration_reached'
+      );
+
+      expect(runningPipeline.status).toBe(PipelineStatus.FAILED);
+      expect(runningPipeline.failureReason).toContain('Paper trading did not meet thresholds');
+      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
     });
   });
 
