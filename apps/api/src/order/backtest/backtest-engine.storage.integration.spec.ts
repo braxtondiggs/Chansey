@@ -15,6 +15,8 @@ import { SignalType } from '../../algorithm/interfaces';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
+import { RegimeGateService } from '../../market-regime/regime-gate.service';
+import { VolatilityCalculator } from '../../market-regime/volatility.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { PositionAnalysisService } from '../services/position-analysis.service';
 
@@ -27,6 +29,8 @@ const positionManager = new PositionManagerService();
 const metricsCalculator = new MetricsCalculatorService(sharpeCalculator, drawdownCalculator);
 const portfolioState = new PortfolioStateService();
 const signalThrottle = new SignalThrottleService();
+const regimeGateService = new RegimeGateService();
+const volatilityCalculator = new VolatilityCalculator();
 
 describe('BacktestEngine storage flow', () => {
   /** Build a MarketDataReaderService backed by a mock storage that streams the given CSV */
@@ -74,7 +78,9 @@ describe('BacktestEngine storage flow', () => {
       metricsCalculator,
       portfolioState,
       new PositionAnalysisService(),
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
   };
 
