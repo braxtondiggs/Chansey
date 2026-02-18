@@ -136,7 +136,7 @@ export class LiveTradingService implements OnApplicationShutdown {
       return;
     }
 
-    const capitalMap = await this.capitalAllocation.allocateCapitalByPerformance(actualCapital, strategies);
+    const capitalMap = await this.capitalAllocation.allocateCapitalByKelly(actualCapital, strategies);
 
     const userPositions = await this.positionTracking.getPositions(user.id);
 
