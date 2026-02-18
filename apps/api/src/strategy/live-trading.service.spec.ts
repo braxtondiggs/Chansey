@@ -59,7 +59,7 @@ describe('LiveTradingService', () => {
     } as unknown as jest.Mocked<RiskPoolMappingService>;
 
     capitalAllocation = {
-      allocateCapitalByPerformance: jest.fn()
+      allocateCapitalByKelly: jest.fn()
     } as unknown as jest.Mocked<CapitalAllocationService>;
 
     positionTracking = {
@@ -133,7 +133,7 @@ describe('LiveTradingService', () => {
       current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
     } as any);
     riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue([{ id: 'strategy-1' } as any]);
-    capitalAllocation.allocateCapitalByPerformance.mockResolvedValue(new Map([['strategy-1', 50]]));
+    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 50]]));
     positionTracking.getPositions.mockResolvedValue([]);
     jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
 
@@ -157,7 +157,7 @@ describe('LiveTradingService', () => {
       current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
     } as any);
     riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue([{ id: 'strategy-1' } as any]);
-    capitalAllocation.allocateCapitalByPerformance.mockResolvedValue(new Map([['strategy-1', 50]]));
+    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 50]]));
     positionTracking.getPositions.mockResolvedValue([]);
     jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
 
