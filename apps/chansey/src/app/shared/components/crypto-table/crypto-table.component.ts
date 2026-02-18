@@ -18,9 +18,9 @@ import { TooltipModule } from 'primeng/tooltip';
 
 import { Coin } from '@chansey/api-interfaces';
 
-import { PriceService } from '@chansey-web/app/pages/prices/prices.service';
-import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
-import { FormatLargeNumberPipe } from '@chansey-web/app/shared/pipes/format-large-number.pipe';
+import { PriceService } from '../../../pages/prices/prices.service';
+import { CounterDirective } from '../../directives/counter/counter.directive';
+import { FormatLargeNumberPipe } from '../../pipes/format-large-number.pipe';
 
 export interface CryptoTableConfig {
   showWatchlistToggle?: boolean;

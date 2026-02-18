@@ -5,7 +5,7 @@ import { ButtonModule } from 'primeng/button';
 import { ToastModule } from 'primeng/toast';
 import { Subject, takeUntil } from 'rxjs';
 
-import { PwaService } from '@chansey-web/app/shared/services';
+import { PwaService } from '../../services/pwa.service';
 
 @Component({
   selector: 'app-pwa-toast',

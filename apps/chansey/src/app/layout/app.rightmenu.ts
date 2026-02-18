@@ -2,9 +2,8 @@ import { Component, inject } from '@angular/core';
 
 import { DrawerModule } from 'primeng/drawer';
 
-import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
-
 import { CryptoTradingComponent } from '../shared/components/crypto-trading/crypto-trading.component';
+import { LayoutService } from '../shared/services/layout.service';
 
 @Component({
   selector: 'app-rightmenu',

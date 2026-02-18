@@ -1,4 +1,3 @@
-
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -8,9 +7,9 @@ import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 
-import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
-
 import { ForgotService } from './forgot.service';
+
+import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
 
 @Component({
   selector: 'app-forgot',
@@ -23,7 +22,7 @@ import { ForgotService } from './forgot.service';
     MessageModule,
     ReactiveFormsModule,
     RouterLink
-],
+  ],
   templateUrl: './forgot.component.html'
 })
 export class ForgotComponent {

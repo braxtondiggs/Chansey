@@ -5,7 +5,7 @@ import { CardModule } from 'primeng/card';
 
 import { CoinDetailResponseDto } from '@chansey/api-interfaces';
 
-import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
+import { CounterDirective } from '../../../shared/directives/counter/counter.directive';
 
 /**
  * T026: MarketStatsComponent

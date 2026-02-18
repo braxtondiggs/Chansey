@@ -21,7 +21,7 @@ import { TooltipModule } from 'primeng/tooltip';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
-import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
+import { LayoutService } from '../shared/services/layout.service';
 
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector
