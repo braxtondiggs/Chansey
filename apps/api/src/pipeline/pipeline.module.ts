@@ -14,9 +14,11 @@ import { PipelineReportService } from './services/pipeline-report.service';
 
 import { AuthenticationModule } from '../authentication/authentication.module';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { OptimizationModule } from '../optimization/optimization.module';
 import { OrderModule } from '../order/order.module';
 import { PaperTradingModule } from '../order/paper-trading/paper-trading.module';
+import { ScoringModule } from '../scoring/scoring.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 
 const PIPELINE_CONFIG = pipelineConfig();
@@ -30,7 +32,9 @@ const PIPELINE_CONFIG = pipelineConfig();
     forwardRef(() => AuthenticationModule),
     forwardRef(() => OptimizationModule),
     forwardRef(() => OrderModule),
-    forwardRef(() => PaperTradingModule)
+    forwardRef(() => PaperTradingModule),
+    forwardRef(() => ScoringModule),
+    forwardRef(() => MarketRegimeModule)
   ],
   controllers: [PipelineController],
   providers: [PipelineOrchestratorService, PipelineProcessor, PipelineEventListener, PipelineReportService],

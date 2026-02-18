@@ -127,6 +127,8 @@ interface MetricsAccumulator {
   totalTradeCount: number;
   totalSellCount: number;
   totalWinningSellCount: number;
+  grossProfit: number;
+  grossLoss: number;
   /** Portfolio values collected across all checkpoints for Sharpe calculation.
    *  Not cleared at checkpoints (Sharpe needs the full series).
    *  Bounded: 8 bytes/entry — ~14KB for 5yr daily, ~4MB for 1yr minute-level. */
@@ -136,6 +138,8 @@ interface MetricsAccumulator {
     addSellCount: (n: number) => void;
     addWinningSellCount: (n: number) => void;
     addSnapshotValues: (vals: number[]) => void;
+    addGrossProfit: (n: number) => void;
+    addGrossLoss: (n: number) => void;
   };
 }
 
@@ -343,13 +347,15 @@ export class BacktestEngine {
     const totalPersistedCounts =
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
-        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0, sells: 0, winningSells: 0, grossProfit: 0, grossLoss: 0 };
 
     // Lightweight metrics accumulators - avoids keeping full objects in memory after checkpoint
     const metricsAcc = this.createMetricsAccumulator(
       totalPersistedCounts.trades,
       totalPersistedCounts.sells ?? 0,
-      totalPersistedCounts.winningSells ?? 0
+      totalPersistedCounts.winningSells ?? 0,
+      totalPersistedCounts.grossProfit ?? 0,
+      totalPersistedCounts.grossLoss ?? 0
     );
 
     const coinIds = coins.map((coin) => coin.id);
@@ -464,7 +470,7 @@ export class BacktestEngine {
     let lastCheckpointCounts =
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
-        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0, sells: 0, winningSells: 0, grossProfit: 0, grossLoss: 0 };
 
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
@@ -735,7 +741,9 @@ export class BacktestEngine {
           totalPersistedCounts.snapshots + snapshots.length,
           metricsAcc.totalSellCount + currentSells.sells,
           metricsAcc.totalWinningSellCount + currentSells.winningSells,
-          this.signalThrottle.serialize(throttleState)
+          this.signalThrottle.serialize(throttleState),
+          metricsAcc.grossProfit + currentSells.grossProfit,
+          metricsAcc.grossLoss + currentSells.grossLoss
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -784,7 +792,9 @@ export class BacktestEngine {
       metricsAcc.totalSellCount,
       metricsAcc.totalWinningSellCount,
       metricsAcc.snapshotValues,
-      maxDrawdown
+      maxDrawdown,
+      metricsAcc.grossProfit,
+      metricsAcc.grossLoss
     );
 
     if (options.telemetryEnabled) {
@@ -885,13 +895,15 @@ export class BacktestEngine {
     const totalPersistedCounts =
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
-        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0, sells: 0, winningSells: 0, grossProfit: 0, grossLoss: 0 };
 
     // Lightweight metrics accumulators - avoids keeping full objects in memory after checkpoint
     const metricsAcc = this.createMetricsAccumulator(
       totalPersistedCounts.trades,
       totalPersistedCounts.sells ?? 0,
-      totalPersistedCounts.winningSells ?? 0
+      totalPersistedCounts.winningSells ?? 0,
+      totalPersistedCounts.grossProfit ?? 0,
+      totalPersistedCounts.grossLoss ?? 0
     );
 
     const coinIds = coins.map((coin) => coin.id);
@@ -1000,7 +1012,7 @@ export class BacktestEngine {
     let lastCheckpointCounts =
       isResuming && options.resumeFrom
         ? { ...options.resumeFrom.persistedCounts }
-        : { trades: 0, signals: 0, fills: 0, snapshots: 0 };
+        : { trades: 0, signals: 0, fills: 0, snapshots: 0, sells: 0, winningSells: 0, grossProfit: 0, grossLoss: 0 };
 
     // Track timestamp index for checkpoint interval calculation
     let lastCheckpointIndex = startIndex - 1;
@@ -1042,7 +1054,9 @@ export class BacktestEngine {
               totalPersistedCounts.snapshots + snapshots.length,
               metricsAcc.totalSellCount + pauseSells.sells,
               metricsAcc.totalWinningSellCount + pauseSells.winningSells,
-              this.signalThrottle.serialize(throttleState)
+              this.signalThrottle.serialize(throttleState),
+              metricsAcc.grossProfit + pauseSells.grossProfit,
+              metricsAcc.grossLoss + pauseSells.grossLoss
             );
 
             this.logger.log(`Live replay paused at index ${i - 1}/${timestamps.length}`);
@@ -1061,7 +1075,9 @@ export class BacktestEngine {
               metricsAcc.totalSellCount,
               metricsAcc.totalWinningSellCount,
               metricsAcc.snapshotValues,
-              maxDrawdown
+              maxDrawdown,
+              metricsAcc.grossProfit,
+              metricsAcc.grossLoss
             );
 
             return {
@@ -1102,7 +1118,9 @@ export class BacktestEngine {
               totalPersistedCounts.snapshots + snapshots.length,
               metricsAcc.totalSellCount + forcedPauseSells.sells,
               metricsAcc.totalWinningSellCount + forcedPauseSells.winningSells,
-              this.signalThrottle.serialize(throttleState)
+              this.signalThrottle.serialize(throttleState),
+              metricsAcc.grossProfit + forcedPauseSells.grossProfit,
+              metricsAcc.grossLoss + forcedPauseSells.grossLoss
             );
 
             if (options.onPaused) {
@@ -1117,7 +1135,9 @@ export class BacktestEngine {
               metricsAcc.totalSellCount,
               metricsAcc.totalWinningSellCount,
               metricsAcc.snapshotValues,
-              maxDrawdown
+              maxDrawdown,
+              metricsAcc.grossProfit,
+              metricsAcc.grossLoss
             );
 
             return {
@@ -1349,7 +1369,9 @@ export class BacktestEngine {
           totalPersistedCounts.snapshots + snapshots.length,
           metricsAcc.totalSellCount + currentSells.sells,
           metricsAcc.totalWinningSellCount + currentSells.winningSells,
-          this.signalThrottle.serialize(throttleState)
+          this.signalThrottle.serialize(throttleState),
+          metricsAcc.grossProfit + currentSells.grossProfit,
+          metricsAcc.grossLoss + currentSells.grossLoss
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -1397,7 +1419,9 @@ export class BacktestEngine {
       metricsAcc.totalSellCount,
       metricsAcc.totalWinningSellCount,
       metricsAcc.snapshotValues,
-      maxDrawdown
+      maxDrawdown,
+      metricsAcc.grossProfit,
+      metricsAcc.grossLoss
     );
 
     if (options.telemetryEnabled) {
@@ -2068,24 +2092,32 @@ export class BacktestEngine {
       addSellCount: (n: number) => void;
       addWinningSellCount: (n: number) => void;
       addSnapshotValues: (vals: number[]) => void;
+      addGrossProfit: (n: number) => void;
+      addGrossLoss: (n: number) => void;
     }
   ): void {
     acc.addTradeCount(trades.length);
-    const sells = trades.filter((t) => t.type === TradeType.SELL);
-    acc.addSellCount(sells.length);
-    acc.addWinningSellCount(sells.filter((t) => (t.realizedPnL ?? 0) > 0).length);
+    const { sells, winningSells, grossProfit, grossLoss } = this.countSells(trades);
+    acc.addSellCount(sells);
+    acc.addWinningSellCount(winningSells);
+    acc.addGrossProfit(grossProfit);
+    acc.addGrossLoss(grossLoss);
     acc.addSnapshotValues(snapshots.map((s) => s.portfolioValue ?? 0));
   }
 
   private createMetricsAccumulator(
     initialTradeCount = 0,
     initialSellCount = 0,
-    initialWinningSellCount = 0
+    initialWinningSellCount = 0,
+    initialGrossProfit = 0,
+    initialGrossLoss = 0
   ): MetricsAccumulator {
     const acc: MetricsAccumulator = {
       totalTradeCount: initialTradeCount,
       totalSellCount: initialSellCount,
       totalWinningSellCount: initialWinningSellCount,
+      grossProfit: initialGrossProfit,
+      grossLoss: initialGrossLoss,
       snapshotValues: [],
       callbacks: {} as MetricsAccumulator['callbacks']
     };
@@ -2101,6 +2133,12 @@ export class BacktestEngine {
       },
       addSnapshotValues: (vals) => {
         acc.snapshotValues.push(...vals);
+      },
+      addGrossProfit: (n) => {
+        acc.grossProfit += n;
+      },
+      addGrossLoss: (n) => {
+        acc.grossLoss += n;
       }
     };
     return acc;
@@ -2118,7 +2156,9 @@ export class BacktestEngine {
     totalSellCount: number,
     totalWinningSellCount: number,
     snapshotValues: number[],
-    maxDrawdown: number
+    maxDrawdown: number,
+    grossProfit: number,
+    grossLoss: number
   ): BacktestFinalMetrics {
     const finalValue = portfolio.totalValue;
     const totalReturn = (finalValue - backtest.initialCapital) / backtest.initialCapital;
@@ -2143,6 +2183,18 @@ export class BacktestEngine {
           })
         : 0;
 
+    // Compute profitFactor from accumulated gross profit/loss (capped at 10)
+    const rawProfitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 10 : 1;
+    const profitFactor = Math.min(rawProfitFactor, 10);
+
+    // Compute annualized volatility from returns series
+    let volatility = 0;
+    if (returns.length > 0) {
+      const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+      const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+      volatility = Math.sqrt(variance) * Math.sqrt(252);
+    }
+
     return {
       finalValue,
       totalReturn,
@@ -2151,7 +2203,9 @@ export class BacktestEngine {
       maxDrawdown,
       totalTrades: totalTradeCount,
       winningTrades: totalWinningSellCount,
-      winRate: totalSellCount > 0 ? totalWinningSellCount / totalSellCount : 0
+      winRate: totalSellCount > 0 ? totalWinningSellCount / totalSellCount : 0,
+      profitFactor,
+      volatility
     };
   }
 
@@ -2185,16 +2239,29 @@ export class BacktestEngine {
    * Count sell trades and winning sells in an array of trades.
    * Used to persist cumulative sell counts at checkpoint time.
    */
-  private countSells(trades: Partial<BacktestTrade>[]): { sells: number; winningSells: number } {
+  private countSells(trades: Partial<BacktestTrade>[]): {
+    sells: number;
+    winningSells: number;
+    grossProfit: number;
+    grossLoss: number;
+  } {
     let sells = 0,
-      winningSells = 0;
+      winningSells = 0,
+      grossProfit = 0,
+      grossLoss = 0;
     for (const t of trades) {
       if (t.type === TradeType.SELL) {
         sells++;
-        if ((t.realizedPnL ?? 0) > 0) winningSells++;
+        const pnl = t.realizedPnL ?? 0;
+        if (pnl > 0) {
+          winningSells++;
+          grossProfit += pnl;
+        } else if (pnl < 0) {
+          grossLoss += Math.abs(pnl);
+        }
       }
     }
-    return { sells, winningSells };
+    return { sells, winningSells, grossProfit, grossLoss };
   }
 
   /**
@@ -2214,7 +2281,9 @@ export class BacktestEngine {
     snapshotsCount: number,
     sellsCount: number,
     winningSellsCount: number,
-    serializedThrottleState?: SerializableThrottleState
+    serializedThrottleState?: SerializableThrottleState,
+    grossProfit = 0,
+    grossLoss = 0
   ): BacktestCheckpointState {
     // Convert Map-based positions to array format for JSON serialization
     const checkpointPortfolio: CheckpointPortfolio = {
@@ -2256,7 +2325,9 @@ export class BacktestEngine {
         fills: fillsCount,
         snapshots: snapshotsCount,
         sells: sellsCount,
-        winningSells: winningSellsCount
+        winningSells: winningSellsCount,
+        grossProfit,
+        grossLoss
       },
       checksum,
       ...(serializedThrottleState && { throttleState: serializedThrottleState })

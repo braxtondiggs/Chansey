@@ -148,9 +148,9 @@ export interface PipelineProgressionRules {
     /** Minimum improvement over baseline (percentage) */
     minImprovement: number;
   };
-  historical: StageProgressionThresholds;
-  liveReplay: StageProgressionThresholds;
   paperTrading: StageProgressionThresholds;
+  /** Minimum composite score (0-100) to pass LIVE_REPLAY gate. Default: 30 */
+  minimumPipelineScore?: number;
 }
 
 /**
@@ -160,19 +160,10 @@ export const DEFAULT_PROGRESSION_RULES: PipelineProgressionRules = {
   optimization: {
     minImprovement: 3 // 3% improvement over baseline
   },
-  historical: {
-    minSharpeRatio: 0.5,
-    maxDrawdown: 0.35,
-    minWinRate: 0.35
-  },
-  liveReplay: {
-    minSharpeRatio: 0.4,
-    maxDrawdown: 0.4,
-    maxDegradation: 30 // Allow 30% degradation from historical
-  },
   paperTrading: {
     minSharpeRatio: 0.3,
     maxDrawdown: 0.45,
     minTotalReturn: 0 // At least break even
-  }
+  },
+  minimumPipelineScore: 30 // Score-based gate at LIVE_REPLAY stage
 };

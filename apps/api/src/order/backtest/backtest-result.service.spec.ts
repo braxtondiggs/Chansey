@@ -131,7 +131,9 @@ describe('BacktestResultService', () => {
       maxDrawdown: -5,
       totalTrades: 10,
       winningTrades: 6,
-      winRate: 60
+      winRate: 60,
+      profitFactor: 2.0,
+      volatility: 0.3
     };
 
     // Entities WITHOUT ids represent new entities not yet checkpoint-persisted
@@ -311,7 +313,9 @@ describe('BacktestResultService', () => {
           totalReturn: mockResults.finalMetrics.totalReturn,
           maxDrawdown: mockResults.finalMetrics.maxDrawdown,
           winRate: mockResults.finalMetrics.winRate,
-          totalTrades: mockResults.finalMetrics.totalTrades
+          totalTrades: mockResults.finalMetrics.totalTrades,
+          profitFactor: mockResults.finalMetrics.profitFactor,
+          volatility: mockResults.finalMetrics.volatility
         }
       });
     });
