@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { StrategyScore } from './entities/strategy-score.entity';
+
+import { Order, OrderStatus } from '../order/order.entity';
 
 export interface CapitalAllocation {
   strategyConfigId: string;
@@ -26,116 +28,56 @@ export class CapitalAllocationService {
   private readonly MAX_ALLOCATION_PERCENTAGE = 0.15; // No strategy gets more than 15%
   private readonly MIN_SCORE_THRESHOLD = 50; // Exclude strategies with score < 50
 
+  // Kelly Criterion constants
+  private readonly KELLY_MULTIPLIER = 0.25; // Quarter-Kelly for safety
+  private readonly MIN_TRADES_FOR_KELLY = 30; // Minimum completed trades required
+
   constructor(
     @InjectRepository(StrategyScore)
-    private readonly strategyScoreRepo: Repository<StrategyScore>
+    private readonly strategyScoreRepo: Repository<StrategyScore>,
+    @InjectRepository(Order)
+    private readonly orderRepo: Repository<Order>
   ) {}
 
   /**
-   * Allocate capital across strategies based on their performance scores.
-   * Higher-scoring strategies receive more capital.
-   *
-   * @param userCapital - Total capital available for allocation
-   * @param strategies - Strategies to allocate capital across
-   * @returns Map of strategy ID to allocated capital amount
+   * Dynamic per-strategy cap: max(15%, 1/eligible).
+   * Prevents idle capital with few strategies while still diversifying with many.
    */
-  async allocateCapitalByPerformance(userCapital: number, strategies: StrategyConfig[]): Promise<Map<string, number>> {
-    const allocation = new Map<string, number>();
+  private getMaxAllocationPerStrategy(userCapital: number, eligibleCount: number): number {
+    const dynamicPercent = Math.max(this.MAX_ALLOCATION_PERCENTAGE, 1 / eligibleCount);
+    return userCapital * dynamicPercent;
+  }
 
-    if (strategies.length === 0 || userCapital <= 0) {
-      this.logger.warn('No strategies or capital provided for allocation');
-      return allocation;
-    }
+  /**
+   * Fetch latest scores for strategy IDs and return as a Map.
+   */
+  private async buildScoreMap(strategyIds: string[]): Promise<Map<string, number>> {
+    const scoreMap = new Map<string, number>();
+    if (strategyIds.length === 0) return scoreMap;
 
-    // Fetch scores for all strategies
-    const strategyIds = strategies.map((s) => s.id);
     const scores = await this.strategyScoreRepo.find({
       where: strategyIds.map((id) => ({ strategyConfigId: id })),
       order: { calculatedAt: 'DESC' }
     });
 
-    // Create map of strategy ID to latest score
-    const scoreMap = new Map<string, number>();
     for (const score of scores) {
       if (!scoreMap.has(score.strategyConfigId)) {
         scoreMap.set(score.strategyConfigId, Number(score.overallScore));
       }
     }
 
-    // Filter strategies by minimum score threshold
-    const eligibleStrategies = strategies.filter((s) => {
-      const score = scoreMap.get(s.id) || 0;
-      return score >= this.MIN_SCORE_THRESHOLD;
-    });
-
-    if (eligibleStrategies.length === 0) {
-      this.logger.warn(`No strategies meet minimum score threshold of ${this.MIN_SCORE_THRESHOLD}`);
-      return allocation;
-    }
-
-    // Calculate total score across eligible strategies
-    const totalScore = eligibleStrategies.reduce((sum, strategy) => {
-      return sum + (scoreMap.get(strategy.id) || 0);
-    }, 0);
-
-    if (totalScore === 0) {
-      this.logger.warn('Total score is 0, cannot allocate capital');
-      return allocation;
-    }
-
-    // Allocate capital proportionally to scores
-    let allocatedCapital = 0;
-    const maxPerStrategy = userCapital * this.MAX_ALLOCATION_PERCENTAGE;
-
-    for (const strategy of eligibleStrategies) {
-      const strategyScore = scoreMap.get(strategy.id) || 0;
-      let capitalAmount = (strategyScore / totalScore) * userCapital;
-
-      // Apply maximum cap
-      if (capitalAmount > maxPerStrategy) {
-        capitalAmount = maxPerStrategy;
-      }
-
-      // Apply minimum threshold
-      if (capitalAmount < this.MIN_ALLOCATION_PER_STRATEGY) {
-        this.logger.debug(
-          `Strategy ${strategy.id} allocation $${capitalAmount.toFixed(2)} below minimum, excluding from allocation`
-        );
-        continue;
-      }
-
-      allocation.set(strategy.id, capitalAmount);
-      allocatedCapital += capitalAmount;
-    }
-
-    this.logger.log(
-      `Allocated $${allocatedCapital.toFixed(2)} across ${allocation.size} strategies (${eligibleStrategies.length} eligible, ${strategies.length} total). ` +
-        `Score range: ${Math.min(...Array.from(scoreMap.values()))}-${Math.max(...Array.from(scoreMap.values()))}`
-    );
-
-    return allocation;
+    return scoreMap;
   }
 
   /**
    * Get detailed allocation breakdown for transparency.
    */
   async getAllocationDetails(userCapital: number, strategies: StrategyConfig[]): Promise<CapitalAllocation[]> {
-    const allocation = await this.allocateCapitalByPerformance(userCapital, strategies);
+    const allocation = await this.allocateCapitalByKelly(userCapital, strategies);
     const details: CapitalAllocation[] = [];
 
-    // Fetch scores for details
     const strategyIds = strategies.map((s) => s.id);
-    const scores = await this.strategyScoreRepo.find({
-      where: strategyIds.map((id) => ({ strategyConfigId: id })),
-      order: { calculatedAt: 'DESC' }
-    });
-
-    const scoreMap = new Map<string, number>();
-    for (const score of scores) {
-      if (!scoreMap.has(score.strategyConfigId)) {
-        scoreMap.set(score.strategyConfigId, Number(score.overallScore));
-      }
-    }
+    const scoreMap = await this.buildScoreMap(strategyIds);
 
     for (const [strategyConfigId, allocatedCapital] of allocation.entries()) {
       details.push({
@@ -180,21 +122,159 @@ export class CapitalAllocationService {
     return { valid: true };
   }
 
-  // TODO: Implement Kelly Criterion allocation for live performance optimization
-  // Kelly Criterion formula: f = (bp - q) / b
-  // where:
-  //   f = fraction of capital to allocate
-  //   b = odds received on bet (avg win / avg loss)
-  //   p = probability of winning
-  //   q = probability of losing (1 - p)
-  //
-  // Implementation steps:
-  //   1. Track win rate (p) and loss rate (q) from live trades
-  //   2. Calculate avg win and avg loss from historical performance
-  //   3. Apply Kelly fraction with conservative multiplier (0.25 or 0.5)
-  //   4. Combine with backtest score weighting for final allocation
-  //
-  // async allocateCapitalByKelly(userCapital: number, strategies: StrategyConfig[]): Promise<Map<string, number>> {
-  //   // Implementation here after 30+ days of live trading data
-  // }
+  /**
+   * Allocate capital across strategies using the Kelly Criterion.
+   * Uses real trade history to calculate mathematically optimal position sizing.
+   * Strategies with insufficient trade history fall back to score-based allocation.
+   *
+   * Kelly formula: f = (b * p - q) / b
+   *   f = fraction of capital to allocate
+   *   b = avg win / avg loss (odds ratio)
+   *   p = probability of winning
+   *   q = probability of losing (1 - p)
+   *
+   * @param userCapital - Total capital available for allocation
+   * @param strategies - Strategies to allocate capital across
+   * @returns Map of strategy ID to allocated capital amount
+   */
+  async allocateCapitalByKelly(userCapital: number, strategies: StrategyConfig[]): Promise<Map<string, number>> {
+    const allocation = new Map<string, number>();
+
+    if (strategies.length === 0 || userCapital <= 0) {
+      this.logger.warn('No strategies or capital provided for Kelly allocation');
+      return allocation;
+    }
+
+    const strategyIds = strategies.map((s) => s.id);
+    const allOrders = await this.orderRepo.find({
+      where: { strategyConfigId: In(strategyIds), isAlgorithmicTrade: true, status: OrderStatus.FILLED },
+      select: ['strategyConfigId', 'gainLoss', 'cost']
+    });
+    const ordersByStrategy = new Map<string, Order[]>();
+    for (const order of allOrders) {
+      const key = order.strategyConfigId!;
+      const group = ordersByStrategy.get(key);
+      if (group) {
+        group.push(order);
+      } else {
+        ordersByStrategy.set(key, [order]);
+      }
+    }
+
+    const kellyFractions = new Map<string, number>();
+    const fallbackStrategyIds: string[] = [];
+
+    // Calculate Kelly fraction for each strategy
+    for (const strategy of strategies) {
+      const orders = ordersByStrategy.get(strategy.id) ?? [];
+
+      const resolvedOrders = orders.filter((o) => o.gainLoss != null && o.gainLoss !== 0);
+
+      if (resolvedOrders.length < this.MIN_TRADES_FOR_KELLY) {
+        this.logger.debug(
+          `Strategy ${strategy.id} has ${resolvedOrders.length} resolved trades (< ${this.MIN_TRADES_FOR_KELLY}), falling back to score-based`
+        );
+        fallbackStrategyIds.push(strategy.id);
+        continue;
+      }
+
+      const wins = resolvedOrders.filter((o) => o.gainLoss! > 0);
+      const losses = resolvedOrders.filter((o) => o.gainLoss! < 0);
+
+      const p = wins.length / resolvedOrders.length;
+      const avgWin = wins.length > 0 ? wins.reduce((sum, o) => sum + o.gainLoss!, 0) / wins.length : 0;
+      const avgLoss = losses.length > 0 ? losses.reduce((sum, o) => sum + Math.abs(o.gainLoss!), 0) / losses.length : 0;
+
+      if (losses.length === 0) {
+        // All wins, no losses — use full quarter-Kelly
+        kellyFractions.set(strategy.id, this.KELLY_MULTIPLIER);
+        continue;
+      }
+
+      const b = avgWin / avgLoss;
+      let quarterKelly = 0;
+      if (b > 0) {
+        const f = (b * p - (1 - p)) / b;
+        quarterKelly = Math.max(f * this.KELLY_MULTIPLIER, 0);
+      }
+
+      kellyFractions.set(strategy.id, quarterKelly);
+    }
+
+    // Score-based fallback with Kelly-equivalent normalization
+    if (fallbackStrategyIds.length > 0) {
+      const scoreMap = await this.buildScoreMap(fallbackStrategyIds);
+
+      for (const id of fallbackStrategyIds) {
+        const score = scoreMap.get(id) || 0;
+        if (score >= this.MIN_SCORE_THRESHOLD) {
+          // Map score to Kelly-equivalent fraction using even-money assumption
+          const kellyEquivalent = Math.max(((2 * score) / 100 - 1) * this.KELLY_MULTIPLIER, 0);
+          if (kellyEquivalent > 0) {
+            kellyFractions.set(id, kellyEquivalent);
+          }
+        }
+      }
+    }
+
+    // Normalize fractions to sum to 1.0
+    const totalFraction = Array.from(kellyFractions.values()).reduce((sum, f) => sum + f, 0);
+
+    if (totalFraction === 0) {
+      this.logger.warn('All strategies have zero Kelly fraction, cannot allocate');
+      return allocation;
+    }
+
+    // Iterative proportional fitting for capped capital redistribution
+    const maxPerStrategy = this.getMaxAllocationPerStrategy(userCapital, kellyFractions.size);
+    const remainingFractions = new Map(kellyFractions);
+    const lockedAllocations = new Map<string, number>();
+    let remainingCapital = userCapital;
+
+    for (let iteration = 0; iteration < kellyFractions.size; iteration++) {
+      const poolTotal = Array.from(remainingFractions.values()).reduce((sum, f) => sum + f, 0);
+      if (poolTotal === 0) break;
+
+      let cappedThisRound = false;
+
+      for (const [strategyId, fraction] of remainingFractions.entries()) {
+        const capitalAmount = (fraction / poolTotal) * remainingCapital;
+
+        if (capitalAmount > maxPerStrategy) {
+          lockedAllocations.set(strategyId, maxPerStrategy);
+          remainingCapital -= maxPerStrategy;
+          remainingFractions.delete(strategyId);
+          cappedThisRound = true;
+        }
+      }
+
+      if (!cappedThisRound) {
+        // No caps hit — distribute remaining capital proportionally
+        for (const [strategyId, fraction] of remainingFractions.entries()) {
+          lockedAllocations.set(strategyId, (fraction / poolTotal) * remainingCapital);
+        }
+        break;
+      }
+    }
+
+    // Apply MIN_ALLOCATION_PER_STRATEGY filter
+    for (const [strategyId, capitalAmount] of lockedAllocations.entries()) {
+      if (capitalAmount < this.MIN_ALLOCATION_PER_STRATEGY) {
+        this.logger.debug(
+          `Strategy ${strategyId} Kelly allocation $${capitalAmount.toFixed(2)} below minimum, excluding`
+        );
+        continue;
+      }
+
+      allocation.set(strategyId, capitalAmount);
+    }
+
+    const allocatedCapital = Array.from(allocation.values()).reduce((sum, v) => sum + v, 0);
+    this.logger.log(
+      `Kelly allocated $${allocatedCapital.toFixed(2)} across ${allocation.size} strategies ` +
+        `(${kellyFractions.size} eligible, ${fallbackStrategyIds.length} score-fallback, ${strategies.length} total)`
+    );
+
+    return allocation;
+  }
 }
