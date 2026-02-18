@@ -1,5 +1,4 @@
-
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
@@ -10,10 +9,11 @@ import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 
-import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
-import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
-
 import { NewPasswordService } from './new-password.service';
+
+import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { PasswordMatchValidator, getPasswordError } from '../../../validators/password-match.validator';
+import { PasswordStrengthValidator } from '../../../validators/password-strength.validator';
 
 @Component({
   selector: 'app-new-password',
@@ -28,7 +28,7 @@ import { NewPasswordService } from './new-password.service';
     PasswordModule,
     ReactiveFormsModule,
     RouterLink
-],
+  ],
   templateUrl: './new-password.component.html'
 })
 export class NewPasswordComponent implements OnInit {

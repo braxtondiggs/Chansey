@@ -5,12 +5,10 @@ import { RouterModule } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 
-import {
-  ExchangeBalanceComponent,
-  RecentTransactionsComponent,
-  UserAssetsComponent
-} from '@chansey-web/app/shared/components';
-import { AuthService } from '@chansey-web/app/shared/services';
+import { ExchangeBalanceComponent } from '../../shared/components/exchange-balance/exchange-balance.component';
+import { RecentTransactionsComponent } from '../../shared/components/recent-transactions/recent-transactions.component';
+import { UserAssetsComponent } from '../../shared/components/user-assets/user-assets.component';
+import { AuthService } from '../../shared/services/auth.service';
 
 @Component({
   selector: 'app-dashboard',

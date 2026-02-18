@@ -1,5 +1,4 @@
-
-import { AfterViewInit, Component, computed, signal, effect, inject, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, computed, effect, inject, signal, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
@@ -30,12 +29,14 @@ import { delay, filter } from 'rxjs';
 
 import { ExchangeKey } from '@chansey/api-interfaces';
 
-import { RisksService } from '@chansey-web/app/pages/admin/risks/risks.service';
-import { ImageCropComponent } from '@chansey-web/app/shared/components';
-import { AuthService, ExchangeService } from '@chansey-web/app/shared/services';
-import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
-
 import { ProfileService } from './profile.service';
+
+import { ImageCropComponent } from '../../../shared/components/image-crop/image-crop.component';
+import { AuthService } from '../../../shared/services/auth.service';
+import { ExchangeService } from '../../../shared/services/exchange.service';
+import { getPasswordError, PasswordMatchValidator } from '../../../validators/password-match.validator';
+import { PasswordStrengthValidator } from '../../../validators/password-strength.validator';
+import { RisksService } from '../../admin/risks/risks.service';
 
 @Component({
   selector: 'app-profile',
@@ -63,7 +64,7 @@ import { ProfileService } from './profile.service';
     TagModule,
     ToastModule,
     TooltipModule
-],
+  ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './profile.component.html'
 })

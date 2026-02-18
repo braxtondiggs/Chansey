@@ -3,8 +3,10 @@ import { RouterModule } from '@angular/router';
 
 import { MessageService } from 'primeng/api';
 
-import { PwaToastComponent } from '@chansey-web/app/shared/components';
-import { AuthService, SessionActivityService, TitleService } from '@chansey-web/app/shared/services';
+import { PwaToastComponent } from './shared/components/pwa-toast/pwa-toast.component';
+import { AuthService } from './shared/services/auth.service';
+import { SessionActivityService } from './shared/services/session-activity.service';
+import { TitleService } from './shared/services/title.service';
 
 @Component({
   selector: 'app-root',

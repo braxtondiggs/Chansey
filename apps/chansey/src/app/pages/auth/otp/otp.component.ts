@@ -9,9 +9,9 @@ import { MessageModule } from 'primeng/message';
 
 import { ILoginResponse, IOtpResponse } from '@chansey/api-interfaces';
 
-import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
-
 import { OtpService } from './otp.service';
+
+import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
 
 interface Message {
   content: string;

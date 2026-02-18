@@ -15,12 +15,12 @@ import { TooltipModule } from 'primeng/tooltip';
 
 import { AccountValueDataPoint, ExchangeKey } from '@chansey/api-interfaces';
 
-import { ProfileService } from '@chansey-web/app/pages/user/profile/profile.service';
-import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
-import { AuthService } from '@chansey-web/app/shared/services/auth.service';
-import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
-
 import { ExchangeBalanceService } from './exchange-balance.service';
+
+import { ProfileService } from '../../../pages/user/profile/profile.service';
+import { CounterDirective } from '../../directives/counter/counter.directive';
+import { AuthService } from '../../services/auth.service';
+import { LayoutService } from '../../services/layout.service';
 
 @Component({
   selector: 'app-exchange-balance',

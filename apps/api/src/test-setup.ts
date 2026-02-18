@@ -10,8 +10,8 @@ import * as dotenv from 'dotenv';
 import { join } from 'path';
 
 // Load .env.example as base configuration (single source of truth)
-// process.cwd() is workspace root in Nx
-dotenv.config({ path: join(process.cwd(), '.env.example') });
+// __dirname is stable regardless of cwd; walk up from src/ → api/ → apps/ → workspace root
+dotenv.config({ path: join(__dirname, '..', '..', '..', '.env.example') });
 
 // Override for test environment only
 process.env.NODE_ENV = 'test';

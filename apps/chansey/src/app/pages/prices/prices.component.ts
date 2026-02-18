@@ -6,9 +6,9 @@ import { ToastModule } from 'primeng/toast';
 
 import { Coin, PortfolioType } from '@chansey/api-interfaces';
 
-import { CryptoTableComponent, CryptoTableConfig } from '@chansey-web/app/shared/components';
-
 import { PriceService } from './prices.service';
+
+import { CryptoTableComponent, CryptoTableConfig } from '../../shared/components/crypto-table/crypto-table.component';
 
 @Component({
   selector: 'app-prices',

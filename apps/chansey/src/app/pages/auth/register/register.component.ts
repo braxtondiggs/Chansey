@@ -1,4 +1,3 @@
-
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -12,10 +11,11 @@ import { PasswordModule } from 'primeng/password';
 
 import { IRegister } from '@chansey/api-interfaces';
 
-import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
-import { PasswordStrengthValidator, PasswordMatchValidator, getPasswordError } from '@chansey-web/app/validators';
-
 import { RegisterService } from './register.service';
+
+import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { PasswordMatchValidator, getPasswordError } from '../../../validators/password-match.validator';
+import { PasswordStrengthValidator } from '../../../validators/password-strength.validator';
 
 interface Message {
   content: string;
@@ -36,7 +36,7 @@ interface Message {
     PasswordModule,
     ReactiveFormsModule,
     RouterLink
-],
+  ],
   templateUrl: './register.component.html'
 })
 export class RegisterComponent {

@@ -37,25 +37,6 @@
       "options": {
         "buildTarget": "api:build"
       }
-    },
-    "lint": {
-      "executor": "@nx/eslint:lint",
-      "outputs": ["{options.outputFile}"]
-    },
-    "test": {
-      "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/apps/api"],
-      "options": {
-        "jestConfig": "apps/api/jest.config.ts",
-        "coverageReporters": ["text", "html", "lcov"]
-      }
-    },
-    "seed-backtest-datasets": {
-      "executor": "@nx/js:node",
-      "options": {
-        "main": "apps/api/src/order/backtest/scripts/market-data-import.ts",
-        "tsConfig": "apps/api/tsconfig.app.json"
-      }
     }
   }
 }

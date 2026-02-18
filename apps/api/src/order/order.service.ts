@@ -11,8 +11,6 @@ import {
   UserHoldingsDto
 } from '@chansey/api-interfaces';
 
-import { ExchangeService } from '@chansey-api/exchange/exchange.service';
-
 import { OrderPreviewRequestDto } from './dto/order-preview-request.dto';
 import { OrderPreviewDto } from './dto/order-preview.dto';
 import { OrderDto } from './dto/order.dto';
@@ -28,6 +26,7 @@ import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { Exchange } from '../exchange/exchange.entity';
+import { ExchangeService } from '../exchange/exchange.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
