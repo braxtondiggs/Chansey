@@ -1,8 +1,11 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
+import { SMA } from 'technicalindicators';
 
 import { createHash } from 'crypto';
+
+import { DEFAULT_VOLATILITY_CONFIG, determineVolatilityRegime, MarketRegimeType } from '@chansey/api-interfaces';
 
 import {
   BacktestCheckpointState,
@@ -62,6 +65,8 @@ import {
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
+import { RegimeGateService } from '../../market-regime/regime-gate.service';
+import { VolatilityCalculator } from '../../market-regime/volatility.calculator';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { toErrorInfo } from '../../shared/error.util';
@@ -111,6 +116,10 @@ interface ExecuteOptions {
   enableOpportunitySelling?: boolean;
   /** Opportunity selling configuration (uses DEFAULT_OPPORTUNITY_SELLING_CONFIG if not provided) */
   opportunitySellingConfig?: OpportunitySellingUserConfig;
+
+  /** Enable composite regime gate filtering (default: true).
+   *  When enabled, BUY signals are blocked when BTC is below its 200-day SMA. */
+  enableRegimeGate?: boolean;
 
   // Checkpoint options for resume capability
   /** Number of timestamps between checkpoints (default: 500) */
@@ -250,7 +259,9 @@ export class BacktestEngine {
     private readonly metricsCalculator: MetricsCalculatorService,
     private readonly portfolioState: PortfolioStateService,
     private readonly positionAnalysis: PositionAnalysisService,
-    private readonly signalThrottle: SignalThrottleService
+    private readonly signalThrottle: SignalThrottleService,
+    private readonly regimeGateService: RegimeGateService,
+    private readonly volatilityCalculator: VolatilityCalculator
   ) {}
 
   /**
@@ -448,6 +459,14 @@ export class BacktestEngine {
       throttleState = this.signalThrottle.createState();
     }
 
+    // Regime gate: identify BTC coin for trend filter
+    const regimeGateEnabled = options.enableRegimeGate !== false;
+    const btcCoin = regimeGateEnabled ? coins.find((c) => c.symbol?.toUpperCase() === 'BTC') : undefined;
+    if (regimeGateEnabled && !btcCoin) {
+      this.logger.warn('Regime gate enabled but BTC not found in dataset — gate disabled for this run');
+    }
+    const REGIME_SMA_PERIOD = 200;
+
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
 
@@ -587,6 +606,38 @@ export class BacktestEngine {
         throttleConfig,
         timestamp.getTime()
       );
+
+      // Regime gate: block BUY signals when BTC is below its 200-day SMA
+      if (btcCoin && strategySignals.length > 0) {
+        const btcWindow = priceCtx.windowsByCoin.get(btcCoin.id);
+        if (btcWindow && btcWindow.length >= REGIME_SMA_PERIOD) {
+          const btcCloses = btcWindow.map((p) => p.close ?? p.avg);
+          const smaValues = SMA.calculate({ period: REGIME_SMA_PERIOD, values: btcCloses });
+          if (smaValues.length > 0) {
+            const sma200 = smaValues[smaValues.length - 1];
+            const latestBtcPrice = btcCloses[btcCloses.length - 1];
+            const trendAboveSma = latestBtcPrice > sma200;
+
+            // Compute real volatility regime when enough data is available
+            let volatilityRegime = MarketRegimeType.NORMAL;
+            const volConfig = DEFAULT_VOLATILITY_CONFIG;
+            if (btcCloses.length >= volConfig.rollingDays + 1) {
+              try {
+                const realizedVol = this.volatilityCalculator.calculateRealizedVolatility(btcCloses, volConfig);
+                if (btcCloses.length >= volConfig.lookbackDays) {
+                  const percentile = this.volatilityCalculator.calculatePercentile(realizedVol, btcCloses, volConfig);
+                  volatilityRegime = determineVolatilityRegime(percentile);
+                }
+              } catch {
+                // Insufficient data — fall back to NORMAL
+              }
+            }
+
+            const compositeRegime = this.regimeGateService.classifyComposite(volatilityRegime, trendAboveSma);
+            strategySignals = this.regimeGateService.filterBacktestSignals(strategySignals, compositeRegime);
+          }
+        }
+      }
 
       for (const strategySignal of strategySignals) {
         const signalRecord: Partial<BacktestSignal> = {

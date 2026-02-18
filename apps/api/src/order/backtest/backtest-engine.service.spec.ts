@@ -14,6 +14,8 @@ import { SignalType } from '../../algorithm/interfaces';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DrawdownCalculator } from '../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
+import { RegimeGateService } from '../../market-regime/regime-gate.service';
+import { VolatilityCalculator } from '../../market-regime/volatility.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { PositionAnalysisService } from '../services/position-analysis.service';
 
@@ -28,6 +30,8 @@ const positionManager = new PositionManagerService();
 const metricsCalculator = new MetricsCalculatorService(sharpeCalculator, drawdownCalculator);
 const portfolioState = new PortfolioStateService();
 const signalThrottle = new SignalThrottleService();
+const regimeGateService = new RegimeGateService();
+const volatilityCalculator = new VolatilityCalculator();
 
 describe('BacktestEngine.executeTrade', () => {
   const createEngine = () =>
@@ -43,7 +47,9 @@ describe('BacktestEngine.executeTrade', () => {
       metricsCalculator,
       portfolioState,
       positionAnalysis,
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
@@ -701,7 +707,9 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       metricsCalculator,
       portfolioState,
       positionAnalysis,
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
 
   const createCandles = (coinId: string) => [
@@ -791,7 +799,9 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       metricsCalculator,
       portfolioState,
       positionAnalysis,
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
@@ -950,7 +960,9 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       metricsCalculator,
       portfolioState,
       positionAnalysis,
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
 
   const createCandles = () => [
@@ -1704,7 +1716,9 @@ describe('BacktestEngine checkpointing', () => {
       metricsCalculator,
       portfolioState,
       positionAnalysis,
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
 
   const createCheckpoint = (engine: BacktestEngine) => {
@@ -1819,7 +1833,9 @@ describe('BacktestEngine warmup / date range separation', () => {
       metricsCalculator,
       portfolioState,
       positionAnalysis,
-      signalThrottle
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
     );
 
   it('does not trade before backtest.startDate when dataset is broader', async () => {

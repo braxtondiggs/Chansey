@@ -12,6 +12,8 @@ import { StrategyExecutorService, TradingSignal } from './strategy-executor.serv
 import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
+import { CompositeRegimeService } from '../market-regime/composite-regime.service';
+import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { OrderService } from '../order/order.service';
 import { LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
@@ -96,7 +98,17 @@ describe('LiveTradingService', () => {
         { provide: BalanceService, useValue: balanceService },
         { provide: DistributedLockService, useValue: lockService },
         { provide: ExchangeManagerService, useValue: { getPrice: jest.fn() } },
-        { provide: TradingStateService, useValue: tradingStateService }
+        { provide: TradingStateService, useValue: tradingStateService },
+        {
+          provide: CompositeRegimeService,
+          useValue: {
+            getCompositeRegime: jest.fn().mockReturnValue('BULL'),
+            getVolatilityRegime: jest.fn().mockReturnValue('normal'),
+            getTrendAboveSma: jest.fn().mockReturnValue(true),
+            isOverrideActive: jest.fn().mockReturnValue(false)
+          }
+        },
+        { provide: RegimeGateService, useValue: { filterLiveSignal: jest.fn().mockReturnValue({ allowed: true }) } }
       ]
     }).compile();
 
