@@ -1,6 +1,7 @@
 export default {
   displayName: 'chansey',
   preset: '../../jest.preset.js',
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/apps/chansey-e2e/'],
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   coverageDirectory: '../../coverage/apps/chansey',
   transform: {

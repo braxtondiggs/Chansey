@@ -137,6 +137,18 @@
         "port": 4200,
         "spa": true
       }
+    },
+    "e2e": {
+      "executor": "@nx/playwright:playwright",
+      "outputs": ["{workspaceRoot}/dist/.playwright/apps/chansey"],
+      "options": {
+        "config": "apps/chansey/playwright.config.ts"
+      },
+      "configurations": {
+        "ci": {
+          "reporter": "html"
+        }
+      }
     }
   }
 }
