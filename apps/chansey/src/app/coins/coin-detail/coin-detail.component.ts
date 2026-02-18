@@ -9,8 +9,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 
 import { CoinDetailResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
 
-import { CounterDirective } from '@chansey-web/app/shared/directives/counter/counter.directive';
-
+import { CounterDirective } from '../../shared/directives/counter/counter.directive';
 import { ExternalLinksComponent } from '../components/external-links/external-links.component';
 import { HoldingsCardComponent } from '../components/holdings-card/holdings-card.component';
 import { MarketStatsComponent } from '../components/market-stats/market-stats.component';

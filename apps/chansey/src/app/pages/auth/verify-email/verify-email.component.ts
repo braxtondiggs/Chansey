@@ -5,9 +5,9 @@ import { ButtonModule } from 'primeng/button';
 import { MessageModule } from 'primeng/message';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 
-import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
-
 import { VerifyEmailService } from './verify-email.service';
+
+import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
 
 @Component({
   selector: 'app-verify-email',

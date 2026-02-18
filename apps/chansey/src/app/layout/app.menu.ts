@@ -3,9 +3,9 @@ import { RouterModule } from '@angular/router';
 
 import { Role } from '@chansey/api-interfaces';
 
-import { AuthService } from '@chansey-web/app/shared/services/auth.service';
-
 import { AppMenuitem } from './app.menuitem';
+
+import { AuthService } from '../shared/services/auth.service';
 
 interface MenuItem {
   label?: string;

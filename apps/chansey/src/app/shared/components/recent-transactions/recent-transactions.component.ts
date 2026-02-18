@@ -11,7 +11,7 @@ import { TagModule } from 'primeng/tag';
 
 import { OrderSide, OrderStatus } from '@chansey/api-interfaces';
 
-import { TransactionsService } from '@chansey-web/app/pages/transactions/transactions.service';
+import { TransactionsService } from '../../../pages/transactions/transactions.service';
 
 @Component({
   selector: 'app-recent-transactions',

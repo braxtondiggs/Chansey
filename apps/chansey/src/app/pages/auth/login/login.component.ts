@@ -12,9 +12,9 @@ import { PasswordModule } from 'primeng/password';
 
 import { ErrorCodes, isApiError } from '@chansey/shared';
 
-import { LazyImageComponent } from '@chansey-web/app/shared/components/lazy-image/lazy-image.component';
-
 import { LoginService } from './login.service';
+
+import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
 
 @Component({
   selector: 'app-login',

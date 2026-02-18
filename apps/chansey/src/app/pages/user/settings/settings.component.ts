@@ -23,10 +23,10 @@ import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
 import { Coin } from '@chansey/api-interfaces';
 
-import { AuthService } from '@chansey-web/app/shared/services/auth.service';
-import { LayoutService } from '@chansey-web/app/shared/services/layout.service';
-
 import { SettingsService } from './settings.service';
+
+import { AuthService } from '../../../shared/services/auth.service';
+import { LayoutService } from '../../../shared/services/layout.service';
 
 const presets = {
   Aura,

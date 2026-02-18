@@ -1,32 +1,40 @@
-import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
+import { AbstractControl, FormGroup, ValidationErrors } from '@angular/forms';
 
-export function PasswordStrengthValidator(): ValidatorFn {
-  return (control: AbstractControl): ValidationErrors | null => {
-    const value = control.value;
+export function PasswordMatchValidator(control: AbstractControl): ValidationErrors | null {
+  const password = control.get('password');
+  const confirmPassword = control.get('confirmPassword');
 
-    if (!value) {
-      return null;
-    }
+  if (password && confirmPassword && password.value !== confirmPassword.value) {
+    return { passwordMismatch: true };
+  }
 
-    const hasUpperCase = /[A-Z]/.test(value);
-    const hasLowerCase = /[a-z]/.test(value);
-    const hasNumeric = /[0-9]/.test(value);
-    // eslint-disable-next-line no-useless-escape
-    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/.test(value);
-    const hasMinLength = value.length >= 8;
+  return null;
+}
 
-    const passwordValid = hasUpperCase && hasLowerCase && hasNumeric && hasSpecialChar && hasMinLength;
+/**
+ * Helper function to get password validation error messages
+ *
+ * @param form The form group containing the password control
+ * @param controlName The name of the password control
+ * @param formSubmitted Whether the form has been submitted (for required validation)
+ * @returns Error message string or empty string if no errors
+ */
+export function getPasswordError(form: FormGroup, controlName: string, formSubmitted = false): string {
+  const control = form.get(controlName);
+  if (!control || !control.errors) return '';
 
-    return !passwordValid
-      ? {
-          passwordStrength: {
-            hasUpperCase,
-            hasLowerCase,
-            hasNumeric,
-            hasSpecialChar,
-            hasMinLength
-          }
-        }
-      : null;
-  };
+  if (control.errors['required'] && formSubmitted) {
+    return 'Password is required';
+  }
+
+  if (control.errors['passwordStrength']) {
+    const errors = control.errors['passwordStrength'];
+    if (!errors.hasMinLength) return 'Password must be at least 8 characters';
+    if (!errors.hasLowerCase) return 'Password must contain at least one lowercase letter';
+    if (!errors.hasUpperCase) return 'Password must contain at least one uppercase letter';
+    if (!errors.hasNumeric) return 'Password must contain at least one number';
+    if (!errors.hasSpecialChar) return 'Password must contain at least one special character';
+  }
+
+  return '';
 }
