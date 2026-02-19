@@ -32,6 +32,7 @@ import { PositionManagementService } from '../services/position-management.servi
 @Injectable()
 export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(PositionMonitorTask.name);
+  private static readonly TRAILING_FALLBACK_PERCENTAGE = 0.02;
   private jobScheduled = false;
 
   constructor(
@@ -175,17 +176,25 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
           const symbols = [...new Set(positions.map((p) => p.symbol))];
           const tickers: Record<string, number> = {};
 
-          for (const symbol of symbols) {
+          if (exchangeClient.has['fetchTickers']) {
             try {
-              const ticker = await exchangeClient.fetchTicker(symbol);
-              const price = ticker.last ?? ticker.close ?? null;
-              if (price != null && price > 0) {
-                tickers[symbol] = price;
+              const batchTickers = await exchangeClient.fetchTickers(symbols);
+              for (const symbol of symbols) {
+                const ticker = batchTickers[symbol];
+                if (ticker) {
+                  const price = ticker.last ?? ticker.close ?? null;
+                  if (price != null && price > 0) {
+                    tickers[symbol] = price;
+                  }
+                }
               }
-            } catch (tickerError: unknown) {
-              const err = toErrorInfo(tickerError);
-              this.logger.warn(`Failed to fetch ticker for ${symbol}: ${err.message}`);
+            } catch (batchError: unknown) {
+              const err = toErrorInfo(batchError);
+              this.logger.warn(`Batch fetchTickers failed, falling back to sequential: ${err.message}`);
+              await this.fetchTickersSequentially(exchangeClient, symbols, tickers);
             }
+          } else {
+            await this.fetchTickersSequentially(exchangeClient, symbols, tickers);
           }
 
           // Process each position
@@ -264,6 +273,28 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
     }
 
     return grouped;
+  }
+
+  /**
+   * Fetch tickers one-by-one as a fallback when batch fetchTickers is unavailable or fails
+   */
+  private async fetchTickersSequentially(
+    exchangeClient: ccxt.Exchange,
+    symbols: string[],
+    tickers: Record<string, number>
+  ): Promise<void> {
+    for (const symbol of symbols) {
+      try {
+        const ticker = await exchangeClient.fetchTicker(symbol);
+        const price = ticker.last ?? ticker.close ?? null;
+        if (price != null && price > 0) {
+          tickers[symbol] = price;
+        }
+      } catch (tickerError: unknown) {
+        const err = toErrorInfo(tickerError);
+        this.logger.warn(`Failed to fetch ticker for ${symbol}: ${err.message}`);
+      }
+    }
   }
 
   /**
@@ -438,7 +469,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
 
       case TrailingType.ATR: {
         if (!entryAtr || isNaN(entryAtr)) {
-          trailingDistance = currentPrice * 0.02; // Fallback to 2%
+          trailingDistance = currentPrice * PositionMonitorTask.TRAILING_FALLBACK_PERCENTAGE; // Fallback to 2%
           this.logger.warn('ATR value unavailable for trailing stop, using 2% fallback');
           break;
         }
@@ -448,7 +479,7 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
       }
 
       default:
-        trailingDistance = currentPrice * 0.02; // 2% default
+        trailingDistance = currentPrice * PositionMonitorTask.TRAILING_FALLBACK_PERCENTAGE; // 2% default
     }
 
     return side === 'BUY' ? currentPrice - trailingDistance : currentPrice + trailingDistance;

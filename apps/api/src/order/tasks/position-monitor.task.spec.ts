@@ -18,7 +18,7 @@ import {
   TrailingActivationType,
   TrailingType
 } from '../interfaces/exit-config.interface';
-import { Order, OrderStatus } from '../order.entity';
+import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
 import { PositionManagementService } from '../services/position-management.service';
 
 describe('PositionMonitorTask', () => {
@@ -291,6 +291,18 @@ describe('PositionMonitorTask', () => {
       expect(result).toBe(49000);
     });
 
+    it('should fallback to 2% when entryAtr is NaN', () => {
+      const config = {
+        trailingType: TrailingType.ATR,
+        trailingValue: 2
+      };
+
+      const result = (task as any).calculateTrailingStopPrice(50000, config, 'BUY', NaN);
+
+      // Default 2%: 50000 - (50000 * 0.02) = 49000
+      expect(result).toBe(49000);
+    });
+
     it('should use default 2% for unknown trailing type', () => {
       const config = {
         trailingType: 'unknown' as TrailingType,
@@ -344,7 +356,8 @@ describe('PositionMonitorTask', () => {
 
       mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
       mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        fetchTicker: jest.fn().mockResolvedValue({ last: 51000 })
+        has: { fetchTickers: true },
+        fetchTickers: jest.fn().mockResolvedValue({ 'BTC/USD': { last: 51000 } })
       });
 
       const updateSpy = jest
@@ -386,6 +399,124 @@ describe('PositionMonitorTask', () => {
         timestamp: expect.any(String)
       });
     });
+
+    it('should skip position when ticker fetch fails', async () => {
+      const position = buildPositionExit({
+        id: 'pos-1',
+        exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
+      });
+      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
+
+      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
+        has: { fetchTickers: true },
+        fetchTickers: jest.fn().mockRejectedValue(new Error('Batch timeout')),
+        fetchTicker: jest.fn().mockRejectedValue(new Error('Timeout'))
+      });
+
+      const updateSpy = jest
+        .spyOn(task as any, 'updateTrailingStop')
+        .mockResolvedValue({ updated: false, triggered: false });
+
+      const result = await task.process(mockJob);
+
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        monitored: 1,
+        updated: 0,
+        triggered: 0,
+        timestamp: expect.any(String)
+      });
+    });
+
+    it('should skip position when ticker returns null price', async () => {
+      const position = buildPositionExit({
+        id: 'pos-1',
+        exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
+      });
+      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
+
+      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
+        has: { fetchTickers: true },
+        fetchTickers: jest.fn().mockResolvedValue({ 'BTC/USD': { last: null, close: null } })
+      });
+
+      const updateSpy = jest
+        .spyOn(task as any, 'updateTrailingStop')
+        .mockResolvedValue({ updated: false, triggered: false });
+
+      const result = await task.process(mockJob);
+
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        monitored: 1,
+        updated: 0,
+        triggered: 0,
+        timestamp: expect.any(String)
+      });
+    });
+
+    it('should fall back to sequential fetchTicker when exchange does not support fetchTickers', async () => {
+      const position = buildPositionExit({
+        id: 'pos-1',
+        exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
+      });
+      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
+
+      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
+      const fetchTickerMock = jest.fn().mockResolvedValue({ last: 51000 });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
+        has: { fetchTickers: false },
+        fetchTicker: fetchTickerMock
+      });
+
+      const updateSpy = jest
+        .spyOn(task as any, 'updateTrailingStop')
+        .mockResolvedValue({ updated: true, triggered: false });
+
+      const result = await task.process(mockJob);
+
+      expect(fetchTickerMock).toHaveBeenCalledWith('BTC/USD');
+      expect(updateSpy).toHaveBeenCalledWith(expect.any(Object), 51000, expect.any(Object));
+      expect(result).toEqual({
+        monitored: 1,
+        updated: 1,
+        triggered: 0,
+        timestamp: expect.any(String)
+      });
+    });
+
+    it('should fall back to sequential fetchTicker when batch fetchTickers throws', async () => {
+      const position = buildPositionExit({
+        id: 'pos-1',
+        exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
+      });
+      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
+
+      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
+      const fetchTickerMock = jest.fn().mockResolvedValue({ last: 51000 });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
+        has: { fetchTickers: true },
+        fetchTickers: jest.fn().mockRejectedValue(new Error('Batch not supported')),
+        fetchTicker: fetchTickerMock
+      });
+
+      const updateSpy = jest
+        .spyOn(task as any, 'updateTrailingStop')
+        .mockResolvedValue({ updated: true, triggered: false });
+
+      const result = await task.process(mockJob);
+
+      expect(fetchTickerMock).toHaveBeenCalledWith('BTC/USD');
+      expect(updateSpy).toHaveBeenCalledWith(expect.any(Object), 51000, expect.any(Object));
+      expect(result).toEqual({
+        monitored: 1,
+        updated: 1,
+        triggered: 0,
+        timestamp: expect.any(String)
+      });
+    });
   });
 
   describe('updateTrailingStop', () => {
@@ -413,6 +544,7 @@ describe('PositionMonitorTask', () => {
       expect(result.updated).toBe(true);
       expect(position.trailingActivated).toBe(true);
       expect(position.trailingHighWaterMark).toBe(51000);
+      expect(position.trailingLowWaterMark).toBeUndefined();
     });
 
     it('should update trailing stop for long when price makes new high', async () => {
@@ -452,8 +584,10 @@ describe('PositionMonitorTask', () => {
       const result = await (task as any).updateTrailingStop(position, 53000, mockExchangeClient);
 
       expect(result.updated).toBe(false);
+      expect(result.triggered).toBe(false);
       expect(position.trailingHighWaterMark).toBe(54000); // Unchanged
       expect(position.currentTrailingStopPrice).toBe(52920); // Unchanged
+      expect(mockPositionExitRepo.save).not.toHaveBeenCalled();
     });
 
     it('should trigger stop loss for long when price falls below stop', async () => {
@@ -498,6 +632,28 @@ describe('PositionMonitorTask', () => {
       expect(position.trailingLowWaterMark).toBe(46000);
       // New stop: 46000 + (46000 * 0.02) = 46920
       expect(position.currentTrailingStopPrice).toBe(46920);
+    });
+
+    it('should NOT update trailing stop for short when price above low water mark (ratchet)', async () => {
+      const position = buildPositionExit({
+        side: 'SELL',
+        trailingActivated: true,
+        trailingLowWaterMark: 46000,
+        currentTrailingStopPrice: 46920,
+        exitConfig: {
+          trailingType: TrailingType.PERCENTAGE,
+          trailingValue: 2
+        }
+      });
+
+      // Price rises but still below stop
+      const result = await (task as any).updateTrailingStop(position, 46500, mockExchangeClient);
+
+      expect(result.updated).toBe(false);
+      expect(result.triggered).toBe(false);
+      expect(position.trailingLowWaterMark).toBe(46000); // Unchanged
+      expect(position.currentTrailingStopPrice).toBe(46920); // Unchanged
+      expect(mockPositionExitRepo.save).not.toHaveBeenCalled();
     });
 
     it('should trigger stop loss for short when price rises above stop', async () => {
@@ -599,6 +755,43 @@ describe('PositionMonitorTask', () => {
 
       // Position reference updated
       expect(position.trailingStopOrderId).toBe('new-order-uuid');
+    });
+
+    it('should use buy side when closing a short position', async () => {
+      const position = buildPositionExit({
+        symbol: 'ETH/USDT',
+        side: 'SELL',
+        quantity: 10,
+        trailingStopOrderId: 'old-order-uuid',
+        exchangeKeyId: 'ex-key-1',
+        warnings: []
+      });
+      const existingOrder = {
+        id: 'old-order-uuid',
+        orderId: 'exchange-order-123',
+        status: OrderStatus.NEW
+      };
+
+      mockOrderRepo.findOne.mockResolvedValue(existingOrder);
+
+      const exchangeClient = buildExchangeClient();
+
+      await (task as any).updateStopOrderOnExchange(position, 49500, exchangeClient);
+
+      // Exit side for SELL position should be 'buy'
+      expect(exchangeClient.createOrder).toHaveBeenCalledWith('ETH/USDT', 'stop_loss', 'buy', 10, undefined, {
+        stopPrice: 49500
+      });
+
+      // New order should have BUY side
+      expect(mockManager.create).toHaveBeenCalledWith(
+        Order,
+        expect.objectContaining({
+          side: OrderSide.BUY,
+          type: OrderType.STOP_LOSS,
+          stopPrice: 49500
+        })
+      );
     });
 
     it('should clear reference and not create new order when cancel gets OrderNotFound', async () => {
