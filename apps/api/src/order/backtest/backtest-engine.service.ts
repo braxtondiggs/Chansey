@@ -1,7 +1,6 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
-import { SMA } from 'technicalindicators';
 
 import { createHash } from 'crypto';
 
@@ -44,6 +43,7 @@ import {
 import { MarketDataReaderService, OHLCVData } from './market-data-reader.service';
 import { MarketDataSet } from './market-data-set.entity';
 import { QuoteCurrencyResolverService } from './quote-currency-resolver.service';
+import { RingBuffer } from './ring-buffer';
 import { SeededRandom } from './seeded-random';
 import {
   DEFAULT_THROTTLE_CONFIG,
@@ -271,7 +271,16 @@ interface PriceTrackingContext {
   timestampsByCoin: Map<string, Date[]>;
   summariesByCoin: Map<string, PriceSummary[]>;
   indexByCoin: Map<string, number>;
-  windowsByCoin: Map<string, PriceSummary[]>;
+  windowsByCoin: Map<string, RingBuffer<PriceSummary>>;
+}
+
+interface RegimeSmaState {
+  buffer: number[];
+  sum: number;
+  head: number;
+  filled: number;
+  lastIndex: number;
+  value: number | null;
 }
 
 interface CompositeRegimeResult {
@@ -618,6 +627,18 @@ export class BacktestEngine {
         }
         this.logger.log(`Fast-forwarded price windows through ${startIndex} timestamps for resume`);
       }
+
+      // Warm up running SMA state from BTC summaries consumed during fast-forward
+      if (btcCoin) {
+        const btcPointer = priceCtx.indexByCoin.get(btcCoin.id) ?? -1;
+        const btcSummaries = priceCtx.summariesByCoin.get(btcCoin.id);
+        if (btcSummaries && btcPointer >= 0) {
+          this.feedRegimeSma(regimeSma, btcSummaries, 0, btcPointer);
+          this.logger.log(
+            `Warmed up regime SMA from ${btcPointer + 1} BTC prices (SMA=${regimeSma.value?.toFixed(2) ?? 'pending'})`
+          );
+        }
+      }
     }
 
     // Track result counts at last checkpoint for proper slicing during incremental persistence
@@ -916,6 +937,12 @@ export class BacktestEngine {
       if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
         await options.onHeartbeat(tradingRelativeIdx, tradingTimestampCount);
         lastHeartbeatTime = Date.now();
+      }
+
+      // Yield to the event loop periodically to allow heartbeat DB writes,
+      // BullMQ lock renewals, and concurrent workers to make progress.
+      if (i % 100 === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
 
       // Checkpoint callback: save state periodically for resume capability
@@ -1597,6 +1624,12 @@ export class BacktestEngine {
         lastHeartbeatTime = Date.now();
       }
 
+      // Yield to the event loop periodically to allow heartbeat DB writes,
+      // BullMQ lock renewals, and concurrent workers to make progress.
+      if (i % 100 === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
       // Checkpoint callback: save state periodically for resume capability
       // Live replay uses more frequent checkpoints (default: 100 vs 500 for historical)
       const timeSinceLastCheckpoint = i - lastCheckpointIndex;
@@ -1786,7 +1819,7 @@ export class BacktestEngine {
     const timestampsByCoin = new Map<string, Date[]>();
     const summariesByCoin = new Map<string, PriceSummary[]>();
     const indexByCoin = new Map<string, number>();
-    const windowsByCoin = new Map<string, PriceSummary[]>();
+    const windowsByCoin = new Map<string, RingBuffer<PriceSummary>>();
 
     // Single-pass grouping: O(prices) instead of O(coins × prices)
     const pricesByCoin = new Map<string, OHLCCandle[]>();
@@ -1813,7 +1846,7 @@ export class BacktestEngine {
         history.map((price) => this.buildPriceSummary(price))
       );
       indexByCoin.set(coinId, -1);
-      windowsByCoin.set(coinId, []);
+      windowsByCoin.set(coinId, new RingBuffer<PriceSummary>(BacktestEngine.MAX_WINDOW_SIZE));
     }
 
     return { timestampsByCoin, summariesByCoin, indexByCoin, windowsByCoin };
@@ -1822,30 +1855,25 @@ export class BacktestEngine {
   /**
    * Advance per-coin price windows up to and including the given timestamp.
    *
-   * **Important:** The returned `PriceSummary[]` arrays are shared mutable references
-   * held by `PriceTrackingContext`. Callers (including strategies) must treat them as
-   * read-only. Mutating the arrays would corrupt the sliding-window state for
-   * subsequent iterations.
+   * Returns a snapshot of each coin's price window as a plain `PriceSummary[]`
+   * for backward compatibility with strategies. The underlying storage uses a
+   * `RingBuffer` so that per-iteration maintenance is O(1) instead of O(K).
    */
   private advancePriceWindows(ctx: PriceTrackingContext, coins: Coin[], timestamp: Date): PriceSummaryByPeriod {
     const priceData: PriceSummaryByPeriod = {};
     for (const coin of coins) {
       const coinTimestamps = ctx.timestampsByCoin.get(coin.id) ?? [];
       const summaries = ctx.summariesByCoin.get(coin.id) ?? [];
-      const window = ctx.windowsByCoin.get(coin.id) ?? [];
+      const window = ctx.windowsByCoin.get(coin.id);
+      if (!window) continue;
       let pointer = ctx.indexByCoin.get(coin.id) ?? -1;
       while (pointer + 1 < coinTimestamps.length && coinTimestamps[pointer + 1] <= timestamp) {
         pointer += 1;
-        window.push(summaries[pointer]);
-      }
-      // Trim window to sliding-window size to bound memory growth
-      if (window.length > BacktestEngine.MAX_WINDOW_SIZE) {
-        const excess = window.length - BacktestEngine.MAX_WINDOW_SIZE;
-        window.splice(0, excess);
+        window.push(summaries[pointer]); // O(1) — ring buffer auto-evicts oldest
       }
       ctx.indexByCoin.set(coin.id, pointer);
       if (window.length > 0) {
-        priceData[coin.id] = window;
+        priceData[coin.id] = window.toArray();
       }
     }
     return priceData;
@@ -1870,6 +1898,32 @@ export class BacktestEngine {
    */
   private extractDailyVolume(currentPrices: OHLCCandle[], coinId: string): number | undefined {
     return currentPrices.find((c) => c.coinId === coinId)?.volume;
+  }
+
+  /**
+   * Feed BTC price summaries into the running regime SMA state.
+   * Consumes summaries[fromIndex..toIndex] inclusive, updating the circular buffer.
+   */
+  private feedRegimeSma(state: RegimeSmaState, summaries: PriceSummary[], fromIndex: number, toIndex: number): void {
+    const period = BacktestEngine.REGIME_SMA_PERIOD;
+    for (let k = fromIndex; k <= toIndex; k++) {
+      const closeVal = summaries[k].close ?? summaries[k].avg;
+      if (state.filled < period) {
+        state.buffer[state.filled] = closeVal;
+        state.sum += closeVal;
+        state.filled++;
+        if (state.filled === period) {
+          state.value = state.sum / period;
+        }
+      } else {
+        const removed = state.buffer[state.head];
+        state.buffer[state.head] = closeVal;
+        state.sum += closeVal - removed;
+        state.value = state.sum / period;
+        state.head = (state.head + 1) % period;
+      }
+    }
+    state.lastIndex = toIndex;
   }
 
   private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {
