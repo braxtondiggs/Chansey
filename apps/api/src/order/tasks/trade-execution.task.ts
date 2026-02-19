@@ -149,6 +149,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       const uniqueUserIds = [...new Set(activeActivations.map((a) => a.userId))];
       for (const userId of uniqueUserIds) {
         const activation = activeActivations.find((a) => a.userId === userId);
+        if (!activation) continue;
         portfolioCache.set(userId, await this.fetchPortfolioValue(activation));
       }
 
@@ -307,7 +308,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       const quoteCurrency = EXCHANGE_QUOTE_CURRENCY[exchangeSlug] || DEFAULT_QUOTE_CURRENCY;
       return `${coin.symbol.toUpperCase()}/${quoteCurrency}`;
     } catch (error) {
-      this.logger.warn(`Failed to resolve trading symbol for coin ${coinId}: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to resolve trading symbol for coin ${coinId}: ${err.message}`);
       return null;
     }
   }
@@ -322,7 +324,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       const balances = await this.balanceService.getUserBalances(user);
       return balances.totalUsdValue || 0;
     } catch (error) {
-      this.logger.warn(`Failed to fetch portfolio value for user ${activation.userId}: ${error.message}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to fetch portfolio value for user ${activation.userId}: ${err.message}`);
       return 0;
     }
   }

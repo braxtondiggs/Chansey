@@ -76,7 +76,6 @@ import {
   OpportunitySellingUserConfig
 } from '../interfaces/opportunity-selling.interface';
 import { PositionAnalysisService } from '../services/position-analysis.service';
-import { DEFAULT_QUOTE_CURRENCY } from '@chansey-api/exchange/constants';
 
 // Default slippage config using shared service
 const DEFAULT_SLIPPAGE_CONFIG: SlippageConfig = {

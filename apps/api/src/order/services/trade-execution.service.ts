@@ -144,7 +144,13 @@ export class TradeExecutionService {
 
       // AUTO-SIZE: calculate quantity from portfolio allocation
       let effectiveQuantity = signal.quantity;
-      if (signal.autoSize && signal.portfolioValue > 0 && signal.allocationPercentage > 0) {
+      if (
+        signal.autoSize &&
+        signal.portfolioValue &&
+        signal.portfolioValue > 0 &&
+        signal.allocationPercentage &&
+        signal.allocationPercentage > 0
+      ) {
         if (expectedPrice <= 0) {
           throw new ValidationException('Cannot auto-size: expected price is zero or negative');
         }
