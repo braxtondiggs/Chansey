@@ -1,6 +1,6 @@
 export * from './pipeline-filters.dto';
 
-import { PipelineProgressionRules, PipelineStageConfig } from '../interfaces';
+import { PipelineProgressionRules, PipelineStage, PipelineStageConfig } from '../interfaces';
 
 /**
  * Internal interface for creating pipelines (no validation - internal use only)
@@ -12,4 +12,6 @@ export interface CreatePipelineInput {
   exchangeKeyId: string;
   stageConfig: PipelineStageConfig;
   progressionRules?: PipelineProgressionRules;
+  /** Optional initial stage to start at (defaults to OPTIMIZE) */
+  initialStage?: PipelineStage;
 }

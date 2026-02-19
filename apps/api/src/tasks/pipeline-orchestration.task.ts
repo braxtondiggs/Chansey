@@ -21,6 +21,7 @@ import {
 } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
+import { BacktestService } from '../order/backtest/backtest.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
@@ -30,7 +31,8 @@ export class PipelineOrchestrationTask {
   constructor(
     @InjectQueue('pipeline-orchestration')
     private readonly orchestrationQueue: Queue<PipelineOrchestrationJobData>,
-    private readonly orchestrationService: PipelineOrchestrationService
+    private readonly orchestrationService: PipelineOrchestrationService,
+    private readonly backtestService: BacktestService
   ) {}
 
   /**
@@ -42,6 +44,12 @@ export class PipelineOrchestrationTask {
     this.logger.log('Starting daily pipeline orchestration scheduling');
 
     try {
+      // Ensure default dataset exists before creating pipelines
+      await this.backtestService.ensureDefaultDatasetExists();
+
+      // Seed strategy configs from active algorithms (global, not user-scoped)
+      await this.orchestrationService.seedStrategyConfigsFromAlgorithms();
+
       const eligibleUsers = await this.orchestrationService.getEligibleUsers();
       this.logger.log(`Found ${eligibleUsers.length} eligible users for pipeline orchestration`);
 

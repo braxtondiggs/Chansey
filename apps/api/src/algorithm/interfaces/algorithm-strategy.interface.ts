@@ -1,6 +1,7 @@
 import { AlgorithmContext } from './algorithm-context.interface';
 import { AlgorithmResult } from './algorithm-result.interface';
 
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { Algorithm } from '../algorithm.entity';
 
 /**
@@ -54,6 +55,12 @@ export interface AlgorithmStrategy {
    * Get algorithm-specific configuration schema
    */
   getConfigSchema?(): Record<string, unknown>;
+
+  /**
+   * Get cross-parameter constraints for optimization.
+   * Returns constraints like "fastPeriod must be less than slowPeriod".
+   */
+  getParameterConstraints?(): ParameterConstraint[];
 
   /**
    * Health check for the algorithm
