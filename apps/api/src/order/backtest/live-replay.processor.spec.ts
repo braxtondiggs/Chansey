@@ -12,6 +12,13 @@ import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
 describe('LiveReplayProcessor', () => {
   const createJob = (data: BacktestJobData): Job<BacktestJobData> => ({ id: 'job-1', data }) as Job<BacktestJobData>;
 
+  const createMockConfigService = () => ({
+    get: jest.fn((key: string, defaultValue?: any) => {
+      if (key === 'backtest.replayConcurrency') return defaultValue ?? 2;
+      return defaultValue;
+    })
+  });
+
   const createProcessor = (
     overrides: Partial<{
       backtestRepository: any;
@@ -23,6 +30,7 @@ describe('LiveReplayProcessor', () => {
       backtestPauseService: any;
       backtestService: any;
       metricsService: any;
+      configService: any;
     }> = {}
   ) => {
     const backtestEngine = { executeHistoricalBacktest: jest.fn() };
@@ -36,6 +44,7 @@ describe('LiveReplayProcessor', () => {
       recordBacktestCompleted: jest.fn(),
       decrementActiveBacktests: jest.fn()
     };
+    const configService = createMockConfigService();
     const backtestRepository = { findOne: jest.fn(), save: jest.fn() };
     const marketDataSetRepository = { findOne: jest.fn() };
 
@@ -47,6 +56,7 @@ describe('LiveReplayProcessor', () => {
       overrides.backtestPauseService ?? (backtestPauseService as any),
       overrides.backtestService ?? (backtestService as any),
       overrides.metricsService ?? (metricsService as any),
+      overrides.configService ?? (configService as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)
     );
