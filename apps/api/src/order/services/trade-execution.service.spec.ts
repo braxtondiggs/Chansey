@@ -6,6 +6,7 @@ import { OrderStateMachineService } from './order-state-machine.service';
 import { TradeExecutionService } from './trade-execution.service';
 
 import { CoinService } from '../../coin/coin.service';
+import { ValidationException } from '../../common/exceptions/base';
 import { InvalidSymbolException, SlippageExceededException } from '../../common/exceptions/order';
 import { ExchangeKeyNotFoundException, UserNotFoundException } from '../../common/exceptions/resource';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
@@ -255,6 +256,76 @@ describe('TradeExecutionService', () => {
       expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('High slippage detected'));
     });
 
+    it('should auto-size quantity from portfolio allocation', async () => {
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+
+      jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
+
+      const signal = {
+        ...baseSignal,
+        autoSize: true,
+        portfolioValue: 10000,
+        allocationPercentage: 10, // 10% of $10,000 = $1,000 / $100 (ask) = 10 units
+        quantity: 0 // should be overridden by auto-size
+      };
+
+      const result = await service.executeTradeSignal(signal);
+
+      expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 10);
+      expect(result.symbol).toBe('BTC/USDT');
+    });
+
+    it('should reject zero effective quantity after auto-sizing', async () => {
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+
+      const signal = {
+        ...baseSignal,
+        autoSize: false,
+        quantity: 0 // zero quantity without auto-size
+      };
+
+      await expect(service.executeTradeSignal(signal)).rejects.toBeInstanceOf(ValidationException);
+      expect(mockExchangeClient.createMarketOrder).not.toHaveBeenCalled();
+    });
+
+    it('should skip slippage check when slippage limits are disabled', async () => {
+      // Create a service instance with slippage disabled
+      const disabledModule = await Test.createTestingModule({
+        providers: [
+          TradeExecutionService,
+          { provide: getRepositoryToken(Order), useValue: mockOrderRepository },
+          { provide: getRepositoryToken(User), useValue: mockUserRepository },
+          { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
+          { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
+          { provide: CoinService, useValue: mockCoinService },
+          { provide: OrderStateMachineService, useValue: mockStateMachineService },
+          {
+            provide: slippageLimitsConfig.KEY,
+            useValue: {
+              maxSlippageBps: 100,
+              warnSlippageBps: 50,
+              abortOnHighSlippage: false,
+              enabled: false
+            }
+          }
+        ]
+      }).compile();
+
+      const disabledService = disabledModule.get<TradeExecutionService>(TradeExecutionService);
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+
+      // Should NOT call estimateSlippageFromOrderBook at all
+      const slippageSpy = jest.spyOn(disabledService as any, 'estimateSlippageFromOrderBook');
+
+      await disabledService.executeTradeSignal(baseSignal);
+
+      expect(slippageSpy).not.toHaveBeenCalled();
+      expect(mockExchangeClient.createMarketOrder).toHaveBeenCalled();
+    });
+
     it('should use bid price when executing a SELL signal', async () => {
       const mockExchangeClient = buildExchangeClient({
         fetchTicker: jest.fn().mockResolvedValue({ ask: 100, bid: 95, last: 96 }),
@@ -476,110 +547,107 @@ describe('TradeExecutionService', () => {
   });
 
   describe('calculateSlippageBps', () => {
-    // Access private method for testing
-    const getCalculateSlippageBps = (svc: TradeExecutionService) => {
-      return (svc as any).calculateSlippageBps.bind(svc);
-    };
+    const calc = () => (service as any).calculateSlippageBps.bind(service);
 
-    it('should return 0 for equal prices', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      const result = calculateSlippageBps(100, 100, 'BUY');
-
-      expect(result).toBe(0);
+    it.each([
+      { desc: 'equal prices', expected: 100, actual: 100, action: 'BUY', bps: 0 },
+      { desc: 'zero expected price', expected: 0, actual: 100, action: 'BUY', bps: 0 },
+      { desc: 'zero actual price', expected: 100, actual: 0, action: 'BUY', bps: 0 }
+    ])('should return 0 for $desc', ({ expected, actual, action, bps }) => {
+      expect(calc()(expected, actual, action)).toBe(bps);
     });
 
-    it('should calculate positive slippage for unfavorable BUY (actual > expected)', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      // Paid 101 when expected 100 = unfavorable
-      const result = calculateSlippageBps(100, 101, 'BUY');
-
-      expect(result).toBe(100); // 1% = 100 bps
-    });
-
-    it('should calculate negative slippage for favorable BUY (actual < expected)', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      // Paid 99 when expected 100 = favorable
-      const result = calculateSlippageBps(100, 99, 'BUY');
-
-      expect(result).toBe(-100); // -1% = -100 bps
-    });
-
-    it('should calculate positive slippage for unfavorable SELL (actual < expected)', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      // Received 99 when expected 100 = unfavorable
-      const result = calculateSlippageBps(100, 99, 'SELL');
-
-      expect(result).toBe(100); // 1% = 100 bps
-    });
-
-    it('should calculate negative slippage for favorable SELL (actual > expected)', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      // Received 101 when expected 100 = favorable
-      const result = calculateSlippageBps(100, 101, 'SELL');
-
-      expect(result).toBe(-100); // -1% = -100 bps
-    });
-
-    it('should return 0 for zero expected price', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      const result = calculateSlippageBps(0, 100, 'BUY');
-
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 for zero actual price', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      const result = calculateSlippageBps(100, 0, 'BUY');
-
-      expect(result).toBe(0);
-    });
-
-    it('should handle fractional basis points', () => {
-      const calculateSlippageBps = getCalculateSlippageBps(service);
-      // 0.05% slippage = 5 bps
-      const result = calculateSlippageBps(10000, 10005, 'BUY');
-
-      expect(result).toBe(5);
+    it.each([
+      { desc: 'unfavorable BUY (paid more)', expected: 100, actual: 101, action: 'BUY', bps: 100 },
+      { desc: 'favorable BUY (paid less)', expected: 100, actual: 99, action: 'BUY', bps: -100 },
+      { desc: 'unfavorable SELL (received less)', expected: 100, actual: 99, action: 'SELL', bps: 100 },
+      { desc: 'favorable SELL (received more)', expected: 100, actual: 101, action: 'SELL', bps: -100 },
+      { desc: 'fractional (5 bps)', expected: 10000, actual: 10005, action: 'BUY', bps: 5 }
+    ])('should calculate $desc as $bps bps', ({ expected, actual, action, bps }) => {
+      expect(calc()(expected, actual, action)).toBe(bps);
     });
   });
 
   describe('calculateTradeSize', () => {
-    it('should calculate trade size based on allocation percentage', () => {
-      const mockActivation = {
-        allocationPercentage: 10 // 10%
+    it.each([
+      { desc: '10% of $100k', pct: 10, portfolio: 100000, expected: 10000 },
+      { desc: 'defaults to 5% when unset', pct: undefined, portfolio: 100000, expected: 5000 },
+      { desc: 'zero portfolio value', pct: 10, portfolio: 0, expected: 0 },
+      { desc: '100% allocation', pct: 100, portfolio: 50000, expected: 50000 }
+    ])('$desc → $expected', ({ pct, portfolio, expected }) => {
+      const activation = pct !== undefined ? { allocationPercentage: pct } : {};
+      expect(service.calculateTradeSize(activation as any, portfolio)).toBe(expected);
+    });
+  });
+
+  describe('checkFundsAvailable', () => {
+    it('should report sufficient funds for BUY when balance covers cost', async () => {
+      const mockExchangeClient = {
+        fetchBalance: jest.fn().mockResolvedValue({
+          USDT: { free: 60000 }
+        }),
+        fetchTicker: jest.fn().mockResolvedValue({ last: 50000 })
       };
 
-      const result = service.calculateTradeSize(mockActivation as any, 100000);
-
-      expect(result).toBe(10000); // 10% of $100,000
-    });
-
-    it('should default to 1% when allocationPercentage is not set', () => {
-      const mockActivation = {};
-
-      const result = service.calculateTradeSize(mockActivation as any, 100000);
-
-      expect(result).toBe(1000); // 1% of $100,000
-    });
-
-    it('should handle zero portfolio value', () => {
-      const mockActivation = {
-        allocationPercentage: 10
+      const signal = {
+        algorithmActivationId: 'act-1',
+        userId: 'user-1',
+        exchangeKeyId: 'key-1',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 1
       };
 
-      const result = service.calculateTradeSize(mockActivation as any, 0);
+      const result = await service.checkFundsAvailable(mockExchangeClient as any, signal);
 
-      expect(result).toBe(0);
+      expect(result.sufficient).toBe(true);
+      expect(result.available).toBe(60000);
+      expect(result.required).toBe(50000);
     });
 
-    it('should handle 100% allocation', () => {
-      const mockActivation = {
-        allocationPercentage: 100
+    it('should report insufficient funds for BUY when balance is too low', async () => {
+      const mockExchangeClient = {
+        fetchBalance: jest.fn().mockResolvedValue({
+          USDT: { free: 100 }
+        }),
+        fetchTicker: jest.fn().mockResolvedValue({ last: 50000 })
       };
 
-      const result = service.calculateTradeSize(mockActivation as any, 50000);
+      const signal = {
+        algorithmActivationId: 'act-1',
+        userId: 'user-1',
+        exchangeKeyId: 'key-1',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 1
+      };
 
-      expect(result).toBe(50000);
+      const result = await service.checkFundsAvailable(mockExchangeClient as any, signal);
+
+      expect(result.sufficient).toBe(false);
+      expect(result.available).toBe(100);
+      expect(result.required).toBe(50000);
+    });
+
+    it('should return sufficient=true when fetchBalance throws (fail-open)', async () => {
+      const mockExchangeClient = {
+        fetchBalance: jest.fn().mockRejectedValue(new Error('API error'))
+      };
+
+      const signal = {
+        algorithmActivationId: 'act-1',
+        userId: 'user-1',
+        exchangeKeyId: 'key-1',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 1
+      };
+
+      const result = await service.checkFundsAvailable(mockExchangeClient as any, signal);
+
+      expect(result.sufficient).toBe(true);
+      expect(result.available).toBe(0);
+      expect(result.required).toBe(0);
     });
   });
 });

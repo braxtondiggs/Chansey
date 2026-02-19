@@ -153,29 +153,50 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         portfolioCache.set(userId, await this.fetchPortfolioValue(activation));
       }
 
-      // Phase 2: Process activations in parallel chunks
+      // Phase 2: Group by exchangeKeyId to avoid CCXT client concurrency issues,
+      // then process groups in parallel (up to CONCURRENCY_LIMIT) with sequential
+      // processing within each group.
       let successCount = 0;
       let failCount = 0;
       let skippedCount = 0;
       let processedActivations = 0;
 
-      const chunks = this.chunkArray(activeActivations, TradeExecutionTask.CONCURRENCY_LIMIT);
+      const groups = this.groupByExchangeKey(activeActivations);
+      const chunks = this.chunkArray(groups, TradeExecutionTask.CONCURRENCY_LIMIT);
 
       for (const chunk of chunks) {
         const results = await Promise.allSettled(
-          chunk.map((activation) => this.processActivation(activation, portfolioCache.get(activation.userId) ?? 0))
+          chunk.map(async (group) => {
+            const groupCounts = { success: 0, fail: 0, skipped: 0 };
+            for (const activation of group) {
+              try {
+                const outcome = await this.processActivation(activation, portfolioCache.get(activation.userId) ?? 0);
+                if (outcome === 'executed') groupCounts.success++;
+                else groupCounts.skipped++;
+              } catch (error: unknown) {
+                const err = toErrorInfo(error);
+                this.logger.error(`Activation ${activation.id} processing failed: ${err.message}`, err.stack);
+                groupCounts.fail++;
+              }
+            }
+            return groupCounts;
+          })
         );
 
         for (const result of results) {
           if (result.status === 'fulfilled') {
-            if (result.value === 'executed') successCount++;
-            else skippedCount++;
+            successCount += result.value.success;
+            failCount += result.value.fail;
+            skippedCount += result.value.skipped;
           } else {
+            const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+            this.logger.error(`Activation group processing failed: ${reason}`, result.reason?.stack);
             failCount++;
           }
         }
 
-        processedActivations += chunk.length;
+        const chunkActivationCount = chunk.reduce<number>((sum, group) => sum + group.length, 0);
+        processedActivations += chunkActivationCount;
         const progressPercentage = Math.floor(20 + (processedActivations / totalActivations) * 70);
         await job.updateProgress(progressPercentage);
       }
@@ -289,7 +310,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       quantity: 0,
       autoSize: true,
       portfolioValue,
-      allocationPercentage: activation.allocationPercentage || 1.0
+      allocationPercentage: activation.allocationPercentage || 5.0
     };
   }
 
@@ -336,5 +357,16 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       chunks.push(array.slice(i, i + size));
     }
     return chunks;
+  }
+
+  private groupByExchangeKey(activations: AlgorithmActivation[]): AlgorithmActivation[][] {
+    const groups = new Map<string, AlgorithmActivation[]>();
+    for (const activation of activations) {
+      const key = activation.exchangeKeyId;
+      const group = groups.get(key) ?? [];
+      group.push(activation);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
   }
 }
