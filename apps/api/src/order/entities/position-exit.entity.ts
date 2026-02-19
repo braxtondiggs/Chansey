@@ -6,7 +6,8 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn
+  UpdateDateColumn,
+  VersionColumn
 } from 'typeorm';
 
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
@@ -279,4 +280,7 @@ export class PositionExit {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
+
+  @VersionColumn()
+  version: number;
 }
