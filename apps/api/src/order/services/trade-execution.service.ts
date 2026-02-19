@@ -158,7 +158,7 @@ export class TradeExecutionService {
         }
         const tradeSizeUsd = (signal.portfolioValue * signal.allocationPercentage) / 100;
         effectiveQuantity = tradeSizeUsd / expectedPrice;
-        this.logger.log(
+        this.logger.debug(
           `Auto-sized: ${signal.allocationPercentage}% of $${signal.portfolioValue.toFixed(2)} = ` +
             `$${tradeSizeUsd.toFixed(2)} → ${effectiveQuantity.toFixed(8)} ${signal.symbol}`
         );
@@ -287,10 +287,10 @@ export class TradeExecutionService {
    * @returns Trade size in USD
    */
   calculateTradeSize(activation: AlgorithmActivation, portfolioValue: number): number {
-    const allocationPercentage = activation.allocationPercentage || 1.0;
+    const allocationPercentage = activation.allocationPercentage || 5.0;
     const tradeSize = (portfolioValue * allocationPercentage) / 100;
 
-    this.logger.log(
+    this.logger.debug(
       `Calculated trade size: ${allocationPercentage}% of $${portfolioValue.toFixed(2)} = $${tradeSize.toFixed(2)}`
     );
 

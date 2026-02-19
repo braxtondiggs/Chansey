@@ -327,7 +327,7 @@ describe('TradeExecutionTask', () => {
       expect(mockContextBuilder.buildContext).toHaveBeenCalled();
     });
 
-    it('should default allocationPercentage to 1.0 when not set on activation', async () => {
+    it('should default allocationPercentage to 5.0 when not set on activation', async () => {
       const activation = buildActivation({ allocationPercentage: undefined });
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       configureActionableSignal();
@@ -335,7 +335,7 @@ describe('TradeExecutionTask', () => {
       await task.process(mockJob);
 
       const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
-      expect(signalArg.allocationPercentage).toBe(1.0);
+      expect(signalArg.allocationPercentage).toBe(5.0);
     });
   });
 

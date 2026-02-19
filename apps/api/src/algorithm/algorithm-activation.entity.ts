@@ -85,10 +85,10 @@ export class AlgorithmActivation {
   })
   isActive: boolean;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 1.0 })
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 5.0 })
   @ApiProperty({
     description: 'Percentage of portfolio per trade (dynamically adjusted by ranking)',
-    example: 1.5,
+    example: 5.0,
     minimum: 0.01,
     maximum: 100.0
   })
