@@ -120,14 +120,23 @@ export class StrategyExecutorService {
     positions: UserStrategyPosition[],
     capitalPerStrategy: Map<string, number>
   ): Promise<Map<string, TradingSignal | null>> {
+    const results = await Promise.allSettled(
+      strategies.map(async (strategy) => {
+        const capital = capitalPerStrategy.get(strategy.id) || 0;
+        const strategyPositions = positions.filter((p) => p.strategyConfigId === strategy.id);
+        const signal = await this.executeStrategy(strategy, marketData, strategyPositions, capital);
+        return [strategy.id, signal] as const;
+      })
+    );
+
     const signals = new Map<string, TradingSignal | null>();
-
-    for (const strategy of strategies) {
-      const capital = capitalPerStrategy.get(strategy.id) || 0;
-      const strategyPositions = positions.filter((p) => p.strategyConfigId === strategy.id);
-
-      const signal = await this.executeStrategy(strategy, marketData, strategyPositions, capital);
-      signals.set(strategy.id, signal);
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        signals.set(result.value[0], result.value[1]);
+      } else {
+        const err = toErrorInfo(result.reason);
+        this.logger.error(`Strategy execution failed: ${err.message}`);
+      }
     }
 
     return signals;
@@ -172,6 +181,7 @@ export class StrategyExecutorService {
       case SignalType.TAKE_PROFIT:
         return 'sell';
       case SignalType.HOLD:
+      default:
         return 'hold';
     }
   }
@@ -189,15 +199,15 @@ export class StrategyExecutorService {
     }
 
     // Find matching market data entry for this coin
-    const marketEntry = marketData.find((m) => m.symbol.startsWith(`${coin.symbol}/`));
-    const symbol = marketEntry?.symbol || `${coin.symbol}/USDT`;
+    // Prefer quote currencies in priority order (matches QuoteCurrencyResolverService pattern)
+    const quotePreference = ['USDT', 'USDC', 'BUSD', 'DAI'];
+    const marketEntry =
+      quotePreference
+        .map((q) => marketData.find((m) => m.symbol === `${coin.symbol}/${q}`))
+        .find((entry) => entry != null) ?? marketData.find((m) => m.symbol.startsWith(`${coin.symbol}/`));
 
-    // Use signal price or fall back to market data price
-    let price = signal.price;
-    if (!price) {
-      const market = marketData.find((m) => m.symbol === symbol);
-      price = market?.price;
-    }
+    const symbol = marketEntry?.symbol || `${coin.symbol}/USDT`;
+    const price = signal.price || marketEntry?.price;
 
     if (!price || price <= 0) {
       this.logger.warn(`No valid price for ${symbol}`);
@@ -223,7 +233,7 @@ export class StrategyExecutorService {
       // Position symbol is "BTC/USDT" or "BTCUSDT", coin symbol is "BTC"
       const baseSymbol = pos.symbol.includes('/')
         ? pos.symbol.split('/')[0]
-        : pos.symbol.replace(/(?:USDT|USDC|BUSD|USD|EUR|BTC|ETH|BNB)$/i, '');
+        : pos.symbol.replace(/(?:USDT|USDC|BUSD|USD|EUR|BTC|ETH|BNB)$/i, '') || pos.symbol;
       const coin = coins.find((c) => c.symbol === baseSymbol);
       if (coin) {
         result[coin.id] = (result[coin.id] || 0) + Number(pos.quantity);
