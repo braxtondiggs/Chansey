@@ -13,7 +13,7 @@ import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { format } from 'date-fns';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
 
@@ -23,9 +23,13 @@ import {
   buildStageConfigFromRisk
 } from './dto/pipeline-orchestration.dto';
 
+import { AlgorithmService } from '../algorithm/algorithm.service';
+import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { ParameterSpace } from '../optimization/interfaces/parameter-space.interface';
+import { buildParameterSpace } from '../optimization/utils/parameter-space-builder';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
-import { PipelineStatus } from '../pipeline/interfaces';
+import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
 import { toErrorInfo } from '../shared/error.util';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
@@ -47,7 +51,9 @@ export class PipelineOrchestrationService {
     private readonly exchangeKeyRepository: Repository<ExchangeKey>,
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => PipelineOrchestratorService))
-    private readonly pipelineOrchestrator: PipelineOrchestratorService
+    private readonly pipelineOrchestrator: PipelineOrchestratorService,
+    private readonly algorithmService: AlgorithmService,
+    private readonly algorithmRegistry: AlgorithmRegistry
   ) {}
 
   /**
@@ -220,6 +226,84 @@ export class PipelineOrchestrationService {
   }
 
   /**
+   * Seed strategy_configs from active algorithms so pipeline orchestration has configs to work with.
+   * For each algorithm with evaluate=true and status=ACTIVE, creates a StrategyConfig
+   * with status=TESTING if one doesn't already exist.
+   */
+  async seedStrategyConfigsFromAlgorithms(): Promise<number> {
+    try {
+      const algorithms = await this.algorithmService.getAlgorithmsForTesting();
+      if (algorithms.length === 0) {
+        this.logger.debug('No active algorithms found for seeding');
+        return 0;
+      }
+
+      // Find existing strategy configs for these algorithms (TESTING or VALIDATED)
+      const algorithmIds = algorithms.map((a) => a.id);
+      const existingConfigs = await this.strategyConfigRepository.find({
+        where: [
+          { algorithmId: In(algorithmIds), status: StrategyStatus.TESTING },
+          { algorithmId: In(algorithmIds), status: StrategyStatus.VALIDATED }
+        ]
+      });
+
+      const existingAlgorithmIds = new Set(existingConfigs.map((c) => c.algorithmId));
+
+      let seeded = 0;
+      for (const algorithm of algorithms) {
+        if (existingAlgorithmIds.has(algorithm.id)) {
+          continue;
+        }
+
+        const strategyConfig = this.strategyConfigRepository.create({
+          name: `Auto: ${algorithm.name}`,
+          algorithmId: algorithm.id,
+          parameters: algorithm.config?.parameters ?? {},
+          version: algorithm.version ?? '1.0.0',
+          status: StrategyStatus.TESTING,
+          shadowStatus: 'testing',
+          createdBy: null
+        });
+
+        await this.strategyConfigRepository.save(strategyConfig);
+        seeded++;
+        this.logger.log(`Seeded strategy config for algorithm "${algorithm.name}" (${algorithm.id})`);
+      }
+
+      if (seeded > 0) {
+        this.logger.log(`Seeded ${seeded} strategy configs from active algorithms`);
+      }
+
+      return seeded;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to seed strategy configs: ${err.message}`, err.stack);
+      return 0;
+    }
+  }
+
+  /**
+   * Build a ParameterSpace from the strategy's schema and constraints.
+   * Returns null if the strategy has no optimizable parameters or is not registered.
+   */
+  private async buildParameterSpaceForStrategy(strategyConfig: StrategyConfig): Promise<ParameterSpace | null> {
+    try {
+      const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(strategyConfig.algorithmId);
+      if (!strategy?.getConfigSchema) return null;
+
+      const schema = strategy.getConfigSchema();
+      const constraints = strategy.getParameterConstraints?.() ?? [];
+      const space = buildParameterSpace(strategy.id, schema, constraints, strategyConfig.version);
+
+      return space.parameters.length > 0 ? space : null;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Could not build parameter space for algorithm ${strategyConfig.algorithmId}: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Process a single strategy config - check for duplicates and create pipeline.
    */
   private async processStrategyConfig(
@@ -246,6 +330,10 @@ export class PipelineOrchestrationService {
     // Build stage configuration based on risk level
     const stageConfig = buildStageConfigFromRisk(riskLevel);
 
+    // Build ParameterSpace from strategy schema + constraints
+    const parameterSpace = await this.buildParameterSpaceForStrategy(strategyConfig);
+    const initialStage = parameterSpace ? PipelineStage.OPTIMIZE : PipelineStage.HISTORICAL;
+
     // Create the pipeline
     const dateStr = format(new Date(), 'yyyy-MM-dd');
     const pipeline = await this.pipelineOrchestrator.createPipeline(
@@ -254,10 +342,16 @@ export class PipelineOrchestrationService {
         description: `Orchestrated pipeline for ${strategyName}`,
         strategyConfigId,
         exchangeKeyId: exchangeKey.id,
-        stageConfig
+        stageConfig,
+        initialStage
       },
       user
     );
+
+    // Record optimization as skipped when starting at HISTORICAL
+    if (initialStage === PipelineStage.HISTORICAL) {
+      await this.pipelineOrchestrator.recordOptimizationSkipped(pipeline.id);
+    }
 
     // Start the pipeline
     await this.pipelineOrchestrator.startPipeline(pipeline.id, user);

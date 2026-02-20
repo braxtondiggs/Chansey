@@ -14,9 +14,11 @@ import {
 } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
+import { AlgorithmService } from '../algorithm/algorithm.service';
+import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
-import { PipelineStatus } from '../pipeline/interfaces';
+import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
@@ -30,6 +32,8 @@ describe('PipelineOrchestrationService', () => {
   let exchangeKeyRepository: jest.Mocked<Repository<ExchangeKey>>;
   let usersService: jest.Mocked<UsersService>;
   let pipelineOrchestrator: jest.Mocked<PipelineOrchestratorService>;
+  let algorithmService: jest.Mocked<AlgorithmService>;
+  let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
 
   const mockUser: Partial<User> = {
     id: 'user-123',
@@ -89,7 +93,9 @@ describe('PipelineOrchestrationService', () => {
         {
           provide: getRepositoryToken(StrategyConfig),
           useValue: {
-            find: jest.fn().mockResolvedValue([mockStrategyConfig])
+            find: jest.fn().mockResolvedValue([mockStrategyConfig]),
+            create: jest.fn().mockImplementation((data) => data),
+            save: jest.fn().mockImplementation((data) => Promise.resolve({ id: 'new-config-id', ...data }))
           }
         },
         {
@@ -108,7 +114,20 @@ describe('PipelineOrchestrationService', () => {
           provide: PipelineOrchestratorService,
           useValue: {
             createPipeline: jest.fn().mockResolvedValue(mockPipeline),
-            startPipeline: jest.fn().mockResolvedValue(mockPipeline)
+            startPipeline: jest.fn().mockResolvedValue(mockPipeline),
+            recordOptimizationSkipped: jest.fn().mockResolvedValue(undefined)
+          }
+        },
+        {
+          provide: AlgorithmService,
+          useValue: {
+            getAlgorithmsForTesting: jest.fn().mockResolvedValue([])
+          }
+        },
+        {
+          provide: AlgorithmRegistry,
+          useValue: {
+            getStrategyForAlgorithm: jest.fn().mockResolvedValue(undefined)
           }
         }
       ]
@@ -121,6 +140,8 @@ describe('PipelineOrchestrationService', () => {
     exchangeKeyRepository = module.get(getRepositoryToken(ExchangeKey));
     usersService = module.get(UsersService);
     pipelineOrchestrator = module.get(PipelineOrchestratorService);
+    algorithmService = module.get(AlgorithmService);
+    algorithmRegistry = module.get(AlgorithmRegistry);
   });
 
   it('should be defined', () => {
@@ -244,6 +265,95 @@ describe('PipelineOrchestrationService', () => {
       expect(result.skippedConfigs).toHaveLength(1);
       expect(result.skippedConfigs[0].reason).toContain('Duplicate');
     });
+
+    it('should pass initialStage=HISTORICAL when no strategy is registered', async () => {
+      // algorithmRegistry returns undefined → no ParameterSpace → HISTORICAL
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue(undefined);
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.pipelinesCreated).toBe(1);
+      expect(pipelineOrchestrator.createPipeline).toHaveBeenCalledWith(
+        expect.objectContaining({ initialStage: PipelineStage.HISTORICAL }),
+        expect.any(Object)
+      );
+      expect(pipelineOrchestrator.recordOptimizationSkipped).toHaveBeenCalledWith('pipeline-123');
+    });
+
+    it('should pass initialStage=OPTIMIZE when strategy has optimizable schema', async () => {
+      // Mock a strategy that returns a schema with optimizable params
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
+        id: 'ema-crossover-001',
+        getConfigSchema: () => ({
+          enabled: { type: 'boolean', default: true },
+          weight: { type: 'number', default: 1.0, min: 0, max: 10 },
+          fastPeriod: { type: 'number', default: 12, min: 5, max: 50 },
+          slowPeriod: { type: 'number', default: 26, min: 10, max: 100 }
+        }),
+        getParameterConstraints: () => [{ type: 'less_than' as const, param1: 'fastPeriod', param2: 'slowPeriod' }]
+      } as any);
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.pipelinesCreated).toBe(1);
+      expect(pipelineOrchestrator.createPipeline).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialStage: PipelineStage.OPTIMIZE
+        }),
+        expect.any(Object)
+      );
+      expect(pipelineOrchestrator.recordOptimizationSkipped).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call seedStrategyConfigsFromAlgorithms (moved to task scheduler)', async () => {
+      const seedSpy = jest.spyOn(service, 'seedStrategyConfigsFromAlgorithms');
+
+      await service.orchestrateForUser('user-123');
+
+      expect(seedSpy).not.toHaveBeenCalled();
+      seedSpy.mockRestore();
+    });
+  });
+
+  describe('seedStrategyConfigsFromAlgorithms', () => {
+    it('should skip algorithms that already have a strategy config', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([
+        { id: 'algo-123', name: 'RSI', config: {}, version: '1.0.0' } as any
+      ]);
+      // Return existing config for algo-123
+      strategyConfigRepository.find = jest
+        .fn()
+        .mockResolvedValue([{ algorithmId: 'algo-123', status: StrategyStatus.TESTING }]);
+
+      const seeded = await service.seedStrategyConfigsFromAlgorithms();
+
+      expect(seeded).toBe(0);
+      expect(strategyConfigRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should return 0 when no algorithms found', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([]);
+
+      const seeded = await service.seedStrategyConfigsFromAlgorithms();
+
+      expect(seeded).toBe(0);
+    });
+
+    it('should use default parameters when algorithm config is empty', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([
+        { id: 'algo-no-config', name: 'No Config Algo', config: null, version: null } as any
+      ]);
+      strategyConfigRepository.find = jest.fn().mockResolvedValue([]);
+
+      await service.seedStrategyConfigsFromAlgorithms();
+
+      expect(strategyConfigRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parameters: {},
+          version: '1.0.0'
+        })
+      );
+    });
   });
 });
 
@@ -291,11 +401,11 @@ describe('Pipeline Orchestration DTOs', () => {
       const config = buildStageConfigFromRisk(3);
 
       // Optimization stage
-      expect(config.optimization.trainDays).toBe(90);
-      expect(config.optimization.testDays).toBe(30);
-      expect(config.optimization.objectiveMetric).toBe('sharpe_ratio');
-      expect(config.optimization.maxCombinations).toBe(500);
-      expect(config.optimization.earlyStop).toBe(true);
+      expect(config.optimization!.trainDays).toBe(90);
+      expect(config.optimization!.testDays).toBe(30);
+      expect(config.optimization!.objectiveMetric).toBe('sharpe_ratio');
+      expect(config.optimization!.maxCombinations).toBe(500);
+      expect(config.optimization!.earlyStop).toBe(true);
 
       // Historical stage
       expect(config.historical.initialCapital).toBe(PIPELINE_STANDARD_CAPITAL);
@@ -314,16 +424,16 @@ describe('Pipeline Orchestration DTOs', () => {
     it('should build conservative config for risk level 1', () => {
       const config = buildStageConfigFromRisk(1);
 
-      expect(config.optimization.trainDays).toBe(180);
-      expect(config.optimization.maxCombinations).toBe(1000);
+      expect(config.optimization!.trainDays).toBe(180);
+      expect(config.optimization!.maxCombinations).toBe(1000);
       expect(config.paperTrading.duration).toBe('14d');
     });
 
     it('should build aggressive config for risk level 5', () => {
       const config = buildStageConfigFromRisk(5);
 
-      expect(config.optimization.trainDays).toBe(30);
-      expect(config.optimization.maxCombinations).toBe(200);
+      expect(config.optimization!.trainDays).toBe(30);
+      expect(config.optimization!.maxCombinations).toBe(200);
       expect(config.paperTrading.duration).toBe('3d');
     });
   });

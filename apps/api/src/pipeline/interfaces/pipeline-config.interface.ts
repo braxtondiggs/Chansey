@@ -114,7 +114,7 @@ export interface PaperTradingStageConfig {
  * Combined stage configuration
  */
 export interface PipelineStageConfig {
-  optimization: OptimizationStageConfig;
+  optimization?: OptimizationStageConfig;
   historical: HistoricalStageConfig;
   liveReplay: LiveReplayStageConfig;
   paperTrading: PaperTradingStageConfig;

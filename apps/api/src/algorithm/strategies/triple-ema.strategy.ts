@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -412,6 +413,23 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         }
       };
     });
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'fastPeriod',
+        param2: 'mediumPeriod',
+        message: 'fastPeriod must be less than mediumPeriod'
+      },
+      {
+        type: 'less_than',
+        param1: 'mediumPeriod',
+        param2: 'slowPeriod',
+        message: 'mediumPeriod must be less than slowPeriod'
+      }
+    ];
   }
 
   /**

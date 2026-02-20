@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -407,6 +408,17 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
       },
       minConfidence: { type: 'number', default: 0.7, min: 0, max: 1, description: 'Minimum confidence required' }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'macdFast',
+        param2: 'macdSlow',
+        message: 'macdFast must be less than macdSlow'
+      }
+    ];
   }
 
   /**

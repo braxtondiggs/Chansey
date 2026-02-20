@@ -17,10 +17,11 @@ import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 
 import { MarketRegimeType } from '@chansey/api-interfaces';
 
+import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
-import { ParameterSpace } from '../../optimization/interfaces/parameter-space.interface';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
+import { buildParameterSpace } from '../../optimization/utils/parameter-space-builder';
 import { BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
@@ -77,6 +78,8 @@ export class PipelineOrchestratorService {
     private readonly scoringService: ScoringService,
     @Inject(forwardRef(() => MarketRegimeService))
     private readonly marketRegimeService: MarketRegimeService,
+    @Inject(forwardRef(() => AlgorithmRegistry))
+    private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource
   ) {}
@@ -114,7 +117,7 @@ export class PipelineOrchestratorService {
       name: dto.name,
       description: dto.description,
       status: PipelineStatus.PENDING,
-      currentStage: PipelineStage.OPTIMIZE,
+      currentStage: dto.initialStage ?? PipelineStage.OPTIMIZE,
       strategyConfigId: dto.strategyConfigId,
       exchangeKeyId: dto.exchangeKeyId,
       stageConfig: dto.stageConfig,
@@ -867,8 +870,9 @@ export class PipelineOrchestratorService {
     }
 
     // Fallback: legacy metric-based recommendation for older pipelines
+    const optimizationOk = !stageResults.optimization || stageResults.optimization.status === 'COMPLETED';
     const allStagesPassed =
-      stageResults.optimization?.status === 'COMPLETED' &&
+      optimizationOk &&
       stageResults.historical?.status === 'COMPLETED' &&
       stageResults.liveReplay?.status === 'COMPLETED' &&
       (stageResults.paperTrading?.status === 'COMPLETED' || stageResults.paperTrading?.status === 'STOPPED');
@@ -968,42 +972,87 @@ export class PipelineOrchestratorService {
     };
   }
 
+  /**
+   * Record that the optimization stage was skipped (e.g., when starting at HISTORICAL).
+   * Writes a synthetic "SKIPPED" result so generateRecommendation() works correctly.
+   */
+  async recordOptimizationSkipped(pipelineId: string): Promise<void> {
+    const pipeline = await this.pipelineRepository.findOne({ where: { id: pipelineId } });
+    if (!pipeline) return;
+
+    const skippedResult: OptimizationStageResult = {
+      runId: 'skipped',
+      status: 'COMPLETED',
+      bestParameters: {},
+      bestScore: 0,
+      baselineScore: 0,
+      improvement: 0,
+      combinationsTested: 0,
+      totalCombinations: 0,
+      duration: 0,
+      completedAt: new Date().toISOString()
+    };
+
+    pipeline.stageResults = {
+      ...pipeline.stageResults,
+      optimization: skippedResult
+    };
+
+    await this.pipelineRepository.save(pipeline);
+    this.logger.log(`Recorded optimization skipped for pipeline ${pipelineId}`);
+  }
+
   // Stage execution methods
 
   private async executeOptimizationStage(pipeline: Pipeline): Promise<void> {
     const config = pipeline.stageConfig.optimization;
+    if (!config) {
+      throw new Error(`Pipeline ${pipeline.id}: optimization stage config is missing`);
+    }
+
+    // Build ParameterSpace at runtime from strategy schema + constraints
+    const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(pipeline.strategyConfig.algorithmId);
+    if (!strategy?.getConfigSchema) {
+      throw new Error(
+        `Pipeline ${pipeline.id}: strategy not found or has no config schema for algorithm ${pipeline.strategyConfig.algorithmId}`
+      );
+    }
+
+    const schema = strategy.getConfigSchema();
+    const constraints = strategy.getParameterConstraints?.() ?? [];
+    const parameterSpace = buildParameterSpace(strategy.id, schema, constraints, pipeline.strategyConfig.version);
+
+    if (parameterSpace.parameters.length === 0) {
+      throw new Error(`Pipeline ${pipeline.id}: strategy has no optimizable parameters`);
+    }
 
     // Start optimization run
-    const run = await this.optimizationService.startOptimization(
-      pipeline.strategyConfigId,
-      pipeline.strategyConfig.parameters as unknown as ParameterSpace, // Parameter space from strategy
-      {
-        method: 'grid_search',
-        maxCombinations: config.maxCombinations,
-        objective: {
-          metric: config.objectiveMetric,
-          minimize: false // Maximize the objective metric
-        },
-        walkForward: {
-          trainDays: config.trainDays,
-          testDays: config.testDays,
-          stepDays: config.stepDays,
-          method: 'rolling',
-          minWindowsRequired: 3
-        },
-        earlyStop: config.earlyStop
-          ? {
-              enabled: true,
-              patience: config.patience ?? 20,
-              minImprovement: pipeline.progressionRules?.optimization?.minImprovement ?? 5
-            }
-          : undefined,
-        parallelism: {
-          maxConcurrentBacktests: 2,
-          maxConcurrentWindows: 2
-        }
+    const run = await this.optimizationService.startOptimization(pipeline.strategyConfigId, parameterSpace, {
+      method: 'grid_search',
+      maxCombinations: config.maxCombinations,
+      objective: {
+        metric: config.objectiveMetric,
+        minimize: false // Maximize the objective metric
+      },
+      walkForward: {
+        trainDays: config.trainDays,
+        testDays: config.testDays,
+        stepDays: config.stepDays,
+        method: 'rolling',
+        minWindowsRequired: 3
+      },
+      earlyStop: config.earlyStop
+        ? {
+            enabled: true,
+            patience: config.patience ?? 20,
+            minImprovement: pipeline.progressionRules?.optimization?.minImprovement ?? 5
+          }
+        : undefined,
+      parallelism: {
+        maxConcurrentBacktests: 2,
+        maxConcurrentWindows: 2
       }
-    );
+    });
 
     // Store optimization run reference
     pipeline.optimizationRunId = run.id;

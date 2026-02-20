@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CronJob } from 'cron';
 
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm, AlgorithmStatus } from '../algorithm.entity';
 import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy } from '../interfaces';
@@ -81,6 +82,14 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
       this.logger.error(`Health check failed: ${err.message}`);
       return false;
     }
+  }
+
+  /**
+   * Get cross-parameter constraints for optimization.
+   * Override in strategies with related parameters (e.g., fastPeriod < slowPeriod).
+   */
+  getParameterConstraints(): ParameterConstraint[] {
+    return [];
   }
 
   /**
