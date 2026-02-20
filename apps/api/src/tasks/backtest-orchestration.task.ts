@@ -30,7 +30,7 @@ export class BacktestOrchestrationTask {
   private static readonly BOOT_GRACE_PERIOD_MS = 10 * 60 * 1000; // 10 min
   private static readonly HISTORICAL_THRESHOLD_MS = 90 * 60 * 1000;
   private static readonly LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
-  private static readonly OPTIMIZATION_THRESHOLD_MS = 120 * 60 * 1000; // 120 min
+  private static readonly OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
 
   private readonly bootedAt = Date.now();
   private readonly logger = new Logger(BacktestOrchestrationTask.name);

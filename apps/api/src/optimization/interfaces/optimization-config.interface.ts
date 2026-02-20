@@ -111,12 +111,13 @@ export interface OptimizationConfig {
  * Default optimization configuration
  */
 export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
-  method: 'grid_search',
-  maxCombinations: 1000,
+  method: 'random_search',
+  maxIterations: 100,
+  maxCombinations: 100,
   walkForward: {
-    trainDays: 180,
-    testDays: 90,
-    stepDays: 30,
+    trainDays: 90,
+    testDays: 30,
+    stepDays: 14,
     method: 'rolling',
     minWindowsRequired: 3,
     maxAcceptableDegradation: 30
@@ -127,7 +128,7 @@ export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
   },
   earlyStop: {
     enabled: true,
-    patience: 50,
+    patience: 20,
     minImprovement: 1
   },
   parallelism: {
