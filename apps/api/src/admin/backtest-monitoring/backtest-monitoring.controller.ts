@@ -12,7 +12,12 @@ import {
   BacktestListQueryDto,
   BacktestOverviewDto,
   ExportFormat,
+  OptimizationAnalyticsDto,
+  OptimizationFiltersDto,
   PaginatedBacktestListDto,
+  PaperTradingFiltersDto,
+  PaperTradingMonitoringDto,
+  PipelineStageCountsDto,
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from './dto';
@@ -119,6 +124,64 @@ export class BacktestMonitoringController {
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getTradeAnalytics(@Query() filters: BacktestFiltersDto): Promise<TradeAnalyticsDto> {
     return this.monitoringService.getTradeAnalytics(filters);
+  }
+
+  /**
+   * Get optimization analytics
+   */
+  @Get('optimization-analytics')
+  @ApiOperation({
+    summary: 'Get optimization analytics',
+    description:
+      'Returns aggregated optimization metrics including status counts, ' +
+      'average improvement, top strategies, and result quality summary.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Optimization analytics retrieved successfully',
+    type: OptimizationAnalyticsDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getOptimizationAnalytics(@Query() filters: OptimizationFiltersDto): Promise<OptimizationAnalyticsDto> {
+    return this.monitoringService.getOptimizationAnalytics(filters);
+  }
+
+  /**
+   * Get paper trading monitoring analytics
+   */
+  @Get('paper-trading-analytics')
+  @ApiOperation({
+    summary: 'Get paper trading monitoring analytics',
+    description:
+      'Returns paper trading session metrics including status counts, ' +
+      'average performance, order analytics, and signal analytics.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Paper trading analytics retrieved successfully',
+    type: PaperTradingMonitoringDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getPaperTradingAnalytics(@Query() filters: PaperTradingFiltersDto): Promise<PaperTradingMonitoringDto> {
+    return this.monitoringService.getPaperTradingMonitoring(filters);
+  }
+
+  /**
+   * Get pipeline stage counts
+   */
+  @Get('pipeline-stage-counts')
+  @ApiOperation({
+    summary: 'Get pipeline stage counts',
+    description: 'Returns the total count of records across all pipeline stages.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Pipeline stage counts retrieved successfully',
+    type: PipelineStageCountsDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getPipelineStageCounts(): Promise<PipelineStageCountsDto> {
+    return this.monitoringService.getPipelineStageCounts();
   }
 
   /**

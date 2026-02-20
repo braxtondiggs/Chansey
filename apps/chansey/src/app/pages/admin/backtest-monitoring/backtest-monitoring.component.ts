@@ -17,7 +17,14 @@ import {
   BacktestStatus,
   BacktestType,
   ExportFormat,
+  OptimizationAnalyticsDto,
+  OptimizationFiltersDto,
+  OptimizationStatus,
   PaginatedBacktestListDto,
+  PaperTradingFiltersDto,
+  PaperTradingMonitoringDto,
+  PaperTradingStatus,
+  PipelineStageCountsDto,
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from '@chansey/api-interfaces';
@@ -25,10 +32,14 @@ import {
 import { BacktestMonitoringService } from './backtest-monitoring.service';
 import { BacktestsTableComponent } from './components/backtests-table/backtests-table.component';
 import { ExportPanelComponent } from './components/export-panel/export-panel.component';
+import { OptimizationPanelComponent } from './components/optimization-panel/optimization-panel.component';
 import { OverviewCardsComponent } from './components/overview-cards/overview-cards.component';
+import { PaperTradingPanelComponent } from './components/paper-trading-panel/paper-trading-panel.component';
 import { SignalQualityPanelComponent } from './components/signal-quality-panel/signal-quality-panel.component';
 import { TopAlgorithmsComponent } from './components/top-algorithms/top-algorithms.component';
 import { TradeAnalyticsPanelComponent } from './components/trade-analytics-panel/trade-analytics-panel.component';
+
+type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-trading';
 
 @Component({
   selector: 'app-backtest-monitoring',
@@ -48,11 +59,13 @@ import { TradeAnalyticsPanelComponent } from './components/trade-analytics-panel
     TopAlgorithmsComponent,
     SignalQualityPanelComponent,
     TradeAnalyticsPanelComponent,
+    OptimizationPanelComponent,
+    PaperTradingPanelComponent,
     ExportPanelComponent
   ],
   providers: [MessageService],
   template: `
-    <div class="backtest-monitoring-page">
+    <div class="p-3 md:p-6">
       <p-toast />
 
       <!-- Header -->
@@ -84,11 +97,11 @@ import { TradeAnalyticsPanelComponent } from './components/trade-analytics-panel
             />
 
             <p-select
-              [(ngModel)]="selectedType"
-              [options]="typeOptions"
-              placeholder="All Types"
+              [(ngModel)]="selectedView"
+              [options]="viewOptions"
+              placeholder="All Stages"
               [showClear]="true"
-              (onChange)="onFilterChange()"
+              (onChange)="onViewChange()"
             />
 
             <p-button
@@ -109,53 +122,66 @@ import { TradeAnalyticsPanelComponent } from './components/trade-analytics-panel
         </div>
       } @else {
         <!-- Overview Cards -->
-        <app-overview-cards [overview]="overview()" class="mb-4" />
+        <app-overview-cards [overview]="overview()" [pipelineStageCounts]="pipelineStageCounts()" class="mb-4" />
 
-        <!-- Tabs -->
-        <p-tabs [(value)]="activeTab">
-          <p-tablist>
-            <p-tab value="overview">Overview</p-tab>
-            <p-tab value="signals">Signal Quality</p-tab>
-            <p-tab value="trades">Trade Analytics</p-tab>
-            <p-tab value="export">Export</p-tab>
-          </p-tablist>
-          <p-tabpanels>
-            <p-tabpanel value="overview">
-              <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <app-top-algorithms [algorithms]="overview()?.topAlgorithms || []" />
-                <app-backtests-table [backtests]="backtests()" (pageChange)="onPageChange($event)" />
-              </div>
-            </p-tabpanel>
-            <p-tabpanel value="signals">
-              @if (signalAnalyticsQuery.isPending()) {
-                <div class="flex items-center justify-center py-8">
-                  <p-progress-spinner strokeWidth="4" />
+        @if (selectedView === 'optimization') {
+          @if (optimizationQuery.isPending()) {
+            <div class="flex items-center justify-center py-8">
+              <p-progress-spinner strokeWidth="4" />
+            </div>
+          } @else {
+            <app-optimization-panel [analytics]="optimizationAnalytics()" />
+          }
+        } @else if (selectedView === 'paper-trading') {
+          @if (paperTradingQuery.isPending()) {
+            <div class="flex items-center justify-center py-8">
+              <p-progress-spinner strokeWidth="4" />
+            </div>
+          } @else {
+            <app-paper-trading-panel [analytics]="paperTradingAnalytics()" />
+          }
+        } @else {
+          <!-- Backtest tabs (overview, signals, trades, export) -->
+          <p-tabs [(value)]="activeTab">
+            <p-tablist>
+              <p-tab value="overview">Overview</p-tab>
+              <p-tab value="signals">Signal Quality</p-tab>
+              <p-tab value="trades">Trade Analytics</p-tab>
+              <p-tab value="export">Export</p-tab>
+            </p-tablist>
+            <p-tabpanels>
+              <p-tabpanel value="overview">
+                <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <app-top-algorithms [algorithms]="overview()?.topAlgorithms || []" />
+                  <app-backtests-table [backtests]="backtests()" (pageChange)="onPageChange($event)" />
                 </div>
-              } @else {
-                <app-signal-quality-panel [analytics]="signalAnalytics()" />
-              }
-            </p-tabpanel>
-            <p-tabpanel value="trades">
-              @if (tradeAnalyticsQuery.isPending()) {
-                <div class="flex items-center justify-center py-8">
-                  <p-progress-spinner strokeWidth="4" />
-                </div>
-              } @else {
-                <app-trade-analytics-panel [analytics]="tradeAnalytics()" />
-              }
-            </p-tabpanel>
-            <p-tabpanel value="export">
-              <app-export-panel [filters]="currentFilters()" (exportRequest)="onExport($event)" />
-            </p-tabpanel>
-          </p-tabpanels>
-        </p-tabs>
+              </p-tabpanel>
+              <p-tabpanel value="signals">
+                @if (signalAnalyticsQuery.isPending()) {
+                  <div class="flex items-center justify-center py-8">
+                    <p-progress-spinner strokeWidth="4" />
+                  </div>
+                } @else {
+                  <app-signal-quality-panel [analytics]="signalAnalytics()" />
+                }
+              </p-tabpanel>
+              <p-tabpanel value="trades">
+                @if (tradeAnalyticsQuery.isPending()) {
+                  <div class="flex items-center justify-center py-8">
+                    <p-progress-spinner strokeWidth="4" />
+                  </div>
+                } @else {
+                  <app-trade-analytics-panel [analytics]="tradeAnalytics()" />
+                }
+              </p-tabpanel>
+              <p-tabpanel value="export">
+                <app-export-panel [filters]="currentFilters()" (exportRequest)="onExport($event)" />
+              </p-tabpanel>
+            </p-tabpanels>
+          </p-tabs>
+        }
       }
     </div>
-  `,
-  styles: `
-    .backtest-monitoring-page {
-      padding: 1.5rem;
-    }
   `
 })
 export class BacktestMonitoringComponent {
@@ -164,23 +190,25 @@ export class BacktestMonitoringComponent {
 
   // Filter state
   dateRange: Date[] | null = null;
-  selectedStatus: BacktestStatus | null = null;
-  selectedType: BacktestType | null = null;
+  selectedStatus: string | null = null;
+  selectedView: PipelineView | null = null;
   activeTab = 'overview';
 
-  // Filter options
-  statusOptions = Object.values(BacktestStatus).map((status) => ({
-    label: this.formatStatus(status),
-    value: status
-  }));
+  // View options for pipeline stages
+  viewOptions: { label: string; value: PipelineView }[] = [
+    { label: 'Optimization', value: 'optimization' },
+    { label: 'Historical', value: 'historical' },
+    { label: 'Live Replay', value: 'live-replay' },
+    { label: 'Paper Trading', value: 'paper-trading' }
+  ];
 
-  typeOptions = Object.values(BacktestType).map((type) => ({
-    label: this.formatType(type),
-    value: type
-  }));
+  // Status options (rebuilt dynamically when view changes)
+  statusOptions = this.buildStatusOptions(null);
 
-  // Filters signal for queries
+  // Filters signals for queries
   filtersSignal = signal<BacktestFiltersDto>({});
+  optimizationFiltersSignal = signal<OptimizationFiltersDto>({});
+  paperTradingFiltersSignal = signal<PaperTradingFiltersDto>({});
   currentPage = signal(1);
 
   // Computed filters
@@ -197,19 +225,20 @@ export class BacktestMonitoringComponent {
   );
   signalAnalyticsQuery = this.monitoringService.useSignalAnalytics(this.filtersSignal);
   tradeAnalyticsQuery = this.monitoringService.useTradeAnalytics(this.filtersSignal);
+  optimizationQuery = this.monitoringService.useOptimizationAnalytics(this.optimizationFiltersSignal);
+  paperTradingQuery = this.monitoringService.usePaperTradingAnalytics(this.paperTradingFiltersSignal);
+  pipelineStageCountsQuery = this.monitoringService.usePipelineStageCounts();
 
   // Computed data
-  isLoading = computed(
-    () =>
-      this.overviewQuery.isPending() ||
-      (this.activeTab === 'signals' && this.signalAnalyticsQuery.isPending()) ||
-      (this.activeTab === 'trades' && this.tradeAnalyticsQuery.isPending())
-  );
+  isLoading = computed(() => this.overviewQuery.isPending());
 
   overview = computed(() => this.overviewQuery.data() as BacktestOverviewDto | undefined);
   backtests = computed(() => this.backtestsQuery.data() as PaginatedBacktestListDto | undefined);
   signalAnalytics = computed(() => this.signalAnalyticsQuery.data() as SignalAnalyticsDto | undefined);
   tradeAnalytics = computed(() => this.tradeAnalyticsQuery.data() as TradeAnalyticsDto | undefined);
+  optimizationAnalytics = computed(() => this.optimizationQuery.data() as OptimizationAnalyticsDto | undefined);
+  paperTradingAnalytics = computed(() => this.paperTradingQuery.data() as PaperTradingMonitoringDto | undefined);
+  pipelineStageCounts = computed(() => this.pipelineStageCountsQuery.data() as PipelineStageCountsDto | undefined);
 
   onDateRangeChange(): void {
     this.updateFilters();
@@ -219,27 +248,53 @@ export class BacktestMonitoringComponent {
     this.updateFilters();
   }
 
+  onViewChange(): void {
+    this.selectedStatus = null;
+    this.statusOptions = this.buildStatusOptions(this.selectedView);
+    this.updateFilters();
+  }
+
   private updateFilters(): void {
-    const filters: BacktestFiltersDto = {};
+    const dateFilters: { startDate?: string; endDate?: string } = {};
 
     if (this.dateRange && this.dateRange.length === 2) {
       if (this.dateRange[0]) {
-        filters.startDate = this.dateRange[0].toISOString();
+        dateFilters.startDate = this.dateRange[0].toISOString();
       }
       if (this.dateRange[1]) {
-        filters.endDate = this.dateRange[1].toISOString();
+        dateFilters.endDate = this.dateRange[1].toISOString();
       }
     }
 
-    if (this.selectedStatus) {
-      filters.status = this.selectedStatus;
+    // Update backtest filters
+    const backtestFilters: BacktestFiltersDto = { ...dateFilters };
+
+    if (this.selectedView === 'historical') {
+      backtestFilters.type = BacktestType.HISTORICAL;
+    } else if (this.selectedView === 'live-replay') {
+      backtestFilters.type = BacktestType.LIVE_REPLAY;
     }
 
-    if (this.selectedType) {
-      filters.type = this.selectedType;
+    if (this.selectedStatus && this.selectedView !== 'optimization' && this.selectedView !== 'paper-trading') {
+      backtestFilters.status = this.selectedStatus as BacktestStatus;
     }
 
-    this.filtersSignal.set(filters);
+    this.filtersSignal.set(backtestFilters);
+
+    // Update optimization filters
+    const optFilters: OptimizationFiltersDto = { ...dateFilters };
+    if (this.selectedStatus && this.selectedView === 'optimization') {
+      optFilters.status = this.selectedStatus as OptimizationStatus;
+    }
+    this.optimizationFiltersSignal.set(optFilters);
+
+    // Update paper trading filters
+    const ptFilters: PaperTradingFiltersDto = { ...dateFilters };
+    if (this.selectedStatus && this.selectedView === 'paper-trading') {
+      ptFilters.status = this.selectedStatus as PaperTradingStatus;
+    }
+    this.paperTradingFiltersSignal.set(ptFilters);
+
     this.currentPage.set(1);
   }
 
@@ -248,15 +303,23 @@ export class BacktestMonitoringComponent {
   }
 
   refresh(): void {
-    this.overviewQuery.refetch();
-    this.backtestsQuery.refetch();
+    this.pipelineStageCountsQuery.refetch();
 
-    if (this.activeTab === 'signals') {
-      this.signalAnalyticsQuery.refetch();
-    }
+    if (this.selectedView === 'optimization') {
+      this.optimizationQuery.refetch();
+    } else if (this.selectedView === 'paper-trading') {
+      this.paperTradingQuery.refetch();
+    } else {
+      this.overviewQuery.refetch();
+      this.backtestsQuery.refetch();
 
-    if (this.activeTab === 'trades') {
-      this.tradeAnalyticsQuery.refetch();
+      if (this.activeTab === 'signals') {
+        this.signalAnalyticsQuery.refetch();
+      }
+
+      if (this.activeTab === 'trades') {
+        this.tradeAnalyticsQuery.refetch();
+      }
     }
 
     this.messageService.add({
@@ -289,14 +352,28 @@ export class BacktestMonitoringComponent {
     }
   }
 
-  private formatStatus(status: BacktestStatus): string {
-    return status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ');
+  private buildStatusOptions(view: PipelineView | null): { label: string; value: string }[] {
+    if (view === 'optimization') {
+      return Object.values(OptimizationStatus).map((s) => ({
+        label: this.formatEnumValue(s),
+        value: s
+      }));
+    }
+
+    if (view === 'paper-trading') {
+      return Object.values(PaperTradingStatus).map((s) => ({
+        label: this.formatEnumValue(s),
+        value: s
+      }));
+    }
+
+    return Object.values(BacktestStatus).map((s) => ({
+      label: this.formatEnumValue(s),
+      value: s
+    }));
   }
 
-  private formatType(type: BacktestType): string {
-    return type
-      .split('_')
-      .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
-      .join(' ');
+  private formatEnumValue(value: string): string {
+    return value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
   }
 }
