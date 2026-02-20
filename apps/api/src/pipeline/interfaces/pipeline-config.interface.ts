@@ -51,6 +51,8 @@ export interface OptimizationStageConfig {
   earlyStop?: boolean;
   /** Patience for early stopping */
   patience?: number;
+  /** Maximum number of coins to include in optimization */
+  maxCoins?: number;
 }
 
 /**
