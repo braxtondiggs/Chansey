@@ -1,4 +1,4 @@
-import { Injectable, Signal, signal } from '@angular/core';
+import { Injectable, Signal } from '@angular/core';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
@@ -7,7 +7,12 @@ import {
   BacktestListQueryDto,
   BacktestOverviewDto,
   ExportFormat,
+  OptimizationAnalyticsDto,
+  OptimizationFiltersDto,
   PaginatedBacktestListDto,
+  PaperTradingFiltersDto,
+  PaperTradingMonitoringDto,
+  PipelineStageCountsDto,
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from '@chansey/api-interfaces';
@@ -41,23 +46,6 @@ function buildUrl(base: string, params?: Record<string, unknown>): string {
 export class BacktestMonitoringService {
   private readonly apiUrl = '/api/admin/backtest-monitoring';
 
-  // Reactive filter state
-  private readonly filtersSignal = signal<BacktestFiltersDto>({});
-
-  /**
-   * Get current filters
-   */
-  get filters(): BacktestFiltersDto {
-    return this.filtersSignal();
-  }
-
-  /**
-   * Update filters
-   */
-  setFilters(filters: BacktestFiltersDto): void {
-    this.filtersSignal.set(filters);
-  }
-
   /**
    * Query backtest overview with current filters
    *
@@ -65,7 +53,7 @@ export class BacktestMonitoringService {
    */
   useOverview(filters?: Signal<BacktestFiltersDto>) {
     return injectQuery(() => {
-      const currentFilters = filters?.() ?? this.filtersSignal();
+      const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.overview(currentFilters as Record<string, unknown>),
         queryFn: () =>
@@ -99,7 +87,7 @@ export class BacktestMonitoringService {
    */
   useSignalAnalytics(filters?: Signal<BacktestFiltersDto>) {
     return injectQuery(() => {
-      const currentFilters = filters?.() ?? this.filtersSignal();
+      const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.signalAnalytics(currentFilters as Record<string, unknown>),
         queryFn: () =>
@@ -116,7 +104,7 @@ export class BacktestMonitoringService {
    */
   useTradeAnalytics(filters?: Signal<BacktestFiltersDto>) {
     return injectQuery(() => {
-      const currentFilters = filters?.() ?? this.filtersSignal();
+      const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.tradeAnalytics(currentFilters as Record<string, unknown>),
         queryFn: () =>
@@ -126,6 +114,51 @@ export class BacktestMonitoringService {
         ...FREQUENT_POLICY
       };
     });
+  }
+
+  /**
+   * Query optimization analytics
+   */
+  useOptimizationAnalytics(filters?: Signal<OptimizationFiltersDto>) {
+    return injectQuery(() => {
+      const currentFilters = filters?.() ?? {};
+      return {
+        queryKey: queryKeys.admin.backtestMonitoring.optimizationAnalytics(currentFilters as Record<string, unknown>),
+        queryFn: () =>
+          authenticatedFetch<OptimizationAnalyticsDto>(
+            buildUrl(`${this.apiUrl}/optimization-analytics`, currentFilters as Record<string, unknown>)
+          ),
+        ...FREQUENT_POLICY
+      };
+    });
+  }
+
+  /**
+   * Query paper trading analytics
+   */
+  usePaperTradingAnalytics(filters?: Signal<PaperTradingFiltersDto>) {
+    return injectQuery(() => {
+      const currentFilters = filters?.() ?? {};
+      return {
+        queryKey: queryKeys.admin.backtestMonitoring.paperTradingAnalytics(currentFilters as Record<string, unknown>),
+        queryFn: () =>
+          authenticatedFetch<PaperTradingMonitoringDto>(
+            buildUrl(`${this.apiUrl}/paper-trading-analytics`, currentFilters as Record<string, unknown>)
+          ),
+        ...FREQUENT_POLICY
+      };
+    });
+  }
+
+  /**
+   * Query pipeline stage counts
+   */
+  usePipelineStageCounts() {
+    return injectQuery(() => ({
+      queryKey: queryKeys.admin.backtestMonitoring.pipelineStageCounts(),
+      queryFn: () => authenticatedFetch<PipelineStageCountsDto>(`${this.apiUrl}/pipeline-stage-counts`),
+      ...FREQUENT_POLICY
+    }));
   }
 
   /**

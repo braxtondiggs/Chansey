@@ -5,6 +5,7 @@
  */
 
 import { BacktestStatus, BacktestType, SignalDirection, SignalType } from '../backtesting/backtesting.interface';
+import { PaperTradingSignalDirection, PaperTradingSignalType, PaperTradingStatus } from '../paper-trading';
 
 // ===========================================================================
 // Monitoring-specific Enums
@@ -233,4 +234,119 @@ export interface PaginatedBacktestListDto {
   totalPages: number;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
+}
+
+// ===========================================================================
+// Optimization Status Enum (mirrors entity enum for shared usage)
+// ===========================================================================
+
+export enum OptimizationStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED'
+}
+
+// ===========================================================================
+// Optimization Analytics DTOs
+// ===========================================================================
+
+export interface OptimizationFiltersDto {
+  startDate?: string;
+  endDate?: string;
+  status?: OptimizationStatus;
+}
+
+export interface OptimizationTopStrategyDto {
+  algorithmId: string;
+  algorithmName: string;
+  runCount: number;
+  avgImprovement: number;
+  avgBestScore: number;
+}
+
+export interface OptimizationResultSummaryDto {
+  avgTrainScore: number;
+  avgTestScore: number;
+  avgDegradation: number;
+  avgConsistency: number;
+  overfittingRate: number;
+}
+
+export interface OptimizationAnalyticsDto {
+  statusCounts: Record<OptimizationStatus, number>;
+  totalRuns: number;
+  recentActivity: RecentActivityDto;
+  avgImprovement: number;
+  avgBestScore: number;
+  avgCombinationsTested: number;
+  topStrategies: OptimizationTopStrategyDto[];
+  resultSummary: OptimizationResultSummaryDto;
+}
+
+// ===========================================================================
+// Paper Trading Monitoring DTOs
+// ===========================================================================
+
+export interface PaperTradingFiltersDto {
+  startDate?: string;
+  endDate?: string;
+  algorithmId?: string;
+  status?: PaperTradingStatus;
+}
+
+export interface PaperTradingTopAlgorithmDto {
+  algorithmId: string;
+  algorithmName: string;
+  sessionCount: number;
+  avgReturn: number;
+  avgSharpe: number;
+}
+
+export interface PaperTradingOrderAnalyticsDto {
+  totalOrders: number;
+  buyCount: number;
+  sellCount: number;
+  totalVolume: number;
+  totalFees: number;
+  avgSlippageBps: number;
+  totalPnL: number;
+  bySymbol: PaperTradingSymbolBreakdownDto[];
+}
+
+export interface PaperTradingSymbolBreakdownDto {
+  symbol: string;
+  orderCount: number;
+  totalVolume: number;
+  totalPnL: number;
+}
+
+export interface PaperTradingSignalAnalyticsDto {
+  totalSignals: number;
+  processedRate: number;
+  avgConfidence: number;
+  byType: Record<PaperTradingSignalType, number>;
+  byDirection: Record<PaperTradingSignalDirection, number>;
+}
+
+export interface PaperTradingMonitoringDto {
+  statusCounts: Record<PaperTradingStatus, number>;
+  totalSessions: number;
+  recentActivity: RecentActivityDto;
+  avgMetrics: AverageMetricsDto;
+  topAlgorithms: PaperTradingTopAlgorithmDto[];
+  orderAnalytics: PaperTradingOrderAnalyticsDto;
+  signalAnalytics: PaperTradingSignalAnalyticsDto;
+}
+
+// ===========================================================================
+// Pipeline Stage Counts DTO
+// ===========================================================================
+
+export interface PipelineStageCountsDto {
+  optimizationRuns: number;
+  historicalBacktests: number;
+  liveReplayBacktests: number;
+  paperTradingSessions: number;
 }

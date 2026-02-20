@@ -7,6 +7,8 @@ import { BacktestMonitoringService } from './backtest-monitoring.service';
 import { ExportFormat } from './dto/backtest-listing.dto';
 import { BacktestFiltersDto } from './dto/overview.dto';
 
+import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
+import { OptimizationRun } from '../../optimization/entities/optimization-run.entity';
 import {
   Backtest,
   BacktestSignal,
@@ -19,6 +21,9 @@ import {
   TradeStatus,
   TradeType
 } from '../../order/backtest/backtest.entity';
+import { PaperTradingOrder } from '../../order/paper-trading/entities/paper-trading-order.entity';
+import { PaperTradingSession } from '../../order/paper-trading/entities/paper-trading-session.entity';
+import { PaperTradingSignal } from '../../order/paper-trading/entities/paper-trading-signal.entity';
 
 type MockRepo<T extends ObjectLiteral> = Partial<jest.Mocked<Repository<T>>>;
 
@@ -167,7 +172,12 @@ describe('BacktestMonitoringService', () => {
         { provide: getRepositoryToken(Backtest), useValue: backtestRepo },
         { provide: getRepositoryToken(BacktestTrade), useValue: tradeRepo },
         { provide: getRepositoryToken(BacktestSignal), useValue: signalRepo },
-        { provide: getRepositoryToken(SimulatedOrderFill), useValue: fillRepo }
+        { provide: getRepositoryToken(SimulatedOrderFill), useValue: fillRepo },
+        { provide: getRepositoryToken(OptimizationRun), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder), count: jest.fn().mockResolvedValue(0) } },
+        { provide: getRepositoryToken(OptimizationResult), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) } },
+        { provide: getRepositoryToken(PaperTradingSession), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder), count: jest.fn().mockResolvedValue(0) } },
+        { provide: getRepositoryToken(PaperTradingOrder), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) } },
+        { provide: getRepositoryToken(PaperTradingSignal), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) } }
       ]
     }).compile();
 

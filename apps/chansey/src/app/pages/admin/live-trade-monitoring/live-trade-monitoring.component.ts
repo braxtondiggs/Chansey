@@ -202,11 +202,6 @@ import {
         </p-tabs>
       }
     </div>
-  `,
-  styles: `
-    .live-trade-monitoring-page {
-      padding: 1.5rem;
-    }
   `
 })
 export class LiveTradeMonitoringComponent {
