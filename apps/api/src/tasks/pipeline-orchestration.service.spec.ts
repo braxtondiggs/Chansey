@@ -378,21 +378,21 @@ describe('Pipeline Orchestration DTOs', () => {
     it('should return correct config for each risk level', () => {
       const config1 = getOptimizationConfig(1);
       expect(config1.trainDays).toBe(180);
-      expect(config1.maxCombinations).toBe(1000);
+      expect(config1.maxCombinations).toBe(150);
 
       const config3 = getOptimizationConfig(3);
       expect(config3.trainDays).toBe(90);
-      expect(config3.maxCombinations).toBe(500);
+      expect(config3.maxCombinations).toBe(100);
 
       const config5 = getOptimizationConfig(5);
       expect(config5.trainDays).toBe(30);
-      expect(config5.maxCombinations).toBe(200);
+      expect(config5.maxCombinations).toBe(50);
     });
 
     it('should return default config for invalid risk level', () => {
       const config = getOptimizationConfig(100);
       expect(config.trainDays).toBe(90);
-      expect(config.maxCombinations).toBe(500);
+      expect(config.maxCombinations).toBe(100);
     });
   });
 
@@ -404,7 +404,7 @@ describe('Pipeline Orchestration DTOs', () => {
       expect(config.optimization!.trainDays).toBe(90);
       expect(config.optimization!.testDays).toBe(30);
       expect(config.optimization!.objectiveMetric).toBe('sharpe_ratio');
-      expect(config.optimization!.maxCombinations).toBe(500);
+      expect(config.optimization!.maxCombinations).toBe(100);
       expect(config.optimization!.earlyStop).toBe(true);
 
       // Historical stage
@@ -425,7 +425,7 @@ describe('Pipeline Orchestration DTOs', () => {
       const config = buildStageConfigFromRisk(1);
 
       expect(config.optimization!.trainDays).toBe(180);
-      expect(config.optimization!.maxCombinations).toBe(1000);
+      expect(config.optimization!.maxCombinations).toBe(150);
       expect(config.paperTrading.duration).toBe('14d');
     });
 
@@ -433,7 +433,7 @@ describe('Pipeline Orchestration DTOs', () => {
       const config = buildStageConfigFromRisk(5);
 
       expect(config.optimization!.trainDays).toBe(30);
-      expect(config.optimization!.maxCombinations).toBe(200);
+      expect(config.optimization!.maxCombinations).toBe(50);
       expect(config.paperTrading.duration).toBe('3d');
     });
   });

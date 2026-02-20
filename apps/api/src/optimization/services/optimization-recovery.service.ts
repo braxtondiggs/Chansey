@@ -11,7 +11,7 @@ import { toErrorInfo } from '../../shared/error.util';
 import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 
 /** Must match the watchdog threshold in BacktestOrchestrationTask */
-const STALE_HEARTBEAT_THRESHOLD_MS = 120 * 60 * 1000; // 120 min
+const STALE_HEARTBEAT_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
 
 @Injectable()
 export class OptimizationRecoveryService implements OnApplicationBootstrap {

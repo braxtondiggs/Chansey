@@ -113,7 +113,7 @@ describe('OptimizationRecoveryService', () => {
   it('should skip RUNNING run with fresh heartbeat', async () => {
     const run = makeRun({
       status: OptimizationStatus.RUNNING,
-      lastHeartbeatAt: new Date(Date.now() - 30 * 60 * 1000) // 30 min ago — well within 120 min threshold
+      lastHeartbeatAt: new Date(Date.now() - 30 * 60 * 1000) // 30 min ago — well within 6-hour threshold
     });
     repo.find.mockResolvedValue([run]);
 
@@ -128,7 +128,7 @@ describe('OptimizationRecoveryService', () => {
       status: OptimizationStatus.RUNNING,
       combinationsTested: 10,
       totalCombinations: 100,
-      lastHeartbeatAt: new Date(Date.now() - 150 * 60 * 1000) // 150 min ago — beyond 120 min threshold
+      lastHeartbeatAt: new Date(Date.now() - 400 * 60 * 1000) // 400 min ago — beyond 6-hour threshold
     });
     repo.find.mockResolvedValue([run]);
 

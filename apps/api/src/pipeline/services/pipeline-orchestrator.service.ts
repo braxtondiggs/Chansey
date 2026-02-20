@@ -1050,7 +1050,8 @@ export class PipelineOrchestratorService {
 
     // Start optimization run
     const run = await this.optimizationService.startOptimization(pipeline.strategyConfigId, parameterSpace, {
-      method: 'grid_search',
+      method: 'random_search',
+      maxIterations: config.maxCombinations,
       maxCombinations: config.maxCombinations,
       objective: {
         metric: config.objectiveMetric,
