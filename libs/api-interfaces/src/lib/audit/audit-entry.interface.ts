@@ -45,6 +45,7 @@ export enum AuditEventType {
 
   // Regime events
   REGIME_CHANGED = 'REGIME_CHANGED',
+  REGIME_SCALED_ALLOCATION = 'REGIME_SCALED_ALLOCATION',
 
   // Configuration events
   PARAMETER_CHANGED = 'PARAMETER_CHANGED',
