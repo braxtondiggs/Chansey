@@ -12,6 +12,7 @@ import { PipelineProcessor } from './processors/pipeline.processor';
 import { PipelineOrchestratorService } from './services/pipeline-orchestrator.service';
 import { PipelineReportService } from './services/pipeline-report.service';
 
+import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuthenticationModule } from '../authentication/authentication.module';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
@@ -29,6 +30,7 @@ const PIPELINE_CONFIG = pipelineConfig();
     TypeOrmModule.forFeature([Pipeline, StrategyConfig, ExchangeKey]),
     BullModule.registerQueue({ name: PIPELINE_CONFIG.queue }),
     EventEmitterModule.forRoot(),
+    forwardRef(() => AlgorithmModule),
     forwardRef(() => AuthenticationModule),
     forwardRef(() => OptimizationModule),
     forwardRef(() => OrderModule),

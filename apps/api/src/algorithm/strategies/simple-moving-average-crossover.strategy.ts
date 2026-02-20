@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -177,6 +178,17 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         low: price.low
       }
     }));
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'fastPeriod',
+        param2: 'slowPeriod',
+        message: 'fastPeriod must be less than slowPeriod'
+      }
+    ];
   }
 
   /**

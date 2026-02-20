@@ -12,6 +12,7 @@ import { StrategyGrade } from '@chansey/api-interfaces';
 
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
 
+import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
@@ -34,6 +35,7 @@ describe('PipelineOrchestratorService', () => {
   let eventEmitter: jest.Mocked<EventEmitter2>;
   let scoringService: jest.Mocked<ScoringService>;
   let marketRegimeService: jest.Mocked<MarketRegimeService>;
+  let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
 
   const mockUser: User = {
     id: 'user-123',
@@ -197,6 +199,12 @@ describe('PipelineOrchestratorService', () => {
           }
         },
         {
+          provide: AlgorithmRegistry,
+          useValue: {
+            getStrategyForAlgorithm: jest.fn()
+          }
+        },
+        {
           provide: EventEmitter2,
           useValue: {
             emit: jest.fn()
@@ -219,6 +227,7 @@ describe('PipelineOrchestratorService', () => {
     eventEmitter = module.get(EventEmitter2);
     scoringService = module.get(ScoringService);
     marketRegimeService = module.get(MarketRegimeService);
+    algorithmRegistry = module.get(AlgorithmRegistry);
   });
 
   describe('createPipeline', () => {
@@ -264,6 +273,64 @@ describe('PipelineOrchestratorService', () => {
       } as unknown as ExchangeKey);
 
       await expect(service.createPipeline(mockCreateDto, mockUser)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should use initialStage when provided', async () => {
+      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
+      exchangeKeyRepository.findOne.mockResolvedValue(mockExchangeKey);
+      pipelineRepository.create.mockReturnValue(mockPipeline);
+      pipelineRepository.save.mockResolvedValue(mockPipeline);
+      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
+
+      await service.createPipeline({ ...mockCreateDto, initialStage: PipelineStage.HISTORICAL }, mockUser);
+
+      expect(pipelineRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ currentStage: PipelineStage.HISTORICAL })
+      );
+    });
+
+    it('should default to OPTIMIZE when initialStage not provided', async () => {
+      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
+      exchangeKeyRepository.findOne.mockResolvedValue(mockExchangeKey);
+      pipelineRepository.create.mockReturnValue(mockPipeline);
+      pipelineRepository.save.mockResolvedValue(mockPipeline);
+      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
+
+      await service.createPipeline(mockCreateDto, mockUser);
+
+      expect(pipelineRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ currentStage: PipelineStage.OPTIMIZE })
+      );
+    });
+  });
+
+  describe('recordOptimizationSkipped', () => {
+    it('should write synthetic SKIPPED optimization result', async () => {
+      pipelineRepository.findOne.mockResolvedValue({ ...mockPipeline, stageResults: {} } as Pipeline);
+      pipelineRepository.save.mockResolvedValue(mockPipeline);
+
+      await service.recordOptimizationSkipped('pipeline-123');
+
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stageResults: expect.objectContaining({
+            optimization: expect.objectContaining({
+              runId: 'skipped',
+              status: 'COMPLETED',
+              bestScore: 0,
+              improvement: 0
+            })
+          })
+        })
+      );
+    });
+
+    it('should do nothing when pipeline not found', async () => {
+      pipelineRepository.findOne.mockResolvedValue(null);
+
+      await service.recordOptimizationSkipped('nonexistent');
+
+      expect(pipelineRepository.save).not.toHaveBeenCalled();
     });
   });
 
@@ -742,6 +809,48 @@ describe('PipelineOrchestratorService', () => {
       expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DEPLOY);
     });
 
+    it('should recommend DEPLOY even when optimization was skipped (no stageResults.optimization)', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        progressionRules: {
+          ...DEFAULT_PROGRESSION_RULES,
+          paperTrading: { minSharpeRatio: 0.3, minTotalReturn: 0, maxDrawdown: 0.5, minWinRate: 0.3 }
+        },
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.2 },
+          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 },
+          scoring: { overallScore: 75, grade: StrategyGrade.B }
+        }
+      } as Pipeline;
+
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handlePaperTradingComplete(
+        'session-skipped-opt',
+        runningPipeline.id,
+        {
+          initialCapital: 10000,
+          currentPortfolioValue: 12000,
+          totalReturn: 0.17,
+          totalReturnPercent: 17,
+          maxDrawdown: 0.15,
+          sharpeRatio: 1.5,
+          winRate: 0.6,
+          totalTrades: 80,
+          winningTrades: 48,
+          losingTrades: 32,
+          totalFees: 10,
+          durationHours: 168
+        },
+        'duration_reached'
+      );
+
+      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DEPLOY);
+    });
+
     it('should recommend NEEDS_REVIEW when score 30-69', async () => {
       const runningPipeline = {
         ...mockPipeline,
@@ -796,7 +905,7 @@ describe('PipelineOrchestratorService', () => {
       expect((service as any).optimizationService.startOptimization).not.toHaveBeenCalled();
     });
 
-    it('should execute optimization stage and persist run id', async () => {
+    it('should execute optimization stage by building ParameterSpace at runtime', async () => {
       const runningPipeline = {
         ...mockPipeline,
         status: PipelineStatus.RUNNING,
@@ -806,20 +915,72 @@ describe('PipelineOrchestratorService', () => {
       pipelineRepository.findOne.mockResolvedValue(runningPipeline);
       pipelineRepository.save.mockResolvedValue(runningPipeline);
 
+      // Mock strategy with config schema
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
+        id: 'ema-crossover-001',
+        getConfigSchema: () => ({
+          enabled: { type: 'boolean', default: true },
+          fastPeriod: { type: 'number', default: 12, min: 5, max: 50 },
+          slowPeriod: { type: 'number', default: 26, min: 10, max: 100 }
+        }),
+        getParameterConstraints: () => [{ type: 'less_than' as const, param1: 'fastPeriod', param2: 'slowPeriod' }]
+      } as any);
+
       const optimizationService = (service as any).optimizationService as jest.Mocked<OptimizationOrchestratorService>;
       optimizationService.startOptimization.mockResolvedValue({ id: 'opt-run-1' } as any);
 
       await service.executeStage('pipeline-123', PipelineStage.OPTIMIZE);
 
+      expect(algorithmRegistry.getStrategyForAlgorithm).toHaveBeenCalledWith('algo-123');
       expect(optimizationService.startOptimization).toHaveBeenCalledWith(
         runningPipeline.strategyConfigId,
-        runningPipeline.strategyConfig.parameters as any,
+        expect.objectContaining({
+          strategyType: 'ema-crossover-001',
+          parameters: expect.arrayContaining([
+            expect.objectContaining({ name: 'fastPeriod' }),
+            expect.objectContaining({ name: 'slowPeriod' })
+          ])
+        }),
         expect.objectContaining({
           method: 'grid_search',
-          objective: expect.objectContaining({ metric: runningPipeline.stageConfig.optimization.objectiveMetric })
+          objective: expect.objectContaining({ metric: runningPipeline.stageConfig.optimization!.objectiveMetric })
         })
       );
       expect(pipelineRepository.save).toHaveBeenCalledWith(expect.objectContaining({ optimizationRunId: 'opt-run-1' }));
+    });
+
+    it('should throw when optimization stage config is missing', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.OPTIMIZE,
+        strategyConfig: mockStrategyConfig,
+        stageConfig: {
+          ...mockPipeline.stageConfig,
+          optimization: undefined
+        }
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+
+      await expect(service.executeStage('pipeline-123', PipelineStage.OPTIMIZE)).rejects.toThrow(
+        'optimization stage config is missing'
+      );
+    });
+
+    it('should throw when strategy not found in registry for OPTIMIZE stage', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.OPTIMIZE,
+        strategyConfig: mockStrategyConfig
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue(undefined);
+
+      await expect(service.executeStage('pipeline-123', PipelineStage.OPTIMIZE)).rejects.toThrow(
+        'strategy not found or has no config schema'
+      );
     });
   });
 

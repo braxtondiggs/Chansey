@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -907,6 +908,35 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
       }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'emaFastPeriod',
+        param2: 'emaSlowPeriod',
+        message: 'emaFastPeriod must be less than emaSlowPeriod'
+      },
+      {
+        type: 'less_than',
+        param1: 'macdFastPeriod',
+        param2: 'macdSlowPeriod',
+        message: 'macdFastPeriod must be less than macdSlowPeriod'
+      },
+      {
+        type: 'less_than',
+        param1: 'rsiSellThreshold',
+        param2: 'rsiBuyThreshold',
+        message: 'rsiSellThreshold must be less than rsiBuyThreshold'
+      },
+      {
+        type: 'less_than',
+        param1: 'bbSellThreshold',
+        param2: 'bbBuyThreshold',
+        message: 'bbSellThreshold must be less than bbBuyThreshold'
+      }
+    ];
   }
 
   /**
