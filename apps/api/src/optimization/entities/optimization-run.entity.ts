@@ -137,6 +137,9 @@ export class OptimizationRun {
   @Column({ type: 'timestamptz', nullable: true })
   completedAt: Date;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  lastHeartbeatAt: Date;
+
   @OneToMany('OptimizationResult', 'optimizationRun')
   results: Relation<OptimizationResult[]>;
 }

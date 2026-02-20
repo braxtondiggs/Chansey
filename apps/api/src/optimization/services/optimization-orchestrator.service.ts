@@ -9,6 +9,8 @@ import { DataSource, type FindOptionsWhere, type QueryDeepPartialEntity, Reposit
 import { GridSearchService } from './grid-search.service';
 
 import { Coin } from '../../coin/coin.entity';
+import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { OHLCService } from '../../ohlc/ohlc.service';
 import { BacktestEngine, OptimizationBacktestConfig } from '../../order/backtest/backtest-engine.service';
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
@@ -54,6 +56,7 @@ export class OptimizationOrchestratorService {
     private readonly walkForwardService: WalkForwardService,
     private readonly windowProcessor: WindowProcessor,
     private readonly backtestEngine: BacktestEngine,
+    private readonly ohlcService: OHLCService,
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2
   ) {}
@@ -201,6 +204,7 @@ export class OptimizationOrchestratorService {
     // Update status to running
     run.status = OptimizationStatus.RUNNING;
     run.startedAt = new Date();
+    run.lastHeartbeatAt = new Date();
     await this.optimizationRunRepository.save(run);
 
     // Load coins once at start of optimization run for thread safety
@@ -227,11 +231,46 @@ export class OptimizationOrchestratorService {
 
       this.logger.log(`Generated ${windows.length} walk-forward windows for optimization run ${runId}`);
 
+      // Pre-load all OHLC data once for the full date range across all windows
+      const coinIds = coins.map((c) => c.id);
+      const allWindowDates = windows.flatMap((w) => [w.trainStartDate, w.testEndDate]);
+      const minDate = new Date(Math.min(...allWindowDates.map((d) => d.getTime())));
+      const maxDate = new Date(Math.max(...allWindowDates.map((d) => d.getTime())));
+      let allCandles = await this.ohlcService.getCandlesByDateRange(coinIds, minDate, maxDate);
+      this.logger.log(`Pre-loaded ${allCandles.length} candles for optimization run ${runId}`);
+
+      if (allCandles.length > 500_000) {
+        this.logger.warn(
+          `Large candle dataset (${allCandles.length} rows) for optimization run ${runId}. ` +
+            `Consider narrowing the date range or coin set to reduce memory usage.`
+        );
+      }
+
+      // Build coin-indexed map for O(log N) range lookups (each array is already sorted by timestamp from DB)
+      const candlesByCoin = new Map<string, OHLCCandle[]>();
+      for (const candle of allCandles) {
+        let arr = candlesByCoin.get(candle.coinId);
+        if (!arr) {
+          arr = [];
+          candlesByCoin.set(candle.coinId, arr);
+        }
+        arr.push(candle);
+      }
+      // Release flat array immediately — the map now owns the data
+      allCandles = [];
+
       let bestScore = -Infinity;
       let bestParameters: Record<string, unknown> | null = null;
       let baselineScore = 0;
       let noImprovementCount = 0;
       let combinationsProcessed = 0;
+
+      // Heartbeat callback updates lastHeartbeatAt on the run entity
+      const heartbeatFn = async () => {
+        await this.optimizationRunRepository.update(run.id, {
+          lastHeartbeatAt: new Date()
+        } as QueryDeepPartialEntity<OptimizationRun>);
+      };
 
       // Get parallelism config (default to 3 concurrent backtests)
       const maxConcurrent = run.config.parallelism?.maxConcurrentBacktests || 3;
@@ -257,7 +296,9 @@ export class OptimizationOrchestratorService {
               combination.values,
               windows,
               run.config,
-              coins
+              coins,
+              candlesByCoin,
+              heartbeatFn
             );
             return { combination, evaluationResult };
           })
@@ -331,6 +372,9 @@ export class OptimizationOrchestratorService {
         }
       }
 
+      // Release pre-loaded candles to free memory
+      candlesByCoin.clear();
+
       // Finalize run
       await this.finalizeOptimization(run, bestScore, bestParameters, baselineScore);
     } catch (error: unknown) {
@@ -352,13 +396,16 @@ export class OptimizationOrchestratorService {
     parameters: Record<string, unknown>,
     windows: WalkForwardWindowConfig[],
     config: OptimizationConfig,
-    coins: Coin[]
+    coins: Coin[],
+    preloadedCandlesByCoin?: Map<string, OHLCCandle[]>,
+    heartbeatFn?: () => Promise<void>
   ): Promise<CombinationEvaluationResult> {
     const windowResults: WindowResult[] = [];
     let totalTrainScore = 0;
     let totalTestScore = 0;
     let totalDegradation = 0;
     let overfittingWindows = 0;
+    let windowCount = 0;
 
     for (const window of windows) {
       // Execute backtest for train period
@@ -367,7 +414,8 @@ export class OptimizationOrchestratorService {
         parameters,
         window.trainStartDate,
         window.trainEndDate,
-        coins
+        coins,
+        preloadedCandlesByCoin
       );
 
       // Execute backtest for test period
@@ -376,7 +424,8 @@ export class OptimizationOrchestratorService {
         parameters,
         window.testStartDate,
         window.testEndDate,
-        coins
+        coins,
+        preloadedCandlesByCoin
       );
 
       // Calculate scores based on objective
@@ -404,6 +453,11 @@ export class OptimizationOrchestratorService {
 
       if (windowProcessingResult.overfittingDetected) {
         overfittingWindows++;
+      }
+
+      windowCount++;
+      if (heartbeatFn && windowCount % 5 === 0) {
+        await heartbeatFn();
       }
     }
 
@@ -457,7 +511,8 @@ export class OptimizationOrchestratorService {
     parameters: Record<string, unknown>,
     startDate: Date,
     endDate: Date,
-    coins: Coin[]
+    coins: Coin[],
+    preloadedCandlesByCoin?: Map<string, OHLCCandle[]>
   ): Promise<import('@chansey/api-interfaces').WindowMetrics> {
     // Build optimization backtest config
     const backtestConfig: OptimizationBacktestConfig = {
@@ -470,7 +525,9 @@ export class OptimizationOrchestratorService {
     };
 
     try {
-      const result = await this.backtestEngine.executeOptimizationBacktest(backtestConfig, coins);
+      const result = preloadedCandlesByCoin
+        ? await this.backtestEngine.executeOptimizationBacktestWithData(backtestConfig, coins, preloadedCandlesByCoin)
+        : await this.backtestEngine.executeOptimizationBacktest(backtestConfig, coins);
 
       return {
         sharpeRatio: result.sharpeRatio,
@@ -641,7 +698,8 @@ export class OptimizationOrchestratorService {
 
     await this.optimizationRunRepository.update(run.id, {
       combinationsTested,
-      progressDetails
+      progressDetails,
+      lastHeartbeatAt: new Date()
     } as QueryDeepPartialEntity<OptimizationRun>);
   }
 

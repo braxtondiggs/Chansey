@@ -5,6 +5,7 @@ import { toErrorInfo } from '../../shared/error.util';
 import {
   BacktestCompletedEvent,
   OptimizationCompletedEvent,
+  OptimizationFailedEvent,
   PIPELINE_EVENTS,
   PaperTradingCompletedEvent
 } from '../interfaces';
@@ -36,6 +37,21 @@ export class PipelineEventListener {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to handle optimization completion for run ${payload.runId}: ${err.message}`, err.stack);
+    }
+  }
+
+  /**
+   * Handle optimization failure event (stale watchdog or error)
+   */
+  @OnEvent(PIPELINE_EVENTS.OPTIMIZATION_FAILED, { async: true })
+  async handleOptimizationFailed(payload: OptimizationFailedEvent): Promise<void> {
+    this.logger.log(`Received optimization.failed event for run ${payload.runId}: ${payload.reason}`);
+
+    try {
+      await this.orchestratorService.handleOptimizationFailed(payload.runId, payload.reason);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to handle optimization failure for run ${payload.runId}: ${err.message}`, err.stack);
     }
   }
 
