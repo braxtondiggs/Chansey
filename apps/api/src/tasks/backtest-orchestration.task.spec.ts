@@ -1,4 +1,5 @@
 import { getQueueToken } from '@nestjs/bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -8,9 +9,11 @@ import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
+import { OptimizationRun } from '../optimization/entities/optimization-run.entity';
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
+import { Pipeline } from '../pipeline/entities/pipeline.entity';
 
 describe('BacktestOrchestrationTask', () => {
   let task: BacktestOrchestrationTask;
@@ -42,6 +45,20 @@ describe('BacktestOrchestrationTask', () => {
     find: jest.fn().mockResolvedValue([])
   };
 
+  const mockOptimizationRunRepository = {
+    find: jest.fn().mockResolvedValue([]),
+    update: jest.fn().mockResolvedValue(undefined)
+  };
+
+  const mockPipelineRepository = {
+    find: jest.fn().mockResolvedValue([]),
+    save: jest.fn().mockResolvedValue(undefined)
+  };
+
+  const mockEventEmitter = {
+    emit: jest.fn()
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,13 +67,19 @@ describe('BacktestOrchestrationTask', () => {
         { provide: BacktestOrchestrationService, useValue: mockService },
         { provide: BacktestService, useValue: mockBacktestService },
         { provide: BacktestResultService, useValue: mockBacktestResultService },
-        { provide: getRepositoryToken(Backtest), useValue: mockBacktestRepository }
+        { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: getRepositoryToken(Backtest), useValue: mockBacktestRepository },
+        { provide: getRepositoryToken(OptimizationRun), useValue: mockOptimizationRunRepository },
+        { provide: getRepositoryToken(Pipeline), useValue: mockPipelineRepository }
       ]
     }).compile();
 
     task = module.get<BacktestOrchestrationTask>(BacktestOrchestrationTask);
     orchestrationQueue = module.get(getQueueToken('backtest-orchestration'));
     orchestrationService = module.get(BacktestOrchestrationService);
+
+    // Pretend boot happened long ago so existing tests bypass the grace period
+    (task as any).bootedAt = 0;
 
     jest.clearAllMocks();
   });
@@ -163,6 +186,26 @@ describe('BacktestOrchestrationTask', () => {
         failed: 0,
         delayed: 3
       });
+    });
+  });
+
+  describe('detectStaleBacktests — boot grace period', () => {
+    it('should skip stale detection during boot grace period', async () => {
+      (task as any).bootedAt = Date.now(); // just booted
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestRepository.find).not.toHaveBeenCalled();
+      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('should run stale detection after boot grace period', async () => {
+      (task as any).bootedAt = Date.now() - 11 * 60 * 1000; // 11 min ago
+      mockBacktestRepository.find.mockResolvedValue([]);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestRepository.find).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -2680,6 +2680,86 @@ export class BacktestEngine {
     config: OptimizationBacktestConfig,
     coins: Coin[]
   ): Promise<OptimizationBacktestResult> {
+    const coinIds = coins.map((coin) => coin.id);
+    const historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
+    return this.runOptimizationBacktestCore(config, coins, historicalPrices);
+  }
+
+  /**
+   * Execute an optimization backtest using pre-loaded candle data indexed by coin.
+   * Uses binary search for O(log N) range extraction instead of linear filter.
+   * Used by the optimization orchestrator to avoid redundant DB queries across windows.
+   */
+  async executeOptimizationBacktestWithData(
+    config: OptimizationBacktestConfig,
+    coins: Coin[],
+    preloadedCandlesByCoin: Map<string, OHLCCandle[]>
+  ): Promise<OptimizationBacktestResult> {
+    const startTime = config.startDate.getTime();
+    const endTime = config.endDate.getTime();
+    const coinIds = new Set(coins.map((coin) => coin.id));
+    const filtered: OHLCCandle[] = [];
+
+    for (const coinId of coinIds) {
+      const coinCandles = preloadedCandlesByCoin.get(coinId);
+      if (!coinCandles || coinCandles.length === 0) continue;
+
+      const left = BacktestEngine.binarySearchLeft(coinCandles, startTime);
+      const right = BacktestEngine.binarySearchRight(coinCandles, endTime);
+      if (left < right) {
+        for (let i = left; i < right; i++) {
+          filtered.push(coinCandles[i]);
+        }
+      }
+    }
+
+    return this.runOptimizationBacktestCore(config, coins, filtered);
+  }
+
+  /**
+   * Find the index of the first candle with timestamp >= target.
+   * Candles array must be sorted by timestamp ascending.
+   */
+  private static binarySearchLeft(candles: OHLCCandle[], targetTime: number): number {
+    let lo = 0;
+    let hi = candles.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (candles[mid].timestamp.getTime() < targetTime) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+
+  /**
+   * Find the index of the first candle with timestamp > target.
+   * Candles array must be sorted by timestamp ascending.
+   */
+  private static binarySearchRight(candles: OHLCCandle[], targetTime: number): number {
+    let lo = 0;
+    let hi = candles.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (candles[mid].timestamp.getTime() <= targetTime) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+
+  /**
+   * Core optimization backtest logic shared by both public entry points.
+   */
+  private async runOptimizationBacktestCore(
+    config: OptimizationBacktestConfig,
+    coins: Coin[],
+    historicalPrices: OHLCCandle[]
+  ): Promise<OptimizationBacktestResult> {
     const initialCapital = config.initialCapital ?? 10000;
     const tradingFee = config.tradingFee ?? 0.001;
     const hardStopLossPercent = config.hardStopLossPercent ?? 0.05;
@@ -2701,9 +2781,6 @@ export class BacktestEngine {
     const trades: Partial<BacktestTrade>[] = [];
     const snapshots: { portfolioValue: number; timestamp: Date }[] = [];
 
-    const coinIds = coins.map((coin) => coin.id);
-    let historicalPrices = await this.getHistoricalPrices(coinIds, config.startDate, config.endDate);
-
     if (historicalPrices.length === 0) {
       // Return neutral metrics if no price data
       return {
@@ -2717,13 +2794,11 @@ export class BacktestEngine {
       };
     }
 
+    const coinIds = coins.map((coin) => coin.id);
     const pricesByTimestamp = this.groupPricesByTimestamp(historicalPrices);
     const timestamps = Object.keys(pricesByTimestamp).sort();
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
-
-    // Drop reference to the full candles array — objects still live in pricesByTimestamp
-    historicalPrices = [];
 
     let peakValue = initialCapital;
     let maxDrawdown = 0;

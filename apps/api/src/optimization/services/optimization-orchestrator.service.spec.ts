@@ -10,6 +10,7 @@ import { GridSearchService } from './grid-search.service';
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
 
 import { Coin } from '../../coin/coin.entity';
+import { OHLCService } from '../../ohlc/ohlc.service';
 import { BacktestEngine } from '../../order/backtest/backtest-engine.service';
 import { WalkForwardService } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
@@ -62,6 +63,7 @@ describe('OptimizationOrchestratorService', () => {
   let walkForwardService: jest.Mocked<WalkForwardService>;
   let windowProcessor: jest.Mocked<WindowProcessor>;
   let backtestEngine: jest.Mocked<BacktestEngine>;
+  let ohlcService: jest.Mocked<OHLCService>;
   let dataSource: jest.Mocked<DataSource>;
 
   beforeEach(() => {
@@ -109,8 +111,13 @@ describe('OptimizationOrchestratorService', () => {
     } as unknown as jest.Mocked<WindowProcessor>;
 
     backtestEngine = {
-      executeOptimizationBacktest: jest.fn()
+      executeOptimizationBacktest: jest.fn(),
+      executeOptimizationBacktestWithData: jest.fn()
     } as unknown as jest.Mocked<BacktestEngine>;
+
+    ohlcService = {
+      getCandlesByDateRange: jest.fn().mockResolvedValue([])
+    } as unknown as jest.Mocked<OHLCService>;
 
     dataSource = {
       transaction: jest.fn()
@@ -130,6 +137,7 @@ describe('OptimizationOrchestratorService', () => {
       walkForwardService,
       windowProcessor,
       backtestEngine,
+      ohlcService,
       dataSource,
       eventEmitter
     );
