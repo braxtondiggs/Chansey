@@ -942,7 +942,7 @@ describe('PipelineOrchestratorService', () => {
           ])
         }),
         expect.objectContaining({
-          method: 'grid_search',
+          method: 'random_search',
           objective: expect.objectContaining({ metric: runningPipeline.stageConfig.optimization!.objectiveMetric })
         })
       );

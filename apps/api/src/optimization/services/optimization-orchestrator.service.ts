@@ -208,7 +208,9 @@ export class OptimizationOrchestratorService {
     await this.optimizationRunRepository.save(run);
 
     // Load coins once at start of optimization run for thread safety
-    const coins = await this.loadCoinsForOptimization(run.config.maxCoins);
+    // Filter by minimum data span required to fill walk-forward windows
+    const minDataDays = run.config.walkForward.trainDays + run.config.walkForward.testDays;
+    const coins = await this.loadCoinsForOptimization(run.config.maxCoins, minDataDays);
     this.logger.log(`Loaded ${coins.length} coins for optimization run ${runId}`);
 
     try {
@@ -456,7 +458,7 @@ export class OptimizationOrchestratorService {
       }
 
       windowCount++;
-      if (heartbeatFn && windowCount % 5 === 0) {
+      if (heartbeatFn) {
         await heartbeatFn();
       }
     }
@@ -483,29 +485,47 @@ export class OptimizationOrchestratorService {
    * Load coins for optimization run - called once at start of optimization.
    * Only returns coins that have OHLC candle data, ranked by market cap.
    * @param maxCoins Maximum coins to return (default 20)
+   * @param minDataDays Minimum days of OHLC data span required (filters coins with insufficient history)
    */
-  private async loadCoinsForOptimization(maxCoins = 20): Promise<Coin[]> {
+  private async loadCoinsForOptimization(maxCoins = 20, minDataDays?: number): Promise<Coin[]> {
+    // Base filter: coin must have OHLC data
     const ohlcExistsSubquery = `EXISTS (SELECT 1 FROM ohlc_candles c WHERE c."coinId" = coin.id)`;
 
-    // Load coins ranked by market cap, filtered to only those with OHLC data
-    let coins = await this.coinRepository
+    // Additional filter: coin must have enough data span for walk-forward windows
+    const ohlcSpanCondition = minDataDays
+      ? `(SELECT EXTRACT(EPOCH FROM MAX(c.timestamp) - MIN(c.timestamp)) / 86400 ` +
+        `FROM ohlc_candles c WHERE c."coinId" = coin.id) >= :minDataDays`
+      : null;
+
+    // Load coins ranked by market cap, filtered to only those with sufficient OHLC data
+    let qb = this.coinRepository
       .createQueryBuilder('coin')
       .where(ohlcExistsSubquery)
-      .andWhere('coin.marketRank IS NOT NULL')
-      .orderBy('coin.marketRank', 'ASC')
-      .take(maxCoins)
-      .getMany();
+      .andWhere('coin.marketRank IS NOT NULL');
+
+    if (ohlcSpanCondition) {
+      qb = qb.andWhere(ohlcSpanCondition, { minDataDays });
+    }
+
+    let coins = await qb.orderBy('coin.marketRank', 'ASC').take(maxCoins).getMany();
 
     if (coins.length === 0) {
-      // Fallback: get any coins with OHLC data (no market rank filter)
-      coins = await this.coinRepository.createQueryBuilder('coin').where(ohlcExistsSubquery).take(maxCoins).getMany();
+      // Fallback: get any coins with sufficient OHLC data (no market rank filter)
+      let fallbackQb = this.coinRepository.createQueryBuilder('coin').where(ohlcExistsSubquery);
+      if (ohlcSpanCondition) {
+        fallbackQb = fallbackQb.andWhere(ohlcSpanCondition, { minDataDays });
+      }
+      coins = await fallbackQb.take(maxCoins).getMany();
     }
 
     if (coins.length === 0) {
-      throw new Error('No coins with OHLC data available for optimization. Ensure OHLC sync has run.');
+      const spanMsg = minDataDays ? ` with >= ${minDataDays} days of data` : '';
+      throw new Error(`No coins${spanMsg} available for optimization. Ensure OHLC sync has run.`);
     }
 
-    this.logger.log(`Filtered to ${coins.length} coins with OHLC data (max ${maxCoins})`);
+    this.logger.log(
+      `Filtered to ${coins.length} coins with OHLC data (max ${maxCoins}${minDataDays ? `, min ${minDataDays} days` : ''})`
+    );
 
     return coins;
   }
