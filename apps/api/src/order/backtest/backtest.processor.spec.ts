@@ -24,6 +24,13 @@ describe('BacktestProcessor', () => {
     clearCheckpointProgress: jest.fn()
   });
 
+  const createMockConfigService = () => ({
+    get: jest.fn((key: string, defaultValue?: any) => {
+      if (key === 'backtest.historicalConcurrency') return defaultValue ?? 4;
+      return defaultValue;
+    })
+  });
+
   const createProcessor = (
     overrides: Partial<{
       backtestRepository: any;
@@ -34,6 +41,7 @@ describe('BacktestProcessor', () => {
       backtestResultService: any;
       backtestService: any;
       metricsService: any;
+      configService: any;
     }> = {}
   ) => {
     const backtestEngine = { executeHistoricalBacktest: jest.fn() };
@@ -42,6 +50,7 @@ describe('BacktestProcessor', () => {
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
     const backtestService = { clearDatasetCache: jest.fn() };
     const metricsService = createMockMetricsService();
+    const configService = createMockConfigService();
     const backtestRepository = { findOne: jest.fn(), save: jest.fn() };
     const marketDataSetRepository = { findOne: jest.fn() };
 
@@ -52,6 +61,7 @@ describe('BacktestProcessor', () => {
       overrides.backtestResultService ?? (backtestResultService as any),
       overrides.backtestService ?? (backtestService as any),
       overrides.metricsService ?? (metricsService as any),
+      overrides.configService ?? (configService as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)
     );
