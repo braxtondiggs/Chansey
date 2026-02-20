@@ -1342,16 +1342,13 @@ export class BacktestMonitoringService {
     filters: OptimizationFiltersDto,
     dateRange: { start: Date; end: Date } | null
   ): Promise<OptimizationAnalyticsDto['resultSummary']> {
-    const runQb = this.optimizationRunRepo.createQueryBuilder('r').select('r.id');
-    runQb.where('r.status = :completed', { completed: OptimizationStatus.COMPLETED });
-    if (dateRange) {
-      runQb.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
-    }
-    const completedRuns = await runQb.getRawMany();
-    const runIds = completedRuns.map((r) => r.r_id);
+    const runSubQuery = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .select('r.id')
+      .where('r.status = :completed', { completed: OptimizationStatus.COMPLETED });
 
-    if (runIds.length === 0) {
-      return { avgTrainScore: 0, avgTestScore: 0, avgDegradation: 0, avgConsistency: 0, overfittingRate: 0 };
+    if (dateRange) {
+      runSubQuery.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
     }
 
     const qb = this.optimizationResultRepo
@@ -1361,7 +1358,8 @@ export class BacktestMonitoringService {
       .addSelect('AVG(res.avgDegradation)', 'avgDegradation')
       .addSelect('AVG(res.consistencyScore)', 'avgConsistency')
       .addSelect('AVG(CASE WHEN res.overfittingWindows > 0 THEN 1.0 ELSE 0.0 END)', 'overfittingRate')
-      .where('res.optimizationRunId IN (:...runIds)', { runIds });
+      .where(`res.optimizationRunId IN (${runSubQuery.getQuery()})`)
+      .setParameters(runSubQuery.getParameters());
 
     const result = await qb.getRawOne();
     return {
@@ -1516,24 +1514,11 @@ export class BacktestMonitoringService {
     filters: PaperTradingFiltersDto,
     dateRange: { start: Date; end: Date } | null
   ): Promise<PaperTradingMonitoringDto['orderAnalytics']> {
-    // Get session IDs matching filters
-    const sessionQb = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
-    this.applyPtFilters(sessionQb, filters, dateRange);
-    const sessions = await sessionQb.getRawMany();
-    const sessionIds = sessions.map((s) => s.s_id);
+    const sessionSubQuery = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
+    this.applyPtFilters(sessionSubQuery, filters, dateRange);
 
-    if (sessionIds.length === 0) {
-      return {
-        totalOrders: 0,
-        buyCount: 0,
-        sellCount: 0,
-        totalVolume: 0,
-        totalFees: 0,
-        avgSlippageBps: 0,
-        totalPnL: 0,
-        bySymbol: []
-      };
-    }
+    const subSql = sessionSubQuery.getQuery();
+    const subParams = sessionSubQuery.getParameters();
 
     const [summary, bySymbol] = await Promise.all([
       this.paperOrderRepo
@@ -1545,7 +1530,8 @@ export class BacktestMonitoringService {
         .addSelect('COALESCE(SUM(o.fee), 0)', 'totalFees')
         .addSelect('AVG(o.slippageBps)', 'avgSlippageBps')
         .addSelect('COALESCE(SUM(o.realizedPnL), 0)', 'totalPnL')
-        .where('o.sessionId IN (:...sessionIds)', { sessionIds })
+        .where(`o.sessionId IN (${subSql})`)
+        .setParameters(subParams)
         .setParameter('buySide', PaperTradingOrderSide.BUY)
         .setParameter('sellSide', PaperTradingOrderSide.SELL)
         .getRawOne(),
@@ -1555,7 +1541,8 @@ export class BacktestMonitoringService {
         .addSelect('COUNT(*)', 'orderCount')
         .addSelect('COALESCE(SUM(o.totalValue), 0)', 'totalVolume')
         .addSelect('COALESCE(SUM(o.realizedPnL), 0)', 'totalPnL')
-        .where('o.sessionId IN (:...sessionIds)', { sessionIds })
+        .where(`o.sessionId IN (${subSql})`)
+        .setParameters(subParams)
         .groupBy('o.symbol')
         .orderBy('COALESCE(SUM(o.totalValue), 0)', 'DESC')
         .limit(10)
@@ -1583,32 +1570,11 @@ export class BacktestMonitoringService {
     filters: PaperTradingFiltersDto,
     dateRange: { start: Date; end: Date } | null
   ): Promise<PaperTradingMonitoringDto['signalAnalytics']> {
-    const sessionQb = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
-    this.applyPtFilters(sessionQb, filters, dateRange);
-    const sessions = await sessionQb.getRawMany();
-    const sessionIds = sessions.map((s) => s.s_id);
+    const sessionSubQuery = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
+    this.applyPtFilters(sessionSubQuery, filters, dateRange);
 
-    if (sessionIds.length === 0) {
-      return {
-        totalSignals: 0,
-        processedRate: 0,
-        avgConfidence: 0,
-        byType: Object.values(PaperTradingSignalType).reduce(
-          (acc, t) => {
-            acc[t] = 0;
-            return acc;
-          },
-          {} as Record<PaperTradingSignalType, number>
-        ),
-        byDirection: Object.values(PaperTradingSignalDirection).reduce(
-          (acc, d) => {
-            acc[d] = 0;
-            return acc;
-          },
-          {} as Record<PaperTradingSignalDirection, number>
-        )
-      };
-    }
+    const subSql = sessionSubQuery.getQuery();
+    const subParams = sessionSubQuery.getParameters();
 
     const [overallResult, typeResults, directionResults] = await Promise.all([
       this.paperSignalRepo
@@ -1616,20 +1582,23 @@ export class BacktestMonitoringService {
         .select('COUNT(*)', 'totalSignals')
         .addSelect('AVG(CASE WHEN sig.processed = true THEN 1.0 ELSE 0.0 END)', 'processedRate')
         .addSelect('AVG(sig.confidence)', 'avgConfidence')
-        .where('sig.sessionId IN (:...sessionIds)', { sessionIds })
+        .where(`sig.sessionId IN (${subSql})`)
+        .setParameters(subParams)
         .getRawOne(),
       this.paperSignalRepo
         .createQueryBuilder('sig')
         .select('sig.signalType', 'signalType')
         .addSelect('COUNT(*)', 'count')
-        .where('sig.sessionId IN (:...sessionIds)', { sessionIds })
+        .where(`sig.sessionId IN (${subSql})`)
+        .setParameters(subParams)
         .groupBy('sig.signalType')
         .getRawMany(),
       this.paperSignalRepo
         .createQueryBuilder('sig')
         .select('sig.direction', 'direction')
         .addSelect('COUNT(*)', 'count')
-        .where('sig.sessionId IN (:...sessionIds)', { sessionIds })
+        .where(`sig.sessionId IN (${subSql})`)
+        .setParameters(subParams)
         .groupBy('sig.direction')
         .getRawMany()
     ]);
