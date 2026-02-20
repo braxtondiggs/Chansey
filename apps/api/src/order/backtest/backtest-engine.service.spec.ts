@@ -1,3 +1,5 @@
+import { CompositeRegimeType } from '@chansey/api-interfaces';
+
 import { BacktestEngine, MarketData, Portfolio, TradingSignal } from './backtest-engine.service';
 import { ReplaySpeed } from './backtest-pacing.interface';
 import {
@@ -1699,6 +1701,102 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     expect(phase2Result.finalMetrics.winningTrades).toBe(1);
     // Total trades: 2 from phase 1 (persisted) + 2 from phase 2 = 4
     expect(phase2Result.finalMetrics.totalTrades).toBe(4);
+  });
+
+  it('blocks BUY signals in BEAR regime by default (regime gate on)', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+      })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Spy on computeCompositeRegime to return BEAR regime
+    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR
+    });
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-regime-gate',
+        name: 'Regime Gate Test',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-regime',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-regime',
+        replaySpeed: ReplaySpeed.MAX_SPEED
+        // enableRegimeGate defaults to true
+      }
+    );
+
+    // BUY signals should be filtered out in BEAR regime — no trades executed
+    expect(result.trades).toHaveLength(0);
+    // Signals are still recorded (filtering happens after signal recording in the throttle step,
+    // but the mapped trading signals are filtered before trade execution)
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows BUY signals through in BEAR regime when enableRegimeGate is false', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+      })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Spy on computeCompositeRegime to return BEAR regime
+    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR
+    });
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-no-gate',
+        name: 'Regime Gate Disabled Test',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-no-gate',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-no-gate',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        enableRegimeGate: false
+      }
+    );
+
+    // BUY signals should NOT be filtered when regime gate is disabled — trades should execute
+    expect(result.trades.length).toBeGreaterThan(0);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
   });
 });
 

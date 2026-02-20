@@ -94,6 +94,15 @@ export interface LiveReplayExecuteOptions {
   /** Hard stop-loss threshold as a fraction (0-1). Default: 0.05 (5% loss triggers exit) */
   hardStopLossPercent?: number;
 
+  /** Enable composite regime gate filtering (default: true).
+   *  When enabled, BUY signals are blocked when BTC is in BEAR or EXTREME regime. */
+  enableRegimeGate?: boolean;
+
+  /** Enable regime-scaled position sizing (default: false for backward compatibility) */
+  enableRegimeScaledSizing?: boolean;
+  /** User risk level for regime multiplier lookup (1-5). Default: 3 */
+  riskLevel?: number;
+
   /** Number of timestamps between checkpoints (default: 100 for live replay) */
   checkpointInterval?: number;
 

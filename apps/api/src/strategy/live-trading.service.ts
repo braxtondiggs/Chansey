@@ -140,13 +140,18 @@ export class LiveTradingService implements OnApplicationShutdown {
       return;
     }
 
-    const capitalMap = await this.capitalAllocation.allocateCapitalByKelly(actualCapital, strategies);
+    // Get current composite regime for position sizing (reused for gate below)
+    const compositeRegime = this.compositeRegimeService.getCompositeRegime();
+
+    const capitalMap = await this.capitalAllocation.allocateCapitalByKelly(actualCapital, strategies, {
+      compositeRegime,
+      riskLevel: user.risk?.level ?? 3
+    });
 
     const userPositions = await this.positionTracking.getPositions(user.id);
 
     const marketData = await this.fetchMarketData();
 
-    const compositeRegime = this.compositeRegimeService.getCompositeRegime();
     const volatilityRegime = this.compositeRegimeService.getVolatilityRegime();
     const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();

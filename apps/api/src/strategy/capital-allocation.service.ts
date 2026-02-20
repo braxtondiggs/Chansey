@@ -3,10 +3,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { In, Repository } from 'typeorm';
 
+import { AuditEventType, CompositeRegimeType, getRegimeMultiplier } from '@chansey/api-interfaces';
+
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { StrategyScore } from './entities/strategy-score.entity';
 
+import { AuditService } from '../audit/audit.service';
 import { Order, OrderStatus } from '../order/order.entity';
+
+export interface RegimeContext {
+  compositeRegime: CompositeRegimeType;
+  riskLevel: number;
+}
 
 export interface CapitalAllocation {
   strategyConfigId: string;
@@ -36,7 +44,8 @@ export class CapitalAllocationService {
     @InjectRepository(StrategyScore)
     private readonly strategyScoreRepo: Repository<StrategyScore>,
     @InjectRepository(Order)
-    private readonly orderRepo: Repository<Order>
+    private readonly orderRepo: Repository<Order>,
+    private readonly auditService: AuditService
   ) {}
 
   /**
@@ -72,8 +81,12 @@ export class CapitalAllocationService {
   /**
    * Get detailed allocation breakdown for transparency.
    */
-  async getAllocationDetails(userCapital: number, strategies: StrategyConfig[]): Promise<CapitalAllocation[]> {
-    const allocation = await this.allocateCapitalByKelly(userCapital, strategies);
+  async getAllocationDetails(
+    userCapital: number,
+    strategies: StrategyConfig[],
+    regimeContext?: RegimeContext
+  ): Promise<CapitalAllocation[]> {
+    const allocation = await this.allocateCapitalByKelly(userCapital, strategies, regimeContext);
     const details: CapitalAllocation[] = [];
 
     const strategyIds = strategies.map((s) => s.id);
@@ -137,12 +150,52 @@ export class CapitalAllocationService {
    * @param strategies - Strategies to allocate capital across
    * @returns Map of strategy ID to allocated capital amount
    */
-  async allocateCapitalByKelly(userCapital: number, strategies: StrategyConfig[]): Promise<Map<string, number>> {
+  async allocateCapitalByKelly(
+    userCapital: number,
+    strategies: StrategyConfig[],
+    regimeContext?: RegimeContext
+  ): Promise<Map<string, number>> {
     const allocation = new Map<string, number>();
 
     if (strategies.length === 0 || userCapital <= 0) {
       this.logger.warn('No strategies or capital provided for Kelly allocation');
       return allocation;
+    }
+
+    // Regime-scaled effective capital
+    const regimeMultiplier = regimeContext
+      ? getRegimeMultiplier(regimeContext.riskLevel, regimeContext.compositeRegime)
+      : 1.0;
+    const effectiveCapital = userCapital * regimeMultiplier;
+
+    if (effectiveCapital <= 0) {
+      this.logger.warn(
+        `Regime multiplier ${regimeMultiplier} (${regimeContext?.compositeRegime}) reduced capital to $0 — skipping allocation`
+      );
+      this.auditService
+        .createAuditLog({
+          eventType: AuditEventType.REGIME_SCALED_ALLOCATION,
+          entityType: 'capital-allocation',
+          entityId: 'system',
+          afterState: {
+            compositeRegime: regimeContext?.compositeRegime,
+            riskLevel: regimeContext?.riskLevel,
+            regimeMultiplier,
+            userCapital,
+            effectiveCapital: 0,
+            strategiesAllocated: 0,
+            totalAllocated: 0
+          }
+        })
+        .catch((err) => this.logger.warn(`Audit log failed: ${err.message}`));
+      return allocation;
+    }
+
+    if (regimeMultiplier !== 1.0) {
+      this.logger.log(
+        `Regime scaling: ${regimeContext!.compositeRegime} (risk ${regimeContext!.riskLevel}) → ` +
+          `${regimeMultiplier}x multiplier, effective capital $${effectiveCapital.toFixed(2)} (from $${userCapital.toFixed(2)})`
+      );
     }
 
     const strategyIds = strategies.map((s) => s.id);
@@ -226,10 +279,10 @@ export class CapitalAllocationService {
     }
 
     // Iterative proportional fitting for capped capital redistribution
-    const maxPerStrategy = this.getMaxAllocationPerStrategy(userCapital, kellyFractions.size);
+    const maxPerStrategy = this.getMaxAllocationPerStrategy(effectiveCapital, kellyFractions.size);
     const remainingFractions = new Map(kellyFractions);
     const lockedAllocations = new Map<string, number>();
-    let remainingCapital = userCapital;
+    let remainingCapital = effectiveCapital;
 
     for (let iteration = 0; iteration < kellyFractions.size; iteration++) {
       const poolTotal = Array.from(remainingFractions.values()).reduce((sum, f) => sum + f, 0);
@@ -274,6 +327,25 @@ export class CapitalAllocationService {
       `Kelly allocated $${allocatedCapital.toFixed(2)} across ${allocation.size} strategies ` +
         `(${kellyFractions.size} eligible, ${fallbackStrategyIds.length} score-fallback, ${strategies.length} total)`
     );
+
+    if (regimeContext) {
+      this.auditService
+        .createAuditLog({
+          eventType: AuditEventType.REGIME_SCALED_ALLOCATION,
+          entityType: 'capital-allocation',
+          entityId: 'system',
+          afterState: {
+            compositeRegime: regimeContext.compositeRegime,
+            riskLevel: regimeContext.riskLevel,
+            regimeMultiplier,
+            userCapital,
+            effectiveCapital,
+            strategiesAllocated: allocation.size,
+            totalAllocated: allocatedCapital
+          }
+        })
+        .catch((err) => this.logger.warn(`Audit log failed: ${err.message}`));
+    }
 
     return allocation;
   }

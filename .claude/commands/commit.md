@@ -103,6 +103,42 @@ Example of splitting commits:
   commit body)
 - `--amend`: Amend the previous commit instead of creating a new one
 
+## Amend Behavior
+
+When `--amend` is used:
+
+1. First read the existing commit message with `git log -1 --format=%B`
+2. Keep the **original subject line** (first line) — do NOT replace it
+3. Analyze the new diff (`git diff HEAD~1`) to understand the full scope of the amended commit
+4. **Append** new bullet points to the existing body describing only the newly added changes
+5. If the original message had no body, add a blank line after the subject then add the new bullets
+6. Only update the subject line if the original is clearly inaccurate after the amendment (e.g., wrong type or
+   misleading description) — otherwise preserve it as-is
+7. Use `git commit --amend -m "<merged message>"` with the combined result
+
+**Example:**
+
+Original commit message:
+
+```
+feat(api): add regime-scaled position sizing across trading stack
+
+- Add regime multiplier lookup tables per risk level
+- Integrate regime scaling into historical backtest
+```
+
+After amending with new changes:
+
+```
+feat(api): add regime-scaled position sizing across trading stack
+
+- Add regime multiplier lookup tables per risk level
+- Integrate regime scaling into historical backtest
+- Extract duplicated regime computation into computeCompositeRegime() method
+- Add regime gate filtering to live replay backtest
+- Add tests for regime gate behavior
+```
+
 ## Important Notes
 
 - Do NOT run lint, build, or test checks — the repository's pre-commit hook handles this automatically

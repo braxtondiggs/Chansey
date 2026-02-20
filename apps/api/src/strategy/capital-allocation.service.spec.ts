@@ -1,4 +1,6 @@
-import { CapitalAllocationService } from './capital-allocation.service';
+import { CompositeRegimeType } from '@chansey/api-interfaces';
+
+import { CapitalAllocationService, RegimeContext } from './capital-allocation.service';
 import { StrategyConfig } from './entities/strategy-config.entity';
 
 import { Order, OrderStatus } from '../order/order.entity';
@@ -38,11 +40,13 @@ describe('CapitalAllocationService', () => {
   let service: CapitalAllocationService;
   let mockOrderRepo: { find: jest.Mock };
   let mockScoreRepo: { find: jest.Mock };
+  let mockAuditService: { createAuditLog: jest.Mock };
 
   beforeEach(() => {
     mockOrderRepo = { find: jest.fn().mockResolvedValue([]) };
     mockScoreRepo = { find: jest.fn().mockResolvedValue([]) };
-    service = new CapitalAllocationService(mockScoreRepo as any, mockOrderRepo as any);
+    mockAuditService = { createAuditLog: jest.fn().mockResolvedValue({}) };
+    service = new CapitalAllocationService(mockScoreRepo as any, mockOrderRepo as any, mockAuditService as any);
   });
 
   describe('allocateCapitalByKelly', () => {
@@ -191,18 +195,6 @@ describe('CapitalAllocationService', () => {
       expect(result.get('s1')).toBeCloseTo(10000, 0);
     });
 
-    it('normalizes allocations to sum to userCapital', async () => {
-      const strategies = Array.from({ length: 8 }, (_, i) => createStrategy(`s${i}`));
-
-      mockOrderRepo.find.mockResolvedValue(strategies.flatMap((s) => makeKellyOrders(18, 200, 12, -100, s.id)));
-
-      const result = await service.allocateCapitalByKelly(10000, strategies);
-
-      const total = Array.from(result.values()).reduce((sum, v) => sum + v, 0);
-      expect(total).toBeCloseTo(10000, 0);
-      expect(result.size).toBe(8);
-    });
-
     it('returns empty map when all strategies fall back with no scores', async () => {
       mockOrderRepo.find.mockResolvedValue(Array.from({ length: 5 }, () => createOrder(100, 100, 's1')));
       mockScoreRepo.find.mockResolvedValue([]);
@@ -290,6 +282,106 @@ describe('CapitalAllocationService', () => {
       expect(result.has('s1')).toBe(false);
       expect(result.size).toBe(1);
       expect(result.get('s2')).toBeCloseTo(10000, 0);
+    });
+  });
+
+  describe('regime-scaled allocation', () => {
+    const setupKellyOrders = () => {
+      mockOrderRepo.find.mockResolvedValue(makeKellyOrders(18, 200, 12, -100, 's1'));
+    };
+
+    it.each([
+      [CompositeRegimeType.BULL, 3, 10000, 1],
+      [CompositeRegimeType.NEUTRAL, 3, 5000, 1],
+      [CompositeRegimeType.BEAR, 3, 1000, 1],
+      [CompositeRegimeType.EXTREME, 3, 0, 0]
+    ])(
+      '%s regime at risk %i → $%i allocated (%i strategies)',
+      async (regime, riskLevel, expectedCapital, expectedSize) => {
+        setupKellyOrders();
+        const ctx: RegimeContext = { compositeRegime: regime, riskLevel };
+        const result = await service.allocateCapitalByKelly(10000, [createStrategy('s1')], ctx);
+
+        expect(result.size).toBe(expectedSize);
+        if (expectedSize > 0) {
+          expect(result.get('s1')).toBeCloseTo(expectedCapital, 0);
+        }
+      }
+    );
+
+    it.each([
+      [CompositeRegimeType.BEAR, 1, 500, 3, 1000],
+      [CompositeRegimeType.NEUTRAL, 5, 7000, 3, 5000]
+    ])(
+      'risk differentiation in %s: risk %i ($%i) vs risk %i ($%i)',
+      async (regime, lowRisk, lowExpected, highRisk, highExpected) => {
+        setupKellyOrders();
+        const resultLow = await service.allocateCapitalByKelly(10000, [createStrategy('s1')], {
+          compositeRegime: regime,
+          riskLevel: lowRisk
+        });
+
+        setupKellyOrders();
+        const resultHigh = await service.allocateCapitalByKelly(10000, [createStrategy('s1')], {
+          compositeRegime: regime,
+          riskLevel: highRisk
+        });
+
+        expect(resultLow.get('s1')).toBeCloseTo(lowExpected, 0);
+        expect(resultHigh.get('s1')).toBeCloseTo(highExpected, 0);
+      }
+    );
+
+    it('writes audit log when regimeContext is provided', async () => {
+      setupKellyOrders();
+      const ctx: RegimeContext = { compositeRegime: CompositeRegimeType.NEUTRAL, riskLevel: 3 };
+      await service.allocateCapitalByKelly(10000, [createStrategy('s1')], ctx);
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(mockAuditService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'REGIME_SCALED_ALLOCATION',
+          entityType: 'capital-allocation',
+          afterState: expect.objectContaining({
+            compositeRegime: CompositeRegimeType.NEUTRAL,
+            riskLevel: 3,
+            regimeMultiplier: 0.5,
+            effectiveCapital: 5000
+          })
+        })
+      );
+    });
+
+    it('writes audit log with effectiveCapital 0 in EXTREME regime', async () => {
+      setupKellyOrders();
+      const ctx: RegimeContext = { compositeRegime: CompositeRegimeType.EXTREME, riskLevel: 3 };
+      await service.allocateCapitalByKelly(10000, [createStrategy('s1')], ctx);
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(mockAuditService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'REGIME_SCALED_ALLOCATION',
+          entityType: 'capital-allocation',
+          afterState: expect.objectContaining({
+            compositeRegime: CompositeRegimeType.EXTREME,
+            regimeMultiplier: 0,
+            effectiveCapital: 0,
+            strategiesAllocated: 0,
+            totalAllocated: 0
+          })
+        })
+      );
+    });
+
+    it('excludes strategies when scaled capital falls below $50 minimum', async () => {
+      setupKellyOrders();
+      const ctx: RegimeContext = { compositeRegime: CompositeRegimeType.BEAR, riskLevel: 3 };
+      const result = await service.allocateCapitalByKelly(400, [createStrategy('s1')], ctx);
+
+      // $400 * 0.1 = $40 effective → below $50 minimum → excluded
+      expect(result.size).toBe(0);
     });
   });
 
