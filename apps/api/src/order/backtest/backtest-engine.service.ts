@@ -5,7 +5,13 @@ import { SMA } from 'technicalindicators';
 
 import { createHash } from 'crypto';
 
-import { DEFAULT_VOLATILITY_CONFIG, determineVolatilityRegime, MarketRegimeType } from '@chansey/api-interfaces';
+import {
+  CompositeRegimeType,
+  DEFAULT_VOLATILITY_CONFIG,
+  determineVolatilityRegime,
+  getRegimeMultiplier,
+  MarketRegimeType
+} from '@chansey/api-interfaces';
 
 import {
   BacktestCheckpointState,
@@ -130,6 +136,11 @@ interface ExecuteOptions {
   /** Enable composite regime gate filtering (default: true).
    *  When enabled, BUY signals are blocked when BTC is below its 200-day SMA. */
   enableRegimeGate?: boolean;
+
+  /** Enable regime-scaled position sizing (default: false for backward compatibility) */
+  enableRegimeScaledSizing?: boolean;
+  /** User risk level for regime multiplier lookup (1-5). Default: 3 */
+  riskLevel?: number;
 
   // Checkpoint options for resume capability
   /** Number of timestamps between checkpoints (default: 500) */
@@ -261,6 +272,10 @@ interface PriceTrackingContext {
   windowsByCoin: Map<string, PriceSummary[]>;
 }
 
+interface CompositeRegimeResult {
+  compositeRegime: CompositeRegimeType;
+}
+
 @Injectable()
 export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
@@ -276,6 +291,8 @@ export class BacktestEngine {
   private static readonly MAX_WINDOW_SIZE = 500;
   /** Per-iteration algorithm execution timeout (ms) */
   private static readonly ALGORITHM_TIMEOUT_MS = 60_000;
+  /** BTC SMA period for regime detection */
+  private static readonly REGIME_SMA_PERIOD = 200;
 
   constructor(
     private readonly backtestStream: BacktestStreamService,
@@ -326,6 +343,85 @@ export class BacktestEngine {
       default:
         return SharedSlippageModelType.FIXED;
     }
+  }
+
+  /**
+   * Compute the composite regime (trend + volatility) from BTC price data.
+   * Returns null if insufficient data (< 200 bars or empty SMA).
+   */
+  private computeCompositeRegime(btcCoinId: string, priceCtx: PriceTrackingContext): CompositeRegimeResult | null {
+    const btcWindow = priceCtx.windowsByCoin.get(btcCoinId);
+    if (!btcWindow || btcWindow.length < BacktestEngine.REGIME_SMA_PERIOD) {
+      return null;
+    }
+
+    const btcCloses = btcWindow.map((p) => p.close ?? p.avg);
+    const smaValues = SMA.calculate({ period: BacktestEngine.REGIME_SMA_PERIOD, values: btcCloses });
+    if (smaValues.length === 0) {
+      return null;
+    }
+
+    const sma200 = smaValues[smaValues.length - 1];
+    const latestBtcPrice = btcCloses[btcCloses.length - 1];
+    const trendAboveSma = latestBtcPrice > sma200;
+
+    let volatilityRegime = MarketRegimeType.NORMAL;
+    const volConfig = DEFAULT_VOLATILITY_CONFIG;
+    if (btcCloses.length >= volConfig.rollingDays + 1) {
+      try {
+        const realizedVol = this.volatilityCalculator.calculateRealizedVolatility(btcCloses, volConfig);
+        if (btcCloses.length >= volConfig.lookbackDays) {
+          const percentile = this.volatilityCalculator.calculatePercentile(realizedVol, btcCloses, volConfig);
+          volatilityRegime = determineVolatilityRegime(percentile);
+        }
+      } catch (error) {
+        this.logger.debug?.(`Volatility regime calc fell back to NORMAL: ${toErrorInfo(error).message}`);
+      }
+    }
+
+    const compositeRegime = this.regimeGateService.classifyComposite(volatilityRegime, trendAboveSma);
+    return { compositeRegime };
+  }
+
+  private resolveRegimeConfig(
+    options: { enableRegimeGate?: boolean; enableRegimeScaledSizing?: boolean; riskLevel?: number },
+    coins: Coin[]
+  ): { enableRegimeScaledSizing: boolean; riskLevel: number; regimeGateEnabled: boolean; btcCoin: Coin | undefined } {
+    const enableRegimeScaledSizing = options.enableRegimeScaledSizing === true;
+    const riskLevel = options.riskLevel ?? 3;
+    const regimeGateEnabled = options.enableRegimeGate !== false;
+    const btcCoin =
+      regimeGateEnabled || enableRegimeScaledSizing ? coins.find((c) => c.symbol?.toUpperCase() === 'BTC') : undefined;
+    if (regimeGateEnabled && !btcCoin) {
+      this.logger.warn('Regime gate enabled but BTC not found in dataset — gate disabled for this run');
+    }
+    return { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin };
+  }
+
+  private applyBarRegime(
+    strategySignals: TradingSignal[],
+    priceCtx: PriceTrackingContext,
+    regimeConfig: { btcCoin?: Coin; regimeGateEnabled: boolean; enableRegimeScaledSizing: boolean; riskLevel: number },
+    allocationLimits: { maxAllocation: number; minAllocation: number }
+  ): { filteredSignals: TradingSignal[]; barMaxAllocation: number; barMinAllocation: number } {
+    let barMaxAllocation = allocationLimits.maxAllocation;
+    let barMinAllocation = allocationLimits.minAllocation;
+
+    if (regimeConfig.btcCoin && strategySignals.length > 0) {
+      const regimeResult = this.computeCompositeRegime(regimeConfig.btcCoin.id, priceCtx);
+      if (regimeResult) {
+        if (regimeConfig.regimeGateEnabled) {
+          strategySignals = this.regimeGateService.filterBacktestSignals(strategySignals, regimeResult.compositeRegime);
+        }
+        if (regimeConfig.enableRegimeScaledSizing) {
+          const regimeMultiplier = getRegimeMultiplier(regimeConfig.riskLevel, regimeResult.compositeRegime);
+          barMaxAllocation = allocationLimits.maxAllocation * regimeMultiplier;
+          barMinAllocation = allocationLimits.minAllocation * regimeMultiplier;
+        }
+      }
+    }
+
+    return { filteredSignals: strategySignals, barMaxAllocation, barMinAllocation };
   }
 
   async executeHistoricalBacktest(
@@ -488,6 +584,12 @@ export class BacktestEngine {
     const oppSellingEnabled = options.enableOpportunitySelling ?? false;
     const oppSellingConfig = options.opportunitySellingConfig ?? DEFAULT_OPPORTUNITY_SELLING_CONFIG;
 
+    // Regime-scaled position sizing + regime gate
+    const { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin } = this.resolveRegimeConfig(
+      options,
+      coins
+    );
+
     // Signal throttle: resolve config from strategy parameters, init or restore state
     const throttleConfig = this.resolveThrottleConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
@@ -498,14 +600,6 @@ export class BacktestEngine {
     } else {
       throttleState = this.signalThrottle.createState();
     }
-
-    // Regime gate: identify BTC coin for trend filter
-    const regimeGateEnabled = options.enableRegimeGate !== false;
-    const btcCoin = regimeGateEnabled ? coins.find((c) => c.symbol?.toUpperCase() === 'BTC') : undefined;
-    if (regimeGateEnabled && !btcCoin) {
-      this.logger.warn('Regime gate enabled but BTC not found in dataset — gate disabled for this run');
-    }
-    const REGIME_SMA_PERIOD = 200;
 
     // Determine starting index: either from checkpoint or from beginning
     const startIndex = isResuming && options.resumeFrom ? options.resumeFrom.lastProcessedIndex + 1 : 0;
@@ -669,37 +763,14 @@ export class BacktestEngine {
         timestamp.getTime()
       );
 
-      // Regime gate: block BUY signals when BTC is below its 200-day SMA
-      if (btcCoin && strategySignals.length > 0) {
-        const btcWindow = priceCtx.windowsByCoin.get(btcCoin.id);
-        if (btcWindow && btcWindow.length >= REGIME_SMA_PERIOD) {
-          const btcCloses = btcWindow.map((p) => p.close ?? p.avg);
-          const smaValues = SMA.calculate({ period: REGIME_SMA_PERIOD, values: btcCloses });
-          if (smaValues.length > 0) {
-            const sma200 = smaValues[smaValues.length - 1];
-            const latestBtcPrice = btcCloses[btcCloses.length - 1];
-            const trendAboveSma = latestBtcPrice > sma200;
-
-            // Compute real volatility regime when enough data is available
-            let volatilityRegime = MarketRegimeType.NORMAL;
-            const volConfig = DEFAULT_VOLATILITY_CONFIG;
-            if (btcCloses.length >= volConfig.rollingDays + 1) {
-              try {
-                const realizedVol = this.volatilityCalculator.calculateRealizedVolatility(btcCloses, volConfig);
-                if (btcCloses.length >= volConfig.lookbackDays) {
-                  const percentile = this.volatilityCalculator.calculatePercentile(realizedVol, btcCloses, volConfig);
-                  volatilityRegime = determineVolatilityRegime(percentile);
-                }
-              } catch {
-                // Insufficient data — fall back to NORMAL
-              }
-            }
-
-            const compositeRegime = this.regimeGateService.classifyComposite(volatilityRegime, trendAboveSma);
-            strategySignals = this.regimeGateService.filterBacktestSignals(strategySignals, compositeRegime);
-          }
-        }
-      }
+      // Regime gate + regime-scaled position sizing
+      const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
+        strategySignals,
+        priceCtx,
+        { btcCoin, regimeGateEnabled, enableRegimeScaledSizing, riskLevel },
+        { maxAllocation, minAllocation }
+      );
+      strategySignals = filteredSignals;
 
       for (const strategySignal of strategySignals) {
         const signalRecord: Partial<BacktestSignal> = {
@@ -733,8 +804,8 @@ export class BacktestEngine {
           slippageConfig,
           dailyVolume,
           minHoldMs,
-          maxAllocation,
-          minAllocation
+          barMaxAllocation,
+          barMinAllocation
         );
 
         // Opportunity selling: if BUY failed (likely insufficient cash), attempt to sell positions to fund it
@@ -754,8 +825,8 @@ export class BacktestEngine {
             trades,
             simulatedFills,
             dailyVolume,
-            maxAllocation,
-            minAllocation
+            barMaxAllocation,
+            barMinAllocation
           );
 
           if (oppResult) {
@@ -769,8 +840,8 @@ export class BacktestEngine {
               slippageConfig,
               dailyVolume,
               minHoldMs,
-              maxAllocation,
-              minAllocation
+              barMaxAllocation,
+              barMinAllocation
             );
           }
         }
@@ -1107,6 +1178,12 @@ export class BacktestEngine {
     const enableHardStopLoss = options.enableHardStopLoss !== false;
     const hardStopLossPercent = options.hardStopLossPercent ?? 0.05;
 
+    // Regime-scaled position sizing + regime gate
+    const { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin } = this.resolveRegimeConfig(
+      options,
+      coins
+    );
+
     // Signal throttle: resolve config from strategy parameters, init or restore state
     const throttleConfig = this.resolveThrottleConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
@@ -1405,6 +1482,15 @@ export class BacktestEngine {
         timestamp.getTime()
       );
 
+      // Regime gate + regime-scaled position sizing
+      const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
+        strategySignals,
+        priceCtx,
+        { btcCoin, regimeGateEnabled, enableRegimeScaledSizing, riskLevel },
+        { maxAllocation, minAllocation }
+      );
+      strategySignals = filteredSignals;
+
       for (const strategySignal of strategySignals) {
         const signalRecord: Partial<BacktestSignal> = {
           timestamp,
@@ -1437,8 +1523,8 @@ export class BacktestEngine {
           slippageConfig,
           dailyVolume,
           minHoldMs,
-          maxAllocation,
-          minAllocation
+          barMaxAllocation,
+          barMinAllocation
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;

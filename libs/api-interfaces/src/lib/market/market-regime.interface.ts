@@ -139,6 +139,68 @@ export interface RegimeGateDecision {
 }
 
 /**
+ * Position sizing multipliers keyed by composite regime.
+ */
+export type RegimePositionMultipliers = Record<CompositeRegimeType, number>;
+
+/**
+ * Default regime multipliers (risk level 3 — moderate).
+ */
+export const DEFAULT_REGIME_MULTIPLIERS: RegimePositionMultipliers = {
+  [CompositeRegimeType.BULL]: 1.0,
+  [CompositeRegimeType.NEUTRAL]: 0.5,
+  [CompositeRegimeType.BEAR]: 0.1,
+  [CompositeRegimeType.EXTREME]: 0.0
+};
+
+/**
+ * Regime position-sizing multiplier matrix indexed by risk level (1-5).
+ * Higher risk levels retain more capital in adverse regimes.
+ */
+export const RISK_REGIME_MULTIPLIER_MATRIX: Record<number, RegimePositionMultipliers> = {
+  1: {
+    [CompositeRegimeType.BULL]: 1.0,
+    [CompositeRegimeType.NEUTRAL]: 0.4,
+    [CompositeRegimeType.BEAR]: 0.05,
+    [CompositeRegimeType.EXTREME]: 0.0
+  },
+  2: {
+    [CompositeRegimeType.BULL]: 1.0,
+    [CompositeRegimeType.NEUTRAL]: 0.45,
+    [CompositeRegimeType.BEAR]: 0.08,
+    [CompositeRegimeType.EXTREME]: 0.0
+  },
+  3: {
+    [CompositeRegimeType.BULL]: 1.0,
+    [CompositeRegimeType.NEUTRAL]: 0.5,
+    [CompositeRegimeType.BEAR]: 0.1,
+    [CompositeRegimeType.EXTREME]: 0.0
+  },
+  4: {
+    [CompositeRegimeType.BULL]: 1.0,
+    [CompositeRegimeType.NEUTRAL]: 0.6,
+    [CompositeRegimeType.BEAR]: 0.15,
+    [CompositeRegimeType.EXTREME]: 0.0
+  },
+  5: {
+    [CompositeRegimeType.BULL]: 1.0,
+    [CompositeRegimeType.NEUTRAL]: 0.7,
+    [CompositeRegimeType.BEAR]: 0.2,
+    [CompositeRegimeType.EXTREME]: 0.0
+  }
+};
+
+/**
+ * Look up the position-sizing multiplier for a given risk level and composite regime.
+ * Falls back to DEFAULT_REGIME_MULTIPLIERS for unknown risk levels,
+ * and NEUTRAL (0.5) for unknown regime values.
+ */
+export function getRegimeMultiplier(riskLevel: number, compositeRegime: CompositeRegimeType): number {
+  const multipliers = RISK_REGIME_MULTIPLIER_MATRIX[riskLevel] ?? DEFAULT_REGIME_MULTIPLIERS;
+  return multipliers[compositeRegime] ?? DEFAULT_REGIME_MULTIPLIERS[CompositeRegimeType.NEUTRAL];
+}
+
+/**
  * Extended metadata that includes composite regime data.
  * Stored in the existing JSONB `metadata` column — backward-compatible.
  */
