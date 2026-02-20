@@ -102,6 +102,9 @@ export interface OptimizationConfig {
     startDate: Date;
     endDate: Date;
   };
+
+  /** Maximum number of coins to include in optimization (only coins with OHLC data) */
+  maxCoins?: number;
 }
 
 /**

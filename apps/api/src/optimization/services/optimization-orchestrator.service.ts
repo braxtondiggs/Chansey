@@ -208,12 +208,12 @@ export class OptimizationOrchestratorService {
     await this.optimizationRunRepository.save(run);
 
     // Load coins once at start of optimization run for thread safety
-    const coins = await this.loadCoinsForOptimization();
+    const coins = await this.loadCoinsForOptimization(run.config.maxCoins);
     this.logger.log(`Loaded ${coins.length} coins for optimization run ${runId}`);
 
     try {
       // Generate walk-forward windows
-      const { startDate, endDate } = this.getDateRange(run.config);
+      const { startDate, endDate } = await this.getDateRange(run.config);
       const windows = this.walkForwardService.generateWindows({
         startDate,
         endDate,
@@ -480,25 +480,32 @@ export class OptimizationOrchestratorService {
   }
 
   /**
-   * Load coins for optimization run - called once at start of optimization
-   * Returns top 50 coins by market rank, or any 50 coins with price data as fallback
+   * Load coins for optimization run - called once at start of optimization.
+   * Only returns coins that have OHLC candle data, ranked by market cap.
+   * @param maxCoins Maximum coins to return (default 20)
    */
-  private async loadCoinsForOptimization(): Promise<Coin[]> {
+  private async loadCoinsForOptimization(maxCoins = 20): Promise<Coin[]> {
+    const ohlcExistsSubquery = `EXISTS (SELECT 1 FROM ohlc_candles c WHERE c."coinId" = coin.id)`;
+
+    // Load coins ranked by market cap, filtered to only those with OHLC data
     let coins = await this.coinRepository
       .createQueryBuilder('coin')
-      .where('coin.marketRank IS NOT NULL')
+      .where(ohlcExistsSubquery)
+      .andWhere('coin.marketRank IS NOT NULL')
       .orderBy('coin.marketRank', 'ASC')
-      .take(50)
+      .take(maxCoins)
       .getMany();
 
     if (coins.length === 0) {
-      // Fallback: get any coins with price data
-      coins = await this.coinRepository.find({ take: 50 });
+      // Fallback: get any coins with OHLC data (no market rank filter)
+      coins = await this.coinRepository.createQueryBuilder('coin').where(ohlcExistsSubquery).take(maxCoins).getMany();
     }
 
     if (coins.length === 0) {
-      throw new Error('No coins available for optimization. Ensure coins are loaded in database.');
+      throw new Error('No coins with OHLC data available for optimization. Ensure OHLC sync has run.');
     }
+
+    this.logger.log(`Filtered to ${coins.length} coins with OHLC data (max ${maxCoins})`);
 
     return coins;
   }
@@ -823,9 +830,11 @@ export class OptimizationOrchestratorService {
   }
 
   /**
-   * Get date range for optimization
+   * Get date range for optimization.
+   * Uses explicit config dateRange if provided, otherwise queries actual OHLC data bounds.
+   * Falls back to last 3 months if no data exists.
    */
-  private getDateRange(config: OptimizationConfig): { startDate: Date; endDate: Date } {
+  private async getDateRange(config: OptimizationConfig): Promise<{ startDate: Date; endDate: Date }> {
     if (config.dateRange) {
       return {
         startDate: new Date(config.dateRange.startDate),
@@ -833,10 +842,20 @@ export class OptimizationOrchestratorService {
       };
     }
 
-    // Default: last 3 years
+    // Query actual OHLC data bounds instead of assuming 3 years
+    const dataRange = await this.ohlcService.getCandleDataDateRange();
+    if (dataRange) {
+      this.logger.log(
+        `Using actual OHLC data bounds: ${dataRange.start.toISOString()} to ${dataRange.end.toISOString()}`
+      );
+      return { startDate: dataRange.start, endDate: dataRange.end };
+    }
+
+    // Last-resort fallback: last 3 months
+    this.logger.warn('No OHLC data found, falling back to 3-month date range');
     const endDate = new Date();
     const startDate = new Date();
-    startDate.setFullYear(startDate.getFullYear() - 3);
+    startDate.setMonth(startDate.getMonth() - 3);
 
     return { startDate, endDate };
   }
