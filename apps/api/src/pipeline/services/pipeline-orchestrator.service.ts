@@ -494,6 +494,28 @@ export class PipelineOrchestratorService {
   }
 
   /**
+   * Handle optimization failure (stale watchdog or error).
+   * Finds the pipeline linked to the optimization run and fails it.
+   */
+  async handleOptimizationFailed(runId: string, reason: string): Promise<void> {
+    const pipeline = await this.pipelineRepository.findOne({
+      where: {
+        optimizationRunId: runId,
+        currentStage: PipelineStage.OPTIMIZE,
+        status: PipelineStatus.RUNNING
+      },
+      relations: ['user']
+    });
+
+    if (!pipeline) {
+      this.logger.debug(`No active pipeline found for failed optimization run ${runId}`);
+      return;
+    }
+
+    await this.failPipeline(pipeline, `Optimization failed: ${reason}`);
+  }
+
+  /**
    * Handle backtest completion
    */
   async handleBacktestComplete(

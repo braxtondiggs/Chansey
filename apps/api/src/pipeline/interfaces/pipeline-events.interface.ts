@@ -12,6 +12,14 @@ export interface OptimizationCompletedEvent {
 }
 
 /**
+ * Event payload for optimization failure (stale watchdog or error)
+ */
+export interface OptimizationFailedEvent {
+  runId: string;
+  reason: string;
+}
+
+/**
  * Event payload for backtest completion
  */
 export interface BacktestCompletedEvent {
@@ -109,6 +117,7 @@ export interface PipelineWebSocketPayload {
  */
 export const PIPELINE_EVENTS = {
   OPTIMIZATION_COMPLETED: 'optimization.completed',
+  OPTIMIZATION_FAILED: 'optimization.failed',
   BACKTEST_COMPLETED: 'backtest.completed',
   PAPER_TRADING_COMPLETED: 'paper-trading.completed',
   PIPELINE_STAGE_TRANSITION: 'pipeline.stage-transition',

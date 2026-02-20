@@ -7,25 +7,32 @@
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { IsNull, LessThan, Repository } from 'typeorm';
+import { In, IsNull, LessThan, Repository } from 'typeorm';
 
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { OrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
+import { OptimizationRun, OptimizationStatus } from '../optimization/entities/optimization-run.entity';
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
+import { Pipeline } from '../pipeline/entities/pipeline.entity';
+import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
 export class BacktestOrchestrationTask {
+  private static readonly BOOT_GRACE_PERIOD_MS = 10 * 60 * 1000; // 10 min
   private static readonly HISTORICAL_THRESHOLD_MS = 90 * 60 * 1000;
   private static readonly LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
+  private static readonly OPTIMIZATION_THRESHOLD_MS = 120 * 60 * 1000; // 120 min
 
+  private readonly bootedAt = Date.now();
   private readonly logger = new Logger(BacktestOrchestrationTask.name);
 
   constructor(
@@ -34,7 +41,10 @@ export class BacktestOrchestrationTask {
     private readonly orchestrationService: BacktestOrchestrationService,
     private readonly backtestService: BacktestService,
     private readonly backtestResultService: BacktestResultService,
-    @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>
+    private readonly eventEmitter: EventEmitter2,
+    @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
+    @InjectRepository(OptimizationRun) private readonly optimizationRunRepository: Repository<OptimizationRun>,
+    @InjectRepository(Pipeline) private readonly pipelineRepository: Repository<Pipeline>
   ) {}
 
   /**
@@ -154,6 +164,15 @@ export class BacktestOrchestrationTask {
    */
   @Cron('*/15 * * * *')
   async detectStaleBacktests(): Promise<void> {
+    const timeSinceBoot = Date.now() - this.bootedAt;
+    if (timeSinceBoot < BacktestOrchestrationTask.BOOT_GRACE_PERIOD_MS) {
+      this.logger.debug(
+        `Skipping stale detection — server booted ${Math.round(timeSinceBoot / 1000)}s ago ` +
+          `(grace period: ${BacktestOrchestrationTask.BOOT_GRACE_PERIOD_MS / 60000} min)`
+      );
+      return;
+    }
+
     const historicalCutoff = new Date(Date.now() - BacktestOrchestrationTask.HISTORICAL_THRESHOLD_MS);
     const liveReplayCutoff = new Date(Date.now() - BacktestOrchestrationTask.LIVE_REPLAY_THRESHOLD_MS);
 
@@ -218,6 +237,116 @@ export class BacktestOrchestrationTask {
 
     if (staleBacktests.length > 0) {
       this.logger.log(`Stale watchdog marked ${staleBacktests.length} backtest(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Watchdog that detects stale RUNNING optimization runs.
+   * Uses lastHeartbeatAt (updated every ~10 windows and on batch progress).
+   * Falls back to startedAt when no heartbeat has ever been recorded.
+   */
+  @Cron('*/15 * * * *')
+  async detectStaleOptimizationRuns(): Promise<void> {
+    const timeSinceBoot = Date.now() - this.bootedAt;
+    if (timeSinceBoot < BacktestOrchestrationTask.BOOT_GRACE_PERIOD_MS) {
+      return;
+    }
+
+    const cutoff = new Date(Date.now() - BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS);
+
+    const staleRuns = await this.optimizationRunRepository.find({
+      where: [
+        { status: OptimizationStatus.RUNNING, lastHeartbeatAt: LessThan(cutoff) },
+        { status: OptimizationStatus.RUNNING, lastHeartbeatAt: IsNull(), startedAt: LessThan(cutoff) }
+      ]
+    });
+
+    for (const run of staleRuns) {
+      try {
+        const reason =
+          `Stale: no heartbeat for ${Math.round(BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS / 60000)} min. ` +
+          `Progress: ${run.combinationsTested}/${run.totalCombinations}`;
+
+        this.logger.warn(`Marking stale optimization run ${run.id} as FAILED: ${reason}`);
+
+        const result = await this.optimizationRunRepository.update(
+          { id: run.id, status: In([OptimizationStatus.RUNNING, OptimizationStatus.PENDING]) },
+          {
+            status: OptimizationStatus.FAILED,
+            errorMessage: reason,
+            completedAt: new Date()
+          }
+        );
+
+        if (result.affected === 0) {
+          this.logger.log(`Optimization run ${run.id} already transitioned — skipping event emission`);
+          continue;
+        }
+
+        this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_FAILED, {
+          runId: run.id,
+          reason
+        });
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to mark stale optimization run ${run.id} as FAILED: ${err.message}`);
+      }
+    }
+
+    if (staleRuns.length > 0) {
+      this.logger.log(`Stale optimization watchdog marked ${staleRuns.length} run(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Watchdog that detects orphaned pipelines stuck in OPTIMIZE stage
+   * with no optimization run ever started.
+   */
+  @Cron('*/15 * * * *')
+  async detectOrphanedOptimizePipelines(): Promise<void> {
+    const timeSinceBoot = Date.now() - this.bootedAt;
+    if (timeSinceBoot < BacktestOrchestrationTask.BOOT_GRACE_PERIOD_MS) {
+      return;
+    }
+
+    const cutoff = new Date(Date.now() - BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS);
+
+    const orphanedPipelines = await this.pipelineRepository.find({
+      where: {
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.OPTIMIZE,
+        optimizationRunId: IsNull(),
+        updatedAt: LessThan(cutoff)
+      }
+    });
+
+    for (const pipeline of orphanedPipelines) {
+      try {
+        this.logger.warn(
+          `Marking orphaned pipeline ${pipeline.id} as FAILED (OPTIMIZE stage, no optimization run started)`
+        );
+
+        const result = await this.pipelineRepository.update(
+          { id: pipeline.id, status: PipelineStatus.RUNNING },
+          {
+            status: PipelineStatus.FAILED,
+            failureReason: 'Orphaned: optimization never started',
+            completedAt: new Date()
+          }
+        );
+
+        if (result.affected === 0) {
+          this.logger.log(`Pipeline ${pipeline.id} already transitioned — skipping`);
+          continue;
+        }
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to mark orphaned pipeline ${pipeline.id} as FAILED: ${err.message}`);
+      }
+    }
+
+    if (orphanedPipelines.length > 0) {
+      this.logger.log(`Orphaned pipeline watchdog marked ${orphanedPipelines.length} pipeline(s) as FAILED`);
     }
   }
 }
