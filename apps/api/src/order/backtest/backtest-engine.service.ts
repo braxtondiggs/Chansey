@@ -117,6 +117,16 @@ interface ExecuteOptions {
   /** Opportunity selling configuration (uses DEFAULT_OPPORTUNITY_SELLING_CONFIG if not provided) */
   opportunitySellingConfig?: OpportunitySellingUserConfig;
 
+  /** Maximum allocation per trade as fraction of portfolio (0-1). Default: 0.12 (12%) */
+  maxAllocation?: number;
+  /** Minimum allocation per trade as fraction of portfolio (0-1). Default: 0.03 (3%) */
+  minAllocation?: number;
+
+  /** Enable mandatory hard stop-loss for all positions (default: true) */
+  enableHardStopLoss?: boolean;
+  /** Hard stop-loss threshold as a fraction (0-1). Default: 0.05 (5% loss triggers exit) */
+  hardStopLossPercent?: number;
+
   /** Enable composite regime gate filtering (default: true).
    *  When enabled, BUY signals are blocked when BTC is below its 200-day SMA. */
   enableRegimeGate?: boolean;
@@ -150,6 +160,26 @@ interface MetricsAccumulator {
     addGrossProfit: (n: number) => void;
     addGrossLoss: (n: number) => void;
   };
+}
+
+interface HardStopLossProcessingOptions {
+  portfolio: Portfolio;
+  marketData: MarketData;
+  currentPrices: OHLCCandle[];
+  hardStopLossPercent: number;
+  tradingFee: number;
+  rng: SeededRandom;
+  timestamp: Date;
+  trades: Partial<BacktestTrade>[];
+  // Optional — omit for lightweight optimization mode
+  slippageConfig?: SlippageConfig;
+  maxAllocation?: number;
+  minAllocation?: number;
+  signals?: Partial<BacktestSignal>[];
+  simulatedFills?: Partial<SimulatedOrderFill>[];
+  backtest?: Backtest;
+  coinMap?: Map<string, Coin>;
+  quoteCoin?: Coin;
 }
 
 // Note: Seeded random generation now uses SeededRandom class for checkpoint support
@@ -202,6 +232,8 @@ export interface OptimizationBacktestConfig {
   initialCapital?: number;
   tradingFee?: number;
   coinIds?: string[];
+  /** Hard stop-loss threshold as a fraction (0-1). Default: 0.05 (5%) */
+  hardStopLossPercent?: number;
 }
 
 /**
@@ -233,10 +265,10 @@ interface PriceTrackingContext {
 export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
 
-  /** Maximum allocation per trade (20% of portfolio) */
-  private static readonly MAX_ALLOCATION = 0.2;
-  /** Minimum allocation per trade (5% of portfolio) */
-  private static readonly MIN_ALLOCATION = 0.05;
+  /** Maximum allocation per trade (12% of portfolio) */
+  private static readonly MAX_ALLOCATION = 0.12;
+  /** Minimum allocation per trade (3% of portfolio) */
+  private static readonly MIN_ALLOCATION = 0.03;
   /** Default minimum hold period before allowing SELL (24 hours in ms) */
   private static readonly DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
   /** Maximum price history entries kept per coin in the sliding window.
@@ -444,6 +476,14 @@ export class BacktestEngine {
     // Minimum hold period: configurable via options, default 24h
     const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
+    // Position sizing: configurable per-run, default to static constants
+    const maxAllocation = options.maxAllocation ?? BacktestEngine.MAX_ALLOCATION;
+    const minAllocation = options.minAllocation ?? BacktestEngine.MIN_ALLOCATION;
+
+    // Hard stop-loss: configurable per-run, default enabled at 5%
+    const enableHardStopLoss = options.enableHardStopLoss !== false;
+    const hardStopLossPercent = options.hardStopLossPercent ?? 0.05;
+
     // Opportunity selling config
     const oppSellingEnabled = options.enableOpportunitySelling ?? false;
     const oppSellingConfig = options.opportunitySellingConfig ?? DEFAULT_OPPORTUNITY_SELLING_CONFIG;
@@ -545,6 +585,28 @@ export class BacktestEngine {
           // Warmup failures are non-fatal — algorithm just won't have primed state
         }
         continue;
+      }
+
+      // Hard stop-loss: check all positions BEFORE algorithm runs new decisions
+      if (enableHardStopLoss) {
+        await this.processHardStopLoss({
+          portfolio,
+          marketData,
+          currentPrices,
+          hardStopLossPercent,
+          tradingFee: backtest.tradingFee,
+          rng,
+          timestamp,
+          trades,
+          slippageConfig,
+          maxAllocation,
+          minAllocation,
+          signals,
+          simulatedFills,
+          backtest,
+          coinMap,
+          quoteCoin
+        });
       }
 
       const context = {
@@ -670,7 +732,9 @@ export class BacktestEngine {
           rng,
           slippageConfig,
           dailyVolume,
-          minHoldMs
+          minHoldMs,
+          maxAllocation,
+          minAllocation
         );
 
         // Opportunity selling: if BUY failed (likely insufficient cash), attempt to sell positions to fund it
@@ -689,7 +753,9 @@ export class BacktestEngine {
             timestamp,
             trades,
             simulatedFills,
-            dailyVolume
+            dailyVolume,
+            maxAllocation,
+            minAllocation
           );
 
           if (oppResult) {
@@ -702,7 +768,9 @@ export class BacktestEngine {
               rng,
               slippageConfig,
               dailyVolume,
-              minHoldMs
+              minHoldMs,
+              maxAllocation,
+              minAllocation
             );
           }
         }
@@ -1031,6 +1099,14 @@ export class BacktestEngine {
     // Minimum hold period: configurable via options, default 24h
     const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
+    // Position sizing: configurable per-run, default to static constants
+    const maxAllocation = options.maxAllocation ?? BacktestEngine.MAX_ALLOCATION;
+    const minAllocation = options.minAllocation ?? BacktestEngine.MIN_ALLOCATION;
+
+    // Hard stop-loss: configurable per-run, default enabled at 5%
+    const enableHardStopLoss = options.enableHardStopLoss !== false;
+    const hardStopLossPercent = options.hardStopLossPercent ?? 0.05;
+
     // Signal throttle: resolve config from strategy parameters, init or restore state
     const throttleConfig = this.resolveThrottleConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
@@ -1249,6 +1325,28 @@ export class BacktestEngine {
         continue;
       }
 
+      // Hard stop-loss: check all positions BEFORE algorithm runs new decisions
+      if (enableHardStopLoss) {
+        await this.processHardStopLoss({
+          portfolio,
+          marketData,
+          currentPrices,
+          hardStopLossPercent,
+          tradingFee: backtest.tradingFee,
+          rng,
+          timestamp,
+          trades,
+          slippageConfig,
+          maxAllocation,
+          minAllocation,
+          signals,
+          simulatedFills,
+          backtest,
+          coinMap,
+          quoteCoin
+        });
+      }
+
       // Apply pacing delay (except for the first trading timestamp and MAX_SPEED)
       if (delayMs > 0 && i > Math.max(startIndex, effectiveTradingStartIndex)) {
         await this.delay(delayMs);
@@ -1338,7 +1436,9 @@ export class BacktestEngine {
           rng,
           slippageConfig,
           dailyVolume,
-          minHoldMs
+          minHoldMs,
+          maxAllocation,
+          minAllocation
         );
         if (tradeResult) {
           const { trade, slippageBps } = tradeResult;
@@ -1696,10 +1796,12 @@ export class BacktestEngine {
     rng: SeededRandom,
     slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
     dailyVolume?: number,
-    minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS
+    minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS,
+    maxAllocation: number = BacktestEngine.MAX_ALLOCATION,
+    minAllocation: number = BacktestEngine.MIN_ALLOCATION
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
-    const basePrice = marketData.prices.get(signal.coinId);
-    if (!basePrice) {
+    const marketPrice = marketData.prices.get(signal.coinId);
+    if (!marketPrice) {
       this.logger.warn(`No price data available for coin ${signal.coinId}`);
       return null;
     }
@@ -1707,6 +1809,13 @@ export class BacktestEngine {
     if (signal.action === 'HOLD') {
       return null;
     }
+
+    // Hard stop-loss override: use the stop execution price (the price a real
+    // stop order would fill at) instead of the candle close.
+    const basePrice: number =
+      signal.metadata?.hardStopLoss && signal.metadata?.stopExecutionPrice
+        ? signal.metadata.stopExecutionPrice
+        : marketPrice;
 
     const isBuy = signal.action === 'BUY';
     let quantity = 0;
@@ -1749,16 +1858,12 @@ export class BacktestEngine {
         quantity = investmentAmount / price;
       } else if (signal.confidence !== undefined) {
         // Use confidence-based sizing: higher confidence = larger position (scaled between min and max allocation)
-        const confidenceBasedAllocation =
-          BacktestEngine.MIN_ALLOCATION +
-          signal.confidence * (BacktestEngine.MAX_ALLOCATION - BacktestEngine.MIN_ALLOCATION);
+        const confidenceBasedAllocation = minAllocation + signal.confidence * (maxAllocation - minAllocation);
         const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
         quantity = investmentAmount / price;
       } else {
-        // Fallback to random allocation (5-20% of portfolio)
-        const investmentAmount =
-          portfolio.totalValue *
-          Math.min(BacktestEngine.MAX_ALLOCATION, Math.max(BacktestEngine.MIN_ALLOCATION, rng.next()));
+        // Fallback to random allocation (within min–max range of portfolio)
+        const investmentAmount = portfolio.totalValue * Math.min(maxAllocation, Math.max(minAllocation, rng.next()));
         quantity = investmentAmount / price;
       }
 
@@ -1892,6 +1997,145 @@ export class BacktestEngine {
     };
   }
 
+  /**
+   * Generate hard stop-loss signals for all open positions whose unrealized loss
+   * exceeds the given threshold. Emits synthetic SELL signals with STOP_LOSS type
+   * that bypass throttle, regime gate, and minimum hold period.
+   *
+   * Fully deterministic — no RNG consumed.
+   */
+  private generateHardStopLossSignals(
+    portfolio: Portfolio,
+    currentPrices: Map<string, number>,
+    threshold: number,
+    lowPrices?: Map<string, number>
+  ): TradingSignal[] {
+    const signals: TradingSignal[] = [];
+    for (const [coinId, position] of portfolio.positions) {
+      if (position.quantity <= 0 || position.averagePrice <= 0) continue;
+      const closePrice = currentPrices.get(coinId);
+      if (!closePrice || closePrice <= 0) continue;
+
+      // Use candle LOW for breach detection (catches intra-candle wicks);
+      // fall back to close when low prices aren't available.
+      const detectionPrice = lowPrices?.get(coinId) ?? closePrice;
+      const unrealizedPnLPercent = (detectionPrice - position.averagePrice) / position.averagePrice;
+
+      if (unrealizedPnLPercent <= -threshold) {
+        // A real stop order would fill at exactly the stop price, not at the
+        // worst intra-candle price. Clamp execution to the stop level.
+        const stopExecutionPrice = position.averagePrice * (1 - threshold);
+        signals.push({
+          action: 'SELL',
+          coinId,
+          quantity: position.quantity, // 100% exit
+          reason: `Hard stop-loss triggered: ${(unrealizedPnLPercent * 100).toFixed(1)}% loss exceeds -${(threshold * 100).toFixed(0)}% threshold`,
+          confidence: 1,
+          originalType: AlgoSignalType.STOP_LOSS,
+          metadata: {
+            hardStopLoss: true,
+            unrealizedPnLPercent,
+            threshold,
+            stopExecutionPrice
+          }
+        });
+      }
+    }
+    return signals;
+  }
+
+  /**
+   * Process hard stop-loss for all positions in the portfolio.
+   *
+   * When `signals`, `simulatedFills`, and `backtest` are all provided, runs in
+   * full-fidelity mode (historical / live-replay) — records BacktestSignal and
+   * SimulatedOrderFill entries. Otherwise runs in lightweight mode (optimization)
+   * — pushes only minimal trade records.
+   */
+  private async processHardStopLoss(opts: HardStopLossProcessingOptions): Promise<void> {
+    const {
+      portfolio,
+      marketData,
+      currentPrices,
+      hardStopLossPercent,
+      tradingFee,
+      rng,
+      timestamp,
+      trades,
+      slippageConfig,
+      maxAllocation,
+      minAllocation,
+      signals,
+      simulatedFills,
+      backtest,
+      coinMap,
+      quoteCoin
+    } = opts;
+
+    const fullFidelity = !!(signals && simulatedFills && backtest);
+
+    const lowPrices = new Map(currentPrices.map((c) => [c.coinId, c.low]));
+    const stopLossSignals = this.generateHardStopLossSignals(
+      portfolio,
+      marketData.prices,
+      hardStopLossPercent,
+      lowPrices
+    );
+
+    for (const slSignal of stopLossSignals) {
+      if (fullFidelity) {
+        signals.push({
+          timestamp,
+          signalType: SignalType.RISK_CONTROL,
+          instrument: slSignal.coinId,
+          direction: SignalDirection.SHORT,
+          quantity: slSignal.quantity ?? 0,
+          price: slSignal.metadata?.stopExecutionPrice ?? marketData.prices.get(slSignal.coinId),
+          reason: slSignal.reason,
+          confidence: slSignal.confidence,
+          payload: slSignal.metadata,
+          backtest
+        });
+      }
+
+      const dailyVolume = this.extractDailyVolume(currentPrices, slSignal.coinId);
+      const tradeResult = await this.executeTrade(
+        slSignal,
+        portfolio,
+        marketData,
+        tradingFee,
+        rng,
+        slippageConfig ?? DEFAULT_SLIPPAGE_CONFIG,
+        dailyVolume,
+        0, // bypass hold period
+        maxAllocation,
+        minAllocation
+      );
+
+      if (tradeResult) {
+        const { trade, slippageBps } = tradeResult;
+        if (fullFidelity) {
+          const baseCoin = coinMap?.get(slSignal.coinId);
+          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin: baseCoin || undefined, quoteCoin });
+          simulatedFills.push({
+            orderType: SimulatedOrderType.MARKET,
+            status: SimulatedOrderStatus.FILLED,
+            filledQuantity: trade.quantity,
+            averagePrice: trade.price,
+            fees: trade.fee,
+            slippageBps,
+            executionTimestamp: timestamp,
+            instrument: slSignal.coinId,
+            metadata: { ...(trade.metadata ?? {}), hardStopLoss: true },
+            backtest
+          });
+        } else {
+          trades.push({ ...trade, executedAt: timestamp });
+        }
+      }
+    }
+  }
+
   private portfolioToHoldings(portfolio: Portfolio, prices: Map<string, number>) {
     const holdings: Record<string, { quantity: number; value: number; price: number }> = {};
     for (const [coinId, position] of portfolio.positions) {
@@ -1928,7 +2172,9 @@ export class BacktestEngine {
     timestamp: Date,
     trades: Partial<BacktestTrade>[],
     simulatedFills: Partial<SimulatedOrderFill>[],
-    dailyVolume?: number
+    dailyVolume?: number,
+    maxAllocation: number = BacktestEngine.MAX_ALLOCATION,
+    minAllocation: number = BacktestEngine.MIN_ALLOCATION
   ): Promise<boolean> {
     const buyConfidence = buySignal.confidence ?? 0;
 
@@ -1945,12 +2191,10 @@ export class BacktestEngine {
     } else if (buySignal.percentage) {
       requiredAmount = portfolio.totalValue * buySignal.percentage;
     } else if (buySignal.confidence !== undefined) {
-      const alloc =
-        BacktestEngine.MIN_ALLOCATION +
-        buySignal.confidence * (BacktestEngine.MAX_ALLOCATION - BacktestEngine.MIN_ALLOCATION);
+      const alloc = minAllocation + buySignal.confidence * (maxAllocation - minAllocation);
       requiredAmount = portfolio.totalValue * alloc;
     } else {
-      requiredAmount = portfolio.totalValue * BacktestEngine.MIN_ALLOCATION;
+      requiredAmount = portfolio.totalValue * minAllocation;
     }
 
     // Fee estimate
@@ -2438,6 +2682,7 @@ export class BacktestEngine {
   ): Promise<OptimizationBacktestResult> {
     const initialCapital = config.initialCapital ?? 10000;
     const tradingFee = config.tradingFee ?? 0.001;
+    const hardStopLossPercent = config.hardStopLossPercent ?? 0.05;
     const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
 
     this.logger.debug(
@@ -2499,6 +2744,18 @@ export class BacktestEngine {
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
+
+      // Hard stop-loss: check all positions before algorithm execution
+      await this.processHardStopLoss({
+        portfolio,
+        marketData,
+        currentPrices,
+        hardStopLossPercent,
+        tradingFee,
+        rng,
+        timestamp,
+        trades
+      });
 
       // Build algorithm context with optimization parameters
       const context = {

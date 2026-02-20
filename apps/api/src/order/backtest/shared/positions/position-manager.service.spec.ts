@@ -56,10 +56,10 @@ describe('PositionManagerService', () => {
         });
 
         expect(result.success).toBe(true);
-        // With default config: min=5%, max=20%
-        // allocation = 5% + 0.8 * 15% = 17%
-        // 17% of 100000 = 17000 / 50000 = 0.34
-        expect(result.quantity).toBeCloseTo(0.34, 2);
+        // With default config: min=3%, max=12%
+        // allocation = 3% + 0.8 * 9% = 10.2%
+        // 10.2% of 100000 = 10200 / 50000 = 0.204
+        expect(result.quantity).toBeCloseTo(0.204, 2);
       });
 
       it('should prioritize explicit quantity over percentage/confidence', () => {
@@ -79,9 +79,9 @@ describe('PositionManagerService', () => {
         const result = service.openPosition(undefined, baseInput);
 
         expect(result.success).toBe(true);
-        // Default min allocation = 5%
-        // 5% of 100000 = 5000 / 50000 = 0.1
-        expect(result.quantity).toBe(0.1);
+        // Default min allocation = 3%
+        // 3% of 100000 = 3000 / 50000 = 0.06
+        expect(result.quantity).toBe(0.06);
       });
 
       it('should fail when insufficient capital', () => {
@@ -329,23 +329,23 @@ describe('PositionManagerService', () => {
     it('should calculate size with default config', () => {
       const quantity = service.calculatePositionSize(100000, 0.5, 50000);
 
-      // 50% confidence: allocation = 5% + 0.5 * 15% = 12.5%
-      // 12.5% of 100000 = 12500 / 50000 = 0.25
-      expect(quantity).toBeCloseTo(0.25, 3);
+      // 50% confidence: allocation = 3% + 0.5 * 9% = 7.5%
+      // 7.5% of 100000 = 7500 / 50000 = 0.15
+      expect(quantity).toBeCloseTo(0.15, 3);
     });
 
     it('should calculate minimum size at 0 confidence', () => {
       const quantity = service.calculatePositionSize(100000, 0, 50000);
 
-      // 0% confidence: allocation = 5% (min)
-      expect(quantity).toBeCloseTo(0.1, 3);
+      // 0% confidence: allocation = 3% (min)
+      expect(quantity).toBeCloseTo(0.06, 3);
     });
 
     it('should calculate maximum size at 1.0 confidence', () => {
       const quantity = service.calculatePositionSize(100000, 1.0, 50000);
 
-      // 100% confidence: allocation = 20% (max)
-      expect(quantity).toBeCloseTo(0.4, 3);
+      // 100% confidence: allocation = 12% (max)
+      expect(quantity).toBeCloseTo(0.24, 3);
     });
 
     it('should clamp confidence to valid range', () => {
@@ -353,8 +353,8 @@ describe('PositionManagerService', () => {
       const negativeConfidence = service.calculatePositionSize(100000, -0.5, 50000);
 
       // Should clamp to 1.0 and 0.0 respectively
-      expect(overConfidence).toBeCloseTo(0.4, 3); // max allocation
-      expect(negativeConfidence).toBeCloseTo(0.1, 3); // min allocation
+      expect(overConfidence).toBeCloseTo(0.24, 3); // max allocation (12%)
+      expect(negativeConfidence).toBeCloseTo(0.06, 3); // min allocation (3%)
     });
 
     it('should use custom config', () => {
