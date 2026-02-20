@@ -358,13 +358,20 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
         return null;
       }
 
-      // Get coin symbols for the instrument universe
-      const coins = await this.coinService.getCoinsByIds(coinIds);
+      // Get coin symbols for the instrument universe (filtered by quality)
+      const coins = await this.coinService.getCoinsByIdsFiltered(coinIds);
       const instrumentUniverse = coins.map((c) => c.symbol).filter(Boolean);
 
       if (instrumentUniverse.length === 0) {
         this.logger.debug('No valid coins found - skipping default dataset creation');
         return null;
+      }
+
+      const excluded = coinIds.length - coins.length;
+      if (excluded > 0) {
+        this.logger.log(
+          `Default dataset quality filter: ${coins.length} coins kept, ${excluded} excluded (below market cap/volume thresholds)`
+        );
       }
 
       // Generate checksum based on data characteristics

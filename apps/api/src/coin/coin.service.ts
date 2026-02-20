@@ -90,6 +90,31 @@ export class CoinService {
     });
   }
 
+  /**
+   * Get coins by IDs filtered by minimum market cap and daily volume.
+   * Returns coins sorted by market cap DESC so higher-quality coins come first.
+   * Used by the backtest default dataset to exclude low-quality/meme coins.
+   */
+  async getCoinsByIdsFiltered(
+    coinIds: string[],
+    minMarketCap = 100_000_000,
+    minDailyVolume = 1_000_000
+  ): Promise<Coin[]> {
+    if (coinIds.length === 0) return [];
+
+    const uniqueIds = [...new Set(coinIds.filter((id) => id && typeof id === 'string' && id.trim().length > 0))];
+    if (uniqueIds.length === 0) return [];
+
+    return this.coin
+      .createQueryBuilder('coin')
+      .where('coin.id IN (:...ids)', { ids: uniqueIds })
+      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
+      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
+      .andWhere('coin.currentPrice IS NOT NULL')
+      .orderBy('coin.marketCap', 'DESC')
+      .getMany();
+  }
+
   async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail?: true): Promise<Coin>;
   async getCoinBySymbol(symbol: string, relations: CoinRelations[] | undefined, fail: false): Promise<Coin | null>;
   async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin | null> {
