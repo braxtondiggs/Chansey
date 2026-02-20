@@ -84,6 +84,16 @@ export interface LiveReplayExecuteOptions {
    *  Risk-control signals (STOP_LOSS, TAKE_PROFIT) always bypass this. */
   minHoldMs?: number;
 
+  /** Maximum allocation per trade as fraction of portfolio (0-1). Default: 0.12 (12%) */
+  maxAllocation?: number;
+  /** Minimum allocation per trade as fraction of portfolio (0-1). Default: 0.03 (3%) */
+  minAllocation?: number;
+
+  /** Enable mandatory hard stop-loss for all positions (default: true) */
+  enableHardStopLoss?: boolean;
+  /** Hard stop-loss threshold as a fraction (0-1). Default: 0.05 (5% loss triggers exit) */
+  hardStopLossPercent?: number;
+
   /** Number of timestamps between checkpoints (default: 100 for live replay) */
   checkpointInterval?: number;
 

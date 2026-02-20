@@ -504,14 +504,14 @@ describe('BacktestEngine.executeTrade', () => {
       const highConfidenceSignal: TradingSignal = {
         action: 'BUY',
         coinId: 'BTC',
-        confidence: 1.0, // Maximum confidence = 20% allocation
+        confidence: 1.0, // Maximum confidence = 12% allocation
         reason: 'strong entry'
       };
 
       const lowConfidenceSignal: TradingSignal = {
         action: 'BUY',
         coinId: 'BTC',
-        confidence: 0.0, // Minimum confidence = 5% allocation
+        confidence: 0.0, // Minimum confidence = 3% allocation
         reason: 'weak entry'
       };
 
@@ -534,8 +534,8 @@ describe('BacktestEngine.executeTrade', () => {
       );
 
       // High confidence should invest more than low confidence
-      expect(highResult?.trade.totalValue).toBeCloseTo(200); // 20% of $1000
-      expect(lowResult?.trade.totalValue).toBeCloseTo(50); // 5% of $1000
+      expect(highResult?.trade.totalValue).toBeCloseTo(120); // 12% of $1000
+      expect(lowResult?.trade.totalValue).toBeCloseTo(30); // 3% of $1000
     });
 
     it('uses signal.percentage for SELL position sizing', async () => {
@@ -719,7 +719,7 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       timestamp: new Date('2024-01-01T00:00:00.000Z'),
       open: 100,
       high: 110,
-      low: 90,
+      low: 96,
       close: 100,
       volume: 1000
     }),
@@ -729,7 +729,7 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       timestamp: new Date('2024-01-01T01:00:00.000Z'),
       open: 100,
       high: 110,
-      low: 90,
+      low: 96,
       close: 100,
       volume: 1000
     })
@@ -816,7 +816,7 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       timestamp: startDate,
       open: 100,
       high: 110,
-      low: 90,
+      low: 96,
       close: 105,
       volume: 1000
     });
@@ -895,7 +895,7 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
         timestamp: startDate,
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 105,
         volume: 1000
       }),
@@ -905,7 +905,7 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
         timestamp: new Date('2024-01-02T00:00:00.000Z'),
         open: 105,
         high: 115,
-        low: 95,
+        low: 96,
         close: 110,
         volume: 1000
       })
@@ -972,7 +972,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       timestamp: new Date('2024-01-01T00:00:00.000Z'),
       open: 100,
       high: 110,
-      low: 90,
+      low: 96,
       close: 100,
       volume: 1000
     }),
@@ -982,7 +982,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       timestamp: new Date('2024-01-01T01:00:00.000Z'),
       open: 100,
       high: 110,
-      low: 90,
+      low: 96,
       close: 100,
       volume: 1000
     })
@@ -1147,7 +1147,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-01T00:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       }),
@@ -1157,7 +1157,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-01T01:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       }),
@@ -1167,7 +1167,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-01T02:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       }),
@@ -1177,7 +1177,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-01T03:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       })
@@ -1239,7 +1239,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
           timestamp: new Date(`2024-01-01T0${i - 1}:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -1308,7 +1308,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
           timestamp: new Date(`2024-01-01T0${i}:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -1428,7 +1428,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-01T00:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       }),
@@ -1438,7 +1438,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-02T01:00:00.000Z'),
         open: 100,
         high: 130,
-        low: 95,
+        low: 96,
         close: 120,
         volume: 1000
       }),
@@ -1548,7 +1548,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-01T00:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       }),
@@ -1558,7 +1558,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         timestamp: new Date('2024-01-02T01:00:00.000Z'),
         open: 100,
         high: 130,
-        low: 95,
+        low: 96,
         close: 120,
         volume: 1000
       }),
@@ -1856,7 +1856,7 @@ describe('BacktestEngine warmup / date range separation', () => {
           timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -1911,7 +1911,7 @@ describe('BacktestEngine warmup / date range separation', () => {
           timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -1965,7 +1965,7 @@ describe('BacktestEngine warmup / date range separation', () => {
           timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -2017,7 +2017,7 @@ describe('BacktestEngine warmup / date range separation', () => {
         timestamp: new Date('2024-01-01T00:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       }),
@@ -2027,7 +2027,7 @@ describe('BacktestEngine warmup / date range separation', () => {
         timestamp: new Date('2024-01-01T01:00:00.000Z'),
         open: 100,
         high: 110,
-        low: 90,
+        low: 96,
         close: 100,
         volume: 1000
       })
@@ -2079,7 +2079,7 @@ describe('BacktestEngine warmup / date range separation', () => {
           timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -2136,7 +2136,7 @@ describe('BacktestEngine warmup / date range separation', () => {
           timestamp: new Date(`2024-01-0${day}T00:00:00.000Z`),
           open: 100,
           high: 110,
-          low: 90,
+          low: 96,
           close: 100,
           volume: 1000
         })
@@ -2176,5 +2176,322 @@ describe('BacktestEngine warmup / date range separation', () => {
       );
     }
     expect(result.paused).toBe(false);
+  });
+});
+
+describe('BacktestEngine hard stop-loss', () => {
+  const createEngine = () =>
+    new BacktestEngine(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState,
+      positionAnalysis,
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
+    );
+
+  const noSlippage = { type: SlippageModelType.NONE };
+
+  it('generateHardStopLossSignals emits SELL when loss exceeds threshold', () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([
+        ['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }],
+        ['ETH', { coinId: 'ETH', quantity: 5, averagePrice: 200, totalValue: 1000 }]
+      ])
+    };
+
+    // BTC dropped from 100 → 90 (-10%), ETH at 195 (-2.5%)
+    const prices = new Map([
+      ['BTC', 90],
+      ['ETH', 195]
+    ]);
+
+    const signals = (engine as any).generateHardStopLossSignals(portfolio, prices, 0.05);
+
+    // Only BTC should trigger (10% > 5% threshold), ETH is within threshold
+    expect(signals).toHaveLength(1);
+    expect(signals[0].coinId).toBe('BTC');
+    expect(signals[0].action).toBe('SELL');
+    expect(signals[0].quantity).toBe(10); // 100% exit
+    expect(signals[0].originalType).toBe(SignalType.STOP_LOSS);
+    expect(signals[0].metadata?.hardStopLoss).toBe(true);
+    // Stop execution price = averagePrice * (1 - threshold) = 100 * 0.95 = 95
+    expect(signals[0].metadata?.stopExecutionPrice).toBeCloseTo(95);
+  });
+
+  it('generateHardStopLossSignals does not fire when loss is below threshold', () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+    };
+
+    // BTC dropped from 100 → 96 (-4%), below 5% threshold
+    const prices = new Map([['BTC', 96]]);
+
+    const signals = (engine as any).generateHardStopLossSignals(portfolio, prices, 0.05);
+
+    expect(signals).toHaveLength(0);
+  });
+
+  it('generateHardStopLossSignals does not fire for profitable positions', () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1200 }]])
+    };
+
+    const prices = new Map([['BTC', 120]]);
+
+    const signals = (engine as any).generateHardStopLossSignals(portfolio, prices, 0.05);
+
+    expect(signals).toHaveLength(0);
+  });
+
+  it('generateHardStopLossSignals fires when low breaches stop but close recovers', () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+    };
+
+    // Close recovered to 97 (-3%, within threshold), but intra-candle low hit 85 (-15%)
+    const closePrices = new Map([['BTC', 97]]);
+    const lowPrices = new Map([['BTC', 85]]);
+
+    const signals = (engine as any).generateHardStopLossSignals(portfolio, closePrices, 0.05, lowPrices);
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0].coinId).toBe('BTC');
+    // Stop execution price should be at the stop level, not the low or close
+    expect(signals[0].metadata?.stopExecutionPrice).toBeCloseTo(95); // 100 * (1 - 0.05)
+  });
+
+  it('generateHardStopLossSignals does not fire when low stays above stop price', () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+    };
+
+    // Close at 97 (-3%), low at 96 (-4%) — both within 5% threshold
+    const closePrices = new Map([['BTC', 97]]);
+    const lowPrices = new Map([['BTC', 96]]);
+
+    const signals = (engine as any).generateHardStopLossSignals(portfolio, closePrices, 0.05, lowPrices);
+
+    expect(signals).toHaveLength(0);
+  });
+
+  it('executeTrade fills at stop execution price instead of close for hard stop-loss', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 0,
+      totalValue: 1000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+    };
+
+    // Close price is 80 (-20%), but the hard stop should fill at 95 (stop price)
+    const stopLossSignal: TradingSignal = {
+      action: 'SELL',
+      coinId: 'BTC',
+      quantity: 10,
+      reason: 'Hard stop-loss triggered',
+      confidence: 1,
+      originalType: SignalType.STOP_LOSS,
+      metadata: { hardStopLoss: true, stopExecutionPrice: 95, threshold: 0.05 }
+    };
+
+    const result = await (engine as any).executeTrade(
+      stopLossSignal,
+      portfolio,
+      { timestamp: new Date(), prices: new Map([['BTC', 80]]) },
+      0,
+      { next: () => 0.5 },
+      noSlippage,
+      undefined,
+      0
+    );
+
+    expect(result).toBeTruthy();
+    // Should fill at $95 (stop price), NOT $80 (close price)
+    expect(result.trade.price).toBeCloseTo(95);
+    expect(result.trade.realizedPnL).toBeCloseTo(-50); // (95 - 100) * 10
+    expect(result.trade.realizedPnLPercent).toBeCloseTo(-0.05);
+  });
+
+  it('hard stop-loss SELL bypasses minimum hold period', async () => {
+    const engine = createEngine();
+    const entryDate = new Date('2024-01-01T00:00:00.000Z');
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000, entryDate }]])
+    };
+
+    // Only 1 hour after entry — within 24h hold period
+    const sellTimestamp = new Date('2024-01-01T01:00:00.000Z');
+
+    // Hard stop-loss signal has originalType STOP_LOSS which bypasses hold period
+    const stopLossSignal: TradingSignal = {
+      action: 'SELL',
+      coinId: 'BTC',
+      quantity: 10,
+      reason: 'Hard stop-loss triggered',
+      confidence: 1,
+      originalType: SignalType.STOP_LOSS,
+      metadata: { hardStopLoss: true }
+    };
+
+    const result = await (engine as any).executeTrade(
+      stopLossSignal,
+      portfolio,
+      { timestamp: sellTimestamp, prices: new Map([['BTC', 80]]) },
+      0,
+      { next: () => 0.5 },
+      noSlippage,
+      undefined,
+      0 // minHoldMs = 0 (hard stop-loss passes 0)
+    );
+
+    expect(result).toBeTruthy();
+    expect(result.trade.quantity).toBe(10);
+    expect(result.trade.type).toBe('SELL');
+  });
+
+  it('records hardStopLoss metadata in trade', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 5000,
+      totalValue: 10000,
+      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
+    };
+
+    const stopLossSignal: TradingSignal = {
+      action: 'SELL',
+      coinId: 'BTC',
+      quantity: 10,
+      reason: 'Hard stop-loss triggered',
+      confidence: 1,
+      originalType: SignalType.STOP_LOSS,
+      metadata: { hardStopLoss: true, unrealizedPnLPercent: -0.1, threshold: 0.05 }
+    };
+
+    const result = await (engine as any).executeTrade(
+      stopLossSignal,
+      portfolio,
+      { timestamp: new Date(), prices: new Map([['BTC', 90]]) },
+      0,
+      { next: () => 0.5 },
+      noSlippage,
+      undefined,
+      0
+    );
+
+    expect(result).toBeTruthy();
+    expect(result.trade.metadata?.hardStopLoss).toBe(true);
+    expect(result.trade.metadata?.unrealizedPnLPercent).toBe(-0.1);
+  });
+});
+
+describe('BacktestEngine per-run allocation overrides', () => {
+  const noSlippage = { type: SlippageModelType.NONE };
+
+  const createEngine = () =>
+    new BacktestEngine(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState,
+      positionAnalysis,
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
+    );
+
+  it('respects custom maxAllocation and minAllocation passed to executeTrade', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 10000,
+      totalValue: 10000,
+      positions: new Map()
+    };
+
+    // With confidence=1.0 and custom max=0.30, should allocate 30%
+    const highConfidenceSignal: TradingSignal = {
+      action: 'BUY',
+      coinId: 'BTC',
+      confidence: 1.0,
+      reason: 'entry'
+    };
+
+    const result = await (engine as any).executeTrade(
+      highConfidenceSignal,
+      portfolio,
+      { timestamp: new Date(), prices: new Map([['BTC', 100]]) },
+      0,
+      { next: () => 0.5 },
+      noSlippage,
+      undefined,
+      0, // minHoldMs
+      0.3, // maxAllocation override
+      0.05 // minAllocation override
+    );
+
+    // confidence=1.0 → allocation = minAlloc + 1.0 * (maxAlloc - minAlloc) = 0.05 + 0.25 = 0.30
+    expect(result?.trade.totalValue).toBeCloseTo(3000); // 30% of $10,000
+  });
+
+  it('uses custom minAllocation for zero-confidence signals', async () => {
+    const engine = createEngine();
+    const portfolio: Portfolio = {
+      cashBalance: 10000,
+      totalValue: 10000,
+      positions: new Map()
+    };
+
+    const lowConfidenceSignal: TradingSignal = {
+      action: 'BUY',
+      coinId: 'BTC',
+      confidence: 0.0,
+      reason: 'weak entry'
+    };
+
+    const result = await (engine as any).executeTrade(
+      lowConfidenceSignal,
+      portfolio,
+      { timestamp: new Date(), prices: new Map([['BTC', 100]]) },
+      0,
+      { next: () => 0.5 },
+      noSlippage,
+      undefined,
+      0,
+      0.2, // maxAllocation
+      0.08 // minAllocation override
+    );
+
+    // confidence=0.0 → allocation = minAlloc = 0.08
+    expect(result?.trade.totalValue).toBeCloseTo(800); // 8% of $10,000
   });
 });
