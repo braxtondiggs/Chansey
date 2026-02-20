@@ -409,7 +409,7 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
         integrityScore: 90,
         checksum,
         storageLocation: '',
-        replayCapable: false,
+        replayCapable: true,
         metadata: metadata as any
       };
 

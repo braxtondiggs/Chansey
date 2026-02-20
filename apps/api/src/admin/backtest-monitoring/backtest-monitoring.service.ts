@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Decimal } from 'decimal.js';
-import { Between, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { Between, In, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 
 import {
   BacktestListItemDto,
@@ -12,6 +12,7 @@ import {
   PaginatedBacktestListDto,
   SortOrder
 } from './dto/backtest-listing.dto';
+import { OptimizationAnalyticsDto, OptimizationFiltersDto } from './dto/optimization-analytics.dto';
 import {
   AverageMetricsDto,
   BacktestFiltersDto,
@@ -19,6 +20,11 @@ import {
   RecentActivityDto,
   TopAlgorithmDto
 } from './dto/overview.dto';
+import {
+  PaperTradingFiltersDto,
+  PaperTradingMonitoringDto,
+  PipelineStageCountsDto
+} from './dto/paper-trading-analytics.dto';
 import {
   ConfidenceBucketDto,
   SignalAnalyticsDto,
@@ -36,6 +42,8 @@ import {
   TradeSummaryDto
 } from './dto/trade-analytics.dto';
 
+import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
+import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
 import {
   Backtest,
   BacktestSignal,
@@ -47,6 +55,19 @@ import {
   SimulatedOrderFill,
   TradeType
 } from '../../order/backtest/backtest.entity';
+import {
+  PaperTradingOrder,
+  PaperTradingOrderSide
+} from '../../order/paper-trading/entities/paper-trading-order.entity';
+import {
+  PaperTradingSession,
+  PaperTradingStatus
+} from '../../order/paper-trading/entities/paper-trading-session.entity';
+import {
+  PaperTradingSignal,
+  PaperTradingSignalDirection,
+  PaperTradingSignalType
+} from '../../order/paper-trading/entities/paper-trading-signal.entity';
 
 /** Maximum number of records to export to prevent DoS */
 const MAX_EXPORT_LIMIT = 10000;
@@ -81,7 +102,17 @@ export class BacktestMonitoringService {
     @InjectRepository(BacktestSignal)
     private readonly signalRepo: Repository<BacktestSignal>,
     @InjectRepository(SimulatedOrderFill)
-    private readonly fillRepo: Repository<SimulatedOrderFill>
+    private readonly fillRepo: Repository<SimulatedOrderFill>,
+    @InjectRepository(OptimizationRun)
+    private readonly optimizationRunRepo: Repository<OptimizationRun>,
+    @InjectRepository(OptimizationResult)
+    private readonly optimizationResultRepo: Repository<OptimizationResult>,
+    @InjectRepository(PaperTradingSession)
+    private readonly paperSessionRepo: Repository<PaperTradingSession>,
+    @InjectRepository(PaperTradingOrder)
+    private readonly paperOrderRepo: Repository<PaperTradingOrder>,
+    @InjectRepository(PaperTradingSignal)
+    private readonly paperSignalRepo: Repository<PaperTradingSignal>
   ) {}
 
   /**
@@ -354,6 +385,87 @@ export class BacktestMonitoringService {
   }
 
   // ===========================================================================
+  // Optimization Analytics
+  // ===========================================================================
+
+  /**
+   * Get optimization analytics for the admin dashboard
+   */
+  async getOptimizationAnalytics(filters: OptimizationFiltersDto): Promise<OptimizationAnalyticsDto> {
+    const dateRange = this.getOptDateRange(filters);
+
+    const [statusCounts, totalRuns, recentActivity, avgMetrics, topStrategies, resultSummary] = await Promise.all([
+      this.getOptStatusCounts(filters, dateRange),
+      this.getOptTotalRuns(filters, dateRange),
+      this.getOptRecentActivity(),
+      this.getOptAvgMetrics(filters, dateRange),
+      this.getOptTopStrategies(filters, dateRange),
+      this.getOptResultSummary(filters, dateRange)
+    ]);
+
+    return {
+      statusCounts,
+      totalRuns,
+      recentActivity,
+      avgImprovement: avgMetrics.avgImprovement,
+      avgBestScore: avgMetrics.avgBestScore,
+      avgCombinationsTested: avgMetrics.avgCombinationsTested,
+      topStrategies,
+      resultSummary
+    };
+  }
+
+  // ===========================================================================
+  // Paper Trading Monitoring
+  // ===========================================================================
+
+  /**
+   * Get paper trading monitoring analytics for the admin dashboard
+   */
+  async getPaperTradingMonitoring(filters: PaperTradingFiltersDto): Promise<PaperTradingMonitoringDto> {
+    const dateRange = this.getPtDateRange(filters);
+
+    const [statusCounts, totalSessions, recentActivity, avgMetrics, topAlgorithms, orderAnalytics, signalAnalytics] =
+      await Promise.all([
+        this.getPtStatusCounts(filters, dateRange),
+        this.getPtTotalSessions(filters, dateRange),
+        this.getPtRecentActivity(),
+        this.getPtAvgMetrics(filters, dateRange),
+        this.getPtTopAlgorithms(filters, dateRange),
+        this.getPtOrderAnalytics(filters, dateRange),
+        this.getPtSignalAnalytics(filters, dateRange)
+      ]);
+
+    return {
+      statusCounts,
+      totalSessions,
+      recentActivity,
+      avgMetrics,
+      topAlgorithms,
+      orderAnalytics,
+      signalAnalytics
+    };
+  }
+
+  // ===========================================================================
+  // Pipeline Stage Counts
+  // ===========================================================================
+
+  /**
+   * Get counts of records across all pipeline stages
+   */
+  async getPipelineStageCounts(): Promise<PipelineStageCountsDto> {
+    const [optimizationRuns, historicalBacktests, liveReplayBacktests, paperTradingSessions] = await Promise.all([
+      this.optimizationRunRepo.count(),
+      this.backtestRepo.count({ where: { type: BacktestType.HISTORICAL } }),
+      this.backtestRepo.count({ where: { type: BacktestType.LIVE_REPLAY } }),
+      this.paperSessionRepo.count()
+    ]);
+
+    return { optimizationRuns, historicalBacktests, liveReplayBacktests, paperTradingSessions };
+  }
+
+  // ===========================================================================
   // Private Helper Methods
   // ===========================================================================
 
@@ -519,18 +631,7 @@ export class BacktestMonitoringService {
   }
 
   private async getRecentActivity(): Promise<RecentActivityDto> {
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const [last24h, last7d, last30d] = await Promise.all([
-      this.backtestRepo.count({ where: { createdAt: Between(yesterday, now) } }),
-      this.backtestRepo.count({ where: { createdAt: Between(lastWeek, now) } }),
-      this.backtestRepo.count({ where: { createdAt: Between(lastMonth, now) } })
-    ]);
-
-    return { last24h, last7d, last30d };
+    return this.countRecentActivity(this.backtestRepo);
   }
 
   private async getTopAlgorithms(
@@ -1059,6 +1160,21 @@ export class BacktestMonitoringService {
   // Utility Helpers
   // ---------------------------------------------------------------------------
 
+  private async countRecentActivity(repo: Repository<ObjectLiteral>): Promise<RecentActivityDto> {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [last24h, last7d, last30d] = await Promise.all([
+      repo.count({ where: { createdAt: Between(yesterday, now) } }),
+      repo.count({ where: { createdAt: Between(lastWeek, now) } }),
+      repo.count({ where: { createdAt: Between(lastMonth, now) } })
+    ]);
+
+    return { last24h, last7d, last30d };
+  }
+
   private formatDuration(ms: number): string {
     if (ms === 0) return '0m';
 
@@ -1094,5 +1210,427 @@ export class BacktestMonitoringService {
     }
 
     return Buffer.from(csvRows.join('\n'), 'utf-8');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Optimization Analytics Helpers
+  // ---------------------------------------------------------------------------
+
+  private getOptDateRange(filters: OptimizationFiltersDto): { start: Date; end: Date } | null {
+    if (!filters.startDate && !filters.endDate) return null;
+    return {
+      start: filters.startDate ? new Date(filters.startDate) : new Date(0),
+      end: filters.endDate ? new Date(filters.endDate) : new Date()
+    };
+  }
+
+  private applyOptFilters(
+    qb: SelectQueryBuilder<OptimizationRun>,
+    filters: OptimizationFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): void {
+    if (dateRange) {
+      qb.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
+    }
+    if (filters.status) {
+      qb.andWhere('r.status = :status', { status: filters.status });
+    }
+  }
+
+  /** Status filter intentionally omitted — returns full status breakdown */
+  private async getOptStatusCounts(
+    filters: OptimizationFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<Record<OptimizationStatus, number>> {
+    const qb = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .select('r.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('r.status');
+
+    if (dateRange) {
+      qb.where('r.createdAt BETWEEN :start AND :end', dateRange);
+    }
+
+    const results = await qb.getRawMany();
+    const counts = Object.values(OptimizationStatus).reduce(
+      (acc, s) => {
+        acc[s] = 0;
+        return acc;
+      },
+      {} as Record<OptimizationStatus, number>
+    );
+
+    for (const row of results) {
+      counts[row.status as OptimizationStatus] = parseInt(row.count, 10);
+    }
+
+    return counts;
+  }
+
+  private async getOptTotalRuns(
+    filters: OptimizationFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<number> {
+    const qb = this.optimizationRunRepo.createQueryBuilder('r');
+    this.applyOptFilters(qb, filters, dateRange);
+    return qb.getCount();
+  }
+
+  private async getOptRecentActivity(): Promise<RecentActivityDto> {
+    return this.countRecentActivity(this.optimizationRunRepo);
+  }
+
+  private async getOptAvgMetrics(
+    filters: OptimizationFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<{ avgImprovement: number; avgBestScore: number; avgCombinationsTested: number }> {
+    const qb = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .select('AVG(r.improvement)', 'avgImprovement')
+      .addSelect('AVG(r.bestScore)', 'avgBestScore')
+      .addSelect('AVG(r.combinationsTested)', 'avgCombinationsTested')
+      .where('r.status = :completed', { completed: OptimizationStatus.COMPLETED });
+
+    if (dateRange) {
+      qb.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
+    }
+
+    const result = await qb.getRawOne();
+    return {
+      avgImprovement: parseFloat(result?.avgImprovement) || 0,
+      avgBestScore: parseFloat(result?.avgBestScore) || 0,
+      avgCombinationsTested: parseFloat(result?.avgCombinationsTested) || 0
+    };
+  }
+
+  private async getOptTopStrategies(
+    filters: OptimizationFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<OptimizationAnalyticsDto['topStrategies']> {
+    const qb = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .innerJoin('r.strategyConfig', 'sc')
+      .innerJoin('sc.algorithm', 'a')
+      .select('a.id', 'algorithmId')
+      .addSelect('a.name', 'algorithmName')
+      .addSelect('COUNT(*)', 'runCount')
+      .addSelect('AVG(r.improvement)', 'avgImprovement')
+      .addSelect('AVG(r.bestScore)', 'avgBestScore')
+      .where('r.status = :completed', { completed: OptimizationStatus.COMPLETED })
+      .groupBy('a.id')
+      .addGroupBy('a.name')
+      .having('COUNT(*) >= 1')
+      .orderBy('AVG(r.bestScore)', 'DESC')
+      .limit(10);
+
+    if (dateRange) {
+      qb.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
+    }
+
+    const results = await qb.getRawMany();
+    return results.map((r) => ({
+      algorithmId: r.algorithmId,
+      algorithmName: r.algorithmName,
+      runCount: parseInt(r.runCount, 10),
+      avgImprovement: parseFloat(r.avgImprovement) || 0,
+      avgBestScore: parseFloat(r.avgBestScore) || 0
+    }));
+  }
+
+  private async getOptResultSummary(
+    filters: OptimizationFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<OptimizationAnalyticsDto['resultSummary']> {
+    const runSubQuery = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .select('r.id')
+      .where('r.status = :completed', { completed: OptimizationStatus.COMPLETED });
+
+    if (dateRange) {
+      runSubQuery.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
+    }
+
+    const qb = this.optimizationResultRepo
+      .createQueryBuilder('res')
+      .select('AVG(res.avgTrainScore)', 'avgTrainScore')
+      .addSelect('AVG(res.avgTestScore)', 'avgTestScore')
+      .addSelect('AVG(res.avgDegradation)', 'avgDegradation')
+      .addSelect('AVG(res.consistencyScore)', 'avgConsistency')
+      .addSelect('AVG(CASE WHEN res.overfittingWindows > 0 THEN 1.0 ELSE 0.0 END)', 'overfittingRate')
+      .where(`res.optimizationRunId IN (${runSubQuery.getQuery()})`)
+      .setParameters(runSubQuery.getParameters());
+
+    const result = await qb.getRawOne();
+    return {
+      avgTrainScore: parseFloat(result?.avgTrainScore) || 0,
+      avgTestScore: parseFloat(result?.avgTestScore) || 0,
+      avgDegradation: parseFloat(result?.avgDegradation) || 0,
+      avgConsistency: parseFloat(result?.avgConsistency) || 0,
+      overfittingRate: parseFloat(result?.overfittingRate) || 0
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Paper Trading Analytics Helpers
+  // ---------------------------------------------------------------------------
+
+  private getPtDateRange(filters: PaperTradingFiltersDto): { start: Date; end: Date } | null {
+    if (!filters.startDate && !filters.endDate) return null;
+    return {
+      start: filters.startDate ? new Date(filters.startDate) : new Date(0),
+      end: filters.endDate ? new Date(filters.endDate) : new Date()
+    };
+  }
+
+  private applyPtFilters(
+    qb: SelectQueryBuilder<PaperTradingSession>,
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): void {
+    if (dateRange) {
+      qb.andWhere('s.createdAt BETWEEN :start AND :end', dateRange);
+    }
+    if (filters.algorithmId) {
+      qb.andWhere('s.algorithm = :algorithmId', { algorithmId: filters.algorithmId });
+    }
+    if (filters.status) {
+      qb.andWhere('s.status = :status', { status: filters.status });
+    }
+  }
+
+  /** Status filter intentionally omitted — returns full status breakdown */
+  private async getPtStatusCounts(
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<Record<PaperTradingStatus, number>> {
+    const qb = this.paperSessionRepo
+      .createQueryBuilder('s')
+      .select('s.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('s.status');
+
+    if (dateRange) {
+      qb.where('s.createdAt BETWEEN :start AND :end', dateRange);
+    }
+    if (filters.algorithmId) {
+      qb.andWhere('s.algorithm = :algorithmId', { algorithmId: filters.algorithmId });
+    }
+
+    const results = await qb.getRawMany();
+    const counts = Object.values(PaperTradingStatus).reduce(
+      (acc, st) => {
+        acc[st] = 0;
+        return acc;
+      },
+      {} as Record<PaperTradingStatus, number>
+    );
+
+    for (const row of results) {
+      counts[row.status as PaperTradingStatus] = parseInt(row.count, 10);
+    }
+
+    return counts;
+  }
+
+  private async getPtTotalSessions(
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<number> {
+    const qb = this.paperSessionRepo.createQueryBuilder('s');
+    this.applyPtFilters(qb, filters, dateRange);
+    return qb.getCount();
+  }
+
+  private async getPtRecentActivity(): Promise<RecentActivityDto> {
+    return this.countRecentActivity(this.paperSessionRepo);
+  }
+
+  private async getPtAvgMetrics(
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<{ sharpeRatio: number; totalReturn: number; maxDrawdown: number; winRate: number }> {
+    const qb = this.paperSessionRepo
+      .createQueryBuilder('s')
+      .select('AVG(s.sharpeRatio)', 'avgSharpe')
+      .addSelect('AVG(s.totalReturn)', 'avgReturn')
+      .addSelect('AVG(s.maxDrawdown)', 'avgDrawdown')
+      .addSelect('AVG(s.winRate)', 'avgWinRate')
+      .where('s.status IN (:...statuses)', {
+        statuses: [PaperTradingStatus.COMPLETED, PaperTradingStatus.ACTIVE]
+      });
+
+    if (dateRange) {
+      qb.andWhere('s.createdAt BETWEEN :start AND :end', dateRange);
+    }
+    if (filters.algorithmId) {
+      qb.andWhere('s.algorithm = :algorithmId', { algorithmId: filters.algorithmId });
+    }
+
+    const result = await qb.getRawOne();
+    return {
+      sharpeRatio: parseFloat(result?.avgSharpe) || 0,
+      totalReturn: parseFloat(result?.avgReturn) || 0,
+      maxDrawdown: parseFloat(result?.avgDrawdown) || 0,
+      winRate: parseFloat(result?.avgWinRate) || 0
+    };
+  }
+
+  private async getPtTopAlgorithms(
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<PaperTradingMonitoringDto['topAlgorithms']> {
+    const qb = this.paperSessionRepo
+      .createQueryBuilder('s')
+      .innerJoin('s.algorithm', 'a')
+      .select('a.id', 'algorithmId')
+      .addSelect('a.name', 'algorithmName')
+      .addSelect('COUNT(*)', 'sessionCount')
+      .addSelect('AVG(s.totalReturn)', 'avgReturn')
+      .addSelect('AVG(s.sharpeRatio)', 'avgSharpe')
+      .where('s.status IN (:...statuses)', {
+        statuses: [PaperTradingStatus.COMPLETED, PaperTradingStatus.ACTIVE]
+      })
+      .groupBy('a.id')
+      .addGroupBy('a.name')
+      .orderBy('AVG(s.sharpeRatio)', 'DESC', 'NULLS LAST')
+      .limit(10);
+
+    if (dateRange) {
+      qb.andWhere('s.createdAt BETWEEN :start AND :end', dateRange);
+    }
+
+    const results = await qb.getRawMany();
+    return results.map((r) => ({
+      algorithmId: r.algorithmId,
+      algorithmName: r.algorithmName,
+      sessionCount: parseInt(r.sessionCount, 10),
+      avgReturn: parseFloat(r.avgReturn) || 0,
+      avgSharpe: parseFloat(r.avgSharpe) || 0
+    }));
+  }
+
+  private async getPtOrderAnalytics(
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<PaperTradingMonitoringDto['orderAnalytics']> {
+    const sessionSubQuery = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
+    this.applyPtFilters(sessionSubQuery, filters, dateRange);
+
+    const subSql = sessionSubQuery.getQuery();
+    const subParams = sessionSubQuery.getParameters();
+
+    const [summary, bySymbol] = await Promise.all([
+      this.paperOrderRepo
+        .createQueryBuilder('o')
+        .select('COUNT(*)', 'totalOrders')
+        .addSelect(`COUNT(*) FILTER (WHERE o.side = :buySide)`, 'buyCount')
+        .addSelect(`COUNT(*) FILTER (WHERE o.side = :sellSide)`, 'sellCount')
+        .addSelect('COALESCE(SUM(o.totalValue), 0)', 'totalVolume')
+        .addSelect('COALESCE(SUM(o.fee), 0)', 'totalFees')
+        .addSelect('AVG(o.slippageBps)', 'avgSlippageBps')
+        .addSelect('COALESCE(SUM(o.realizedPnL), 0)', 'totalPnL')
+        .where(`o.sessionId IN (${subSql})`)
+        .setParameters(subParams)
+        .setParameter('buySide', PaperTradingOrderSide.BUY)
+        .setParameter('sellSide', PaperTradingOrderSide.SELL)
+        .getRawOne(),
+      this.paperOrderRepo
+        .createQueryBuilder('o')
+        .select('o.symbol', 'symbol')
+        .addSelect('COUNT(*)', 'orderCount')
+        .addSelect('COALESCE(SUM(o.totalValue), 0)', 'totalVolume')
+        .addSelect('COALESCE(SUM(o.realizedPnL), 0)', 'totalPnL')
+        .where(`o.sessionId IN (${subSql})`)
+        .setParameters(subParams)
+        .groupBy('o.symbol')
+        .orderBy('COALESCE(SUM(o.totalValue), 0)', 'DESC')
+        .limit(10)
+        .getRawMany()
+    ]);
+
+    return {
+      totalOrders: parseInt(summary?.totalOrders, 10) || 0,
+      buyCount: parseInt(summary?.buyCount, 10) || 0,
+      sellCount: parseInt(summary?.sellCount, 10) || 0,
+      totalVolume: parseFloat(summary?.totalVolume) || 0,
+      totalFees: parseFloat(summary?.totalFees) || 0,
+      avgSlippageBps: parseFloat(summary?.avgSlippageBps) || 0,
+      totalPnL: parseFloat(summary?.totalPnL) || 0,
+      bySymbol: bySymbol.map((r) => ({
+        symbol: r.symbol,
+        orderCount: parseInt(r.orderCount, 10),
+        totalVolume: parseFloat(r.totalVolume) || 0,
+        totalPnL: parseFloat(r.totalPnL) || 0
+      }))
+    };
+  }
+
+  private async getPtSignalAnalytics(
+    filters: PaperTradingFiltersDto,
+    dateRange: { start: Date; end: Date } | null
+  ): Promise<PaperTradingMonitoringDto['signalAnalytics']> {
+    const sessionSubQuery = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
+    this.applyPtFilters(sessionSubQuery, filters, dateRange);
+
+    const subSql = sessionSubQuery.getQuery();
+    const subParams = sessionSubQuery.getParameters();
+
+    const [overallResult, typeResults, directionResults] = await Promise.all([
+      this.paperSignalRepo
+        .createQueryBuilder('sig')
+        .select('COUNT(*)', 'totalSignals')
+        .addSelect('AVG(CASE WHEN sig.processed = true THEN 1.0 ELSE 0.0 END)', 'processedRate')
+        .addSelect('AVG(sig.confidence)', 'avgConfidence')
+        .where(`sig.sessionId IN (${subSql})`)
+        .setParameters(subParams)
+        .getRawOne(),
+      this.paperSignalRepo
+        .createQueryBuilder('sig')
+        .select('sig.signalType', 'signalType')
+        .addSelect('COUNT(*)', 'count')
+        .where(`sig.sessionId IN (${subSql})`)
+        .setParameters(subParams)
+        .groupBy('sig.signalType')
+        .getRawMany(),
+      this.paperSignalRepo
+        .createQueryBuilder('sig')
+        .select('sig.direction', 'direction')
+        .addSelect('COUNT(*)', 'count')
+        .where(`sig.sessionId IN (${subSql})`)
+        .setParameters(subParams)
+        .groupBy('sig.direction')
+        .getRawMany()
+    ]);
+
+    const byType = Object.values(PaperTradingSignalType).reduce(
+      (acc, t) => {
+        acc[t] = 0;
+        return acc;
+      },
+      {} as Record<PaperTradingSignalType, number>
+    );
+    for (const row of typeResults) {
+      byType[row.signalType as PaperTradingSignalType] = parseInt(row.count, 10);
+    }
+
+    const byDirection = Object.values(PaperTradingSignalDirection).reduce(
+      (acc, d) => {
+        acc[d] = 0;
+        return acc;
+      },
+      {} as Record<PaperTradingSignalDirection, number>
+    );
+    for (const row of directionResults) {
+      byDirection[row.direction as PaperTradingSignalDirection] = parseInt(row.count, 10);
+    }
+
+    return {
+      totalSignals: parseInt(overallResult?.totalSignals, 10) || 0,
+      processedRate: parseFloat(overallResult?.processedRate) || 0,
+      avgConfidence: parseFloat(overallResult?.avgConfidence) || 0,
+      byType,
+      byDirection
+    };
   }
 }
