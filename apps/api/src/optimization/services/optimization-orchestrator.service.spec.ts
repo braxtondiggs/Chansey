@@ -116,7 +116,12 @@ describe('OptimizationOrchestratorService', () => {
     } as unknown as jest.Mocked<BacktestEngine>;
 
     ohlcService = {
-      getCandlesByDateRange: jest.fn().mockResolvedValue([])
+      getCandlesByDateRange: jest.fn().mockResolvedValue([]),
+      getCoinsWithCandleData: jest.fn().mockResolvedValue(['btc', 'eth']),
+      getCandleDataDateRange: jest.fn().mockResolvedValue({
+        start: new Date('2025-11-10'),
+        end: new Date('2026-02-20')
+      })
     } as unknown as jest.Mocked<OHLCService>;
 
     dataSource = {
@@ -519,6 +524,7 @@ describe('OptimizationOrchestratorService', () => {
 
     const mockCoinQueryBuilder = () => ({
       where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue(mockCoins)

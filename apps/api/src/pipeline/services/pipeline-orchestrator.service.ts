@@ -1073,7 +1073,8 @@ export class PipelineOrchestratorService {
       parallelism: {
         maxConcurrentBacktests: 2,
         maxConcurrentWindows: 2
-      }
+      },
+      maxCoins: config.maxCoins
     });
 
     // Store optimization run reference
