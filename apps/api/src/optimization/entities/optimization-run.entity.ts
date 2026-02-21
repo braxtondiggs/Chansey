@@ -78,7 +78,7 @@ export class OptimizationRun {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     nullable: true,
     transformer: {
@@ -90,7 +90,7 @@ export class OptimizationRun {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     nullable: true,
     transformer: {
@@ -102,7 +102,7 @@ export class OptimizationRun {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     nullable: true,
     transformer: {
