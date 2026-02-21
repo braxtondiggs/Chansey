@@ -550,6 +550,12 @@ export class PipelineOrchestratorService {
 
     this.logger.log(`Backtest ${type} completed for pipeline ${pipeline.id}`);
 
+    // Guard: zero-trade backtests cannot advance
+    if (metrics.totalTrades === 0) {
+      await this.failPipeline(pipeline, `${type} backtest produced 0 trades — cannot advance pipeline`);
+      return;
+    }
+
     // Store backtest results
     if (type === 'HISTORICAL') {
       const result: HistoricalStageResult = {

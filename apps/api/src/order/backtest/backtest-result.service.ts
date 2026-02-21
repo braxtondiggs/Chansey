@@ -60,6 +60,15 @@ export class BacktestResultService {
       finalMetrics: BacktestFinalMetrics;
     }
   ): Promise<void> {
+    if (results.finalMetrics.totalTrades === 0) {
+      this.logger.warn(`Backtest ${backtest.id} completed with 0 trades — marking as FAILED`);
+      await this.markFailed(
+        backtest.id,
+        'Backtest produced 0 trades — likely due to regime filtering or insufficient signals'
+      );
+      return;
+    }
+
     const endTimer = this.metricsService?.startPersistenceTimer('full');
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();

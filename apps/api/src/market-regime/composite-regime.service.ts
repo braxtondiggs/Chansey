@@ -121,7 +121,7 @@ export class CompositeRegimeService implements OnModuleInit {
     try {
       // 1. Fetch BTC daily prices (1y ≈ 365 data points, well above 200)
       const chartData = await this.coinService.getMarketChart(BTC_COIN_SLUG, '1y');
-      const closes = chartData.prices.map((p) => p.price);
+      const closes = chartData.prices.map((p) => p.price).filter((v): v is number => Number.isFinite(v));
 
       if (closes.length < SMA_PERIOD) {
         this.logger.warn(
@@ -134,6 +134,12 @@ export class CompositeRegimeService implements OnModuleInit {
       const smaValues = SMA.calculate({ period: SMA_PERIOD, values: closes });
       const sma200 = smaValues[smaValues.length - 1];
       const btcPrice = closes[closes.length - 1];
+
+      if (!Number.isFinite(sma200) || !Number.isFinite(btcPrice)) {
+        this.logger.warn(`Invalid SMA/price values (sma200=${sma200}, btcPrice=${btcPrice}) — keeping previous regime`);
+        return this.getCompositeRegime();
+      }
+
       const trendAboveSma = btcPrice > sma200;
 
       // 3. Get current volatility regime for BTC
