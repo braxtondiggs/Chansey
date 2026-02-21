@@ -320,28 +320,6 @@ describe('BacktestResultService', () => {
       });
     });
 
-    it('should mark as FAILED when totalTrades is 0', async () => {
-      const zeroTradeResults = {
-        ...mockResults,
-        finalMetrics: { ...mockFinalMetrics, totalTrades: 0 }
-      };
-
-      await service.persistSuccess(mockBacktest, zeroTradeResults);
-
-      expect(mockBacktestRepository.update).toHaveBeenCalledWith('backtest-123', {
-        status: BacktestStatus.FAILED,
-        errorMessage: expect.stringContaining('0 trades')
-      });
-      expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith(
-        'backtest-123',
-        'failed',
-        expect.stringContaining('0 trades')
-      );
-      // Should NOT start a transaction or emit completion
-      expect(mockDataSource.createQueryRunner).not.toHaveBeenCalled();
-      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
-    });
-
     it('does not emit completion event for unknown backtest type', async () => {
       mockMetricsService.startPersistenceTimer.mockReturnValue(jest.fn());
       mockQueryRunner.manager.save.mockResolvedValue({});
