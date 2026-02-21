@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tailwindcss-primeui';
+@source not "../../../.claude";
 
 @layer components {
   .title-h1 {
