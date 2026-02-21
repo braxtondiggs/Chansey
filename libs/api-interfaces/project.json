@@ -8,7 +8,7 @@
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/libs/api-interfaces",
+        "outputPath": "dist/libs/@chansey/api-interfaces",
         "main": "libs/api-interfaces/src/index.ts",
         "tsConfig": "libs/api-interfaces/tsconfig.lib.json",
         "assets": []
