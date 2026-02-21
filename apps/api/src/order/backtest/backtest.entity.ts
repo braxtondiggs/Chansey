@@ -100,22 +100,22 @@ export class Backtest {
   finalValue?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Total return percentage', required: false })
   totalReturn?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Annualized return percentage', required: false })
   annualizedReturn?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Sharpe ratio', required: false })
   sharpeRatio?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Maximum drawdown percentage', required: false })
   maxDrawdown?: number;
 
@@ -130,7 +130,7 @@ export class Backtest {
   winningTrades?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Win rate as decimal (0.0-1.0), e.g., 0.65 = 65%', required: false })
   winRate?: number;
 
@@ -377,12 +377,12 @@ export class BacktestPerformanceSnapshot {
   holdings: Record<string, { quantity: number; value: number; price: number }>;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Return from initial capital up to this point' })
   cumulativeReturn: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Drawdown from peak at this point' })
   drawdown: number;
 

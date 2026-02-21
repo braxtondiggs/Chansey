@@ -52,7 +52,7 @@ export class OptimizationResult {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     transformer: {
       to: (value: number) => value,
@@ -63,7 +63,7 @@ export class OptimizationResult {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     transformer: {
       to: (value: number) => value,
@@ -74,7 +74,7 @@ export class OptimizationResult {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     transformer: {
       to: (value: number) => value,
@@ -85,7 +85,7 @@ export class OptimizationResult {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     transformer: {
       to: (value: number) => value,

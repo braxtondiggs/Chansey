@@ -17,6 +17,7 @@ import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
 import { toErrorInfo } from '../../shared/error.util';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 import { OptimizationResult, WindowResult } from '../entities/optimization-result.entity';
 import { OptimizationProgressDetails, OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 import { OptimizationConfig, ParameterSpace } from '../interfaces';
@@ -308,16 +309,33 @@ export class OptimizationOrchestratorService {
 
         // Process batch results in transaction for atomic commit
         await this.dataSource.transaction(async (manager) => {
+          const sanitizeOpts = { maxIntegerDigits: 14 };
           for (const { combination, evaluationResult } of batchResults) {
             // Store result
             const result = manager.create(OptimizationResult, {
               optimizationRunId: runId,
               combinationIndex: combination.index,
               parameters: combination.values,
-              avgTrainScore: evaluationResult.avgTrainScore,
-              avgTestScore: evaluationResult.avgTestScore,
-              avgDegradation: evaluationResult.avgDegradation,
-              consistencyScore: evaluationResult.consistencyScore,
+              avgTrainScore:
+                sanitizeNumericValue(evaluationResult.avgTrainScore, {
+                  ...sanitizeOpts,
+                  fieldName: 'avgTrainScore'
+                }) ?? 0,
+              avgTestScore:
+                sanitizeNumericValue(evaluationResult.avgTestScore, {
+                  ...sanitizeOpts,
+                  fieldName: 'avgTestScore'
+                }) ?? 0,
+              avgDegradation:
+                sanitizeNumericValue(evaluationResult.avgDegradation, {
+                  ...sanitizeOpts,
+                  fieldName: 'avgDegradation'
+                }) ?? 0,
+              consistencyScore:
+                sanitizeNumericValue(evaluationResult.consistencyScore, {
+                  ...sanitizeOpts,
+                  fieldName: 'consistencyScore'
+                }) ?? 0,
               overfittingWindows: evaluationResult.overfittingWindows,
               windowResults: evaluationResult.windowResults,
               isBaseline: combination.isBaseline
@@ -745,12 +763,14 @@ export class OptimizationOrchestratorService {
     // Rank all results
     await this.rankResults(run.id);
 
-    // Update run
+    // Update run (sanitize scores to prevent numeric overflow on save)
+    const sanitizeOpts = { maxIntegerDigits: 14 };
     run.status = OptimizationStatus.COMPLETED;
-    run.bestScore = bestScore;
+    run.bestScore = sanitizeNumericValue(bestScore, { ...sanitizeOpts, fieldName: 'bestScore' }) ?? 0;
     run.bestParameters = bestParameters ?? {};
-    run.baselineScore = baselineScore;
-    run.improvement = Math.round(improvement * 100) / 100;
+    run.baselineScore = sanitizeNumericValue(baselineScore, { ...sanitizeOpts, fieldName: 'baselineScore' }) ?? 0;
+    run.improvement =
+      sanitizeNumericValue(Math.round(improvement * 100) / 100, { ...sanitizeOpts, fieldName: 'improvement' }) ?? 0;
     run.completedAt = new Date();
 
     await this.optimizationRunRepository.save(run);

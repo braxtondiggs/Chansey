@@ -62,7 +62,7 @@ export class WalkForwardWindow {
 
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 18,
     scale: 4,
     comment: 'Percentage performance degradation from train to test'
   })

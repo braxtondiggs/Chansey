@@ -41,12 +41,12 @@ export class PaperTradingSnapshot {
   holdings: Record<string, SnapshotHolding>;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Cumulative return from initial capital up to this point' })
   cumulativeReturn: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 8, scale: 4, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Drawdown from peak at this point' })
   drawdown: number;
 
