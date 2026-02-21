@@ -150,7 +150,7 @@ export const DEFAULT_REGIME_MULTIPLIERS: RegimePositionMultipliers = {
   [CompositeRegimeType.BULL]: 1.0,
   [CompositeRegimeType.NEUTRAL]: 0.5,
   [CompositeRegimeType.BEAR]: 0.1,
-  [CompositeRegimeType.EXTREME]: 0.0
+  [CompositeRegimeType.EXTREME]: 0.05
 };
 
 /**
@@ -162,31 +162,31 @@ export const RISK_REGIME_MULTIPLIER_MATRIX: Record<number, RegimePositionMultipl
     [CompositeRegimeType.BULL]: 1.0,
     [CompositeRegimeType.NEUTRAL]: 0.4,
     [CompositeRegimeType.BEAR]: 0.05,
-    [CompositeRegimeType.EXTREME]: 0.0
+    [CompositeRegimeType.EXTREME]: 0.02
   },
   2: {
     [CompositeRegimeType.BULL]: 1.0,
     [CompositeRegimeType.NEUTRAL]: 0.45,
     [CompositeRegimeType.BEAR]: 0.08,
-    [CompositeRegimeType.EXTREME]: 0.0
+    [CompositeRegimeType.EXTREME]: 0.03
   },
   3: {
     [CompositeRegimeType.BULL]: 1.0,
     [CompositeRegimeType.NEUTRAL]: 0.5,
     [CompositeRegimeType.BEAR]: 0.1,
-    [CompositeRegimeType.EXTREME]: 0.0
+    [CompositeRegimeType.EXTREME]: 0.05
   },
   4: {
     [CompositeRegimeType.BULL]: 1.0,
     [CompositeRegimeType.NEUTRAL]: 0.6,
     [CompositeRegimeType.BEAR]: 0.15,
-    [CompositeRegimeType.EXTREME]: 0.0
+    [CompositeRegimeType.EXTREME]: 0.08
   },
   5: {
     [CompositeRegimeType.BULL]: 1.0,
     [CompositeRegimeType.NEUTRAL]: 0.7,
     [CompositeRegimeType.BEAR]: 0.2,
-    [CompositeRegimeType.EXTREME]: 0.0
+    [CompositeRegimeType.EXTREME]: 0.1
   }
 };
 

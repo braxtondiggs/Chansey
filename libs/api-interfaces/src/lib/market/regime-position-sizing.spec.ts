@@ -13,11 +13,11 @@ describe('getRegimeMultiplier', () => {
     [1, CompositeRegimeType.BULL, 1.0],
     [1, CompositeRegimeType.NEUTRAL, 0.4],
     [1, CompositeRegimeType.BEAR, 0.05],
-    [1, CompositeRegimeType.EXTREME, 0.0],
+    [1, CompositeRegimeType.EXTREME, 0.02],
     [5, CompositeRegimeType.BULL, 1.0],
     [5, CompositeRegimeType.NEUTRAL, 0.7],
     [5, CompositeRegimeType.BEAR, 0.2],
-    [5, CompositeRegimeType.EXTREME, 0.0]
+    [5, CompositeRegimeType.EXTREME, 0.1]
   ])('risk %i + %s → %f', (riskLevel, regime, expected) => {
     expect(getRegimeMultiplier(riskLevel, regime)).toBe(expected);
   });
@@ -44,6 +44,13 @@ describe('getRegimeMultiplier', () => {
     const bearValues = [1, 2, 3, 4, 5].map((risk) => getRegimeMultiplier(risk, CompositeRegimeType.BEAR));
     for (let i = 1; i < bearValues.length; i++) {
       expect(bearValues[i]).toBeGreaterThan(bearValues[i - 1]);
+    }
+  });
+
+  it('EXTREME multiplier increases with risk level', () => {
+    const extremeValues = [1, 2, 3, 4, 5].map((risk) => getRegimeMultiplier(risk, CompositeRegimeType.EXTREME));
+    for (let i = 1; i < extremeValues.length; i++) {
+      expect(extremeValues[i]).toBeGreaterThan(extremeValues[i - 1]);
     }
   });
 

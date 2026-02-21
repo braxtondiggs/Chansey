@@ -606,6 +606,71 @@ describe('PipelineOrchestratorService', () => {
       );
     });
 
+    it('should fail HISTORICAL pipeline when backtest produces 0 trades', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.HISTORICAL,
+        historicalBacktestId: 'backtest-zero-hist',
+        user: mockUser
+      };
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handleBacktestComplete('backtest-zero-hist', 'HISTORICAL', {
+        sharpeRatio: 0,
+        totalReturn: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        totalTrades: 0,
+        profitFactor: 0,
+        volatility: 0
+      });
+
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('0 trades')
+        })
+      );
+      expect(pipelineQueue.add).not.toHaveBeenCalled();
+      expect(scoringService.calculateScoreFromMetrics).not.toHaveBeenCalled();
+    });
+
+    it('should fail LIVE_REPLAY pipeline when backtest produces 0 trades', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        liveReplayBacktestId: 'backtest-zero-lr',
+        stageResults: {
+          historical: { status: 'COMPLETED', totalReturn: 0.15 }
+        },
+        user: mockUser
+      } as Pipeline;
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handleBacktestComplete('backtest-zero-lr', 'LIVE_REPLAY', {
+        sharpeRatio: 0,
+        totalReturn: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        totalTrades: 0,
+        profitFactor: 0,
+        volatility: 0
+      });
+
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('0 trades')
+        })
+      );
+      expect(pipelineQueue.add).not.toHaveBeenCalled();
+      expect(scoringService.calculateScoreFromMetrics).not.toHaveBeenCalled();
+    });
+
     it('should apply regime modifier correctly', async () => {
       const runningPipeline = {
         ...mockPipeline,

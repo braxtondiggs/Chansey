@@ -294,7 +294,7 @@ describe('CapitalAllocationService', () => {
       [CompositeRegimeType.BULL, 3, 10000, 1],
       [CompositeRegimeType.NEUTRAL, 3, 5000, 1],
       [CompositeRegimeType.BEAR, 3, 1000, 1],
-      [CompositeRegimeType.EXTREME, 3, 0, 0]
+      [CompositeRegimeType.EXTREME, 3, 500, 1]
     ])(
       '%s regime at risk %i → $%i allocated (%i strategies)',
       async (regime, riskLevel, expectedCapital, expectedSize) => {
@@ -353,7 +353,7 @@ describe('CapitalAllocationService', () => {
       );
     });
 
-    it('writes audit log with effectiveCapital 0 in EXTREME regime', async () => {
+    it('writes audit log with reduced effectiveCapital in EXTREME regime', async () => {
       setupKellyOrders();
       const ctx: RegimeContext = { compositeRegime: CompositeRegimeType.EXTREME, riskLevel: 3 };
       await service.allocateCapitalByKelly(10000, [createStrategy('s1')], ctx);
@@ -366,10 +366,10 @@ describe('CapitalAllocationService', () => {
           entityType: 'capital-allocation',
           afterState: expect.objectContaining({
             compositeRegime: CompositeRegimeType.EXTREME,
-            regimeMultiplier: 0,
-            effectiveCapital: 0,
-            strategiesAllocated: 0,
-            totalAllocated: 0
+            regimeMultiplier: 0.05,
+            effectiveCapital: 500,
+            strategiesAllocated: 1,
+            totalAllocated: 500
           })
         })
       );
