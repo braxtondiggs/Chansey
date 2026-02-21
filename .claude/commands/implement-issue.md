@@ -40,17 +40,19 @@ Use the GitHub MCP tool `mcp__github__get_issue` to retrieve:
 - State (open/closed)
 - Milestone
 
-## Step 3: Fetch Issue Comments
+## Step 3: Fetch ALL Issue Comments
 
-Use GitHub CLI to get all comments on the issue:
+Fetch every comment on the issue — do NOT skip any. Every comment may contain requirements, constraints, or decisions that must be reflected in the implementation.
 
 ```bash
-gh api repos/{owner}/{repo}/issues/{issue_number}/comments --jq '.[] | "---\n**@\(.user.login)** commented on \(.created_at):\n\n\(.body)\n"'
+gh api repos/{owner}/{repo}/issues/{issue_number}/comments --paginate --jq '.[] | "---\n**@\(.user.login)** commented on \(.created_at):\n\n\(.body)\n"'
 ```
+
+**IMPORTANT**: Use `--paginate` to ensure all comments are retrieved, not just the first page.
 
 ## Step 4: Analyze and Summarize
 
-After fetching the issue and comments, create a structured summary:
+After fetching the issue and comments, create a structured summary. **Every comment must be read and categorized** — do not skip or gloss over any.
 
 ### Issue Summary Template
 
@@ -74,6 +76,17 @@ After fetching the issue and comments, create a structured summary:
 1. [Requirement 1 from issue description]
 2. [Requirement 2 from comments/discussion]
 3. ...
+
+### Action Items from Comments
+
+For EVERY comment that contains a suggestion, request, or concern, create an explicit action item:
+
+| # | Source | Action Item | Disposition |
+|---|--------|-------------|-------------|
+| 1 | @user (comment date) | [What they asked for] | [Will address / Out of scope / Already handled — with reason] |
+| 2 | ... | ... | ... |
+
+**Every comment must appear in this table.** Informational-only comments (e.g., "LGTM", CI status) can be grouped as "No action needed" but must still be listed.
 
 ### Technical Considerations
 
@@ -105,6 +118,15 @@ When planning, consider:
 - **Testing strategy**: How will this be tested?
 - **Migration/compatibility**: Any database changes or breaking changes?
 - **Dependencies**: Any new dependencies required?
+
+### Comment Traceability (REQUIRED)
+
+The implementation plan MUST address every action item from the comments table in Step 4. For each item with disposition "Will address":
+
+- Map it to a specific step in the plan
+- If a comment's concern is handled implicitly by the design, call that out explicitly
+
+**Do NOT finalize the plan until every comment action item is accounted for.** This prevents review feedback from being silently dropped.
 
 ## Output Format
 

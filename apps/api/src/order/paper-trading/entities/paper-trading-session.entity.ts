@@ -83,25 +83,25 @@ export class PaperTradingSession {
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Maximum drawdown percentage', required: false })
   maxDrawdown?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Total return percentage', required: false })
   totalReturn?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Sharpe ratio', required: false })
   sharpeRatio?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Win rate as decimal (0.0-1.0)', required: false })
   winRate?: number;
 
