@@ -14,7 +14,7 @@ export const databaseConfig = registerAs(
     password: process.env.PGPASSWORD,
     autoLoadEntities: true,
     entities: [join(__dirname, '**/*.entity{.ts,.js}')],
-    migrations: [join(__dirname, 'migrations/*.{ts,js}')],
+    migrations: [join(__dirname, '../migrations/*.{ts,js}')],
     migrationsTableName: 'migration',
     migrationsRun: process.env.NODE_ENV === 'production',
     synchronize: process.env.NODE_ENV !== 'production',

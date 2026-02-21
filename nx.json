@@ -119,18 +119,6 @@
       "inputs": ["production", "^production"],
       "outputs": ["{options.outputPath}"]
     },
-    "@angular-devkit/build-angular:browser": {
-      "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"],
-      "outputs": ["{options.outputPath}"]
-    },
-    "@nx/webpack:webpack": {
-      "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"],
-      "outputs": ["{options.outputPath}"]
-    },
     "@nx/js:tsc": {
       "cache": true,
       "dependsOn": ["^build"],

@@ -1,5 +1,5 @@
-import { DataSource, DataSourceOptions } from 'typeorm';
 import { config } from 'dotenv';
+import { DataSource, DataSourceOptions } from 'typeorm';
 
 config();
 
@@ -11,8 +11,8 @@ export const dataSourceOptions: DataSourceOptions = {
   username: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
-  entities: ['dist/api/**/*.entity.js'],
-  migrations: ['dist/api/migrations/*.js'],
+  entities: ['dist/api/src/**/*.entity.js'],
+  migrations: ['dist/api/src/migrations/*.js'],
   migrationsTableName: 'migration',
   synchronize: false, // CLI always uses migrations, never sync
   logging: true

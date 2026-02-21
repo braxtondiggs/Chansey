@@ -7,12 +7,15 @@
   "tags": ["scope:web", "type:app"],
   "targets": {
     "build": {
-      "executor": "@angular-devkit/build-angular:browser",
-      "outputs": ["{options.outputPath}"],
+      "executor": "@angular-devkit/build-angular:application",
+      "outputs": ["{workspaceRoot}/dist/client"],
       "options": {
-        "outputPath": "dist/client",
+        "outputPath": {
+          "base": "dist/client",
+          "browser": ""
+        },
         "index": "apps/chansey/src/index.html",
-        "main": "apps/chansey/src/main.ts",
+        "browser": "apps/chansey/src/main.ts",
         "polyfills": ["zone.js"],
         "tsConfig": "apps/chansey/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
@@ -30,8 +33,7 @@
         ],
         "styles": ["node_modules/primeicons/primeicons.css", "apps/chansey/src/styles.scss"],
         "scripts": [],
-        "serviceWorker": true,
-        "ngswConfigPath": "apps/chansey/ngsw-config.json"
+        "serviceWorker": "apps/chansey/ngsw-config.json"
       },
       "configurations": {
         "production": {
@@ -61,17 +63,11 @@
               "inline": true
             }
           },
-          "buildOptimizer": true,
-          "aot": true,
           "extractLicenses": true,
-          "vendorChunk": false,
-          "commonChunk": false,
           "namedChunks": false
         },
         "development": {
-          "buildOptimizer": false,
           "optimization": false,
-          "vendorChunk": true,
           "extractLicenses": false,
           "sourceMap": true,
           "namedChunks": true
