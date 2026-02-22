@@ -17,14 +17,7 @@ interface ConfigSchemaField {
  * Control parameters that should not be optimized.
  * These affect execution behaviour, not strategy logic.
  */
-const NON_OPTIMIZABLE_PARAMS = new Set([
-  'enabled',
-  'weight',
-  'riskLevel',
-  'cooldownMs',
-  'maxTradesPerDay',
-  'minSellPercent'
-]);
+const NON_OPTIMIZABLE_PARAMS = new Set(['enabled', 'riskLevel', 'cooldownMs', 'maxTradesPerDay', 'minSellPercent']);
 
 /**
  * Check whether a schema field is worth optimizing.

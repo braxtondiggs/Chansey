@@ -98,7 +98,6 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   getConfigSchema(): Record<string, unknown> {
     return {
       enabled: { type: 'boolean', default: true },
-      weight: { type: 'number', default: 1.0, min: 0, max: 10 },
       riskLevel: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' },
       cooldownMs: {
         type: 'number',
