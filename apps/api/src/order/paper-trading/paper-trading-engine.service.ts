@@ -169,11 +169,32 @@ export class PaperTradingEngineService {
         priceMap[symbol] = priceData.price;
       }
 
+      // 3b. Fetch historical candles for algorithm indicator computation
+      const historicalCandles: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {};
+      const candleResults = await Promise.all(
+        allSymbols.map(async (symbol) => {
+          const candles = await this.marketDataService.getHistoricalCandles(exchangeSlug, symbol);
+          return { symbol, candles };
+        })
+      );
+      for (const { symbol, candles } of candleResults) {
+        if (candles.length > 0) {
+          historicalCandles[symbol] = candles;
+        }
+      }
+
       // 4. Update portfolio values with current prices
       const updatedPortfolio = this.updatePortfolioWithPrices(portfolio, priceMap, quoteCurrency);
 
       // 5. Run algorithm to get signals
-      const signals = await this.runAlgorithm(session, updatedPortfolio, priceMap, accounts, quoteCurrency);
+      const signals = await this.runAlgorithm(
+        session,
+        updatedPortfolio,
+        priceMap,
+        accounts,
+        quoteCurrency,
+        historicalCandles
+      );
       signalsReceived = signals.length;
 
       // 6. Process signals and execute orders
@@ -255,12 +276,13 @@ export class PaperTradingEngineService {
     portfolio: Portfolio,
     prices: Record<string, number>,
     accounts: PaperTradingAccount[],
-    quoteCurrency: string
+    quoteCurrency: string,
+    historicalCandles: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {}
   ): Promise<TradingSignal[]> {
     try {
       // Build context for algorithm
       const coins = this.extractCoinsFromPrices(prices);
-      const priceData = this.buildPriceDataContext(prices);
+      const priceData = this.buildPriceDataContext(prices, historicalCandles);
       const positions = this.buildPositionsContext(accounts, quoteCurrency);
 
       // Build a minimal context compatible with algorithm execution
@@ -788,13 +810,24 @@ export class PaperTradingEngineService {
   /**
    * Helper: Build price data context for algorithm
    */
-  private buildPriceDataContext(prices: Record<string, number>): Record<string, Array<{ avg: number; date: Date }>> {
-    const priceData: Record<string, Array<{ avg: number; date: Date }>> = {};
+  private buildPriceDataContext(
+    prices: Record<string, number>,
+    historicalCandles: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {}
+  ): Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> {
+    const priceData: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {};
     const now = new Date();
 
     for (const [symbol, price] of Object.entries(prices)) {
       const [baseCurrency] = symbol.split('/');
-      priceData[baseCurrency] = [{ avg: price, date: now }];
+      const candles = historicalCandles[symbol] ?? [];
+
+      if (candles.length > 0) {
+        // Use historical candles + append current price as latest data point
+        priceData[baseCurrency] = [...candles, { avg: price, high: price, low: price, date: now }];
+      } else {
+        // Fallback: single price point (algorithm will skip due to insufficient data)
+        priceData[baseCurrency] = [{ avg: price, high: price, low: price, date: now }];
+      }
     }
 
     return priceData;

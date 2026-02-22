@@ -281,6 +281,49 @@ export class PaperTradingMarketDataService {
   }
 
   /**
+   * Get historical OHLC candles for algorithm indicator computation.
+   * Uses caching to minimize exchange API calls across ticks.
+   */
+  async getHistoricalCandles(
+    exchangeSlug: string,
+    symbol: string,
+    timeframe = '1h',
+    limit = 100,
+    user?: User
+  ): Promise<Array<{ avg: number; high: number; low: number; date: Date }>> {
+    const cacheKey = `paper-trading:ohlcv:${exchangeSlug}:${symbol}:${timeframe}`;
+
+    const cached = await this.cacheManager.get<Array<{ avg: number; high: number; low: number; date: Date }>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
+      const client = user
+        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
+        : await this.exchangeManager.getPublicClient(exchangeSlug);
+
+      const ohlcv = await client.fetchOHLCV(formattedSymbol, timeframe, undefined, limit);
+
+      const candles = ohlcv.map((candle) => ({
+        avg: candle[4] as number,
+        high: candle[2] as number,
+        low: candle[3] as number,
+        date: new Date(candle[0] as number)
+      }));
+
+      // Cache for 5 minutes — candles shift slowly relative to 30s tick frequency
+      await this.cacheManager.set(cacheKey, candles, 5 * 60 * 1000);
+      return candles;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to fetch OHLCV for ${symbol} from ${exchangeSlug}: ${err.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Check if exchange connection is healthy
    */
   async checkExchangeHealth(exchangeSlug: string): Promise<{ healthy: boolean; latencyMs?: number; error?: string }> {

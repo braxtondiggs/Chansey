@@ -30,6 +30,7 @@ const createService = (overrides: Partial<any> = {}) => {
 
   const marketDataService = {
     getPrices: jest.fn(),
+    getHistoricalCandles: jest.fn().mockResolvedValue([]),
     calculateRealisticSlippage: jest.fn()
   };
 
@@ -67,7 +68,10 @@ const createService = (overrides: Partial<any> = {}) => {
     orderRepository,
     signalRepository,
     snapshotRepository,
-    metricsCalculator
+    metricsCalculator,
+    marketDataService,
+    algorithmRegistry,
+    feeCalculator
   };
 };
 
@@ -126,7 +130,8 @@ describe('PaperTradingEngineService', () => {
   });
 
   it('defaults to common symbols and snapshots on interval ticks', async () => {
-    const { service, accountRepository, snapshotRepository, orderRepository } = createService();
+    const { service, accountRepository, snapshotRepository, orderRepository, marketDataService, algorithmRegistry } =
+      createService();
 
     accountRepository.find
       .mockResolvedValueOnce([])
@@ -137,10 +142,7 @@ describe('PaperTradingEngineService', () => {
       ['ETH/USD', { price: 3000 }]
     ]);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(prices);
-
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -164,14 +166,21 @@ describe('PaperTradingEngineService', () => {
   });
 
   it('skips buy when balance is insufficient', async () => {
-    const { service, accountRepository, signalRepository, orderRepository } = createService();
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService();
 
     const quoteAccount = { currency: 'USD', available: 50, total: 50 };
 
     accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
     accountRepository.findOne.mockResolvedValueOnce(quoteAccount).mockResolvedValueOnce(null);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 100 }]]));
     marketDataService.calculateRealisticSlippage.mockResolvedValue({
       estimatedPrice: 100,
@@ -179,7 +188,6 @@ describe('PaperTradingEngineService', () => {
       marketImpact: 0
     });
 
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockResolvedValue({
       success: true,
       signals: [
@@ -194,7 +202,6 @@ describe('PaperTradingEngineService', () => {
       ]
     });
 
-    const feeCalculator = (service as any).feeCalculator;
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 1 });
 
@@ -227,16 +234,22 @@ describe('PaperTradingEngineService', () => {
       )
     };
 
-    const { service, accountRepository, signalRepository, snapshotRepository, orderRepository } = createService({
-      dataSource
-    });
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
 
     const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
     accountRepository.find
       .mockResolvedValueOnce([quoteAccount])
       .mockResolvedValueOnce([quoteAccount, { currency: 'BTC', available: 0.1, total: 0.1 }]);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
     // Slippage of 10 bps means price increases by 0.1% for BUY
     marketDataService.calculateRealisticSlippage.mockResolvedValue({
@@ -245,7 +258,6 @@ describe('PaperTradingEngineService', () => {
       marketImpact: 5
     });
 
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockResolvedValue({
       success: true,
       signals: [
@@ -260,7 +272,6 @@ describe('PaperTradingEngineService', () => {
       ]
     });
 
-    const feeCalculator = (service as any).feeCalculator;
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
 
@@ -306,15 +317,21 @@ describe('PaperTradingEngineService', () => {
       )
     };
 
-    const { service, accountRepository, signalRepository, snapshotRepository, orderRepository } = createService({
-      dataSource
-    });
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
 
     accountRepository.find
       .mockResolvedValueOnce([quoteAccount, btcAccount])
       .mockResolvedValueOnce([quoteAccount, btcAccount]);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
     // Slippage for SELL - price decreases
     marketDataService.calculateRealisticSlippage.mockResolvedValue({
@@ -323,7 +340,6 @@ describe('PaperTradingEngineService', () => {
       marketImpact: 5
     });
 
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockResolvedValue({
       success: true,
       signals: [
@@ -338,7 +354,6 @@ describe('PaperTradingEngineService', () => {
       ]
     });
 
-    const feeCalculator = (service as any).feeCalculator;
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
@@ -389,13 +404,18 @@ describe('PaperTradingEngineService', () => {
       )
     };
 
-    const { service, accountRepository, signalRepository, orderRepository } = createService({
-      dataSource
-    });
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
 
     accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
     marketDataService.calculateRealisticSlippage.mockResolvedValue({
       estimatedPrice: 49950,
@@ -403,7 +423,6 @@ describe('PaperTradingEngineService', () => {
       marketImpact: 5
     });
 
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockResolvedValue({
       success: true,
       signals: [
@@ -418,7 +437,6 @@ describe('PaperTradingEngineService', () => {
       ]
     });
 
-    const feeCalculator = (service as any).feeCalculator;
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 50 });
 
@@ -435,15 +453,14 @@ describe('PaperTradingEngineService', () => {
   });
 
   it('handles algorithm returning no signals gracefully', async () => {
-    const { service, accountRepository, snapshotRepository, orderRepository } = createService();
+    const { service, accountRepository, snapshotRepository, orderRepository, marketDataService, algorithmRegistry } =
+      createService();
 
     const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
     accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
 
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockResolvedValue({
       success: true,
       signals: [] // No signals
@@ -470,15 +487,14 @@ describe('PaperTradingEngineService', () => {
   });
 
   it('handles algorithm execution failure gracefully', async () => {
-    const { service, accountRepository, snapshotRepository, orderRepository } = createService();
+    const { service, accountRepository, snapshotRepository, orderRepository, marketDataService, algorithmRegistry } =
+      createService();
 
     const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
     accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
 
-    const marketDataService = (service as any).marketDataService;
     marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
 
-    const algorithmRegistry = (service as any).algorithmRegistry;
     algorithmRegistry.executeAlgorithm.mockRejectedValue(new Error('Algorithm failed'));
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -498,6 +514,536 @@ describe('PaperTradingEngineService', () => {
 
     expect(result.signalsReceived).toBe(0);
     expect(result.ordersExecuted).toBe(0);
+    expect(result.processed).toBe(true);
+  });
+
+  it('caps sell quantity at available position size', async () => {
+    const btcAccount = { currency: 'BTC', available: 1, total: 1, averageCost: 40000 };
+    const quoteAccount = { currency: 'USD', available: 5000, total: 5000 };
+
+    const savedEntities: any[] = [];
+    const dataSource = {
+      transaction: jest.fn((callback: any) =>
+        callback({
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce(quoteAccount)
+            .mockResolvedValueOnce({ ...btcAccount }),
+          create: jest.fn((_entity: any, data: any) => data),
+          save: jest.fn((entity: any) => {
+            savedEntities.push(entity);
+            return Promise.resolve(entity);
+          })
+        })
+      )
+    };
+
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
+
+    accountRepository.find
+      .mockResolvedValueOnce([quoteAccount, btcAccount])
+      .mockResolvedValueOnce([quoteAccount, btcAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
+    marketDataService.calculateRealisticSlippage.mockResolvedValue({
+      estimatedPrice: 50000,
+      slippageBps: 0,
+      marketImpact: 0
+    });
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.SELL,
+          coinId: 'BTC',
+          strength: 1.0,
+          quantity: 10, // Requests 10 BTC but only 1 available
+          confidence: 0.9,
+          reason: 'sell all'
+        }
+      ]
+    });
+
+    feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
+    feeCalculator.calculateFee.mockReturnValue({ fee: 50 });
+
+    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.save.mockImplementation(async (value: any) => value);
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-cap', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    expect(result.ordersExecuted).toBe(1);
+    // The order entity should have quantity capped to 1 (available), not 10 (requested)
+    const orderEntity = savedEntities.find((e) => e.side === 'SELL');
+    expect(orderEntity).toBeDefined();
+    expect(orderEntity.filledQuantity).toBe(1);
+    expect(orderEntity.requestedQuantity).toBe(1);
+  });
+
+  it('captures order execution error but still completes tick successfully', async () => {
+    const dataSource = {
+      transaction: jest.fn().mockRejectedValue(new Error('Transaction deadlock'))
+    };
+
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
+
+    const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
+    accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
+    marketDataService.calculateRealisticSlippage.mockResolvedValue({
+      estimatedPrice: 50000,
+      slippageBps: 0,
+      marketImpact: 0
+    });
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.BUY,
+          coinId: 'BTC',
+          strength: 0.1,
+          quantity: 0.1,
+          confidence: 0.8,
+          reason: 'buy signal'
+        }
+      ]
+    });
+
+    feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
+
+    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.save.mockImplementation(async (value: any) => value);
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-err', initialCapital: 10000, tickCount: 10, tradingFee: 0.001 } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    expect(result.processed).toBe(true);
+    expect(result.ordersExecuted).toBe(0);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain('Transaction deadlock');
+  });
+
+  it('calculates BUY quantity from percentage-based allocation', async () => {
+    const savedEntities: any[] = [];
+    const dataSource = {
+      transaction: jest.fn((callback: any) =>
+        callback({
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce({ currency: 'USD', available: 10000, total: 10000 })
+            .mockResolvedValueOnce(null),
+          create: jest.fn((_entity: any, data: any) => data),
+          save: jest.fn((entity: any) => {
+            savedEntities.push(entity);
+            return Promise.resolve(entity);
+          })
+        })
+      )
+    };
+
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
+
+    const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
+    accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
+    marketDataService.calculateRealisticSlippage.mockResolvedValue({
+      estimatedPrice: 50000,
+      slippageBps: 0,
+      marketImpact: 0
+    });
+
+    // Signal has strength (mapped to percentage) of 0.1 but no quantity
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.BUY,
+          coinId: 'BTC',
+          strength: 0.1, // maps to signal.percentage
+          // no quantity field
+          confidence: 0.8,
+          reason: 'percentage buy'
+        }
+      ]
+    });
+
+    feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
+    feeCalculator.calculateFee.mockReturnValue({ fee: 1 });
+
+    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.save.mockImplementation(async (value: any) => value);
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-pct', initialCapital: 10000, tickCount: 10, tradingFee: 0.001 } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    expect(result.ordersExecuted).toBe(1);
+    // portfolio.totalValue = 10000, percentage = 0.1, min(0.1, MAX_ALLOCATION=0.2) = 0.1
+    // investmentAmount = 10000 * 0.1 = 1000, quantity = 1000 / 50000 = 0.02
+    const orderEntity = savedEntities.find((e) => e.side === 'BUY');
+    expect(orderEntity).toBeDefined();
+    expect(orderEntity.filledQuantity).toBeCloseTo(0.02, 6);
+  });
+
+  it('clears averageCost when sell fully depletes position', async () => {
+    const btcAccount = { currency: 'BTC', available: 0.5, total: 0.5, averageCost: 40000 };
+    const quoteAccount = { currency: 'USD', available: 5000, total: 5000 };
+
+    const savedEntities: any[] = [];
+    const dataSource = {
+      transaction: jest.fn((callback: any) =>
+        callback({
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce(quoteAccount)
+            .mockResolvedValueOnce({ ...btcAccount }),
+          create: jest.fn((_entity: any, data: any) => data),
+          save: jest.fn((entity: any) => {
+            savedEntities.push({ ...entity });
+            return Promise.resolve(entity);
+          })
+        })
+      )
+    };
+
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
+
+    accountRepository.find
+      .mockResolvedValueOnce([quoteAccount, btcAccount])
+      .mockResolvedValueOnce([quoteAccount, btcAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
+    marketDataService.calculateRealisticSlippage.mockResolvedValue({
+      estimatedPrice: 50000,
+      slippageBps: 0,
+      marketImpact: 0
+    });
+
+    // Sell exactly all available (quantity = 0.5 = available)
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.SELL,
+          coinId: 'BTC',
+          strength: 1.0,
+          quantity: 0.5,
+          confidence: 0.9,
+          reason: 'close position'
+        }
+      ]
+    });
+
+    feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
+    feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
+
+    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.save.mockImplementation(async (value: any) => value);
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-deplete', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    expect(result.ordersExecuted).toBe(1);
+    // After selling all 0.5 BTC, available becomes 0 and averageCost is cleared
+    // The base account is saved first (before quote account and order)
+    const baseAccountSave = savedEntities.find((e) => e.currency === 'BTC' && e.available === 0);
+    expect(baseAccountSave).toBeDefined();
+    expect(baseAccountSave.averageCost).toBeUndefined();
+  });
+
+  it('maps STOP_LOSS and TAKE_PROFIT signals to SELL action', async () => {
+    const btcAccount = { currency: 'BTC', available: 1, total: 1, averageCost: 40000 };
+    const ethAccount = { currency: 'ETH', available: 5, total: 5, averageCost: 2000 };
+    const quoteAccount = { currency: 'USD', available: 5000, total: 5000 };
+
+    const dataSource = {
+      transaction: jest.fn((callback: any) =>
+        callback({
+          findOne: jest.fn().mockImplementation((_entity: any, opts: any) => {
+            const currency = opts?.where?.currency;
+            if (currency === 'USD') return Promise.resolve({ ...quoteAccount });
+            if (currency === 'BTC') return Promise.resolve({ ...btcAccount });
+            if (currency === 'ETH') return Promise.resolve({ ...ethAccount });
+            return Promise.resolve(null);
+          }),
+          create: jest.fn((_entity: any, data: any) => data),
+          save: jest.fn((entity: any) => Promise.resolve(entity))
+        })
+      )
+    };
+
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
+
+    accountRepository.find
+      .mockResolvedValueOnce([quoteAccount, btcAccount, ethAccount])
+      .mockResolvedValueOnce([quoteAccount, btcAccount, ethAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(
+      new Map([
+        ['BTC/USD', { price: 50000 }],
+        ['ETH/USD', { price: 3000 }]
+      ])
+    );
+    marketDataService.calculateRealisticSlippage.mockResolvedValue({
+      estimatedPrice: 50000,
+      slippageBps: 0,
+      marketImpact: 0
+    });
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.STOP_LOSS,
+          coinId: 'BTC',
+          strength: 1.0,
+          quantity: 0.5,
+          confidence: 1.0,
+          reason: 'stop loss triggered'
+        },
+        {
+          type: SignalType.TAKE_PROFIT,
+          coinId: 'ETH',
+          strength: 1.0,
+          quantity: 2,
+          confidence: 1.0,
+          reason: 'take profit triggered'
+        }
+      ]
+    });
+
+    feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
+    feeCalculator.calculateFee.mockReturnValue({ fee: 10 });
+
+    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.save.mockImplementation(async (value: any) => value);
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-risk', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    // Both STOP_LOSS and TAKE_PROFIT should be mapped to SELL and executed
+    expect(result.signalsReceived).toBe(2);
+    expect(result.ordersExecuted).toBe(2);
+    expect(result.processed).toBe(true);
+
+    // Verify slippage was called with 'SELL' for both (confirming STOP_LOSS/TAKE_PROFIT mapped to SELL)
+    expect(marketDataService.calculateRealisticSlippage).toHaveBeenCalledWith(
+      'binance',
+      'BTC/USD',
+      expect.any(Number),
+      'SELL'
+    );
+    expect(marketDataService.calculateRealisticSlippage).toHaveBeenCalledWith(
+      'binance',
+      'ETH/USD',
+      expect.any(Number),
+      'SELL'
+    );
+  });
+
+  it('processes multiple signals in a single tick and counts all executed orders', async () => {
+    const btcAccount = { currency: 'BTC', available: 2, total: 2, averageCost: 40000 };
+    const quoteAccount = { currency: 'USD', available: 50000, total: 50000 };
+    let orderCount = 0;
+
+    const dataSource = {
+      transaction: jest.fn((callback: any) =>
+        callback({
+          findOne: jest.fn().mockImplementation((_entity: any, opts: any) => {
+            const currency = opts?.where?.currency;
+            if (currency === 'USD') return Promise.resolve({ ...quoteAccount });
+            if (currency === 'BTC') return Promise.resolve({ ...btcAccount });
+            if (currency === 'ETH') return Promise.resolve(null); // New position
+            return Promise.resolve(null);
+          }),
+          create: jest.fn((_entity: any, data: any) => data),
+          save: jest.fn((entity: any) => {
+            if (entity.side) orderCount++;
+            return Promise.resolve(entity);
+          })
+        })
+      )
+    };
+
+    const {
+      service,
+      accountRepository,
+      signalRepository,
+      snapshotRepository,
+      orderRepository,
+      marketDataService,
+      algorithmRegistry,
+      feeCalculator
+    } = createService({ dataSource });
+
+    accountRepository.find
+      .mockResolvedValueOnce([quoteAccount, btcAccount])
+      .mockResolvedValueOnce([quoteAccount, btcAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(
+      new Map([
+        ['BTC/USD', { price: 50000 }],
+        ['ETH/USD', { price: 3000 }]
+      ])
+    );
+    marketDataService.calculateRealisticSlippage
+      .mockResolvedValueOnce({ estimatedPrice: 50000, slippageBps: 0, marketImpact: 0 })
+      .mockResolvedValueOnce({ estimatedPrice: 3000, slippageBps: 0, marketImpact: 0 });
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.SELL,
+          coinId: 'BTC',
+          strength: 0.5,
+          quantity: 0.5,
+          confidence: 0.9,
+          reason: 'partial exit'
+        },
+        {
+          type: SignalType.BUY,
+          coinId: 'ETH',
+          strength: 0.1,
+          quantity: 1,
+          confidence: 0.7,
+          reason: 'new entry'
+        }
+      ]
+    });
+
+    feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
+    feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
+
+    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.save.mockImplementation(async (value: any) => value);
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-multi', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    expect(result.signalsReceived).toBe(2);
+    expect(result.ordersExecuted).toBe(2);
     expect(result.processed).toBe(true);
   });
 });
