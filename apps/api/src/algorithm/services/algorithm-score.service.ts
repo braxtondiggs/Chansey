@@ -96,14 +96,14 @@ export class AlgorithmScoreService {
    * Single query fetching all active activation performance records.
    */
   private async getAllLiveScoresGrouped(): Promise<Map<string, number[]>> {
-    const records = await this.performanceRepo
+    const latestPerActivation = await this.performanceRepo
       .createQueryBuilder('perf')
+      .distinctOn(['perf.algorithmActivationId'])
       .innerJoinAndSelect('perf.algorithmActivation', 'activation')
       .where('activation.isActive = true')
-      .orderBy('perf.calculatedAt', 'DESC')
+      .orderBy('perf.algorithmActivationId', 'ASC')
+      .addOrderBy('perf.calculatedAt', 'DESC')
       .getMany();
-
-    const latestPerActivation = this.getLatestPerActivation(records);
 
     const grouped = new Map<string, number[]>();
     for (const record of latestPerActivation) {

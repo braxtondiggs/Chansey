@@ -142,10 +142,10 @@ export class TradeExecutionService {
       );
 
       // AUTO-SIZE: calculate quantity from activation's allocation percentage
-      if (signal.autoSize && signal.portfolioValue > 0 && expectedPrice > 0) {
+      if (signal.autoSize && signal.portfolioValue != null && signal.portfolioValue > 0 && expectedPrice > 0) {
         try {
           const activation = await this.algorithmActivationRepository.findOne({
-            where: { id: signal.algorithmActivationId }
+            where: { id: signal.algorithmActivationId, userId: signal.userId }
           });
 
           if (activation) {
@@ -160,8 +160,9 @@ export class TradeExecutionService {
               `Activation ${signal.algorithmActivationId} not found for auto-sizing, using provided quantity`
             );
           }
-        } catch (error) {
-          this.logger.warn(`Auto-sizing failed, using provided quantity: ${error.message}`);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Auto-sizing failed, using provided quantity: ${err.message}`);
         }
       }
 

@@ -657,6 +657,9 @@ describe('TradeExecutionService', () => {
 
       // 5% of $10,000 = $500; $500 / $100 (ask price) = 5 units
       expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 5);
+      expect(mockActivationRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'activation-id', userId: 'user-id' }
+      });
     });
 
     it('should use provided quantity when autoSize is not set (backward compat)', async () => {
@@ -702,6 +705,9 @@ describe('TradeExecutionService', () => {
 
       // Falls back to original quantity
       expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 3);
+      expect(mockActivationRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'missing-activation', userId: 'user-id' }
+      });
     });
 
     it('should skip auto-sizing when portfolioValue is 0', async () => {
