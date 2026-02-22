@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { OrderStateMachineService } from './order-state-machine.service';
 import { TradeExecutionService } from './trade-execution.service';
 
+import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { CoinService } from '../../coin/coin.service';
 import { InvalidSymbolException, SlippageExceededException } from '../../common/exceptions/order';
 import { ExchangeKeyNotFoundException, UserNotFoundException } from '../../common/exceptions/resource';
@@ -21,6 +22,7 @@ describe('TradeExecutionService', () => {
   let mockExchangeManagerService: any;
   let mockCoinService: any;
   let mockUserRepository: any;
+  let mockActivationRepository: any;
   let mockStateMachineService: any;
   let loggerWarnSpy: jest.SpyInstance;
 
@@ -32,6 +34,7 @@ describe('TradeExecutionService', () => {
             TradeExecutionService,
             { provide: getRepositoryToken(Order), useValue: {} },
             { provide: getRepositoryToken(User), useValue: {} },
+            { provide: getRepositoryToken(AlgorithmActivation), useValue: {} },
             { provide: ExchangeKeyService, useValue: {} },
             { provide: ExchangeManagerService, useValue: {} },
             { provide: CoinService, useValue: {} },
@@ -57,6 +60,7 @@ describe('TradeExecutionService', () => {
             TradeExecutionService,
             { provide: getRepositoryToken(Order), useValue: {} },
             { provide: getRepositoryToken(User), useValue: {} },
+            { provide: getRepositoryToken(AlgorithmActivation), useValue: {} },
             { provide: ExchangeKeyService, useValue: {} },
             { provide: ExchangeManagerService, useValue: {} },
             { provide: CoinService, useValue: {} },
@@ -83,6 +87,10 @@ describe('TradeExecutionService', () => {
 
     mockUserRepository = {
       findOneBy: jest.fn()
+    };
+
+    mockActivationRepository = {
+      findOne: jest.fn()
     };
 
     mockExchangeKeyService = {
@@ -119,6 +127,10 @@ describe('TradeExecutionService', () => {
         {
           provide: getRepositoryToken(User),
           useValue: mockUserRepository
+        },
+        {
+          provide: getRepositoryToken(AlgorithmActivation),
+          useValue: mockActivationRepository
         },
         {
           provide: ExchangeKeyService,
@@ -580,6 +592,145 @@ describe('TradeExecutionService', () => {
       const result = service.calculateTradeSize(mockActivation as any, 50000);
 
       expect(result).toBe(50000);
+    });
+  });
+
+  describe('auto-sizing in executeTradeSignal', () => {
+    const mockUser = { id: 'user-id' };
+    const mockExchange = { slug: 'binance', name: 'Binance' };
+
+    const buildExchangeClient = (overrides: Partial<any> = {}) => ({
+      loadMarkets: jest.fn().mockResolvedValue(undefined),
+      fetchTicker: jest.fn().mockResolvedValue({ ask: 100, bid: 99, last: 98 }),
+      fetchOrderBook: jest.fn().mockResolvedValue({ asks: [[100, 10]], bids: [[99, 10]] }),
+      createMarketOrder: jest.fn().mockResolvedValue({
+        id: 'ccxt-order-id',
+        clientOrderId: 'client-order-id',
+        symbol: 'BTC/USDT',
+        timestamp: Date.now(),
+        amount: 1,
+        filled: 1,
+        average: 100,
+        price: 100,
+        cost: 100,
+        fee: { cost: 0.1, currency: 'USDT' },
+        status: 'closed',
+        side: 'buy',
+        type: 'market',
+        trades: [],
+        info: {}
+      }),
+      markets: { 'BTC/USDT': {} },
+      ...overrides
+    });
+
+    beforeEach(() => {
+      mockOrderRepository.save.mockImplementation(async (order: any) => order);
+      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: mockExchange });
+      mockUserRepository.findOneBy.mockResolvedValue(mockUser);
+      mockCoinService.getCoinBySymbol.mockResolvedValue({ symbol: 'BTC' });
+    });
+
+    it('should auto-calculate quantity when autoSize is true', async () => {
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+      jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
+
+      // Activation with 5% allocation
+      mockActivationRepository.findOne.mockResolvedValue({
+        id: 'activation-id',
+        allocationPercentage: 5
+      });
+
+      const signal = {
+        algorithmActivationId: 'activation-id',
+        userId: 'user-id',
+        exchangeKeyId: 'exchange-key-id',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 999, // Should be overridden by auto-sizing
+        autoSize: true,
+        portfolioValue: 10000
+      };
+
+      await service.executeTradeSignal(signal);
+
+      // 5% of $10,000 = $500; $500 / $100 (ask price) = 5 units
+      expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 5);
+      expect(mockActivationRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'activation-id', userId: 'user-id' }
+      });
+    });
+
+    it('should use provided quantity when autoSize is not set (backward compat)', async () => {
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+      jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
+
+      const signal = {
+        algorithmActivationId: 'activation-id',
+        userId: 'user-id',
+        exchangeKeyId: 'exchange-key-id',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 2.5
+      };
+
+      await service.executeTradeSignal(signal);
+
+      // Should use the provided quantity as-is
+      expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 2.5);
+      expect(mockActivationRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to provided quantity when activation not found', async () => {
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+      jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
+
+      mockActivationRepository.findOne.mockResolvedValue(null);
+
+      const signal = {
+        algorithmActivationId: 'missing-activation',
+        userId: 'user-id',
+        exchangeKeyId: 'exchange-key-id',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 3,
+        autoSize: true,
+        portfolioValue: 10000
+      };
+
+      await service.executeTradeSignal(signal);
+
+      // Falls back to original quantity
+      expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 3);
+      expect(mockActivationRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'missing-activation', userId: 'user-id' }
+      });
+    });
+
+    it('should skip auto-sizing when portfolioValue is 0', async () => {
+      const mockExchangeClient = buildExchangeClient();
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
+      jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
+
+      const signal = {
+        algorithmActivationId: 'activation-id',
+        userId: 'user-id',
+        exchangeKeyId: 'exchange-key-id',
+        action: 'BUY' as const,
+        symbol: 'BTC/USDT',
+        quantity: 1,
+        autoSize: true,
+        portfolioValue: 0
+      };
+
+      await service.executeTradeSignal(signal);
+
+      // Should use provided quantity since portfolioValue is 0
+      expect(mockActivationRepository.findOne).not.toHaveBeenCalled();
+      expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 1);
     });
   });
 });

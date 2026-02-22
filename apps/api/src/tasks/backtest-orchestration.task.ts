@@ -1,7 +1,7 @@
 /**
  * Backtest Orchestration Task
  *
- * Scheduled task that runs twice daily at 3 AM and 3 PM UTC to orchestrate
+ * Scheduled task that runs daily at 3 AM UTC to orchestrate
  * automatic backtests for users with algo trading enabled.
  */
 

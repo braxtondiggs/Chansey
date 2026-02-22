@@ -102,7 +102,7 @@ export class AlgorithmContextBuilder {
    */
   private parseAlgorithmConfig(algorithm: Algorithm): Record<string, unknown> {
     return {
-      weight: algorithm.weight || 1.0,
+      weight: algorithm.weight || 5,
       enabled: algorithm.status,
       evaluate: algorithm.evaluate,
       cron: algorithm.cron
