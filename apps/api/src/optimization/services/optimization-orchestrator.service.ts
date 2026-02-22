@@ -404,6 +404,12 @@ export class OptimizationOrchestratorService {
       run.errorMessage = err.message;
       run.completedAt = new Date();
       await this.optimizationRunRepository.save(run);
+
+      this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_FAILED, {
+        runId: run.id,
+        reason: err.message
+      });
+
       throw error;
     }
   }

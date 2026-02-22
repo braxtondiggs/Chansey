@@ -12,7 +12,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { In, IsNull, LessThan, Repository } from 'typeorm';
+import { In, IsNull, LessThan, Not, Repository } from 'typeorm';
 
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { OrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
@@ -31,6 +31,7 @@ export class BacktestOrchestrationTask {
   private static readonly HISTORICAL_THRESHOLD_MS = 90 * 60 * 1000;
   private static readonly LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
   private static readonly OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
+  private static readonly PENDING_OPTIMIZATION_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
 
   private readonly bootedAt = Date.now();
   private readonly logger = new Logger(BacktestOrchestrationTask.name);
@@ -252,20 +253,30 @@ export class BacktestOrchestrationTask {
       return;
     }
 
-    const cutoff = new Date(Date.now() - BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS);
+    const runningCutoff = new Date(Date.now() - BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS);
+    const pendingCutoff = new Date(Date.now() - BacktestOrchestrationTask.PENDING_OPTIMIZATION_THRESHOLD_MS);
 
     const staleRuns = await this.optimizationRunRepository.find({
       where: [
-        { status: OptimizationStatus.RUNNING, lastHeartbeatAt: LessThan(cutoff) },
-        { status: OptimizationStatus.RUNNING, lastHeartbeatAt: IsNull(), startedAt: LessThan(cutoff) }
+        { status: OptimizationStatus.RUNNING, lastHeartbeatAt: LessThan(runningCutoff) },
+        { status: OptimizationStatus.RUNNING, lastHeartbeatAt: IsNull(), startedAt: LessThan(runningCutoff) },
+        { status: OptimizationStatus.PENDING, createdAt: LessThan(pendingCutoff) }
       ]
     });
 
     for (const run of staleRuns) {
       try {
-        const reason =
-          `Stale: no heartbeat for ${Math.round(BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS / 60000)} min. ` +
-          `Progress: ${run.combinationsTested}/${run.totalCombinations}`;
+        const isPending = run.status === OptimizationStatus.PENDING;
+        const thresholdMin = Math.round(
+          (isPending
+            ? BacktestOrchestrationTask.PENDING_OPTIMIZATION_THRESHOLD_MS
+            : BacktestOrchestrationTask.OPTIMIZATION_THRESHOLD_MS) / 60000
+        );
+        const reason = isPending
+          ? `Stale: PENDING for ${thresholdMin} min without being picked up by worker. ` +
+            `Created: ${run.createdAt.toISOString()}`
+          : `Stale: no heartbeat for ${thresholdMin} min. ` +
+            `Progress: ${run.combinationsTested}/${run.totalCombinations}`;
 
         this.logger.warn(`Marking stale optimization run ${run.id} as FAILED: ${reason}`);
 
@@ -347,6 +358,72 @@ export class BacktestOrchestrationTask {
 
     if (orphanedPipelines.length > 0) {
       this.logger.log(`Orphaned pipeline watchdog marked ${orphanedPipelines.length} pipeline(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Watchdog that detects RUNNING pipelines in OPTIMIZE stage whose
+   * linked optimization run has already FAILED (or been deleted).
+   * No time-based cutoff — a RUNNING pipeline with a FAILED optimization run is always invalid.
+   */
+  @Cron('*/15 * * * *')
+  async detectFailedOptimizationPipelines(): Promise<void> {
+    const timeSinceBoot = Date.now() - this.bootedAt;
+    if (timeSinceBoot < BacktestOrchestrationTask.BOOT_GRACE_PERIOD_MS) {
+      return;
+    }
+
+    const candidates = await this.pipelineRepository.find({
+      where: {
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.OPTIMIZE,
+        optimizationRunId: Not(IsNull())
+      }
+    });
+
+    const runIds = candidates.map((p) => p.optimizationRunId!);
+    const runs = runIds.length > 0 ? await this.optimizationRunRepository.find({ where: { id: In(runIds) } }) : [];
+    const runsById = new Map(runs.map((r) => [r.id, r]));
+
+    let marked = 0;
+    for (const pipeline of candidates) {
+      try {
+        const run = runsById.get(pipeline.optimizationRunId!);
+
+        // Pipeline is invalid if its optimization run is FAILED or missing entirely
+        if (run && run.status !== OptimizationStatus.FAILED) {
+          continue;
+        }
+
+        const reason = run
+          ? `Optimization run ${run.id} FAILED: ${run.errorMessage || 'unknown error'}`
+          : `Optimization run ${pipeline.optimizationRunId} no longer exists`;
+
+        this.logger.warn(`Marking pipeline ${pipeline.id} as FAILED — ${reason}`);
+
+        const result = await this.pipelineRepository.update(
+          { id: pipeline.id, status: PipelineStatus.RUNNING },
+          {
+            status: PipelineStatus.FAILED,
+            failureReason: reason,
+            completedAt: new Date()
+          }
+        );
+
+        if (result.affected === 0) {
+          this.logger.log(`Pipeline ${pipeline.id} already transitioned — skipping`);
+          continue;
+        }
+
+        marked++;
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to mark pipeline ${pipeline.id} with failed optimization as FAILED: ${err.message}`);
+      }
+    }
+
+    if (marked > 0) {
+      this.logger.log(`Failed-optimization pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
     }
   }
 }
