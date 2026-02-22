@@ -22,6 +22,7 @@ const LOCK_RENEWAL_MS = 30 * 60 * 1000;
  * BullMQ processor for optimization jobs
  */
 @Processor('optimization', {
+  concurrency: 2,
   lockDuration: 14_400_000, // 4 hours
   stalledInterval: 14_400_000, // 4 hours
   maxStalledCount: 2

@@ -8,6 +8,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
 
+import { BaseAlgorithmStrategy } from '../algorithm/base/base-algorithm-strategy';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { BacktestEngine } from '../order/backtest/backtest-engine.service';
 import { Risk } from '../risk/risk.entity';
@@ -360,6 +361,20 @@ export class StrategyEvaluationTask {
         this.logger.warn(
           `Found ${staleStrategies.length} strategies with stale heartbeats: ${staleStrategies.map((s) => s.name).join(', ')}`
         );
+
+        // Auto-recovery: attempt to restart cron jobs for stale strategies
+        for (const config of staleStrategies) {
+          try {
+            const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(config.algorithmId);
+            if (strategy && 'restartCronJob' in strategy) {
+              this.logger.log(`Attempting auto-recovery for stale strategy: ${config.name}`);
+              await (strategy as BaseAlgorithmStrategy).restartCronJob();
+            }
+          } catch (error: unknown) {
+            const err = toErrorInfo(error);
+            this.logger.error(`Auto-recovery failed for strategy ${config.name}: ${err.message}`);
+          }
+        }
       }
 
       const failingStrategies = await this.strategyService.getStrategiesWithHeartbeatFailures(3);

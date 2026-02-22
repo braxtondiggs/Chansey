@@ -162,9 +162,17 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
     if (!this.algorithm?.cron) return;
 
     try {
-      this.cronJob = new CronJob(this.algorithm.cron, () => this.scheduledExecution(), null, false, 'America/New_York');
+      const jobName = `${this.algorithm.name}_${this.id}`;
 
-      this.schedulerRegistry.addCronJob(`${this.algorithm.name}_${this.id}`, this.cronJob);
+      // Idempotent: remove existing job before re-registering
+      try {
+        this.schedulerRegistry.deleteCronJob(jobName);
+      } catch {
+        // Job doesn't exist yet — expected on first registration
+      }
+
+      this.cronJob = new CronJob(this.algorithm.cron, () => this.scheduledExecution(), null, false, 'America/New_York');
+      this.schedulerRegistry.addCronJob(jobName, this.cronJob);
       this.cronJob.start();
 
       this.logger.log(`Cron job started with schedule: ${this.algorithm.cron}`);
@@ -188,6 +196,17 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
         const err = toErrorInfo(error);
         this.logger.error(`Failed to stop cron job: ${err.message}`);
       }
+    }
+  }
+
+  /**
+   * Restart the cron job for auto-recovery.
+   * Safe to call even if the job is already running (idempotent via startCronJob).
+   */
+  async restartCronJob(): Promise<void> {
+    if (this.shouldStartCronJob()) {
+      this.logger.log(`Restarting cron job for algorithm "${this.algorithm?.name}"`);
+      await this.startCronJob();
     }
   }
 
