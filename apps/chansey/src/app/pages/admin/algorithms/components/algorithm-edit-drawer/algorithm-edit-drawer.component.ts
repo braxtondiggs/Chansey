@@ -5,7 +5,6 @@ import { ButtonModule } from 'primeng/button';
 import { DividerModule } from 'primeng/divider';
 import { DrawerModule } from 'primeng/drawer';
 import { FieldsetModule } from 'primeng/fieldset';
-import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
 import { TextareaModule } from 'primeng/textarea';
@@ -29,7 +28,6 @@ import {
     DrawerModule,
     FieldsetModule,
     FormsModule,
-    InputNumberModule,
     InputTextModule,
     ReactiveFormsModule,
     SelectModule,
@@ -66,7 +64,6 @@ export class AlgorithmEditDrawerComponent {
     category: [AlgorithmCategory.TECHNICAL],
     status: [AlgorithmStatus.INACTIVE],
     evaluate: [true],
-    weight: [1.0],
     cron: [
       '0 */4 * * *',
       [Validators.required, Validators.pattern(/^([0-9*,/-]+) ([0-9*,/-]+) ([0-9*,/-]+) ([0-9*,/-]+) ([0-9*,/-]+)$/)]
@@ -104,7 +101,6 @@ export class AlgorithmEditDrawerComponent {
       category: AlgorithmCategory.TECHNICAL,
       status: AlgorithmStatus.INACTIVE,
       evaluate: true,
-      weight: 1.0,
       cron: '0 */4 * * *',
       version: '',
       author: ''
@@ -126,7 +122,6 @@ export class AlgorithmEditDrawerComponent {
       category: algorithm.category || AlgorithmCategory.TECHNICAL,
       status: algorithm.status || AlgorithmStatus.INACTIVE,
       evaluate: algorithm.evaluate,
-      weight: algorithm.weight || 1.0,
       cron: algorithm.cron,
       version: algorithm.version || '',
       author: algorithm.author || ''
