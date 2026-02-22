@@ -248,7 +248,7 @@ export class AlgorithmPerformanceService {
     performanceRecords.sort((a, b) => (b.roi || 0) - (a.roi || 0));
 
     // Assign ranks and update allocation percentages
-    const baseAllocation = 1.0; // Base allocation percentage
+    const baseAllocation = 5.0; // Base allocation percentage
     const rankBonus = 0.5; // Bonus per rank position
 
     for (let i = 0; i < performanceRecords.length; i++) {

@@ -32,6 +32,7 @@ import {
 } from './paper-trading.job-data';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
+import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { User } from '../../users/users.entity';
 
@@ -100,7 +101,7 @@ export class PaperTradingService {
     const savedSession = await this.sessionRepository.save(session);
 
     // Initialize quote currency account with initial capital
-    const quoteCurrency = dto.quoteCurrency ?? 'USD';
+    const quoteCurrency = dto.quoteCurrency ?? DEFAULT_QUOTE_CURRENCY;
     const quoteAccount = this.accountRepository.create({
       currency: quoteCurrency,
       available: dto.initialCapital,

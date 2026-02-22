@@ -56,6 +56,7 @@ import { Algorithm } from '../algorithm/algorithm.entity';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { IndicatorModule } from '../algorithm/indicators/indicator.module';
+import { BalanceModule } from '../balance/balance.module';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
@@ -120,6 +121,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BullModule.registerQueue({ name: 'position-monitor' }),
     SharedCacheModule,
     forwardRef(() => AlgorithmModule),
+    forwardRef(() => BalanceModule),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OHLCModule),
