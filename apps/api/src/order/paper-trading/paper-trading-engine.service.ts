@@ -58,6 +58,17 @@ export interface TickResult {
   prices: Record<string, number>;
 }
 
+/** Candle data shape returned by market-data service and consumed by algorithms. */
+type CandleData = {
+  avg: number;
+  high: number;
+  low: number;
+  date: Date;
+  open?: number;
+  close?: number;
+  volume?: number;
+};
+
 const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): TradingSignal => {
   let action: TradingSignal['action'];
   switch (signal.type) {
@@ -170,10 +181,16 @@ export class PaperTradingEngineService {
       }
 
       // 3b. Fetch historical candles for algorithm indicator computation
-      const historicalCandles: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {};
+      const historicalCandles: Record<string, CandleData[]> = {};
       const candleResults = await Promise.all(
         allSymbols.map(async (symbol) => {
-          const candles = await this.marketDataService.getHistoricalCandles(exchangeSlug, symbol);
+          const candles = await this.marketDataService.getHistoricalCandles(
+            exchangeSlug,
+            symbol,
+            '1h',
+            100,
+            session.user
+          );
           return { symbol, candles };
         })
       );
@@ -277,7 +294,7 @@ export class PaperTradingEngineService {
     prices: Record<string, number>,
     accounts: PaperTradingAccount[],
     quoteCurrency: string,
-    historicalCandles: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {}
+    historicalCandles: Record<string, CandleData[]> = {}
   ): Promise<TradingSignal[]> {
     try {
       // Build context for algorithm
@@ -812,9 +829,9 @@ export class PaperTradingEngineService {
    */
   private buildPriceDataContext(
     prices: Record<string, number>,
-    historicalCandles: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {}
-  ): Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> {
-    const priceData: Record<string, Array<{ avg: number; high: number; low: number; date: Date }>> = {};
+    historicalCandles: Record<string, CandleData[]> = {}
+  ): Record<string, CandleData[]> {
+    const priceData: Record<string, CandleData[]> = {};
     const now = new Date();
 
     for (const [symbol, price] of Object.entries(prices)) {

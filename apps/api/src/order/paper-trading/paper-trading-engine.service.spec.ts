@@ -155,7 +155,7 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-2', initialCapital: 1000, tickCount: 10 } as any;
+    const session = { id: 'session-2', initialCapital: 1000, tickCount: 10, user: { id: 'user-1' } } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -210,7 +210,13 @@ describe('PaperTradingEngineService', () => {
 
     orderRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-3', initialCapital: 1000, tickCount: 1, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-3',
+      initialCapital: 1000,
+      tickCount: 1,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -288,7 +294,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-slippage', initialCapital: 10000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-slippage',
+      initialCapital: 10000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -375,7 +387,8 @@ describe('PaperTradingEngineService', () => {
       initialCapital: 50000,
       tickCount: 10,
       tradingFee: 0.001,
-      peakPortfolioValue: 51000
+      peakPortfolioValue: 51000,
+      user: { id: 'user-1' }
     } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
@@ -443,7 +456,13 @@ describe('PaperTradingEngineService', () => {
     signalRepository.create.mockReturnValue({ processed: false });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
-    const session = { id: 'session-no-pos', initialCapital: 10000, tickCount: 1, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-no-pos',
+      initialCapital: 10000,
+      tickCount: 1,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -476,7 +495,7 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-no-signals', initialCapital: 10000, tickCount: 10 } as any;
+    const session = { id: 'session-no-signals', initialCapital: 10000, tickCount: 10, user: { id: 'user-1' } } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -507,7 +526,7 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-algo-fail', initialCapital: 10000, tickCount: 10 } as any;
+    const session = { id: 'session-algo-fail', initialCapital: 10000, tickCount: 10, user: { id: 'user-1' } } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -590,7 +609,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-cap', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-cap',
+      initialCapital: 50000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -658,7 +683,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-err', initialCapital: 10000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-err',
+      initialCapital: 10000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -739,7 +770,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-pct', initialCapital: 10000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-pct',
+      initialCapital: 10000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -826,7 +863,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-deplete', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-deplete',
+      initialCapital: 50000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -925,7 +968,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-risk', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-risk',
+      initialCapital: 50000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);
@@ -1037,7 +1086,13 @@ describe('PaperTradingEngineService', () => {
     snapshotRepository.create.mockReturnValue({});
     snapshotRepository.save.mockResolvedValue({});
 
-    const session = { id: 'session-multi', initialCapital: 50000, tickCount: 10, tradingFee: 0.001 } as any;
+    const session = {
+      id: 'session-multi',
+      initialCapital: 50000,
+      tickCount: 10,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
     const exchangeKey = { exchange: { slug: 'binance' } } as any;
 
     const result = await service.processTick(session, exchangeKey);

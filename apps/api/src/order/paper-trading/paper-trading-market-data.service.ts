@@ -290,10 +290,15 @@ export class PaperTradingMarketDataService {
     timeframe = '1h',
     limit = 100,
     user?: User
-  ): Promise<Array<{ avg: number; high: number; low: number; date: Date }>> {
+  ): Promise<
+    Array<{ avg: number; high: number; low: number; date: Date; open?: number; close?: number; volume?: number }>
+  > {
     const cacheKey = `paper-trading:ohlcv:${exchangeSlug}:${symbol}:${timeframe}`;
 
-    const cached = await this.cacheManager.get<Array<{ avg: number; high: number; low: number; date: Date }>>(cacheKey);
+    const cached =
+      await this.cacheManager.get<
+        Array<{ avg: number; high: number; low: number; date: Date; open?: number; close?: number; volume?: number }>
+      >(cacheKey);
     if (cached) {
       return cached;
     }
@@ -307,10 +312,13 @@ export class PaperTradingMarketDataService {
       const ohlcv = await client.fetchOHLCV(formattedSymbol, timeframe, undefined, limit);
 
       const candles = ohlcv.map((candle) => ({
-        avg: candle[4] as number,
+        avg: candle[4] as number, // close price — representative price for indicators
         high: candle[2] as number,
         low: candle[3] as number,
-        date: new Date(candle[0] as number)
+        date: new Date(candle[0] as number),
+        open: candle[1] as number,
+        close: candle[4] as number,
+        volume: candle[5] as number
       }));
 
       // Cache for 5 minutes — candles shift slowly relative to 30s tick frequency

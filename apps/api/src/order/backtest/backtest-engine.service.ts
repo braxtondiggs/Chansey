@@ -1768,7 +1768,7 @@ export class BacktestEngine {
    */
   private buildPriceSummary(candle: OHLCCandle): PriceSummary {
     return {
-      avg: candle.close,
+      avg: candle.close, // representative price — close used as the primary indicator input
       coin: candle.coinId,
       date: candle.timestamp,
       high: candle.high,
