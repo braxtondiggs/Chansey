@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 
 import { CapitalAllocationService } from './capital-allocation.service';
 import { PositionTrackingService } from './position-tracking.service';
+import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-executor.service';
 
@@ -50,7 +51,8 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly exchangeManager: ExchangeManagerService,
     private readonly tradingStateService: TradingStateService,
     private readonly compositeRegimeService: CompositeRegimeService,
-    private readonly regimeGateService: RegimeGateService
+    private readonly regimeGateService: RegimeGateService,
+    private readonly preTradeRiskGate: PreTradeRiskGateService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -157,6 +159,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();
     let gateBlockedCount = 0;
+    let drawdownBlockedCount = 0;
 
     for (const strategy of strategies) {
       try {
@@ -171,6 +174,8 @@ export class LiveTradingService implements OnApplicationShutdown {
         );
 
         if (signal && signal.action !== 'hold') {
+          const action: Exclude<typeof signal.action, 'hold'> = signal.action as Exclude<typeof signal.action, 'hold'>;
+
           const validation = this.strategyExecutor.validateSignal(signal, allocatedCapital);
           if (!validation.valid) {
             this.logger.warn(`Invalid signal for user ${user.id}, strategy ${strategy.id}: ${validation.reason}`);
@@ -179,7 +184,7 @@ export class LiveTradingService implements OnApplicationShutdown {
 
           // Regime gate: block BUY signals in bear/extreme regimes
           const gateDecision = this.regimeGateService.filterLiveSignal(
-            signal.action,
+            action,
             compositeRegime,
             overrideActive,
             volatilityRegime,
@@ -187,6 +192,13 @@ export class LiveTradingService implements OnApplicationShutdown {
           );
           if (!gateDecision.allowed) {
             gateBlockedCount++;
+            continue;
+          }
+
+          // Drawdown gate: block BUY signals when deployment is in drawdown breach
+          const drawdownCheck = await this.preTradeRiskGate.checkDrawdown(strategy.id, action);
+          if (!drawdownCheck.allowed) {
+            drawdownBlockedCount++;
             continue;
           }
 
@@ -202,6 +214,10 @@ export class LiveTradingService implements OnApplicationShutdown {
       this.logger.log(
         `Regime gate blocked ${gateBlockedCount} signal(s) for user ${user.id} (regime=${compositeRegime})`
       );
+    }
+
+    if (drawdownBlockedCount > 0) {
+      this.logger.log(`Drawdown gate blocked ${drawdownBlockedCount} BUY signal(s) for user ${user.id}`);
     }
   }
 
