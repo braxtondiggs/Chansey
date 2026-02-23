@@ -309,6 +309,7 @@ describe('TradeExecutionService', () => {
           TradeExecutionService,
           { provide: getRepositoryToken(Order), useValue: mockOrderRepository },
           { provide: getRepositoryToken(User), useValue: mockUserRepository },
+          { provide: getRepositoryToken(AlgorithmActivation), useValue: mockActivationRepository },
           { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
           { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
           { provide: CoinService, useValue: mockCoinService },
@@ -704,12 +705,6 @@ describe('TradeExecutionService', () => {
       mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
       jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
 
-      // Activation with 5% allocation
-      mockActivationRepository.findOne.mockResolvedValue({
-        id: 'activation-id',
-        allocationPercentage: 5
-      });
-
       const signal = {
         algorithmActivationId: 'activation-id',
         userId: 'user-id',
@@ -718,16 +713,14 @@ describe('TradeExecutionService', () => {
         symbol: 'BTC/USDT',
         quantity: 999, // Should be overridden by auto-sizing
         autoSize: true,
-        portfolioValue: 10000
+        portfolioValue: 10000,
+        allocationPercentage: 5
       };
 
       await service.executeTradeSignal(signal);
 
       // 5% of $10,000 = $500; $500 / $100 (ask price) = 5 units
       expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 5);
-      expect(mockActivationRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 'activation-id', userId: 'user-id' }
-      });
     });
 
     it('should use provided quantity when autoSize is not set (backward compat)', async () => {
@@ -748,15 +741,12 @@ describe('TradeExecutionService', () => {
 
       // Should use the provided quantity as-is
       expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 2.5);
-      expect(mockActivationRepository.findOne).not.toHaveBeenCalled();
     });
 
-    it('should fall back to provided quantity when activation not found', async () => {
+    it('should fall back to provided quantity when allocationPercentage is missing', async () => {
       const mockExchangeClient = buildExchangeClient();
       mockExchangeManagerService.getExchangeClient.mockResolvedValue(mockExchangeClient);
       jest.spyOn(service as any, 'estimateSlippageFromOrderBook').mockResolvedValue(0);
-
-      mockActivationRepository.findOne.mockResolvedValue(null);
 
       const signal = {
         algorithmActivationId: 'missing-activation',
@@ -767,15 +757,13 @@ describe('TradeExecutionService', () => {
         quantity: 3,
         autoSize: true,
         portfolioValue: 10000
+        // no allocationPercentage — auto-sizing skipped
       };
 
       await service.executeTradeSignal(signal);
 
-      // Falls back to original quantity
+      // Falls back to original quantity since allocationPercentage is missing
       expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 3);
-      expect(mockActivationRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 'missing-activation', userId: 'user-id' }
-      });
     });
 
     it('should skip auto-sizing when portfolioValue is 0', async () => {
@@ -797,7 +785,6 @@ describe('TradeExecutionService', () => {
       await service.executeTradeSignal(signal);
 
       // Should use provided quantity since portfolioValue is 0
-      expect(mockActivationRepository.findOne).not.toHaveBeenCalled();
       expect(mockExchangeClient.createMarketOrder).toHaveBeenCalledWith('BTC/USDT', 'buy', 1);
     });
   });
