@@ -28,6 +28,7 @@ import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyModule } from '../../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../../exchange/exchange.module';
 import { MetricsModule } from '../../metrics/metrics.module';
+import { OHLCModule } from '../../ohlc/ohlc.module';
 import { SharedCacheModule } from '../../shared-cache.module';
 import { UsersModule } from '../../users/users.module';
 import { BacktestSharedModule } from '../backtest/shared';
@@ -55,6 +56,7 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => UsersModule),
+    forwardRef(() => OHLCModule),
     MetricsModule
   ],
   controllers: [PaperTradingController],
