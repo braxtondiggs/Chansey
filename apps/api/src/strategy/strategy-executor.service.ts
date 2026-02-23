@@ -29,6 +29,11 @@ export interface MarketData {
 
 const MIN_CONFIDENCE_THRESHOLD = 0.5;
 
+/** Maximum allocation per trade (20% of strategy's allocated capital) */
+const MAX_PER_TRADE_ALLOCATION = 0.2;
+/** Minimum allocation per trade (5% of strategy's allocated capital) */
+const MIN_PER_TRADE_ALLOCATION = 0.05;
+
 /**
  * Executes trading strategies and generates buy/sell signals.
  * Wraps AlgorithmRegistry to run strategy logic with market data and positions.
@@ -214,10 +219,27 @@ export class StrategyExecutorService {
     }
 
     // Use signal quantity or calculate a default from capital scaled by strength
-    const quantity = signal.quantity || (availableCapital * signal.strength) / price;
+    let quantity = signal.quantity || (availableCapital * signal.strength) / price;
+
+    const action = this.mapSignalType(signal.type);
+
+    // Cap per-trade position size for buy signals (mirrors paper trading MAX_ALLOCATION)
+    // Sell signals are bounded by existing position size, so no cap needed.
+    if (action !== 'sell') {
+      const maxQuantity = (availableCapital * MAX_PER_TRADE_ALLOCATION) / price;
+      const minQuantity = (availableCapital * MIN_PER_TRADE_ALLOCATION) / price;
+      if (quantity > maxQuantity) {
+        this.logger.warn(
+          `Capping ${symbol} quantity from ${quantity.toFixed(8)} to ${maxQuantity.toFixed(8)} (${(MAX_PER_TRADE_ALLOCATION * 100).toFixed(0)}% cap)`
+        );
+        quantity = maxQuantity;
+      } else if (quantity < minQuantity && quantity > 0) {
+        quantity = minQuantity;
+      }
+    }
 
     return {
-      action: this.mapSignalType(signal.type),
+      action,
       symbol,
       quantity,
       price,

@@ -205,6 +205,36 @@ describe('LiveTradingService', () => {
     expect(result).toEqual({ running: true, enrolledUsers: 5, instanceId: 'instance-1' });
   });
 
+  it('caps oversized buy signal quantity before placing order', async () => {
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
+    const user = createUser();
+    userRepo.find.mockResolvedValue([user]);
+    balanceService.getUserBalances.mockResolvedValue({
+      current: [{ balances: [{ free: '10000', locked: '0', usdValue: 10000 }] }]
+    } as any);
+    riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue([{ id: 'strategy-1' } as any]);
+    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 5000]]));
+    positionTracking.getPositions.mockResolvedValue([]);
+    jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
+
+    // Signal with quantity far exceeding 20% cap (0.5 BTC @ 50000 = $25000, capital = $5000)
+    // StrategyExecutorService.mapAlgorithmSignal would cap to 20% → 0.02 BTC
+    const cappedSignal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.02, price: 50000 };
+    strategyExecutor.executeStrategy.mockResolvedValue(cappedSignal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+    orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+    await service.executeLiveTrading();
+
+    // Verify the order was placed with the capped quantity, not the original oversized one
+    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledWith(
+      user.id,
+      'strategy-1',
+      expect.objectContaining({ quantity: 0.02 }),
+      expect.any(String)
+    );
+  });
+
   it('releases lock on shutdown when held', async () => {
     (service as any).currentLockId = 'shutdown-lock';
 
