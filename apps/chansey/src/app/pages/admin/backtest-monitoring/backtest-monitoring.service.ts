@@ -13,10 +13,11 @@ import {
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
   PipelineStageCountsDto,
+  SignalActivityFeedDto,
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from '@chansey/api-interfaces';
-import { FREQUENT_POLICY, authenticatedFetch, queryKeys } from '@chansey/shared';
+import { FREQUENT_POLICY, REALTIME_POLICY, authenticatedFetch, queryKeys } from '@chansey/shared';
 
 /**
  * Builds URL with query parameters
@@ -159,6 +160,26 @@ export class BacktestMonitoringService {
       queryFn: () => authenticatedFetch<PipelineStageCountsDto>(`${this.apiUrl}/pipeline-stage-counts`),
       ...FREQUENT_POLICY
     }));
+  }
+
+  /**
+   * Query signal activity feed with auto-refresh
+   *
+   * Uses REALTIME policy for ~45s auto-refresh
+   */
+  useSignalActivityFeed(limit?: Signal<number>, enabled?: Signal<boolean>) {
+    return injectQuery(() => {
+      const currentLimit = limit?.() ?? 100;
+      return {
+        queryKey: queryKeys.admin.backtestMonitoring.signalActivityFeed(currentLimit),
+        queryFn: () =>
+          authenticatedFetch<SignalActivityFeedDto>(
+            buildUrl(`${this.apiUrl}/signal-activity-feed`, { limit: currentLimit })
+          ),
+        enabled: enabled?.() ?? true,
+        ...REALTIME_POLICY
+      };
+    });
   }
 
   /**

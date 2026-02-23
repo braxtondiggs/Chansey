@@ -35,6 +35,7 @@ const createMockQueryBuilder = () => {
     andWhere: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
+    innerJoinAndSelect: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     addGroupBy: jest.fn().mockReturnThis(),
@@ -173,11 +174,32 @@ describe('BacktestMonitoringService', () => {
         { provide: getRepositoryToken(BacktestTrade), useValue: tradeRepo },
         { provide: getRepositoryToken(BacktestSignal), useValue: signalRepo },
         { provide: getRepositoryToken(SimulatedOrderFill), useValue: fillRepo },
-        { provide: getRepositoryToken(OptimizationRun), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder), count: jest.fn().mockResolvedValue(0) } },
-        { provide: getRepositoryToken(OptimizationResult), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) } },
-        { provide: getRepositoryToken(PaperTradingSession), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder), count: jest.fn().mockResolvedValue(0) } },
-        { provide: getRepositoryToken(PaperTradingOrder), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) } },
-        { provide: getRepositoryToken(PaperTradingSignal), useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) } }
+        {
+          provide: getRepositoryToken(OptimizationRun),
+          useValue: {
+            createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+            count: jest.fn().mockResolvedValue(0)
+          }
+        },
+        {
+          provide: getRepositoryToken(OptimizationResult),
+          useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) }
+        },
+        {
+          provide: getRepositoryToken(PaperTradingSession),
+          useValue: {
+            createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+            count: jest.fn().mockResolvedValue(0)
+          }
+        },
+        {
+          provide: getRepositoryToken(PaperTradingOrder),
+          useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) }
+        },
+        {
+          provide: getRepositoryToken(PaperTradingSignal),
+          useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) }
+        }
       ]
     }).compile();
 
@@ -550,6 +572,170 @@ describe('BacktestMonitoringService', () => {
         relations: ['baseCoin', 'quoteCoin'],
         order: { executedAt: 'ASC' }
       });
+    });
+  });
+
+  describe('getSignalActivityFeed', () => {
+    it('returns combined feed with health summary when no signals exist', async () => {
+      // Mock backtest signals query (getMany returns empty)
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+      // Mock paper signals query (getMany returns empty)
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+      // Mock backtest stats (getRawOne for consolidated query)
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
+        maxTs: null,
+        hourCount: '0',
+        dayCount: '0'
+      });
+      // Mock paper stats (getRawOne for consolidated query)
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
+        maxTs: null,
+        hourCount: '0',
+        dayCount: '0'
+      });
+
+      const result = await service.getSignalActivityFeed(100);
+
+      expect(result).toMatchObject({
+        signals: [],
+        health: expect.objectContaining({
+          signalsLastHour: 0,
+          signalsLast24h: 0,
+          totalActiveSources: 0
+        })
+      });
+      expect(result).not.toHaveProperty('totalCount');
+    });
+
+    it('merges and sorts signals by timestamp DESC', async () => {
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+      const tenMinAgo = new Date(now.getTime() - 10 * 60 * 1000);
+
+      // Mock backtest signals
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([
+        createSignal({
+          id: 'bs-1',
+          timestamp: tenMinAgo,
+          backtest: {
+            id: 'bt-1',
+            name: 'Test BT',
+            algorithm: { name: 'Algo1' },
+            user: { email: 'user@test.com' }
+          } as any
+        })
+      ]);
+
+      // Mock paper signals
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'ps-1',
+          createdAt: fiveMinAgo,
+          signalType: SignalType.EXIT,
+          direction: SignalDirection.LONG,
+          instrument: 'ETH/USDT',
+          quantity: 2,
+          price: 3000,
+          confidence: 0.8,
+          reason: 'Take profit',
+          processed: true,
+          session: {
+            id: 'sess-1',
+            name: 'Test Session',
+            algorithm: { name: 'Algo2' },
+            user: { email: 'user2@test.com' }
+          }
+        }
+      ]);
+
+      // Mock health queries
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
+        maxTs: tenMinAgo.toISOString(),
+        hourCount: '1',
+        dayCount: '1'
+      });
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
+        maxTs: fiveMinAgo.toISOString(),
+        hourCount: '1',
+        dayCount: '1'
+      });
+
+      const result = await service.getSignalActivityFeed(10);
+
+      expect(result.signals).toHaveLength(2);
+      // Paper signal (5min ago) should come first (more recent)
+      expect(result.signals[0].id).toBe('ps-1');
+      expect(result.signals[0].source).toBe('PAPER_TRADING');
+      expect(result.signals[1].id).toBe('bs-1');
+      expect(result.signals[1].source).toBe('BACKTEST');
+    });
+
+    it('respects limit parameter', async () => {
+      const signals = Array.from({ length: 5 }, (_, i) =>
+        createSignal({
+          id: `bs-${i}`,
+          timestamp: new Date(Date.now() - i * 60000),
+          backtest: {
+            id: 'bt-1',
+            name: 'BT',
+            algorithm: { name: 'Algo' },
+            user: { email: 'u@t.com' }
+          } as any
+        })
+      );
+
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce(signals);
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+
+      // Health queries
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({ maxTs: null, hourCount: '0', dayCount: '0' });
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({ maxTs: null, hourCount: '0', dayCount: '0' });
+
+      const result = await service.getSignalActivityFeed(3);
+
+      expect(result.signals.length).toBeLessThanOrEqual(3);
+    });
+  });
+
+  describe('getSignalHealth (via getSignalActivityFeed)', () => {
+    it('returns combined counts from both signal tables', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+
+      const recentTime = new Date(Date.now() - 60000).toISOString();
+
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
+        maxTs: recentTime,
+        hourCount: '5',
+        dayCount: '20'
+      });
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
+        maxTs: null,
+        hourCount: '3',
+        dayCount: '10'
+      });
+      (backtestRepo.count as jest.Mock).mockResolvedValueOnce(2);
+
+      const result = await service.getSignalActivityFeed(100);
+
+      expect(result.health.signalsLastHour).toBe(8);
+      expect(result.health.signalsLast24h).toBe(30);
+      expect(result.health.lastSignalTime).toBe(recentTime);
+      expect(result.health.lastSignalAgoMs).toBeDefined();
+    });
+
+    it('handles no signals gracefully', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValueOnce([]);
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({ maxTs: null, hourCount: '0', dayCount: '0' });
+      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({ maxTs: null, hourCount: '0', dayCount: '0' });
+
+      const result = await service.getSignalActivityFeed(100);
+
+      expect(result.health.lastSignalTime).toBeUndefined();
+      expect(result.health.lastSignalAgoMs).toBeUndefined();
+      expect(result.health.signalsLastHour).toBe(0);
+      expect(result.health.signalsLast24h).toBe(0);
     });
   });
 });
