@@ -4,7 +4,9 @@ import { PaperTradingMarketDataService } from './paper-trading-market-data.servi
 
 import type { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 
-const createService = (overrides: Partial<{ cacheManager: any; exchangeManager: any; config: any }> = {}) => {
+const createService = (
+  overrides: Partial<{ cacheManager: any; exchangeManager: any; config: any }> = {}
+) => {
   const cacheManager = overrides.cacheManager ?? {
     get: jest.fn(),
     set: jest.fn(),
@@ -20,7 +22,11 @@ const createService = (overrides: Partial<{ cacheManager: any; exchangeManager: 
   const config = overrides.config ?? { priceCacheTtlMs: 1000 };
 
   return {
-    service: new PaperTradingMarketDataService(config as any, cacheManager, exchangeManager as ExchangeManagerService),
+    service: new PaperTradingMarketDataService(
+      config as any,
+      cacheManager,
+      exchangeManager as ExchangeManagerService
+    ),
     cacheManager,
     exchangeManager
   };
@@ -123,5 +129,90 @@ describe('PaperTradingMarketDataService', () => {
 
     expect(result).toEqual({ estimatedPrice: 0, slippageBps: 10, marketImpact: 0 });
     loggerSpy.mockRestore();
+  });
+
+  describe('getHistoricalCandles', () => {
+    it('returns cached candles when cache hit', async () => {
+      const cachedCandles = [
+        { avg: 105, high: 110, low: 90, date: new Date(1000), open: 100, close: 105, volume: 500 },
+        { avg: 110, high: 115, low: 95, date: new Date(2000), open: 105, close: 110, volume: 600 }
+      ];
+
+      const { service, exchangeManager } = createService({
+        cacheManager: {
+          get: jest.fn().mockResolvedValue(cachedCandles),
+          set: jest.fn()
+        }
+      });
+
+      const result = await service.getHistoricalCandles('binance', 'BTC/USD');
+
+      expect(result).toBe(cachedCandles);
+      expect(exchangeManager.getPublicClient).not.toHaveBeenCalled();
+    });
+
+    it('fetches and caches candles on cache miss', async () => {
+      const rawOHLCV = [
+        [1000, 100, 110, 90, 105, 500],
+        [2000, 105, 115, 95, 110, 600],
+        [3000, 110, 120, 100, 115, 700]
+      ];
+
+      const client = {
+        fetchOHLCV: jest.fn().mockResolvedValue(rawOHLCV)
+      };
+
+      const cacheManager = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn()
+      };
+
+      const exchangeManager = {
+        formatSymbol: jest.fn().mockReturnValue('BTC/USD'),
+        getPublicClient: jest.fn().mockResolvedValue(client)
+      };
+
+      const { service } = createService({ cacheManager, exchangeManager });
+
+      const result = await service.getHistoricalCandles('binance', 'BTC/USD', '1h', 100);
+
+      expect(result).toHaveLength(3);
+      expect(result[0]).toEqual(
+        expect.objectContaining({ avg: 105, high: 110, low: 90, open: 100, close: 105, volume: 500 })
+      );
+
+      // Verify cached with 5-minute TTL
+      expect(cacheManager.set).toHaveBeenCalledWith(
+        'paper-trading:ohlcv:binance:BTC/USD:1h:public',
+        result,
+        300000
+      );
+    });
+
+    it('returns empty array when fetch throws', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      const client = {
+        fetchOHLCV: jest.fn().mockRejectedValue(new Error('network error'))
+      };
+
+      const cacheManager = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn()
+      };
+
+      const exchangeManager = {
+        formatSymbol: jest.fn().mockReturnValue('BTC/USD'),
+        getPublicClient: jest.fn().mockResolvedValue(client)
+      };
+
+      const { service } = createService({ cacheManager, exchangeManager });
+
+      const result = await service.getHistoricalCandles('binance', 'BTC/USD');
+
+      expect(result).toEqual([]);
+      expect(cacheManager.set).not.toHaveBeenCalled();
+      loggerSpy.mockRestore();
+    });
   });
 });

@@ -24,6 +24,7 @@ import { WFAConsistencyGate } from './gates/wfa-consistency.gate';
 import { LiveTradingService } from './live-trading.service';
 import { PoolStatisticsService } from './pool-statistics.service';
 import { PositionTrackingService } from './position-tracking.service';
+import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 // eslint-disable-next-line import/order
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { ConsecutiveLossesCheck } from './risk/consecutive-losses.check';
@@ -84,6 +85,7 @@ import { User } from '../users/users.entity';
     StrategyExecutorService,
     SignalThrottleService,
     LiveTradingService,
+    PreTradeRiskGateService,
     UserPerformanceService,
     PoolStatisticsService,
     PromotionGateService,

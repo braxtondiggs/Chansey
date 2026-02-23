@@ -383,6 +383,14 @@ export class PaperTradingEngineService {
         // Calculate quantity based on signal
         if (signal.quantity) {
           quantity = signal.quantity;
+          // Cap explicit quantity to MAX_ALLOCATION of portfolio value
+          const maxQuantity = (portfolio.totalValue * PaperTradingEngineService.MAX_ALLOCATION) / executionPrice;
+          if (quantity > maxQuantity) {
+            this.logger.warn(
+              `Capping explicit BUY quantity from ${quantity} to ${maxQuantity} (${PaperTradingEngineService.MAX_ALLOCATION * 100}% cap)`
+            );
+            quantity = maxQuantity;
+          }
         } else if (signal.percentage) {
           const investmentAmount =
             portfolio.totalValue * Math.min(signal.percentage, PaperTradingEngineService.MAX_ALLOCATION);
@@ -814,7 +822,8 @@ export class PaperTradingEngineService {
   }
 
   /**
-   * Helper: Build price data context for algorithm
+   * Build price data context with historical candles for algorithm indicator calculations.
+   * Fetches OHLCV history so strategies (e.g. Confluence) have enough data for MACD, Bollinger Bands, ATR, etc.
    */
   private buildPriceDataContext(
     prices: Record<string, number>,
