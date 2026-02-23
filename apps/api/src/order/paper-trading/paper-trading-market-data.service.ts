@@ -7,6 +7,7 @@ import { Cache } from 'cache-manager';
 import { paperTradingConfig } from './paper-trading.config';
 
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import type { User } from '../../users/users.entity';
 
@@ -290,15 +291,10 @@ export class PaperTradingMarketDataService {
     timeframe = '1h',
     limit = 100,
     user?: User
-  ): Promise<
-    Array<{ avg: number; high: number; low: number; date: Date; open?: number; close?: number; volume?: number }>
-  > {
-    const cacheKey = `paper-trading:ohlcv:${exchangeSlug}:${symbol}:${timeframe}`;
+  ): Promise<CandleData[]> {
+    const cacheKey = `paper-trading:ohlcv:${exchangeSlug}:${symbol}:${timeframe}:${user?.id ?? 'public'}`;
 
-    const cached =
-      await this.cacheManager.get<
-        Array<{ avg: number; high: number; low: number; date: Date; open?: number; close?: number; volume?: number }>
-      >(cacheKey);
+    const cached = await this.cacheManager.get<CandleData[]>(cacheKey);
     if (cached) {
       return cached;
     }

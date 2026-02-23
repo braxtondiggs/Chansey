@@ -9,7 +9,6 @@ import {
 } from '../algorithm/interfaces/algorithm-result.interface';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
-import { Coin } from '../coin/coin.entity';
 import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -188,7 +187,7 @@ export class StrategyExecutorService {
 
   private mapAlgorithmSignal(
     signal: AlgorithmTradingSignal,
-    coins: Coin[],
+    coins: Array<{ id: string; symbol: string }>,
     marketData: MarketData[],
     availableCapital: number
   ): TradingSignal | null {
@@ -226,7 +225,10 @@ export class StrategyExecutorService {
     };
   }
 
-  private convertPositions(positions: UserStrategyPosition[], coins: Coin[]): Record<string, number> {
+  private convertPositions(
+    positions: UserStrategyPosition[],
+    coins: Array<{ id: string; symbol: string }>
+  ): Record<string, number> {
     const result: Record<string, number> = {};
 
     for (const pos of positions) {

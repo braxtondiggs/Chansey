@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -197,7 +197,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
   /**
    * Check if we have enough data for squeeze detection
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: BollingerSqueezeConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: BollingerSqueezeConfig): boolean {
     const minRequired = config.period + config.minSqueezeBars + 5;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
@@ -244,7 +244,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     upper: number[],
     middle: number[],
     lower: number[],
@@ -379,7 +379,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
    */
   private calculateConfidence(
     squeezeState: SqueezeState,
-    prices: PriceSummary[],
+    prices: CandleData[],
     pb: number[],
     bandwidth: number[],
     config: BollingerSqueezeConfig,
@@ -417,7 +417,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
    * Prepare chart data with squeeze state indicators
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     upper: number[],
     middle: number[],
     lower: number[],

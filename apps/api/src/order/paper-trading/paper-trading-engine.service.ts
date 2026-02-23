@@ -19,12 +19,14 @@ import {
 import { PaperTradingMarketDataService } from './paper-trading-market-data.service';
 
 import {
+  AlgorithmContext,
   AlgorithmResult,
   SignalType as AlgoSignalType,
   TradingSignal as StrategySignal
 } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import {
   FeeCalculatorService,
@@ -57,17 +59,6 @@ export interface TickResult {
   portfolioValue: number;
   prices: Record<string, number>;
 }
-
-/** Candle data shape returned by market-data service and consumed by algorithms. */
-type CandleData = {
-  avg: number;
-  high: number;
-  low: number;
-  date: Date;
-  open?: number;
-  close?: number;
-  volume?: number;
-};
 
 const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): TradingSignal => {
   let action: TradingSignal['action'];
@@ -302,9 +293,7 @@ export class PaperTradingEngineService {
       const priceData = this.buildPriceDataContext(prices, historicalCandles);
       const positions = this.buildPositionsContext(accounts, quoteCurrency);
 
-      // Build a minimal context compatible with algorithm execution
-      // Paper trading uses simplified coin objects with just id/symbol
-      const context = {
+      const context: AlgorithmContext = {
         coins,
         priceData,
         timestamp: new Date(),
@@ -317,11 +306,9 @@ export class PaperTradingEngineService {
         }
       };
 
-      // Cast to any since paper trading uses a simplified context
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(
         session.algorithm?.id ?? '',
-        context as any
+        context
       );
 
       if (result.success && result.signals?.length) {
@@ -420,7 +407,9 @@ export class PaperTradingEngineService {
 
         // Check if we have enough balance
         if (quoteAccount.available < totalValue + fee) {
-          this.logger.warn(`Insufficient ${quoteCurrency} balance for BUY order`);
+          this.logger.warn(
+            `Insufficient ${quoteCurrency} balance for BUY order: need ${(totalValue + fee).toFixed(2)}, have ${quoteAccount.available.toFixed(2)}`
+          );
           return null;
         }
 

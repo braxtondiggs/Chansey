@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -147,7 +147,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
   /**
    * Check if we have enough data for both RSI and MACD calculations
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: RSIMACDComboConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: RSIMACDComboConfig): boolean {
     const macdMinRequired = config.macdSlow + config.macdSignal - 1;
     const minRequired = Math.max(config.rsiPeriod, macdMinRequired) + config.confirmationWindow;
     return !!priceHistory && priceHistory.length >= minRequired;
@@ -159,7 +159,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     macd: number[],
     macdSignalLine: number[],
@@ -355,7 +355,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
    * Prepare chart data for visualization
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     macd: number[],
     macdSignalLine: number[],

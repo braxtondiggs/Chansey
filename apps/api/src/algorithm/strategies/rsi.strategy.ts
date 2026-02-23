@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -106,7 +106,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
   /**
    * Check if we have enough data for RSI calculation
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: RSIConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: RSIConfig): boolean {
     return !!priceHistory && priceHistory.length >= config.period + 1;
   }
 
@@ -116,7 +116,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     config: RSIConfig
   ): TradingSignal | null {
@@ -220,7 +220,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
   /**
    * Prepare chart data for visualization
    */
-  private prepareChartData(prices: PriceSummary[], rsi: number[]): ChartDataPoint[] {
+  private prepareChartData(prices: CandleData[], rsi: number[]): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
       value: price.avg,

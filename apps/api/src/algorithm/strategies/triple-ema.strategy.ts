@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -134,7 +134,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
   /**
    * Check if we have enough data for all three EMAs
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: TripleEMAConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: TripleEMAConfig): boolean {
     return !!priceHistory && priceHistory.length >= config.slowPeriod + 5;
   }
 
@@ -202,7 +202,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     fastEMA: number[],
     mediumEMA: number[],
     slowEMA: number[],
@@ -389,7 +389,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
    * Prepare chart data for visualization
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     fastEMA: number[],
     mediumEMA: number[],
     slowEMA: number[]

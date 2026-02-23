@@ -174,12 +174,15 @@ export type OHLCSummaryByPeriod = {
  * - close: (optional) precise close price, available when source provides full OHLCV
  * - volume: (optional) trading volume, available when source provides full OHLCV
  */
-export interface PriceSummary {
-  readonly avg: number;
+export interface PriceSummary extends CandleData {
   readonly coin: string;
-  readonly date: Date;
+}
+
+export interface CandleData {
+  readonly avg: number;
   readonly high: number;
   readonly low: number;
+  readonly date: Date;
   readonly open?: number;
   readonly close?: number;
   readonly volume?: number;

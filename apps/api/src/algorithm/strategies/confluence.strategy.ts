@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -161,7 +161,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   /**
    * Check if we have enough data for all enabled indicator calculations
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: ConfluenceConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: ConfluenceConfig): boolean {
     if (!priceHistory || priceHistory.length === 0) {
       return false;
     }
@@ -198,7 +198,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    */
   private async calculateConfluenceScore(
     coinId: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     config: ConfluenceConfig,
     skipCache = false
   ): Promise<ConfluenceScore> {
@@ -754,7 +754,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    */
   private async prepareChartData(
     coinId: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     config: ConfluenceConfig
   ): Promise<ChartDataPoint[]> {
     // Calculate all indicators for chart data

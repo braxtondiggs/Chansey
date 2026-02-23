@@ -1,4 +1,4 @@
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Base indicator calculator interface
@@ -36,7 +36,7 @@ export interface BaseIndicatorOptions {
   /** Unique identifier for the coin (used in cache key) */
   coinId: string;
   /** Price history data */
-  prices: PriceSummary[];
+  prices: CandleData[];
   /** Skip cache and force fresh calculation */
   skipCache?: boolean;
 }
