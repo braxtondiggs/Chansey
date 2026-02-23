@@ -234,6 +234,9 @@ export class StrategyExecutorService {
         );
         quantity = maxQuantity;
       } else if (quantity < minQuantity && quantity > 0) {
+        this.logger.warn(
+          `Flooring ${symbol} quantity from ${quantity.toFixed(8)} to ${minQuantity.toFixed(8)} (${(MIN_PER_TRADE_ALLOCATION * 100).toFixed(0)}% floor)`
+        );
         quantity = minQuantity;
       }
     }
