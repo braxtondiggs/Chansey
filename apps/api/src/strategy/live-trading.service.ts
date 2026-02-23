@@ -12,6 +12,7 @@ import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-e
 import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeBalanceDto } from '../balance/dto';
+import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../exchange/constants';
 import { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
@@ -284,12 +285,12 @@ export class LiveTradingService implements OnApplicationShutdown {
    */
   private async fetchMarketData(): Promise<MarketData[]> {
     const marketData: MarketData[] = [];
-    const tradingPairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT'];
+    // Use Binance US as the default price source for consistency
+    const exchangeSlug = 'binance_us';
+    const quote = EXCHANGE_QUOTE_CURRENCY[exchangeSlug] ?? DEFAULT_QUOTE_CURRENCY;
+    const tradingPairs = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA'].map((base) => `${base}/${quote}`);
 
     try {
-      // Use Binance US as the default price source for consistency
-      const exchangeSlug = 'binance_us';
-
       for (const symbol of tradingPairs) {
         try {
           const priceData = await this.exchangeManager.getPrice(exchangeSlug, symbol);
