@@ -1,6 +1,7 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
+import { SMA } from 'technicalindicators';
 
 import { createHash } from 'crypto';
 
@@ -62,12 +63,7 @@ import {
   TimeframeType
 } from './shared';
 
-import {
-  AlgorithmContext,
-  AlgorithmResult,
-  SignalType as AlgoSignalType,
-  TradingSignal as StrategySignal
-} from '../../algorithm/interfaces';
+import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
@@ -274,15 +270,6 @@ interface PriceTrackingContext {
   windowsByCoin: Map<string, RingBuffer<PriceSummary>>;
 }
 
-interface RegimeSmaState {
-  buffer: number[];
-  sum: number;
-  head: number;
-  filled: number;
-  lastIndex: number;
-  value: number | null;
-}
-
 interface CompositeRegimeResult {
   compositeRegime: CompositeRegimeType;
 }
@@ -300,8 +287,8 @@ export class BacktestEngine {
   /** Maximum price history entries kept per coin in the sliding window.
    *  Strategies typically need at most ~200 periods; 500 provides ample margin. */
   private static readonly MAX_WINDOW_SIZE = 500;
-  /** Per-iteration algorithm execution timeout (ms) */
-  private static readonly ALGORITHM_TIMEOUT_MS = 60_000;
+  /** Wall-clock algorithm stall timeout (ms) — checked only on error */
+  private static readonly ALGORITHM_STALL_TIMEOUT_MS = 60_000;
   /** BTC SMA period for regime detection */
   private static readonly REGIME_SMA_PERIOD = 200;
 
@@ -366,7 +353,7 @@ export class BacktestEngine {
       return null;
     }
 
-    const btcCloses = btcWindow.map((p) => p.close ?? p.avg);
+    const btcCloses = btcWindow.mapToArray((p) => p.close ?? p.avg);
     const smaValues = SMA.calculate({ period: BacktestEngine.REGIME_SMA_PERIOD, values: btcCloses });
     if (smaValues.length === 0) {
       return null;
@@ -628,17 +615,6 @@ export class BacktestEngine {
         this.logger.log(`Fast-forwarded price windows through ${startIndex} timestamps for resume`);
       }
 
-      // Warm up running SMA state from BTC summaries consumed during fast-forward
-      if (btcCoin) {
-        const btcPointer = priceCtx.indexByCoin.get(btcCoin.id) ?? -1;
-        const btcSummaries = priceCtx.summariesByCoin.get(btcCoin.id);
-        if (btcSummaries && btcPointer >= 0) {
-          this.feedRegimeSma(regimeSma, btcSummaries, 0, btcPointer);
-          this.logger.log(
-            `Warmed up regime SMA from ${btcPointer + 1} BTC prices (SMA=${regimeSma.value?.toFixed(2) ?? 'pending'})`
-          );
-        }
-      }
     }
 
     // Track result counts at last checkpoint for proper slicing during incremental persistence
@@ -654,6 +630,9 @@ export class BacktestEngine {
     // Track consecutive algorithm failures to detect systematic issues
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // Wall-clock watchdog: track last successful algo execution to detect stalls
+    let lastSuccessfulAlgoTime = Date.now();
 
     // Time-based heartbeat tracking (every ~30 seconds instead of every N iterations)
     let lastHeartbeatTime = Date.now();
@@ -693,11 +672,8 @@ export class BacktestEngine {
           }
         };
         try {
-          await this.executeAlgorithmWithTimeout(
-            backtest.algorithm.id,
-            context,
-            `warmup ${i}/${effectiveTradingStartIndex} (${timestamp.toISOString()})`
-          );
+          await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+          lastSuccessfulAlgoTime = Date.now();
         } catch {
           // Warmup failures are non-fatal — algorithm just won't have primed state
         }
@@ -745,11 +721,7 @@ export class BacktestEngine {
       let strategySignals: TradingSignal[] = [];
       try {
         const algoExecStart = Date.now();
-        const result = await this.executeAlgorithmWithTimeout(
-          backtest.algorithm.id,
-          context,
-          `iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
-        );
+        const result = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
 
         const algoExecDuration = Date.now() - algoExecStart;
         if (algoExecDuration > 5000) {
@@ -762,10 +734,18 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
+        lastSuccessfulAlgoTime = Date.now();
         consecutiveErrors = 0;
       } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
+        }
+        // Wall-clock watchdog: fail fast if algorithm has been stalling
+        if (Date.now() - lastSuccessfulAlgoTime > BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS) {
+          throw new Error(
+            `Algorithm stalled for ${BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS}ms ` +
+              `at iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
+          );
         }
         const err = toErrorInfo(error);
         consecutiveErrors++;
@@ -1259,6 +1239,9 @@ export class BacktestEngine {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
 
+    // Wall-clock watchdog: track last successful algo execution to detect stalls
+    let lastSuccessfulAlgoTime = Date.now();
+
     // Time-based heartbeat tracking (every ~30 seconds)
     let lastHeartbeatTime = Date.now();
     const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -1425,11 +1408,8 @@ export class BacktestEngine {
           }
         };
         try {
-          await this.executeAlgorithmWithTimeout(
-            backtest.algorithm.id,
-            context,
-            `warmup ${i}/${effectiveTradingStartIndex} (${timestamp.toISOString()})`
-          );
+          await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+          lastSuccessfulAlgoTime = Date.now();
         } catch {
           // Warmup failures are non-fatal
         }
@@ -1483,19 +1463,23 @@ export class BacktestEngine {
 
       let strategySignals: TradingSignal[] = [];
       try {
-        const result = await this.executeAlgorithmWithTimeout(
-          backtest.algorithm.id,
-          context,
-          `iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
-        );
+        const result = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
 
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
+        lastSuccessfulAlgoTime = Date.now();
         consecutiveErrors = 0;
       } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
+        }
+        // Wall-clock watchdog: fail fast if algorithm has been stalling
+        if (Date.now() - lastSuccessfulAlgoTime > BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS) {
+          throw new Error(
+            `Algorithm stalled for ${BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS}ms ` +
+              `at iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
+          );
         }
         const err = toErrorInfo(error);
         consecutiveErrors++;
@@ -1761,36 +1745,6 @@ export class BacktestEngine {
   }
 
   /**
-   * Execute an algorithm with a timeout guard.
-   * Rejects if the algorithm does not resolve within ALGORITHM_TIMEOUT_MS.
-   */
-  private async executeAlgorithmWithTimeout(
-    algorithmId: string,
-    context: AlgorithmContext,
-    iterationLabel: string
-  ): Promise<AlgorithmResult> {
-    const algoPromise = this.algorithmRegistry.executeAlgorithm(algorithmId, context);
-    let algoTimeoutId: NodeJS.Timeout | undefined;
-    const algoTimeoutPromise = new Promise<never>((_, reject) => {
-      algoTimeoutId = setTimeout(
-        () =>
-          reject(
-            new Error(
-              `Algorithm execution timed out after ${BacktestEngine.ALGORITHM_TIMEOUT_MS}ms at ${iterationLabel}`
-            )
-          ),
-        BacktestEngine.ALGORITHM_TIMEOUT_MS
-      );
-    });
-
-    try {
-      return await Promise.race([algoPromise, algoTimeoutPromise]);
-    } finally {
-      clearTimeout(algoTimeoutId);
-    }
-  }
-
-  /**
    * Get price value from OHLC candle (uses close price)
    */
   private getPriceValue(candle: OHLCCandle): number {
@@ -1898,32 +1852,6 @@ export class BacktestEngine {
    */
   private extractDailyVolume(currentPrices: OHLCCandle[], coinId: string): number | undefined {
     return currentPrices.find((c) => c.coinId === coinId)?.volume;
-  }
-
-  /**
-   * Feed BTC price summaries into the running regime SMA state.
-   * Consumes summaries[fromIndex..toIndex] inclusive, updating the circular buffer.
-   */
-  private feedRegimeSma(state: RegimeSmaState, summaries: PriceSummary[], fromIndex: number, toIndex: number): void {
-    const period = BacktestEngine.REGIME_SMA_PERIOD;
-    for (let k = fromIndex; k <= toIndex; k++) {
-      const closeVal = summaries[k].close ?? summaries[k].avg;
-      if (state.filled < period) {
-        state.buffer[state.filled] = closeVal;
-        state.sum += closeVal;
-        state.filled++;
-        if (state.filled === period) {
-          state.value = state.sum / period;
-        }
-      } else {
-        const removed = state.buffer[state.head];
-        state.buffer[state.head] = closeVal;
-        state.sum += closeVal - removed;
-        state.value = state.sum / period;
-        state.head = (state.head + 1) % period;
-      }
-    }
-    state.lastIndex = toIndex;
   }
 
   private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {

@@ -132,7 +132,7 @@ export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
     minImprovement: 1
   },
   parallelism: {
-    maxConcurrentBacktests: 3,
+    maxConcurrentBacktests: 5,
     maxConcurrentWindows: 3
   }
 };
