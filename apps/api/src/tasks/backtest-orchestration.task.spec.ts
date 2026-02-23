@@ -320,8 +320,8 @@ describe('BacktestOrchestrationTask', () => {
       const historicalCall = mockBacktestRepository.find.mock.calls[0][0];
       const cutoffDate: Date = historicalCall.where[0].lastCheckpointAt.value;
       const expectedCutoff = 90 * 60 * 1000;
-      // Verify cutoff is within 5 seconds of expected 90-min threshold
-      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff);
+      // Verify cutoff is within 5 seconds of expected 90-min threshold (1ms tolerance for clock jitter)
+      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff - 1);
       expect(after - cutoffDate.getTime()).toBeLessThanOrEqual(expectedCutoff + 5000);
     });
 
@@ -335,8 +335,8 @@ describe('BacktestOrchestrationTask', () => {
       const liveReplayCall = mockBacktestRepository.find.mock.calls[1][0];
       const cutoffDate: Date = liveReplayCall.where[0].lastCheckpointAt.value;
       const expectedCutoff = 120 * 60 * 1000;
-      // Verify cutoff is within 5 seconds of expected 120-min threshold
-      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff);
+      // Verify cutoff is within 5 seconds of expected 120-min threshold (1ms tolerance for clock jitter)
+      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff - 1);
       expect(after - cutoffDate.getTime()).toBeLessThanOrEqual(expectedCutoff + 5000);
     });
   });

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { BollingerBandsResult, IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -114,7 +114,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
   private generateMeanReversionSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     movingAverage: number[],
     standardDeviation: number[],
     threshold: number
@@ -180,7 +180,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
    * Includes Bollinger Bands for better visualization
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     movingAverage: number[],
     standardDeviation: number[],
     threshold: number,
@@ -230,7 +230,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
     return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], period));
   }
 
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, period: number): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, period: number): boolean {
     return !!priceHistory && priceHistory.length >= period + 1;
   }
 }

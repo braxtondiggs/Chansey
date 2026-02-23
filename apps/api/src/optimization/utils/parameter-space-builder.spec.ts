@@ -118,7 +118,6 @@ describe('buildParameterSpace', () => {
   it('should filter out all NON_OPTIMIZABLE_PARAMS', () => {
     const schema = {
       enabled: { type: 'boolean', default: true },
-      weight: { type: 'number', default: 1.0, min: 0, max: 10 },
       riskLevel: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' },
       cooldownMs: { type: 'number', default: 86400000, min: 0, max: 604800000 },
       maxTradesPerDay: { type: 'number', default: 6, min: 0, max: 50 },
@@ -205,7 +204,7 @@ describe('buildParameterSpace', () => {
       fastPeriod: { type: 'number', default: 12, min: 5, max: 50 }
     };
     const constraints: ParameterConstraint[] = [
-      { type: 'less_than', param1: 'weight', param2: 'fastPeriod', message: 'weight < fast' }
+      { type: 'less_than', param1: 'enabled', param2: 'fastPeriod', message: 'enabled < fast' }
     ];
 
     const space = buildParameterSpace('test-001', schema, constraints);

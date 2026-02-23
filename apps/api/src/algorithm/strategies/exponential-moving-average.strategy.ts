@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -102,7 +102,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     ema12: number[],
     ema26: number[],
     crossoverLookback: number
@@ -194,7 +194,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
    * Calculate confidence level for the signal
    */
   private calculateConfidence(
-    prices: PriceSummary[],
+    prices: CandleData[],
     ema12: number[],
     ema26: number[],
     direction: 'bullish' | 'bearish'
@@ -223,7 +223,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   /**
    * Prepare chart data for visualization
    */
-  private prepareChartData(prices: PriceSummary[], ema12: number[], ema26: number[]): ChartDataPoint[] {
+  private prepareChartData(prices: CandleData[], ema12: number[], ema26: number[]): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
       value: price.avg,
@@ -282,7 +282,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
     return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], slowPeriod));
   }
 
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, slowPeriod: number): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, slowPeriod: number): boolean {
     return !!priceHistory && priceHistory.length >= slowPeriod;
   }
 

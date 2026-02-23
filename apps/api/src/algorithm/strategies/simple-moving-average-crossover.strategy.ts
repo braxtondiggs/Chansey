@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -102,7 +102,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
   private generateCrossoverSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     fastSMA: number[],
     slowSMA: number[]
   ): TradingSignal | null {
@@ -167,7 +167,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
   /**
    * Prepare chart data for visualization
    */
-  private prepareChartData(prices: PriceSummary[], fastSMA: number[], slowSMA: number[]): ChartDataPoint[] {
+  private prepareChartData(prices: CandleData[], fastSMA: number[], slowSMA: number[]): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
       value: price.avg,
@@ -235,7 +235,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], slowPeriod));
   }
 
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, slowPeriod: number): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, slowPeriod: number): boolean {
     return !!priceHistory && priceHistory.length >= slowPeriod + 1;
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -126,7 +126,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
   /**
    * Check if we have enough data for Bollinger Bands calculation
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: BollingerBreakoutConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: BollingerBreakoutConfig): boolean {
     const minRequired = config.period + (config.requireConfirmation ? config.confirmationBars : 1);
     return !!priceHistory && priceHistory.length >= minRequired;
   }
@@ -137,7 +137,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     upper: number[],
     middle: number[],
     lower: number[],
@@ -224,7 +224,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
    * Check if breakout is confirmed over multiple bars
    */
   private checkConfirmation(
-    prices: PriceSummary[],
+    prices: CandleData[],
     upper: number[],
     lower: number[],
     config: BollingerBreakoutConfig,
@@ -270,7 +270,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
    * Calculate confidence based on bandwidth expansion and momentum
    */
   private calculateConfidence(
-    prices: PriceSummary[],
+    prices: CandleData[],
     pb: number[],
     bandwidth: number[],
     direction: 'bullish' | 'bearish',
@@ -306,7 +306,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
    * Prepare chart data for visualization
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     upper: number[],
     middle: number[],
     lower: number[],

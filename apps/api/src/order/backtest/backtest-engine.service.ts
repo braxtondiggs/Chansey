@@ -160,6 +160,7 @@ interface MetricsAccumulator {
   totalWinningSellCount: number;
   grossProfit: number;
   grossLoss: number;
+  skippedBuyCount: number;
   /** Portfolio values collected across all checkpoints for Sharpe calculation.
    *  Not cleared at checkpoints (Sharpe needs the full series).
    *  Bounded: 8 bytes/entry — ~14KB for 5yr daily, ~4MB for 1yr minute-level. */
@@ -870,6 +871,8 @@ export class BacktestEngine {
             metadata: trade.metadata,
             backtest
           });
+        } else if (strategySignal.action === 'BUY') {
+          metricsAcc.skippedBuyCount++;
         }
       }
 
@@ -1000,7 +1003,10 @@ export class BacktestEngine {
     }
 
     this.logger.log(
-      `Backtest completed: ${metricsAcc.totalTradeCount} trades, final value: $${portfolio.totalValue.toFixed(2)}`
+      `Backtest completed: ${metricsAcc.totalTradeCount} trades, final value: $${portfolio.totalValue.toFixed(2)}` +
+        (metricsAcc.skippedBuyCount > 0
+          ? `, ${metricsAcc.skippedBuyCount} buy signals skipped (insufficient cash)`
+          : '')
     );
 
     return { trades, signals, simulatedFills, snapshots, finalMetrics };
@@ -1550,6 +1556,8 @@ export class BacktestEngine {
             metadata: trade.metadata,
             backtest
           });
+        } else if (strategySignal.action === 'BUY') {
+          metricsAcc.skippedBuyCount++;
         }
       }
 
@@ -1677,7 +1685,10 @@ export class BacktestEngine {
     }
 
     this.logger.log(
-      `Live replay backtest completed: ${metricsAcc.totalTradeCount} trades, final value: $${portfolio.totalValue.toFixed(2)}`
+      `Live replay backtest completed: ${metricsAcc.totalTradeCount} trades, final value: $${portfolio.totalValue.toFixed(2)}` +
+        (metricsAcc.skippedBuyCount > 0
+          ? `, ${metricsAcc.skippedBuyCount} buy signals skipped (insufficient cash)`
+          : '')
     );
 
     return { trades, signals, simulatedFills, snapshots, finalMetrics, paused: false };
@@ -1758,7 +1769,7 @@ export class BacktestEngine {
    */
   private buildPriceSummary(candle: OHLCCandle): PriceSummary {
     return {
-      avg: candle.close,
+      avg: candle.close, // representative price — close used as the primary indicator input
       coin: candle.coinId,
       date: candle.timestamp,
       high: candle.high,
@@ -1961,7 +1972,7 @@ export class BacktestEngine {
       );
 
       if (portfolio.cashBalance < totalValue + estimatedFeeResult.fee) {
-        this.logger.warn('Insufficient cash balance for BUY trade (including fees)');
+        this.logger.debug('Insufficient cash balance for BUY trade (including fees)');
         return null;
       }
 
@@ -2500,6 +2511,7 @@ export class BacktestEngine {
       totalWinningSellCount: initialWinningSellCount,
       grossProfit: initialGrossProfit,
       grossLoss: initialGrossLoss,
+      skippedBuyCount: 0,
       snapshotValues: [],
       callbacks: {} as MetricsAccumulator['callbacks']
     };

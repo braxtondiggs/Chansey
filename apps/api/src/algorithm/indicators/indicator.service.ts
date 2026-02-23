@@ -30,7 +30,7 @@ import {
 } from './indicator.interface';
 import { INDICATOR_CACHE_CONFIG, IndicatorType } from './indicator.types';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { IndicatorDataTransformer } from '../utils/indicator-data-transformer';
 
 /**
@@ -409,7 +409,7 @@ export class IndicatorService {
   private buildCacheKey(
     type: IndicatorType,
     coinId: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     params: Record<string, unknown>
   ): string {
     const dataHash = this.computeDataHash(prices);
@@ -425,7 +425,7 @@ export class IndicatorService {
    * Compute a hash of the price data for cache invalidation
    * Uses last N prices + total length to detect changes
    */
-  private computeDataHash(prices: PriceSummary[]): string {
+  private computeDataHash(prices: CandleData[]): string {
     if (!prices || prices.length === 0) {
       return 'empty';
     }

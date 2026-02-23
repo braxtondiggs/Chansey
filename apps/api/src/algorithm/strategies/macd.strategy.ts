@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -117,7 +117,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
   /**
    * Check if we have enough data for MACD calculation
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: MACDConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: MACDConfig): boolean {
     const minRequired = config.slowPeriod + config.signalPeriod - 1;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
@@ -128,7 +128,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     macd: number[],
     signal: number[],
     histogram: number[],
@@ -288,7 +288,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
    * Prepare chart data for visualization
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     macd: number[],
     signal: number[],
     histogram: number[]

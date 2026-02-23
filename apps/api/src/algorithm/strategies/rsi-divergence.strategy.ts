@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -129,7 +129,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   /**
    * Check if we have enough data for RSI divergence detection
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: RSIDivergenceConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: RSIDivergenceConfig): boolean {
     const minRequired = config.rsiPeriod + config.lookbackPeriod + config.pivotStrength * 2;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
@@ -138,7 +138,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
    * Find pivot highs (local maxima)
    */
   private findPivotHighs(
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     strength: number,
     startIndex: number,
@@ -177,7 +177,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
    * Find pivot lows (local minima)
    */
   private findPivotLows(
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     strength: number,
     startIndex: number,
@@ -215,11 +215,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   /**
    * Detect bullish or bearish divergence
    */
-  private detectDivergence(
-    prices: PriceSummary[],
-    rsi: number[],
-    config: RSIDivergenceConfig
-  ): DivergenceResult | null {
+  private detectDivergence(prices: CandleData[], rsi: number[], config: RSIDivergenceConfig): DivergenceResult | null {
     const currentIndex = prices.length - 1;
     const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
     const lookbackEnd = currentIndex; // findPivotHighs/Lows already applies -strength internally
@@ -275,7 +271,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     divergence: DivergenceResult,
     config: RSIDivergenceConfig
@@ -350,7 +346,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
    * Calculate confidence based on divergence clarity and recency
    */
   private calculateConfidence(
-    prices: PriceSummary[],
+    prices: CandleData[],
     rsi: number[],
     divergence: DivergenceResult,
     config: RSIDivergenceConfig
@@ -384,7 +380,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   /**
    * Prepare chart data with pivot points marked
    */
-  private prepareChartData(prices: PriceSummary[], rsi: number[], config: RSIDivergenceConfig): ChartDataPoint[] {
+  private prepareChartData(prices: CandleData[], rsi: number[], config: RSIDivergenceConfig): ChartDataPoint[] {
     const currentIndex = prices.length - 1;
     const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
     const lookbackEnd = currentIndex;
