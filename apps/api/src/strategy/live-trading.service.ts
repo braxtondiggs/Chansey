@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 
 import { CapitalAllocationService } from './capital-allocation.service';
 import { PositionTrackingService } from './position-tracking.service';
+import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-executor.service';
 
@@ -50,7 +51,8 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly exchangeManager: ExchangeManagerService,
     private readonly tradingStateService: TradingStateService,
     private readonly compositeRegimeService: CompositeRegimeService,
-    private readonly regimeGateService: RegimeGateService
+    private readonly regimeGateService: RegimeGateService,
+    private readonly preTradeRiskGate: PreTradeRiskGateService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -157,6 +159,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();
     let gateBlockedCount = 0;
+    let drawdownBlockedCount = 0;
 
     for (const strategy of strategies) {
       try {
@@ -190,6 +193,13 @@ export class LiveTradingService implements OnApplicationShutdown {
             continue;
           }
 
+          // Drawdown gate: block BUY signals when deployment is in drawdown breach
+          const drawdownCheck = await this.preTradeRiskGate.checkDrawdown(strategy.id, signal.action as 'buy' | 'sell');
+          if (!drawdownCheck.allowed) {
+            drawdownBlockedCount++;
+            continue;
+          }
+
           await this.placeOrder(user, strategy.id, signal);
         }
       } catch (error: unknown) {
@@ -202,6 +212,10 @@ export class LiveTradingService implements OnApplicationShutdown {
       this.logger.log(
         `Regime gate blocked ${gateBlockedCount} signal(s) for user ${user.id} (regime=${compositeRegime})`
       );
+    }
+
+    if (drawdownBlockedCount > 0) {
+      this.logger.log(`Drawdown gate blocked ${drawdownBlockedCount} BUY signal(s) for user ${user.id}`);
     }
   }
 

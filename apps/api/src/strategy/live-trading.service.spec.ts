@@ -6,6 +6,7 @@ import { ObjectLiteral, Repository } from 'typeorm';
 import { CapitalAllocationService } from './capital-allocation.service';
 import { LiveTradingService } from './live-trading.service';
 import { PositionTrackingService } from './position-tracking.service';
+import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { StrategyExecutorService, TradingSignal } from './strategy-executor.service';
 
@@ -108,7 +109,11 @@ describe('LiveTradingService', () => {
             isOverrideActive: jest.fn().mockReturnValue(false)
           }
         },
-        { provide: RegimeGateService, useValue: { filterLiveSignal: jest.fn().mockReturnValue({ allowed: true }) } }
+        { provide: RegimeGateService, useValue: { filterLiveSignal: jest.fn().mockReturnValue({ allowed: true }) } },
+        {
+          provide: PreTradeRiskGateService,
+          useValue: { checkDrawdown: jest.fn().mockResolvedValue({ allowed: true }) }
+        }
       ]
     }).compile();
 
