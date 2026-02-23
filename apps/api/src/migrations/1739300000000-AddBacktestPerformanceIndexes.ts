@@ -9,17 +9,18 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * backtestId-only lookups efficiently. These standalone indexes address the
  * dominant query pattern: loading all signals/trades for a given backtest.
  *
- * Uses CONCURRENTLY to avoid locking tables during creation.
+ * Plain CREATE INDEX (not CONCURRENTLY) because TypeORM runs migrations
+ * inside a transaction, and tables aren't hot-write during deployment.
  */
 export class AddBacktestPerformanceIndexes1739300000000 implements MigrationInterface {
   name = 'AddBacktestPerformanceIndexes1739300000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_backtest_signals_backtest_id" ON "backtest_signals" ("backtestId")`
+      `CREATE INDEX IF NOT EXISTS "idx_backtest_signals_backtest_id" ON "backtest_signals" ("backtestId")`
     );
     await queryRunner.query(
-      `CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_backtest_trades_backtest_id" ON "backtest_trades" ("backtestId")`
+      `CREATE INDEX IF NOT EXISTS "idx_backtest_trades_backtest_id" ON "backtest_trades" ("backtestId")`
     );
   }
 

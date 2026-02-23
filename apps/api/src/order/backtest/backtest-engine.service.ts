@@ -1,7 +1,6 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
-import { SMA } from 'technicalindicators';
 
 import { createHash } from 'crypto';
 
@@ -13,6 +12,7 @@ import {
   MarketRegimeType
 } from '@chansey/api-interfaces';
 
+import { AlgorithmWatchdog } from './algorithm-watchdog';
 import {
   BacktestCheckpointState,
   CheckpointPortfolio,
@@ -41,6 +41,7 @@ import {
   SimulatedOrderType,
   TradeType
 } from './backtest.entity';
+import { IncrementalSma } from './incremental-sma';
 import { MarketDataReaderService, OHLCVData } from './market-data-reader.service';
 import { MarketDataSet } from './market-data-set.entity';
 import { QuoteCurrencyResolverService } from './quote-currency-resolver.service';
@@ -268,6 +269,10 @@ interface PriceTrackingContext {
   summariesByCoin: Map<string, PriceSummary[]>;
   indexByCoin: Map<string, number>;
   windowsByCoin: Map<string, RingBuffer<PriceSummary>>;
+  /** O(1) incremental SMA for BTC regime detection (initialized when btcCoin is present). */
+  btcRegimeSma?: IncrementalSma;
+  /** Coin ID used for BTC regime detection. */
+  btcCoinId?: string;
 }
 
 interface CompositeRegimeResult {
@@ -345,7 +350,12 @@ export class BacktestEngine {
 
   /**
    * Compute the composite regime (trend + volatility) from BTC price data.
-   * Returns null if insufficient data (< 200 bars or empty SMA).
+   *
+   * Trend detection uses the O(1) incremental SMA maintained by
+   * `advancePriceWindows` instead of recomputing `SMA.calculate()` every bar.
+   * Volatility still uses `mapToArray` (small window, acceptable cost).
+   *
+   * Returns null if insufficient data (< 200 bars or SMA not filled).
    */
   private computeCompositeRegime(btcCoinId: string, priceCtx: PriceTrackingContext): CompositeRegimeResult | null {
     const btcWindow = priceCtx.windowsByCoin.get(btcCoinId);
@@ -353,22 +363,29 @@ export class BacktestEngine {
       return null;
     }
 
-    const btcCloses = btcWindow.mapToArray((p) => p.close ?? p.avg);
-    const smaValues = SMA.calculate({ period: BacktestEngine.REGIME_SMA_PERIOD, values: btcCloses });
-    if (smaValues.length === 0) {
+    // Use the incremental SMA if available (O(1)), otherwise fall back to window-based calculation
+    const sma200 = priceCtx.btcRegimeSma?.filled ? priceCtx.btcRegimeSma.value : undefined;
+    if (sma200 === undefined) {
       return null;
     }
 
-    const sma200 = smaValues[smaValues.length - 1];
-    const latestBtcPrice = btcCloses[btcCloses.length - 1];
+    const lastEntry = btcWindow.last();
+    const latestBtcPrice = lastEntry ? (lastEntry.close ?? lastEntry.avg) : undefined;
+    if (latestBtcPrice === undefined) {
+      return null;
+    }
+
     const trendAboveSma = latestBtcPrice > sma200;
 
+    // Volatility detection still uses mapToArray (small window, acceptable)
     let volatilityRegime = MarketRegimeType.NORMAL;
     const volConfig = DEFAULT_VOLATILITY_CONFIG;
-    if (btcCloses.length >= volConfig.rollingDays + 1) {
+    const btcCloseCount = btcWindow.length;
+    if (btcCloseCount >= volConfig.rollingDays + 1) {
       try {
+        const btcCloses = btcWindow.mapToArray((p) => p.close ?? p.avg);
         const realizedVol = this.volatilityCalculator.calculateRealizedVolatility(btcCloses, volConfig);
-        if (btcCloses.length >= volConfig.lookbackDays) {
+        if (btcCloseCount >= volConfig.lookbackDays) {
           const percentile = this.volatilityCalculator.calculatePercentile(realizedVol, btcCloses, volConfig);
           volatilityRegime = determineVolatilityRegime(percentile);
         }
@@ -588,6 +605,12 @@ export class BacktestEngine {
       coins
     );
 
+    // Initialize incremental SMA for BTC regime detection
+    if (btcCoin) {
+      priceCtx.btcRegimeSma = new IncrementalSma(BacktestEngine.REGIME_SMA_PERIOD);
+      priceCtx.btcCoinId = btcCoin.id;
+    }
+
     // Signal throttle: resolve config from strategy parameters, init or restore state
     const throttleConfig = this.resolveThrottleConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
@@ -614,7 +637,6 @@ export class BacktestEngine {
         }
         this.logger.log(`Fast-forwarded price windows through ${startIndex} timestamps for resume`);
       }
-
     }
 
     // Track result counts at last checkpoint for proper slicing during incremental persistence
@@ -631,8 +653,8 @@ export class BacktestEngine {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
 
-    // Wall-clock watchdog: track last successful algo execution to detect stalls
-    let lastSuccessfulAlgoTime = Date.now();
+    // Wall-clock watchdog: detect algorithm stalls
+    const watchdog = new AlgorithmWatchdog(BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS);
 
     // Time-based heartbeat tracking (every ~30 seconds instead of every N iterations)
     let lastHeartbeatTime = Date.now();
@@ -673,7 +695,7 @@ export class BacktestEngine {
         };
         try {
           await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
-          lastSuccessfulAlgoTime = Date.now();
+          watchdog.recordSuccess();
         } catch {
           // Warmup failures are non-fatal — algorithm just won't have primed state
         }
@@ -734,19 +756,13 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
-        lastSuccessfulAlgoTime = Date.now();
+        watchdog.recordSuccess();
         consecutiveErrors = 0;
       } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        // Wall-clock watchdog: fail fast if algorithm has been stalling
-        if (Date.now() - lastSuccessfulAlgoTime > BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS) {
-          throw new Error(
-            `Algorithm stalled for ${BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS}ms ` +
-              `at iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
-          );
-        }
+        watchdog.checkStall(`${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`);
         const err = toErrorInfo(error);
         consecutiveErrors++;
         this.logger.warn(
@@ -1198,6 +1214,12 @@ export class BacktestEngine {
       coins
     );
 
+    // Initialize incremental SMA for BTC regime detection
+    if (btcCoin) {
+      priceCtx.btcRegimeSma = new IncrementalSma(BacktestEngine.REGIME_SMA_PERIOD);
+      priceCtx.btcCoinId = btcCoin.id;
+    }
+
     // Signal throttle: resolve config from strategy parameters, init or restore state
     const throttleConfig = this.resolveThrottleConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
@@ -1239,8 +1261,8 @@ export class BacktestEngine {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
 
-    // Wall-clock watchdog: track last successful algo execution to detect stalls
-    let lastSuccessfulAlgoTime = Date.now();
+    // Wall-clock watchdog: detect algorithm stalls
+    const watchdog = new AlgorithmWatchdog(BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS);
 
     // Time-based heartbeat tracking (every ~30 seconds)
     let lastHeartbeatTime = Date.now();
@@ -1409,7 +1431,7 @@ export class BacktestEngine {
         };
         try {
           await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
-          lastSuccessfulAlgoTime = Date.now();
+          watchdog.recordSuccess();
         } catch {
           // Warmup failures are non-fatal
         }
@@ -1468,19 +1490,13 @@ export class BacktestEngine {
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
         }
-        lastSuccessfulAlgoTime = Date.now();
+        watchdog.recordSuccess();
         consecutiveErrors = 0;
       } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        // Wall-clock watchdog: fail fast if algorithm has been stalling
-        if (Date.now() - lastSuccessfulAlgoTime > BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS) {
-          throw new Error(
-            `Algorithm stalled for ${BacktestEngine.ALGORITHM_STALL_TIMEOUT_MS}ms ` +
-              `at iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
-          );
-        }
+        watchdog.checkStall(`${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`);
         const err = toErrorInfo(error);
         consecutiveErrors++;
         this.logger.warn(
@@ -1824,6 +1840,10 @@ export class BacktestEngine {
       while (pointer + 1 < coinTimestamps.length && coinTimestamps[pointer + 1] <= timestamp) {
         pointer += 1;
         window.push(summaries[pointer]); // O(1) — ring buffer auto-evicts oldest
+        // Feed the incremental SMA for BTC regime detection
+        if (ctx.btcRegimeSma && coin.id === ctx.btcCoinId) {
+          ctx.btcRegimeSma.push(summaries[pointer].close ?? summaries[pointer].avg);
+        }
       }
       ctx.indexByCoin.set(coin.id, pointer);
       if (window.length > 0) {
@@ -1845,6 +1865,8 @@ export class BacktestEngine {
     priceCtx.summariesByCoin.clear();
     priceCtx.windowsByCoin.clear();
     priceCtx.indexByCoin.clear();
+    priceCtx.btcRegimeSma = undefined;
+    priceCtx.btcCoinId = undefined;
   }
 
   /**
