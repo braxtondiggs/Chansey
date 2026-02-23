@@ -25,6 +25,7 @@ import {
   PaperTradingMonitoringDto,
   PaperTradingStatus,
   PipelineStageCountsDto,
+  SignalActivityFeedDto,
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from '@chansey/api-interfaces';
@@ -35,6 +36,7 @@ import { ExportPanelComponent } from './components/export-panel/export-panel.com
 import { OptimizationPanelComponent } from './components/optimization-panel/optimization-panel.component';
 import { OverviewCardsComponent } from './components/overview-cards/overview-cards.component';
 import { PaperTradingPanelComponent } from './components/paper-trading-panel/paper-trading-panel.component';
+import { SignalActivityFeedComponent } from './components/signal-activity-feed/signal-activity-feed.component';
 import { SignalQualityPanelComponent } from './components/signal-quality-panel/signal-quality-panel.component';
 import { TopAlgorithmsComponent } from './components/top-algorithms/top-algorithms.component';
 import { TradeAnalyticsPanelComponent } from './components/trade-analytics-panel/trade-analytics-panel.component';
@@ -61,6 +63,7 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
     TradeAnalyticsPanelComponent,
     OptimizationPanelComponent,
     PaperTradingPanelComponent,
+    SignalActivityFeedComponent,
     ExportPanelComponent
   ],
   providers: [MessageService],
@@ -105,6 +108,15 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
             />
 
             <p-button
+              icon="pi pi-bolt"
+              [rounded]="true"
+              [text]="activeTab() !== 'signal-feed'"
+              [severity]="activeTab() === 'signal-feed' ? 'warn' : 'secondary'"
+              (onClick)="toggleSignalFeed()"
+              pTooltip="Signal Activity Feed"
+            />
+
+            <p-button
               icon="pi pi-refresh"
               [rounded]="true"
               [text]="true"
@@ -124,7 +136,16 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
         <!-- Overview Cards -->
         <app-overview-cards [overview]="overview()" [pipelineStageCounts]="pipelineStageCounts()" class="mb-4" />
 
-        @if (selectedView === 'optimization') {
+        <!-- Global Signal Activity Feed (all pipeline stages) -->
+        @if (activeTab() === 'signal-feed') {
+          @if (signalFeedQuery.isPending()) {
+            <div class="flex items-center justify-center py-8">
+              <p-progress-spinner strokeWidth="4" />
+            </div>
+          } @else {
+            <app-signal-activity-feed [feed]="signalFeed()" />
+          }
+        } @else if (selectedView === 'optimization') {
           @if (optimizationQuery.isPending()) {
             <div class="flex items-center justify-center py-8">
               <p-progress-spinner strokeWidth="4" />
@@ -142,7 +163,7 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
           }
         } @else {
           <!-- Backtest tabs (overview, signals, trades, export) -->
-          <p-tabs [(value)]="activeTab">
+          <p-tabs [value]="activeTab()" (valueChange)="activeTab.set($any($event))">
             <p-tablist>
               <p-tab value="overview">Overview</p-tab>
               <p-tab value="signals">Signal Quality</p-tab>
@@ -192,7 +213,7 @@ export class BacktestMonitoringComponent {
   dateRange: Date[] | null = null;
   selectedStatus: string | null = null;
   selectedView: PipelineView | null = null;
-  activeTab = 'overview';
+  activeTab = signal('overview');
 
   // View options for pipeline stages
   viewOptions: { label: string; value: PipelineView }[] = [
@@ -227,6 +248,8 @@ export class BacktestMonitoringComponent {
   tradeAnalyticsQuery = this.monitoringService.useTradeAnalytics(this.filtersSignal);
   optimizationQuery = this.monitoringService.useOptimizationAnalytics(this.optimizationFiltersSignal);
   paperTradingQuery = this.monitoringService.usePaperTradingAnalytics(this.paperTradingFiltersSignal);
+  signalFeedEnabled = computed(() => this.activeTab() === 'signal-feed');
+  signalFeedQuery = this.monitoringService.useSignalActivityFeed(undefined, this.signalFeedEnabled);
   pipelineStageCountsQuery = this.monitoringService.usePipelineStageCounts();
 
   // Computed data
@@ -238,6 +261,7 @@ export class BacktestMonitoringComponent {
   tradeAnalytics = computed(() => this.tradeAnalyticsQuery.data() as TradeAnalyticsDto | undefined);
   optimizationAnalytics = computed(() => this.optimizationQuery.data() as OptimizationAnalyticsDto | undefined);
   paperTradingAnalytics = computed(() => this.paperTradingQuery.data() as PaperTradingMonitoringDto | undefined);
+  signalFeed = computed(() => this.signalFeedQuery.data() as SignalActivityFeedDto | undefined);
   pipelineStageCounts = computed(() => this.pipelineStageCountsQuery.data() as PipelineStageCountsDto | undefined);
 
   onDateRangeChange(): void {
@@ -302,10 +326,20 @@ export class BacktestMonitoringComponent {
     this.currentPage.set(page);
   }
 
+  toggleSignalFeed(): void {
+    if (this.activeTab() === 'signal-feed') {
+      this.activeTab.set('overview');
+    } else {
+      this.activeTab.set('signal-feed');
+    }
+  }
+
   refresh(): void {
     this.pipelineStageCountsQuery.refetch();
 
-    if (this.selectedView === 'optimization') {
+    if (this.activeTab() === 'signal-feed') {
+      this.signalFeedQuery.refetch();
+    } else if (this.selectedView === 'optimization') {
       this.optimizationQuery.refetch();
     } else if (this.selectedView === 'paper-trading') {
       this.paperTradingQuery.refetch();
@@ -313,11 +347,11 @@ export class BacktestMonitoringComponent {
       this.overviewQuery.refetch();
       this.backtestsQuery.refetch();
 
-      if (this.activeTab === 'signals') {
+      if (this.activeTab() === 'signals') {
         this.signalAnalyticsQuery.refetch();
       }
 
-      if (this.activeTab === 'trades') {
+      if (this.activeTab() === 'trades') {
         this.tradeAnalyticsQuery.refetch();
       }
     }

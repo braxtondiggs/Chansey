@@ -350,3 +350,45 @@ export interface PipelineStageCountsDto {
   liveReplayBacktests: number;
   paperTradingSessions: number;
 }
+
+// ===========================================================================
+// Signal Activity Feed DTOs
+// ===========================================================================
+
+export enum SignalSource {
+  BACKTEST = 'BACKTEST',
+  PAPER_TRADING = 'PAPER_TRADING'
+}
+
+export interface SignalFeedItemDto {
+  id: string;
+  timestamp: string;
+  signalType: SignalType;
+  direction: SignalDirection;
+  instrument: string;
+  quantity: number;
+  price?: number;
+  confidence?: number;
+  reason?: string;
+  source: SignalSource;
+  sourceId: string;
+  sourceName: string;
+  algorithmName: string;
+  userEmail?: string;
+  processed?: boolean;
+}
+
+export interface SignalHealthSummaryDto {
+  lastSignalTime?: string;
+  lastSignalAgoMs?: number;
+  signalsLastHour: number;
+  signalsLast24h: number;
+  activeBacktestSources: number;
+  activePaperTradingSources: number;
+  totalActiveSources: number;
+}
+
+export interface SignalActivityFeedDto {
+  health: SignalHealthSummaryDto;
+  signals: SignalFeedItemDto[];
+}

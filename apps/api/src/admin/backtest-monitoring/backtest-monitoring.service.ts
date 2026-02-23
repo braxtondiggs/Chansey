@@ -26,6 +26,12 @@ import {
   PipelineStageCountsDto
 } from './dto/paper-trading-analytics.dto';
 import {
+  SignalActivityFeedDto,
+  SignalFeedItemDto,
+  SignalHealthSummaryDto,
+  SignalSource
+} from './dto/signal-activity-feed.dto';
+import {
   ConfidenceBucketDto,
   SignalAnalyticsDto,
   SignalDirectionMetricsDto,
@@ -466,6 +472,172 @@ export class BacktestMonitoringService {
   }
 
   // ===========================================================================
+  // Signal Activity Feed
+  // ===========================================================================
+
+  /**
+   * Get a unified signal activity feed combining backtest and paper trading signals
+   */
+  async getSignalActivityFeed(limit: number): Promise<SignalActivityFeedDto> {
+    const [signals, health] = await Promise.all([this.getRecentSignals(limit), this.getSignalHealth()]);
+
+    return {
+      health,
+      signals
+    };
+  }
+
+  private async getRecentSignals(limit: number): Promise<SignalFeedItemDto[]> {
+    const [backtestSignals, paperSignals] = await Promise.all([
+      this.signalRepo
+        .createQueryBuilder('s')
+        .innerJoinAndSelect('s.backtest', 'b')
+        .innerJoinAndSelect('b.algorithm', 'a')
+        .innerJoinAndSelect('b.user', 'u')
+        .select([
+          's.id',
+          's.timestamp',
+          's.signalType',
+          's.direction',
+          's.instrument',
+          's.quantity',
+          's.price',
+          's.confidence',
+          's.reason',
+          'b.id',
+          'b.name',
+          'a.name',
+          'u.email'
+        ])
+        .orderBy('s.timestamp', 'DESC')
+        .take(limit)
+        .getMany(),
+      this.paperSignalRepo
+        .createQueryBuilder('ps')
+        .innerJoinAndSelect('ps.session', 'sess')
+        .innerJoinAndSelect('sess.algorithm', 'a')
+        .innerJoinAndSelect('sess.user', 'u')
+        .select([
+          'ps.id',
+          'ps.createdAt',
+          'ps.signalType',
+          'ps.direction',
+          'ps.instrument',
+          'ps.quantity',
+          'ps.price',
+          'ps.confidence',
+          'ps.reason',
+          'ps.processed',
+          'sess.id',
+          'sess.name',
+          'a.name',
+          'u.email'
+        ])
+        .orderBy('ps.createdAt', 'DESC')
+        .take(limit)
+        .getMany()
+    ]);
+
+    const mapped: SignalFeedItemDto[] = [];
+
+    for (const s of backtestSignals) {
+      mapped.push({
+        id: s.id,
+        timestamp: s.timestamp.toISOString(),
+        signalType: s.signalType,
+        direction: s.direction,
+        instrument: s.instrument,
+        quantity: s.quantity,
+        price: s.price ?? undefined,
+        confidence: s.confidence ?? undefined,
+        reason: s.reason ?? undefined,
+        source: SignalSource.BACKTEST,
+        sourceId: s.backtest.id,
+        sourceName: s.backtest.name,
+        algorithmName: s.backtest.algorithm?.name || 'Unknown',
+        userEmail: s.backtest.user?.email
+      });
+    }
+
+    for (const ps of paperSignals) {
+      mapped.push({
+        id: ps.id,
+        timestamp: ps.createdAt.toISOString(),
+        signalType: ps.signalType as unknown as SignalType,
+        direction: ps.direction as unknown as SignalDirection,
+        instrument: ps.instrument,
+        quantity: ps.quantity,
+        price: ps.price ?? undefined,
+        confidence: ps.confidence ?? undefined,
+        reason: ps.reason ?? undefined,
+        source: SignalSource.PAPER_TRADING,
+        sourceId: ps.session.id,
+        sourceName: ps.session.name,
+        algorithmName: ps.session.algorithm?.name || 'Unknown',
+        userEmail: ps.session.user?.email,
+        processed: ps.processed
+      });
+    }
+
+    // Sort merged by timestamp DESC, take limit
+    mapped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return mapped.slice(0, limit);
+  }
+
+  private async getSignalHealth(): Promise<SignalHealthSummaryDto> {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [backtestStats, paperStats, activeBacktests, activePaperSessions] = await Promise.all([
+      this.signalRepo
+        .createQueryBuilder('s')
+        .select('MAX(s.timestamp)', 'maxTs')
+        .addSelect(`COUNT(*) FILTER (WHERE s.timestamp >= :oneHourAgo)`, 'hourCount')
+        .addSelect(`COUNT(*) FILTER (WHERE s.timestamp >= :oneDayAgo)`, 'dayCount')
+        .setParameter('oneHourAgo', oneHourAgo)
+        .setParameter('oneDayAgo', oneDayAgo)
+        .getRawOne(),
+      this.paperSignalRepo
+        .createQueryBuilder('ps')
+        .select('MAX(ps.createdAt)', 'maxTs')
+        .addSelect(`COUNT(*) FILTER (WHERE ps.createdAt >= :oneHourAgo)`, 'hourCount')
+        .addSelect(`COUNT(*) FILTER (WHERE ps.createdAt >= :oneDayAgo)`, 'dayCount')
+        .setParameter('oneHourAgo', oneHourAgo)
+        .setParameter('oneDayAgo', oneDayAgo)
+        .getRawOne(),
+      this.backtestRepo.count({ where: { status: BacktestStatus.RUNNING } }),
+      this.paperSessionRepo.count({ where: { status: PaperTradingStatus.ACTIVE } })
+    ]);
+
+    const backtestMax = backtestStats?.maxTs ? new Date(backtestStats.maxTs) : null;
+    const paperMax = paperStats?.maxTs ? new Date(paperStats.maxTs) : null;
+
+    let lastSignalTime: string | undefined;
+    let lastSignalAgoMs: number | undefined;
+
+    const latest =
+      backtestMax && paperMax ? (backtestMax > paperMax ? backtestMax : paperMax) : (backtestMax ?? paperMax);
+
+    if (latest) {
+      lastSignalTime = latest.toISOString();
+      lastSignalAgoMs = now.getTime() - latest.getTime();
+    }
+
+    const totalActiveSources = activeBacktests + activePaperSessions;
+
+    return {
+      lastSignalTime,
+      lastSignalAgoMs,
+      signalsLastHour: parseInt(backtestStats?.hourCount, 10) + parseInt(paperStats?.hourCount, 10) || 0,
+      signalsLast24h: parseInt(backtestStats?.dayCount, 10) + parseInt(paperStats?.dayCount, 10) || 0,
+      activeBacktestSources: activeBacktests,
+      activePaperTradingSources: activePaperSessions,
+      totalActiveSources
+    };
+  }
+
+  // ===========================================================================
   // Private Helper Methods
   // ===========================================================================
 
@@ -854,13 +1026,14 @@ export class BacktestMonitoringService {
   private async getSignalsByInstrument(backtestIds: string[]): Promise<SignalInstrumentMetricsDto[]> {
     const qb = this.signalRepo
       .createQueryBuilder('s')
-      .select('s.instrument', 'instrument')
+      .select('COALESCE(UPPER(c.symbol), s.instrument)', 'instrument')
       .addSelect('COUNT(*)', 'count')
       .addSelect(
         `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
         'successRate'
       )
       .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
+      .leftJoin('coins', 'c', 'CAST(c.id AS text) = s.instrument')
       .leftJoin(
         (subQuery) =>
           subQuery
@@ -878,6 +1051,7 @@ export class BacktestMonitoringService {
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.instrument')
+      .addGroupBy('c.symbol')
       .orderBy('COUNT(*)', 'DESC')
       .limit(10);
 
