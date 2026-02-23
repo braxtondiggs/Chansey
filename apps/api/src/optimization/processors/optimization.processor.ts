@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { Job } from 'bullmq';
 
@@ -18,20 +19,32 @@ interface OptimizationJobData {
 /** Lock renewal interval: 30 minutes */
 const LOCK_RENEWAL_MS = 30 * 60 * 1000;
 
+/** Default queue concurrency when not configured */
+const DEFAULT_CONCURRENCY = 3;
+
 /**
  * BullMQ processor for optimization jobs
  */
 @Processor('optimization', {
-  concurrency: 2,
+  concurrency: DEFAULT_CONCURRENCY,
   lockDuration: 14_400_000, // 4 hours
   stalledInterval: 14_400_000, // 4 hours
   maxStalledCount: 2
 })
-export class OptimizationProcessor extends WorkerHost {
+export class OptimizationProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OptimizationProcessor.name);
 
-  constructor(private readonly orchestratorService: OptimizationOrchestratorService) {
+  constructor(
+    private readonly orchestratorService: OptimizationOrchestratorService,
+    private readonly configService: ConfigService
+  ) {
     super();
+  }
+
+  onModuleInit(): void {
+    const concurrency = this.configService.get<number>('optimization.concurrency', DEFAULT_CONCURRENCY);
+    this.worker.concurrency = concurrency;
+    this.logger.log(`Optimization processor concurrency set to ${concurrency}`);
   }
 
   async process(job: Job<OptimizationJobData>): Promise<void> {

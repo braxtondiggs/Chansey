@@ -434,25 +434,25 @@ export class OptimizationOrchestratorService {
     let windowCount = 0;
 
     for (const window of windows) {
-      // Execute backtest for train period
-      const trainMetrics = await this.executeBacktest(
-        strategyConfig,
-        parameters,
-        window.trainStartDate,
-        window.trainEndDate,
-        coins,
-        preloadedCandlesByCoin
-      );
-
-      // Execute backtest for test period
-      const testMetrics = await this.executeBacktest(
-        strategyConfig,
-        parameters,
-        window.testStartDate,
-        window.testEndDate,
-        coins,
-        preloadedCandlesByCoin
-      );
+      // Execute train and test backtests in parallel (independent date ranges, no shared state)
+      const [trainMetrics, testMetrics] = await Promise.all([
+        this.executeBacktest(
+          strategyConfig,
+          parameters,
+          window.trainStartDate,
+          window.trainEndDate,
+          coins,
+          preloadedCandlesByCoin
+        ),
+        this.executeBacktest(
+          strategyConfig,
+          parameters,
+          window.testStartDate,
+          window.testEndDate,
+          coins,
+          preloadedCandlesByCoin
+        )
+      ]);
 
       // Calculate scores based on objective
       const trainScore = this.calculateObjectiveScore(trainMetrics, config.objective);
