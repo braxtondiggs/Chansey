@@ -119,6 +119,6 @@ describe('ExchangeOHLCService', () => {
 
     const result = await service.getAvailableSymbols('binance_us', 'btc');
 
-    expect(result).toEqual(['BTC/USD', 'BTC/USDT']);
+    expect(result).toEqual(['BTC/USDT', 'BTC/USD']);
   });
 });

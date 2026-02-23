@@ -66,7 +66,7 @@ export class AlgorithmActivationService {
       algorithmId,
       exchangeKeyId,
       isActive: true,
-      allocationPercentage: 1.0, // Default 1% allocation
+      allocationPercentage: 5.0, // Default 5% allocation
       config,
       activatedAt: new Date(),
       deactivatedAt: undefined
