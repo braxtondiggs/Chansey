@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Job } from 'bullmq';
@@ -27,7 +28,7 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
   stalledInterval: 7_200_000,
   maxStalledCount: 1
 })
-export class BacktestProcessor extends WorkerHost {
+export class BacktestProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(BacktestProcessor.name);
 
   constructor(
@@ -37,10 +38,17 @@ export class BacktestProcessor extends WorkerHost {
     private readonly backtestResultService: BacktestResultService,
     private readonly backtestService: BacktestService,
     private readonly metricsService: MetricsService,
+    private readonly configService: ConfigService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
   ) {
     super();
+  }
+
+  onModuleInit(): void {
+    const concurrency = this.configService.get<number>('backtest.historicalConcurrency', 4);
+    this.worker.concurrency = concurrency;
+    this.logger.log(`Historical backtest worker concurrency set to ${concurrency}`);
   }
 
   async process(job: Job<BacktestJobData>): Promise<void> {

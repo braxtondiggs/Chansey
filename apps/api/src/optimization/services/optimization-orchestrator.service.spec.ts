@@ -581,6 +581,70 @@ describe('OptimizationOrchestratorService', () => {
     });
   });
 
+  describe('evaluateCombination', () => {
+    it('should run train and test backtests in parallel per window', async () => {
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+      const config = createValidConfig();
+      const coins = [{ id: 'btc' }] as Coin[];
+      const windows = [
+        {
+          windowIndex: 0,
+          trainStartDate: new Date('2024-01-01'),
+          trainEndDate: new Date('2024-04-01'),
+          testStartDate: new Date('2024-04-01'),
+          testEndDate: new Date('2024-05-01')
+        }
+      ];
+
+      const mockMetrics: WindowMetrics = {
+        sharpeRatio: 1.5,
+        totalReturn: 0.1,
+        maxDrawdown: -0.05,
+        winRate: 0.6,
+        tradeCount: 50,
+        profitFactor: 2.0,
+        volatility: 0.2,
+        downsideDeviation: 0.1
+      };
+
+      // Track call order to verify parallelism
+      const callOrder: string[] = [];
+      backtestEngine.executeOptimizationBacktestWithData.mockImplementation(async (cfg) => {
+        const label =
+          cfg.startDate < cfg.endDate && cfg.startDate.getTime() === windows[0].trainStartDate.getTime()
+            ? 'train'
+            : 'test';
+        callOrder.push(`${label}-start`);
+        await new Promise((r) => setTimeout(r, 10));
+        callOrder.push(`${label}-end`);
+        return mockMetrics;
+      });
+
+      windowProcessor.processWindow.mockResolvedValue({
+        degradation: 0.05,
+        overfittingDetected: false
+      } as any);
+
+      const candlesByCoin = new Map<string, any[]>();
+      candlesByCoin.set('btc', []);
+
+      const result = await service.evaluateCombination(
+        strategyConfig,
+        { period: 14 },
+        windows,
+        config,
+        coins,
+        candlesByCoin
+      );
+
+      expect(result.windowResults).toHaveLength(1);
+      // Both backtests should have started before either finished (parallel execution)
+      expect(callOrder[0]).toContain('start');
+      expect(callOrder[1]).toContain('start');
+      expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('cancelOptimization', () => {
     it('should cancel running optimization', async () => {
       const run = { id: 'run-1', status: OptimizationStatus.RUNNING } as OptimizationRun;

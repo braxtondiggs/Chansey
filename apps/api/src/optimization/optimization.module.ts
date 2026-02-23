@@ -1,9 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
 import { forwardRef, Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { OptimizationResult } from './entities/optimization-result.entity';
 import { OptimizationRun } from './entities/optimization-run.entity';
+import { optimizationConfig } from './optimization.config';
 import { OptimizationController } from './optimization.controller';
 import { OptimizationProcessor } from './processors/optimization.processor';
 import { GridSearchService } from './services/grid-search.service';
@@ -18,6 +20,7 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 
 @Module({
   imports: [
+    ConfigModule.forFeature(optimizationConfig),
     TypeOrmModule.forFeature([OptimizationRun, OptimizationResult, StrategyConfig, Coin]),
     BullModule.registerQueue({ name: 'optimization' }),
     ScoringModule,
