@@ -1,5 +1,4 @@
-import { Coin } from '../../coin/coin.entity';
-import { PriceSummaryByDay } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { Order } from '../../order/order.entity';
 
 /**
@@ -7,14 +6,16 @@ import { Order } from '../../order/order.entity';
  */
 export interface AlgorithmContext {
   /**
-   * Coins available in the portfolio
+   * Coins available in the portfolio.
+   * Accepts full Coin entities or lightweight { id, symbol } objects (e.g. paper trading).
    */
-  coins: Coin[];
+  coins: Array<{ id: string; symbol: string }>;
 
   /**
-   * Historical price data organized by coin ID and day
+   * Historical price data organized by coin ID.
+   * Accepts PriceSummary[] (backtest) or CandleData[] (paper trading) per coin.
    */
-  priceData: PriceSummaryByDay;
+  priceData: Record<string, CandleData[]>;
 
   /**
    * Current market data timestamp

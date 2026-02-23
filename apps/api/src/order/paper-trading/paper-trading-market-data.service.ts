@@ -7,6 +7,7 @@ import { Cache } from 'cache-manager';
 import { paperTradingConfig } from './paper-trading.config';
 
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import type { User } from '../../users/users.entity';
 
@@ -277,6 +278,52 @@ export class PaperTradingMarketDataService {
         slippageBps: 10,
         marketImpact: 0
       };
+    }
+  }
+
+  /**
+   * Get historical OHLC candles for algorithm indicator computation.
+   * Uses caching to minimize exchange API calls across ticks.
+   */
+  async getHistoricalCandles(
+    exchangeSlug: string,
+    symbol: string,
+    timeframe = '1h',
+    limit = 100,
+    user?: User
+  ): Promise<CandleData[]> {
+    const cacheKey = `paper-trading:ohlcv:${exchangeSlug}:${symbol}:${timeframe}:${user?.id ?? 'public'}`;
+
+    const cached = await this.cacheManager.get<CandleData[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
+      const client = user
+        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
+        : await this.exchangeManager.getPublicClient(exchangeSlug);
+
+      const ohlcv = await client.fetchOHLCV(formattedSymbol, timeframe, undefined, limit);
+
+      const candles = ohlcv.map((candle) => ({
+        avg: candle[4] as number, // close price — representative price for indicators
+        high: candle[2] as number,
+        low: candle[3] as number,
+        date: new Date(candle[0] as number),
+        open: candle[1] as number,
+        close: candle[4] as number,
+        volume: candle[5] as number
+      }));
+
+      // Cache for 5 minutes — candles shift slowly relative to 30s tick frequency
+      await this.cacheManager.set(cacheKey, candles, 5 * 60 * 1000);
+      return candles;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to fetch OHLCV for ${symbol} from ${exchangeSlug}: ${err.message}`);
+      return [];
     }
   }
 

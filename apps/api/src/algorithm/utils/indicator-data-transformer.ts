@@ -1,4 +1,4 @@
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Utility class for transforming data for use with the technicalindicators library
@@ -7,74 +7,74 @@ import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
  * - Simple arrays of numbers for basic indicators (SMA, EMA, etc.)
  * - Objects with specific keys for complex indicators (Bollinger Bands, MACD, etc.)
  *
- * This utility provides transformation methods to convert our PriceSummary data
+ * This utility provides transformation methods to convert our CandleData data
  * to the expected formats.
  */
 export class IndicatorDataTransformer {
   /**
-   * Extract average prices from PriceSummary array
+   * Extract average prices from CandleData array
    * Used for: SMA, EMA, WMA, StandardDeviation, etc.
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of average prices
    */
-  static extractAveragePrices(prices: PriceSummary[]): number[] {
+  static extractAveragePrices(prices: CandleData[]): number[] {
     return prices.map((price) => price.avg);
   }
 
   /**
-   * Extract closing prices from PriceSummary array
-   * Note: PriceSummary doesn't have close/open, uses avg instead
+   * Extract closing prices from CandleData array
+   * Note: CandleData doesn't have close/open, uses avg instead
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of average prices (used as closing prices)
    */
-  static extractClosePrices(prices: PriceSummary[]): number[] {
+  static extractClosePrices(prices: CandleData[]): number[] {
     return prices.map((price) => price.avg);
   }
 
   /**
-   * Extract opening prices from PriceSummary array
-   * Note: PriceSummary doesn't have open, uses avg instead
+   * Extract opening prices from CandleData array
+   * Note: CandleData doesn't have open, uses avg instead
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of average prices (used as opening prices)
    */
-  static extractOpenPrices(prices: PriceSummary[]): number[] {
+  static extractOpenPrices(prices: CandleData[]): number[] {
     return prices.map((price) => price.avg);
   }
 
   /**
-   * Extract high prices from PriceSummary array
+   * Extract high prices from CandleData array
    * Used for: ATR, Stochastic, and other high/low indicators
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of high prices
    */
-  static extractHighPrices(prices: PriceSummary[]): number[] {
+  static extractHighPrices(prices: CandleData[]): number[] {
     return prices.map((price) => price.high);
   }
 
   /**
-   * Extract low prices from PriceSummary array
+   * Extract low prices from CandleData array
    * Used for: ATR, Stochastic, and other high/low indicators
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of low prices
    */
-  static extractLowPrices(prices: PriceSummary[]): number[] {
+  static extractLowPrices(prices: CandleData[]): number[] {
     return prices.map((price) => price.low);
   }
 
   /**
-   * Transform PriceSummary array to OHLC format for candlestick indicators
+   * Transform CandleData array to OHLC format for candlestick indicators
    * Used for: Complex indicators that need full candlestick data
-   * Note: PriceSummary uses avg for both open and close
+   * Note: CandleData uses avg for both open and close
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of objects with open, high, low, close properties
    */
-  static toOHLC(prices: PriceSummary[]): Array<{ open: number; high: number; low: number; close: number }> {
+  static toOHLC(prices: CandleData[]): Array<{ open: number; high: number; low: number; close: number }> {
     return prices.map((price) => ({
       open: price.avg,
       high: price.high,
@@ -84,14 +84,14 @@ export class IndicatorDataTransformer {
   }
 
   /**
-   * Transform PriceSummary array to HLC format
+   * Transform CandleData array to HLC format
    * Used for: Indicators that don't need open price
-   * Note: PriceSummary uses avg as close
+   * Note: CandleData uses avg as close
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @returns Array of objects with high, low, close properties
    */
-  static toHLC(prices: PriceSummary[]): Array<{ high: number; low: number; close: number }> {
+  static toHLC(prices: CandleData[]): Array<{ high: number; low: number; close: number }> {
     return prices.map((price) => ({
       high: price.high,
       low: price.low,
@@ -134,12 +134,12 @@ export class IndicatorDataTransformer {
   /**
    * Validate that we have sufficient data points for an indicator
    *
-   * @param prices - Array of PriceSummary objects
+   * @param prices - Array of CandleData objects
    * @param requiredPeriod - Required period for the indicator
    * @param multiplier - Data point multiplier (default 1)
    * @returns true if sufficient data, false otherwise
    */
-  static hasMinimumDataPoints(prices: PriceSummary[], requiredPeriod: number, multiplier = 1): boolean {
+  static hasMinimumDataPoints(prices: CandleData[], requiredPeriod: number, multiplier = 1): boolean {
     return prices.length >= this.getRequiredDataPoints(requiredPeriod, multiplier);
   }
 

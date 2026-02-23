@@ -93,7 +93,19 @@ export class PromotionGateService {
     ]);
 
     if (!latestScore || !latestBacktest) {
-      throw new Error('Strategy must have backtest results and score before promotion');
+      this.logger.debug(
+        `Strategy ${strategyConfigId} has no ${!latestScore ? 'score' : 'backtest results'} yet, skipping promotion`
+      );
+      return {
+        canPromote: false,
+        gateResults: [],
+        totalGates: this.gates.length,
+        gatesPassed: 0,
+        gatesFailed: 0,
+        failedGates: ['prerequisite-data'],
+        summary: 'Strategy does not have backtest results and score yet.',
+        warnings: []
+      };
     }
 
     // Evaluate all gates

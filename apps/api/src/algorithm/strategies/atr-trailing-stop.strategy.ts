@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
@@ -138,7 +138,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   /**
    * Check if we have enough data for ATR calculation
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: ATRTrailingStopConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: ATRTrailingStopConfig): boolean {
     return !!priceHistory && priceHistory.length >= config.atrPeriod + 5;
   }
 
@@ -146,7 +146,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
    * Calculate trailing stop level for long positions
    */
   private calculateLongTrailingStop(
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     config: ATRTrailingStopConfig,
     lookbackStart: number,
@@ -195,7 +195,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
    * Calculate trailing stop level for short positions
    */
   private calculateShortTrailingStop(
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     config: ATRTrailingStopConfig,
     lookbackStart: number,
@@ -246,7 +246,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   private generateLongStopSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     config: ATRTrailingStopConfig
   ): TradingSignal | null {
@@ -295,7 +295,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   private generateShortStopSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     config: ATRTrailingStopConfig
   ): TradingSignal | null {
@@ -346,7 +346,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   private generateLongEntrySignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     config: ATRTrailingStopConfig
   ): TradingSignal | null {
@@ -401,7 +401,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   private generateShortEntrySignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     config: ATRTrailingStopConfig
   ): TradingSignal | null {
@@ -463,7 +463,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
    * Calculate entry confidence based on ATR stability.
    * More stable ATR = more reliable entry signals.
    */
-  private calculateEntryConfidence(prices: PriceSummary[], atr: number[]): number {
+  private calculateEntryConfidence(prices: CandleData[], atr: number[]): number {
     const currentIndex = prices.length - 1;
     const lookback = 5;
     const startIndex = Math.max(0, currentIndex - lookback);
@@ -510,7 +510,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
    * Calculate confidence based on ATR stability and price momentum
    */
   private calculateConfidence(
-    prices: PriceSummary[],
+    prices: CandleData[],
     atr: number[],
     stopState: TrailingStopState,
     config: ATRTrailingStopConfig,
@@ -558,7 +558,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   /**
    * Prepare chart data with trailing stop levels
    */
-  private prepareChartData(prices: PriceSummary[], atr: number[], config: ATRTrailingStopConfig): ChartDataPoint[] {
+  private prepareChartData(prices: CandleData[], atr: number[], config: ATRTrailingStopConfig): ChartDataPoint[] {
     return prices.map((price, index) => {
       // Calculate trailing stop at each point
       let longStop: number | undefined;

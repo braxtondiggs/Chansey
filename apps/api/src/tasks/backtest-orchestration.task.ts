@@ -31,7 +31,7 @@ export class BacktestOrchestrationTask {
   private static readonly HISTORICAL_THRESHOLD_MS = 90 * 60 * 1000;
   private static readonly LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
   private static readonly OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
-  private static readonly PENDING_OPTIMIZATION_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+  private static readonly PENDING_OPTIMIZATION_THRESHOLD_MS = 60 * 60 * 1000; // 60 min
 
   private readonly bootedAt = Date.now();
   private readonly logger = new Logger(BacktestOrchestrationTask.name);

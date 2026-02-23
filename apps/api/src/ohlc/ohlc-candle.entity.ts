@@ -163,18 +163,26 @@ export type OHLCSummaryByPeriod = {
  * Maps OHLC candle data to the legacy price format.
  *
  * Field mappings:
- * - avg: OHLC close price (represents the final/current price)
+ * - avg: Representative price — close price for single candles,
+ *        mean-of-closes for aggregated windows. Used by all indicator
+ *        calculations (SMA, RSI, etc.) as the primary price series.
  * - coin: coinId (UUID)
  * - date: timestamp (candle open time)
  * - high: OHLC high
  * - low: OHLC low
+ * - open: (optional) precise open price, available when source provides full OHLCV
+ * - close: (optional) precise close price, available when source provides full OHLCV
+ * - volume: (optional) trading volume, available when source provides full OHLCV
  */
-export interface PriceSummary {
-  readonly avg: number;
+export interface PriceSummary extends CandleData {
   readonly coin: string;
-  readonly date: Date;
+}
+
+export interface CandleData {
+  readonly avg: number;
   readonly high: number;
   readonly low: number;
+  readonly date: Date;
   readonly open?: number;
   readonly close?: number;
   readonly volume?: number;

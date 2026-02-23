@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -123,7 +123,7 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
   /**
    * Check if we have enough data for both EMA and RSI calculations
    */
-  private hasEnoughData(priceHistory: PriceSummary[] | undefined, config: EMARSIFilterConfig): boolean {
+  private hasEnoughData(priceHistory: CandleData[] | undefined, config: EMARSIFilterConfig): boolean {
     const minRequired = Math.max(config.slowEmaPeriod, config.rsiPeriod) + 5;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
@@ -134,7 +134,7 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
   private generateSignal(
     coinId: string,
     coinSymbol: string,
-    prices: PriceSummary[],
+    prices: CandleData[],
     fastEMA: number[],
     slowEMA: number[],
     rsi: number[],
@@ -273,7 +273,7 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
    * Calculate confidence based on trend consistency and RSI position
    */
   private calculateConfidence(
-    prices: PriceSummary[],
+    prices: CandleData[],
     fastEMA: number[],
     slowEMA: number[],
     rsi: number[],
@@ -332,7 +332,7 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
    * Prepare chart data for visualization
    */
   private prepareChartData(
-    prices: PriceSummary[],
+    prices: CandleData[],
     fastEMA: number[],
     slowEMA: number[],
     rsi: number[]
