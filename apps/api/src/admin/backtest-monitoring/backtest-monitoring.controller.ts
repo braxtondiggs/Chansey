@@ -18,6 +18,8 @@ import {
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
   PipelineStageCountsDto,
+  SignalActivityFeedDto,
+  SignalActivityFeedQueryDto,
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from './dto';
@@ -182,6 +184,27 @@ export class BacktestMonitoringController {
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getPipelineStageCounts(): Promise<PipelineStageCountsDto> {
     return this.monitoringService.getPipelineStageCounts();
+  }
+
+  /**
+   * Get signal activity feed
+   */
+  @Get('signal-activity-feed')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Get signal activity feed',
+    description:
+      'Returns a unified feed of recent signals from both backtests and paper trading sessions, ' +
+      'along with health indicators for signal generation activity.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Signal activity feed retrieved successfully',
+    type: SignalActivityFeedDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getSignalActivityFeed(@Query() query: SignalActivityFeedQueryDto): Promise<SignalActivityFeedDto> {
+    return this.monitoringService.getSignalActivityFeed(query.limit ?? 100);
   }
 
   /**

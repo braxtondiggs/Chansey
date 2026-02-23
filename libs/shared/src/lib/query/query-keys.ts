@@ -217,7 +217,11 @@ export const queryKeys = {
         filters
           ? ([...queryKeys.admin.backtestMonitoring.all(), 'paper-trading-analytics', filters] as const)
           : ([...queryKeys.admin.backtestMonitoring.all(), 'paper-trading-analytics'] as const),
-      pipelineStageCounts: () => [...queryKeys.admin.backtestMonitoring.all(), 'pipeline-stage-counts'] as const
+      pipelineStageCounts: () => [...queryKeys.admin.backtestMonitoring.all(), 'pipeline-stage-counts'] as const,
+      signalActivityFeed: (limit?: number) =>
+        limit
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'signal-activity-feed', limit] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'signal-activity-feed'] as const)
     },
     liveTradeMonitoring: {
       all: () => [...queryKeys.admin.all, 'live-trade-monitoring'] as const,
