@@ -152,7 +152,7 @@ export class OptimizationOrchestratorService {
     const baselineCombination = combinations.find((c) => c.isBaseline);
     const baselineParameters = baselineCombination?.values || this.getDefaultParameters(parameterSpace);
 
-    // Create optimization run
+    // Create optimization run (persist combinations for checkpoint-resume)
     const run = this.optimizationRunRepository.create({
       strategyConfigId,
       status: OptimizationStatus.PENDING,
@@ -160,7 +160,8 @@ export class OptimizationOrchestratorService {
       parameterSpace,
       baselineParameters,
       totalCombinations: combinations.length,
-      combinationsTested: 0
+      combinationsTested: 0,
+      combinations
     });
 
     const savedRun = await this.optimizationRunRepository.save(run);
@@ -202,9 +203,12 @@ export class OptimizationOrchestratorService {
       throw new NotFoundException(`Optimization run ${runId} not found`);
     }
 
-    // Update status to running
+    // Detect resume: preserve original startedAt if this is a resumed run
+    const isResume = run.combinationsTested > 0;
     run.status = OptimizationStatus.RUNNING;
-    run.startedAt = new Date();
+    if (!isResume) {
+      run.startedAt = new Date();
+    }
     run.lastHeartbeatAt = new Date();
     await this.optimizationRunRepository.save(run);
 
@@ -267,6 +271,34 @@ export class OptimizationOrchestratorService {
       let baselineScore = 0;
       let noImprovementCount = 0;
       let combinationsProcessed = 0;
+
+      // Resume: reconstruct state from already-persisted results
+      if (isResume) {
+        const existingResults = await this.optimizationResultRepository.find({
+          where: { optimizationRunId: runId },
+          select: ['combinationIndex', 'avgTestScore', 'parameters', 'isBaseline']
+        });
+
+        const processedIndices = new Set(existingResults.map((r) => r.combinationIndex));
+        combinations = combinations.filter((c) => !processedIndices.has(c.index));
+        combinationsProcessed = existingResults.length;
+
+        // Reconstruct best score/parameters from persisted results
+        for (const result of existingResults) {
+          if (result.isBaseline) {
+            baselineScore = result.avgTestScore;
+          }
+          if (result.avgTestScore > bestScore) {
+            bestScore = result.avgTestScore;
+            bestParameters = result.parameters;
+          }
+        }
+
+        this.logger.log(
+          `Resumed optimization run ${runId}: ${combinationsProcessed} already processed, ` +
+            `${combinations.length} remaining, best score: ${bestScore === -Infinity ? 'none' : bestScore.toFixed(4)}`
+        );
+      }
 
       // Heartbeat callback updates lastHeartbeatAt on the run entity
       const heartbeatFn = async () => {
@@ -431,8 +463,6 @@ export class OptimizationOrchestratorService {
     let totalTestScore = 0;
     let totalDegradation = 0;
     let overfittingWindows = 0;
-    let windowCount = 0;
-
     for (const window of windows) {
       // Execute train and test backtests in parallel (independent date ranges, no shared state)
       const [trainMetrics, testMetrics] = await Promise.all([
@@ -481,7 +511,6 @@ export class OptimizationOrchestratorService {
         overfittingWindows++;
       }
 
-      windowCount++;
       if (heartbeatFn) {
         await heartbeatFn();
       }
@@ -744,7 +773,8 @@ export class OptimizationOrchestratorService {
       estimatedTimeRemaining,
       lastUpdated: new Date(),
       currentBestScore,
-      currentBestParams: currentBestParams || undefined
+      currentBestParams: currentBestParams || undefined,
+      autoResumeCount: run.progressDetails?.autoResumeCount
     };
 
     await this.optimizationRunRepository.update(run.id, {

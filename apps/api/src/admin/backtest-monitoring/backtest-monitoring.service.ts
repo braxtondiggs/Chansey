@@ -1033,7 +1033,7 @@ export class BacktestMonitoringService {
         'successRate'
       )
       .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
-      .leftJoin('coins', 'c', 'CAST(c.id AS text) = s.instrument')
+      .leftJoin('coin', 'c', 'CAST(c.id AS text) = s.instrument')
       .leftJoin(
         (subQuery) =>
           subQuery
