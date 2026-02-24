@@ -21,6 +21,9 @@ import {
   OptimizationFiltersDto,
   OptimizationStatus,
   PaginatedBacktestListDto,
+  PaginatedLiveReplayRunsDto,
+  PaginatedOptimizationRunsDto,
+  PaginatedPaperTradingSessionsDto,
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
   PaperTradingStatus,
@@ -33,6 +36,7 @@ import {
 import { BacktestMonitoringService } from './backtest-monitoring.service';
 import { BacktestsTableComponent } from './components/backtests-table/backtests-table.component';
 import { ExportPanelComponent } from './components/export-panel/export-panel.component';
+import { LiveReplayPanelComponent } from './components/live-replay-panel/live-replay-panel.component';
 import { OptimizationPanelComponent } from './components/optimization-panel/optimization-panel.component';
 import { OverviewCardsComponent } from './components/overview-cards/overview-cards.component';
 import { PaperTradingPanelComponent } from './components/paper-trading-panel/paper-trading-panel.component';
@@ -61,6 +65,7 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
     TopAlgorithmsComponent,
     SignalQualityPanelComponent,
     TradeAnalyticsPanelComponent,
+    LiveReplayPanelComponent,
     OptimizationPanelComponent,
     PaperTradingPanelComponent,
     SignalActivityFeedComponent,
@@ -151,7 +156,11 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
               <p-progress-spinner strokeWidth="4" />
             </div>
           } @else {
-            <app-optimization-panel [analytics]="optimizationAnalytics()" />
+            <app-optimization-panel
+              [analytics]="optimizationAnalytics()"
+              [runs]="optimizationRuns()"
+              (pageChange)="onOptimizationRunsPageChange($event)"
+            />
           }
         } @else if (selectedView === 'paper-trading') {
           @if (paperTradingQuery.isPending()) {
@@ -159,7 +168,23 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
               <p-progress-spinner strokeWidth="4" />
             </div>
           } @else {
-            <app-paper-trading-panel [analytics]="paperTradingAnalytics()" />
+            <app-paper-trading-panel
+              [analytics]="paperTradingAnalytics()"
+              [sessions]="paperTradingSessions()"
+              (pageChange)="onPaperTradingSessionsPageChange($event)"
+            />
+          }
+        } @else if (selectedView === 'live-replay') {
+          @if (liveReplayRunsQuery.isPending()) {
+            <div class="flex items-center justify-center py-8">
+              <p-progress-spinner strokeWidth="4" />
+            </div>
+          } @else {
+            <app-live-replay-panel
+              [overview]="overview()"
+              [runs]="liveReplayRuns()"
+              (pageChange)="onLiveReplayRunsPageChange($event)"
+            />
           }
         } @else {
           <!-- Backtest tabs (overview, signals, trades, export) -->
@@ -231,6 +256,9 @@ export class BacktestMonitoringComponent {
   optimizationFiltersSignal = signal<OptimizationFiltersDto>({});
   paperTradingFiltersSignal = signal<PaperTradingFiltersDto>({});
   currentPage = signal(1);
+  optimizationRunsPage = signal(1);
+  liveReplayRunsPage = signal(1);
+  paperTradingSessionsPage = signal(1);
 
   // Computed filters
   currentFilters = computed(() => this.filtersSignal());
@@ -247,7 +275,28 @@ export class BacktestMonitoringComponent {
   signalAnalyticsQuery = this.monitoringService.useSignalAnalytics(this.filtersSignal);
   tradeAnalyticsQuery = this.monitoringService.useTradeAnalytics(this.filtersSignal);
   optimizationQuery = this.monitoringService.useOptimizationAnalytics(this.optimizationFiltersSignal);
+  optimizationRunsQuery = this.monitoringService.useOptimizationRuns(
+    computed(() => ({
+      ...this.optimizationFiltersSignal(),
+      page: this.optimizationRunsPage(),
+      limit: 10
+    }))
+  );
+  liveReplayRunsQuery = this.monitoringService.useLiveReplayRuns(
+    computed(() => ({
+      ...this.filtersSignal(),
+      page: this.liveReplayRunsPage(),
+      limit: 10
+    }))
+  );
   paperTradingQuery = this.monitoringService.usePaperTradingAnalytics(this.paperTradingFiltersSignal);
+  paperTradingSessionsQuery = this.monitoringService.usePaperTradingSessions(
+    computed(() => ({
+      ...this.paperTradingFiltersSignal(),
+      page: this.paperTradingSessionsPage(),
+      limit: 10
+    }))
+  );
   signalFeedEnabled = computed(() => this.activeTab() === 'signal-feed');
   signalFeedQuery = this.monitoringService.useSignalActivityFeed(undefined, this.signalFeedEnabled);
   pipelineStageCountsQuery = this.monitoringService.usePipelineStageCounts();
@@ -260,7 +309,12 @@ export class BacktestMonitoringComponent {
   signalAnalytics = computed(() => this.signalAnalyticsQuery.data() as SignalAnalyticsDto | undefined);
   tradeAnalytics = computed(() => this.tradeAnalyticsQuery.data() as TradeAnalyticsDto | undefined);
   optimizationAnalytics = computed(() => this.optimizationQuery.data() as OptimizationAnalyticsDto | undefined);
+  optimizationRuns = computed(() => this.optimizationRunsQuery.data() as PaginatedOptimizationRunsDto | undefined);
+  liveReplayRuns = computed(() => this.liveReplayRunsQuery.data() as PaginatedLiveReplayRunsDto | undefined);
   paperTradingAnalytics = computed(() => this.paperTradingQuery.data() as PaperTradingMonitoringDto | undefined);
+  paperTradingSessions = computed(
+    () => this.paperTradingSessionsQuery.data() as PaginatedPaperTradingSessionsDto | undefined
+  );
   signalFeed = computed(() => this.signalFeedQuery.data() as SignalActivityFeedDto | undefined);
   pipelineStageCounts = computed(() => this.pipelineStageCountsQuery.data() as PipelineStageCountsDto | undefined);
 
@@ -320,10 +374,25 @@ export class BacktestMonitoringComponent {
     this.paperTradingFiltersSignal.set(ptFilters);
 
     this.currentPage.set(1);
+    this.optimizationRunsPage.set(1);
+    this.liveReplayRunsPage.set(1);
+    this.paperTradingSessionsPage.set(1);
   }
 
   onPageChange(page: number): void {
     this.currentPage.set(page);
+  }
+
+  onOptimizationRunsPageChange(page: number): void {
+    this.optimizationRunsPage.set(page);
+  }
+
+  onLiveReplayRunsPageChange(page: number): void {
+    this.liveReplayRunsPage.set(page);
+  }
+
+  onPaperTradingSessionsPageChange(page: number): void {
+    this.paperTradingSessionsPage.set(page);
   }
 
   toggleSignalFeed(): void {
@@ -341,8 +410,13 @@ export class BacktestMonitoringComponent {
       this.signalFeedQuery.refetch();
     } else if (this.selectedView === 'optimization') {
       this.optimizationQuery.refetch();
+      this.optimizationRunsQuery.refetch();
+    } else if (this.selectedView === 'live-replay') {
+      this.overviewQuery.refetch();
+      this.liveReplayRunsQuery.refetch();
     } else if (this.selectedView === 'paper-trading') {
       this.paperTradingQuery.refetch();
+      this.paperTradingSessionsQuery.refetch();
     } else {
       this.overviewQuery.refetch();
       this.backtestsQuery.refetch();

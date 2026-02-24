@@ -5,6 +5,7 @@ import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-
 
 import { BacktestFiltersDto } from './overview.dto';
 
+import { ReplaySpeed } from '../../../order/backtest/backtest-pacing.interface';
 import { BacktestStatus, BacktestType } from '../../../order/backtest/backtest.entity';
 
 /**
@@ -169,4 +170,54 @@ export class PaginatedBacktestListDto {
 export enum ExportFormat {
   CSV = 'csv',
   JSON = 'json'
+}
+
+// ===========================================================================
+// Live Replay Run Listing DTOs
+// ===========================================================================
+
+/**
+ * Query parameters for paginated live replay run list
+ */
+export class LiveReplayRunListQueryDto extends BacktestFiltersDto {
+  @ApiPropertyOptional({ description: 'Page number (1-based)', default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ description: 'Items per page', default: 10, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class LiveReplayRunListItemDto {
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiProperty() algorithmName: string;
+  @ApiProperty({ enum: BacktestStatus }) status: BacktestStatus;
+  @ApiProperty({ description: 'Progress 0-100' }) progressPercent: number;
+  @ApiProperty() processedTimestamps: number;
+  @ApiProperty() totalTimestamps: number;
+  @ApiProperty({ nullable: true }) totalReturn: number | null;
+  @ApiProperty({ nullable: true }) sharpeRatio: number | null;
+  @ApiProperty({ nullable: true }) maxDrawdown: number | null;
+  @ApiProperty({ nullable: true, description: 'Replay speed multiplier' }) replaySpeed: ReplaySpeed | null;
+  @ApiProperty({ nullable: true, description: 'Whether the run is currently paused' }) isPaused: boolean | null;
+  @ApiProperty() createdAt: string;
+}
+
+export class PaginatedLiveReplayRunsDto {
+  @ApiProperty({ type: [LiveReplayRunListItemDto] }) data: LiveReplayRunListItemDto[];
+  @ApiProperty() total: number;
+  @ApiProperty() page: number;
+  @ApiProperty() limit: number;
+  @ApiProperty({ description: 'Total number of pages' }) totalPages: number;
+  @ApiProperty({ description: 'Whether there is a next page' }) hasNextPage: boolean;
+  @ApiProperty({ description: 'Whether there is a previous page' }) hasPreviousPage: boolean;
 }
