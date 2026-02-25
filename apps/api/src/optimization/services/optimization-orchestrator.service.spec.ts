@@ -78,8 +78,15 @@ describe('OptimizationOrchestratorService', () => {
       findOne: jest.fn(),
       save: jest.fn(),
       create: jest.fn(),
-      find: jest.fn(),
-      update: jest.fn()
+      find: jest.fn().mockResolvedValue([]),
+      update: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 })
+      })
     } as unknown as MockRepo<OptimizationResult>;
 
     strategyConfigRepo = {
@@ -552,6 +559,137 @@ describe('OptimizationOrchestratorService', () => {
       expect(optimizationRunRepo.save).toHaveBeenCalledWith(run);
     });
 
+    it('should preserve startedAt on resume', async () => {
+      const originalStartedAt = new Date('2025-01-01T00:00:00Z');
+      const run = buildRun({
+        combinationsTested: 5,
+        startedAt: originalStartedAt,
+        config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
+      });
+      optimizationRunRepo.findOne.mockResolvedValue(run);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
+
+      // Return existing results for the already-processed combinations
+      optimizationResultRepo.find.mockResolvedValue([
+        { combinationIndex: 0, avgTestScore: 1.5, parameters: { period: 14 }, isBaseline: true } as any
+      ]);
+
+      walkForwardService.generateWindows.mockReturnValue([
+        {
+          windowIndex: 0,
+          trainStartDate: new Date('2024-01-01'),
+          trainEndDate: new Date('2024-04-01'),
+          testStartDate: new Date('2024-04-01'),
+          testEndDate: new Date('2024-05-01')
+        }
+      ]);
+
+      // Empty combinations (all filtered out on resume)
+      await service.executeOptimization(run.id, [{ index: 0, values: { period: 14 }, isBaseline: true }]);
+
+      // startedAt should still be the original value (not overwritten)
+      expect(run.startedAt).toEqual(originalStartedAt);
+    });
+
+    it('should skip already-processed combinations on resume', async () => {
+      const run = buildRun({
+        combinationsTested: 1,
+        startedAt: new Date('2025-01-01T00:00:00Z'),
+        config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
+      });
+      optimizationRunRepo.findOne
+        .mockResolvedValueOnce(run) // initial load
+        .mockResolvedValueOnce(run); // cancellation check
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
+
+      // One combination already processed
+      optimizationResultRepo.find.mockResolvedValue([
+        { combinationIndex: 0, avgTestScore: 1.5, parameters: { period: 14 }, isBaseline: true } as any
+      ]);
+
+      walkForwardService.generateWindows.mockReturnValue([
+        {
+          windowIndex: 0,
+          trainStartDate: new Date('2024-01-01'),
+          trainEndDate: new Date('2024-04-01'),
+          testStartDate: new Date('2024-04-01'),
+          testEndDate: new Date('2024-05-01')
+        }
+      ]);
+
+      const mockMetrics = {
+        sharpeRatio: 2.0,
+        totalReturn: 0.15,
+        maxDrawdown: -0.1,
+        winRate: 0.65,
+        tradeCount: 60,
+        profitFactor: 2.5,
+        volatility: 0.18,
+        downsideDeviation: 0.12
+      };
+
+      backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(mockMetrics);
+      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
+
+      const managerSave = jest.fn().mockResolvedValue({});
+      const managerCreate = jest.fn().mockReturnValue({});
+      dataSource.transaction.mockImplementation(async (cb: any) => {
+        await cb({ save: managerSave, create: managerCreate });
+      });
+
+      // Pass two combinations: index 0 (already done) and index 1 (new)
+      await service.executeOptimization(run.id, [
+        { index: 0, values: { period: 14 }, isBaseline: true },
+        { index: 1, values: { period: 20 }, isBaseline: false }
+      ]);
+
+      // Only index 1 should be evaluated (index 0 was filtered out)
+      expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2); // train + test for 1 combo
+    });
+
+    it('should reconstruct bestScore and baselineScore from existing results on resume', async () => {
+      const run = buildRun({
+        combinationsTested: 2,
+        startedAt: new Date('2025-01-01T00:00:00Z'),
+        config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
+      });
+      optimizationRunRepo.findOne.mockResolvedValue(run);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
+
+      // Two results already processed
+      optimizationResultRepo.find.mockResolvedValue([
+        { combinationIndex: 0, avgTestScore: 1.2, parameters: { period: 14 }, isBaseline: true } as any,
+        { combinationIndex: 1, avgTestScore: 1.8, parameters: { period: 20 }, isBaseline: false } as any
+      ]);
+
+      walkForwardService.generateWindows.mockReturnValue([
+        {
+          windowIndex: 0,
+          trainStartDate: new Date('2024-01-01'),
+          trainEndDate: new Date('2024-04-01'),
+          testStartDate: new Date('2024-04-01'),
+          testEndDate: new Date('2024-05-01')
+        }
+      ]);
+
+      // All combinations already processed, so no new evaluations
+      await service.executeOptimization(run.id, [
+        { index: 0, values: { period: 14 }, isBaseline: true },
+        { index: 1, values: { period: 20 }, isBaseline: false }
+      ]);
+
+      // Finalization should use reconstructed scores
+      // The run should be COMPLETED with best score from results
+      expect(run.status).toBe(OptimizationStatus.COMPLETED);
+      expect(run.bestScore).toBeDefined();
+    });
+
     it('should exit early when run is cancelled before processing batch', async () => {
       const run = buildRun({
         config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
@@ -642,6 +780,57 @@ describe('OptimizationOrchestratorService', () => {
       expect(callOrder[0]).toContain('start');
       expect(callOrder[1]).toContain('start');
       expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('updateProgress', () => {
+    it('should preserve autoResumeCount in progress details', async () => {
+      const run = {
+        id: 'run-1',
+        startedAt: new Date(Date.now() - 60000),
+        totalCombinations: 10,
+        progressDetails: { autoResumeCount: 2 }
+      } as unknown as OptimizationRun;
+
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+
+      // Call private method
+      await (service as any).updateProgress(run, 5, 3, 1.5, { period: 14 });
+
+      expect(optimizationRunRepo.update).toHaveBeenCalledWith(
+        run.id,
+        expect.objectContaining({
+          combinationsTested: 5,
+          progressDetails: expect.objectContaining({
+            autoResumeCount: 2,
+            currentCombination: 5,
+            currentBestScore: 1.5
+          })
+        })
+      );
+    });
+
+    it('should set autoResumeCount to undefined when not previously set', async () => {
+      const run = {
+        id: 'run-1',
+        startedAt: new Date(Date.now() - 60000),
+        totalCombinations: 10,
+        progressDetails: null
+      } as unknown as OptimizationRun;
+
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+
+      await (service as any).updateProgress(run, 3, 2, 0.8, null);
+
+      expect(optimizationRunRepo.update).toHaveBeenCalledWith(
+        run.id,
+        expect.objectContaining({
+          progressDetails: expect.objectContaining({
+            autoResumeCount: undefined,
+            currentCombination: 3
+          })
+        })
+      );
     });
   });
 

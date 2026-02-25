@@ -37,6 +37,7 @@ export interface OptimizationProgressDetails {
   lastUpdated: Date;
   currentBestScore?: number;
   currentBestParams?: Record<string, unknown>;
+  autoResumeCount?: number;
 }
 
 /**
@@ -124,6 +125,9 @@ export class OptimizationRun {
 
   @Column({ type: 'jsonb', nullable: true })
   progressDetails: OptimizationProgressDetails;
+
+  @Column({ type: 'jsonb', nullable: true, select: false })
+  combinations: Array<{ index: number; values: Record<string, unknown>; isBaseline: boolean }>;
 
   @Column({ type: 'text', nullable: true })
   errorMessage: string;
