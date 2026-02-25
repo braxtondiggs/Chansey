@@ -344,11 +344,27 @@ export class BacktestMonitoringService {
       order: { timestamp: 'ASC' }
     });
 
+    // Resolve instrument UUIDs to coin symbols
+    const instrumentIds = [...new Set(signals.map((s) => s.instrument).filter(Boolean))];
+    const instrumentMap = new Map<string, string>();
+    if (instrumentIds.length > 0) {
+      const coins = await this.signalRepo.manager
+        .createQueryBuilder()
+        .select('CAST(c.id AS text)', 'id')
+        .addSelect('UPPER(c.symbol)', 'symbol')
+        .from('coin', 'c')
+        .where('c.id IN (:...ids)', { ids: instrumentIds })
+        .getRawMany();
+      for (const coin of coins) {
+        instrumentMap.set(coin.id, coin.symbol);
+      }
+    }
+
     const data = signals.map((s) => ({
       id: s.id,
       timestamp: s.timestamp.toISOString(),
       signalType: s.signalType,
-      instrument: s.instrument,
+      instrument: instrumentMap.get(s.instrument) || s.instrument,
       direction: s.direction,
       quantity: s.quantity,
       price: s.price,
@@ -687,8 +703,12 @@ export class BacktestMonitoringService {
 
     // Collect all unique instrument UUIDs and resolve to coin symbols
     const instrumentIds = new Set<string>();
-    for (const s of backtestSignals) instrumentIds.add(s.instrument);
-    for (const ps of paperSignals) instrumentIds.add(ps.instrument);
+    for (const s of backtestSignals) {
+      if (s.instrument) instrumentIds.add(s.instrument);
+    }
+    for (const ps of paperSignals) {
+      if (ps.instrument) instrumentIds.add(ps.instrument);
+    }
 
     const coinMap = new Map<string, string>();
     if (instrumentIds.size > 0) {

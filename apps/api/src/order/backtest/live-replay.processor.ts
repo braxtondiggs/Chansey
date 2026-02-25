@@ -99,6 +99,10 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
       // Check if we're resuming from a checkpoint
       const isResuming = !!backtest.checkpointState;
 
+      if (isResuming) {
+        this.metricsService.recordCheckpointResumed(strategyName);
+      }
+
       // Clean up any orphaned results that may have been partially written after the checkpoint
       // This ensures data consistency when resuming from a crash or unexpected termination
       if (isResuming && backtest.checkpointState?.persistedCounts) {
@@ -123,6 +127,10 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         isPaused: false
       };
       await this.backtestRepository.save(backtest);
+
+      // Record backtest started and increment active count
+      this.metricsService.recordBacktestStarted(mode ?? 'live_replay', strategyName, isResuming);
+      this.metricsService.incrementActiveBacktests(mode ?? 'live_replay');
 
       // Clear any stale pause flag from previous runs
       await this.backtestPauseService.clearPauseFlag(backtestId);
@@ -186,6 +194,9 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
           state.lastProcessedIndex + 1,
           totalTimestamps
         );
+
+        // Record checkpoint saved metric
+        this.metricsService.recordCheckpointSaved(strategyName);
       };
 
       let heartbeatCallCount = 0;
@@ -237,6 +248,14 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
 
       await this.backtestResultService.persistSuccess(backtest, results);
       this.metricsService.recordBacktestCompleted(strategyName, 'success');
+
+      // Record final metrics distribution
+      this.metricsService.recordBacktestFinalMetrics(strategyName, {
+        totalReturn: results.finalMetrics.totalReturn,
+        sharpeRatio: results.finalMetrics.sharpeRatio,
+        maxDrawdown: results.finalMetrics.maxDrawdown,
+        tradeCount: results.finalMetrics.totalTrades
+      });
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Live replay backtest ${backtestId} failed: ${err.message}`, err.stack);

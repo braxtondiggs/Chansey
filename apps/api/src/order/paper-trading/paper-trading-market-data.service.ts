@@ -32,7 +32,7 @@ export interface OrderBook {
   timestamp: Date;
 }
 
-export interface SlippageResult {
+export interface RealisticSlippageResult {
   estimatedPrice: number;
   slippageBps: number;
   marketImpact: number;
@@ -219,7 +219,7 @@ export class PaperTradingMarketDataService {
     quantity: number,
     side: 'BUY' | 'SELL',
     user?: User
-  ): Promise<SlippageResult> {
+  ): Promise<RealisticSlippageResult> {
     try {
       const orderBook = await this.getOrderBook(exchangeSlug, symbol, 50, user);
       const levels = side === 'BUY' ? orderBook.asks : orderBook.bids;

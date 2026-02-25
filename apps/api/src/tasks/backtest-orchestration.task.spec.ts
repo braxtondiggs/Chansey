@@ -205,7 +205,7 @@ describe('BacktestOrchestrationTask', () => {
 
       await task.detectStaleBacktests();
 
-      expect(mockBacktestRepository.find).toHaveBeenCalledTimes(2);
+      expect(mockBacktestRepository.find).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -215,8 +215,8 @@ describe('BacktestOrchestrationTask', () => {
 
       await task.detectStaleBacktests();
 
-      // Two find calls: one for HISTORICAL, one for LIVE_REPLAY
-      expect(mockBacktestRepository.find).toHaveBeenCalledTimes(2);
+      // Three find calls: HISTORICAL, LIVE_REPLAY, PENDING
+      expect(mockBacktestRepository.find).toHaveBeenCalledTimes(3);
       expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
     });
 
@@ -230,8 +230,11 @@ describe('BacktestOrchestrationTask', () => {
         totalTimestampCount: 2000,
         checkpointState: { lastProcessedIndex: 499 }
       };
-      // First call (HISTORICAL) returns stale, second call (LIVE_REPLAY) returns empty
-      mockBacktestRepository.find.mockResolvedValueOnce([staleBacktest]).mockResolvedValueOnce([]);
+      // First call (HISTORICAL) returns stale, second (LIVE_REPLAY) and third (PENDING) return empty
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([staleBacktest])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
 
       await task.detectStaleBacktests();
 
@@ -251,8 +254,11 @@ describe('BacktestOrchestrationTask', () => {
         totalTimestampCount: 1000,
         checkpointState: { lastProcessedIndex: 199 }
       };
-      // First call (HISTORICAL) returns empty, second call (LIVE_REPLAY) returns stale
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([staleReplay]);
+      // First call (HISTORICAL) returns empty, second (LIVE_REPLAY) returns stale, third (PENDING) returns empty
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([staleReplay])
+        .mockResolvedValueOnce([]);
 
       await task.detectStaleBacktests();
 
@@ -264,7 +270,7 @@ describe('BacktestOrchestrationTask', () => {
 
     it('should NOT mark LIVE_REPLAY as stale within 120 min', async () => {
       // The 90-min-old replay should NOT appear in query results (threshold is 120 min)
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       await task.detectStaleBacktests();
 
@@ -296,7 +302,10 @@ describe('BacktestOrchestrationTask', () => {
         totalTimestampCount: 600,
         checkpointState: { lastProcessedIndex: 199 }
       };
-      mockBacktestRepository.find.mockResolvedValueOnce([stale1, stale2]).mockResolvedValueOnce([]);
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([stale1, stale2])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
 
       // First markFailed throws, second should still be called
       mockBacktestResultService.markFailed
@@ -310,8 +319,32 @@ describe('BacktestOrchestrationTask', () => {
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith('stale-2', expect.any(String));
     });
 
+    it('should mark stuck PENDING backtests as failed with 30-min threshold', async () => {
+      const stuckPending = {
+        id: 'pending-bt-1',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.PENDING,
+        updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 0,
+        totalTimestampCount: 0,
+        checkpointState: null
+      };
+      // First (HISTORICAL) and second (LIVE_REPLAY) return empty, third (PENDING) returns stuck
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([stuckPending]);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
+        'pending-bt-1',
+        expect.stringContaining('Stuck PENDING for 30 min')
+      );
+    });
+
     it('should query HISTORICAL with 90-min cutoff', async () => {
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
       const before = Date.now();
 
       await task.detectStaleBacktests();
@@ -326,7 +359,7 @@ describe('BacktestOrchestrationTask', () => {
     });
 
     it('should query LIVE_REPLAY with 120-min cutoff', async () => {
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
       const before = Date.now();
 
       await task.detectStaleBacktests();

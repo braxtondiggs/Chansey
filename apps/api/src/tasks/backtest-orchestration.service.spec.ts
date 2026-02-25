@@ -17,7 +17,7 @@ import { AlgorithmService } from '../algorithm/algorithm.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { MarketDataSet, MarketDataTimeframe } from '../order/backtest/market-data-set.entity';
-import { SlippageModelType } from '../order/backtest/slippage-model';
+import { SlippageModelType } from '../order/backtest/shared/slippage';
 import { Risk } from '../risk/risk.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';

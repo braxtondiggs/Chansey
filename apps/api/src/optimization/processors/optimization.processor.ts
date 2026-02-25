@@ -71,6 +71,9 @@ export class OptimizationProcessor extends WorkerHost implements OnModuleInit {
       throw error;
     } finally {
       clearInterval(lockRenewal);
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
     }
   }
 }

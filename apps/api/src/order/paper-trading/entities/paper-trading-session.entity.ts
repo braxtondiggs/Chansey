@@ -165,6 +165,14 @@ export class PaperTradingSession {
   errorMessage?: string;
 
   @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Max(5)
+  @Column({ type: 'smallint', nullable: true })
+  @ApiProperty({ description: 'User risk level (1-5) for allocation sizing', required: false })
+  riskLevel?: number;
+
+  @IsNumber()
   @Column({ type: 'integer', default: 30000 })
   @ApiProperty({ description: 'Interval between market data ticks in milliseconds', default: 30000 })
   tickIntervalMs: number;

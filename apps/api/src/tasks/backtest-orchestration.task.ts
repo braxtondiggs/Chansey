@@ -30,6 +30,7 @@ export class BacktestOrchestrationTask {
   private static readonly BOOT_GRACE_PERIOD_MS = 10 * 60 * 1000; // 10 min
   private static readonly HISTORICAL_THRESHOLD_MS = 90 * 60 * 1000;
   private static readonly LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
+  private static readonly PENDING_BACKTEST_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
   private static readonly OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
   private static readonly PENDING_OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
 
@@ -176,6 +177,7 @@ export class BacktestOrchestrationTask {
 
     const historicalCutoff = new Date(Date.now() - BacktestOrchestrationTask.HISTORICAL_THRESHOLD_MS);
     const liveReplayCutoff = new Date(Date.now() - BacktestOrchestrationTask.LIVE_REPLAY_THRESHOLD_MS);
+    const pendingCutoff = new Date(Date.now() - BacktestOrchestrationTask.PENDING_BACKTEST_THRESHOLD_MS);
 
     // Query stale HISTORICAL backtests (90-min threshold)
     const staleHistorical = await this.backtestRepository.find({
@@ -207,6 +209,17 @@ export class BacktestOrchestrationTask {
       ]
     });
 
+    // Query PENDING backtests stuck too long (30-min threshold).
+    // A backtest should transition from PENDING to RUNNING within seconds of being
+    // picked up by a worker. Being PENDING for 30+ min means the BullMQ job was
+    // likely lost (e.g., stale jobId collision after deployment).
+    const stalePending = await this.backtestRepository.find({
+      where: [
+        { status: BacktestStatus.PENDING, type: BacktestType.HISTORICAL, updatedAt: LessThan(pendingCutoff) },
+        { status: BacktestStatus.PENDING, type: BacktestType.LIVE_REPLAY, updatedAt: LessThan(pendingCutoff) }
+      ]
+    });
+
     const staleBacktests = [
       ...staleHistorical.map((bt) => ({
         backtest: bt,
@@ -215,21 +228,29 @@ export class BacktestOrchestrationTask {
       ...staleLiveReplay.map((bt) => ({
         backtest: bt,
         thresholdMs: BacktestOrchestrationTask.LIVE_REPLAY_THRESHOLD_MS
+      })),
+      ...stalePending.map((bt) => ({
+        backtest: bt,
+        thresholdMs: BacktestOrchestrationTask.PENDING_BACKTEST_THRESHOLD_MS
       }))
     ];
 
     for (const { backtest, thresholdMs } of staleBacktests) {
       try {
+        const isPending = backtest.status === BacktestStatus.PENDING;
+        const reason = isPending
+          ? `Stuck PENDING for ${Math.round(thresholdMs / 60000)} min — BullMQ job likely lost`
+          : `Stale: no heartbeat progress for ${Math.round(thresholdMs / 60000)} min. ` +
+            `Last index: ${backtest.checkpointState?.lastProcessedIndex ?? 'unknown'}`;
+
         this.logger.warn(
-          `Marking stale ${backtest.type} backtest ${backtest.id} as FAILED ` +
-            `(last heartbeat: ${backtest.lastCheckpointAt?.toISOString()}, ` +
-            `progress: ${backtest.processedTimestampCount}/${backtest.totalTimestampCount})`
+          `Marking stale ${backtest.status} ${backtest.type} backtest ${backtest.id} as FAILED ` +
+            (isPending
+              ? `(updated: ${backtest.updatedAt?.toISOString()})`
+              : `(last heartbeat: ${backtest.lastCheckpointAt?.toISOString()}, ` +
+                `progress: ${backtest.processedTimestampCount}/${backtest.totalTimestampCount})`)
         );
-        await this.backtestResultService.markFailed(
-          backtest.id,
-          `Stale: no heartbeat progress for ${Math.round(thresholdMs / 60000)} min. ` +
-            `Last index: ${backtest.checkpointState?.lastProcessedIndex ?? 'unknown'}`
-        );
+        await this.backtestResultService.markFailed(backtest.id, reason);
       } catch (error: unknown) {
         const err = toErrorInfo(error);
         this.logger.error(`Failed to mark stale backtest ${backtest.id} as FAILED: ${err.message}`);

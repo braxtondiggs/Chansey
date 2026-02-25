@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { FeeCalculatorService } from './fees';
+import { SignalFilterChainService } from './filters';
 import { MetricsCalculatorService } from './metrics';
 import { PortfolioStateService } from './portfolio';
 import { PositionManagerService } from './positions';
@@ -9,6 +10,7 @@ import { SignalThrottleService } from './throttle';
 
 import { DrawdownCalculator } from '../../../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calculator';
+import { PositionAnalysisService } from '../../services/position-analysis.service';
 
 /**
  * Shared Backtest Components Module
@@ -36,6 +38,8 @@ import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calc
     MetricsCalculatorService,
     PortfolioStateService,
     SignalThrottleService,
+    SignalFilterChainService,
+    PositionAnalysisService,
 
     // Dependencies for MetricsCalculatorService
     SharpeRatioCalculator,
@@ -48,6 +52,8 @@ import { SharpeRatioCalculator } from '../../../common/metrics/sharpe-ratio.calc
     MetricsCalculatorService,
     PortfolioStateService,
     SignalThrottleService,
+    SignalFilterChainService,
+    PositionAnalysisService,
     SharpeRatioCalculator,
     DrawdownCalculator
   ]

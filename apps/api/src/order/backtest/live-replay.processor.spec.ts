@@ -42,7 +42,12 @@ describe('LiveReplayProcessor', () => {
     const metricsService = {
       startBacktestTimer: jest.fn(),
       recordBacktestCompleted: jest.fn(),
-      decrementActiveBacktests: jest.fn()
+      decrementActiveBacktests: jest.fn(),
+      recordBacktestStarted: jest.fn(),
+      incrementActiveBacktests: jest.fn(),
+      recordBacktestFinalMetrics: jest.fn(),
+      recordCheckpointSaved: jest.fn(),
+      recordCheckpointResumed: jest.fn()
     };
     const configService = createMockConfigService();
     const backtestRepository = { findOne: jest.fn(), save: jest.fn() };
@@ -79,7 +84,12 @@ describe('LiveReplayProcessor', () => {
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
       recordBacktestCompleted: jest.fn(),
-      decrementActiveBacktests: jest.fn()
+      decrementActiveBacktests: jest.fn(),
+      recordBacktestStarted: jest.fn(),
+      incrementActiveBacktests: jest.fn(),
+      recordBacktestFinalMetrics: jest.fn(),
+      recordCheckpointSaved: jest.fn(),
+      recordCheckpointResumed: jest.fn()
     };
 
     const processor = createProcessor({ backtestRepository, backtestEngine, metricsService });
@@ -115,7 +125,12 @@ describe('LiveReplayProcessor', () => {
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
       recordBacktestCompleted: jest.fn(),
-      decrementActiveBacktests: jest.fn()
+      decrementActiveBacktests: jest.fn(),
+      recordBacktestStarted: jest.fn(),
+      incrementActiveBacktests: jest.fn(),
+      recordBacktestFinalMetrics: jest.fn(),
+      recordCheckpointSaved: jest.fn(),
+      recordCheckpointResumed: jest.fn()
     };
 
     const processor = createProcessor({
@@ -160,13 +175,23 @@ describe('LiveReplayProcessor', () => {
     const backtestRepository = { findOne: jest.fn().mockResolvedValue(backtest), save: jest.fn() };
     const backtestStream = { publishStatus: jest.fn() };
     const backtestResultService = { persistSuccess: jest.fn(), markFailed: jest.fn() };
-    const backtestEngine = { executeLiveReplayBacktest: jest.fn().mockResolvedValue({ paused: false }) };
+    const backtestEngine = {
+      executeLiveReplayBacktest: jest.fn().mockResolvedValue({
+        paused: false,
+        finalMetrics: { totalReturn: 0.15, sharpeRatio: 1.2, maxDrawdown: 0.08, totalTrades: 25 }
+      })
+    };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
       recordBacktestCompleted: jest.fn(),
-      decrementActiveBacktests: jest.fn()
+      decrementActiveBacktests: jest.fn(),
+      recordBacktestStarted: jest.fn(),
+      incrementActiveBacktests: jest.fn(),
+      recordBacktestFinalMetrics: jest.fn(),
+      recordCheckpointSaved: jest.fn(),
+      recordCheckpointResumed: jest.fn()
     };
 
     const processor = createProcessor({
@@ -205,8 +230,19 @@ describe('LiveReplayProcessor', () => {
         telemetryEnabled: true
       })
     );
-    expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(backtest, { paused: false });
+    expect(backtestResultService.persistSuccess).toHaveBeenCalledWith(
+      backtest,
+      expect.objectContaining({ paused: false })
+    );
+    expect(metricsService.recordBacktestStarted).toHaveBeenCalledWith('LIVE_REPLAY', 'algo-3', false);
+    expect(metricsService.incrementActiveBacktests).toHaveBeenCalledWith('LIVE_REPLAY');
     expect(metricsService.recordBacktestCompleted).toHaveBeenCalledWith('algo-3', 'success');
+    expect(metricsService.recordBacktestFinalMetrics).toHaveBeenCalledWith('algo-3', {
+      totalReturn: 0.15,
+      sharpeRatio: 1.2,
+      maxDrawdown: 0.08,
+      tradeCount: 25
+    });
     expect(metricsTimer).toHaveBeenCalled();
   });
 
@@ -237,14 +273,24 @@ describe('LiveReplayProcessor', () => {
         .fn()
         .mockResolvedValue({ deleted: { trades: 1, signals: 0, fills: 0, snapshots: 0 } })
     };
-    const backtestEngine = { executeLiveReplayBacktest: jest.fn().mockResolvedValue({ paused: false }) };
+    const backtestEngine = {
+      executeLiveReplayBacktest: jest.fn().mockResolvedValue({
+        paused: false,
+        finalMetrics: { totalReturn: 0.15, sharpeRatio: 1.2, maxDrawdown: 0.08, totalTrades: 25 }
+      })
+    };
     const coinResolver = { resolveCoins: jest.fn().mockResolvedValue({ coins: [{ id: 'BTC' }], warnings: [] }) };
     const backtestPauseService = { clearPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
     const metricsTimer = jest.fn();
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
       recordBacktestCompleted: jest.fn(),
-      decrementActiveBacktests: jest.fn()
+      decrementActiveBacktests: jest.fn(),
+      recordBacktestStarted: jest.fn(),
+      incrementActiveBacktests: jest.fn(),
+      recordBacktestFinalMetrics: jest.fn(),
+      recordCheckpointSaved: jest.fn(),
+      recordCheckpointResumed: jest.fn()
     };
 
     const processor = createProcessor({
@@ -274,6 +320,11 @@ describe('LiveReplayProcessor', () => {
       checkpointState.persistedCounts
     );
 
+    // Verify checkpoint resume metrics were recorded
+    expect(metricsService.recordCheckpointResumed).toHaveBeenCalledWith('algo-resume');
+    expect(metricsService.recordBacktestStarted).toHaveBeenCalledWith('LIVE_REPLAY', 'algo-resume', true);
+    expect(metricsService.incrementActiveBacktests).toHaveBeenCalledWith('LIVE_REPLAY');
+
     // Verify backtest continued to run after cleanup
     expect(backtestEngine.executeLiveReplayBacktest).toHaveBeenCalled();
     expect(backtestResultService.persistSuccess).toHaveBeenCalled();
@@ -298,7 +349,12 @@ describe('LiveReplayProcessor', () => {
     const metricsService = {
       startBacktestTimer: jest.fn().mockReturnValue(metricsTimer),
       recordBacktestCompleted: jest.fn(),
-      decrementActiveBacktests: jest.fn()
+      decrementActiveBacktests: jest.fn(),
+      recordBacktestStarted: jest.fn(),
+      incrementActiveBacktests: jest.fn(),
+      recordBacktestFinalMetrics: jest.fn(),
+      recordCheckpointSaved: jest.fn(),
+      recordCheckpointResumed: jest.fn()
     };
 
     const processor = createProcessor({
