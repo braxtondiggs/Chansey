@@ -10,6 +10,9 @@ import {
   OptimizationAnalyticsDto,
   OptimizationFiltersDto,
   PaginatedBacktestListDto,
+  PaginatedLiveReplayRunsDto,
+  PaginatedOptimizationRunsDto,
+  PaginatedPaperTradingSessionsDto,
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
   PipelineStageCountsDto,
@@ -145,6 +148,53 @@ export class BacktestMonitoringService {
         queryFn: () =>
           authenticatedFetch<PaperTradingMonitoringDto>(
             buildUrl(`${this.apiUrl}/paper-trading-analytics`, currentFilters as Record<string, unknown>)
+          ),
+        ...FREQUENT_POLICY
+      };
+    });
+  }
+
+  /**
+   * Query paginated optimization runs with progress
+   */
+  useOptimizationRuns(query?: Signal<Record<string, unknown>>) {
+    return injectQuery(() => {
+      const currentQuery = query?.() ?? {};
+      return {
+        queryKey: queryKeys.admin.backtestMonitoring.optimizationRuns(currentQuery),
+        queryFn: () =>
+          authenticatedFetch<PaginatedOptimizationRunsDto>(buildUrl(`${this.apiUrl}/optimization/runs`, currentQuery)),
+        ...FREQUENT_POLICY
+      };
+    });
+  }
+
+  /**
+   * Query paginated live replay runs with progress
+   */
+  useLiveReplayRuns(query?: Signal<Record<string, unknown>>) {
+    return injectQuery(() => {
+      const currentQuery = query?.() ?? {};
+      return {
+        queryKey: queryKeys.admin.backtestMonitoring.liveReplayRuns(currentQuery),
+        queryFn: () =>
+          authenticatedFetch<PaginatedLiveReplayRunsDto>(buildUrl(`${this.apiUrl}/live-replay/runs`, currentQuery)),
+        ...FREQUENT_POLICY
+      };
+    });
+  }
+
+  /**
+   * Query paginated paper trading sessions with progress
+   */
+  usePaperTradingSessions(query?: Signal<Record<string, unknown>>) {
+    return injectQuery(() => {
+      const currentQuery = query?.() ?? {};
+      return {
+        queryKey: queryKeys.admin.backtestMonitoring.paperTradingSessions(currentQuery),
+        queryFn: () =>
+          authenticatedFetch<PaginatedPaperTradingSessionsDto>(
+            buildUrl(`${this.apiUrl}/paper-trading/sessions`, currentQuery)
           ),
         ...FREQUENT_POLICY
       };

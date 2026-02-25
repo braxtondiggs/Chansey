@@ -12,11 +12,17 @@ import {
   BacktestListQueryDto,
   BacktestOverviewDto,
   ExportFormat,
+  LiveReplayRunListQueryDto,
   OptimizationAnalyticsDto,
   OptimizationFiltersDto,
+  OptimizationRunListQueryDto,
   PaginatedBacktestListDto,
+  PaginatedLiveReplayRunsDto,
+  PaginatedOptimizationRunsDto,
+  PaginatedPaperTradingSessionsDto,
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
+  PaperTradingSessionListQueryDto,
   PipelineStageCountsDto,
   SignalActivityFeedDto,
   SignalActivityFeedQueryDto,
@@ -149,6 +155,25 @@ export class BacktestMonitoringController {
   }
 
   /**
+   * Get paginated list of optimization runs
+   */
+  @Get('optimization/runs')
+  @ApiOperation({
+    summary: 'Get paginated optimization runs',
+    description: 'Returns a paginated list of optimization runs with progress information.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Optimization runs retrieved successfully',
+    type: PaginatedOptimizationRunsDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getOptimizationRuns(@Query() query: OptimizationRunListQueryDto): Promise<PaginatedOptimizationRunsDto> {
+    const { page, limit, ...filters } = query;
+    return this.monitoringService.listOptimizationRuns(filters, page, limit);
+  }
+
+  /**
    * Get paper trading monitoring analytics
    */
   @Get('paper-trading-analytics')
@@ -166,6 +191,46 @@ export class BacktestMonitoringController {
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getPaperTradingAnalytics(@Query() filters: PaperTradingFiltersDto): Promise<PaperTradingMonitoringDto> {
     return this.monitoringService.getPaperTradingMonitoring(filters);
+  }
+
+  /**
+   * Get paginated list of paper trading sessions
+   */
+  @Get('paper-trading/sessions')
+  @ApiOperation({
+    summary: 'Get paginated paper trading sessions',
+    description: 'Returns a paginated list of paper trading sessions with progress information.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Paper trading sessions retrieved successfully',
+    type: PaginatedPaperTradingSessionsDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getPaperTradingSessions(
+    @Query() query: PaperTradingSessionListQueryDto
+  ): Promise<PaginatedPaperTradingSessionsDto> {
+    const { page, limit, ...filters } = query;
+    return this.monitoringService.listPaperTradingSessions(filters, page, limit);
+  }
+
+  /**
+   * Get paginated list of live replay runs
+   */
+  @Get('live-replay/runs')
+  @ApiOperation({
+    summary: 'Get paginated live replay runs',
+    description: 'Returns a paginated list of live replay backtest runs with progress and replay state.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Live replay runs retrieved successfully',
+    type: PaginatedLiveReplayRunsDto
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
+  async getLiveReplayRuns(@Query() query: LiveReplayRunListQueryDto): Promise<PaginatedLiveReplayRunsDto> {
+    const { page, limit, ...filters } = query;
+    return this.monitoringService.listLiveReplayRuns(filters, page, limit);
   }
 
   /**

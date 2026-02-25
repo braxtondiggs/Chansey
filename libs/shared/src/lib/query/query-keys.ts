@@ -221,7 +221,19 @@ export const queryKeys = {
       signalActivityFeed: (limit?: number) =>
         limit
           ? ([...queryKeys.admin.backtestMonitoring.all(), 'signal-activity-feed', limit] as const)
-          : ([...queryKeys.admin.backtestMonitoring.all(), 'signal-activity-feed'] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'signal-activity-feed'] as const),
+      optimizationRuns: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'optimization-runs', query] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'optimization-runs'] as const),
+      paperTradingSessions: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'paper-trading-sessions', query] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'paper-trading-sessions'] as const),
+      liveReplayRuns: (query?: Record<string, unknown>) =>
+        query
+          ? ([...queryKeys.admin.backtestMonitoring.all(), 'live-replay-runs', query] as const)
+          : ([...queryKeys.admin.backtestMonitoring.all(), 'live-replay-runs'] as const)
     },
     liveTradeMonitoring: {
       all: () => [...queryKeys.admin.all, 'live-trade-monitoring'] as const,
