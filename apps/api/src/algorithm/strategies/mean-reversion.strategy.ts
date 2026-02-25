@@ -4,7 +4,13 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { BollingerBandsResult, IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import {
+  BollingerBandsResult,
+  IIndicatorProvider,
+  IndicatorCalculatorMap,
+  IndicatorRequirement,
+  IndicatorService
+} from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 /**
@@ -49,6 +55,11 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
       // Get configuration with defaults
       const period = (context.config.period as number) || 20;
       const threshold = (context.config.threshold as number) || 2; // Standard deviations
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -58,11 +69,33 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           continue;
         }
 
-        // Calculate Bollinger Bands (includes SMA + SD automatically) using IndicatorService
-        const bollingerBandsResult = await this.indicatorService.calculateBollingerBands(
-          { coinId: coin.id, prices: priceHistory, period, stdDev: threshold },
-          this // Pass this strategy as IIndicatorProvider for custom override support
-        );
+        // Dual-path: try precomputed indicators first, fall back to IndicatorService
+        const bbKey = `bb_${period}_${threshold}`;
+        const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
+        let bollingerBandsResult: BollingerBandsResult;
+
+        if (preUpper) {
+          const preMiddle = this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)!;
+          const preLower = this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)!;
+          const prePb = this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length)!;
+          const preBandwidth = this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)!;
+          bollingerBandsResult = {
+            upper: preUpper,
+            middle: preMiddle,
+            lower: preLower,
+            pb: prePb,
+            bandwidth: preBandwidth,
+            validCount: preUpper.filter((v) => !isNaN(v)).length,
+            period,
+            stdDev: threshold,
+            fromCache: false
+          };
+        } else {
+          bollingerBandsResult = await this.indicatorService.calculateBollingerBands(
+            { coinId: coin.id, prices: priceHistory, period, stdDev: threshold },
+            this // Pass this strategy as IIndicatorProvider for custom override support
+          );
+        }
 
         // Extract SMA from middle band; derive SD from upper band distance
         const movingAverage = bollingerBandsResult.middle;
@@ -84,14 +117,15 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           signals.push(signal);
         }
 
-        // Prepare chart data with Bollinger Bands
-        chartData[coin.id] = this.prepareChartData(
-          priceHistory,
-          movingAverage,
-          standardDeviation,
-          threshold,
-          bollingerBandsResult
-        );
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(
+            priceHistory,
+            movingAverage,
+            standardDeviation,
+            threshold,
+            bollingerBandsResult
+          );
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -201,6 +235,15 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
             : (price.avg - movingAverage[index]) / standardDeviation[index]
       }
     }));
+  }
+
+  /**
+   * Declare indicator requirements for precomputation during optimization.
+   */
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      { type: 'BOLLINGER_BANDS', paramKeys: ['period', 'threshold'], defaultParams: { period: 20, threshold: 2 } }
+    ];
   }
 
   /**

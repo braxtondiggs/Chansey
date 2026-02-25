@@ -64,6 +64,14 @@ import {
   TimeframeType
 } from './shared';
 
+import {
+  ATRCalculator,
+  BollingerBandsCalculator,
+  EMACalculator,
+  MACDCalculator,
+  RSICalculator,
+  SMACalculator
+} from '../../algorithm/indicators/calculators';
 import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { Coin } from '../../coin/coin.entity';
@@ -273,6 +281,27 @@ interface PriceTrackingContext {
   btcRegimeSma?: IncrementalSma;
   /** Coin ID used for BTC regime detection. */
   btcCoinId?: string;
+}
+
+/**
+ * Cacheable (immutable) portion of PriceTrackingContext.
+ * Safe to share across multiple optimization combo runs hitting the same date window.
+ */
+export interface ImmutablePriceTrackingData {
+  timestampsByCoin: Map<string, Date[]>;
+  summariesByCoin: Map<string, PriceSummary[]>;
+}
+
+/**
+ * Pre-computed data for a single optimization window (date range).
+ * Built once per unique date range, reused across all parameter combinations.
+ */
+export interface PrecomputedWindowData {
+  pricesByTimestamp: Record<string, OHLCCandle[]>;
+  timestamps: string[];
+  immutablePriceData: ImmutablePriceTrackingData;
+  volumeMap: Map<string, number>;
+  filteredCandles: OHLCCandle[];
 }
 
 interface CompositeRegimeResult {
@@ -1823,6 +1852,65 @@ export class BacktestEngine {
   }
 
   /**
+   * Extract the expensive immutable work from initPriceTracking:
+   * groups candles by coin, sorts per-coin, builds Date[] timestamps and PriceSummary[] arrays.
+   * Does NOT create mutable state (indexByCoin, windowsByCoin).
+   */
+  private buildImmutablePriceData(historicalPrices: OHLCCandle[], coinIds: string[]): ImmutablePriceTrackingData {
+    const timestampsByCoin = new Map<string, Date[]>();
+    const summariesByCoin = new Map<string, PriceSummary[]>();
+
+    // Single-pass grouping: O(prices) instead of O(coins × prices)
+    const pricesByCoin = new Map<string, OHLCCandle[]>();
+    for (const candle of historicalPrices) {
+      let group = pricesByCoin.get(candle.coinId);
+      if (!group) {
+        group = [];
+        pricesByCoin.set(candle.coinId, group);
+      }
+      group.push(candle);
+    }
+
+    for (const coinId of coinIds) {
+      const history = (pricesByCoin.get(coinId) ?? []).sort(
+        (a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime()
+      );
+      timestampsByCoin.set(
+        coinId,
+        history.map((price) => this.getPriceTimestamp(price))
+      );
+      summariesByCoin.set(
+        coinId,
+        history.map((price) => this.buildPriceSummary(price))
+      );
+    }
+
+    return { timestampsByCoin, summariesByCoin };
+  }
+
+  /**
+   * Create fresh mutable state (indexByCoin, windowsByCoin) combined with cached immutable data.
+   * Returns a full PriceTrackingContext. Safe because advancePriceWindows() only reads
+   * timestampsByCoin/summariesByCoin and only mutates indexByCoin/windowsByCoin.
+   */
+  private initPriceTrackingFromPrecomputed(immutable: ImmutablePriceTrackingData): PriceTrackingContext {
+    const indexByCoin = new Map<string, number>();
+    const windowsByCoin = new Map<string, RingBuffer<PriceSummary>>();
+
+    for (const coinId of immutable.timestampsByCoin.keys()) {
+      indexByCoin.set(coinId, -1);
+      windowsByCoin.set(coinId, new RingBuffer<PriceSummary>(BacktestEngine.MAX_WINDOW_SIZE));
+    }
+
+    return {
+      timestampsByCoin: immutable.timestampsByCoin,
+      summariesByCoin: immutable.summariesByCoin,
+      indexByCoin,
+      windowsByCoin
+    };
+  }
+
+  /**
    * Advance per-coin price windows up to and including the given timestamp.
    *
    * Returns a snapshot of each coin's price window as a plain `PriceSummary[]`
@@ -2801,7 +2889,8 @@ export class BacktestEngine {
     const startTime = config.startDate.getTime();
     const endTime = config.endDate.getTime();
     const coinIds = new Set(coins.map((coin) => coin.id));
-    const filtered: OHLCCandle[] = [];
+    const segments: OHLCCandle[][] = [];
+    let totalLen = 0;
 
     for (const coinId of coinIds) {
       const coinCandles = preloadedCandlesByCoin.get(coinId);
@@ -2810,13 +2899,268 @@ export class BacktestEngine {
       const left = BacktestEngine.binarySearchLeft(coinCandles, startTime);
       const right = BacktestEngine.binarySearchRight(coinCandles, endTime);
       if (left < right) {
-        for (let i = left; i < right; i++) {
-          filtered.push(coinCandles[i]);
-        }
+        const segment = coinCandles.slice(left, right);
+        segments.push(segment);
+        totalLen += segment.length;
+      }
+    }
+
+    // Pre-allocate and concatenate segments
+    const filtered = new Array<OHLCCandle>(totalLen);
+    let offset = 0;
+    for (const seg of segments) {
+      for (let i = 0; i < seg.length; i++) {
+        filtered[offset++] = seg[i];
       }
     }
 
     return this.runOptimizationBacktestCore(config, coins, filtered);
+  }
+
+  /**
+   * Pre-compute all expensive per-window data once for a single date range.
+   * Called once per unique date range by the orchestrator, then reused across all parameter combinations.
+   * Combines binary search filtering, groupPricesByTimestamp(), buildImmutablePriceData(), and volume map construction.
+   */
+  precomputeWindowData(
+    coins: Coin[],
+    preloadedCandlesByCoin: Map<string, OHLCCandle[]>,
+    startDate: Date,
+    endDate: Date
+  ): PrecomputedWindowData {
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    const coinIds = new Set(coins.map((coin) => coin.id));
+    const segments: OHLCCandle[][] = [];
+    let totalLen = 0;
+
+    for (const coinId of coinIds) {
+      const coinCandles = preloadedCandlesByCoin.get(coinId);
+      if (!coinCandles || coinCandles.length === 0) continue;
+
+      const left = BacktestEngine.binarySearchLeft(coinCandles, startTime);
+      const right = BacktestEngine.binarySearchRight(coinCandles, endTime);
+      if (left < right) {
+        const segment = coinCandles.slice(left, right);
+        segments.push(segment);
+        totalLen += segment.length;
+      }
+    }
+
+    // Pre-allocate and concatenate segments
+    const filteredCandles = new Array<OHLCCandle>(totalLen);
+    let offset = 0;
+    for (const seg of segments) {
+      for (let i = 0; i < seg.length; i++) {
+        filteredCandles[offset++] = seg[i];
+      }
+    }
+
+    const pricesByTimestamp = this.groupPricesByTimestamp(filteredCandles);
+    const timestamps = Object.keys(pricesByTimestamp).sort();
+    const coinIdArray = coins.map((c) => c.id);
+    const immutablePriceData = this.buildImmutablePriceData(filteredCandles, coinIdArray);
+
+    // Precompute volume lookup: timestamp+coinId → volume
+    const volumeMap = new Map<string, number>();
+    for (const tsKey of timestamps) {
+      for (const candle of pricesByTimestamp[tsKey]) {
+        if (candle.volume != null) {
+          volumeMap.set(`${tsKey}:${candle.coinId}`, candle.volume);
+        }
+      }
+    }
+
+    return { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, filteredCandles };
+  }
+
+  /**
+   * Fast-path optimization backtest using pre-computed window data.
+   * Creates only fresh mutable state + indicators (which depend on per-combo config.parameters).
+   * Reuses pricesByTimestamp, timestamps, immutablePriceData, and volumeMap from PrecomputedWindowData.
+   */
+  async runOptimizationBacktestWithPrecomputed(
+    config: OptimizationBacktestConfig,
+    coins: Coin[],
+    precomputed: PrecomputedWindowData
+  ): Promise<OptimizationBacktestResult> {
+    const initialCapital = config.initialCapital ?? 10000;
+    const tradingFee = config.tradingFee ?? 0.001;
+    const hardStopLossPercent = config.hardStopLossPercent ?? 0.05;
+    const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
+
+    this.logger.debug(
+      `Running precomputed optimization backtest: algo=${config.algorithmId}, ` +
+        `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
+    );
+
+    const rng = new SeededRandom(deterministicSeed);
+
+    let portfolio: Portfolio = {
+      cashBalance: initialCapital,
+      positions: new Map(),
+      totalValue: initialCapital
+    };
+
+    const trades: Partial<BacktestTrade>[] = [];
+    const snapshots: { portfolioValue: number; timestamp: Date }[] = [];
+
+    if (precomputed.filteredCandles.length === 0) {
+      return {
+        sharpeRatio: 0,
+        totalReturn: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        volatility: 0,
+        profitFactor: 1,
+        tradeCount: 0
+      };
+    }
+
+    const { pricesByTimestamp, timestamps, immutablePriceData, volumeMap } = precomputed;
+
+    // Create fresh mutable state from cached immutable data
+    const priceCtx = this.initPriceTrackingFromPrecomputed(immutablePriceData);
+
+    // Precompute indicators (depends on per-combo config.parameters — must be per-combo)
+    const precomputedIndicators = await this.precomputeIndicatorsForOptimization(config, coins, priceCtx);
+
+    let peakValue = initialCapital;
+    let maxDrawdown = 0;
+
+    // Signal throttle
+    const throttleConfig = this.resolveThrottleConfig(config.parameters);
+    const throttleState = this.signalThrottle.createState();
+
+    // Reusable price map
+    const currentPriceMap = new Map<string, number>();
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const timestamp = new Date(timestamps[i]);
+      const currentPrices = pricesByTimestamp[timestamps[i]];
+
+      currentPriceMap.clear();
+      for (const price of currentPrices) {
+        currentPriceMap.set(price.coinId, this.getPriceValue(price));
+      }
+
+      const marketData: MarketData = {
+        timestamp,
+        prices: currentPriceMap
+      };
+
+      portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
+
+      const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
+
+      // Hard stop-loss
+      if (portfolio.positions.size > 0) {
+        await this.processHardStopLoss({
+          portfolio,
+          marketData,
+          currentPrices,
+          hardStopLossPercent,
+          tradingFee,
+          rng,
+          timestamp,
+          trades
+        });
+      }
+
+      // Build algorithm context
+      const positions =
+        portfolio.positions.size > 0
+          ? Object.fromEntries([...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity]))
+          : {};
+
+      const context = {
+        coins,
+        priceData,
+        timestamp,
+        config: config.parameters,
+        positions,
+        availableBalance: portfolio.cashBalance,
+        metadata: {
+          isOptimization: true,
+          algorithmId: config.algorithmId
+        },
+        precomputedIndicators,
+        currentTimestampIndex: i
+      };
+
+      let strategySignals: TradingSignal[] = [];
+      try {
+        const result = await this.algorithmRegistry.executeAlgorithm(config.algorithmId, context);
+        if (result.success && result.signals?.length) {
+          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+        }
+      } catch (error: unknown) {
+        if (error instanceof AlgorithmNotRegisteredException) {
+          throw error;
+        }
+        const err = toErrorInfo(error);
+        this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${err.message}`);
+      }
+
+      // Apply signal throttle
+      strategySignals = this.signalThrottle.filterSignals(
+        strategySignals,
+        throttleState,
+        throttleConfig,
+        timestamp.getTime()
+      );
+
+      for (const strategySignal of strategySignals) {
+        const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
+
+        const tradeResult = await this.executeTrade(
+          strategySignal,
+          portfolio,
+          marketData,
+          tradingFee,
+          rng,
+          DEFAULT_SLIPPAGE_CONFIG,
+          dailyVolume,
+          BacktestEngine.DEFAULT_MIN_HOLD_MS
+        );
+        if (tradeResult) {
+          trades.push({ ...tradeResult.trade, executedAt: timestamp });
+        }
+      }
+
+      // Track peak and drawdown
+      if (portfolio.totalValue > peakValue) {
+        peakValue = portfolio.totalValue;
+      }
+      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      if (currentDrawdown > maxDrawdown) {
+        maxDrawdown = currentDrawdown;
+      }
+
+      // Sample snapshots less frequently for optimization (every 24 periods)
+      if (i % 24 === 0 || i === timestamps.length - 1) {
+        snapshots.push({
+          timestamp,
+          portfolioValue: portfolio.totalValue
+        });
+      }
+    }
+
+    // Only clear mutable state — immutable data is shared across combos
+    priceCtx.indexByCoin.clear();
+    priceCtx.windowsByCoin.clear();
+    priceCtx.btcRegimeSma = undefined;
+    priceCtx.btcCoinId = undefined;
+
+    return this.calculateOptimizationMetrics(
+      trades,
+      snapshots,
+      portfolio.totalValue,
+      maxDrawdown,
+      initialCapital,
+      config.startDate,
+      config.endDate
+    );
   }
 
   /**
@@ -2853,6 +3197,178 @@ export class BacktestEngine {
       }
     }
     return lo;
+  }
+
+  /**
+   * Precompute indicator series for all coins ONCE before the timestamp loop.
+   * Eliminates per-timestamp IndicatorService calls (MD5 hashing + Redis I/O).
+   * Returns a map: coinId → indicatorKey → full padded number array.
+   */
+  private async precomputeIndicatorsForOptimization(
+    config: OptimizationBacktestConfig,
+    coins: Coin[],
+    priceCtx: PriceTrackingContext
+  ): Promise<Record<string, Record<string, Float64Array>> | undefined> {
+    let strategy;
+    try {
+      strategy = await this.algorithmRegistry.getStrategyForAlgorithm(config.algorithmId);
+    } catch {
+      return undefined;
+    }
+    if (!strategy?.getIndicatorRequirements) return undefined;
+
+    const requirements = strategy.getIndicatorRequirements(config.parameters);
+    if (requirements.length === 0) return undefined;
+
+    const result: Record<string, Record<string, Float64Array>> = {};
+
+    // Instantiate calculators once
+    const emaCalc = new EMACalculator();
+    const smaCalc = new SMACalculator();
+    const rsiCalc = new RSICalculator();
+    const macdCalc = new MACDCalculator();
+    const bbCalc = new BollingerBandsCalculator();
+    const atrCalc = new ATRCalculator();
+
+    for (const coin of coins) {
+      const summaries = priceCtx.summariesByCoin.get(coin.id);
+      if (!summaries || summaries.length === 0) continue;
+
+      const coinIndicators: Record<string, Float64Array> = {};
+      const avgPrices = summaries.map((s) => s.avg);
+      const highPrices = summaries.map((s) => s.high);
+      const lowPrices = summaries.map((s) => s.low);
+
+      for (const req of requirements) {
+        // Resolve parameter values from config, falling back to defaults
+        const resolveParam = (key: string): number => {
+          const val = config.parameters[key];
+          return typeof val === 'number' && isFinite(val) ? val : req.defaultParams[key];
+        };
+
+        try {
+          switch (req.type) {
+            case 'EMA': {
+              const periodKey = req.paramKeys[0];
+              const period = resolveParam(periodKey);
+              const key = `ema_${period}`;
+              if (!coinIndicators[key] && avgPrices.length >= period) {
+                const raw = emaCalc.calculate({ values: avgPrices, period });
+                coinIndicators[key] = this.padIndicatorArray(raw, avgPrices.length);
+              }
+              break;
+            }
+            case 'SMA': {
+              const periodKey = req.paramKeys[0];
+              const period = resolveParam(periodKey);
+              const key = `sma_${period}`;
+              if (!coinIndicators[key] && avgPrices.length >= period) {
+                const raw = smaCalc.calculate({ values: avgPrices, period });
+                coinIndicators[key] = this.padIndicatorArray(raw, avgPrices.length);
+              }
+              break;
+            }
+            case 'RSI': {
+              const periodKey = req.paramKeys[0];
+              const period = resolveParam(periodKey);
+              const key = `rsi_${period}`;
+              if (!coinIndicators[key] && avgPrices.length > period) {
+                const raw = rsiCalc.calculate({ values: avgPrices, period });
+                coinIndicators[key] = this.padIndicatorArray(raw, avgPrices.length);
+              }
+              break;
+            }
+            case 'MACD': {
+              const fast = resolveParam(req.paramKeys[0]);
+              const slow = resolveParam(req.paramKeys[1]);
+              const signal = resolveParam(req.paramKeys[2]);
+              const baseKey = `macd_${fast}_${slow}_${signal}`;
+              if (!coinIndicators[`${baseKey}_macd`] && avgPrices.length >= slow + signal - 1) {
+                const raw = macdCalc.calculate({
+                  values: avgPrices,
+                  fastPeriod: fast,
+                  slowPeriod: slow,
+                  signalPeriod: signal
+                });
+                const len = avgPrices.length;
+                coinIndicators[`${baseKey}_macd`] = this.padIndicatorArray(
+                  raw.map((r) => r.MACD ?? NaN),
+                  len
+                );
+                coinIndicators[`${baseKey}_signal`] = this.padIndicatorArray(
+                  raw.map((r) => r.signal ?? NaN),
+                  len
+                );
+                coinIndicators[`${baseKey}_histogram`] = this.padIndicatorArray(
+                  raw.map((r) => r.histogram ?? NaN),
+                  len
+                );
+              }
+              break;
+            }
+            case 'BOLLINGER_BANDS': {
+              const period = resolveParam(req.paramKeys[0]);
+              const stdDev = resolveParam(req.paramKeys[1]);
+              const baseKey = `bb_${period}_${stdDev}`;
+              if (!coinIndicators[`${baseKey}_upper`] && avgPrices.length >= period) {
+                const raw = bbCalc.calculate({ values: avgPrices, period, stdDev });
+                const len = avgPrices.length;
+                coinIndicators[`${baseKey}_upper`] = this.padIndicatorArray(
+                  raw.map((r) => r.upper),
+                  len
+                );
+                coinIndicators[`${baseKey}_middle`] = this.padIndicatorArray(
+                  raw.map((r) => r.middle),
+                  len
+                );
+                coinIndicators[`${baseKey}_lower`] = this.padIndicatorArray(
+                  raw.map((r) => r.lower),
+                  len
+                );
+                coinIndicators[`${baseKey}_pb`] = this.padIndicatorArray(
+                  raw.map((r) => r.pb ?? NaN),
+                  len
+                );
+                coinIndicators[`${baseKey}_bandwidth`] = this.padIndicatorArray(
+                  raw.map((r) => (r.middle !== 0 ? (r.upper - r.lower) / r.middle : NaN)),
+                  len
+                );
+              }
+              break;
+            }
+            case 'ATR': {
+              const periodKey = req.paramKeys[0];
+              const period = resolveParam(periodKey);
+              const key = `atr_${period}`;
+              if (!coinIndicators[key] && avgPrices.length > period) {
+                const raw = atrCalc.calculate({ high: highPrices, low: lowPrices, close: avgPrices, period });
+                coinIndicators[key] = this.padIndicatorArray(raw, avgPrices.length);
+              }
+              break;
+            }
+          }
+        } catch {
+          // Skip indicators that fail to compute (e.g., insufficient data)
+        }
+      }
+
+      if (Object.keys(coinIndicators).length > 0) {
+        result[coin.id] = coinIndicators;
+      }
+    }
+
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
+
+  /** Pad indicator results with NaN at the front to align with the full price series length. */
+  private padIndicatorArray(values: number[], targetLength: number): Float64Array {
+    const padded = new Float64Array(targetLength);
+    const padding = targetLength - values.length;
+    if (padding > 0) {
+      padded.fill(NaN, 0, padding);
+    }
+    padded.set(padding > 0 ? values : values.slice(0, targetLength), Math.max(0, padding));
+    return padded;
   }
 
   /**
@@ -2903,6 +3419,19 @@ export class BacktestEngine {
 
     const priceCtx = this.initPriceTracking(historicalPrices, coinIds);
 
+    // Precompute indicators once for the full price series (bypass Redis)
+    const precomputedIndicators = await this.precomputeIndicatorsForOptimization(config, coins, priceCtx);
+
+    // Precompute volume lookup: timestamp+coinId → volume (avoids .find() per signal)
+    const volumeMap = new Map<string, number>();
+    for (const tsKey of timestamps) {
+      for (const candle of pricesByTimestamp[tsKey]) {
+        if (candle.volume != null) {
+          volumeMap.set(`${tsKey}:${candle.coinId}`, candle.volume);
+        }
+      }
+    }
+
     let peakValue = initialCapital;
     let maxDrawdown = 0;
 
@@ -2910,45 +3439,62 @@ export class BacktestEngine {
     const throttleConfig = this.resolveThrottleConfig(config.parameters);
     const throttleState = this.signalThrottle.createState();
 
+    // Reusable price map to avoid new Map() allocation per iteration
+    const currentPriceMap = new Map<string, number>();
+
     for (let i = 0; i < timestamps.length; i++) {
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
 
+      // Reuse price map instead of allocating a new one each iteration
+      currentPriceMap.clear();
+      for (const price of currentPrices) {
+        currentPriceMap.set(price.coinId, this.getPriceValue(price));
+      }
+
       const marketData: MarketData = {
         timestamp,
-        prices: new Map(currentPrices.map((price) => [price.coinId, this.getPriceValue(price)]))
+        prices: currentPriceMap
       };
 
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
-      // Hard stop-loss: check all positions before algorithm execution
-      await this.processHardStopLoss({
-        portfolio,
-        marketData,
-        currentPrices,
-        hardStopLossPercent,
-        tradingFee,
-        rng,
-        timestamp,
-        trades
-      });
+      // Hard stop-loss: skip when no positions are open
+      if (portfolio.positions.size > 0) {
+        await this.processHardStopLoss({
+          portfolio,
+          marketData,
+          currentPrices,
+          hardStopLossPercent,
+          tradingFee,
+          rng,
+          timestamp,
+          trades
+        });
+      }
 
       // Build algorithm context with optimization parameters
+      // Lazy positions snapshot: only build when positions exist
+      const positions =
+        portfolio.positions.size > 0
+          ? Object.fromEntries([...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity]))
+          : {};
+
       const context = {
         coins,
         priceData,
         timestamp,
-        config: config.parameters, // Use optimization parameters instead of stored config
-        positions: Object.fromEntries(
-          [...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity])
-        ),
+        config: config.parameters,
+        positions,
         availableBalance: portfolio.cashBalance,
         metadata: {
           isOptimization: true,
           algorithmId: config.algorithmId
-        }
+        },
+        precomputedIndicators,
+        currentTimestampIndex: i
       };
 
       let strategySignals: TradingSignal[] = [];
@@ -2961,7 +3507,6 @@ export class BacktestEngine {
         if (error instanceof AlgorithmNotRegisteredException) {
           throw error;
         }
-        // Log but continue - optimization should be resilient to occasional failures
         const err = toErrorInfo(error);
         this.logger.warn(`Algorithm execution failed at ${timestamp.toISOString()}: ${err.message}`);
       }
@@ -2975,8 +3520,8 @@ export class BacktestEngine {
       );
 
       for (const strategySignal of strategySignals) {
-        // Extract volume from current candle for volume-based slippage calculation
-        const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
+        // Use precomputed volume map instead of .find() per signal
+        const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
 
         const tradeResult = await this.executeTrade(
           strategySignal,
@@ -3014,21 +3559,42 @@ export class BacktestEngine {
     // Release large data structures after the main loop
     this.clearPriceData(pricesByTimestamp, priceCtx);
 
-    // Calculate final metrics
-    const finalValue = portfolio.totalValue;
+    return this.calculateOptimizationMetrics(
+      trades,
+      snapshots,
+      portfolio.totalValue,
+      maxDrawdown,
+      initialCapital,
+      config.startDate,
+      config.endDate
+    );
+  }
+
+  /**
+   * Calculate final metrics for an optimization backtest run.
+   * Shared between runOptimizationBacktestWithPrecomputed and runOptimizationBacktestCore.
+   */
+  private calculateOptimizationMetrics(
+    trades: Partial<BacktestTrade>[],
+    snapshots: { portfolioValue: number; timestamp: Date }[],
+    finalPortfolioValue: number,
+    maxDrawdown: number,
+    initialCapital: number,
+    startDate: Date,
+    endDate: Date
+  ): OptimizationBacktestResult {
+    const finalValue = finalPortfolioValue;
     const totalReturn = (finalValue - initialCapital) / initialCapital;
     const totalTrades = trades.length;
 
-    // Win rate is based on SELL trades with positive realized P&L
     const sellTrades = trades.filter((t) => t.type === TradeType.SELL);
     const winningTrades = sellTrades.filter((t) => (t.realizedPnL ?? 0) > 0).length;
     const sellTradeCount = sellTrades.length;
     const winRate = sellTradeCount > 0 ? winningTrades / sellTradeCount : 0;
 
-    const durationDays = dayjs(config.endDate).diff(dayjs(config.startDate), 'day');
+    const durationDays = dayjs(endDate).diff(dayjs(startDate), 'day');
     const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
 
-    // Calculate returns from snapshots
     const returns: number[] = [];
     for (let i = 1; i < snapshots.length; i++) {
       const previous = snapshots[i - 1].portfolioValue;
@@ -3036,30 +3602,25 @@ export class BacktestEngine {
       returns.push(previous === 0 ? 0 : (current - previous) / previous);
     }
 
-    // Calculate annualized volatility (still needed for metrics interface)
     const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
     const variance =
       returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
-    const volatility = Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
+    const volatility = Math.sqrt(variance) * Math.sqrt(252);
 
-    // Calculate downside deviation for Sortino ratio
-    // Uses same formula as SharpeRatioCalculator.calculateSortino for consistency
-    const periodRiskFreeRate = 0.02 / 252; // 2% annual rate / 252 trading days
+    const periodRiskFreeRate = 0.02 / 252;
     const downsideReturns = returns.filter((r) => r < periodRiskFreeRate);
     const downsideVariance =
       returns.length > 0
         ? downsideReturns.reduce((sum, r) => sum + Math.pow(r - periodRiskFreeRate, 2), 0) / returns.length
         : 0;
-    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252); // Annualized
+    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252);
 
-    // Calculate Sharpe ratio using metricsCalculator for consistency
     const sharpeRatio = this.metricsCalculator.calculateSharpeRatio(returns, {
       timeframe: TimeframeType.DAILY,
       useCryptoCalendar: false,
       riskFreeRate: 0.02
     });
 
-    // Calculate profit factor based on realized P&L from SELL trades
     const grossProfit = sellTrades
       .filter((t) => (t.realizedPnL ?? 0) > 0)
       .reduce((sum, t) => sum + (t.realizedPnL ?? 0), 0);
@@ -3074,7 +3635,7 @@ export class BacktestEngine {
       maxDrawdown,
       winRate,
       volatility,
-      profitFactor: Math.min(profitFactor, 10), // Cap at 10 to avoid infinity issues
+      profitFactor: Math.min(profitFactor, 10),
       tradeCount: totalTrades,
       annualizedReturn,
       finalValue,

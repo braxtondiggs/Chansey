@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import {
   AlgorithmContext,
   AlgorithmResult,
@@ -77,7 +77,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         }
 
         // Calculate confluence score for this coin
-        const confluenceScore = await this.calculateConfluenceScore(coin.id, priceHistory, config, isBacktest);
+        const confluenceScore = await this.calculateConfluenceScore(context, coin.id, priceHistory, config, isBacktest);
 
         // Generate trading signal if confluence is met
         const currentPrice = priceHistory[priceHistory.length - 1].avg;
@@ -197,6 +197,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    * Calculate confluence score by evaluating all enabled indicators
    */
   private async calculateConfluenceScore(
+    context: AlgorithmContext,
     coinId: string,
     prices: CandleData[],
     config: ConfluenceConfig,
@@ -207,69 +208,165 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     let buyCount = 0;
     let sellCount = 0;
     let totalEnabled = 0;
+    const windowLength = prices.length;
 
-    // Calculate all indicators in parallel for performance
-    const [ema12Result, ema26Result, rsiResult, macdResult, atrResult, bbResult] = await Promise.all([
-      config.ema.enabled
-        ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.fastPeriod, skipCache }, this)
-        : null,
-      config.ema.enabled
-        ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.slowPeriod, skipCache }, this)
-        : null,
-      config.rsi.enabled
-        ? this.indicatorService.calculateRSI({ coinId, prices, period: config.rsi.period, skipCache }, this)
-        : null,
-      config.macd.enabled
-        ? this.indicatorService.calculateMACD(
-            {
-              coinId,
-              prices,
-              fastPeriod: config.macd.fastPeriod,
-              slowPeriod: config.macd.slowPeriod,
-              signalPeriod: config.macd.signalPeriod,
-              skipCache
-            },
-            this
-          )
-        : null,
-      config.atr.enabled
-        ? this.indicatorService.calculateATR({ coinId, prices, period: config.atr.period, skipCache }, this)
-        : null,
-      config.bollingerBands.enabled
-        ? this.indicatorService.calculateBollingerBands(
-            { coinId, prices, period: config.bollingerBands.period, stdDev: config.bollingerBands.stdDev, skipCache },
-            this
-          )
-        : null
-    ]);
+    // Dual-path: try precomputed indicators first, fall back to IndicatorService
+
+    // --- EMA ---
+    let ema12Values: number[] | null = null;
+    let ema26Values: number[] | null = null;
+    if (config.ema.enabled) {
+      const preEma12 = this.getPrecomputedSlice(context, coinId, `ema_${config.ema.fastPeriod}`, windowLength);
+      const preEma26 = this.getPrecomputedSlice(context, coinId, `ema_${config.ema.slowPeriod}`, windowLength);
+      if (preEma12 && preEma26) {
+        ema12Values = preEma12;
+        ema26Values = preEma26;
+      }
+    }
+
+    // --- RSI ---
+    let rsiValues: number[] | null = null;
+    if (config.rsi.enabled) {
+      const preRsi = this.getPrecomputedSlice(context, coinId, `rsi_${config.rsi.period}`, windowLength);
+      if (preRsi) {
+        rsiValues = preRsi;
+      }
+    }
+
+    // --- MACD ---
+    let macdValues: number[] | null = null;
+    let macdSignalValues: number[] | null = null;
+    let macdHistogramValues: number[] | null = null;
+    if (config.macd.enabled) {
+      const macdKey = `macd_${config.macd.fastPeriod}_${config.macd.slowPeriod}_${config.macd.signalPeriod}`;
+      const preMacd = this.getPrecomputedSlice(context, coinId, `${macdKey}_macd`, windowLength);
+      const preMacdSignal = this.getPrecomputedSlice(context, coinId, `${macdKey}_signal`, windowLength);
+      const preMacdHistogram = this.getPrecomputedSlice(context, coinId, `${macdKey}_histogram`, windowLength);
+      if (preMacd && preMacdSignal && preMacdHistogram) {
+        macdValues = preMacd;
+        macdSignalValues = preMacdSignal;
+        macdHistogramValues = preMacdHistogram;
+      }
+    }
+
+    // --- ATR ---
+    let atrValues: number[] | null = null;
+    if (config.atr.enabled) {
+      const preAtr = this.getPrecomputedSlice(context, coinId, `atr_${config.atr.period}`, windowLength);
+      if (preAtr) {
+        atrValues = preAtr;
+      }
+    }
+
+    // --- Bollinger Bands ---
+    let bbPbValues: number[] | null = null;
+    let bbBandwidthValues: number[] | null = null;
+    if (config.bollingerBands.enabled) {
+      const bbKey = `bb_${config.bollingerBands.period}_${config.bollingerBands.stdDev}`;
+      const prePb = this.getPrecomputedSlice(context, coinId, `${bbKey}_pb`, windowLength);
+      const preBandwidth = this.getPrecomputedSlice(context, coinId, `${bbKey}_bandwidth`, windowLength);
+      if (prePb && preBandwidth) {
+        bbPbValues = prePb;
+        bbBandwidthValues = preBandwidth;
+      }
+    }
+
+    // Fall back to IndicatorService for any indicators not precomputed
+    const needsEma = config.ema.enabled && !ema12Values;
+    const needsRsi = config.rsi.enabled && !rsiValues;
+    const needsMacd = config.macd.enabled && !macdValues;
+    const needsAtr = config.atr.enabled && !atrValues;
+    const needsBb = config.bollingerBands.enabled && !bbPbValues;
+
+    if (needsEma || needsRsi || needsMacd || needsAtr || needsBb) {
+      const [ema12Result, ema26Result, rsiResult, macdResult, atrResult, bbResult] = await Promise.all([
+        needsEma
+          ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.fastPeriod, skipCache }, this)
+          : null,
+        needsEma
+          ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.slowPeriod, skipCache }, this)
+          : null,
+        needsRsi
+          ? this.indicatorService.calculateRSI({ coinId, prices, period: config.rsi.period, skipCache }, this)
+          : null,
+        needsMacd
+          ? this.indicatorService.calculateMACD(
+              {
+                coinId,
+                prices,
+                fastPeriod: config.macd.fastPeriod,
+                slowPeriod: config.macd.slowPeriod,
+                signalPeriod: config.macd.signalPeriod,
+                skipCache
+              },
+              this
+            )
+          : null,
+        needsAtr
+          ? this.indicatorService.calculateATR({ coinId, prices, period: config.atr.period, skipCache }, this)
+          : null,
+        needsBb
+          ? this.indicatorService.calculateBollingerBands(
+              {
+                coinId,
+                prices,
+                period: config.bollingerBands.period,
+                stdDev: config.bollingerBands.stdDev,
+                skipCache
+              },
+              this
+            )
+          : null
+      ]);
+
+      if (needsEma && ema12Result && ema26Result) {
+        ema12Values = ema12Result.values;
+        ema26Values = ema26Result.values;
+      }
+      if (needsRsi && rsiResult) {
+        rsiValues = rsiResult.values;
+      }
+      if (needsMacd && macdResult) {
+        macdValues = macdResult.macd;
+        macdSignalValues = macdResult.signal;
+        macdHistogramValues = macdResult.histogram;
+      }
+      if (needsAtr && atrResult) {
+        atrValues = atrResult.values;
+      }
+      if (needsBb && bbResult) {
+        bbPbValues = bbResult.pb;
+        bbBandwidthValues = bbResult.bandwidth;
+      }
+    }
 
     // Evaluate EMA (Trend)
-    if (config.ema.enabled && ema12Result && ema26Result) {
+    if (config.ema.enabled && ema12Values && ema26Values) {
       totalEnabled++;
-      const emaSignal = this.evaluateEMASignal(ema12Result.values, ema26Result.values, currentIndex);
+      const emaSignal = this.evaluateEMASignal(ema12Values, ema26Values, currentIndex);
       signals.push(emaSignal);
       if (emaSignal.signal === 'bullish') buyCount++;
       else if (emaSignal.signal === 'bearish') sellCount++;
     }
 
     // Evaluate RSI (Momentum)
-    if (config.rsi.enabled && rsiResult) {
+    if (config.rsi.enabled && rsiValues) {
       totalEnabled++;
-      const rsiSignal = this.evaluateRSISignal(rsiResult.values, currentIndex, config.rsi);
+      const rsiSignal = this.evaluateRSISignal(rsiValues, currentIndex, config.rsi);
       signals.push(rsiSignal);
       if (rsiSignal.signal === 'bullish') buyCount++;
       else if (rsiSignal.signal === 'bearish') sellCount++;
     }
 
     // Evaluate MACD (Oscillator)
-    if (config.macd.enabled && macdResult) {
+    if (config.macd.enabled && macdValues && macdSignalValues && macdHistogramValues) {
       totalEnabled++;
       // Pre-calculate histogram average for strength normalization (more efficient than recalculating in method)
-      const histogramAvg = this.calculateArrayAverage(macdResult.histogram, currentIndex, 20, true);
+      const histogramAvg = this.calculateArrayAverage(macdHistogramValues, currentIndex, 20, true);
       const macdSignal = this.evaluateMACDSignal(
-        macdResult.macd,
-        macdResult.signal,
-        macdResult.histogram,
+        macdValues,
+        macdSignalValues,
+        macdHistogramValues,
         currentIndex,
         histogramAvg.average
       );
@@ -279,11 +376,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     }
 
     // Evaluate Bollinger Bands (Trend Confirmation)
-    if (config.bollingerBands.enabled && bbResult) {
+    if (config.bollingerBands.enabled && bbPbValues && bbBandwidthValues) {
       totalEnabled++;
       const bbSignal = this.evaluateBollingerBandsSignal(
-        bbResult.pb,
-        bbResult.bandwidth,
+        bbPbValues,
+        bbBandwidthValues,
         currentIndex,
         config.bollingerBands
       );
@@ -294,11 +391,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
 
     // Evaluate ATR (Volatility Filter) - purely a filter, not a directional indicator
     let isVolatilityFiltered = false;
-    if (config.atr.enabled && atrResult) {
+    if (config.atr.enabled && atrValues) {
       // Note: ATR does NOT increment totalEnabled because it's a filter, not a directional indicator
       // Pre-calculate ATR average for volatility comparison (more efficient than recalculating in method)
-      const atrAvg = this.calculateArrayAverage(atrResult.values, currentIndex, config.atr.period);
-      const atrSignal = this.evaluateATRSignal(atrResult.values, currentIndex, config.atr, atrAvg.average);
+      const atrAvg = this.calculateArrayAverage(atrValues, currentIndex, config.atr.period);
+      const atrSignal = this.evaluateATRSignal(atrValues, currentIndex, config.atr, atrAvg.average);
       signals.push(atrSignal);
 
       // ATR only filters - when volatility is too high, signals are blocked
@@ -908,6 +1005,38 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
       }
     };
+  }
+
+  /**
+   * Declare indicator requirements for precomputation during optimization.
+   */
+  getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
+    const reqs: IndicatorRequirement[] = [];
+    if (config.emaEnabled !== false) {
+      reqs.push({ type: 'EMA', paramKeys: ['emaFastPeriod'], defaultParams: { emaFastPeriod: 12 } });
+      reqs.push({ type: 'EMA', paramKeys: ['emaSlowPeriod'], defaultParams: { emaSlowPeriod: 26 } });
+    }
+    if (config.rsiEnabled !== false) {
+      reqs.push({ type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } });
+    }
+    if (config.macdEnabled !== false) {
+      reqs.push({
+        type: 'MACD',
+        paramKeys: ['macdFastPeriod', 'macdSlowPeriod', 'macdSignalPeriod'],
+        defaultParams: { macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9 }
+      });
+    }
+    if (config.atrEnabled !== false) {
+      reqs.push({ type: 'ATR', paramKeys: ['atrPeriod'], defaultParams: { atrPeriod: 14 } });
+    }
+    if (config.bbEnabled !== false) {
+      reqs.push({
+        type: 'BOLLINGER_BANDS',
+        paramKeys: ['bbPeriod', 'bbStdDev'],
+        defaultParams: { bbPeriod: 20, bbStdDev: 2 }
+      });
+    }
+    return reqs;
   }
 
   getParameterConstraints(): ParameterConstraint[] {

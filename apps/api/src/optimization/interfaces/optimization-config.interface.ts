@@ -113,11 +113,11 @@ export interface OptimizationConfig {
 export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
   method: 'random_search',
   maxIterations: 100,
-  maxCombinations: 100,
+  maxCombinations: 30,
   walkForward: {
     trainDays: 90,
     testDays: 30,
-    stepDays: 14,
+    stepDays: 30,
     method: 'rolling',
     minWindowsRequired: 3,
     maxAcceptableDegradation: 30
@@ -128,7 +128,7 @@ export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
   },
   earlyStop: {
     enabled: true,
-    patience: 20,
+    patience: 10,
     minImprovement: 1
   },
   parallelism: {
@@ -142,11 +142,11 @@ export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
  */
 export const FAST_OPTIMIZATION_CONFIG: OptimizationConfig = {
   method: 'grid_search',
-  maxCombinations: 100,
+  maxCombinations: 20,
   walkForward: {
     trainDays: 90,
     testDays: 30,
-    stepDays: 15,
+    stepDays: 30,
     method: 'rolling',
     minWindowsRequired: 2,
     maxAcceptableDegradation: 40
@@ -157,7 +157,7 @@ export const FAST_OPTIMIZATION_CONFIG: OptimizationConfig = {
   },
   earlyStop: {
     enabled: true,
-    patience: 20,
+    patience: 10,
     minImprovement: 2
   },
   parallelism: {

@@ -11,7 +11,11 @@ import { GridSearchService } from './grid-search.service';
 import { Coin } from '../../coin/coin.entity';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
-import { BacktestEngine, OptimizationBacktestConfig } from '../../order/backtest/backtest-engine.service';
+import {
+  BacktestEngine,
+  OptimizationBacktestConfig,
+  PrecomputedWindowData
+} from '../../order/backtest/backtest-engine.service';
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
@@ -266,6 +270,25 @@ export class OptimizationOrchestratorService {
       // Release flat array immediately — the map now owns the data
       allCandles = [];
 
+      // Pre-compute expensive per-window data once for all unique date ranges.
+      // With 3 windows × 2 phases (train+test) = 6 unique ranges, this avoids
+      // recomputing groupPricesByTimestamp, initPriceTracking, binary search, and volume maps
+      // for every parameter combination (~74x reduction in redundant work).
+      const precomputedWindows = new Map<string, PrecomputedWindowData>();
+      for (const window of windows) {
+        const ranges = [
+          { start: window.trainStartDate, end: window.trainEndDate },
+          { start: window.testStartDate, end: window.testEndDate }
+        ];
+        for (const { start, end } of ranges) {
+          const key = `${start.getTime()}-${end.getTime()}`;
+          if (!precomputedWindows.has(key)) {
+            precomputedWindows.set(key, this.backtestEngine.precomputeWindowData(coins, candlesByCoin, start, end));
+          }
+        }
+      }
+      this.logger.log(`Pre-computed ${precomputedWindows.size} window data sets for optimization run ${runId}`);
+
       let bestScore = -Infinity;
       let bestParameters: Record<string, unknown> | null = null;
       let baselineScore = 0;
@@ -333,7 +356,8 @@ export class OptimizationOrchestratorService {
               run.config,
               coins,
               candlesByCoin,
-              heartbeatFn
+              heartbeatFn,
+              precomputedWindows
             );
             return { combination, evaluationResult };
           })
@@ -424,8 +448,9 @@ export class OptimizationOrchestratorService {
         }
       }
 
-      // Release pre-loaded candles to free memory
+      // Release pre-loaded candles and pre-computed windows to free memory
       candlesByCoin.clear();
+      precomputedWindows.clear();
 
       // Finalize run
       await this.finalizeOptimization(run, bestScore, bestParameters, baselineScore);
@@ -456,7 +481,8 @@ export class OptimizationOrchestratorService {
     config: OptimizationConfig,
     coins: Coin[],
     preloadedCandlesByCoin?: Map<string, OHLCCandle[]>,
-    heartbeatFn?: () => Promise<void>
+    heartbeatFn?: () => Promise<void>,
+    precomputedWindows?: Map<string, PrecomputedWindowData>
   ): Promise<CombinationEvaluationResult> {
     const windowResults: WindowResult[] = [];
     let totalTrainScore = 0;
@@ -464,6 +490,12 @@ export class OptimizationOrchestratorService {
     let totalDegradation = 0;
     let overfittingWindows = 0;
     for (const window of windows) {
+      // Build window keys for pre-computed data lookup
+      const trainKey = `${window.trainStartDate.getTime()}-${window.trainEndDate.getTime()}`;
+      const testKey = `${window.testStartDate.getTime()}-${window.testEndDate.getTime()}`;
+      const trainPrecomputed = precomputedWindows?.get(trainKey);
+      const testPrecomputed = precomputedWindows?.get(testKey);
+
       // Execute train and test backtests in parallel (independent date ranges, no shared state)
       const [trainMetrics, testMetrics] = await Promise.all([
         this.executeBacktest(
@@ -472,7 +504,8 @@ export class OptimizationOrchestratorService {
           window.trainStartDate,
           window.trainEndDate,
           coins,
-          preloadedCandlesByCoin
+          preloadedCandlesByCoin,
+          trainPrecomputed
         ),
         this.executeBacktest(
           strategyConfig,
@@ -480,7 +513,8 @@ export class OptimizationOrchestratorService {
           window.testStartDate,
           window.testEndDate,
           coins,
-          preloadedCandlesByCoin
+          preloadedCandlesByCoin,
+          testPrecomputed
         )
       ]);
 
@@ -592,7 +626,8 @@ export class OptimizationOrchestratorService {
     startDate: Date,
     endDate: Date,
     coins: Coin[],
-    preloadedCandlesByCoin?: Map<string, OHLCCandle[]>
+    preloadedCandlesByCoin?: Map<string, OHLCCandle[]>,
+    precomputedData?: PrecomputedWindowData
   ): Promise<import('@chansey/api-interfaces').WindowMetrics> {
     // Build optimization backtest config
     const backtestConfig: OptimizationBacktestConfig = {
@@ -605,9 +640,12 @@ export class OptimizationOrchestratorService {
     };
 
     try {
-      const result = preloadedCandlesByCoin
-        ? await this.backtestEngine.executeOptimizationBacktestWithData(backtestConfig, coins, preloadedCandlesByCoin)
-        : await this.backtestEngine.executeOptimizationBacktest(backtestConfig, coins);
+      // Prefer pre-computed fast path, fall back to existing paths
+      const result = precomputedData
+        ? await this.backtestEngine.runOptimizationBacktestWithPrecomputed(backtestConfig, coins, precomputedData)
+        : preloadedCandlesByCoin
+          ? await this.backtestEngine.executeOptimizationBacktestWithData(backtestConfig, coins, preloadedCandlesByCoin)
+          : await this.backtestEngine.executeOptimizationBacktest(backtestConfig, coins);
 
       return {
         sharpeRatio: result.sharpeRatio,

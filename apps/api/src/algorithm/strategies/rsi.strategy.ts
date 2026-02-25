@@ -4,7 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface RSIConfig {
@@ -51,6 +51,11 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -60,13 +65,15 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
           continue;
         }
 
-        // Calculate RSI using IndicatorService (with caching)
-        const rsiResult = await this.indicatorService.calculateRSI(
-          { coinId: coin.id, prices: priceHistory, period: config.period },
-          this
-        );
-
-        const rsi = rsiResult.values;
+        // Calculate RSI (precomputed fast path or IndicatorService fallback)
+        const rsi =
+          this.getPrecomputedSlice(context, coin.id, `rsi_${config.period}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateRSI(
+              { coinId: coin.id, prices: priceHistory, period: config.period },
+              this
+            )
+          ).values;
 
         // Generate signal based on RSI levels
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, rsi, config);
@@ -75,8 +82,9 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, rsi);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, rsi);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -230,6 +238,10 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [{ type: 'RSI', paramKeys: ['period'], defaultParams: { period: 14 } }];
   }
 
   /**

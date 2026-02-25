@@ -1,4 +1,5 @@
 // Interfaces and types
+export * from './indicator-requirements.interface';
 export * from './indicator.interface';
 export * from './indicator.types';
 

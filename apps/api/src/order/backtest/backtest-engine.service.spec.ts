@@ -943,6 +943,205 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
   });
 });
 
+describe('BacktestEngine.precomputeWindowData', () => {
+  const createEngine = () =>
+    new BacktestEngine(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState,
+      positionAnalysis,
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
+    );
+
+  it('should pre-compute window data from candles', () => {
+    const engine = createEngine();
+    const startDate = new Date('2024-01-01T00:00:00.000Z');
+    const endDate = new Date('2024-01-03T00:00:00.000Z');
+
+    const candles = [
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 96,
+        close: 105,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-02T00:00:00.000Z'),
+        open: 105,
+        high: 115,
+        low: 100,
+        close: 110,
+        volume: 2000
+      }),
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-04T00:00:00.000Z'),
+        open: 110,
+        high: 120,
+        low: 105,
+        close: 115,
+        volume: 3000
+      })
+    ];
+
+    const candlesByCoin = new Map<string, OHLCCandle[]>();
+    candlesByCoin.set('btc', candles);
+
+    const coins = [{ id: 'btc' }] as any[];
+
+    const result = engine.precomputeWindowData(coins, candlesByCoin, startDate, endDate);
+
+    // Should only include candles within the date range (excludes Jan 4)
+    expect(result.filteredCandles).toHaveLength(2);
+    expect(result.timestamps).toHaveLength(2);
+    expect(result.immutablePriceData.timestampsByCoin.get('btc')).toHaveLength(2);
+    expect(result.immutablePriceData.summariesByCoin.get('btc')).toHaveLength(2);
+    // Volume map should have entries
+    expect(result.volumeMap.size).toBe(2);
+  });
+
+  it('should return empty data for empty candles', () => {
+    const engine = createEngine();
+    const candlesByCoin = new Map<string, OHLCCandle[]>();
+    candlesByCoin.set('btc', []);
+
+    const result = engine.precomputeWindowData(
+      [{ id: 'btc' }] as any[],
+      candlesByCoin,
+      new Date('2024-01-01'),
+      new Date('2024-01-02')
+    );
+
+    expect(result.filteredCandles).toHaveLength(0);
+    expect(result.timestamps).toHaveLength(0);
+    expect(result.volumeMap.size).toBe(0);
+  });
+});
+
+describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
+  const createEngine = (algorithmRegistry: any) =>
+    new BacktestEngine(
+      {} as any,
+      algorithmRegistry,
+      {} as any,
+      {} as any,
+      {} as any,
+      slippageService,
+      feeCalculator,
+      positionManager,
+      metricsCalculator,
+      portfolioState,
+      positionAnalysis,
+      signalThrottle,
+      regimeGateService,
+      volatilityCalculator
+    );
+
+  it('returns neutral metrics when pre-computed data has no candles', async () => {
+    const engine = createEngine({ executeAlgorithm: jest.fn() });
+    const precomputed = {
+      pricesByTimestamp: {},
+      timestamps: [],
+      immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+      volumeMap: new Map(),
+      filteredCandles: []
+    };
+
+    const result = await engine.runOptimizationBacktestWithPrecomputed(
+      {
+        algorithmId: 'algo-1',
+        parameters: {},
+        startDate: new Date('2024-01-01'),
+        endDate: new Date('2024-01-02')
+      },
+      [{ id: 'btc' }] as any[],
+      precomputed
+    );
+
+    expect(result.sharpeRatio).toBe(0);
+    expect(result.totalReturn).toBe(0);
+    expect(result.tradeCount).toBe(0);
+  });
+
+  it('produces same results as runOptimizationBacktestCore for same data', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({ success: true, signals: [] }),
+      getStrategyForAlgorithm: jest.fn().mockResolvedValue(null)
+    };
+
+    const engine = createEngine(algorithmRegistry);
+
+    const startDate = new Date('2024-01-01T00:00:00.000Z');
+    const endDate = new Date('2024-01-03T00:00:00.000Z');
+    const candles = [
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 96,
+        close: 105,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-02T00:00:00.000Z'),
+        open: 105,
+        high: 115,
+        low: 100,
+        close: 110,
+        volume: 2000
+      })
+    ];
+
+    const coins = [{ id: 'btc' }] as any[];
+    const candlesByCoin = new Map<string, OHLCCandle[]>();
+    candlesByCoin.set('btc', candles);
+
+    // Build pre-computed data
+    const precomputed = engine.precomputeWindowData(coins, candlesByCoin, startDate, endDate);
+
+    const config = {
+      algorithmId: 'algo-1',
+      parameters: {},
+      startDate,
+      endDate,
+      initialCapital: 10000,
+      tradingFee: 0.001
+    };
+
+    const precomputedResult = await engine.runOptimizationBacktestWithPrecomputed(config, coins, precomputed);
+
+    // Compare with legacy path
+    const legacyResult = await engine.executeOptimizationBacktestWithData(config, coins, candlesByCoin);
+
+    // Results should match (both have no trades, same initial capital)
+    expect(precomputedResult.totalReturn).toBe(legacyResult.totalReturn);
+    expect(precomputedResult.tradeCount).toBe(legacyResult.tradeCount);
+    expect(precomputedResult.finalValue).toBeCloseTo(legacyResult.finalValue!);
+    expect(precomputedResult.maxDrawdown).toBe(legacyResult.maxDrawdown);
+    expect(precomputedResult.profitFactor).toBe(legacyResult.profitFactor);
+  });
+});
+
 describe('BacktestEngine.executeLiveReplayBacktest', () => {
   const createEngine = (deps: {
     algorithmRegistry: any;

@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface MACDConfig {
@@ -54,6 +54,11 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -63,19 +68,29 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
           continue;
         }
 
-        // Calculate MACD using IndicatorService (with caching)
-        const macdResult = await this.indicatorService.calculateMACD(
-          {
-            coinId: coin.id,
-            prices: priceHistory,
-            fastPeriod: config.fastPeriod,
-            slowPeriod: config.slowPeriod,
-            signalPeriod: config.signalPeriod
-          },
-          this
-        );
-
-        const { macd, signal, histogram } = macdResult;
+        // Calculate MACD using precomputed data or IndicatorService (with caching)
+        const macdKey = `macd_${config.fastPeriod}_${config.slowPeriod}_${config.signalPeriod}`;
+        const preMACD = this.getPrecomputedSlice(context, coin.id, `${macdKey}_macd`, priceHistory.length);
+        let macd: number[], signal: number[], histogram: number[];
+        if (preMACD) {
+          macd = preMACD;
+          signal = this.getPrecomputedSlice(context, coin.id, `${macdKey}_signal`, priceHistory.length)!;
+          histogram = this.getPrecomputedSlice(context, coin.id, `${macdKey}_histogram`, priceHistory.length)!;
+        } else {
+          const macdResult = await this.indicatorService.calculateMACD(
+            {
+              coinId: coin.id,
+              prices: priceHistory,
+              fastPeriod: config.fastPeriod,
+              slowPeriod: config.slowPeriod,
+              signalPeriod: config.signalPeriod
+            },
+            this
+          );
+          macd = macdResult.macd;
+          signal = macdResult.signal;
+          histogram = macdResult.histogram;
+        }
 
         // Generate signal based on MACD crossover
         const tradingSignal = this.generateSignal(coin.id, coin.symbol, priceHistory, macd, signal, histogram, config);
@@ -84,8 +99,9 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
           signals.push(tradingSignal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, macd, signal, histogram);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, macd, signal, histogram);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -304,6 +320,16 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      {
+        type: 'MACD',
+        paramKeys: ['fastPeriod', 'slowPeriod', 'signalPeriod'],
+        defaultParams: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 }
+      }
+    ];
   }
 
   getParameterConstraints(): ParameterConstraint[] {

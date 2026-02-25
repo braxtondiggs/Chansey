@@ -4,7 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface ATRTrailingStopConfig {
@@ -64,6 +64,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -73,13 +78,15 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
           continue;
         }
 
-        // Calculate ATR using IndicatorService (with caching)
-        const atrResult = await this.indicatorService.calculateATR(
-          { coinId: coin.id, prices: priceHistory, period: config.atrPeriod },
-          this
-        );
-
-        const atr = atrResult.values;
+        // Calculate ATR using precomputed data or IndicatorService (with caching)
+        const atr =
+          this.getPrecomputedSlice(context, coin.id, `atr_${config.atrPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateATR(
+              { coinId: coin.id, prices: priceHistory, period: config.atrPeriod },
+              this
+            )
+          ).values;
 
         // Generate entry signals based on trend-flip detection, then stop signals
         if (config.tradeDirection === 'long' || config.tradeDirection === 'both') {
@@ -106,8 +113,9 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
           }
         }
 
-        // Prepare chart data with trailing stop levels
-        chartData[coin.id] = this.prepareChartData(priceHistory, atr, config);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, atr, config);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -596,6 +604,10 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         }
       };
     });
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [{ type: 'ATR', paramKeys: ['atrPeriod'], defaultParams: { atrPeriod: 14 } }];
   }
 
   /**

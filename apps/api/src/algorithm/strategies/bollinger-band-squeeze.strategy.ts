@@ -4,7 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface BollingerSqueezeConfig {
@@ -67,6 +67,11 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
       const eligibleCoins = context.coins.filter((coin) => this.hasEnoughData(context.priceData[coin.id], config));
 
       this.logger.debug(
@@ -83,50 +88,64 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
         const coinStart = Date.now();
 
-        // Calculate Bollinger Bands with timeout guard to prevent indefinite hangs
-        let bbResult: Awaited<ReturnType<typeof this.indicatorService.calculateBollingerBands>>;
-        try {
-          const bbPromise = this.indicatorService.calculateBollingerBands(
-            {
-              coinId: coin.id,
-              prices: priceHistory,
-              period: config.period,
-              stdDev: config.stdDev
-            },
-            this
-          );
+        // Dual-path: try precomputed indicators first, fall back to IndicatorService
+        const bbKey = `bb_${config.period}_${config.stdDev}`;
+        const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
+        let upper: number[], middle: number[], lower: number[], pb: number[], bandwidth: number[];
+        let bbDuration = 0;
 
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `BB calculation timed out for ${coin.symbol} after ${BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS}ms (${priceHistory.length} prices)`
-                  )
-                ),
-              BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS
+        if (preUpper) {
+          upper = preUpper;
+          middle = this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)!;
+          lower = this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)!;
+          pb = this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length)!;
+          bandwidth = this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)!;
+        } else {
+          // Calculate Bollinger Bands with timeout guard to prevent indefinite hangs
+          let bbResult: Awaited<ReturnType<typeof this.indicatorService.calculateBollingerBands>>;
+          try {
+            const bbPromise = this.indicatorService.calculateBollingerBands(
+              {
+                coinId: coin.id,
+                prices: priceHistory,
+                period: config.period,
+                stdDev: config.stdDev
+              },
+              this
             );
-          });
 
-          bbResult = await Promise.race([bbPromise, timeoutPromise]);
-        } catch (err: unknown) {
-          const errInfo = toErrorInfo(err);
-          this.logger.error(
-            `BB Squeeze: calculateBollingerBands failed for ${coin.symbol} ` +
-              `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${errInfo.message}`
-          );
-          continue;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `BB calculation timed out for ${coin.symbol} after ${BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS}ms (${priceHistory.length} prices)`
+                    )
+                  ),
+                BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS
+              );
+            });
+
+            bbResult = await Promise.race([bbPromise, timeoutPromise]);
+          } catch (err: unknown) {
+            const errInfo = toErrorInfo(err);
+            this.logger.error(
+              `BB Squeeze: calculateBollingerBands failed for ${coin.symbol} ` +
+                `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${errInfo.message}`
+            );
+            continue;
+          }
+
+          bbDuration = Date.now() - coinStart;
+          if (bbDuration > 1000) {
+            this.logger.warn(
+              `BB Squeeze: slow calculateBollingerBands for ${coin.symbol}: ${bbDuration}ms ` +
+                `(${priceHistory.length} prices, cached=${bbResult.fromCache})`
+            );
+          }
+
+          ({ upper, middle, lower, pb, bandwidth } = bbResult);
         }
-
-        const bbDuration = Date.now() - coinStart;
-        if (bbDuration > 1000) {
-          this.logger.warn(
-            `BB Squeeze: slow calculateBollingerBands for ${coin.symbol}: ${bbDuration}ms ` +
-              `(${priceHistory.length} prices, cached=${bbResult.fromCache})`
-          );
-        }
-
-        const { upper, middle, lower, pb, bandwidth } = bbResult;
 
         // Analyze squeeze state and generate signals
         const signal = this.generateSignal(
@@ -145,8 +164,9 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, upper, middle, lower, pb, bandwidth, config);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, upper, middle, lower, pb, bandwidth, config);
+        }
 
         const totalCoinDuration = Date.now() - coinStart;
         if (totalCoinDuration > 2000) {
@@ -439,6 +459,13 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         low: price.low
       }
     }));
+  }
+
+  /**
+   * Declare indicator requirements for precomputation during optimization.
+   */
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [{ type: 'BOLLINGER_BANDS', paramKeys: ['period', 'stdDev'], defaultParams: { period: 20, stdDev: 2 } }];
   }
 
   /**
