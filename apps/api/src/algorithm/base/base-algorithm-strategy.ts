@@ -6,6 +6,7 @@ import { CronJob } from 'cron';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm, AlgorithmStatus } from '../algorithm.entity';
+import { IndicatorRequirement } from '../indicators/indicator-requirements.interface';
 import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy } from '../interfaces';
 
 /**
@@ -89,6 +90,14 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
    * Override in strategies with related parameters (e.g., fastPeriod < slowPeriod).
    */
   getParameterConstraints(): ParameterConstraint[] {
+    return [];
+  }
+
+  /**
+   * Declare indicator requirements for precomputation during optimization.
+   * Override in strategies to enable the fast path (bypass per-timestamp Redis).
+   */
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
     return [];
   }
 
@@ -222,6 +231,26 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   protected async scheduledExecution(): Promise<void> {
     this.logger.log('Scheduled execution started');
     // Subclasses should implement their own scheduled execution logic
+  }
+
+  /**
+   * Retrieve a precomputed indicator slice matching the current price window.
+   * Returns undefined when precomputed data is not available (legacy path).
+   */
+  protected getPrecomputedSlice(
+    context: AlgorithmContext,
+    coinId: string,
+    key: string,
+    windowLength: number
+  ): number[] | undefined {
+    const fullSeries = context.precomputedIndicators?.[coinId]?.[key];
+    if (!fullSeries || context.currentTimestampIndex == null) return undefined;
+    const idx = context.currentTimestampIndex;
+    const start = Math.max(0, idx - windowLength + 1);
+    if (fullSeries instanceof Float64Array) {
+      return Array.from(fullSeries.subarray(start, idx + 1));
+    }
+    return (fullSeries as number[]).slice(start, idx + 1);
   }
 
   /**

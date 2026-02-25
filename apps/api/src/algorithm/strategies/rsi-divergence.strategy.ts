@@ -4,7 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface RSIDivergenceConfig {
@@ -70,6 +70,11 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -79,13 +84,15 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
           continue;
         }
 
-        // Calculate RSI using IndicatorService (with caching)
-        const rsiResult = await this.indicatorService.calculateRSI(
-          { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
-          this
-        );
-
-        const rsi = rsiResult.values;
+        // Calculate RSI using precomputed data or IndicatorService (with caching)
+        const rsi =
+          this.getPrecomputedSlice(context, coin.id, `rsi_${config.rsiPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateRSI(
+              { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
+              this
+            )
+          ).values;
 
         // Detect divergences
         const divergence = this.detectDivergence(priceHistory, rsi, config);
@@ -97,8 +104,9 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
           }
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, rsi, config);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, rsi, config);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -402,6 +410,10 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [{ type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } }];
   }
 
   /**

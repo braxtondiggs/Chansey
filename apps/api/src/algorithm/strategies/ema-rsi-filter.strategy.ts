@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface EMARSIFilterConfig {
@@ -57,6 +57,11 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -66,22 +71,51 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
           continue;
         }
 
-        // Calculate EMAs and RSI using IndicatorService (with caching)
-        const [fastEMAResult, slowEMAResult, rsiResult] = await Promise.all([
-          this.indicatorService.calculateEMA(
-            { coinId: coin.id, prices: priceHistory, period: config.fastEmaPeriod },
-            this
-          ),
-          this.indicatorService.calculateEMA(
-            { coinId: coin.id, prices: priceHistory, period: config.slowEmaPeriod },
-            this
-          ),
-          this.indicatorService.calculateRSI({ coinId: coin.id, prices: priceHistory, period: config.rsiPeriod }, this)
-        ]);
+        // Calculate EMAs and RSI using precomputed data or IndicatorService (with caching)
+        const preFastEMA = this.getPrecomputedSlice(
+          context,
+          coin.id,
+          `ema_${config.fastEmaPeriod}`,
+          priceHistory.length
+        );
+        const preSlowEMA = this.getPrecomputedSlice(
+          context,
+          coin.id,
+          `ema_${config.slowEmaPeriod}`,
+          priceHistory.length
+        );
+        const preRSI = this.getPrecomputedSlice(context, coin.id, `rsi_${config.rsiPeriod}`, priceHistory.length);
 
-        const fastEMA = fastEMAResult.values;
-        const slowEMA = slowEMAResult.values;
-        const rsi = rsiResult.values;
+        let fastEMA: number[], slowEMA: number[], rsi: number[];
+        if (preFastEMA && preSlowEMA && preRSI) {
+          fastEMA = preFastEMA;
+          slowEMA = preSlowEMA;
+          rsi = preRSI;
+        } else {
+          const [fastEMAResult, slowEMAResult, rsiResult] = await Promise.all([
+            preFastEMA
+              ? Promise.resolve({ values: preFastEMA })
+              : this.indicatorService.calculateEMA(
+                  { coinId: coin.id, prices: priceHistory, period: config.fastEmaPeriod },
+                  this
+                ),
+            preSlowEMA
+              ? Promise.resolve({ values: preSlowEMA })
+              : this.indicatorService.calculateEMA(
+                  { coinId: coin.id, prices: priceHistory, period: config.slowEmaPeriod },
+                  this
+                ),
+            preRSI
+              ? Promise.resolve({ values: preRSI })
+              : this.indicatorService.calculateRSI(
+                  { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
+                  this
+                )
+          ]);
+          fastEMA = fastEMAResult.values;
+          slowEMA = slowEMAResult.values;
+          rsi = rsiResult.values;
+        }
 
         // Generate signal based on EMA crossover filtered by RSI
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, fastEMA, slowEMA, rsi, config);
@@ -90,8 +124,9 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, fastEMA, slowEMA, rsi);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, fastEMA, slowEMA, rsi);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -348,6 +383,14 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      { type: 'EMA', paramKeys: ['fastEmaPeriod'], defaultParams: { fastEmaPeriod: 12 } },
+      { type: 'EMA', paramKeys: ['slowEmaPeriod'], defaultParams: { slowEmaPeriod: 26 } },
+      { type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } }
+    ];
   }
 
   /**

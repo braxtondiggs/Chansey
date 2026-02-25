@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface TripleEMAConfig {
@@ -68,6 +68,11 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -77,22 +82,31 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           continue;
         }
 
-        // Calculate all three EMAs using IndicatorService (with caching)
-        const [fastEMAResult, mediumEMAResult, slowEMAResult] = await Promise.all([
-          this.indicatorService.calculateEMA(
-            { coinId: coin.id, prices: priceHistory, period: config.fastPeriod },
-            this
-          ),
-          this.indicatorService.calculateEMA(
-            { coinId: coin.id, prices: priceHistory, period: config.mediumPeriod },
-            this
-          ),
-          this.indicatorService.calculateEMA({ coinId: coin.id, prices: priceHistory, period: config.slowPeriod }, this)
-        ]);
-
-        const fastEMA = fastEMAResult.values;
-        const mediumEMA = mediumEMAResult.values;
-        const slowEMA = slowEMAResult.values;
+        // Calculate all three EMAs (precomputed fast path or IndicatorService fallback)
+        const fastEMA =
+          this.getPrecomputedSlice(context, coin.id, `ema_${config.fastPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateEMA(
+              { coinId: coin.id, prices: priceHistory, period: config.fastPeriod },
+              this
+            )
+          ).values;
+        const mediumEMA =
+          this.getPrecomputedSlice(context, coin.id, `ema_${config.mediumPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateEMA(
+              { coinId: coin.id, prices: priceHistory, period: config.mediumPeriod },
+              this
+            )
+          ).values;
+        const slowEMA =
+          this.getPrecomputedSlice(context, coin.id, `ema_${config.slowPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateEMA(
+              { coinId: coin.id, prices: priceHistory, period: config.slowPeriod },
+              this
+            )
+          ).values;
 
         // Generate signal based on EMA alignment
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, fastEMA, mediumEMA, slowEMA, config);
@@ -101,8 +115,9 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, fastEMA, mediumEMA, slowEMA);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, fastEMA, mediumEMA, slowEMA);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -413,6 +428,14 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         }
       };
     });
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      { type: 'EMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 8 } },
+      { type: 'EMA', paramKeys: ['mediumPeriod'], defaultParams: { mediumPeriod: 21 } },
+      { type: 'EMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 55 } }
+    ];
   }
 
   getParameterConstraints(): ParameterConstraint[] {

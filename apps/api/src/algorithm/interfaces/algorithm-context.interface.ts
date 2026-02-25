@@ -46,4 +46,18 @@ export interface AlgorithmContext {
    * Market conditions or additional metadata
    */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Precomputed indicator series for optimization fast-path.
+   * Keyed by coinId → indicatorKey (e.g. "ema_21") → full padded number array.
+   * When present, strategies should read values at `currentTimestampIndex`
+   * instead of calling IndicatorService.
+   */
+  precomputedIndicators?: Record<string, Record<string, ArrayLike<number>>>;
+
+  /**
+   * Current position in the timestamp loop (0-based index into the full series).
+   * Used with `precomputedIndicators` to look up precomputed values.
+   */
+  currentTimestampIndex?: number;
 }
