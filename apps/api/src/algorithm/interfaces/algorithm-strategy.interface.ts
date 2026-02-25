@@ -3,6 +3,7 @@ import { AlgorithmResult } from './algorithm-result.interface';
 
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { Algorithm } from '../algorithm.entity';
+import { IndicatorRequirement } from '../indicators/indicator-requirements.interface';
 
 /**
  * Base interface for all algorithm strategies
@@ -61,6 +62,12 @@ export interface AlgorithmStrategy {
    * Returns constraints like "fastPeriod must be less than slowPeriod".
    */
   getParameterConstraints?(): ParameterConstraint[];
+
+  /**
+   * Declare which technical indicators this strategy needs so the backtest
+   * engine can precompute full series before the timestamp loop.
+   */
+  getIndicatorRequirements?(config: Record<string, unknown>): IndicatorRequirement[];
 
   /**
    * Health check for the algorithm

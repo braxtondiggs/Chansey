@@ -68,11 +68,11 @@ export const PAPER_TRADING_DURATION: Record<number, string> = {
  * Lower risk levels use longer training periods and more combinations.
  */
 export const OPTIMIZATION_CONFIG: Record<number, RiskOptimizationConfig> = {
-  1: { trainDays: 180, testDays: 60, stepDays: 30, maxCombinations: 150, maxCoins: 20 }, // Conservative
-  2: { trainDays: 120, testDays: 45, stepDays: 21, maxCombinations: 120, maxCoins: 18 },
-  3: { trainDays: 90, testDays: 30, stepDays: 14, maxCombinations: 100, maxCoins: 15 }, // Default
-  4: { trainDays: 60, testDays: 21, stepDays: 10, maxCombinations: 75, maxCoins: 12 },
-  5: { trainDays: 30, testDays: 14, stepDays: 7, maxCombinations: 50, maxCoins: 10 } // Aggressive
+  1: { trainDays: 180, testDays: 60, stepDays: 60, maxCombinations: 50, maxCoins: 10 }, // Conservative
+  2: { trainDays: 120, testDays: 45, stepDays: 45, maxCombinations: 40, maxCoins: 10 },
+  3: { trainDays: 90, testDays: 30, stepDays: 30, maxCombinations: 30, maxCoins: 10 }, // Default
+  4: { trainDays: 60, testDays: 21, stepDays: 21, maxCombinations: 25, maxCoins: 8 },
+  5: { trainDays: 30, testDays: 14, stepDays: 14, maxCombinations: 20, maxCoins: 8 } // Aggressive
 };
 
 /**

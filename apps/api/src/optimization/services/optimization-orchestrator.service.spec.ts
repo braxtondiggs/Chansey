@@ -112,7 +112,9 @@ describe('OptimizationOrchestratorService', () => {
 
     backtestEngine = {
       executeOptimizationBacktest: jest.fn(),
-      executeOptimizationBacktestWithData: jest.fn()
+      executeOptimizationBacktestWithData: jest.fn(),
+      precomputeWindowData: jest.fn(),
+      runOptimizationBacktestWithPrecomputed: jest.fn()
     } as unknown as jest.Mocked<BacktestEngine>;
 
     ohlcService = {
@@ -642,6 +644,78 @@ describe('OptimizationOrchestratorService', () => {
       expect(callOrder[0]).toContain('start');
       expect(callOrder[1]).toContain('start');
       expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use pre-computed fast path when precomputedWindows are provided', async () => {
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+      const config = createValidConfig();
+      const coins = [{ id: 'btc' }] as Coin[];
+      const windows = [
+        {
+          windowIndex: 0,
+          trainStartDate: new Date('2024-01-01'),
+          trainEndDate: new Date('2024-04-01'),
+          testStartDate: new Date('2024-04-01'),
+          testEndDate: new Date('2024-05-01')
+        }
+      ];
+
+      const mockMetrics: WindowMetrics = {
+        sharpeRatio: 1.5,
+        totalReturn: 0.1,
+        maxDrawdown: -0.05,
+        winRate: 0.6,
+        tradeCount: 50,
+        profitFactor: 2.0,
+        volatility: 0.2,
+        downsideDeviation: 0.1
+      };
+
+      backtestEngine.runOptimizationBacktestWithPrecomputed.mockResolvedValue(mockMetrics);
+
+      windowProcessor.processWindow.mockResolvedValue({
+        degradation: 0.05,
+        overfittingDetected: false
+      } as any);
+
+      // Build precomputedWindows map with matching keys
+      const precomputedWindows = new Map<string, any>();
+      const trainKey = `${windows[0].trainStartDate.getTime()}-${windows[0].trainEndDate.getTime()}`;
+      const testKey = `${windows[0].testStartDate.getTime()}-${windows[0].testEndDate.getTime()}`;
+      precomputedWindows.set(trainKey, {
+        filteredCandles: [],
+        timestamps: [],
+        pricesByTimestamp: {},
+        immutablePriceData: {},
+        volumeMap: new Map()
+      });
+      precomputedWindows.set(testKey, {
+        filteredCandles: [],
+        timestamps: [],
+        pricesByTimestamp: {},
+        immutablePriceData: {},
+        volumeMap: new Map()
+      });
+
+      const candlesByCoin = new Map<string, any[]>();
+      candlesByCoin.set('btc', []);
+
+      const result = await service.evaluateCombination(
+        strategyConfig,
+        { period: 14 },
+        windows,
+        config,
+        coins,
+        candlesByCoin,
+        undefined,
+        precomputedWindows
+      );
+
+      expect(result.windowResults).toHaveLength(1);
+      // Should use the pre-computed fast path, not the legacy path
+      expect(backtestEngine.runOptimizationBacktestWithPrecomputed).toHaveBeenCalledTimes(2);
+      expect(backtestEngine.executeOptimizationBacktestWithData).not.toHaveBeenCalled();
+      expect(backtestEngine.executeOptimizationBacktest).not.toHaveBeenCalled();
     });
   });
 

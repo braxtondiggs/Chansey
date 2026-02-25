@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 /**
@@ -50,6 +50,11 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       const fastPeriod = (context.config.fastPeriod as number) ?? 10;
       const slowPeriod = (context.config.slowPeriod as number) ?? 20;
       const minConfidence = (context.config.minConfidence as number) ?? 0.7;
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -59,18 +64,23 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           continue;
         }
 
-        // Calculate SMAs using IndicatorService (with caching)
-        const fastSMAResult = await this.indicatorService.calculateSMA(
-          { coinId: coin.id, prices: priceHistory, period: fastPeriod },
-          this // Pass this strategy as IIndicatorProvider for custom override support
-        );
-        const slowSMAResult = await this.indicatorService.calculateSMA(
-          { coinId: coin.id, prices: priceHistory, period: slowPeriod },
-          this
-        );
-
-        const fastSMA = fastSMAResult.values;
-        const slowSMA = slowSMAResult.values;
+        // Calculate SMAs (precomputed fast path or IndicatorService fallback)
+        const fastSMA =
+          this.getPrecomputedSlice(context, coin.id, `sma_${fastPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateSMA(
+              { coinId: coin.id, prices: priceHistory, period: fastPeriod },
+              this
+            )
+          ).values;
+        const slowSMA =
+          this.getPrecomputedSlice(context, coin.id, `sma_${slowPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateSMA(
+              { coinId: coin.id, prices: priceHistory, period: slowPeriod },
+              this
+            )
+          ).values;
 
         // Generate signal
         const signal = this.generateCrossoverSignal(coin.id, coin.symbol, priceHistory, fastSMA, slowSMA);
@@ -79,8 +89,9 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, fastSMA, slowSMA);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, fastSMA, slowSMA);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -178,6 +189,13 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      { type: 'SMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 10 } },
+      { type: 'SMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 20 } }
+    ];
   }
 
   getParameterConstraints(): ParameterConstraint[] {

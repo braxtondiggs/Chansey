@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface RSIMACDComboConfig {
@@ -66,6 +66,11 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -75,26 +80,39 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
           continue;
         }
 
-        // Calculate RSI using IndicatorService (with caching)
-        const rsiResult = await this.indicatorService.calculateRSI(
-          { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
-          this
-        );
+        // Calculate RSI using precomputed data or IndicatorService (with caching)
+        const rsi =
+          this.getPrecomputedSlice(context, coin.id, `rsi_${config.rsiPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateRSI(
+              { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
+              this
+            )
+          ).values;
 
-        // Calculate MACD using IndicatorService (with caching)
-        const macdResult = await this.indicatorService.calculateMACD(
-          {
-            coinId: coin.id,
-            prices: priceHistory,
-            fastPeriod: config.macdFast,
-            slowPeriod: config.macdSlow,
-            signalPeriod: config.macdSignal
-          },
-          this
-        );
-
-        const rsi = rsiResult.values;
-        const { macd, signal: macdSignalLine, histogram } = macdResult;
+        // Calculate MACD using precomputed data or IndicatorService (with caching)
+        const macdKey = `macd_${config.macdFast}_${config.macdSlow}_${config.macdSignal}`;
+        const preMACD = this.getPrecomputedSlice(context, coin.id, `${macdKey}_macd`, priceHistory.length);
+        let macd: number[], macdSignalLine: number[], histogram: number[];
+        if (preMACD) {
+          macd = preMACD;
+          macdSignalLine = this.getPrecomputedSlice(context, coin.id, `${macdKey}_signal`, priceHistory.length)!;
+          histogram = this.getPrecomputedSlice(context, coin.id, `${macdKey}_histogram`, priceHistory.length)!;
+        } else {
+          const macdResult = await this.indicatorService.calculateMACD(
+            {
+              coinId: coin.id,
+              prices: priceHistory,
+              fastPeriod: config.macdFast,
+              slowPeriod: config.macdSlow,
+              signalPeriod: config.macdSignal
+            },
+            this
+          );
+          macd = macdResult.macd;
+          macdSignalLine = macdResult.signal;
+          histogram = macdResult.histogram;
+        }
 
         // Generate signal based on combined indicators
         const tradingSignal = this.generateSignal(
@@ -112,8 +130,9 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
           signals.push(tradingSignal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, rsi, macd, macdSignalLine, histogram);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, rsi, macd, macdSignalLine, histogram);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -373,6 +392,17 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      { type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } },
+      {
+        type: 'MACD',
+        paramKeys: ['macdFast', 'macdSlow', 'macdSignal'],
+        defaultParams: { macdFast: 12, macdSlow: 26, macdSignal: 9 }
+      }
+    ];
   }
 
   /**

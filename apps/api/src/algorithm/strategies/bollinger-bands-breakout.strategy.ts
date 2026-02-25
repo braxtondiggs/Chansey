@@ -4,7 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface BollingerBreakoutConfig {
@@ -55,6 +55,11 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
 
     try {
       const config = this.getConfigWithDefaults(context.config);
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -64,18 +69,29 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
           continue;
         }
 
-        // Calculate Bollinger Bands using IndicatorService (with caching)
-        const bbResult = await this.indicatorService.calculateBollingerBands(
-          {
-            coinId: coin.id,
-            prices: priceHistory,
-            period: config.period,
-            stdDev: config.stdDev
-          },
-          this
-        );
+        // Dual-path: try precomputed indicators first, fall back to IndicatorService
+        const bbKey = `bb_${config.period}_${config.stdDev}`;
+        const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
+        let upper: number[], middle: number[], lower: number[], pb: number[], bandwidth: number[];
 
-        const { upper, middle, lower, pb, bandwidth } = bbResult;
+        if (preUpper) {
+          upper = preUpper;
+          middle = this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)!;
+          lower = this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)!;
+          pb = this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length)!;
+          bandwidth = this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)!;
+        } else {
+          const bbResult = await this.indicatorService.calculateBollingerBands(
+            {
+              coinId: coin.id,
+              prices: priceHistory,
+              period: config.period,
+              stdDev: config.stdDev
+            },
+            this
+          );
+          ({ upper, middle, lower, pb, bandwidth } = bbResult);
+        }
 
         // Generate signal based on breakouts
         const signal = this.generateSignal(
@@ -94,8 +110,9 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, upper, middle, lower, pb, bandwidth);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, upper, middle, lower, pb, bandwidth);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -326,6 +343,13 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         low: price.low
       }
     }));
+  }
+
+  /**
+   * Declare indicator requirements for precomputation during optimization.
+   */
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [{ type: 'BOLLINGER_BANDS', paramKeys: ['period', 'stdDev'], defaultParams: { period: 20, stdDev: 2 } }];
   }
 
   /**

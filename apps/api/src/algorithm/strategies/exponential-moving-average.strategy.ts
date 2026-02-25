@@ -5,7 +5,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorService } from '../indicators';
+import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 /**
@@ -50,6 +50,11 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       const fastPeriod = (context.config.fastPeriod as number) || 12;
       const slowPeriod = (context.config.slowPeriod as number) || 26;
       const crossoverLookback = Math.max(1, Math.min(10, (context.config.crossoverLookback as number) || 3));
+      const isBacktest = !!(
+        context.metadata?.backtestId ||
+        context.metadata?.isOptimization ||
+        context.metadata?.isLiveReplay
+      );
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -59,18 +64,23 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
           continue;
         }
 
-        // Calculate EMAs using IndicatorService (with caching)
-        const ema12Result = await this.indicatorService.calculateEMA(
-          { coinId: coin.id, prices: priceHistory, period: fastPeriod },
-          this // Pass this strategy as IIndicatorProvider for custom override support
-        );
-        const ema26Result = await this.indicatorService.calculateEMA(
-          { coinId: coin.id, prices: priceHistory, period: slowPeriod },
-          this
-        );
-
-        const ema12 = ema12Result.values;
-        const ema26 = ema26Result.values;
+        // Calculate EMAs (precomputed fast path or IndicatorService fallback)
+        const ema12 =
+          this.getPrecomputedSlice(context, coin.id, `ema_${fastPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateEMA(
+              { coinId: coin.id, prices: priceHistory, period: fastPeriod },
+              this
+            )
+          ).values;
+        const ema26 =
+          this.getPrecomputedSlice(context, coin.id, `ema_${slowPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateEMA(
+              { coinId: coin.id, prices: priceHistory, period: slowPeriod },
+              this
+            )
+          ).values;
 
         // Generate signals based on EMA crossover
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, ema12, ema26, crossoverLookback);
@@ -79,8 +89,9 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
           signals.push(signal);
         }
 
-        // Prepare chart data
-        chartData[coin.id] = this.prepareChartData(priceHistory, ema12, ema26);
+        if (!isBacktest) {
+          chartData[coin.id] = this.prepareChartData(priceHistory, ema12, ema26);
+        }
       }
 
       return this.createSuccessResult(signals, chartData, {
@@ -234,6 +245,13 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         low: price.low
       }
     }));
+  }
+
+  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
+    return [
+      { type: 'EMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 12 } },
+      { type: 'EMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 26 } }
+    ];
   }
 
   getParameterConstraints(): ParameterConstraint[] {
