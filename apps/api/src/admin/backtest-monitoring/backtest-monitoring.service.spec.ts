@@ -7,6 +7,7 @@ import { BacktestMonitoringService } from './backtest-monitoring.service';
 import { ExportFormat } from './dto/backtest-listing.dto';
 import { BacktestFiltersDto } from './dto/overview.dto';
 
+import { Coin } from '../../coin/coin.entity';
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun } from '../../optimization/entities/optimization-run.entity';
 import {
@@ -199,6 +200,10 @@ describe('BacktestMonitoringService', () => {
         {
           provide: getRepositoryToken(PaperTradingSignal),
           useValue: { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) }
+        },
+        {
+          provide: getRepositoryToken(Coin),
+          useValue: { find: jest.fn().mockResolvedValue([]) }
         }
       ]
     }).compile();

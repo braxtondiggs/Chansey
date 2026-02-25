@@ -9,10 +9,17 @@ import {
   BacktestListQueryDto,
   BacktestSortField,
   ExportFormat,
+  LiveReplayRunListItemDto,
   PaginatedBacktestListDto,
+  PaginatedLiveReplayRunsDto,
   SortOrder
 } from './dto/backtest-listing.dto';
-import { OptimizationAnalyticsDto, OptimizationFiltersDto } from './dto/optimization-analytics.dto';
+import {
+  OptimizationAnalyticsDto,
+  OptimizationFiltersDto,
+  OptimizationRunListItemDto,
+  PaginatedOptimizationRunsDto
+} from './dto/optimization-analytics.dto';
 import {
   AverageMetricsDto,
   BacktestFiltersDto,
@@ -21,8 +28,10 @@ import {
   TopAlgorithmDto
 } from './dto/overview.dto';
 import {
+  PaginatedPaperTradingSessionsDto,
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
+  PaperTradingSessionListItemDto,
   PipelineStageCountsDto
 } from './dto/paper-trading-analytics.dto';
 import {
@@ -48,6 +57,7 @@ import {
   TradeSummaryDto
 } from './dto/trade-analytics.dto';
 
+import { Coin } from '../../coin/coin.entity';
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
 import {
@@ -118,7 +128,9 @@ export class BacktestMonitoringService {
     @InjectRepository(PaperTradingOrder)
     private readonly paperOrderRepo: Repository<PaperTradingOrder>,
     @InjectRepository(PaperTradingSignal)
-    private readonly paperSignalRepo: Repository<PaperTradingSignal>
+    private readonly paperSignalRepo: Repository<PaperTradingSignal>,
+    @InjectRepository(Coin)
+    private readonly coinRepo: Repository<Coin>
   ) {}
 
   /**
@@ -454,6 +466,141 @@ export class BacktestMonitoringService {
   }
 
   // ===========================================================================
+  // Optimization Run Listing
+  // ===========================================================================
+
+  /**
+   * Get paginated list of optimization runs with progress information
+   */
+  async listOptimizationRuns(
+    filters: OptimizationFiltersDto,
+    page = 1,
+    limit = 10
+  ): Promise<PaginatedOptimizationRunsDto> {
+    const dateRange = this.getOptDateRange(filters);
+    const skip = (page - 1) * limit;
+
+    const qb = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .innerJoinAndSelect('r.strategyConfig', 'sc')
+      .innerJoinAndSelect('sc.algorithm', 'a');
+
+    this.applyOptFilters(qb, filters, dateRange);
+
+    qb.orderBy('r.createdAt', 'DESC').skip(skip).take(limit);
+
+    const [runs, total] = await qb.getManyAndCount();
+
+    const data: OptimizationRunListItemDto[] = runs.map((r) => {
+      let progressPercent = 0;
+      if (r.status === OptimizationStatus.COMPLETED) {
+        progressPercent = 100;
+      } else if (r.status === OptimizationStatus.RUNNING && r.totalCombinations > 0) {
+        progressPercent = Math.round((r.combinationsTested / r.totalCombinations) * 100);
+      }
+
+      return {
+        id: r.id,
+        strategyName: r.strategyConfig?.name || 'Unknown',
+        algorithmName: r.strategyConfig?.algorithm?.name || 'Unknown',
+        status: r.status,
+        combinationsTested: r.combinationsTested,
+        totalCombinations: r.totalCombinations,
+        progressPercent,
+        improvement: r.improvement ?? null,
+        bestScore: r.bestScore ?? null,
+        createdAt: r.createdAt.toISOString()
+      };
+    });
+
+    const totalPages = Math.ceil(total / limit);
+    return { data, total, page, limit, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+  }
+
+  // ===========================================================================
+  // Paper Trading Session Listing
+  // ===========================================================================
+
+  /**
+   * Get paginated list of paper trading sessions with progress information
+   */
+  async listPaperTradingSessions(
+    filters: PaperTradingFiltersDto,
+    page = 1,
+    limit = 10
+  ): Promise<PaginatedPaperTradingSessionsDto> {
+    const dateRange = this.getPtDateRange(filters);
+    const skip = (page - 1) * limit;
+
+    const qb = this.paperSessionRepo.createQueryBuilder('s').innerJoinAndSelect('s.algorithm', 'a');
+
+    this.applyPtFilters(qb, filters, dateRange);
+
+    qb.orderBy('s.createdAt', 'DESC').skip(skip).take(limit);
+
+    const [sessions, total] = await qb.getManyAndCount();
+
+    const data: PaperTradingSessionListItemDto[] = sessions.map((s) => ({
+      id: s.id,
+      name: s.name,
+      algorithmName: s.algorithm?.name || 'Unknown',
+      status: s.status,
+      progressPercent: this.calculatePaperTradingProgress(s),
+      totalReturn: s.totalReturn ?? null,
+      sharpeRatio: s.sharpeRatio ?? null,
+      duration: s.duration || 'N/A',
+      startedAt: s.startedAt?.toISOString() ?? null,
+      createdAt: s.createdAt.toISOString()
+    }));
+
+    const totalPages = Math.ceil(total / limit);
+    return { data, total, page, limit, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+  }
+
+  // ===========================================================================
+  // Live Replay Run Listing
+  // ===========================================================================
+
+  /**
+   * Get paginated list of live replay runs with progress and replay state
+   */
+  async listLiveReplayRuns(filters: BacktestFiltersDto, page = 1, limit = 10): Promise<PaginatedLiveReplayRunsDto> {
+    const dateRange = this.getDateRange(filters);
+    const skip = (page - 1) * limit;
+
+    const qb = this.backtestRepo
+      .createQueryBuilder('b')
+      .innerJoinAndSelect('b.algorithm', 'a')
+      .where('b.type = :type', { type: BacktestType.LIVE_REPLAY });
+
+    // Apply shared filters (date, status, algorithm) but skip type since we hardcode it
+    this.applyBacktestFilters(qb, { ...filters, type: undefined }, dateRange);
+
+    qb.orderBy('b.createdAt', 'DESC').skip(skip).take(limit);
+
+    const [backtests, total] = await qb.getManyAndCount();
+
+    const data: LiveReplayRunListItemDto[] = backtests.map((b) => ({
+      id: b.id,
+      name: b.name,
+      algorithmName: b.algorithm?.name || 'Unknown',
+      status: b.status,
+      progressPercent: this.calculateProgress(b),
+      processedTimestamps: b.processedTimestampCount,
+      totalTimestamps: b.totalTimestampCount,
+      totalReturn: b.totalReturn ?? null,
+      sharpeRatio: b.sharpeRatio ?? null,
+      maxDrawdown: b.maxDrawdown ?? null,
+      replaySpeed: b.liveReplayState?.replaySpeed ?? null,
+      isPaused: b.liveReplayState?.isPaused ?? null,
+      createdAt: b.createdAt.toISOString()
+    }));
+
+    const totalPages = Math.ceil(total / limit);
+    return { data, total, page, limit, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+  }
+
+  // ===========================================================================
   // Pipeline Stage Counts
   // ===========================================================================
 
@@ -538,6 +685,22 @@ export class BacktestMonitoringService {
         .getMany()
     ]);
 
+    // Collect all unique instrument UUIDs and resolve to coin symbols
+    const instrumentIds = new Set<string>();
+    for (const s of backtestSignals) instrumentIds.add(s.instrument);
+    for (const ps of paperSignals) instrumentIds.add(ps.instrument);
+
+    const coinMap = new Map<string, string>();
+    if (instrumentIds.size > 0) {
+      const coins = await this.coinRepo.find({
+        where: { id: In([...instrumentIds]) },
+        select: ['id', 'symbol']
+      });
+      for (const coin of coins) {
+        coinMap.set(coin.id, coin.symbol.toUpperCase());
+      }
+    }
+
     const mapped: SignalFeedItemDto[] = [];
 
     for (const s of backtestSignals) {
@@ -546,7 +709,7 @@ export class BacktestMonitoringService {
         timestamp: s.timestamp.toISOString(),
         signalType: s.signalType,
         direction: s.direction,
-        instrument: s.instrument,
+        instrument: coinMap.get(s.instrument) ?? s.instrument,
         quantity: s.quantity,
         price: s.price ?? undefined,
         confidence: s.confidence ?? undefined,
@@ -565,7 +728,7 @@ export class BacktestMonitoringService {
         timestamp: ps.createdAt.toISOString(),
         signalType: ps.signalType as unknown as SignalType,
         direction: ps.direction as unknown as SignalDirection,
-        instrument: ps.instrument,
+        instrument: coinMap.get(ps.instrument) ?? ps.instrument,
         quantity: ps.quantity,
         price: ps.price ?? undefined,
         confidence: ps.confidence ?? undefined,
@@ -1361,6 +1524,39 @@ export class BacktestMonitoringService {
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
     if (minutes > 0) return `${minutes}m`;
     return `${seconds}s`;
+  }
+
+  private calculatePaperTradingProgress(session: PaperTradingSession): number {
+    if (session.status === PaperTradingStatus.COMPLETED) return 100;
+    if (session.status === PaperTradingStatus.FAILED || session.status === PaperTradingStatus.STOPPED) return 0;
+    if (session.status !== PaperTradingStatus.ACTIVE) return 0;
+    if (!session.startedAt || !session.duration) return 0;
+
+    const durationMs = this.parseDuration(session.duration);
+    if (durationMs <= 0) return 0;
+
+    const elapsedMs = Date.now() - session.startedAt.getTime();
+    return Math.min(100, Math.max(0, Math.round((elapsedMs / durationMs) * 100)));
+  }
+
+  private parseDuration(duration: string): number {
+    const match = duration.match(/^(\d+)([smhdwMy])$/);
+    if (!match) return 0;
+
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+
+    const multipliers: Record<string, number> = {
+      s: 1000,
+      m: 60 * 1000,
+      h: 60 * 60 * 1000,
+      d: 24 * 60 * 60 * 1000,
+      w: 7 * 24 * 60 * 60 * 1000,
+      M: 30 * 24 * 60 * 60 * 1000,
+      y: 365 * 24 * 60 * 60 * 1000
+    };
+
+    return value * (multipliers[unit] ?? 0);
   }
 
   private convertToCsv(data: object[]): Buffer {

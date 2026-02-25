@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { IsDateString, IsEnum, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 import { OptimizationStatus } from '../../../optimization/entities/optimization-run.entity';
 
@@ -85,4 +86,47 @@ export class OptimizationAnalyticsDto {
 
   @ApiProperty({ description: 'Summary of optimization result quality' })
   resultSummary: OptimizationResultSummaryDto;
+}
+
+/**
+ * Query DTO for paginated optimization run listing
+ */
+export class OptimizationRunListQueryDto extends OptimizationFiltersDto {
+  @ApiPropertyOptional({ description: 'Page number (1-based)', default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ description: 'Items per page', default: 10, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class OptimizationRunListItemDto {
+  @ApiProperty() id: string;
+  @ApiProperty() strategyName: string;
+  @ApiProperty() algorithmName: string;
+  @ApiProperty({ enum: OptimizationStatus }) status: OptimizationStatus;
+  @ApiProperty() combinationsTested: number;
+  @ApiProperty() totalCombinations: number;
+  @ApiProperty({ description: 'Progress 0-100' }) progressPercent: number;
+  @ApiProperty({ nullable: true }) improvement: number | null;
+  @ApiProperty({ nullable: true }) bestScore: number | null;
+  @ApiProperty() createdAt: string;
+}
+
+export class PaginatedOptimizationRunsDto {
+  @ApiProperty({ type: [OptimizationRunListItemDto] }) data: OptimizationRunListItemDto[];
+  @ApiProperty() total: number;
+  @ApiProperty() page: number;
+  @ApiProperty() limit: number;
+  @ApiProperty({ description: 'Total number of pages' }) totalPages: number;
+  @ApiProperty({ description: 'Whether there is a next page' }) hasNextPage: boolean;
+  @ApiProperty({ description: 'Whether there is a previous page' }) hasPreviousPage: boolean;
 }

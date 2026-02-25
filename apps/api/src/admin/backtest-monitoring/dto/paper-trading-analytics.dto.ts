@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 import { PaperTradingStatus } from '../../../order/paper-trading/entities/paper-trading-session.entity';
 
@@ -141,4 +142,47 @@ export class PipelineStageCountsDto {
 
   @ApiProperty({ description: 'Total paper trading sessions' })
   paperTradingSessions: number;
+}
+
+/**
+ * Query DTO for paginated paper trading session listing
+ */
+export class PaperTradingSessionListQueryDto extends PaperTradingFiltersDto {
+  @ApiPropertyOptional({ description: 'Page number (1-based)', default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ description: 'Items per page', default: 10, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class PaperTradingSessionListItemDto {
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiProperty() algorithmName: string;
+  @ApiProperty({ enum: PaperTradingStatus }) status: PaperTradingStatus;
+  @ApiProperty({ description: 'Progress 0-100' }) progressPercent: number;
+  @ApiProperty({ nullable: true }) totalReturn: number | null;
+  @ApiProperty({ nullable: true }) sharpeRatio: number | null;
+  @ApiProperty() duration: string;
+  @ApiProperty({ nullable: true }) startedAt: string | null;
+  @ApiProperty() createdAt: string;
+}
+
+export class PaginatedPaperTradingSessionsDto {
+  @ApiProperty({ type: [PaperTradingSessionListItemDto] }) data: PaperTradingSessionListItemDto[];
+  @ApiProperty() total: number;
+  @ApiProperty() page: number;
+  @ApiProperty() limit: number;
+  @ApiProperty({ description: 'Total number of pages' }) totalPages: number;
+  @ApiProperty({ description: 'Whether there is a next page' }) hasNextPage: boolean;
+  @ApiProperty({ description: 'Whether there is a previous page' }) hasPreviousPage: boolean;
 }

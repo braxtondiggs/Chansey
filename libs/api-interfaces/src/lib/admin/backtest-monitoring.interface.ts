@@ -4,7 +4,13 @@
  * Shared types for the admin backtest monitoring dashboard.
  */
 
-import { BacktestStatus, BacktestType, SignalDirection, SignalType } from '../backtesting/backtesting.interface';
+import {
+  BacktestStatus,
+  BacktestType,
+  ReplaySpeed,
+  SignalDirection,
+  SignalType
+} from '../backtesting/backtesting.interface';
 import { PaperTradingSignalDirection, PaperTradingSignalType, PaperTradingStatus } from '../paper-trading';
 
 // ===========================================================================
@@ -338,6 +344,90 @@ export interface PaperTradingMonitoringDto {
   topAlgorithms: PaperTradingTopAlgorithmDto[];
   orderAnalytics: PaperTradingOrderAnalyticsDto;
   signalAnalytics: PaperTradingSignalAnalyticsDto;
+}
+
+// ===========================================================================
+// Optimization Run Listing DTOs
+// ===========================================================================
+
+export interface OptimizationRunListItemDto {
+  id: string;
+  strategyName: string;
+  algorithmName: string;
+  status: OptimizationStatus;
+  combinationsTested: number;
+  totalCombinations: number;
+  progressPercent: number;
+  improvement: number | null;
+  bestScore: number | null;
+  createdAt: string;
+}
+
+export interface PaginatedOptimizationRunsDto {
+  data: OptimizationRunListItemDto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+// ===========================================================================
+// Paper Trading Session Listing DTOs
+// ===========================================================================
+
+export interface PaperTradingSessionListItemDto {
+  id: string;
+  name: string;
+  algorithmName: string;
+  status: PaperTradingStatus;
+  progressPercent: number;
+  totalReturn: number | null;
+  sharpeRatio: number | null;
+  duration: string;
+  startedAt: string | null;
+  createdAt: string;
+}
+
+export interface PaginatedPaperTradingSessionsDto {
+  data: PaperTradingSessionListItemDto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+// ===========================================================================
+// Live Replay Run Listing DTOs
+// ===========================================================================
+
+export interface LiveReplayRunListItemDto {
+  id: string;
+  name: string;
+  algorithmName: string;
+  status: BacktestStatus;
+  progressPercent: number;
+  processedTimestamps: number;
+  totalTimestamps: number;
+  totalReturn: number | null;
+  sharpeRatio: number | null;
+  maxDrawdown: number | null;
+  replaySpeed: ReplaySpeed | null;
+  isPaused: boolean | null;
+  createdAt: string;
+}
+
+export interface PaginatedLiveReplayRunsDto {
+  data: LiveReplayRunListItemDto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
 }
 
 // ===========================================================================
