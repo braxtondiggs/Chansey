@@ -1,17 +1,20 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { In, Repository } from 'typeorm';
+import { In, type QueryDeepPartialEntity, Repository } from 'typeorm';
 
-import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
+import { GridSearchService } from './grid-search.service';
+
 import { toErrorInfo } from '../../shared/error.util';
 import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 
 /** Must match the watchdog threshold in BacktestOrchestrationTask */
 const STALE_HEARTBEAT_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
+
+/** Maximum number of automatic recovery attempts before permanently failing */
+const MAX_AUTO_RESUME_COUNT = 3;
 
 @Injectable()
 export class OptimizationRecoveryService implements OnApplicationBootstrap {
@@ -20,7 +23,7 @@ export class OptimizationRecoveryService implements OnApplicationBootstrap {
   constructor(
     @InjectRepository(OptimizationRun) private readonly optimizationRunRepository: Repository<OptimizationRun>,
     @InjectQueue('optimization') private readonly optimizationQueue: Queue,
-    private readonly eventEmitter: EventEmitter2
+    private readonly gridSearchService: GridSearchService
   ) {}
 
   onApplicationBootstrap(): void {
@@ -31,19 +34,18 @@ export class OptimizationRecoveryService implements OnApplicationBootstrap {
   }
 
   /**
-   * Find orphaned RUNNING/PENDING optimization runs after a restart and mark them FAILED.
-   * Unlike backtests, optimization runs do not support checkpoint-resume,
-   * so any interrupted run must be failed and retried from scratch.
+   * Find orphaned RUNNING/PENDING optimization runs after a restart and re-queue them.
+   * Runs resume from their last completed batch via persisted optimization_results.
    */
   private async recoverOrphanedOptimizationRuns(): Promise<void> {
     this.logger.log('Checking for orphaned optimization runs to recover...');
 
     try {
-      const orphaned = await this.optimizationRunRepository.find({
-        where: {
-          status: In([OptimizationStatus.RUNNING, OptimizationStatus.PENDING])
-        }
-      });
+      const orphaned = await this.optimizationRunRepository
+        .createQueryBuilder('run')
+        .addSelect('run.combinations')
+        .where({ status: In([OptimizationStatus.RUNNING, OptimizationStatus.PENDING]) })
+        .getMany();
 
       if (orphaned.length === 0) {
         this.logger.log('No orphaned optimization runs found');
@@ -106,33 +108,112 @@ export class OptimizationRecoveryService implements OnApplicationBootstrap {
       }
     }
 
-    const reason =
-      run.status === OptimizationStatus.PENDING
-        ? 'Container restart: job lost from queue before execution started'
-        : run.combinationsTested === 0
-          ? 'Container restart: no progress was made'
-          : `Container restart: partial progress (${run.combinationsTested}/${run.totalCombinations} combinations)`;
-
-    this.logger.warn(`Marking orphaned optimization run ${run.id} as FAILED: ${reason}`);
-
-    const result = await this.optimizationRunRepository.update(
-      { id: run.id, status: In([OptimizationStatus.RUNNING, OptimizationStatus.PENDING]) },
-      {
-        status: OptimizationStatus.FAILED,
-        errorMessage: reason,
-        completedAt: new Date()
-      }
-    );
-
-    if (result.affected === 0) {
-      this.logger.log(`Optimization run ${run.id} already transitioned — skipping event emission`);
+    // Guard against infinite recovery loops
+    const autoResumeCount = run.progressDetails?.autoResumeCount ?? 0;
+    if (autoResumeCount >= MAX_AUTO_RESUME_COUNT) {
+      this.logger.warn(
+        `Optimization run ${run.id} has reached max auto-resume count ` +
+          `(${autoResumeCount}/${MAX_AUTO_RESUME_COUNT}), marking FAILED`
+      );
+      await this.optimizationRunRepository.update(
+        { id: run.id, status: In([OptimizationStatus.RUNNING, OptimizationStatus.PENDING]) },
+        {
+          status: OptimizationStatus.FAILED,
+          errorMessage: `Exceeded maximum automatic recovery attempts (${MAX_AUTO_RESUME_COUNT})`,
+          completedAt: new Date()
+        }
+      );
       return;
     }
 
-    // Emit failure event so pipeline listener can clean up
-    this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_FAILED, {
-      runId: run.id,
-      reason
-    });
+    // Resolve combinations: prefer stored, fallback to regeneration for grid_search
+    let combinations = run.combinations;
+    if (!combinations) {
+      if (run.config.method === 'random_search') {
+        throw new Error(
+          'Cannot resume random_search optimization without stored combinations (created before checkpoint-resume support)'
+        );
+      }
+      // Grid search is deterministic — regenerate from parameter space
+      combinations = this.gridSearchService.generateCombinations(run.parameterSpace, run.config.maxCombinations);
+      this.logger.log(`Regenerated ${combinations.length} grid_search combinations for optimization run ${run.id}`);
+    }
+
+    // Remove any existing job with the same ID to prevent BullMQ jobId collision
+    await this.forceRemoveJob(run.id);
+
+    // Increment autoResumeCount in progressDetails
+    const updatedProgressDetails = {
+      ...(run.progressDetails ?? {}),
+      autoResumeCount: autoResumeCount + 1
+    };
+
+    // Update DB to PENDING BEFORE enqueuing the job.
+    // BullMQ workers are already active (started in onModuleInit, before onApplicationBootstrap),
+    // so if we enqueue first, the worker can pick up the job before the DB update executes.
+    const result = await this.optimizationRunRepository.update(
+      { id: run.id, status: In([OptimizationStatus.RUNNING, OptimizationStatus.PENDING]) },
+      {
+        status: OptimizationStatus.PENDING,
+        progressDetails: updatedProgressDetails
+      } as QueryDeepPartialEntity<OptimizationRun>
+    );
+
+    if (result.affected === 0) {
+      this.logger.log(`Optimization run ${run.id} already claimed by another node, skipping`);
+      return;
+    }
+
+    await this.optimizationQueue.add(
+      'run-optimization',
+      { runId: run.id, combinations },
+      {
+        jobId: run.id,
+        removeOnComplete: true,
+        attempts: 1
+      }
+    );
+
+    this.logger.log(
+      `Re-queued optimization run ${run.id} for recovery ` +
+        `(attempt ${autoResumeCount + 1}/${MAX_AUTO_RESUME_COUNT}, ` +
+        `progress: ${run.combinationsTested}/${run.totalCombinations})`
+    );
+  }
+
+  /**
+   * Force-remove a job from the queue, clearing stale locks from dead workers if needed.
+   * After a deployment, the old worker process is gone but its Redis lock on active jobs
+   * persists until lockDuration expires. job.remove() fails on locked jobs, so we delete
+   * the lock key directly and retry.
+   */
+  private async forceRemoveJob(jobId: string): Promise<void> {
+    const existingJob = await this.optimizationQueue.getJob(jobId);
+    if (!existingJob) return;
+
+    try {
+      await existingJob.remove();
+      this.logger.log(`Removed existing job ${jobId} from queue before re-queuing`);
+      return;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.log(`Initial remove for job ${jobId} failed (${err.message}), attempting force-remove`);
+    }
+
+    // Force-remove the stale lock via Redis and retry
+    try {
+      const client = await this.optimizationQueue.client;
+      const prefix = this.optimizationQueue.opts?.prefix ?? 'bull';
+      const lockKey = `${prefix}:${this.optimizationQueue.name}:${jobId}:lock`;
+      const deleted = await client.del(lockKey);
+      this.logger.log(`Force-deleted stale lock for job ${jobId} (keys removed: ${deleted})`);
+
+      await existingJob.remove();
+      this.logger.log(`Removed previously-locked job ${jobId} after clearing stale lock`);
+    } catch (forceError: unknown) {
+      const err = toErrorInfo(forceError);
+      this.logger.warn(`Could not force-remove job ${jobId}: ${err.message}`);
+      throw new Error(`Cannot remove stale job ${jobId} from queue: ${err.message}`);
+    }
   }
 }
