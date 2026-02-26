@@ -201,6 +201,13 @@ export class PaperTradingProcessor extends WorkerHost {
       return;
     }
 
+    // Actively stop ticks if externally marked as FAILED
+    if (session.status === PaperTradingStatus.FAILED) {
+      this.logger.warn(`Session ${sessionId} was externally marked as FAILED, removing tick jobs`);
+      await this.paperTradingService.removeTickJobs(sessionId);
+      return;
+    }
+
     if (session.status !== PaperTradingStatus.ACTIVE) {
       this.logger.debug(`Session ${sessionId} is not active (status: ${session.status}), skipping tick`);
       return;
@@ -285,6 +292,10 @@ export class PaperTradingProcessor extends WorkerHost {
           errorMessage: classifiedError.message,
           errorType: 'unrecoverable'
         });
+        this.engineService.clearThrottleState(sessionId);
+        if (typeof global.gc === 'function') {
+          global.gc();
+        }
         return;
       }
 
@@ -319,7 +330,7 @@ export class PaperTradingProcessor extends WorkerHost {
 
     const session = await this.sessionRepository.findOne({
       where: { id: sessionId },
-      relations: ['user']
+      relations: ['user', 'algorithm']
     });
 
     if (!session) {
@@ -340,6 +351,14 @@ export class PaperTradingProcessor extends WorkerHost {
       session.maxDrawdown = metrics.maxDrawdown;
       await this.sessionRepository.save(session);
 
+      // Record final metrics in Prometheus
+      this.metricsService.recordBacktestFinalMetrics(session.algorithm?.id ?? 'unknown', {
+        totalReturn: session.totalReturn ?? 0,
+        sharpeRatio: metrics.sharpeRatio,
+        maxDrawdown: metrics.maxDrawdown,
+        tradeCount: metrics.totalTrades
+      });
+
       // Emit final status
       await this.streamService.publishStatus(sessionId, session.status.toLowerCase(), reason, {
         metrics: {
@@ -351,6 +370,12 @@ export class PaperTradingProcessor extends WorkerHost {
           winRate: metrics.winRate
         }
       });
+
+      // Clean up in-memory throttle state and trigger GC
+      this.engineService.clearThrottleState(sessionId);
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
 
       this.logger.log(`Session ${sessionId} finalized successfully`);
     } catch (error: unknown) {
@@ -449,6 +474,9 @@ export class PaperTradingProcessor extends WorkerHost {
     await this.sessionRepository.save(session);
 
     await this.paperTradingService.removeTickJobs(session.id);
+
+    // Clear throttle state so resumed sessions start with fresh cooldowns
+    this.engineService.clearThrottleState(session.id);
 
     await this.streamService.publishStatus(session.id, 'paused', 'consecutive_errors', {
       errorMessage,

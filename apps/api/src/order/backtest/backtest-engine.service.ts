@@ -8,8 +8,9 @@ import {
   CompositeRegimeType,
   DEFAULT_VOLATILITY_CONFIG,
   determineVolatilityRegime,
-  getRegimeMultiplier,
-  MarketRegimeType
+  getAllocationLimits,
+  MarketRegimeType,
+  PipelineStage
 } from '@chansey/api-interfaces';
 
 import { AlgorithmWatchdog } from './algorithm-watchdog';
@@ -48,17 +49,17 @@ import { QuoteCurrencyResolverService } from './quote-currency-resolver.service'
 import { RingBuffer } from './ring-buffer';
 import { SeededRandom } from './seeded-random';
 import {
-  DEFAULT_THROTTLE_CONFIG,
+  DEFAULT_SLIPPAGE_CONFIG,
   FeeCalculatorService,
   MetricsCalculatorService,
   Portfolio,
   PortfolioStateService,
   PositionManagerService,
   SerializableThrottleState,
-  SlippageModelType as SharedSlippageModelType,
-  SignalThrottleConfig,
+  SignalFilterChainService,
   SignalThrottleService,
   SlippageConfig,
+  SlippageModelType,
   SlippageService,
   ThrottleState,
   TimeframeType
@@ -87,13 +88,6 @@ import {
   OpportunitySellingUserConfig
 } from '../interfaces/opportunity-selling.interface';
 import { PositionAnalysisService } from '../services/position-analysis.service';
-
-// Default slippage config using shared service
-const DEFAULT_SLIPPAGE_CONFIG: SlippageConfig = {
-  type: SharedSlippageModelType.FIXED,
-  fixedBps: 5,
-  maxSlippageBps: 500
-};
 
 export interface MarketData {
   timestamp: Date;
@@ -129,10 +123,13 @@ interface ExecuteOptions {
   /** Opportunity selling configuration (uses DEFAULT_OPPORTUNITY_SELLING_CONFIG if not provided) */
   opportunitySellingConfig?: OpportunitySellingUserConfig;
 
-  /** Maximum allocation per trade as fraction of portfolio (0-1). Default: 0.12 (12%) */
+  /** Maximum allocation per trade as fraction of portfolio (0-1). Overrides stage/risk defaults. */
   maxAllocation?: number;
-  /** Minimum allocation per trade as fraction of portfolio (0-1). Default: 0.03 (3%) */
+  /** Minimum allocation per trade as fraction of portfolio (0-1). Overrides stage/risk defaults. */
   minAllocation?: number;
+
+  /** Pipeline stage for allocation limit lookup (default: HISTORICAL) */
+  pipelineStage?: PipelineStage;
 
   /** Enable mandatory hard stop-loss for all positions (default: true) */
   enableHardStopLoss?: boolean;
@@ -252,6 +249,14 @@ export interface OptimizationBacktestConfig {
   coinIds?: string[];
   /** Hard stop-loss threshold as a fraction (0-1). Default: 0.05 (5%) */
   hardStopLossPercent?: number;
+  /** Maximum allocation per trade as fraction of portfolio (0-1). Overrides stage/risk defaults. */
+  maxAllocation?: number;
+  /** Minimum allocation per trade as fraction of portfolio (0-1). Overrides stage/risk defaults. */
+  minAllocation?: number;
+  /** User risk level (1-5) for allocation limit lookup. Default: 3 */
+  riskLevel?: number;
+  /** Optional slippage config. Defaults to DEFAULT_SLIPPAGE_CONFIG (fixed 5 bps). */
+  slippage?: SlippageConfig;
 }
 
 /**
@@ -302,6 +307,10 @@ export interface PrecomputedWindowData {
   immutablePriceData: ImmutablePriceTrackingData;
   volumeMap: Map<string, number>;
   filteredCandles: OHLCCandle[];
+  /** Index in timestamps[] where actual trading begins (after warm-up period).
+   *  Indicators are computed on the full range including warm-up, but trades
+   *  are only executed at and after this index. Defaults to 0 (no warm-up). */
+  tradingStartIndex: number;
 }
 
 interface CompositeRegimeResult {
@@ -312,10 +321,6 @@ interface CompositeRegimeResult {
 export class BacktestEngine {
   private readonly logger = new Logger(BacktestEngine.name);
 
-  /** Maximum allocation per trade (12% of portfolio) */
-  private static readonly MAX_ALLOCATION = 0.12;
-  /** Minimum allocation per trade (3% of portfolio) */
-  private static readonly MIN_ALLOCATION = 0.03;
   /** Default minimum hold period before allowing SELL (24 hours in ms) */
   private static readonly DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
   /** Maximum price history entries kept per coin in the sliding window.
@@ -342,38 +347,24 @@ export class BacktestEngine {
     private readonly positionAnalysis: PositionAnalysisService,
     private readonly signalThrottle: SignalThrottleService,
     private readonly regimeGateService: RegimeGateService,
-    private readonly volatilityCalculator: VolatilityCalculator
+    private readonly volatilityCalculator: VolatilityCalculator,
+    private readonly signalFilterChain: SignalFilterChainService
   ) {}
-
-  /**
-   * Resolve throttle config from strategy parameters, falling back to defaults.
-   */
-  private resolveThrottleConfig(params?: Record<string, unknown>): SignalThrottleConfig {
-    const clamp = (val: unknown, fallback: number, min: number, max: number): number => {
-      const n = typeof val === 'number' && isFinite(val) ? val : fallback;
-      return Math.max(min, Math.min(max, n));
-    };
-    return {
-      cooldownMs: clamp(params?.cooldownMs, DEFAULT_THROTTLE_CONFIG.cooldownMs, 0, 604_800_000),
-      maxTradesPerDay: clamp(params?.maxTradesPerDay, DEFAULT_THROTTLE_CONFIG.maxTradesPerDay, 0, 50),
-      minSellPercent: clamp(params?.minSellPercent, DEFAULT_THROTTLE_CONFIG.minSellPercent, 0, 1)
-    };
-  }
 
   /**
    * Map legacy slippage model type string to shared enum
    */
-  private mapSlippageModelType(model?: string): SharedSlippageModelType {
+  private mapSlippageModelType(model?: string): SlippageModelType {
     switch (model) {
       case 'none':
-        return SharedSlippageModelType.NONE;
+        return SlippageModelType.NONE;
       case 'volume-based':
-        return SharedSlippageModelType.VOLUME_BASED;
+        return SlippageModelType.VOLUME_BASED;
       case 'historical':
-        return SharedSlippageModelType.HISTORICAL;
+        return SlippageModelType.HISTORICAL;
       case 'fixed':
       default:
-        return SharedSlippageModelType.FIXED;
+        return SlippageModelType.FIXED;
     }
   }
 
@@ -448,24 +439,39 @@ export class BacktestEngine {
     regimeConfig: { btcCoin?: Coin; regimeGateEnabled: boolean; enableRegimeScaledSizing: boolean; riskLevel: number },
     allocationLimits: { maxAllocation: number; minAllocation: number }
   ): { filteredSignals: TradingSignal[]; barMaxAllocation: number; barMinAllocation: number } {
-    let barMaxAllocation = allocationLimits.maxAllocation;
-    let barMinAllocation = allocationLimits.minAllocation;
-
-    if (regimeConfig.btcCoin && strategySignals.length > 0) {
-      const regimeResult = this.computeCompositeRegime(regimeConfig.btcCoin.id, priceCtx);
-      if (regimeResult) {
-        if (regimeConfig.regimeGateEnabled) {
-          strategySignals = this.regimeGateService.filterBacktestSignals(strategySignals, regimeResult.compositeRegime);
-        }
-        if (regimeConfig.enableRegimeScaledSizing) {
-          const regimeMultiplier = getRegimeMultiplier(regimeConfig.riskLevel, regimeResult.compositeRegime);
-          barMaxAllocation = allocationLimits.maxAllocation * regimeMultiplier;
-          barMinAllocation = allocationLimits.minAllocation * regimeMultiplier;
-        }
-      }
+    if (!regimeConfig.btcCoin || strategySignals.length === 0) {
+      return {
+        filteredSignals: strategySignals,
+        barMaxAllocation: allocationLimits.maxAllocation,
+        barMinAllocation: allocationLimits.minAllocation
+      };
     }
 
-    return { filteredSignals: strategySignals, barMaxAllocation, barMinAllocation };
+    const regimeResult = this.computeCompositeRegime(regimeConfig.btcCoin.id, priceCtx);
+    if (!regimeResult) {
+      return {
+        filteredSignals: strategySignals,
+        barMaxAllocation: allocationLimits.maxAllocation,
+        barMinAllocation: allocationLimits.minAllocation
+      };
+    }
+
+    const result = this.signalFilterChain.apply(
+      strategySignals,
+      {
+        compositeRegime: regimeResult.compositeRegime,
+        riskLevel: regimeConfig.riskLevel,
+        regimeGateEnabled: regimeConfig.regimeGateEnabled,
+        regimeScaledSizingEnabled: regimeConfig.enableRegimeScaledSizing
+      },
+      allocationLimits
+    );
+
+    return {
+      filteredSignals: result.signals,
+      barMaxAllocation: result.maxAllocation,
+      barMinAllocation: result.minAllocation
+    };
   }
 
   async executeHistoricalBacktest(
@@ -616,9 +622,13 @@ export class BacktestEngine {
     // Minimum hold period: configurable via options, default 24h
     const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
-    // Position sizing: configurable per-run, default to static constants
-    const maxAllocation = options.maxAllocation ?? BacktestEngine.MAX_ALLOCATION;
-    const minAllocation = options.minAllocation ?? BacktestEngine.MIN_ALLOCATION;
+    // Position sizing: resolve from stage/risk matrix, with per-run overrides
+    const allocLimits = getAllocationLimits(options.pipelineStage ?? PipelineStage.HISTORICAL, options.riskLevel, {
+      maxAllocation: options.maxAllocation,
+      minAllocation: options.minAllocation
+    });
+    const maxAllocation = allocLimits.maxAllocation;
+    const minAllocation = allocLimits.minAllocation;
 
     // Hard stop-loss: configurable per-run, default enabled at 5%
     const enableHardStopLoss = options.enableHardStopLoss !== false;
@@ -641,7 +651,7 @@ export class BacktestEngine {
     }
 
     // Signal throttle: resolve config from strategy parameters, init or restore state
-    const throttleConfig = this.resolveThrottleConfig(
+    const throttleConfig = this.signalThrottle.resolveConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
     );
     let throttleState: ThrottleState;
@@ -1229,9 +1239,13 @@ export class BacktestEngine {
     // Minimum hold period: configurable via options, default 24h
     const minHoldMs = options.minHoldMs ?? BacktestEngine.DEFAULT_MIN_HOLD_MS;
 
-    // Position sizing: configurable per-run, default to static constants
-    const maxAllocation = options.maxAllocation ?? BacktestEngine.MAX_ALLOCATION;
-    const minAllocation = options.minAllocation ?? BacktestEngine.MIN_ALLOCATION;
+    // Position sizing: resolve from stage/risk matrix, with per-run overrides
+    const lrAllocLimits = getAllocationLimits(options.pipelineStage ?? PipelineStage.LIVE_REPLAY, options.riskLevel, {
+      maxAllocation: options.maxAllocation,
+      minAllocation: options.minAllocation
+    });
+    const maxAllocation = lrAllocLimits.maxAllocation;
+    const minAllocation = lrAllocLimits.minAllocation;
 
     // Hard stop-loss: configurable per-run, default enabled at 5%
     const enableHardStopLoss = options.enableHardStopLoss !== false;
@@ -1250,7 +1264,7 @@ export class BacktestEngine {
     }
 
     // Signal throttle: resolve config from strategy parameters, init or restore state
-    const throttleConfig = this.resolveThrottleConfig(
+    const throttleConfig = this.signalThrottle.resolveConfig(
       backtest.configSnapshot?.parameters as Record<string, unknown> | undefined
     );
     let throttleState: ThrottleState;
@@ -1987,8 +2001,8 @@ export class BacktestEngine {
     slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
     dailyVolume?: number,
     minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS,
-    maxAllocation: number = BacktestEngine.MAX_ALLOCATION,
-    minAllocation: number = BacktestEngine.MIN_ALLOCATION
+    maxAllocation: number = getAllocationLimits().maxAllocation,
+    minAllocation: number = getAllocationLimits().minAllocation
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const marketPrice = marketData.prices.get(signal.coinId);
     if (!marketPrice) {
@@ -2363,8 +2377,8 @@ export class BacktestEngine {
     trades: Partial<BacktestTrade>[],
     simulatedFills: Partial<SimulatedOrderFill>[],
     dailyVolume?: number,
-    maxAllocation: number = BacktestEngine.MAX_ALLOCATION,
-    minAllocation: number = BacktestEngine.MIN_ALLOCATION
+    maxAllocation: number = getAllocationLimits().maxAllocation,
+    minAllocation: number = getAllocationLimits().minAllocation
   ): Promise<boolean> {
     const buyConfidence = buySignal.confidence ?? 0;
 
@@ -2971,7 +2985,7 @@ export class BacktestEngine {
       }
     }
 
-    return { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, filteredCandles };
+    return { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, filteredCandles, tradingStartIndex: 0 };
   }
 
   /**
@@ -2987,6 +3001,7 @@ export class BacktestEngine {
     const initialCapital = config.initialCapital ?? 10000;
     const tradingFee = config.tradingFee ?? 0.001;
     const hardStopLossPercent = config.hardStopLossPercent ?? 0.05;
+    const slippageConfig = config.slippage ?? DEFAULT_SLIPPAGE_CONFIG;
     const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
 
     this.logger.debug(
@@ -3017,7 +3032,7 @@ export class BacktestEngine {
       };
     }
 
-    const { pricesByTimestamp, timestamps, immutablePriceData, volumeMap } = precomputed;
+    const { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, tradingStartIndex } = precomputed;
 
     // Create fresh mutable state from cached immutable data
     const priceCtx = this.initPriceTrackingFromPrecomputed(immutablePriceData);
@@ -3025,11 +3040,19 @@ export class BacktestEngine {
     // Precompute indicators (depends on per-combo config.parameters — must be per-combo)
     const precomputedIndicators = await this.precomputeIndicatorsForOptimization(config, coins, priceCtx);
 
+    // Position sizing for OPTIMIZE stage
+    const optAllocLimits = getAllocationLimits(PipelineStage.OPTIMIZE, config.riskLevel, {
+      maxAllocation: config.maxAllocation,
+      minAllocation: config.minAllocation
+    });
+    const optMaxAllocation = optAllocLimits.maxAllocation;
+    const optMinAllocation = optAllocLimits.minAllocation;
+
     let peakValue = initialCapital;
     let maxDrawdown = 0;
 
     // Signal throttle
-    const throttleConfig = this.resolveThrottleConfig(config.parameters);
+    const throttleConfig = this.signalThrottle.resolveConfig(config.parameters);
     const throttleState = this.signalThrottle.createState();
 
     // Reusable price map
@@ -3049,9 +3072,16 @@ export class BacktestEngine {
         prices: currentPriceMap
       };
 
+      // Always update portfolio values and price windows (needed for indicator warm-up)
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
+
+      // Skip trading logic during warm-up period — indicators need history to produce
+      // valid values, but no trades should execute before the original window start date
+      if (i < tradingStartIndex) {
+        continue;
+      }
 
       // Hard stop-loss
       if (portfolio.positions.size > 0) {
@@ -3063,7 +3093,8 @@ export class BacktestEngine {
           tradingFee,
           rng,
           timestamp,
-          trades
+          trades,
+          slippageConfig
         });
       }
 
@@ -3119,9 +3150,11 @@ export class BacktestEngine {
           marketData,
           tradingFee,
           rng,
-          DEFAULT_SLIPPAGE_CONFIG,
+          slippageConfig,
           dailyVolume,
-          BacktestEngine.DEFAULT_MIN_HOLD_MS
+          BacktestEngine.DEFAULT_MIN_HOLD_MS,
+          optMaxAllocation,
+          optMinAllocation
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
@@ -3382,6 +3415,7 @@ export class BacktestEngine {
     const initialCapital = config.initialCapital ?? 10000;
     const tradingFee = config.tradingFee ?? 0.001;
     const hardStopLossPercent = config.hardStopLossPercent ?? 0.05;
+    const slippageConfig = config.slippage ?? DEFAULT_SLIPPAGE_CONFIG;
     const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
 
     this.logger.debug(
@@ -3432,11 +3466,19 @@ export class BacktestEngine {
       }
     }
 
+    // Position sizing for OPTIMIZE stage
+    const coreOptAllocLimits = getAllocationLimits(PipelineStage.OPTIMIZE, config.riskLevel, {
+      maxAllocation: config.maxAllocation,
+      minAllocation: config.minAllocation
+    });
+    const coreOptMaxAlloc = coreOptAllocLimits.maxAllocation;
+    const coreOptMinAlloc = coreOptAllocLimits.minAllocation;
+
     let peakValue = initialCapital;
     let maxDrawdown = 0;
 
     // Signal throttle: resolve config from optimization parameters
-    const throttleConfig = this.resolveThrottleConfig(config.parameters);
+    const throttleConfig = this.signalThrottle.resolveConfig(config.parameters);
     const throttleState = this.signalThrottle.createState();
 
     // Reusable price map to avoid new Map() allocation per iteration
@@ -3471,7 +3513,8 @@ export class BacktestEngine {
           tradingFee,
           rng,
           timestamp,
-          trades
+          trades,
+          slippageConfig
         });
       }
 
@@ -3529,9 +3572,11 @@ export class BacktestEngine {
           marketData,
           tradingFee,
           rng,
-          DEFAULT_SLIPPAGE_CONFIG,
+          slippageConfig,
           dailyVolume,
-          BacktestEngine.DEFAULT_MIN_HOLD_MS
+          BacktestEngine.DEFAULT_MIN_HOLD_MS,
+          coreOptMaxAlloc,
+          coreOptMinAlloc
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });

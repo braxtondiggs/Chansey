@@ -401,7 +401,7 @@ export class PipelineOrchestratorService {
   async executeStage(pipelineId: string, stage: PipelineStage): Promise<void> {
     const pipeline = await this.pipelineRepository.findOne({
       where: { id: pipelineId },
-      relations: ['strategyConfig', 'strategyConfig.algorithm', 'exchangeKey', 'user']
+      relations: ['strategyConfig', 'strategyConfig.algorithm', 'exchangeKey', 'user', 'user.risk']
     });
 
     if (!pipeline) {
@@ -1163,7 +1163,8 @@ export class PipelineOrchestratorService {
       duration: config.duration,
       stopConditions: config.stopConditions,
       userId: pipeline.user.id,
-      name: `Pipeline ${pipeline.name} - Paper Trading`
+      name: `Pipeline ${pipeline.name} - Paper Trading`,
+      riskLevel: (pipeline.user as any).risk?.level ?? 3
     });
 
     // Store session reference

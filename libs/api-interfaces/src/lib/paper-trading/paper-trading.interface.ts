@@ -231,6 +231,8 @@ export interface PipelineStartParams {
   stopConditions?: StopConditions;
   userId: string;
   name?: string;
+  /** User risk level (1-5) for allocation sizing */
+  riskLevel?: number;
 }
 
 export interface SessionStatusResponse {

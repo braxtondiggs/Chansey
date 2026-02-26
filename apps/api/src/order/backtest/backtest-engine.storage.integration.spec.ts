@@ -7,6 +7,7 @@ import {
   MetricsCalculatorService,
   PortfolioStateService,
   PositionManagerService,
+  SignalFilterChainService,
   SignalThrottleService,
   SlippageService
 } from './shared';
@@ -31,6 +32,7 @@ const portfolioState = new PortfolioStateService();
 const signalThrottle = new SignalThrottleService();
 const regimeGateService = new RegimeGateService();
 const volatilityCalculator = new VolatilityCalculator();
+const signalFilterChain = new SignalFilterChainService();
 
 describe('BacktestEngine storage flow', () => {
   /** Build a MarketDataReaderService backed by a mock storage that streams the given CSV */
@@ -80,7 +82,8 @@ describe('BacktestEngine storage flow', () => {
       new PositionAnalysisService(),
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
   };
 

@@ -8,7 +8,7 @@ describe('BacktestService.resumeBacktest', () => {
   const createService = () => {
     const backtestStream = { publishStatus: jest.fn() };
     const backtestRepository = { save: jest.fn() };
-    const queue = { add: jest.fn() };
+    const queue = { add: jest.fn(), getJob: jest.fn().mockResolvedValue(null) };
     const datasetValidator = { validateDataset: jest.fn() };
     const backtestPauseService = { clearPauseFlag: jest.fn(), setPauseFlag: jest.fn(), isPauseRequested: jest.fn() };
 

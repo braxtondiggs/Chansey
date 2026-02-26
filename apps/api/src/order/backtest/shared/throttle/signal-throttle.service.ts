@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import {
   CooldownKey,
+  DEFAULT_THROTTLE_CONFIG,
   SerializableThrottleState,
   SignalThrottleConfig,
   THROTTLE_BYPASS_TYPES,
@@ -31,6 +32,22 @@ export class SignalThrottleService {
     return {
       lastSignalTime: {} as Record<CooldownKey, number>,
       tradeTimestamps: []
+    };
+  }
+
+  /**
+   * Resolve throttle config from strategy/algorithm parameters, falling back to defaults.
+   * Clamps each value to its valid range.
+   */
+  resolveConfig(params?: Record<string, unknown>): SignalThrottleConfig {
+    const clamp = (val: unknown, fallback: number, min: number, max: number): number => {
+      const n = typeof val === 'number' && isFinite(val) ? val : fallback;
+      return Math.max(min, Math.min(max, n));
+    };
+    return {
+      cooldownMs: clamp(params?.cooldownMs, DEFAULT_THROTTLE_CONFIG.cooldownMs, 0, 604_800_000),
+      maxTradesPerDay: clamp(params?.maxTradesPerDay, DEFAULT_THROTTLE_CONFIG.maxTradesPerDay, 0, 50),
+      minSellPercent: clamp(params?.minSellPercent, DEFAULT_THROTTLE_CONFIG.minSellPercent, 0, 1)
     };
   }
 

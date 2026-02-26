@@ -24,6 +24,7 @@ import {
   PaperTradingSnapshot,
   PaperTradingStatus
 } from './entities';
+import { PaperTradingEngineService } from './paper-trading-engine.service';
 import {
   NotifyPipelineJobData,
   PaperTradingJobType,
@@ -34,6 +35,7 @@ import {
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { forceRemoveJob } from '../../shared/queue.util';
 import { User } from '../../users/users.entity';
 
 @Injectable()
@@ -58,7 +60,8 @@ export class PaperTradingService {
     @InjectQueue('paper-trading')
     private readonly paperTradingQueue: Queue,
     private readonly eventEmitter: EventEmitter2,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly engineService: PaperTradingEngineService
   ) {}
 
   /**
@@ -223,6 +226,8 @@ export class PaperTradingService {
         userId: user.id
       };
 
+      // Remove any stale job with the same ID to prevent BullMQ jobId collision after deployment
+      await forceRemoveJob(this.paperTradingQueue, `paper-trading-start-${id}`, this.logger);
       await this.paperTradingQueue.add('start-session', jobData, {
         jobId: `paper-trading-start-${id}`
       });
@@ -314,6 +319,8 @@ export class PaperTradingService {
         reason
       };
 
+      // Remove any stale jobs to prevent BullMQ jobId collision after deployment
+      await forceRemoveJob(this.paperTradingQueue, `paper-trading-stop-${id}`, this.logger);
       await this.paperTradingQueue.add('stop-session', jobData, {
         jobId: `paper-trading-stop-${id}`
       });
@@ -329,6 +336,7 @@ export class PaperTradingService {
           stoppedReason: reason
         };
 
+        await forceRemoveJob(this.paperTradingQueue, `paper-trading-notify-${id}`, this.logger);
         await this.paperTradingQueue.add('notify-pipeline', notifyJobData, {
           jobId: `paper-trading-notify-${id}`
         });
@@ -545,8 +553,11 @@ export class PaperTradingService {
 
     const session = await this.create(dto, user);
 
-    // Set pipeline ID
+    // Set pipeline ID and risk level
     session.pipelineId = params.pipelineId;
+    if (params.riskLevel != null) {
+      session.riskLevel = params.riskLevel;
+    }
     await this.sessionRepository.save(session);
 
     // Auto-start the session
@@ -661,8 +672,9 @@ export class PaperTradingService {
       stoppedReason: 'error'
     });
 
-    // Remove tick jobs
+    // Remove tick jobs and clean up in-memory state
     await this.removeTickJobs(sessionId);
+    this.engineService.clearThrottleState(sessionId);
 
     this.logger.error(`Paper trading session ${sessionId} marked as failed: ${errorMessage}`);
   }
@@ -683,8 +695,9 @@ export class PaperTradingService {
     session.stoppedReason = reason;
     await this.sessionRepository.save(session);
 
-    // Remove tick jobs
+    // Remove tick jobs and clean up in-memory state
     await this.removeTickJobs(sessionId);
+    this.engineService.clearThrottleState(sessionId);
 
     // Emit event for pipeline orchestrator
     if (session.pipelineId) {

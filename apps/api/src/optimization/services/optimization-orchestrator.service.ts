@@ -222,6 +222,10 @@ export class OptimizationOrchestratorService {
     const coins = await this.loadCoinsForOptimization(run.config.maxCoins, minDataDays);
     this.logger.log(`Loaded ${coins.length} coins for optimization run ${runId}`);
 
+    // Declare maps outside try so they can be cleaned up in finally
+    const candlesByCoin = new Map<string, OHLCCandle[]>();
+    const precomputedWindows = new Map<string, PrecomputedWindowData>();
+
     try {
       // Generate walk-forward windows
       const { startDate, endDate } = await this.getDateRange(run.config);
@@ -242,12 +246,19 @@ export class OptimizationOrchestratorService {
 
       this.logger.log(`Generated ${windows.length} walk-forward windows for optimization run ${runId}`);
 
+      // Compute warm-up days from parameter space to ensure indicators have valid values
+      const warmupDays = this.computeWarmupDays(run.parameterSpace);
+
       // Pre-load all OHLC data once for the full date range across all windows
       const coinIds = coins.map((c) => c.id);
       const allWindowDates = windows.flatMap((w) => [w.trainStartDate, w.testEndDate]);
       const minDate = new Date(Math.min(...allWindowDates.map((d) => d.getTime())));
       const maxDate = new Date(Math.max(...allWindowDates.map((d) => d.getTime())));
-      let allCandles = await this.ohlcService.getCandlesByDateRange(coinIds, minDate, maxDate);
+
+      // Extend minDate backward by warmupDays to ensure warm-up candles are loaded
+      const extendedMinDate = new Date(minDate.getTime() - warmupDays * 24 * 60 * 60 * 1000);
+
+      let allCandles = await this.ohlcService.getCandlesByDateRange(coinIds, extendedMinDate, maxDate);
       this.logger.log(`Pre-loaded ${allCandles.length} candles for optimization run ${runId}`);
 
       if (allCandles.length > 500_000) {
@@ -258,7 +269,6 @@ export class OptimizationOrchestratorService {
       }
 
       // Build coin-indexed map for O(log N) range lookups (each array is already sorted by timestamp from DB)
-      const candlesByCoin = new Map<string, OHLCCandle[]>();
       for (const candle of allCandles) {
         let arr = candlesByCoin.get(candle.coinId);
         if (!arr) {
@@ -274,7 +284,7 @@ export class OptimizationOrchestratorService {
       // With 3 windows × 2 phases (train+test) = 6 unique ranges, this avoids
       // recomputing groupPricesByTimestamp, initPriceTracking, binary search, and volume maps
       // for every parameter combination (~74x reduction in redundant work).
-      const precomputedWindows = new Map<string, PrecomputedWindowData>();
+      const warmupMs = warmupDays * 24 * 60 * 60 * 1000;
       for (const window of windows) {
         const ranges = [
           { start: window.trainStartDate, end: window.trainEndDate },
@@ -283,11 +293,29 @@ export class OptimizationOrchestratorService {
         for (const { start, end } of ranges) {
           const key = `${start.getTime()}-${end.getTime()}`;
           if (!precomputedWindows.has(key)) {
-            precomputedWindows.set(key, this.backtestEngine.precomputeWindowData(coins, candlesByCoin, start, end));
+            // Extend start backward by warmup period, clamped to available data
+            const warmupStart = new Date(Math.max(start.getTime() - warmupMs, extendedMinDate.getTime()));
+            const precomputed = this.backtestEngine.precomputeWindowData(coins, candlesByCoin, warmupStart, end);
+
+            // Compute tradingStartIndex: first timestamp >= original start date
+            const originalStartMs = start.getTime();
+            let tradingStartIdx = 0;
+            for (let t = 0; t < precomputed.timestamps.length; t++) {
+              if (new Date(precomputed.timestamps[t]).getTime() >= originalStartMs) {
+                tradingStartIdx = t;
+                break;
+              }
+            }
+            precomputed.tradingStartIndex = tradingStartIdx;
+
+            precomputedWindows.set(key, precomputed);
           }
         }
       }
-      this.logger.log(`Pre-computed ${precomputedWindows.size} window data sets for optimization run ${runId}`);
+      this.logger.log(
+        `Pre-computed ${precomputedWindows.size} window data sets for optimization run ${runId} ` +
+          `(warmup: ${warmupDays} days)`
+      );
 
       let bestScore = -Infinity;
       let bestParameters: Record<string, unknown> | null = null;
@@ -448,9 +476,9 @@ export class OptimizationOrchestratorService {
         }
       }
 
-      // Release pre-loaded candles and pre-computed windows to free memory
-      candlesByCoin.clear();
-      precomputedWindows.clear();
+      // Sync in-memory entity with actual count (updateProgress() used repository.update()
+      // which doesn't update the in-memory entity, so save() would overwrite to 0)
+      run.combinationsTested = combinationsProcessed;
 
       // Finalize run
       await this.finalizeOptimization(run, bestScore, bestParameters, baselineScore);
@@ -468,6 +496,14 @@ export class OptimizationOrchestratorService {
       });
 
       throw error;
+    } finally {
+      // Release pre-loaded candles and pre-computed windows to free memory
+      // (runs on both success and error paths)
+      candlesByCoin.clear();
+      precomputedWindows.clear();
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
     }
   }
 
@@ -823,6 +859,31 @@ export class OptimizationOrchestratorService {
   }
 
   /**
+   * Calculate improvement percentage with robust handling for negative/zero baselines.
+   * - Floors denominator at max(|baselineScore|, 1) when baseline < 0 to prevent inflation
+   * - When baseline=0 and best>0: returns min(bestScore * 100, 500) for meaningful signal
+   * - When baseline=0 and best<=0: returns 0
+   * - Caps all results at ±500%
+   */
+  calculateImprovement(bestScore: number, baselineScore: number): number {
+    const MAX_IMPROVEMENT = 500;
+
+    if (baselineScore === 0) {
+      if (bestScore > 0) {
+        return Math.min(bestScore * 100, MAX_IMPROVEMENT);
+      }
+      return 0;
+    }
+
+    // Floor denominator at 1 when baseline is negative to prevent inflation
+    // (e.g., baseline=-0.78, best=1.23 would give 256% without flooring)
+    const denominator = baselineScore < 0 ? Math.max(Math.abs(baselineScore), 1) : Math.abs(baselineScore);
+    const improvement = ((bestScore - baselineScore) / denominator) * 100;
+
+    return Math.max(-MAX_IMPROVEMENT, Math.min(MAX_IMPROVEMENT, improvement));
+  }
+
+  /**
    * Finalize optimization run
    */
   private async finalizeOptimization(
@@ -831,11 +892,19 @@ export class OptimizationOrchestratorService {
     bestParameters: Record<string, unknown> | null,
     baselineScore: number
   ): Promise<void> {
-    // Calculate improvement
-    const improvement = baselineScore !== 0 ? ((bestScore - baselineScore) / Math.abs(baselineScore)) * 100 : 0;
+    // Rank all results by composite score (consistency + overfit penalty)
+    const rankedResults = await this.rankResults(run.id);
 
-    // Rank all results
-    await this.rankResults(run.id);
+    // Re-derive best from rank-1 result (may differ from raw highest avgTestScore
+    // because composite ranking penalizes low-consistency and overfitting results)
+    const rank1 = rankedResults.length > 0 ? rankedResults[0] : null;
+    if (rank1) {
+      bestScore = rank1.avgTestScore;
+      bestParameters = rank1.parameters as Record<string, unknown>;
+    }
+
+    // Calculate improvement using rank-1's score
+    const improvement = this.calculateImprovement(bestScore, baselineScore);
 
     // Update run (sanitize scores to prevent numeric overflow on save)
     const sanitizeOpts = { maxIntegerDigits: 14 };
@@ -849,14 +918,13 @@ export class OptimizationOrchestratorService {
 
     await this.optimizationRunRepository.save(run);
 
-    // Mark best result
-    if (bestParameters) {
+    // Mark best result by ID (more reliable than JSON parameter matching)
+    if (rank1) {
       await this.optimizationResultRepository
         .createQueryBuilder()
         .update(OptimizationResult)
         .set({ isBest: true })
-        .where('optimizationRunId = :runId', { runId: run.id })
-        .andWhere('parameters = :params::jsonb', { params: JSON.stringify(bestParameters) })
+        .where('id = :id', { id: rank1.id })
         .execute();
     }
 
@@ -875,12 +943,29 @@ export class OptimizationOrchestratorService {
   }
 
   /**
-   * Rank all results by test score
+   * Compute a composite ranking score that balances raw performance with consistency.
+   * - Consistency 100 → 1.0x multiplier, Consistency 0 → 0.6x
+   * - Each overfitting window → -10% penalty (floor at 0.5x)
    */
-  private async rankResults(runId: string): Promise<void> {
+  computeRankingScore(avgTestScore: number, consistencyScore: number, overfittingWindows: number): number {
+    const consistencyMultiplier = 0.6 + 0.4 * (consistencyScore / 100);
+    const overfitPenalty = Math.max(0.5, 1.0 - 0.1 * overfittingWindows);
+    return avgTestScore * consistencyMultiplier * overfitPenalty;
+  }
+
+  /**
+   * Rank all results by composite score (test score × consistency × overfit penalty)
+   */
+  private async rankResults(runId: string): Promise<OptimizationResult[]> {
     const results = await this.optimizationResultRepository.find({
-      where: { optimizationRunId: runId },
-      order: { avgTestScore: 'DESC' }
+      where: { optimizationRunId: runId }
+    });
+
+    // Sort by composite ranking score descending
+    results.sort((a, b) => {
+      const scoreA = this.computeRankingScore(a.avgTestScore, a.consistencyScore, a.overfittingWindows);
+      const scoreB = this.computeRankingScore(b.avgTestScore, b.consistencyScore, b.overfittingWindows);
+      return scoreB - scoreA;
     });
 
     for (let i = 0; i < results.length; i++) {
@@ -888,6 +973,7 @@ export class OptimizationOrchestratorService {
     }
 
     await this.optimizationResultRepository.save(results);
+    return results;
   }
 
   /**
@@ -983,6 +1069,50 @@ export class OptimizationOrchestratorService {
       defaults[param.name] = param.default;
     }
     return defaults;
+  }
+
+  /** Regex matching parameter names that represent indicator lookback periods */
+  private static readonly PERIOD_PARAM_PATTERN = /period|slow|fast|medium|signal|atr|lookback/i;
+
+  /** Compound indicator param names that need extra lookback (e.g., MACD slow+signal) */
+  private static readonly COMPOUND_PARAM_PATTERN = /slow|signal/i;
+
+  /**
+   * Compute the number of warm-up days needed from the parameter space.
+   * Examines max values of period-like parameters, applies a 1.5× multiplier for
+   * compound indicators (MACD slow+signal), adds 20% safety margin, and enforces
+   * a minimum of 5 days.
+   */
+  computeWarmupDays(parameterSpace: ParameterSpace): number {
+    const MIN_WARMUP_DAYS = 5;
+
+    let maxPeriod = 0;
+    let hasCompoundIndicator = false;
+
+    for (const param of parameterSpace.parameters) {
+      if (!OptimizationOrchestratorService.PERIOD_PARAM_PATTERN.test(param.name)) continue;
+
+      // Use max from the parameter range, or default if no range
+      const periodMax = param.max ?? (typeof param.default === 'number' ? param.default : 0);
+      if (periodMax > maxPeriod) {
+        maxPeriod = periodMax;
+      }
+
+      if (OptimizationOrchestratorService.COMPOUND_PARAM_PATTERN.test(param.name)) {
+        hasCompoundIndicator = true;
+      }
+    }
+
+    if (maxPeriod === 0) return MIN_WARMUP_DAYS;
+
+    // Compound indicators need 1.5× the max period (e.g., MACD slow 26 + signal 9 ≈ 35)
+    let warmupPeriods = hasCompoundIndicator ? maxPeriod * 1.5 : maxPeriod;
+
+    // Add 20% safety margin
+    warmupPeriods *= 1.2;
+
+    // Convert periods to days (1 period = 1 day for daily OHLC data)
+    return Math.max(MIN_WARMUP_DAYS, Math.ceil(warmupPeriods));
   }
 
   /**
