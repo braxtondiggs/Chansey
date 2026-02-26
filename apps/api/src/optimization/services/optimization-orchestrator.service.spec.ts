@@ -575,6 +575,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-05-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       // Empty combinations (all filtered out on resume)
       await service.executeOptimization(run.id, [{ index: 0, values: { period: 14 }, isBaseline: true }]);
@@ -610,6 +618,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-05-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       const mockMetrics = {
         sharpeRatio: 2.0,
@@ -622,7 +638,7 @@ describe('OptimizationOrchestratorService', () => {
         downsideDeviation: 0.12
       };
 
-      backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(mockMetrics);
+      backtestEngine.runOptimizationBacktestWithPrecomputed.mockResolvedValue(mockMetrics);
       windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
 
       const managerSave = jest.fn().mockResolvedValue({});
@@ -638,7 +654,7 @@ describe('OptimizationOrchestratorService', () => {
       ]);
 
       // Only index 1 should be evaluated (index 0 was filtered out)
-      expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2); // train + test for 1 combo
+      expect(backtestEngine.runOptimizationBacktestWithPrecomputed).toHaveBeenCalledTimes(2); // train + test for 1 combo
     });
 
     it('should reconstruct bestScore and baselineScore from existing results on resume', async () => {
@@ -667,6 +683,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-05-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       // All combinations already processed, so no new evaluations
       await service.executeOptimization(run.id, [

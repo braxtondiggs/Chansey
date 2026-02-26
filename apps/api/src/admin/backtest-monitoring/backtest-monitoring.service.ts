@@ -57,7 +57,6 @@ import {
   TradeSummaryDto
 } from './dto/trade-analytics.dto';
 
-import { Coin } from '../../coin/coin.entity';
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
 import {
@@ -128,9 +127,7 @@ export class BacktestMonitoringService {
     @InjectRepository(PaperTradingOrder)
     private readonly paperOrderRepo: Repository<PaperTradingOrder>,
     @InjectRepository(PaperTradingSignal)
-    private readonly paperSignalRepo: Repository<PaperTradingSignal>,
-    @InjectRepository(Coin)
-    private readonly coinRepo: Repository<Coin>
+    private readonly paperSignalRepo: Repository<PaperTradingSignal>
   ) {}
 
   /**
@@ -344,27 +341,11 @@ export class BacktestMonitoringService {
       order: { timestamp: 'ASC' }
     });
 
-    // Resolve instrument UUIDs to coin symbols
-    const instrumentIds = [...new Set(signals.map((s) => s.instrument).filter(Boolean))];
-    const instrumentMap = new Map<string, string>();
-    if (instrumentIds.length > 0) {
-      const coins = await this.signalRepo.manager
-        .createQueryBuilder()
-        .select('CAST(c.id AS text)', 'id')
-        .addSelect('UPPER(c.symbol)', 'symbol')
-        .from('coin', 'c')
-        .where('c.id IN (:...ids)', { ids: instrumentIds })
-        .getRawMany();
-      for (const coin of coins) {
-        instrumentMap.set(coin.id, coin.symbol);
-      }
-    }
-
     const data = signals.map((s) => ({
       id: s.id,
       timestamp: s.timestamp.toISOString(),
       signalType: s.signalType,
-      instrument: instrumentMap.get(s.instrument) || s.instrument,
+      instrument: s.instrument?.toUpperCase() || s.instrument,
       direction: s.direction,
       quantity: s.quantity,
       price: s.price,
@@ -701,26 +682,6 @@ export class BacktestMonitoringService {
         .getMany()
     ]);
 
-    // Collect all unique instrument UUIDs and resolve to coin symbols
-    const instrumentIds = new Set<string>();
-    for (const s of backtestSignals) {
-      if (s.instrument) instrumentIds.add(s.instrument);
-    }
-    for (const ps of paperSignals) {
-      if (ps.instrument) instrumentIds.add(ps.instrument);
-    }
-
-    const coinMap = new Map<string, string>();
-    if (instrumentIds.size > 0) {
-      const coins = await this.coinRepo.find({
-        where: { id: In([...instrumentIds]) },
-        select: ['id', 'symbol']
-      });
-      for (const coin of coins) {
-        coinMap.set(coin.id, coin.symbol.toUpperCase());
-      }
-    }
-
     const mapped: SignalFeedItemDto[] = [];
 
     for (const s of backtestSignals) {
@@ -729,7 +690,7 @@ export class BacktestMonitoringService {
         timestamp: s.timestamp.toISOString(),
         signalType: s.signalType,
         direction: s.direction,
-        instrument: coinMap.get(s.instrument) ?? s.instrument,
+        instrument: s.instrument?.toUpperCase() ?? s.instrument,
         quantity: s.quantity,
         price: s.price ?? undefined,
         confidence: s.confidence ?? undefined,
@@ -748,7 +709,7 @@ export class BacktestMonitoringService {
         timestamp: ps.createdAt.toISOString(),
         signalType: ps.signalType as unknown as SignalType,
         direction: ps.direction as unknown as SignalDirection,
-        instrument: coinMap.get(ps.instrument) ?? ps.instrument,
+        instrument: ps.instrument?.toUpperCase() ?? ps.instrument,
         quantity: ps.quantity,
         price: ps.price ?? undefined,
         confidence: ps.confidence ?? undefined,
@@ -1209,14 +1170,13 @@ export class BacktestMonitoringService {
   private async getSignalsByInstrument(backtestIds: string[]): Promise<SignalInstrumentMetricsDto[]> {
     const qb = this.signalRepo
       .createQueryBuilder('s')
-      .select('COALESCE(UPPER(c.symbol), s.instrument)', 'instrument')
+      .select('UPPER(s.instrument)', 'instrument')
       .addSelect('COUNT(*)', 'count')
       .addSelect(
         `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
         'successRate'
       )
       .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
-      .leftJoin('coin', 'c', 'CAST(c.id AS text) = s.instrument')
       .leftJoin(
         (subQuery) =>
           subQuery
@@ -1234,7 +1194,6 @@ export class BacktestMonitoringService {
       )
       .where('s.backtestId IN (:...backtestIds)', { backtestIds })
       .groupBy('s.instrument')
-      .addGroupBy('c.symbol')
       .orderBy('COUNT(*)', 'DESC')
       .limit(10);
 
