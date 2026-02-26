@@ -102,6 +102,14 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   }
 
   /**
+   * Return the minimum number of price data points required for signal generation.
+   * Override in concrete strategies; default 0 means "no minimum".
+   */
+  getMinDataPoints(_config: Record<string, unknown>): number {
+    return 0;
+  }
+
+  /**
    * Get default configuration schema
    */
   getConfigSchema(): Record<string, unknown> {

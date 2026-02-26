@@ -65,7 +65,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, period)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -240,6 +240,11 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
   /**
    * Declare indicator requirements for precomputation during optimization.
    */
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const period = (config.period as number) ?? 20;
+    return period + 1;
+  }
+
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
     return [
       { type: 'BOLLINGER_BANDS', paramKeys: ['period', 'threshold'], defaultParams: { period: 20, threshold: 2 } }

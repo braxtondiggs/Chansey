@@ -28,6 +28,7 @@ import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 import { OptimizationRun } from '../optimization/entities/optimization-run.entity';
+import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest } from '../order/backtest/backtest.entity';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
 import { OrderModule } from '../order/order.module';
@@ -61,6 +62,8 @@ import { UsersModule } from '../users/users.module';
  * - PipelineOrchestrationTask: Daily at 2 AM - Orchestrate full validation pipelines for algo-enabled users
  * - BacktestOrchestrationTask: Twice daily at 3 AM/3 PM UTC - Orchestrate automatic backtests for algo-enabled users
  */
+const BACKTEST_QUEUE_NAMES = backtestConfig();
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -82,7 +85,10 @@ import { UsersModule } from '../users/users.module';
       { name: 'drift-detection-queue' },
       { name: 'regime-check-queue' },
       { name: 'backtest-orchestration' },
-      { name: 'pipeline-orchestration' }
+      { name: 'pipeline-orchestration' },
+      { name: BACKTEST_QUEUE_NAMES.historicalQueue },
+      { name: BACKTEST_QUEUE_NAMES.replayQueue },
+      { name: 'optimization' }
     ),
     forwardRef(() => AlgorithmModule),
     forwardRef(() => CoinModule),

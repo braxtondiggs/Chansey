@@ -64,7 +64,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -320,6 +320,12 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         low: price.low
       }
     }));
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const slowPeriod = (config.slowPeriod as number) ?? 26;
+    const signalPeriod = (config.signalPeriod as number) ?? 9;
+    return slowPeriod + signalPeriod - 1;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {

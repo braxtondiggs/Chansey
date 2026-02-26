@@ -1925,6 +1925,47 @@ export class BacktestEngine {
   }
 
   /**
+   * Filter out coins that don't have enough OHLC bars for the strategy's minimum
+   * data requirement. Logs a single summary warning for excluded coins instead of
+   * per-timestamp warnings inside the strategy loop.
+   */
+  private async filterCoinsWithSufficientData(
+    algorithmId: string,
+    coins: Coin[],
+    parameters: Record<string, unknown>,
+    summariesByCoin: Map<string, PriceSummary[]>
+  ): Promise<Coin[]> {
+    const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(algorithmId);
+
+    if (!strategy?.getMinDataPoints) {
+      return coins;
+    }
+
+    const minRequired = strategy.getMinDataPoints(parameters);
+    if (minRequired <= 0) {
+      return coins;
+    }
+
+    const excluded: string[] = [];
+    const filtered = coins.filter((coin) => {
+      const totalBars = summariesByCoin.get(coin.id)?.length ?? 0;
+      if (totalBars < minRequired) {
+        excluded.push(`${coin.symbol}(${totalBars}/${minRequired})`);
+        return false;
+      }
+      return true;
+    });
+
+    if (excluded.length > 0) {
+      this.logger.warn(
+        `Excluded ${excluded.length} coin(s) with insufficient data for optimization: ${excluded.join(', ')}`
+      );
+    }
+
+    return filtered;
+  }
+
+  /**
    * Advance per-coin price windows up to and including the given timestamp.
    *
    * Returns a snapshot of each coin's price window as a plain `PriceSummary[]`
@@ -3037,8 +3078,16 @@ export class BacktestEngine {
     // Create fresh mutable state from cached immutable data
     const priceCtx = this.initPriceTrackingFromPrecomputed(immutablePriceData);
 
-    // Precompute indicators (depends on per-combo config.parameters — must be per-combo)
-    const precomputedIndicators = await this.precomputeIndicatorsForOptimization(config, coins, priceCtx);
+    // Pre-filter coins whose total bar count is below the strategy's minimum requirement
+    const coinsWithData = await this.filterCoinsWithSufficientData(
+      config.algorithmId,
+      coins,
+      config.parameters,
+      priceCtx.summariesByCoin
+    );
+
+    // Precompute indicators only for coins that passed the filter
+    const precomputedIndicators = await this.precomputeIndicatorsForOptimization(config, coinsWithData, priceCtx);
 
     // Position sizing for OPTIMIZE stage
     const optAllocLimits = getAllocationLimits(PipelineStage.OPTIMIZE, config.riskLevel, {
@@ -3075,7 +3124,7 @@ export class BacktestEngine {
       // Always update portfolio values and price windows (needed for indicator warm-up)
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
-      const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
+      const priceData = this.advancePriceWindows(priceCtx, coinsWithData, timestamp);
 
       // Skip trading logic during warm-up period — indicators need history to produce
       // valid values, but no trades should execute before the original window start date
@@ -3105,7 +3154,7 @@ export class BacktestEngine {
           : {};
 
       const context = {
-        coins,
+        coins: coinsWithData,
         priceData,
         timestamp,
         config: config.parameters,

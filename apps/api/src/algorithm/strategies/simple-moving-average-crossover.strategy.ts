@@ -60,7 +60,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, slowPeriod)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -189,6 +189,11 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         low: price.low
       }
     }));
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const slowPeriod = (config.slowPeriod as number) ?? 20;
+    return slowPeriod + 1;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {

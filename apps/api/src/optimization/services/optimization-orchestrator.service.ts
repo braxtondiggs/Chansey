@@ -229,18 +229,39 @@ export class OptimizationOrchestratorService {
     try {
       // Generate walk-forward windows
       const { startDate, endDate } = await this.getDateRange(run.config);
+      const totalDays = this.daysBetween(startDate, endDate);
+
+      // Adaptively reduce stepDays if the data span can't produce enough windows
+      const { stepDays: adaptiveStepDays, adjusted: stepAdjusted } = this.computeAdaptiveStepDays(
+        totalDays,
+        run.config.walkForward.trainDays,
+        run.config.walkForward.testDays,
+        run.config.walkForward.stepDays,
+        run.config.walkForward.minWindowsRequired
+      );
+
+      if (stepAdjusted) {
+        this.logger.warn(
+          `Adaptive step adjustment for run ${runId}: stepDays reduced from ` +
+            `${run.config.walkForward.stepDays} to ${adaptiveStepDays} ` +
+            `(data span: ${totalDays} days, need ${run.config.walkForward.minWindowsRequired} windows)`
+        );
+      }
+
       const windows = this.walkForwardService.generateWindows({
         startDate,
         endDate,
         trainDays: run.config.walkForward.trainDays,
         testDays: run.config.walkForward.testDays,
-        stepDays: run.config.walkForward.stepDays,
+        stepDays: adaptiveStepDays,
         method: run.config.walkForward.method
       });
 
       if (windows.length < run.config.walkForward.minWindowsRequired) {
         throw new Error(
-          `Insufficient windows: ${windows.length} generated, ${run.config.walkForward.minWindowsRequired} required`
+          `Insufficient windows: ${windows.length} generated, ${run.config.walkForward.minWindowsRequired} required. ` +
+            `Data span: ${totalDays} days (${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}), ` +
+            `trainDays=${run.config.walkForward.trainDays}, testDays=${run.config.walkForward.testDays}, stepDays=${adaptiveStepDays}`
         );
       }
 
@@ -1113,6 +1134,54 @@ export class OptimizationOrchestratorService {
 
     // Convert periods to days (1 period = 1 day for daily OHLC data)
     return Math.max(MIN_WARMUP_DAYS, Math.ceil(warmupPeriods));
+  }
+
+  /**
+   * Compute the number of days between two dates (rounded to nearest integer).
+   */
+  private daysBetween(date1: Date, date2: Date): number {
+    const oneDay = 24 * 60 * 60 * 1000;
+    return Math.round(Math.abs((date2.getTime() - date1.getTime()) / oneDay));
+  }
+
+  /**
+   * Compute an adaptive stepDays that guarantees at least `minWindows` walk-forward windows
+   * given the available data span. Uses the inverse of WalkForwardService.estimateWindowCount():
+   *
+   *   maxStepDays = floor((totalDays - trainDays - testDays) / (minWindows - 1))
+   *
+   * Returns min(configuredStepDays, maxStepDays) — never increases, only reduces.
+   * Floors at 1 day minimum.
+   *
+   * @returns Object with `stepDays` (possibly reduced) and `adjusted` flag
+   */
+  computeAdaptiveStepDays(
+    totalDays: number,
+    trainDays: number,
+    testDays: number,
+    configuredStepDays: number,
+    minWindows: number
+  ): { stepDays: number; adjusted: boolean } {
+    // When minWindows <= 1, a single window needs no stepping at all
+    if (minWindows <= 1) {
+      return { stepDays: configuredStepDays, adjusted: false };
+    }
+
+    const windowSize = trainDays + testDays;
+
+    // Not enough data for even one window — return configured value unchanged
+    // (will fail at window generation with a clear error)
+    if (totalDays < windowSize) {
+      return { stepDays: configuredStepDays, adjusted: false };
+    }
+
+    const maxStepDays = Math.floor((totalDays - windowSize) / (minWindows - 1));
+    const adaptiveStep = Math.max(1, Math.min(configuredStepDays, maxStepDays));
+
+    return {
+      stepDays: adaptiveStep,
+      adjusted: adaptiveStep < configuredStepDays
+    };
   }
 
   /**

@@ -13,6 +13,7 @@ import { toErrorInfo } from '../../shared/error.util';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
+import { OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 @Processor('ohlc-sync-queue')
 @Injectable()
@@ -28,7 +29,8 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     private readonly coinService: CoinService,
     private readonly exchangeService: ExchangeService,
     private readonly configService: ConfigService,
-    private readonly lockService: DistributedLockService
+    private readonly lockService: DistributedLockService,
+    private readonly backfillService: OHLCBackfillService
   ) {
     super();
   }
@@ -144,8 +146,13 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
         return;
       }
 
+      // Track which coins already have symbol maps so we can detect newly mapped ones
+      const existingMaps = await this.ohlcService.getActiveSymbolMaps();
+      const existingCoinIds = new Set(existingMaps.map((m) => m.coinId));
+
       let created = 0;
       let skipped = 0;
+      const newlyMappedCoinIds: string[] = [];
 
       for (const coin of coins) {
         try {
@@ -167,6 +174,12 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
               });
               created++;
               mapped = true;
+
+              // Track newly mapped coins for backfill
+              if (!existingCoinIds.has(coin.id)) {
+                newlyMappedCoinIds.push(coin.id);
+              }
+
               break;
             }
           }
@@ -182,6 +195,17 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       }
 
       this.logger.log(`Seeded ${created} symbol mappings, skipped ${skipped} coins with no valid pairs`);
+
+      // Trigger backfill for newly mapped coins (runs in background, non-blocking)
+      if (newlyMappedCoinIds.length > 0) {
+        this.logger.log(`Triggering backfill for ${newlyMappedCoinIds.length} newly mapped coin(s)`);
+        for (const coinId of newlyMappedCoinIds) {
+          this.backfillService.startBackfill(coinId).catch((error: unknown) => {
+            const err = toErrorInfo(error);
+            this.logger.warn(`Failed to trigger backfill for coin ${coinId}: ${err.message}`);
+          });
+        }
+      }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to seed symbol maps: ${err.message}`);

@@ -546,6 +546,7 @@ describe('OptimizationOrchestratorService', () => {
 
       expect(run.status).toBe(OptimizationStatus.FAILED);
       expect(run.errorMessage).toContain('Insufficient windows');
+      expect(run.errorMessage).toContain('Data span');
       expect(optimizationRunRepo.save).toHaveBeenCalledWith(run);
     });
 
@@ -1138,6 +1139,68 @@ describe('OptimizationOrchestratorService', () => {
       });
       // default=50, no compound, * 1.2 = 60
       expect(service.computeWarmupDays(space)).toBe(60);
+    });
+  });
+
+  describe('computeAdaptiveStepDays', () => {
+    it('should not adjust when configured step fits comfortably', () => {
+      // 300 days, train=90, test=30, step=15, min=3 → maxStep=floor((300-120)/2)=90 → no change
+      const result = service.computeAdaptiveStepDays(300, 90, 30, 15, 3);
+      expect(result.stepDays).toBe(15);
+      expect(result.adjusted).toBe(false);
+    });
+
+    it('should reduce step for 108-day data with risk level 4 config', () => {
+      // 108 days, train=60, test=21, step=21, min=3
+      // maxStep = floor((108-81)/2) = floor(27/2) = 13
+      const result = service.computeAdaptiveStepDays(108, 60, 21, 21, 3);
+      expect(result.stepDays).toBe(13);
+      expect(result.adjusted).toBe(true);
+    });
+
+    it('should never increase beyond configured step', () => {
+      // Even when data allows much larger steps, cap at configured value
+      // 500 days, train=30, test=14, step=5, min=3 → maxStep=floor((500-44)/2)=228 → stays 5
+      const result = service.computeAdaptiveStepDays(500, 30, 14, 5, 3);
+      expect(result.stepDays).toBe(5);
+      expect(result.adjusted).toBe(false);
+    });
+
+    it('should floor at 1 day for very tight data', () => {
+      // 82 days, train=60, test=21, step=21, min=3 → maxStep=floor((82-81)/2)=0 → floors at 1
+      const result = service.computeAdaptiveStepDays(82, 60, 21, 21, 3);
+      expect(result.stepDays).toBe(1);
+      expect(result.adjusted).toBe(true);
+    });
+
+    it('should not adjust when data is less than one window (will fail at window gen)', () => {
+      // 50 days, train=60, test=21, step=21, min=3 → totalDays < windowSize → no adjustment
+      const result = service.computeAdaptiveStepDays(50, 60, 21, 21, 3);
+      expect(result.stepDays).toBe(21);
+      expect(result.adjusted).toBe(false);
+    });
+
+    it('should not adjust when minWindows is 1', () => {
+      // Any data with minWindows=1 never needs stepping
+      const result = service.computeAdaptiveStepDays(100, 60, 21, 21, 1);
+      expect(result.stepDays).toBe(21);
+      expect(result.adjusted).toBe(false);
+    });
+
+    it('should handle exact fit scenario (123 days, step=21, 3 windows)', () => {
+      // 123 days, train=60, test=21, step=21, min=3
+      // maxStep = floor((123-81)/2) = floor(42/2) = 21 → exact fit, no adjustment
+      const result = service.computeAdaptiveStepDays(123, 60, 21, 21, 3);
+      expect(result.stepDays).toBe(21);
+      expect(result.adjusted).toBe(false);
+    });
+
+    it('should work with risk level 5 config on 108 days of data', () => {
+      // 108 days, train=30, test=14, step=14, min=3
+      // maxStep = floor((108-44)/2) = floor(64/2) = 32 → no adjustment needed
+      const result = service.computeAdaptiveStepDays(108, 30, 14, 14, 3);
+      expect(result.stepDays).toBe(14);
+      expect(result.adjusted).toBe(false);
     });
   });
 

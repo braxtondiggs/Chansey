@@ -61,7 +61,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -238,6 +238,11 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         low: price.low
       }
     }));
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const period = (config.period as number) ?? 14;
+    return period + 1;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
