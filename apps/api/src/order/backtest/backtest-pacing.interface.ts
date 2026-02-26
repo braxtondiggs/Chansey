@@ -1,4 +1,4 @@
-import { ReplaySpeed } from '@chansey/api-interfaces';
+import { PipelineStage, ReplaySpeed } from '@chansey/api-interfaces';
 
 import { BacktestCheckpointState } from './backtest-checkpoint.interface';
 import { BacktestFinalMetrics } from './backtest-result.service';
@@ -97,6 +97,9 @@ export interface LiveReplayExecuteOptions {
   /** Enable composite regime gate filtering (default: true).
    *  When enabled, BUY signals are blocked when BTC is in BEAR or EXTREME regime. */
   enableRegimeGate?: boolean;
+
+  /** Pipeline stage for allocation limit lookup (default: LIVE_REPLAY) */
+  pipelineStage?: PipelineStage;
 
   /** Enable regime-scaled position sizing (default: false for backward compatibility) */
   enableRegimeScaledSizing?: boolean;

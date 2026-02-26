@@ -24,7 +24,8 @@ describe('PaperTradingProcessor', () => {
 
     const engineService = {
       processTick: jest.fn(),
-      calculateSessionMetrics: jest.fn()
+      calculateSessionMetrics: jest.fn(),
+      clearThrottleState: jest.fn()
     };
 
     const streamService = {
@@ -35,7 +36,8 @@ describe('PaperTradingProcessor', () => {
     };
 
     const metricsService = {
-      startBacktestTimer: jest.fn().mockReturnValue(jest.fn())
+      startBacktestTimer: jest.fn().mockReturnValue(jest.fn()),
+      recordBacktestFinalMetrics: jest.fn()
     };
 
     const eventEmitter = {
@@ -192,10 +194,11 @@ describe('PaperTradingProcessor', () => {
       status: PaperTradingStatus.STOPPED,
       initialCapital: 1000,
       currentPortfolioValue: 1200,
-      totalReturn: 0.2
+      totalReturn: 0.2,
+      algorithm: { id: 'algo-paper-1' }
     };
 
-    const { processor, sessionRepository, engineService, streamService } = createProcessor();
+    const { processor, sessionRepository, engineService, streamService, metricsService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.calculateSessionMetrics.mockResolvedValue({
@@ -232,6 +235,13 @@ describe('PaperTradingProcessor', () => {
         })
       })
     );
+    expect(metricsService.recordBacktestFinalMetrics).toHaveBeenCalledWith('algo-paper-1', {
+      totalReturn: 0.2,
+      sharpeRatio: 1.5,
+      maxDrawdown: 0.1,
+      tradeCount: 10
+    });
+    expect(engineService.clearThrottleState).toHaveBeenCalledWith('session-4');
   });
 
   it('marks session failed on unrecoverable error', async () => {
@@ -267,6 +277,7 @@ describe('PaperTradingProcessor', () => {
       'unrecoverable_error',
       expect.objectContaining({ errorType: 'unrecoverable' })
     );
+    expect(engineService.clearThrottleState).toHaveBeenCalledWith('session-5');
 
     const endTimer = metricsService.startBacktestTimer.mock.results[0].value;
     expect(endTimer).toHaveBeenCalled();
@@ -286,6 +297,29 @@ describe('PaperTradingProcessor', () => {
     await processor.process(job);
 
     expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-nonexistent');
+  });
+
+  it('removes tick jobs when session is externally marked as FAILED', async () => {
+    const session = {
+      id: 'session-failed',
+      status: PaperTradingStatus.FAILED,
+      initialCapital: 1000
+    };
+
+    const { processor, sessionRepository, paperTradingService, engineService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-failed',
+      userId: 'user-1'
+    });
+
+    await processor.process(job);
+
+    expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-failed');
+    expect(engineService.processTick).not.toHaveBeenCalled();
   });
 
   it('skips tick if session is not active', async () => {

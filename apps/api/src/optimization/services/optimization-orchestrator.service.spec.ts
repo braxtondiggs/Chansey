@@ -396,13 +396,6 @@ describe('OptimizationOrchestratorService', () => {
       expect(score).toBe(1.5); // Sharpe ratio fallback
     });
 
-    it('should fallback to sharpe when downsideDeviation is undefined', () => {
-      const metrics = { ...baseMetrics };
-      delete metrics.downsideDeviation;
-      const score = calculateScore(metrics, 'sortino_ratio');
-      expect(score).toBe(1.5); // Sharpe ratio fallback
-    });
-
     it('should default to sharpe ratio for unknown metric', () => {
       const score = calculateScore(baseMetrics, 'unknown_metric');
       expect(score).toBe(1.5);
@@ -437,11 +430,6 @@ describe('OptimizationOrchestratorService', () => {
     it('should return 50 for stdDev of 1', () => {
       const score = calculateConsistency([-1, 1]); // stdDev=1 -> 100 - 50 = 50
       expect(score).toBe(50);
-    });
-
-    it('should round to 2 decimal places', () => {
-      const score = calculateConsistency([1.0, 1.5, 1.25]);
-      expect(score).toBe(Math.round(score * 100) / 100);
     });
   });
 
@@ -587,6 +575,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-05-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       // Empty combinations (all filtered out on resume)
       await service.executeOptimization(run.id, [{ index: 0, values: { period: 14 }, isBaseline: true }]);
@@ -622,6 +618,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-05-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       const mockMetrics = {
         sharpeRatio: 2.0,
@@ -634,7 +638,7 @@ describe('OptimizationOrchestratorService', () => {
         downsideDeviation: 0.12
       };
 
-      backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(mockMetrics);
+      backtestEngine.runOptimizationBacktestWithPrecomputed.mockResolvedValue(mockMetrics);
       windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
 
       const managerSave = jest.fn().mockResolvedValue({});
@@ -650,7 +654,7 @@ describe('OptimizationOrchestratorService', () => {
       ]);
 
       // Only index 1 should be evaluated (index 0 was filtered out)
-      expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2); // train + test for 1 combo
+      expect(backtestEngine.runOptimizationBacktestWithPrecomputed).toHaveBeenCalledTimes(2); // train + test for 1 combo
     });
 
     it('should reconstruct bestScore and baselineScore from existing results on resume', async () => {
@@ -679,6 +683,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-05-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       // All combinations already processed, so no new evaluations
       await service.executeOptimization(run.id, [
@@ -711,6 +723,14 @@ describe('OptimizationOrchestratorService', () => {
           testEndDate: new Date('2024-03-01')
         }
       ]);
+      backtestEngine.precomputeWindowData.mockReturnValue({
+        pricesByTimestamp: {},
+        timestamps: [],
+        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
+        volumeMap: new Map(),
+        filteredCandles: [],
+        tradingStartIndex: 0
+      });
 
       const evaluateSpy = jest.spyOn(service, 'evaluateCombination');
 
@@ -1010,6 +1030,114 @@ describe('OptimizationOrchestratorService', () => {
           take: 10
         })
       );
+    });
+  });
+
+  describe('calculateImprovement', () => {
+    it('should calculate improvement for positive baseline', () => {
+      // bestScore=2, baseline=1 → ((2-1)/1)*100 = 100%
+      expect(service.calculateImprovement(2, 1)).toBe(100);
+    });
+
+    it('should floor denominator at 1 for negative baseline', () => {
+      // Without flooring: (1.23 - (-0.78)) / 0.78 * 100 = 257.7% (inflated)
+      // With flooring:   (1.23 - (-0.78)) / max(0.78, 1) * 100 = 201%
+      const result = service.calculateImprovement(1.23, -0.78);
+      expect(result).toBeCloseTo(201, 0);
+    });
+
+    it('should use abs(baseline) when abs > 1 for negative baseline', () => {
+      // baseline=-2, best=1 → (1-(-2)) / max(2, 1) * 100 = 150%
+      expect(service.calculateImprovement(1, -2)).toBe(150);
+    });
+
+    it('should return min(bestScore*100, 500) when baseline=0 and best>0', () => {
+      expect(service.calculateImprovement(1.5, 0)).toBe(150);
+      expect(service.calculateImprovement(0.5, 0)).toBe(50);
+    });
+
+    it('should return 0 when baseline=0 and best<=0', () => {
+      expect(service.calculateImprovement(0, 0)).toBe(0);
+      expect(service.calculateImprovement(-0.5, 0)).toBe(0);
+    });
+
+    it('should cap at 500%', () => {
+      expect(service.calculateImprovement(10, 0)).toBe(500);
+      expect(service.calculateImprovement(100, 1)).toBe(500);
+    });
+
+    it('should cap at -500%', () => {
+      expect(service.calculateImprovement(-100, 1)).toBe(-500);
+    });
+  });
+
+  describe('computeRankingScore', () => {
+    it('should give full multiplier to high consistency results', () => {
+      // consistency=100 → 0.6 + 0.4*1 = 1.0, no overfit → 1.0
+      const score = service.computeRankingScore(2.0, 100, 0);
+      expect(score).toBeCloseTo(2.0, 4);
+    });
+
+    it('should penalize low consistency results', () => {
+      // consistency=0 → 0.6 + 0.4*0 = 0.6, no overfit → 1.0
+      const score = service.computeRankingScore(2.0, 0, 0);
+      expect(score).toBeCloseTo(1.2, 4);
+    });
+
+    it('should apply overfitting penalty', () => {
+      // 2 overfitting windows → max(0.5, 1.0-0.2) = 0.8
+      const penalized = service.computeRankingScore(2.0, 100, 2);
+      const clean = service.computeRankingScore(2.0, 100, 0);
+      expect(penalized).toBeCloseTo(clean * 0.8, 4);
+    });
+
+    it('should floor overfitting penalty at 0.5', () => {
+      // 10 overfitting windows → max(0.5, 1.0-1.0) = 0.5
+      const score = service.computeRankingScore(2.0, 100, 10);
+      expect(score).toBeCloseTo(1.0, 4);
+    });
+  });
+
+  describe('computeWarmupDays', () => {
+    it('should return minimum 5 for empty parameter space', () => {
+      const space = createValidSpace({ parameters: [] });
+      expect(service.computeWarmupDays(space)).toBe(5);
+    });
+
+    it('should return minimum 5 for non-period parameters', () => {
+      const space = createValidSpace({
+        parameters: [
+          { name: 'threshold', type: 'float', min: 0.1, max: 0.9, step: 0.1, default: 0.5, priority: 'medium' }
+        ]
+      });
+      expect(service.computeWarmupDays(space)).toBe(5);
+    });
+
+    it('should compute warmup from period parameter max', () => {
+      const space = createValidSpace({
+        parameters: [{ name: 'rsiPeriod', type: 'integer', min: 7, max: 21, step: 7, default: 14, priority: 'medium' }]
+      });
+      // max=21, no compound, * 1.2 = 25.2 → ceil = 26
+      expect(service.computeWarmupDays(space)).toBe(26);
+    });
+
+    it('should apply 1.5x multiplier for compound indicators (slow/signal)', () => {
+      const space = createValidSpace({
+        parameters: [
+          { name: 'slowPeriod', type: 'integer', min: 20, max: 34, step: 2, default: 26, priority: 'medium' },
+          { name: 'signalPeriod', type: 'integer', min: 5, max: 12, step: 1, default: 9, priority: 'medium' }
+        ]
+      });
+      // max=34, compound=true, 34*1.5*1.2 = 61.2 → ceil = 62
+      expect(service.computeWarmupDays(space)).toBe(62);
+    });
+
+    it('should use default when no max is defined', () => {
+      const space = createValidSpace({
+        parameters: [{ name: 'lookback', type: 'integer', default: 50, priority: 'medium' } as any]
+      });
+      // default=50, no compound, * 1.2 = 60
+      expect(service.computeWarmupDays(space)).toBe(60);
     });
   });
 

@@ -111,11 +111,12 @@ export interface PositionValidationError {
 }
 
 /**
- * Default position sizing configuration
+ * Default position sizing configuration.
+ * Values match HISTORICAL risk-3 from the allocation-limits matrix.
  */
 export const DEFAULT_POSITION_CONFIG: PositionSizingConfig = {
-  maxAllocation: 0.12, // 12% max per position
-  minAllocation: 0.03, // 3% min per position
+  maxAllocation: 0.12, // 12% max per position (HISTORICAL risk 3)
+  minAllocation: 0.03, // 3% min per position (HISTORICAL risk 3)
   maxPositions: 20,
   maxVolumeParticipation: 0.01 // 1% of daily volume
 };

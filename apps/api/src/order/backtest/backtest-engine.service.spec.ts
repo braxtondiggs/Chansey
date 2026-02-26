@@ -7,6 +7,7 @@ import {
   MetricsCalculatorService,
   PortfolioStateService,
   PositionManagerService,
+  SignalFilterChainService,
   SignalThrottleService,
   SlippageModelType,
   SlippageService
@@ -34,6 +35,7 @@ const portfolioState = new PortfolioStateService();
 const signalThrottle = new SignalThrottleService();
 const regimeGateService = new RegimeGateService();
 const volatilityCalculator = new VolatilityCalculator();
+const signalFilterChain = new SignalFilterChainService();
 
 describe('BacktestEngine.executeTrade', () => {
   const createEngine = () =>
@@ -51,7 +53,8 @@ describe('BacktestEngine.executeTrade', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
@@ -506,14 +509,14 @@ describe('BacktestEngine.executeTrade', () => {
       const highConfidenceSignal: TradingSignal = {
         action: 'BUY',
         coinId: 'BTC',
-        confidence: 1.0, // Maximum confidence = 12% allocation
+        confidence: 1.0, // Maximum confidence = HISTORICAL risk-3 max 12% allocation
         reason: 'strong entry'
       };
 
       const lowConfidenceSignal: TradingSignal = {
         action: 'BUY',
         coinId: 'BTC',
-        confidence: 0.0, // Minimum confidence = 3% allocation
+        confidence: 0.0, // Minimum confidence = HISTORICAL risk-3 min 3% allocation
         reason: 'weak entry'
       };
 
@@ -711,7 +714,8 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   const createCandles = (coinId: string) => [
@@ -803,7 +807,8 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
@@ -959,7 +964,8 @@ describe('BacktestEngine.precomputeWindowData', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   it('should pre-compute window data from candles', () => {
@@ -1032,6 +1038,33 @@ describe('BacktestEngine.precomputeWindowData', () => {
     expect(result.timestamps).toHaveLength(0);
     expect(result.volumeMap.size).toBe(0);
   });
+
+  it('should default tradingStartIndex to 0', () => {
+    const engine = createEngine();
+    const candles = [
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 96,
+        close: 105,
+        volume: 1000
+      })
+    ];
+    const candlesByCoin = new Map<string, OHLCCandle[]>();
+    candlesByCoin.set('btc', candles);
+
+    const result = engine.precomputeWindowData(
+      [{ id: 'btc' }] as any[],
+      candlesByCoin,
+      new Date('2024-01-01'),
+      new Date('2024-01-02')
+    );
+
+    expect(result.tradingStartIndex).toBe(0);
+  });
 });
 
 describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
@@ -1050,7 +1083,8 @@ describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   it('returns neutral metrics when pre-computed data has no candles', async () => {
@@ -1060,7 +1094,8 @@ describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
       timestamps: [],
       immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
       volumeMap: new Map(),
-      filteredCandles: []
+      filteredCandles: [],
+      tradingStartIndex: 0
     };
 
     const result = await engine.runOptimizationBacktestWithPrecomputed(
@@ -1077,6 +1112,83 @@ describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
     expect(result.sharpeRatio).toBe(0);
     expect(result.totalReturn).toBe(0);
     expect(result.tradeCount).toBe(0);
+  });
+
+  it('should skip trading during warm-up period (tradingStartIndex)', async () => {
+    const executeAlgorithm = jest.fn().mockResolvedValue({
+      success: true,
+      signals: [{ coinId: 'btc', action: 'BUY', signalType: 'ENTRY', confidence: 0.8, reason: 'test' }]
+    });
+    const algorithmRegistry = {
+      executeAlgorithm,
+      getStrategyForAlgorithm: jest.fn().mockResolvedValue(null)
+    };
+
+    const engine = createEngine(algorithmRegistry);
+
+    const candles = [
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 110,
+        low: 96,
+        close: 105,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-02T00:00:00.000Z'),
+        open: 105,
+        high: 115,
+        low: 100,
+        close: 110,
+        volume: 2000
+      }),
+      new OHLCCandle({
+        coinId: 'btc',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-03T00:00:00.000Z'),
+        open: 110,
+        high: 120,
+        low: 105,
+        close: 115,
+        volume: 3000
+      })
+    ];
+
+    const coins = [{ id: 'btc' }] as any[];
+    const candlesByCoin = new Map<string, OHLCCandle[]>();
+    candlesByCoin.set('btc', candles);
+
+    const precomputed = engine.precomputeWindowData(
+      coins,
+      candlesByCoin,
+      new Date('2024-01-01T00:00:00.000Z'),
+      new Date('2024-01-04T00:00:00.000Z')
+    );
+    // Set tradingStartIndex to skip first 2 timestamps (warm-up period)
+    precomputed.tradingStartIndex = 2;
+
+    const config = {
+      algorithmId: 'algo-1',
+      parameters: {},
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-01-04'),
+      initialCapital: 10000,
+      tradingFee: 0.001
+    };
+
+    const result = await engine.runOptimizationBacktestWithPrecomputed(config, coins, precomputed);
+
+    // Algorithm should only be called for the non-warmup timestamp (index 2)
+    // First 2 timestamps are skipped via continue before algorithm execution
+    expect(executeAlgorithm).toHaveBeenCalledTimes(1);
+
+    // Portfolio should still be at initial capital (no successful trades in 1 timestamp)
+    expect(result.totalReturn).toBeCloseTo(0, 1);
   });
 
   it('produces same results as runOptimizationBacktestCore for same data', async () => {
@@ -1163,7 +1275,8 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   const createCandles = () => [
@@ -2015,7 +2128,8 @@ describe('BacktestEngine checkpointing', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   const createCheckpoint = (engine: BacktestEngine) => {
@@ -2132,7 +2246,8 @@ describe('BacktestEngine warmup / date range separation', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   it('does not trade before backtest.startDate when dataset is broader', async () => {
@@ -2492,7 +2607,8 @@ describe('BacktestEngine hard stop-loss', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   const noSlippage = { type: SlippageModelType.NONE };
@@ -2724,7 +2840,8 @@ describe('BacktestEngine per-run allocation overrides', () => {
       positionAnalysis,
       signalThrottle,
       regimeGateService,
-      volatilityCalculator
+      volatilityCalculator,
+      signalFilterChain
     );
 
   it('respects custom maxAllocation and minAllocation passed to executeTrade', async () => {

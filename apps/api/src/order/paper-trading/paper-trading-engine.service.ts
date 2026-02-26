@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DataSource, Repository } from 'typeorm';
 
+import { getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
+
 import {
   PaperTradingAccount,
   PaperTradingOrder,
@@ -26,15 +28,21 @@ import {
 } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { CompositeRegimeService } from '../../market-regime/composite-regime.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import {
+  DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   FeeCalculatorService,
   MetricsCalculatorService,
+  OpportunitySellingUserConfig,
   Portfolio,
   PortfolioStateService,
+  PositionAnalysisService,
   PositionManagerService,
-  SlippageService,
+  SignalFilterChainService,
+  SignalThrottleService,
+  ThrottleState,
   TimeframeType
 } from '../backtest/shared';
 
@@ -58,6 +66,13 @@ export interface TickResult {
   errors: string[];
   portfolioValue: number;
   prices: Record<string, number>;
+}
+
+export type ExecuteOrderStatus = 'success' | 'insufficient_funds' | 'no_price' | 'no_position' | 'hold_period';
+
+export interface ExecuteOrderResult {
+  status: ExecuteOrderStatus;
+  order: PaperTradingOrder | null;
 }
 
 const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): TradingSignal => {
@@ -104,10 +119,8 @@ const classifySignalType = (signal: TradingSignal): PaperTradingSignalType => {
 export class PaperTradingEngineService {
   private readonly logger = new Logger(PaperTradingEngineService.name);
 
-  /** Maximum allocation per trade (20% of portfolio) */
-  private static readonly MAX_ALLOCATION = 0.2;
-  /** Minimum allocation per trade (5% of portfolio) */
-  private static readonly MIN_ALLOCATION = 0.05;
+  /** In-memory throttle state per session (survives across ticks, resets on restart) */
+  private readonly throttleStates = new Map<string, ThrottleState>();
 
   constructor(
     @InjectRepository(PaperTradingAccount)
@@ -122,11 +135,14 @@ export class PaperTradingEngineService {
     private readonly marketDataService: PaperTradingMarketDataService,
     private readonly algorithmRegistry: AlgorithmRegistry,
     // Shared backtest services
-    private readonly slippageService: SlippageService,
     private readonly feeCalculator: FeeCalculatorService,
     private readonly positionManager: PositionManagerService,
     private readonly metricsCalculator: MetricsCalculatorService,
-    private readonly portfolioState: PortfolioStateService
+    private readonly portfolioState: PortfolioStateService,
+    private readonly signalThrottle: SignalThrottleService,
+    private readonly compositeRegimeService: CompositeRegimeService,
+    private readonly signalFilterChain: SignalFilterChainService,
+    private readonly positionAnalysis: PositionAnalysisService
   ) {}
 
   /**
@@ -205,26 +221,116 @@ export class PaperTradingEngineService {
       );
       signalsReceived = signals.length;
 
+      // 5b. Apply signal throttle: cooldowns, daily cap, min sell %
+      const throttleState = this.getOrCreateThrottleState(session.id);
+      const throttleConfig = this.signalThrottle.resolveConfig(session.algorithmConfig);
+      const filteredSignals = this.signalThrottle.filterSignals(
+        signals,
+        throttleState,
+        throttleConfig,
+        Date.now()
+      ) as TradingSignal[];
+
+      if (signals.length > filteredSignals.length) {
+        this.logger.debug(
+          `Throttled ${signals.length - filteredSignals.length}/${signals.length} signals for session ${session.id}`
+        );
+      }
+
+      // 5c. Apply regime filter chain: gate BUY in bear/extreme, scale allocations
+      const compositeRegime = this.compositeRegimeService.getCompositeRegime();
+      const { maxAllocation, minAllocation } = this.getSessionAllocationLimits(session);
+      const regimeResult = this.signalFilterChain.apply(
+        filteredSignals,
+        {
+          compositeRegime,
+          riskLevel: session.riskLevel ?? 3,
+          regimeGateEnabled: true,
+          regimeScaledSizingEnabled: true
+        },
+        { maxAllocation, minAllocation }
+      );
+
+      const regimeFilteredSignals = regimeResult.signals as TradingSignal[];
+      const adjustedAllocation = {
+        maxAllocation: regimeResult.maxAllocation,
+        minAllocation: regimeResult.minAllocation
+      };
+
+      if (regimeResult.regimeGateBlockedCount > 0) {
+        this.logger.debug(
+          `Regime gate blocked ${regimeResult.regimeGateBlockedCount} signals in ${compositeRegime} regime for session ${session.id}`
+        );
+      }
+
       // 6. Process signals and execute orders
-      for (const signal of signals) {
+      let currentPortfolio = updatedPortfolio;
+      for (const signal of regimeFilteredSignals) {
         // Save signal to database
         const signalEntity = await this.saveSignal(session, signal);
 
         if (signal.action !== 'HOLD') {
           try {
-            const order = await this.executeOrder(
+            let result = await this.executeOrder(
               session,
               signal,
               signalEntity,
-              updatedPortfolio,
+              currentPortfolio,
               priceMap,
               exchangeSlug,
               quoteCurrency,
-              now
+              now,
+              adjustedAllocation
             );
 
-            if (order) {
+            // Opportunity selling: only when BUY fails due to insufficient funds
+            if (result.status === 'insufficient_funds' && signal.action === 'BUY') {
+              const oppSellCount = await this.attemptOpportunitySelling(
+                session,
+                signal,
+                priceMap,
+                quoteCurrency,
+                exchangeSlug,
+                now,
+                adjustedAllocation
+              );
+
+              if (oppSellCount > 0) {
+                ordersExecuted += oppSellCount;
+
+                // Re-fetch fresh portfolio after sells, then retry BUY
+                const retryAccounts = await this.accountRepository.find({
+                  where: { session: { id: session.id } }
+                });
+                const retryPortfolio = this.buildPortfolioFromAccounts(retryAccounts);
+                const updatedRetryPortfolio = this.updatePortfolioWithPrices(retryPortfolio, priceMap, quoteCurrency);
+
+                result = await this.executeOrder(
+                  session,
+                  signal,
+                  signalEntity,
+                  updatedRetryPortfolio,
+                  priceMap,
+                  exchangeSlug,
+                  quoteCurrency,
+                  now,
+                  adjustedAllocation
+                );
+              }
+            }
+
+            if (result.order) {
               ordersExecuted++;
+
+              // Refresh portfolio for next signal iteration
+              const refreshedAccounts = await this.accountRepository.find({
+                where: { session: { id: session.id } }
+              });
+              currentPortfolio = this.updatePortfolioWithPrices(
+                this.buildPortfolioFromAccounts(refreshedAccounts),
+                priceMap,
+                quoteCurrency
+              );
             }
           } catch (error: unknown) {
             const err = toErrorInfo(error);
@@ -336,12 +442,13 @@ export class PaperTradingEngineService {
     prices: Record<string, number>,
     exchangeSlug: string,
     quoteCurrency: string,
-    timestamp: Date
-  ): Promise<PaperTradingOrder | null> {
+    timestamp: Date,
+    allocationOverrides?: { maxAllocation: number; minAllocation: number }
+  ): Promise<ExecuteOrderResult> {
     const basePrice = prices[signal.symbol];
     if (!basePrice) {
       this.logger.warn(`No price data available for ${signal.symbol}`);
-      return null;
+      return { status: 'no_price', order: null };
     }
 
     const [baseCurrency] = signal.symbol.split('/');
@@ -379,30 +486,30 @@ export class PaperTradingEngineService {
       let quantity = 0;
       let totalValue = 0;
 
+      // Resolve allocation limits: use regime-adjusted overrides if provided
+      const { maxAllocation, minAllocation } = allocationOverrides ?? this.getSessionAllocationLimits(session);
+
       if (isBuy) {
         // Calculate quantity based on signal
         if (signal.quantity) {
           quantity = signal.quantity;
-          // Cap explicit quantity to MAX_ALLOCATION of portfolio value
-          const maxQuantity = (portfolio.totalValue * PaperTradingEngineService.MAX_ALLOCATION) / executionPrice;
+          // Cap explicit quantity to maxAllocation of portfolio value
+          const maxQuantity = (portfolio.totalValue * maxAllocation) / executionPrice;
           if (quantity > maxQuantity) {
             this.logger.warn(
-              `Capping explicit BUY quantity from ${quantity} to ${maxQuantity} (${PaperTradingEngineService.MAX_ALLOCATION * 100}% cap)`
+              `Capping explicit BUY quantity from ${quantity} to ${maxQuantity} (${maxAllocation * 100}% cap)`
             );
             quantity = maxQuantity;
           }
         } else if (signal.percentage) {
-          const investmentAmount =
-            portfolio.totalValue * Math.min(signal.percentage, PaperTradingEngineService.MAX_ALLOCATION);
+          const investmentAmount = portfolio.totalValue * Math.min(signal.percentage, maxAllocation);
           quantity = investmentAmount / executionPrice;
         } else if (signal.confidence !== undefined) {
-          const allocation =
-            PaperTradingEngineService.MIN_ALLOCATION +
-            signal.confidence * (PaperTradingEngineService.MAX_ALLOCATION - PaperTradingEngineService.MIN_ALLOCATION);
+          const allocation = minAllocation + signal.confidence * (maxAllocation - minAllocation);
           const investmentAmount = portfolio.totalValue * allocation;
           quantity = investmentAmount / executionPrice;
         } else {
-          const investmentAmount = portfolio.totalValue * PaperTradingEngineService.MIN_ALLOCATION;
+          const investmentAmount = portfolio.totalValue * minAllocation;
           quantity = investmentAmount / executionPrice;
         }
 
@@ -418,7 +525,7 @@ export class PaperTradingEngineService {
           this.logger.warn(
             `Insufficient ${quoteCurrency} balance for BUY order: need ${(totalValue + fee).toFixed(2)}, have ${quoteAccount.available.toFixed(2)}`
           );
-          return null;
+          return { status: 'insufficient_funds', order: null };
         }
 
         // Update quote account atomically
@@ -431,12 +538,18 @@ export class PaperTradingEngineService {
             currency: baseCurrency,
             available: 0,
             locked: 0,
+            entryDate: timestamp,
             session
           });
         }
 
-        // Update average cost
+        // Set entry date on first buy or when position was previously closed
         const oldQuantity = baseAccount.available;
+        if (!baseAccount.entryDate || oldQuantity === 0) {
+          baseAccount.entryDate = timestamp;
+        }
+
+        // Update average cost
         const oldCost = baseAccount.averageCost ?? 0;
         const newQuantity = oldQuantity + quantity;
         baseAccount.averageCost =
@@ -470,13 +583,28 @@ export class PaperTradingEngineService {
           }
         });
 
-        return transactionalEntityManager.save(order);
+        return { status: 'success', order: await transactionalEntityManager.save(order) };
       }
 
       // SELL order
       if (!baseAccount || baseAccount.available <= 0) {
         this.logger.warn(`No ${baseCurrency} position to sell`);
-        return null;
+        return { status: 'no_position', order: null };
+      }
+
+      // Enforce minimum hold period (risk-control signals always bypass)
+      const minHoldMs = this.resolveMinHoldMs(session.algorithmConfig);
+      const isRiskControl =
+        signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT;
+
+      if (!isRiskControl && minHoldMs > 0 && baseAccount.entryDate) {
+        const holdTimeMs = timestamp.getTime() - baseAccount.entryDate.getTime();
+        if (holdTimeMs < minHoldMs) {
+          this.logger.debug(
+            `Hold period not met for ${baseCurrency}: held ${Math.round(holdTimeMs / 3600000)}h, min ${Math.round(minHoldMs / 3600000)}h`
+          );
+          return { status: 'hold_period', order: null };
+        }
       }
 
       const costBasis = baseAccount.averageCost ?? 0;
@@ -509,6 +637,7 @@ export class PaperTradingEngineService {
       if (baseAccount.available < 0.00000001) {
         baseAccount.available = 0;
         baseAccount.averageCost = undefined;
+        baseAccount.entryDate = undefined;
       }
       await transactionalEntityManager.save(baseAccount);
 
@@ -545,7 +674,7 @@ export class PaperTradingEngineService {
         }
       });
 
-      return transactionalEntityManager.save(order);
+      return { status: 'success', order: await transactionalEntityManager.save(order) };
     });
   }
 
@@ -861,5 +990,245 @@ export class PaperTradingEngineService {
     }
 
     return positions;
+  }
+
+  private getSessionAllocationLimits(session: PaperTradingSession) {
+    return getAllocationLimits(PipelineStage.PAPER_TRADE, session.riskLevel ?? 3);
+  }
+
+  private getOrCreateThrottleState(sessionId: string): ThrottleState {
+    let state = this.throttleStates.get(sessionId);
+    if (!state) {
+      state = this.signalThrottle.createState();
+      this.throttleStates.set(sessionId, state);
+    }
+    return state;
+  }
+
+  /** Clean up throttle state when session ends */
+  clearThrottleState(sessionId: string): void {
+    this.throttleStates.delete(sessionId);
+  }
+
+  private resolveMinHoldMs(algorithmConfig?: Record<string, any>): number {
+    const DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
+    const val = algorithmConfig?.minHoldMs;
+    if (typeof val !== 'number' || !isFinite(val) || val < 0) return DEFAULT_MIN_HOLD_MS;
+    return val;
+  }
+
+  /**
+   * Attempt to sell weakest positions to free cash for a higher-confidence BUY signal.
+   * Mirrors the BacktestEngine pattern using PositionAnalysisService for scoring.
+   *
+   * @returns number of sell orders executed
+   */
+  private async attemptOpportunitySelling(
+    session: PaperTradingSession,
+    buySignal: TradingSignal,
+    priceMap: Record<string, number>,
+    quoteCurrency: string,
+    exchangeSlug: string,
+    timestamp: Date,
+    allocationOverrides?: { maxAllocation: number; minAllocation: number }
+  ): Promise<number> {
+    const { enabled, config } = this.resolveOpportunitySellingConfig(session.algorithmConfig);
+    if (!enabled) return 0;
+
+    const buyConfidence = buySignal.confidence ?? 0;
+    if (buyConfidence < config.minOpportunityConfidence) return 0;
+
+    // Get fresh accounts from DB
+    const accounts = await this.accountRepository.find({
+      where: { session: { id: session.id } }
+    });
+    const portfolio = this.buildPortfolioFromAccounts(accounts);
+    const updatedPortfolio = this.updatePortfolioWithPrices(portfolio, priceMap, quoteCurrency);
+
+    // Estimate the required buy amount
+    const buyPrice = priceMap[buySignal.symbol];
+    if (!buyPrice) return 0;
+
+    const { maxAllocation, minAllocation } = allocationOverrides ?? this.getSessionAllocationLimits(session);
+    let requiredAmount: number;
+    if (buySignal.quantity) {
+      requiredAmount = buySignal.quantity * buyPrice;
+    } else if (buySignal.percentage) {
+      requiredAmount = updatedPortfolio.totalValue * Math.min(buySignal.percentage, maxAllocation);
+    } else if (buySignal.confidence !== undefined) {
+      const alloc = minAllocation + buySignal.confidence * (maxAllocation - minAllocation);
+      requiredAmount = updatedPortfolio.totalValue * alloc;
+    } else {
+      requiredAmount = updatedPortfolio.totalValue * minAllocation;
+    }
+
+    // Fee estimate
+    const feeConfig = this.feeCalculator.fromFlatRate(session.tradingFee);
+    const estFee = this.feeCalculator.calculateFee({ tradeValue: requiredAmount }, feeConfig).fee;
+    const totalRequired = requiredAmount + estFee;
+
+    if (updatedPortfolio.cashBalance >= totalRequired) return 0; // No shortfall
+
+    const shortfall = totalRequired - updatedPortfolio.cashBalance;
+
+    // Score and rank eligible positions
+    const eligible: { coinId: string; score: number; quantity: number; price: number }[] = [];
+
+    for (const [coinId, position] of updatedPortfolio.positions) {
+      if (coinId === buySignal.coinId) continue;
+      if (config.protectedCoins.includes(coinId)) continue;
+
+      const symbol = `${coinId}/${quoteCurrency}`;
+      const currentPrice = priceMap[symbol];
+      if (!currentPrice || currentPrice <= 0) continue;
+
+      const account = accounts.find((a) => a.currency === coinId);
+      const score = this.positionAnalysis.calculatePositionSellScore(
+        {
+          coinId,
+          averagePrice: account?.averageCost ?? position.averagePrice,
+          quantity: position.quantity,
+          entryDate: account?.entryDate
+        },
+        currentPrice,
+        buyConfidence,
+        config,
+        timestamp
+      );
+
+      if (score.eligible) {
+        eligible.push({ coinId, score: score.totalScore, quantity: position.quantity, price: currentPrice });
+      }
+    }
+
+    if (eligible.length === 0) return 0;
+
+    // Sort by score ASC (lowest = sell first)
+    eligible.sort((a, b) => a.score - b.score);
+
+    // Execute sells to cover the shortfall, respecting maxLiquidationPercent cap
+    const maxSellValue = (updatedPortfolio.totalValue * config.maxLiquidationPercent) / 100;
+    let coveredAmount = 0;
+    let sellCount = 0;
+
+    for (const candidate of eligible) {
+      if (coveredAmount >= shortfall) break;
+      if (coveredAmount >= maxSellValue) break;
+
+      const remainingNeeded = Math.min(shortfall - coveredAmount, maxSellValue - coveredAmount);
+      const sellQuantity = Math.min(candidate.quantity, remainingNeeded / candidate.price);
+      if (sellQuantity <= 0) continue;
+
+      const sellSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: candidate.coinId,
+        symbol: `${candidate.coinId}/${quoteCurrency}`,
+        quantity: sellQuantity,
+        reason: `Opportunity sell: freeing cash for ${buySignal.coinId} BUY (confidence ${buyConfidence.toFixed(2)})`,
+        confidence: buyConfidence,
+        metadata: { opportunitySell: true, targetBuyCoinId: buySignal.coinId }
+      };
+
+      const signalEntity = await this.saveSignal(session, sellSignal);
+
+      try {
+        // Build fresh portfolio for each sell (accounts may have changed)
+        const freshAccounts = await this.accountRepository.find({
+          where: { session: { id: session.id } }
+        });
+        const freshPortfolio = this.buildPortfolioFromAccounts(freshAccounts);
+        const updatedFreshPortfolio = this.updatePortfolioWithPrices(freshPortfolio, priceMap, quoteCurrency);
+
+        const result = await this.executeOrder(
+          session,
+          sellSignal,
+          signalEntity,
+          updatedFreshPortfolio,
+          priceMap,
+          exchangeSlug,
+          quoteCurrency,
+          timestamp
+        );
+
+        if (result.order) {
+          coveredAmount += (result.order.totalValue ?? 0) - (result.order.fee ?? 0);
+          sellCount++;
+        }
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Opportunity sell failed for ${candidate.coinId}: ${err.message}`);
+      }
+
+      signalEntity.processed = true;
+      signalEntity.processedAt = new Date();
+      await this.signalRepository.save(signalEntity);
+    }
+
+    if (sellCount > 0) {
+      this.logger.log(
+        `Opportunity selling: executed ${sellCount} sells to free cash for ${buySignal.coinId} BUY (session ${session.id})`
+      );
+    }
+
+    return sellCount;
+  }
+
+  private resolveOpportunitySellingConfig(algorithmConfig?: Record<string, any>): {
+    enabled: boolean;
+    config: OpportunitySellingUserConfig;
+  } {
+    const params = algorithmConfig ?? {};
+    const enabled = params.enableOpportunitySelling === true;
+    const userConfig = params.opportunitySellingConfig;
+
+    if (!enabled || !userConfig || typeof userConfig !== 'object') {
+      return { enabled, config: { ...DEFAULT_OPPORTUNITY_SELLING_CONFIG } };
+    }
+
+    const num = (val: unknown, fallback: number, min: number, max: number): number => {
+      const n = typeof val === 'number' && isFinite(val) ? val : fallback;
+      return Math.max(min, Math.min(max, n));
+    };
+
+    return {
+      enabled,
+      config: {
+        minOpportunityConfidence: num(
+          userConfig.minOpportunityConfidence,
+          DEFAULT_OPPORTUNITY_SELLING_CONFIG.minOpportunityConfidence,
+          0,
+          1
+        ),
+        minHoldingPeriodHours: num(
+          userConfig.minHoldingPeriodHours,
+          DEFAULT_OPPORTUNITY_SELLING_CONFIG.minHoldingPeriodHours,
+          0,
+          8760
+        ),
+        protectGainsAbovePercent: num(
+          userConfig.protectGainsAbovePercent,
+          DEFAULT_OPPORTUNITY_SELLING_CONFIG.protectGainsAbovePercent,
+          0,
+          1000
+        ),
+        protectedCoins: Array.isArray(userConfig.protectedCoins) ? userConfig.protectedCoins : [],
+        minOpportunityAdvantagePercent: num(
+          userConfig.minOpportunityAdvantagePercent,
+          DEFAULT_OPPORTUNITY_SELLING_CONFIG.minOpportunityAdvantagePercent,
+          0,
+          100
+        ),
+        maxLiquidationPercent: num(
+          userConfig.maxLiquidationPercent,
+          DEFAULT_OPPORTUNITY_SELLING_CONFIG.maxLiquidationPercent,
+          1,
+          100
+        ),
+        useAlgorithmRanking:
+          typeof userConfig.useAlgorithmRanking === 'boolean'
+            ? userConfig.useAlgorithmRanking
+            : DEFAULT_OPPORTUNITY_SELLING_CONFIG.useAlgorithmRanking
+      }
+    };
   }
 }

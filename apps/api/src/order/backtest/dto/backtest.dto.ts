@@ -24,7 +24,7 @@ import {
   SimulatedOrderStatus,
   SimulatedOrderType
 } from '../backtest.entity';
-import { SlippageModelType } from '../slippage-model';
+import { SlippageModelType } from '../shared/slippage';
 
 export class CreateBacktestDto {
   @IsString()

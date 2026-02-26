@@ -49,7 +49,7 @@ describe('BacktestRecoveryService', () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
 
-    redisClient = { del: jest.fn().mockResolvedValue(1) };
+    redisClient = { del: jest.fn().mockResolvedValue(1), set: jest.fn().mockResolvedValue('OK') };
 
     backtestRepository = {
       find: jest.fn().mockResolvedValue([]),
@@ -375,12 +375,13 @@ describe('BacktestRecoveryService', () => {
     );
   });
 
-  it('force-removes stale locked job via Redis when job.remove() fails', async () => {
+  it('force-removes stale locked job via moveToFailed when job.remove() fails', async () => {
     const mockJob = {
       remove: jest
         .fn()
         .mockRejectedValueOnce(new Error('Job bt-1 could not be removed because it is locked by another worker'))
-        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined),
+      moveToFailed: jest.fn().mockResolvedValue(undefined)
     };
     const backtest = makeBacktest();
     backtestRepository.find.mockResolvedValue([backtest]);
@@ -390,10 +391,20 @@ describe('BacktestRecoveryService', () => {
     service.onApplicationBootstrap();
     await flushPromises();
 
-    // Should delete the stale lock key via Redis
-    expect(redisClient.del).toHaveBeenCalledWith('bull:backtest-historical:bt-1:lock');
+    // Should set a recovery lock token on the lock key
+    expect(redisClient.set).toHaveBeenCalledWith(
+      'bull:backtest-historical:bt-1:lock',
+      expect.stringMatching(/^recovery-\d+$/)
+    );
 
-    // Should retry remove after clearing the lock
+    // Should move the job to failed state with the recovery token
+    expect(mockJob.moveToFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Orphaned after deployment' }),
+      expect.stringMatching(/^recovery-\d+$/),
+      false
+    );
+
+    // Should remove the failed job so queue.add() can reuse the jobId
     expect(mockJob.remove).toHaveBeenCalledTimes(2);
 
     // Should successfully re-queue

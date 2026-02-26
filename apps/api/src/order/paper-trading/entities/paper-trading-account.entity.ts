@@ -48,6 +48,10 @@ export class PaperTradingAccount {
   @ApiProperty({ description: 'Average cost basis for the asset', required: false })
   averageCost?: number;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'When the position was first opened (hold-period enforcement)', required: false })
+  entryDate?: Date;
+
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: 'When the account was created' })
   createdAt: Date;

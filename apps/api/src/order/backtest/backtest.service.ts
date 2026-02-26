@@ -66,6 +66,7 @@ import {
 import { MetricsService } from '../../metrics/metrics.service';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { isUniqueConstraintViolation, toErrorInfo } from '../../shared/error.util';
+import { forceRemoveJob } from '../../shared/queue.util';
 import { User } from '../../users/users.entity';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
@@ -1138,6 +1139,8 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
         deterministicSeed: backtest.deterministicSeed
       });
       const queue = this.getQueueForType(backtest.type);
+      // Remove any stale job with the same ID to prevent BullMQ jobId collision after deployment
+      await forceRemoveJob(queue, backtest.id, this.logger);
       await queue.add('execute-backtest', payload, {
         jobId: backtest.id,
         removeOnComplete: true,

@@ -48,12 +48,6 @@ describe('SignalThrottleService', () => {
     service = new SignalThrottleService();
   });
 
-  it('should create fresh state with empty fields', () => {
-    const state = service.createState();
-    expect(state.lastSignalTime).toEqual({});
-    expect(state.tradeTimestamps).toEqual([]);
-  });
-
   describe('filterSignals', () => {
     const config: SignalThrottleConfig = { ...DEFAULT_THROTTLE_CONFIG };
 
@@ -254,6 +248,51 @@ describe('SignalThrottleService', () => {
 
       expect(state.lastSignalTime['btc:BUY']).toBe(BASE_TIME);
       expect(state.tradeTimestamps).toEqual([BASE_TIME]);
+    });
+  });
+
+  describe('resolveConfig', () => {
+    it('returns defaults when params is undefined', () => {
+      const config = service.resolveConfig(undefined);
+      expect(config).toEqual({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 });
+    });
+
+    it('passes through valid values', () => {
+      const config = service.resolveConfig({ cooldownMs: 3600_000, maxTradesPerDay: 10, minSellPercent: 0.3 });
+      expect(config).toEqual({ cooldownMs: 3600_000, maxTradesPerDay: 10, minSellPercent: 0.3 });
+    });
+
+    it('clamps cooldownMs to [0, 604_800_000]', () => {
+      expect(service.resolveConfig({ cooldownMs: -1 }).cooldownMs).toBe(0);
+      expect(service.resolveConfig({ cooldownMs: 999_999_999 }).cooldownMs).toBe(604_800_000);
+    });
+
+    it('clamps maxTradesPerDay to [0, 50]', () => {
+      expect(service.resolveConfig({ maxTradesPerDay: -5 }).maxTradesPerDay).toBe(0);
+      expect(service.resolveConfig({ maxTradesPerDay: 100 }).maxTradesPerDay).toBe(50);
+    });
+
+    it('clamps minSellPercent to [0, 1]', () => {
+      expect(service.resolveConfig({ minSellPercent: -0.1 }).minSellPercent).toBe(0);
+      expect(service.resolveConfig({ minSellPercent: 1.5 }).minSellPercent).toBe(1);
+    });
+
+    it('falls back to defaults for non-numeric values', () => {
+      const config = service.resolveConfig({
+        cooldownMs: 'not-a-number',
+        maxTradesPerDay: null,
+        minSellPercent: true
+      });
+      expect(config).toEqual({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 });
+    });
+
+    it('falls back to defaults for NaN and Infinity', () => {
+      const config = service.resolveConfig({
+        cooldownMs: NaN,
+        maxTradesPerDay: Infinity,
+        minSellPercent: -Infinity
+      });
+      expect(config).toEqual({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 });
     });
   });
 

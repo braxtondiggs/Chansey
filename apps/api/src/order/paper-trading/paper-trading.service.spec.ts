@@ -46,6 +46,7 @@ describe('PaperTradingService', () => {
 
     const paperTradingQueue = {
       add: jest.fn(),
+      getJob: jest.fn().mockResolvedValue(null),
       removeJobScheduler: jest.fn()
     };
 
@@ -55,6 +56,10 @@ describe('PaperTradingService', () => {
 
     const dataSource = {
       transaction: jest.fn((callback) => callback(sessionRepository))
+    };
+
+    const engineService = {
+      clearThrottleState: jest.fn()
     };
 
     const service = new PaperTradingService(
@@ -67,7 +72,8 @@ describe('PaperTradingService', () => {
       (overrides.exchangeKeyRepository ?? exchangeKeyRepository) as any,
       (overrides.paperTradingQueue ?? paperTradingQueue) as any,
       (overrides.eventEmitter ?? eventEmitter) as any,
-      (overrides.dataSource ?? dataSource) as any
+      (overrides.dataSource ?? dataSource) as any,
+      (overrides.engineService ?? engineService) as any
     );
 
     return {
@@ -81,7 +87,8 @@ describe('PaperTradingService', () => {
       exchangeKeyRepository,
       paperTradingQueue,
       eventEmitter,
-      dataSource
+      dataSource,
+      engineService
     };
   };
 
@@ -283,6 +290,35 @@ describe('PaperTradingService', () => {
     jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'session-9', status: PaperTradingStatus.ACTIVE } as any);
 
     await expect(service.resume('session-9', mockUser)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('markFailed calls engineService.clearThrottleState', async () => {
+    const { service, sessionRepository, engineService } = createService();
+
+    sessionRepository.update.mockResolvedValue(undefined);
+    jest.spyOn(service, 'removeTickJobs').mockResolvedValue();
+
+    await service.markFailed('session-fail-1', 'some error');
+
+    expect(engineService.clearThrottleState).toHaveBeenCalledWith('session-fail-1');
+  });
+
+  it('markCompleted calls engineService.clearThrottleState', async () => {
+    const { service, sessionRepository, engineService, eventEmitter } = createService();
+
+    const session = {
+      id: 'session-complete-1',
+      status: PaperTradingStatus.ACTIVE,
+      user: { id: 'user-1' },
+      pipelineId: null
+    };
+    sessionRepository.findOne.mockResolvedValue(session);
+    sessionRepository.save.mockResolvedValue(session);
+    jest.spyOn(service, 'removeTickJobs').mockResolvedValue();
+
+    await service.markCompleted('session-complete-1', 'duration_reached');
+
+    expect(engineService.clearThrottleState).toHaveBeenCalledWith('session-complete-1');
   });
 
   it('calculates performance metrics correctly', async () => {

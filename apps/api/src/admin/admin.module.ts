@@ -9,7 +9,6 @@ import { TradingState } from './trading-state/trading-state.entity';
 import { TradingStateService } from './trading-state/trading-state.service';
 
 import { AuditModule } from '../audit/audit.module';
-import { Coin } from '../coin/coin.entity';
 import { OptimizationResult } from '../optimization/entities/optimization-result.entity';
 import { OptimizationRun } from '../optimization/entities/optimization-run.entity';
 import { Backtest, BacktestSignal, BacktestTrade, SimulatedOrderFill } from '../order/backtest/backtest.entity';
@@ -36,7 +35,6 @@ import { TasksModule } from '../tasks/tasks.module';
     TypeOrmModule.forFeature([
       TradingState,
       Order,
-      Coin,
       Backtest,
       BacktestTrade,
       BacktestSignal,

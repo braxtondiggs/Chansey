@@ -32,6 +32,7 @@ const createMockQueryBuilder = () => {
   const qb: Partial<SelectQueryBuilder<any>> = {
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
+    from: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
@@ -161,7 +162,10 @@ describe('BacktestMonitoringService', () => {
 
     signalRepo = {
       createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
-      find: jest.fn().mockResolvedValue([])
+      find: jest.fn().mockResolvedValue([]),
+      manager: {
+        createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder)
+      } as any
     };
 
     fillRepo = {

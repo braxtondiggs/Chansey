@@ -6,7 +6,7 @@
  */
 
 import { MarketDataTimeframe } from '../../order/backtest/market-data-set.entity';
-import { SlippageModelType } from '../../order/backtest/slippage-model';
+import { SlippageModelType } from '../../order/backtest/shared/slippage';
 
 /**
  * Risk-level based backtest configuration
