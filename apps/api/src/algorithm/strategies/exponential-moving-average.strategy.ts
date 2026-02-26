@@ -60,7 +60,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, slowPeriod)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -245,6 +245,12 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         low: price.low
       }
     }));
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const slowPeriod = (config.slowPeriod as number) ?? 26;
+    const crossoverLookback = (config.crossoverLookback as number) ?? 3;
+    return slowPeriod + crossoverLookback;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {

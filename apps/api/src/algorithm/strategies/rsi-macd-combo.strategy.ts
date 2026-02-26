@@ -76,7 +76,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -392,6 +392,14 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         low: price.low
       }
     }));
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const rsiPeriod = (config.rsiPeriod as number) ?? 14;
+    const macdSlow = (config.macdSlow as number) ?? 26;
+    const macdSignal = (config.macdSignal as number) ?? 9;
+    const confirmationWindow = (config.confirmationWindow as number) ?? 3;
+    return Math.max(rsiPeriod, macdSlow + macdSignal - 1) + confirmationWindow;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {

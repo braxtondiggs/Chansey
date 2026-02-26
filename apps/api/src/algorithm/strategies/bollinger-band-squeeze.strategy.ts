@@ -464,6 +464,12 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
   /**
    * Declare indicator requirements for precomputation during optimization.
    */
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const period = (config.period as number) ?? 20;
+    const minSqueezeBars = (config.minSqueezeBars as number) ?? 6;
+    return period + minSqueezeBars + 5;
+  }
+
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
     return [{ type: 'BOLLINGER_BANDS', paramKeys: ['period', 'stdDev'], defaultParams: { period: 20, stdDev: 2 } }];
   }

@@ -19,11 +19,14 @@ import { OrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/backtest-orches
 
 import { OptimizationRun, OptimizationStatus } from '../optimization/entities/optimization-run.entity';
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
+import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { toErrorInfo } from '../shared/error.util';
+
+const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 @Injectable()
 export class BacktestOrchestrationTask {
@@ -40,6 +43,12 @@ export class BacktestOrchestrationTask {
   constructor(
     @InjectQueue('backtest-orchestration')
     private readonly orchestrationQueue: Queue<OrchestrationJobData>,
+    @InjectQueue(BACKTEST_QUEUE_NAMES.historicalQueue)
+    private readonly historicalQueue: Queue,
+    @InjectQueue(BACKTEST_QUEUE_NAMES.replayQueue)
+    private readonly replayQueue: Queue,
+    @InjectQueue('optimization')
+    private readonly optimizationQueue: Queue,
     private readonly orchestrationService: BacktestOrchestrationService,
     private readonly backtestService: BacktestService,
     private readonly backtestResultService: BacktestResultService,
@@ -235,9 +244,20 @@ export class BacktestOrchestrationTask {
       }))
     ];
 
+    let marked = 0;
     for (const { backtest, thresholdMs } of staleBacktests) {
       try {
         const isPending = backtest.status === BacktestStatus.PENDING;
+
+        // For PENDING backtests, check if the BullMQ job is legitimately queued
+        if (isPending) {
+          const queue = this.getQueueForBacktestType(backtest.type);
+          if (queue && (await this.isJobLegitimatelyQueued(queue, backtest.id))) {
+            this.logger.debug(`Skipping PENDING backtest ${backtest.id} — BullMQ job still legitimately queued`);
+            continue;
+          }
+        }
+
         const reason = isPending
           ? `Stuck PENDING for ${Math.round(thresholdMs / 60000)} min — BullMQ job likely lost`
           : `Stale: no heartbeat progress for ${Math.round(thresholdMs / 60000)} min. ` +
@@ -251,14 +271,15 @@ export class BacktestOrchestrationTask {
                 `progress: ${backtest.processedTimestampCount}/${backtest.totalTimestampCount})`)
         );
         await this.backtestResultService.markFailed(backtest.id, reason);
+        marked++;
       } catch (error: unknown) {
         const err = toErrorInfo(error);
         this.logger.error(`Failed to mark stale backtest ${backtest.id} as FAILED: ${err.message}`);
       }
     }
 
-    if (staleBacktests.length > 0) {
-      this.logger.log(`Stale watchdog marked ${staleBacktests.length} backtest(s) as FAILED`);
+    if (marked > 0) {
+      this.logger.log(`Stale watchdog marked ${marked} backtest(s) as FAILED`);
     }
   }
 
@@ -285,9 +306,17 @@ export class BacktestOrchestrationTask {
       ]
     });
 
+    let marked = 0;
     for (const run of staleRuns) {
       try {
         const isPending = run.status === OptimizationStatus.PENDING;
+
+        // For PENDING optimization runs, check if the BullMQ job is legitimately queued
+        if (isPending && (await this.isJobLegitimatelyQueued(this.optimizationQueue, run.id))) {
+          this.logger.debug(`Skipping PENDING optimization run ${run.id} — BullMQ job still legitimately queued`);
+          continue;
+        }
+
         const thresholdMin = Math.round(
           (isPending
             ? BacktestOrchestrationTask.PENDING_OPTIMIZATION_THRESHOLD_MS
@@ -315,6 +344,7 @@ export class BacktestOrchestrationTask {
           continue;
         }
 
+        marked++;
         this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_FAILED, {
           runId: run.id,
           reason
@@ -325,8 +355,8 @@ export class BacktestOrchestrationTask {
       }
     }
 
-    if (staleRuns.length > 0) {
-      this.logger.log(`Stale optimization watchdog marked ${staleRuns.length} run(s) as FAILED`);
+    if (marked > 0) {
+      this.logger.log(`Stale optimization watchdog marked ${marked} run(s) as FAILED`);
     }
   }
 
@@ -445,6 +475,35 @@ export class BacktestOrchestrationTask {
 
     if (marked > 0) {
       this.logger.log(`Failed-optimization pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Check if a BullMQ job is legitimately queued (waiting or delayed).
+   * Returns false on missing job or any error (lets watchdog proceed on failure).
+   */
+  private async isJobLegitimatelyQueued(queue: Queue, jobId: string): Promise<boolean> {
+    try {
+      const job = await queue.getJob(jobId);
+      if (!job) return false;
+      const state = await job.getState();
+      return state === 'waiting' || state === 'delayed' || state === 'active';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Map a backtest type to its corresponding BullMQ queue.
+   */
+  private getQueueForBacktestType(type: BacktestType): Queue | null {
+    switch (type) {
+      case BacktestType.HISTORICAL:
+        return this.historicalQueue;
+      case BacktestType.LIVE_REPLAY:
+        return this.replayQueue;
+      default:
+        return null;
     }
   }
 }

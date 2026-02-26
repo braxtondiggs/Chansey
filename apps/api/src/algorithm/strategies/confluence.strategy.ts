@@ -72,7 +72,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -115,7 +115,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   /**
    * Get configuration with defaults
    */
-  private getConfigWithDefaults(config: Record<string, unknown>): ConfluenceConfig {
+  protected getConfigWithDefaults(config: Record<string, unknown>): ConfluenceConfig {
     const minConfluence = (config.minConfluence as number) ?? 2;
     return {
       minConfluence,
@@ -1010,6 +1010,17 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   /**
    * Declare indicator requirements for precomputation during optimization.
    */
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const c = this.getConfigWithDefaults(config);
+    const requirements: number[] = [];
+    if (c.ema.enabled) requirements.push(c.ema.slowPeriod + 1);
+    if (c.rsi.enabled) requirements.push(c.rsi.period + 1);
+    if (c.macd.enabled) requirements.push(c.macd.slowPeriod + c.macd.signalPeriod - 1);
+    if (c.atr.enabled) requirements.push(c.atr.period + 1);
+    if (c.bollingerBands.enabled) requirements.push(c.bollingerBands.period + 1);
+    return requirements.length > 0 ? Math.max(...requirements) : 1;
+  }
+
   getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
     const reqs: IndicatorRequirement[] = [];
     if (config.emaEnabled !== false) {

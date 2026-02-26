@@ -78,7 +78,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -135,7 +135,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
   /**
    * Get configuration with defaults
    */
-  private getConfigWithDefaults(config: Record<string, unknown>): TripleEMAConfig {
+  protected getConfigWithDefaults(config: Record<string, unknown>): TripleEMAConfig {
     return {
       fastPeriod: (config.fastPeriod as number) ?? 8,
       mediumPeriod: (config.mediumPeriod as number) ?? 21,
@@ -428,6 +428,11 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         }
       };
     });
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const slowPeriod = (config.slowPeriod as number) ?? 55;
+    return slowPeriod + 5;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
