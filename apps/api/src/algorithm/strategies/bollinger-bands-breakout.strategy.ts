@@ -65,7 +65,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -348,6 +348,13 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
   /**
    * Declare indicator requirements for precomputation during optimization.
    */
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const period = (config.period as number) ?? 20;
+    const requireConfirmation = (config.requireConfirmation as boolean) ?? false;
+    const confirmationBars = (config.confirmationBars as number) ?? 2;
+    return period + (requireConfirmation ? confirmationBars : 1);
+  }
+
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
     return [{ type: 'BOLLINGER_BANDS', paramKeys: ['period', 'stdDev'], defaultParams: { period: 20, stdDev: 2 } }];
   }

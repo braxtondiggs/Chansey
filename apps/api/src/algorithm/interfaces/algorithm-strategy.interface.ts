@@ -70,6 +70,13 @@ export interface AlgorithmStrategy {
   getIndicatorRequirements?(config: Record<string, unknown>): IndicatorRequirement[];
 
   /**
+   * Return the minimum number of price data points (candles) this strategy
+   * needs before it can produce meaningful signals.  Used by the backtest
+   * engine to pre-filter coins and avoid per-timestamp "insufficient data" noise.
+   */
+  getMinDataPoints?(config: Record<string, unknown>): number;
+
+  /**
    * Health check for the algorithm
    */
   healthCheck?(): Promise<boolean>;

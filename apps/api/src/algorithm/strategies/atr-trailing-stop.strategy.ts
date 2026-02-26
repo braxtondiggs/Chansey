@@ -74,7 +74,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -604,6 +604,11 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         }
       };
     });
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const atrPeriod = (config.atrPeriod as number) ?? 14;
+    return atrPeriod + 5;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {

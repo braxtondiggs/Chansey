@@ -80,7 +80,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         const priceHistory = context.priceData[coin.id];
 
         if (!this.hasEnoughData(priceHistory, config)) {
-          this.logger.warn(`Insufficient price data for ${coin.symbol}`);
+          this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
 
@@ -410,6 +410,13 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         low: price.low
       }
     }));
+  }
+
+  getMinDataPoints(config: Record<string, unknown>): number {
+    const rsiPeriod = (config.rsiPeriod as number) ?? 14;
+    const lookbackPeriod = (config.lookbackPeriod as number) ?? 14;
+    const pivotStrength = (config.pivotStrength as number) ?? 2;
+    return rsiPeriod + lookbackPeriod + pivotStrength * 2;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {

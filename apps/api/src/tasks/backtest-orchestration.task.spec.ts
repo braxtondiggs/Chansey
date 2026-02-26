@@ -9,11 +9,14 @@ import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
-import { OptimizationRun } from '../optimization/entities/optimization-run.entity';
+import { OptimizationRun, OptimizationStatus } from '../optimization/entities/optimization-run.entity';
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
+import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
+
+const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 describe('BacktestOrchestrationTask', () => {
   let task: BacktestOrchestrationTask;
@@ -28,6 +31,10 @@ describe('BacktestOrchestrationTask', () => {
     getFailedCount: jest.fn(),
     getDelayedCount: jest.fn()
   };
+
+  const mockHistoricalQueue = { getJob: jest.fn() };
+  const mockReplayQueue = { getJob: jest.fn() };
+  const mockOptimizationQueue = { getJob: jest.fn() };
 
   const mockService = {
     getEligibleUsers: jest.fn()
@@ -64,6 +71,9 @@ describe('BacktestOrchestrationTask', () => {
       providers: [
         BacktestOrchestrationTask,
         { provide: getQueueToken('backtest-orchestration'), useValue: mockQueue },
+        { provide: getQueueToken(BACKTEST_QUEUE_NAMES.historicalQueue), useValue: mockHistoricalQueue },
+        { provide: getQueueToken(BACKTEST_QUEUE_NAMES.replayQueue), useValue: mockReplayQueue },
+        { provide: getQueueToken('optimization'), useValue: mockOptimizationQueue },
         { provide: BacktestOrchestrationService, useValue: mockService },
         { provide: BacktestService, useValue: mockBacktestService },
         { provide: BacktestResultService, useValue: mockBacktestResultService },
@@ -268,21 +278,6 @@ describe('BacktestOrchestrationTask', () => {
       );
     });
 
-    it('should NOT mark LIVE_REPLAY as stale within 120 min', async () => {
-      // The 90-min-old replay should NOT appear in query results (threshold is 120 min)
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      await task.detectStaleBacktests();
-
-      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
-
-      // Verify the LIVE_REPLAY query uses a ~120-min cutoff (second find call)
-      const liveReplayCall = mockBacktestRepository.find.mock.calls[1][0];
-      const liveReplayWhere = liveReplayCall.where[0];
-      expect(liveReplayWhere.type).toBe(BacktestType.LIVE_REPLAY);
-      expect(liveReplayWhere.lastCheckpointAt).toBeDefined();
-    });
-
     it('should continue loop when markFailed throws for one backtest', async () => {
       const stale1 = {
         id: 'stale-1',
@@ -334,6 +329,8 @@ describe('BacktestOrchestrationTask', () => {
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([stuckPending]);
+      // BullMQ job is missing — truly lost
+      mockHistoricalQueue.getJob.mockResolvedValue(null);
 
       await task.detectStaleBacktests();
 
@@ -343,34 +340,178 @@ describe('BacktestOrchestrationTask', () => {
       );
     });
 
-    it('should query HISTORICAL with 90-min cutoff', async () => {
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-      const before = Date.now();
+    it('should skip PENDING backtest when BullMQ job is in waiting state', async () => {
+      const stuckPending = {
+        id: 'pending-bt-2',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.PENDING,
+        updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 0,
+        totalTimestampCount: 0,
+        checkpointState: null
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([stuckPending]);
+      mockHistoricalQueue.getJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue('waiting') });
 
       await task.detectStaleBacktests();
 
-      const after = Date.now();
-      const historicalCall = mockBacktestRepository.find.mock.calls[0][0];
-      const cutoffDate: Date = historicalCall.where[0].lastCheckpointAt.value;
-      const expectedCutoff = 90 * 60 * 1000;
-      // Verify cutoff is within 5 seconds of expected 90-min threshold (1ms tolerance for clock jitter)
-      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff - 1);
-      expect(after - cutoffDate.getTime()).toBeLessThanOrEqual(expectedCutoff + 5000);
+      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
     });
 
-    it('should query LIVE_REPLAY with 120-min cutoff', async () => {
-      mockBacktestRepository.find.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-      const before = Date.now();
+    it('should skip PENDING backtest when BullMQ job is in active state', async () => {
+      const stuckPending = {
+        id: 'pending-bt-active',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.PENDING,
+        updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 0,
+        totalTimestampCount: 0,
+        checkpointState: null
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([stuckPending]);
+      mockHistoricalQueue.getJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue('active') });
 
       await task.detectStaleBacktests();
 
-      const after = Date.now();
-      const liveReplayCall = mockBacktestRepository.find.mock.calls[1][0];
-      const cutoffDate: Date = liveReplayCall.where[0].lastCheckpointAt.value;
-      const expectedCutoff = 120 * 60 * 1000;
-      // Verify cutoff is within 5 seconds of expected 120-min threshold (1ms tolerance for clock jitter)
-      expect(before - cutoffDate.getTime()).toBeGreaterThanOrEqual(expectedCutoff - 1);
-      expect(after - cutoffDate.getTime()).toBeLessThanOrEqual(expectedCutoff + 5000);
+      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('should skip PENDING LIVE_REPLAY backtest when BullMQ job is in delayed state', async () => {
+      const stuckPending = {
+        id: 'pending-replay-1',
+        type: BacktestType.LIVE_REPLAY,
+        status: BacktestStatus.PENDING,
+        updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 0,
+        totalTimestampCount: 0,
+        checkpointState: null
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([stuckPending]);
+      mockReplayQueue.getJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue('delayed') });
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('should still mark PENDING backtest as FAILED when BullMQ job is missing', async () => {
+      const stuckPending = {
+        id: 'pending-bt-3',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.PENDING,
+        updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 0,
+        totalTimestampCount: 0,
+        checkpointState: null
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([stuckPending]);
+      mockHistoricalQueue.getJob.mockResolvedValue(null);
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
+        'pending-bt-3',
+        expect.stringContaining('Stuck PENDING for 30 min')
+      );
+    });
+
+    it('should still mark PENDING backtest as FAILED when queue check errors', async () => {
+      const stuckPending = {
+        id: 'pending-bt-4',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.PENDING,
+        updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+        processedTimestampCount: 0,
+        totalTimestampCount: 0,
+        checkpointState: null
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([stuckPending]);
+      mockHistoricalQueue.getJob.mockRejectedValue(new Error('Redis connection lost'));
+
+      await task.detectStaleBacktests();
+
+      expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
+        'pending-bt-4',
+        expect.stringContaining('Stuck PENDING for 30 min')
+      );
+    });
+  });
+
+  describe('detectStaleOptimizationRuns — queue-aware PENDING check', () => {
+    it('should skip PENDING optimization run when BullMQ job is in waiting state', async () => {
+      const pendingRun = {
+        id: 'opt-run-1',
+        status: OptimizationStatus.PENDING,
+        createdAt: new Date(Date.now() - 400 * 60 * 1000),
+        combinationsTested: 0,
+        totalCombinations: 100
+      };
+      mockOptimizationRunRepository.find.mockResolvedValue([pendingRun]);
+      mockOptimizationQueue.getJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue('waiting') });
+
+      await task.detectStaleOptimizationRuns();
+
+      expect(mockOptimizationRunRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should still mark PENDING optimization run as FAILED when BullMQ job is missing', async () => {
+      const pendingRun = {
+        id: 'opt-run-2',
+        status: OptimizationStatus.PENDING,
+        createdAt: new Date(Date.now() - 400 * 60 * 1000),
+        combinationsTested: 0,
+        totalCombinations: 100
+      };
+      mockOptimizationRunRepository.find.mockResolvedValue([pendingRun]);
+      mockOptimizationQueue.getJob.mockResolvedValue(null);
+      mockOptimizationRunRepository.update.mockResolvedValue({ affected: 1 });
+
+      await task.detectStaleOptimizationRuns();
+
+      expect(mockOptimizationRunRepository.update).toHaveBeenCalledWith(
+        { id: 'opt-run-2', status: expect.anything() },
+        expect.objectContaining({
+          status: OptimizationStatus.FAILED,
+          errorMessage: expect.stringContaining('PENDING')
+        })
+      );
+    });
+
+    it('should still mark PENDING optimization run as FAILED when queue check errors', async () => {
+      const pendingRun = {
+        id: 'opt-run-3',
+        status: OptimizationStatus.PENDING,
+        createdAt: new Date(Date.now() - 400 * 60 * 1000),
+        combinationsTested: 0,
+        totalCombinations: 100
+      };
+      mockOptimizationRunRepository.find.mockResolvedValue([pendingRun]);
+      mockOptimizationQueue.getJob.mockRejectedValue(new Error('Redis timeout'));
+      mockOptimizationRunRepository.update.mockResolvedValue({ affected: 1 });
+
+      await task.detectStaleOptimizationRuns();
+
+      expect(mockOptimizationRunRepository.update).toHaveBeenCalledWith(
+        { id: 'opt-run-3', status: expect.anything() },
+        expect.objectContaining({
+          status: OptimizationStatus.FAILED
+        })
+      );
     });
   });
 });

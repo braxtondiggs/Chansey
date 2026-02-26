@@ -57,6 +57,7 @@ import {
   TradeSummaryDto
 } from './dto/trade-analytics.dto';
 
+import { Coin } from '../../coin/coin.entity';
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
 import {
@@ -110,6 +111,8 @@ export class BacktestMonitoringService {
   private readonly logger = new Logger(BacktestMonitoringService.name);
 
   constructor(
+    @InjectRepository(Coin)
+    private readonly coinRepo: Repository<Coin>,
     @InjectRepository(Backtest)
     private readonly backtestRepo: Repository<Backtest>,
     @InjectRepository(BacktestTrade)
@@ -352,6 +355,15 @@ export class BacktestMonitoringService {
       confidence: s.confidence,
       reason: s.reason
     }));
+
+    // Resolve instrument UUIDs to coin symbols
+    const instrumentSet = new Set(data.map((d) => d.instrument).filter(Boolean) as string[]);
+    const symbolMap = await this.resolveInstrumentSymbols(instrumentSet);
+    for (const item of data) {
+      if (item.instrument) {
+        item.instrument = symbolMap.get(item.instrument.toLowerCase()) ?? item.instrument;
+      }
+    }
 
     if (format === ExportFormat.JSON) {
       return data;
@@ -721,6 +733,15 @@ export class BacktestMonitoringService {
         userEmail: ps.session.user?.email,
         processed: ps.processed
       });
+    }
+
+    // Resolve instrument UUIDs to coin symbols
+    const instrumentSet = new Set(mapped.map((m) => m.instrument).filter(Boolean) as string[]);
+    const symbolMap = await this.resolveInstrumentSymbols(instrumentSet);
+    for (const item of mapped) {
+      if (item.instrument) {
+        item.instrument = symbolMap.get(item.instrument.toLowerCase()) ?? item.instrument;
+      }
     }
 
     // Sort merged by timestamp DESC, take limit
@@ -1199,8 +1220,12 @@ export class BacktestMonitoringService {
 
     const results = await qb.getRawMany();
 
+    // Resolve instrument UUIDs to coin symbols
+    const instrumentSet = new Set(results.map((r) => r.instrument as string).filter(Boolean));
+    const symbolMap = await this.resolveInstrumentSymbols(instrumentSet);
+
     return results.map((r) => ({
-      instrument: r.instrument,
+      instrument: symbolMap.get((r.instrument as string)?.toLowerCase()) ?? r.instrument,
       count: parseInt(r.count, 10) || 0,
       successRate: parseFloat(r.successRate) || 0,
       avgReturn: parseFloat(r.avgReturn) || 0
@@ -1470,6 +1495,34 @@ export class BacktestMonitoringService {
       },
       byInstrument: []
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Instrument Resolution Helper
+  // ---------------------------------------------------------------------------
+
+  /** UUID v4 pattern (case-insensitive) */
+  private static readonly UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Batch-resolve instrument UUIDs to coin symbols.
+   * Non-UUID values (already symbols) are skipped.
+   */
+  private async resolveInstrumentSymbols(instruments: Set<string>): Promise<Map<string, string>> {
+    const uuids = [...instruments].filter((v) => BacktestMonitoringService.UUID_RE.test(v));
+    if (uuids.length === 0) return new Map();
+
+    const coins = await this.coinRepo
+      .createQueryBuilder('c')
+      .select(['c.id', 'c.symbol'])
+      .where('c.id IN (:...ids)', { ids: uuids })
+      .getMany();
+
+    const map = new Map<string, string>();
+    for (const coin of coins) {
+      map.set(coin.id.toLowerCase(), coin.symbol.toUpperCase());
+    }
+    return map;
   }
 
   // ---------------------------------------------------------------------------

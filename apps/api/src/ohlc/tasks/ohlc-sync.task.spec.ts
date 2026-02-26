@@ -7,6 +7,7 @@ import { ExchangeService } from '../../exchange/exchange.service';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
+import { OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 describe('OHLCSyncTask', () => {
   let task: OHLCSyncTask;
@@ -17,6 +18,7 @@ describe('OHLCSyncTask', () => {
   let exchangeService: jest.Mocked<ExchangeService>;
   let configService: { get: jest.Mock };
   let lockService: { acquire: jest.Mock; release: jest.Mock };
+  let backfillService: jest.Mocked<Pick<OHLCBackfillService, 'startBackfill'>>;
 
   const originalEnv = process.env;
 
@@ -30,6 +32,7 @@ describe('OHLCSyncTask', () => {
 
     ohlcService = {
       getActiveSymbolMaps: jest.fn(),
+      upsertSymbolMap: jest.fn().mockResolvedValue({}),
       upsertCandles: jest.fn(),
       incrementFailureCount: jest.fn(),
       markSyncSuccess: jest.fn(),
@@ -59,6 +62,10 @@ describe('OHLCSyncTask', () => {
       release: jest.fn().mockResolvedValue(undefined)
     };
 
+    backfillService = {
+      startBackfill: jest.fn().mockResolvedValue('job-id')
+    };
+
     task = new OHLCSyncTask(
       queue as any,
       ohlcService,
@@ -66,7 +73,8 @@ describe('OHLCSyncTask', () => {
       coinService,
       exchangeService,
       configService as any,
-      lockService as any
+      lockService as any,
+      backfillService as any
     );
   });
 
@@ -103,7 +111,6 @@ describe('OHLCSyncTask', () => {
     ohlcService.getActiveSymbolMaps.mockResolvedValue([]);
     exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
     coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
-    ohlcService.upsertSymbolMap = jest.fn().mockResolvedValue({});
     // getAvailableSymbols returns a valid pair for BTC on binance_us
     exchangeOHLC.getAvailableSymbols.mockResolvedValue(['BTC/USD']);
     jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
