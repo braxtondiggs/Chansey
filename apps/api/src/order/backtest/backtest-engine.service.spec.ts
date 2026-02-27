@@ -2015,7 +2015,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     expect(phase2Result.finalMetrics.totalTrades).toBe(4);
   });
 
-  it('blocks BUY signals in BEAR regime by default (regime gate on)', async () => {
+  it('blocks BUY signals in BEAR regime when enableRegimeGate is true', async () => {
     const algorithmRegistry = {
       executeAlgorithm: jest.fn().mockResolvedValue({
         success: true,
@@ -2052,8 +2052,8 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
           endAt: new Date('2024-01-01T02:00:00.000Z')
         } as any,
         deterministicSeed: 'seed-regime',
-        replaySpeed: ReplaySpeed.MAX_SPEED
-        // enableRegimeGate defaults to true
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        enableRegimeGate: true
       }
     );
 
@@ -2107,6 +2107,102 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     );
 
     // BUY signals should NOT be filtered when regime gate is disabled — trades should execute
+    expect(result.trades.length).toBeGreaterThan(0);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+  });
+
+  it('derives regime gate ON from risk level 1 when enableRegimeGate is not set', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+      })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Spy on computeCompositeRegime to return BEAR regime
+    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR
+    });
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-risk1-gate',
+        name: 'Risk Level 1 Gate Derivation',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-risk1',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-risk1',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        riskLevel: 1
+        // enableRegimeGate NOT set — should derive ON from riskLevel <= 2
+      }
+    );
+
+    // Risk level 1 → gate derived ON → BUY signals blocked in BEAR regime
+    expect(result.trades).toHaveLength(0);
+    expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+  });
+
+  it('derives regime gate OFF from risk level 3 when enableRegimeGate is not set', async () => {
+    const algorithmRegistry = {
+      executeAlgorithm: jest.fn().mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.8 }]
+      })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(createCandles()) };
+    const marketDataReader = { hasStorageLocation: jest.fn().mockReturnValue(false) };
+    const quoteCurrencyResolver = { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) };
+
+    const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
+
+    // Spy on computeCompositeRegime to return BEAR regime
+    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR
+    });
+
+    const result = await engine.executeLiveReplayBacktest(
+      {
+        id: 'backtest-risk3-gate',
+        name: 'Risk Level 3 Gate Derivation',
+        initialCapital: 1000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any],
+      {
+        dataset: {
+          id: 'dataset-risk3',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T02:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-risk3',
+        replaySpeed: ReplaySpeed.MAX_SPEED,
+        riskLevel: 3
+        // enableRegimeGate NOT set — should derive OFF from riskLevel >= 3
+      }
+    );
+
+    // Risk level 3 → gate derived OFF → BUY signals pass through in BEAR regime
     expect(result.trades.length).toBeGreaterThan(0);
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
   });

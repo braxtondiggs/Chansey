@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as ccxt from 'ccxt';
 import { Repository } from 'typeorm';
 
+import { MarketType, MAX_LEVERAGE_CAP } from '@chansey/api-interfaces';
+
 import { OrderStateMachineService } from './order-state-machine.service';
 import { PositionManagementService } from './position-management.service';
 
@@ -41,6 +43,12 @@ export interface TradeSignal {
   action: 'BUY' | 'SELL';
   symbol: string;
   quantity: number;
+  /** Market type: 'spot' (default) or 'futures' */
+  marketType?: 'spot' | 'futures';
+  /** Position side for futures: 'long' or 'short' */
+  positionSide?: 'long' | 'short';
+  /** Leverage multiplier for futures positions (1-10) */
+  leverage?: number;
 }
 
 /**
@@ -122,6 +130,13 @@ export class TradeExecutionService {
         throw new UserNotFoundException(signal.userId);
       }
 
+      // Gate: block futures orders if user hasn't opted in
+      if (signal.marketType === MarketType.FUTURES && !user.futuresEnabled) {
+        throw new ValidationException(
+          'Futures trading is not enabled. Enable it in Settings > Trading to use futures/short-selling.'
+        );
+      }
+
       // Initialize CCXT exchange client
       const exchangeClient = await this.exchangeManagerService.getExchangeClient(exchangeKey.exchange.slug, user);
 
@@ -197,9 +212,38 @@ export class TradeExecutionService {
         }
       }
 
-      // Execute market order via CCXT
+      // Execute order via CCXT — branch on market type
+      let ccxtOrder: ccxt.Order;
       const orderSide = signal.action.toLowerCase() as 'buy' | 'sell';
-      const ccxtOrder = await exchangeClient.createMarketOrder(signal.symbol, orderSide, effectiveQuantity);
+
+      if (signal.marketType === MarketType.FUTURES) {
+        // --- FUTURES ORDER PATH ---
+        const leverage = Math.min(signal.leverage ?? 1, MAX_LEVERAGE_CAP);
+
+        const futuresSide = this.resolveFuturesSide(signal.action, signal.positionSide);
+
+        const exchangeService = this.exchangeManagerService.getExchangeService(exchangeKey.exchange.slug);
+        if (!exchangeService.supportsFutures) {
+          throw new ValidationException(`Exchange ${exchangeKey.exchange.name} does not support futures trading`);
+        }
+
+        this.logger.log(
+          `Placing futures order: ${futuresSide} ${effectiveQuantity} ${signal.symbol} ` +
+            `leverage=${leverage}x positionSide=${signal.positionSide ?? 'long'}`
+        );
+
+        ccxtOrder = await exchangeService.createFuturesOrder(
+          user,
+          signal.symbol,
+          futuresSide,
+          effectiveQuantity,
+          leverage,
+          { positionSide: signal.positionSide ?? 'long' }
+        );
+      } else {
+        // --- SPOT ORDER PATH (default) ---
+        ccxtOrder = await exchangeClient.createMarketOrder(signal.symbol, orderSide, effectiveQuantity);
+      }
 
       this.logger.log(`Order executed successfully: ${ccxtOrder.id}`);
 
@@ -222,7 +266,8 @@ export class TradeExecutionService {
         exchangeKey.exchange,
         signal.algorithmActivationId,
         expectedPrice,
-        actualSlippageBps
+        actualSlippageBps,
+        signal.marketType === 'futures' ? signal : undefined
       );
 
       // Accept partial fills as successful (per clarifications)
@@ -389,6 +434,7 @@ export class TradeExecutionService {
    * @param algorithmActivationId - Algorithm activation ID
    * @param expectedPrice - Expected execution price (for slippage calculation)
    * @param actualSlippageBps - Calculated slippage in basis points
+   * @param futuresSignal - Optional futures signal data to populate futures-specific fields
    * @returns Order entity
    */
   private async convertCcxtOrderToEntity(
@@ -397,7 +443,8 @@ export class TradeExecutionService {
     exchange: Exchange,
     algorithmActivationId: string,
     expectedPrice?: number,
-    actualSlippageBps?: number
+    actualSlippageBps?: number,
+    futuresSignal?: Pick<TradeSignal, 'marketType' | 'positionSide' | 'leverage'>
   ): Promise<Order> {
     // Parse symbol to get base and quote coins
     const [baseSymbol, quoteSymbol] = ccxtOrder.symbol.split('/');
@@ -467,7 +514,18 @@ export class TradeExecutionService {
         side: t.side?.toString(),
         takerOrMaker: t.takerOrMaker?.toString()
       })),
-      info: ccxtOrder.info
+      info: ccxtOrder.info,
+      // Futures-specific fields
+      marketType:
+        futuresSignal?.marketType === MarketType.FUTURES ? 'futures' : ccxtOrder.info?.marginMode ? 'futures' : 'spot',
+      positionSide: futuresSignal?.positionSide ?? (ccxtOrder.info?.positionSide as string) ?? undefined,
+      leverage: futuresSignal?.leverage ?? (ccxtOrder.info?.leverage ? Number(ccxtOrder.info.leverage) : undefined),
+      marginMode:
+        futuresSignal?.marketType === MarketType.FUTURES
+          ? 'isolated'
+          : ((ccxtOrder.info?.marginMode as string) ?? undefined),
+      liquidationPrice: ccxtOrder.info?.liquidationPrice ? Number(ccxtOrder.info.liquidationPrice) : undefined,
+      marginAmount: ccxtOrder.info?.initialMargin ? Number(ccxtOrder.info.initialMargin) : undefined
     });
 
     const savedOrder = await this.orderRepository.save(order);
@@ -577,5 +635,17 @@ export class TradeExecutionService {
       // On error, don't block the trade - return 0 to allow execution
       return 0;
     }
+  }
+
+  /**
+   * Determine the order side for a futures trade.
+   * - Short positions invert: SELL opens, BUY closes
+   * - Long positions follow normal mapping
+   */
+  private resolveFuturesSide(action: string, positionSide: string | undefined): 'buy' | 'sell' {
+    if (positionSide === 'short') {
+      return action === 'BUY' ? 'buy' : 'sell';
+    }
+    return action.toLowerCase() as 'buy' | 'sell';
   }
 }

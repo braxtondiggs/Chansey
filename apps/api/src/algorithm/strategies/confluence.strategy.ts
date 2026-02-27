@@ -81,12 +81,14 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
 
         // Generate trading signal if confluence is met
         const currentPrice = priceHistory[priceHistory.length - 1].avg;
+        const isFuturesShort = config.enableShortSignals && context.metadata?.marketType === 'futures';
         const tradingSignal = this.generateSignalFromConfluence(
           coin.id,
           coin.symbol,
           currentPrice,
           confluenceScore,
-          config
+          config,
+          isFuturesShort
         );
 
         if (tradingSignal) {
@@ -121,6 +123,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       minConfluence,
       minSellConfluence: (config.minSellConfluence as number) ?? minConfluence,
       minConfidence: (config.minConfidence as number) ?? 0.5,
+      enableShortSignals: (config.enableShortSignals as boolean) ?? false,
 
       ema: {
         enabled: config.emaEnabled !== false,
@@ -754,14 +757,23 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
   }
 
   /**
-   * Generate trading signal from confluence score
+   * Generate trading signal from confluence score.
+   *
+   * When `isFuturesShort` is true (enableShortSignals + futures marketType):
+   * - Bearish confluence emits SHORT_ENTRY instead of SELL
+   * - Bullish confluence emits SHORT_EXIT in addition to BUY (to close any open short)
+   *
+   * Returns a single signal or null. When a bullish confluence triggers both BUY
+   * and SHORT_EXIT, SHORT_EXIT is returned (closing a short is higher priority);
+   * the caller can still generate a BUY on the next evaluation cycle.
    */
   private generateSignalFromConfluence(
     coinId: string,
     coinSymbol: string,
     price: number,
     confluenceScore: ConfluenceScore,
-    config: ConfluenceConfig
+    config: ConfluenceConfig,
+    isFuturesShort = false
   ): TradingSignal | null {
     if (confluenceScore.direction === 'hold') {
       return null;
@@ -774,7 +786,15 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       return null;
     }
 
-    const signalType = confluenceScore.direction === 'buy' ? SignalType.BUY : SignalType.SELL;
+    // Determine signal type based on direction and futures short mode
+    let signalType: SignalType;
+    if (confluenceScore.direction === 'buy') {
+      // Bullish confluence: in futures short mode, emit SHORT_EXIT to close any open short
+      signalType = isFuturesShort ? SignalType.SHORT_EXIT : SignalType.BUY;
+    } else {
+      // Bearish confluence: in futures short mode, emit SHORT_ENTRY instead of SELL
+      signalType = isFuturesShort ? SignalType.SHORT_ENTRY : SignalType.SELL;
+    }
 
     // Build detailed reason from individual signals
     const agreeingIndicators = confluenceScore.signals
@@ -794,6 +814,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       totalEnabled: confluenceScore.totalEnabled,
       agreeingIndicators,
       isVolatilityFiltered: confluenceScore.isVolatilityFiltered,
+      isFuturesShort,
       indicatorBreakdown: confluenceScore.signals.map((s) => ({
         name: s.name,
         signal: s.signal,
@@ -929,6 +950,12 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         min: 2,
         max: 4,
         description: 'Minimum number of directional indicators that must agree for BUY (2-4). ATR is a filter only.'
+      },
+      enableShortSignals: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Enable SHORT_ENTRY/SHORT_EXIT signals for futures markets. When true and marketType is futures, bearish confluence emits SHORT_ENTRY and bullish confluence emits SHORT_EXIT.'
       },
       minSellConfluence: {
         type: 'number',

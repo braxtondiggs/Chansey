@@ -1,6 +1,7 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { TradeExecutionTask } from './trade-execution.task';
 
@@ -10,12 +11,14 @@ import { AlgorithmActivationService } from '../../algorithm/services/algorithm-a
 import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-context-builder.service';
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
+import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { UsersService } from '../../users/users.service';
 import { TradeExecutionService } from '../services/trade-execution.service';
 
 describe('TradeExecutionTask', () => {
   let task: TradeExecutionTask;
   let mockQueue: any;
+  let mockStrategyConfigRepo: any;
   let mockTradeExecutionService: any;
   let mockActivationService: any;
   let mockAlgorithmRegistry: any;
@@ -76,6 +79,10 @@ describe('TradeExecutionTask', () => {
       getRepeatableJobs: jest.fn().mockResolvedValue([])
     };
 
+    mockStrategyConfigRepo = {
+      findOne: jest.fn().mockResolvedValue(null)
+    };
+
     mockTradeExecutionService = {
       executeTradeSignal: jest.fn().mockResolvedValue({ id: 'order-1' })
     };
@@ -114,6 +121,7 @@ describe('TradeExecutionTask', () => {
       providers: [
         TradeExecutionTask,
         { provide: getQueueToken('trade-execution'), useValue: mockQueue },
+        { provide: getRepositoryToken(StrategyConfig), useValue: mockStrategyConfigRepo },
         { provide: TradeExecutionService, useValue: mockTradeExecutionService },
         { provide: AlgorithmActivationService, useValue: mockActivationService },
         { provide: AlgorithmRegistry, useValue: mockAlgorithmRegistry },

@@ -5,6 +5,8 @@
  * Defines risk-based configuration matrix and job data structures.
  */
 
+import { getMaxLeverage } from '@chansey/api-interfaces';
+
 import {
   HistoricalStageConfig,
   LiveReplayStageConfig,
@@ -231,4 +233,12 @@ export function buildStageConfigFromRisk(riskLevel: number): PipelineStageConfig
     liveReplay,
     paperTrading
   };
+}
+
+/**
+ * Get maximum leverage allowed for a given risk level
+ * Delegates to the shared getMaxLeverage utility from @chansey/api-interfaces
+ */
+export function getLeverageConfig(riskLevel: number): number {
+  return getMaxLeverage(riskLevel);
 }

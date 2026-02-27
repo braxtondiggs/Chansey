@@ -37,6 +37,7 @@ export interface IUser {
   algoTradingEnabled?: boolean;
   algoCapitalAllocationPercentage?: number;
   algoEnrolledAt?: Date;
+  futuresEnabled?: boolean;
   enableOpportunitySelling?: boolean;
   opportunitySellingConfig?: OpportunitySellingUserConfig;
 }

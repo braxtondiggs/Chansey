@@ -131,6 +131,10 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   algoEnrolledAt?: Date;
 
+  // Futures trading opt-in
+  @Column({ default: false })
+  futuresEnabled: boolean;
+
   // Opportunity selling settings
   @Column({ default: false })
   enableOpportunitySelling: boolean;

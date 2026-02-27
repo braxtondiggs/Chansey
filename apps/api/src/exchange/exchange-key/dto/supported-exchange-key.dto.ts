@@ -46,4 +46,9 @@ export class SupportedExchangeKeyDto {
     example: 'xyz789...'
   })
   decryptedSecretKey?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether this exchange supports futures trading'
+  })
+  supportsFutures?: boolean;
 }

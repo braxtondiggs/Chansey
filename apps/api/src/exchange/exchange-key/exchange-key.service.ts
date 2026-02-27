@@ -73,6 +73,13 @@ export class ExchangeKeyService implements IExchangeKeyService {
           keyDto.decryptedSecretKey = key.decryptedSecretKey;
         }
 
+        try {
+          const exchangeSvc = this.exchangeManagerService.getExchangeService(key.exchange.slug);
+          keyDto.supportsFutures = exchangeSvc.supportsFutures;
+        } catch {
+          keyDto.supportsFutures = false;
+        }
+
         exchangeMap.set(key.exchange.id, keyDto);
       }
     }

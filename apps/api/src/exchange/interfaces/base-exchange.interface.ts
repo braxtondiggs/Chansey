@@ -14,6 +14,7 @@ export const BASE_EXCHANGE_SERVICE = Symbol('BASE_EXCHANGE_SERVICE');
  */
 export interface IBaseExchangeService {
   readonly quoteAsset: string;
+  readonly supportsFutures: boolean;
   getClient(user?: User): Promise<ccxt.Exchange>;
   getDefaultClient(): Promise<ccxt.Exchange>;
   getPublicClient(): Promise<ccxt.Exchange>;
@@ -24,4 +25,15 @@ export interface IBaseExchangeService {
   getPrice(symbol: string, user?: User): Promise<{ symbol: string; price: string; timestamp: number }>;
   validateKeys(apiKey: string, apiSecret: string): Promise<void>;
   formatSymbol(symbol: string): string;
+  setMarginMode(mode: string, symbol: string, user: User): Promise<void>;
+  setLeverage(leverage: number, symbol: string, user: User): Promise<void>;
+  createFuturesOrder(
+    user: User,
+    symbol: string,
+    side: 'buy' | 'sell',
+    quantity: number,
+    leverage: number,
+    params?: Record<string, unknown>
+  ): Promise<ccxt.Order>;
+  getFuturesPositions(user: User, symbol?: string): Promise<ccxt.Position[]>;
 }

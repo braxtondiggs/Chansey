@@ -20,19 +20,19 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
       >
         <div class="divide-surface-200 dark:divide-surface-700 grid grid-cols-4 divide-x">
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-orange-500">{{ pipelineStageCounts.optimizationRuns }}</span>
+            <span class="text-lg font-bold text-orange-500">{{ pipelineStageCounts.optimizationRuns.total }}</span>
             <span class="text-surface-500 text-[10px]">Optimize</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-blue-500">{{ pipelineStageCounts.historicalBacktests }}</span>
+            <span class="text-lg font-bold text-blue-500">{{ pipelineStageCounts.historicalBacktests.total }}</span>
             <span class="text-surface-500 text-[10px]">Historical</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-teal-500">{{ pipelineStageCounts.liveReplayBacktests }}</span>
+            <span class="text-lg font-bold text-teal-500">{{ pipelineStageCounts.liveReplayBacktests.total }}</span>
             <span class="text-surface-500 text-[10px]">Live Replay</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-purple-500">{{ pipelineStageCounts.paperTradingSessions }}</span>
+            <span class="text-lg font-bold text-purple-500">{{ pipelineStageCounts.paperTradingSessions.total }}</span>
             <span class="text-surface-500 text-[10px]">Paper Trade</span>
           </div>
         </div>
@@ -43,7 +43,7 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-orange-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-orange-500">{{ pipelineStageCounts.optimizationRuns }}</span>
+              <span class="text-2xl font-bold text-orange-500">{{ pipelineStageCounts.optimizationRuns.total }}</span>
               <span class="text-surface-500 text-sm">Optimization</span>
             </div>
           </p-card>
@@ -52,7 +52,7 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-blue-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-blue-500">{{ pipelineStageCounts.historicalBacktests }}</span>
+              <span class="text-2xl font-bold text-blue-500">{{ pipelineStageCounts.historicalBacktests.total }}</span>
               <span class="text-surface-500 text-sm">Historical</span>
             </div>
           </p-card>
@@ -61,7 +61,7 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-teal-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-teal-500">{{ pipelineStageCounts.liveReplayBacktests }}</span>
+              <span class="text-2xl font-bold text-teal-500">{{ pipelineStageCounts.liveReplayBacktests.total }}</span>
               <span class="text-surface-500 text-sm">Live Replay</span>
             </div>
           </p-card>
@@ -70,7 +70,9 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-purple-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-purple-500">{{ pipelineStageCounts.paperTradingSessions }}</span>
+              <span class="text-2xl font-bold text-purple-500">{{
+                pipelineStageCounts.paperTradingSessions.total
+              }}</span>
               <span class="text-surface-500 text-sm">Paper Trading</span>
             </div>
           </p-card>

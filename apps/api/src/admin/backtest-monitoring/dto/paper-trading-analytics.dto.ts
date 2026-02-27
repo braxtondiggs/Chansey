@@ -130,18 +130,26 @@ export class PaperTradingMonitoringDto {
   signalAnalytics: PaperTradingSignalAnalyticsDto;
 }
 
+export class StageCountWithStatusDto {
+  @ApiProperty({ description: 'Total count for this stage' })
+  total: number;
+
+  @ApiProperty({ description: 'Count breakdown by status', example: { COMPLETED: 50, RUNNING: 3, FAILED: 2 } })
+  statusBreakdown: Record<string, number>;
+}
+
 export class PipelineStageCountsDto {
-  @ApiProperty({ description: 'Total optimization runs' })
-  optimizationRuns: number;
+  @ApiProperty({ description: 'Optimization runs with status breakdown', type: StageCountWithStatusDto })
+  optimizationRuns: StageCountWithStatusDto;
 
-  @ApiProperty({ description: 'Total historical backtests' })
-  historicalBacktests: number;
+  @ApiProperty({ description: 'Historical backtests with status breakdown', type: StageCountWithStatusDto })
+  historicalBacktests: StageCountWithStatusDto;
 
-  @ApiProperty({ description: 'Total live replay backtests' })
-  liveReplayBacktests: number;
+  @ApiProperty({ description: 'Live replay backtests with status breakdown', type: StageCountWithStatusDto })
+  liveReplayBacktests: StageCountWithStatusDto;
 
-  @ApiProperty({ description: 'Total paper trading sessions' })
-  paperTradingSessions: number;
+  @ApiProperty({ description: 'Paper trading sessions with status breakdown', type: StageCountWithStatusDto })
+  paperTradingSessions: StageCountWithStatusDto;
 }
 
 /**

@@ -21,6 +21,7 @@ export interface IExchangeManagerService {
   getBalance(exchangeSlug: string, user: User): Promise<AssetBalanceDto[]>;
   getQuoteAsset(exchangeSlug: string): string;
   formatSymbol(exchangeSlug: string, symbol: string): string;
+  configureFuturesTrading(exchangeSlug: string, user: User, symbol: string, leverage: number): Promise<void>;
   getBalancesFromAllExchanges(user: User): Promise<
     Array<{
       exchange: string;

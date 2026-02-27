@@ -167,6 +167,20 @@ export class Backtest {
   @ApiProperty({ description: 'Warnings generated during the run', type: [String], required: false })
   warningFlags: string[];
 
+  @Column({ type: 'varchar', length: 20, default: 'spot' })
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ description: 'Market type: spot or futures', default: 'spot' })
+  marketType: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Max(10)
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Leverage multiplier for futures backtests', required: false })
+  leverage?: number;
+
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: 'When the backtest was created' })
   createdAt: Date;
@@ -324,6 +338,30 @@ export class BacktestTrade {
   @Column({ nullable: true })
   @ApiProperty({ description: 'Reason for the trade (signal that triggered it)', required: false })
   signal?: string;
+
+  @IsString()
+  @IsOptional()
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  @ApiProperty({ description: 'Position side: long or short', required: false })
+  positionSide?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Leverage used for this trade', required: false })
+  leverage?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Liquidation price at time of trade', required: false })
+  liquidationPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @ApiProperty({ description: 'Margin amount used for this trade', required: false })
+  marginUsed?: number;
 
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Additional trade metadata', required: false })

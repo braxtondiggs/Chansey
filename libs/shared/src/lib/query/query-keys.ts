@@ -136,7 +136,8 @@ export const queryKeys = {
     all: ['profile'] as const,
     detail: () => [...queryKeys.profile.all, 'detail'] as const,
     exchangeKeys: () => [...queryKeys.profile.all, 'exchange-keys'] as const,
-    opportunitySelling: () => [...queryKeys.profile.all, 'opportunity-selling'] as const
+    opportunitySelling: () => [...queryKeys.profile.all, 'opportunity-selling'] as const,
+    futuresTrading: () => [...queryKeys.profile.all, 'futures-trading'] as const
   },
 
   // --------------------------------------------------------------------------

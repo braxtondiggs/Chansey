@@ -47,7 +47,7 @@ import {
 } from '../backtest/shared';
 
 export interface TradingSignal {
-  action: 'BUY' | 'SELL' | 'HOLD';
+  action: 'BUY' | 'SELL' | 'HOLD' | 'OPEN_SHORT' | 'CLOSE_SHORT';
   coinId: string;
   symbol: string;
   quantity?: number;
@@ -86,6 +86,12 @@ const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): Tradi
     case AlgoSignalType.TAKE_PROFIT:
       action = 'SELL';
       break;
+    case AlgoSignalType.SHORT_ENTRY:
+      action = 'OPEN_SHORT';
+      break;
+    case AlgoSignalType.SHORT_EXIT:
+      action = 'CLOSE_SHORT';
+      break;
     default:
       action = 'HOLD';
   }
@@ -110,8 +116,8 @@ const classifySignalType = (signal: TradingSignal): PaperTradingSignalType => {
   if (signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT) {
     return PaperTradingSignalType.RISK_CONTROL;
   }
-  if (signal.action === 'BUY') return PaperTradingSignalType.ENTRY;
-  if (signal.action === 'SELL') return PaperTradingSignalType.EXIT;
+  if (signal.action === 'BUY' || signal.action === 'OPEN_SHORT') return PaperTradingSignalType.ENTRY;
+  if (signal.action === 'SELL' || signal.action === 'CLOSE_SHORT') return PaperTradingSignalType.EXIT;
   return PaperTradingSignalType.ADJUSTMENT;
 };
 
@@ -689,7 +695,7 @@ export class PaperTradingEngineService {
       direction:
         signal.action === 'BUY'
           ? PaperTradingSignalDirection.LONG
-          : signal.action === 'SELL'
+          : signal.action === 'SELL' || signal.action === 'OPEN_SHORT' || signal.action === 'CLOSE_SHORT'
             ? PaperTradingSignalDirection.SHORT
             : PaperTradingSignalDirection.FLAT,
       instrument: signal.symbol,
@@ -718,9 +724,9 @@ export class PaperTradingEngineService {
   ): Promise<PaperTradingSnapshot> {
     const cumulativeReturn = (portfolioValue - session.initialCapital) / session.initialCapital;
 
-    // Calculate drawdown
-    const peakValue = session.peakPortfolioValue ?? session.initialCapital;
-    const drawdown = peakValue > 0 ? (peakValue - portfolioValue) / peakValue : 0;
+    // Calculate drawdown (clamp to 0 – portfolio may exceed stale peak before processor updates it)
+    const peakValue = Math.max(session.peakPortfolioValue ?? session.initialCapital, portfolioValue);
+    const drawdown = peakValue > 0 ? Math.min(1, Math.max(0, (peakValue - portfolioValue) / peakValue)) : 0;
 
     // Build holdings map
     const holdings: Record<string, SnapshotHolding> = {};
@@ -827,7 +833,7 @@ export class PaperTradingEngineService {
       if (snapshot.portfolioValue > peak) {
         peak = snapshot.portfolioValue;
       }
-      const drawdown = peak > 0 ? (peak - snapshot.portfolioValue) / peak : 0;
+      const drawdown = peak > 0 ? Math.max(0, (peak - snapshot.portfolioValue) / peak) : 0;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }

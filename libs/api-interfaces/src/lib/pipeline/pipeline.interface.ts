@@ -45,6 +45,10 @@ export interface HistoricalStageConfig {
   initialCapital: number;
   tradingFee?: number;
   marketDataSetId?: string;
+  /** Market type: 'spot' or 'futures' */
+  marketType?: string;
+  /** Leverage multiplier for futures (1-10) */
+  leverage?: number;
 }
 
 export interface LiveReplayStageConfig {
@@ -55,6 +59,10 @@ export interface LiveReplayStageConfig {
   marketDataSetId?: string;
   enablePacing?: boolean;
   pacingSpeed?: number;
+  /** Market type: 'spot' or 'futures' */
+  marketType?: string;
+  /** Leverage multiplier for futures (1-10) */
+  leverage?: number;
 }
 
 export interface PaperTradingStageConfig {
@@ -66,6 +74,10 @@ export interface PaperTradingStageConfig {
     targetReturn?: number;
   };
   tickIntervalMs?: number;
+  /** Market type: 'spot' or 'futures' */
+  marketType?: string;
+  /** Leverage multiplier for futures (1-10) */
+  leverage?: number;
 }
 
 export interface PipelineStageConfig {
