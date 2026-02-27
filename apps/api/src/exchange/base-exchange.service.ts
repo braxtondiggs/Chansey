@@ -397,6 +397,61 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   }
 
   /**
+   * Whether this exchange supports futures/perpetual trading.
+   * Override in subclass to enable futures functionality.
+   */
+  get supportsFutures(): boolean {
+    return false;
+  }
+
+  /**
+   * Set the margin mode for a symbol.
+   * @param mode Margin mode (e.g. 'isolated', 'cross')
+   * @param symbol Trading pair symbol
+   * @param user User context for client initialization
+   * @throws Error if exchange doesn't support futures
+   */
+  async setMarginMode(_mode: string, _symbol: string, _user: User): Promise<void> {
+    throw new Error(`${this.constructor.name} does not support futures trading`);
+  }
+
+  /**
+   * Set leverage for a symbol.
+   * @param leverage Leverage multiplier
+   * @param symbol Trading pair symbol
+   * @param user User context for client initialization
+   * @throws Error if exchange doesn't support futures
+   */
+  async setLeverage(_leverage: number, _symbol: string, _user: User): Promise<void> {
+    throw new Error(`${this.constructor.name} does not support futures trading`);
+  }
+
+  /**
+   * Create a futures order.
+   * Override in subclass to provide real implementation.
+   * @throws Error if exchange doesn't support futures
+   */
+  async createFuturesOrder(
+    _user: User,
+    _symbol: string,
+    _side: 'buy' | 'sell',
+    _quantity: number,
+    _leverage: number,
+    _params?: Record<string, unknown>
+  ): Promise<ccxt.Order> {
+    throw new Error(`${this.constructor.name} does not support futures trading`);
+  }
+
+  /**
+   * Get open futures positions.
+   * Override in subclass to provide real implementation.
+   * @throws Error if exchange doesn't support futures
+   */
+  async getFuturesPositions(_user: User, _symbol?: string): Promise<ccxt.Position[]> {
+    throw new Error(`${this.constructor.name} does not support futures trading`);
+  }
+
+  /**
    * Get additional configuration for the client
    * Override in subclasses if needed
    * @returns Additional config object

@@ -434,11 +434,16 @@ export interface PaginatedLiveReplayRunsDto {
 // Pipeline Stage Counts DTO
 // ===========================================================================
 
+export interface StageCountWithStatus {
+  total: number;
+  statusBreakdown: Record<string, number>;
+}
+
 export interface PipelineStageCountsDto {
-  optimizationRuns: number;
-  historicalBacktests: number;
-  liveReplayBacktests: number;
-  paperTradingSessions: number;
+  optimizationRuns: StageCountWithStatus;
+  historicalBacktests: StageCountWithStatus;
+  liveReplayBacktests: StageCountWithStatus;
+  paperTradingSessions: StageCountWithStatus;
 }
 
 // ===========================================================================

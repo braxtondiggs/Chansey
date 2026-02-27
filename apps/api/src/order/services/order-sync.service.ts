@@ -355,6 +355,9 @@ export class OrderSyncService {
       // Extract algorithmic trading fields
       const algorithmicFields = this.extractAlgorithmicTradingFields(exchangeOrder);
 
+      // Detect futures-specific fields from CCXT order info
+      const futuresFields = this.extractFuturesFields(exchangeOrder);
+
       const newOrder = this.orderRepository.create({
         clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id.toString(),
         baseCoin: baseCoin ?? undefined,
@@ -376,7 +379,8 @@ export class OrderSyncService {
         gainLoss: gainLoss ?? undefined,
         averagePrice: exchangeOrder.average ?? undefined,
         exchange: exchange ?? undefined,
-        ...algorithmicFields
+        ...algorithmicFields,
+        ...futuresFields
       });
 
       await this.orderRepository.save(newOrder);
@@ -519,6 +523,35 @@ export class OrderSyncService {
     }
 
     return uniqueOrders;
+  }
+
+  /**
+   * Extract futures-specific fields from a CCXT order
+   * Detects whether an order is a futures/swap order and populates margin, leverage, and liquidation data
+   */
+  private extractFuturesFields(exchangeOrder: ccxt.Order): Partial<Order> {
+    const info = exchangeOrder.info as Record<string, string | number | undefined> | undefined;
+    const orderType = String(exchangeOrder.type ?? '');
+
+    const isFutures =
+      info?.marginMode !== undefined ||
+      orderType === 'swap' ||
+      orderType === 'future' ||
+      info?.marginType !== undefined ||
+      (typeof exchangeOrder.symbol === 'string' && exchangeOrder.symbol.includes(':'));
+
+    if (isFutures) {
+      return {
+        marketType: 'futures',
+        positionSide: info?.positionSide != null ? String(info.positionSide).toLowerCase() : undefined,
+        leverage: info?.leverage != null ? Number(info.leverage) : undefined,
+        liquidationPrice: info?.liquidationPrice != null ? Number(info.liquidationPrice) : undefined,
+        marginAmount: info?.initialMargin != null ? Number(info.initialMargin) : undefined,
+        marginMode: info?.marginMode != null ? String(info.marginMode).toLowerCase() : undefined
+      };
+    }
+
+    return { marketType: 'spot' };
   }
 
   private removeDuplicateTrades(trades: ccxt.Trade[]): ccxt.Trade[] {

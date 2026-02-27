@@ -54,6 +54,12 @@ export interface TradeMetrics {
   realizedPnL: number;
   /** Trade type: 'BUY' or 'SELL' */
   type: 'BUY' | 'SELL';
+  /** Position side: 'long' or 'short' (for per-side metrics) */
+  positionSide?: 'long' | 'short';
+  /** Leverage used for this trade */
+  leverage?: number;
+  /** Additional trade metadata (e.g., liquidation flags) */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -82,8 +88,24 @@ export interface MetricsResult {
   totalTrades: number;
   /** Number of winning trades */
   winningTrades: number;
+  /** Number of losing trades */
+  losingTrades: number;
   /** Final portfolio value */
   finalValue: number;
+  /** Total number of liquidations (leveraged positions hitting liquidation price) */
+  totalLiquidations?: number;
+  /** Number of short trades (SELL type with positionSide 'short') */
+  shortTradeCount?: number;
+  /** Win rate for short trades */
+  shortWinRate?: number;
+  /** Number of long trades (SELL type with positionSide 'long' or undefined) */
+  longTradeCount?: number;
+  /** Win rate for long trades */
+  longWinRate?: number;
+  /** Average leverage used across all leveraged trades */
+  avgLeverage?: number;
+  /** Maximum margin utilization observed (0-1) */
+  maxMarginUtilization?: number;
 }
 
 /**

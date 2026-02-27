@@ -17,6 +17,10 @@ export interface Portfolio {
   positions: Map<string, Position>;
   /** Total portfolio value (cash + positions) */
   totalValue: number;
+  /** Total margin currently locked in short/leveraged positions */
+  totalMarginUsed?: number;
+  /** Available margin for new positions (equals cashBalance when no margin is used) */
+  availableMargin?: number;
 }
 
 /**
@@ -45,6 +49,14 @@ export interface SerializablePosition {
   quantity: number;
   averagePrice: number;
   entryDate?: string;
+  /** Position side: 'long' (default) or 'short' */
+  side?: 'long' | 'short';
+  /** Leverage multiplier (default: 1) */
+  leverage?: number;
+  /** Margin amount locked for leveraged/short positions */
+  marginAmount?: number;
+  /** Price at which the position is automatically liquidated */
+  liquidationPrice?: number;
 }
 
 /**
@@ -168,6 +180,31 @@ export interface IPortfolioState {
    * @returns Total value of all positions
    */
   calculatePositionsValue(positions: Map<string, Position>, prices: Map<string, number>): number;
+
+  /**
+   * Apply an open short trade to the portfolio
+   */
+  applyOpenShort(
+    portfolio: Portfolio,
+    coinId: string,
+    quantity: number,
+    price: number,
+    fee: number,
+    leverage?: number,
+    currentPrices?: Map<string, number>
+  ): ApplyTradeResult;
+
+  /**
+   * Apply a close short trade to the portfolio
+   */
+  applyCloseShort(
+    portfolio: Portfolio,
+    coinId: string,
+    quantity: number,
+    price: number,
+    fee: number,
+    currentPrices?: Map<string, number>
+  ): ApplyTradeResult;
 
   /**
    * Serialize portfolio for checkpointing

@@ -813,6 +813,14 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Update futures-specific configuration on a backtest entity.
+   * Used by pipeline orchestration to propagate marketType and leverage from StrategyConfig.
+   */
+  async updateBacktestFuturesConfig(backtestId: string, marketType: string, leverage: number): Promise<void> {
+    await this.backtestRepository.update(backtestId, { marketType, leverage });
+  }
+
+  /**
    * Delete a backtest
    */
   async deleteBacktest(user: User, backtestId: string): Promise<void> {

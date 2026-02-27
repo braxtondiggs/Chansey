@@ -81,7 +81,8 @@ export class MetricsCalculatorService implements IMetricsCalculator {
     const annualizedReturn =
       durationPeriods > 0 ? Math.pow(1 + totalReturn, periodsPerYear / durationPeriods) - 1 : totalReturn;
 
-    return {
+    // Base metrics result
+    const result: MetricsResult = {
       sharpeRatio,
       sortinoRatio,
       maxDrawdown,
@@ -93,8 +94,36 @@ export class MetricsCalculatorService implements IMetricsCalculator {
       annualizedReturn,
       totalTrades: trades.length,
       winningTrades: sellTrades.filter((t) => t.realizedPnL > 0).length,
+      losingTrades: sellTrades.filter((t) => t.realizedPnL <= 0).length,
       finalValue
     };
+
+    // Compute short/leverage-specific metrics when applicable
+    const hasShortOrLeverage = trades.some((t) => t.positionSide === 'short' || (t.leverage && t.leverage > 1));
+    if (hasShortOrLeverage) {
+      // Short trade metrics (SELL trades with positionSide 'short')
+      const shortSells = sellTrades.filter((t) => t.positionSide === 'short');
+      const longSells = sellTrades.filter((t) => t.positionSide !== 'short');
+
+      result.shortTradeCount = shortSells.length;
+      result.shortWinRate =
+        shortSells.length > 0 ? shortSells.filter((t) => t.realizedPnL > 0).length / shortSells.length : 0;
+      result.longTradeCount = longSells.length;
+      result.longWinRate =
+        longSells.length > 0 ? longSells.filter((t) => t.realizedPnL > 0).length / longSells.length : 0;
+
+      // Average leverage across leveraged trades
+      const leveragedTrades = trades.filter((t) => t.leverage && t.leverage > 1);
+      result.avgLeverage =
+        leveragedTrades.length > 0
+          ? leveragedTrades.reduce((sum, t) => sum + (t.leverage ?? 1), 0) / leveragedTrades.length
+          : undefined;
+
+      // Count liquidation events
+      result.totalLiquidations = trades.filter((t) => t.metadata?.liquidated === true).length;
+    }
+
+    return result;
   }
 
   /**
@@ -237,6 +266,7 @@ export class MetricsCalculatorService implements IMetricsCalculator {
       annualizedReturn: 0,
       totalTrades: 0,
       winningTrades: 0,
+      losingTrades: 0,
       finalValue: initialCapital
     };
   }

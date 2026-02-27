@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import { MAINTENANCE_MARGIN_RATE } from '@chansey/api-interfaces';
+
 import {
   ClosePositionInput,
   CONFIDENCE_EXIT_MAX_PERCENT,
@@ -302,9 +304,222 @@ export class PositionManagerService implements IPositionManager {
    * Update position value with current market price
    */
   updatePositionValue(position: Position, currentPrice: number): Position {
+    if (position.side === 'short' && position.marginAmount !== undefined) {
+      // Short position value = margin + unrealized P&L
+      return {
+        ...position,
+        totalValue: Math.max(0, position.marginAmount + (position.averagePrice - currentPrice) * position.quantity)
+      };
+    }
     return {
       ...position,
       totalValue: position.quantity * currentPrice
     };
+  }
+
+  /**
+   * Open a short position
+   *
+   * Uses the same sizing logic as openPosition but calculates margin requirements
+   * and liquidation price for the short side.
+   */
+  openShort(
+    existingPosition: Position | undefined,
+    input: OpenPositionInput,
+    config: PositionSizingConfig = DEFAULT_POSITION_CONFIG,
+    leverage = 1
+  ): PositionActionResult {
+    // Validate input
+    const validation = this.validatePosition('open', existingPosition, input, 0, config);
+    if (validation) {
+      return {
+        success: false,
+        quantity: 0,
+        price: input.price,
+        totalValue: 0,
+        error: validation.message
+      };
+    }
+
+    // Calculate quantity based on input priority: quantity > percentage > confidence
+    let quantity: number;
+
+    if (input.quantity !== undefined && input.quantity > 0) {
+      quantity = input.quantity;
+    } else if (input.percentage !== undefined && input.percentage > 0) {
+      const investmentAmount = input.portfolioValue * input.percentage;
+      quantity = investmentAmount / input.price;
+    } else if (input.confidence !== undefined) {
+      quantity = this.calculatePositionSize(input.portfolioValue, input.confidence, input.price, config);
+    } else {
+      const minAllocation = config.minAllocation ?? DEFAULT_POSITION_CONFIG.minAllocation ?? 0.05;
+      const investmentAmount = input.portfolioValue * minAllocation;
+      quantity = investmentAmount / input.price;
+    }
+
+    // Calculate margin requirement
+    const marginAmount = (quantity * input.price) / leverage;
+
+    // Validate we have enough capital for margin
+    if (marginAmount > input.availableCapital) {
+      return {
+        success: false,
+        quantity: 0,
+        price: input.price,
+        totalValue: 0,
+        error: 'Insufficient capital for short position margin'
+      };
+    }
+
+    // Calculate liquidation price
+    const liquidationPrice = this.calculateLiquidationPrice(input.price, leverage, 'short');
+
+    // Create short position
+    const newPosition: Position = {
+      coinId: input.coinId,
+      quantity,
+      averagePrice: input.price,
+      totalValue: marginAmount,
+      side: 'short',
+      leverage,
+      marginAmount,
+      liquidationPrice
+    };
+
+    return {
+      success: true,
+      position: newPosition,
+      quantity,
+      price: input.price,
+      totalValue: marginAmount,
+      marginAmount,
+      liquidationPrice
+    };
+  }
+
+  /**
+   * Close or reduce a short position
+   *
+   * Uses the same close sizing logic as closePosition but calculates
+   * inverted P&L (profit when price drops) and returns margin proportionally.
+   */
+  closeShort(
+    position: Position,
+    input: ClosePositionInput,
+    config: PositionSizingConfig = DEFAULT_POSITION_CONFIG
+  ): PositionActionResult {
+    // Validate input
+    const validation = this.validatePosition('close', position, input, 0, config);
+    if (validation) {
+      return {
+        success: false,
+        quantity: 0,
+        price: input.price,
+        totalValue: 0,
+        error: validation.message
+      };
+    }
+
+    // Calculate quantity based on input priority: quantity > percentage > confidence
+    let quantity: number;
+
+    if (input.quantity !== undefined && input.quantity > 0) {
+      quantity = Math.min(input.quantity, position.quantity);
+    } else if (input.percentage !== undefined && input.percentage > 0) {
+      quantity = position.quantity * Math.min(1, input.percentage);
+    } else if (input.confidence !== undefined) {
+      const exitRange = CONFIDENCE_EXIT_MAX_PERCENT - CONFIDENCE_EXIT_MIN_PERCENT;
+      const confidenceBasedPercent = CONFIDENCE_EXIT_MIN_PERCENT + input.confidence * exitRange;
+      quantity = position.quantity * confidenceBasedPercent;
+    } else {
+      quantity = position.quantity;
+    }
+
+    // Ensure we don't close more than we have
+    quantity = Math.min(quantity, position.quantity);
+
+    const costBasis = position.averagePrice;
+
+    // Calculate realized P&L: (entryPrice - exitPrice) * quantity (inverted from long)
+    const realizedPnL = (costBasis - input.price) * quantity;
+    const realizedPnLPercent = costBasis > 0 ? (costBasis - input.price) / costBasis : 0;
+
+    // Return margin proportionally
+    const returnedMargin = (position.marginAmount ?? 0) * (quantity / position.quantity);
+
+    // Cap loss at margin amount
+    const cappedPnL = Math.max(-returnedMargin, realizedPnL);
+
+    // Calculate remaining position
+    const remainingQuantity = position.quantity - quantity;
+    let updatedPosition: Position | undefined;
+
+    if (remainingQuantity > 0) {
+      const remainingMargin = (position.marginAmount ?? 0) - returnedMargin;
+      updatedPosition = {
+        coinId: input.coinId,
+        quantity: remainingQuantity,
+        averagePrice: position.averagePrice,
+        totalValue: remainingMargin + (position.averagePrice - input.price) * remainingQuantity,
+        side: 'short',
+        leverage: position.leverage,
+        marginAmount: remainingMargin,
+        liquidationPrice: position.liquidationPrice
+      };
+    }
+
+    return {
+      success: true,
+      position: updatedPosition,
+      realizedPnL: cappedPnL,
+      realizedPnLPercent,
+      costBasis,
+      quantity,
+      price: input.price,
+      totalValue: returnedMargin,
+      marginAmount: returnedMargin,
+      liquidationPrice: position.liquidationPrice
+    };
+  }
+
+  /**
+   * Calculate liquidation price for a leveraged position
+   *
+   * @param entryPrice Entry price of the position
+   * @param leverage Leverage multiplier
+   * @param side Position side ('long' or 'short')
+   * @param maintenanceMarginRate Maintenance margin rate (default: 0.005 = 0.5%)
+   * @returns Liquidation price
+   */
+  calculateLiquidationPrice(
+    entryPrice: number,
+    leverage: number,
+    side: 'long' | 'short',
+    maintenanceMarginRate = MAINTENANCE_MARGIN_RATE
+  ): number {
+    if (side === 'long') {
+      return entryPrice * (1 - 1 / leverage + maintenanceMarginRate);
+    }
+    // Short: liquidation when price rises
+    return entryPrice * (1 + 1 / leverage - maintenanceMarginRate);
+  }
+
+  /**
+   * Check if a position has been liquidated at the current price
+   *
+   * @param position The position to check
+   * @param currentPrice Current market price
+   * @returns true if the position should be liquidated
+   */
+  isLiquidated(position: Position, currentPrice: number): boolean {
+    if (!position.leverage || position.leverage <= 1) return false;
+    if (position.liquidationPrice === undefined) return false;
+
+    if (position.side === 'short') {
+      // Short position: liquidated if price rises above liquidation price
+      return currentPrice >= position.liquidationPrice;
+    }
+    // Long position: liquidated if price drops below liquidation price
+    return currentPrice <= position.liquidationPrice;
   }
 }

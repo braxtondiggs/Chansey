@@ -38,4 +38,14 @@ export class SettingsService {
       invalidateQueries: [queryKeys.profile.opportunitySelling(), queryKeys.auth.user()]
     });
   }
+
+  useFuturesTradingQuery() {
+    return useAuthQuery<{ futuresEnabled: boolean }>(queryKeys.profile.futuresTrading(), '/api/user/futures-trading');
+  }
+
+  useUpdateFuturesTradingMutation() {
+    return useAuthMutation<{ futuresEnabled: boolean }, { enabled: boolean }>('/api/user/futures-trading', 'PATCH', {
+      invalidateQueries: [queryKeys.profile.futuresTrading(), queryKeys.auth.user()]
+    });
+  }
 }

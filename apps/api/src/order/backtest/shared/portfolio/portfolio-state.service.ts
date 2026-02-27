@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import { MAINTENANCE_MARGIN_RATE } from '@chansey/api-interfaces';
+
 import {
   ApplyTradeResult,
   DrawdownState,
@@ -45,7 +47,9 @@ export class PortfolioStateService implements IPortfolioState {
     return {
       cashBalance: initialCapital,
       positions: new Map<string, Position>(),
-      totalValue: initialCapital
+      totalValue: initialCapital,
+      totalMarginUsed: 0,
+      availableMargin: initialCapital
     };
   }
 
@@ -59,7 +63,18 @@ export class PortfolioStateService implements IPortfolioState {
 
     for (const [coinId, position] of portfolio.positions) {
       const currentPrice = prices.get(coinId);
-      const newTotalValue = currentPrice !== undefined ? position.quantity * currentPrice : position.totalValue;
+      let newTotalValue: number;
+
+      if (position.side === 'short' && position.marginAmount !== undefined) {
+        // Short position value = margin + unrealized P&L
+        // Unrealized P&L for short = (entryPrice - currentPrice) * quantity
+        newTotalValue =
+          currentPrice !== undefined
+            ? Math.max(0, position.marginAmount + (position.averagePrice - currentPrice) * position.quantity)
+            : position.totalValue;
+      } else {
+        newTotalValue = currentPrice !== undefined ? position.quantity * currentPrice : position.totalValue;
+      }
 
       // Create new position object (immutable)
       newPositions.set(coinId, {
@@ -73,7 +88,9 @@ export class PortfolioStateService implements IPortfolioState {
     return {
       cashBalance: portfolio.cashBalance,
       positions: newPositions,
-      totalValue
+      totalValue,
+      totalMarginUsed: portfolio.totalMarginUsed,
+      availableMargin: portfolio.availableMargin
     };
   }
 
@@ -113,6 +130,16 @@ export class PortfolioStateService implements IPortfolioState {
 
     // Get or create position
     const existingPosition = portfolio.positions.get(coinId);
+
+    // Guard: reject if a short position exists for this coin
+    if (existingPosition && existingPosition.side === 'short' && existingPosition.quantity > 0) {
+      return {
+        portfolio,
+        success: false,
+        error: 'Cannot buy: short position already exists for this coin'
+      };
+    }
+
     let newPosition: Position;
 
     if (existingPosition && existingPosition.quantity > 0) {
@@ -225,6 +252,168 @@ export class PortfolioStateService implements IPortfolioState {
   }
 
   /**
+   * Apply an open short trade to the portfolio.
+   * Locks margin from cashBalance and creates a short position.
+   *
+   * @param portfolio Current portfolio state
+   * @param coinId The coin to short
+   * @param quantity Amount to short
+   * @param price Execution price
+   * @param fee Trading fee
+   * @param leverage Leverage multiplier (default: 1)
+   * @param currentPrices Optional map of current prices for all positions
+   */
+  applyOpenShort(
+    portfolio: Portfolio,
+    coinId: string,
+    quantity: number,
+    price: number,
+    fee: number,
+    leverage = 1,
+    currentPrices?: Map<string, number>
+  ): ApplyTradeResult {
+    // Guard: reject if a long position exists for this coin
+    const existingLong = portfolio.positions.get(coinId);
+    if (existingLong && existingLong.side !== 'short' && existingLong.quantity > 0) {
+      return {
+        portfolio,
+        success: false,
+        error: 'Cannot open short: long position already exists for this coin'
+      };
+    }
+
+    const marginAmount = (quantity * price) / leverage;
+
+    // Validate sufficient funds for margin + fee
+    if (portfolio.cashBalance < marginAmount + fee) {
+      return {
+        portfolio,
+        success: false,
+        error: 'Insufficient cash balance for short trade margin'
+      };
+    }
+
+    // Deduct margin + fee from cash
+    const newCashBalance = portfolio.cashBalance - marginAmount - fee;
+
+    // Calculate liquidation price: price * (1 + 1/leverage - maintenanceMarginRate)
+    const maintenanceMarginRate = MAINTENANCE_MARGIN_RATE;
+    const liquidationPrice = price * (1 + 1 / leverage - maintenanceMarginRate);
+
+    // Create short position
+    const newPosition: Position = {
+      coinId,
+      quantity,
+      averagePrice: price,
+      totalValue: marginAmount,
+      side: 'short',
+      leverage,
+      marginAmount,
+      liquidationPrice
+    };
+
+    // Create new positions map
+    const newPositions = new Map(portfolio.positions);
+    newPositions.set(coinId, newPosition);
+
+    // Calculate new total value
+    const pricesForCalculation = currentPrices ?? new Map([[coinId, price]]);
+    const newTotalValue = newCashBalance + this.calculatePositionsValue(newPositions, pricesForCalculation);
+
+    const newTotalMarginUsed = (portfolio.totalMarginUsed ?? 0) + marginAmount;
+
+    return {
+      portfolio: {
+        cashBalance: newCashBalance,
+        positions: newPositions,
+        totalValue: newTotalValue,
+        totalMarginUsed: newTotalMarginUsed,
+        availableMargin: newCashBalance
+      },
+      success: true
+    };
+  }
+
+  /**
+   * Apply a close short trade to the portfolio.
+   * Returns margin proportionally and realizes P&L.
+   *
+   * @param portfolio Current portfolio state
+   * @param coinId The coin to close short on
+   * @param quantity Amount to close
+   * @param price Execution price (exit price)
+   * @param fee Trading fee
+   * @param currentPrices Optional map of current prices for all positions
+   */
+  applyCloseShort(
+    portfolio: Portfolio,
+    coinId: string,
+    quantity: number,
+    price: number,
+    fee: number,
+    currentPrices?: Map<string, number>
+  ): ApplyTradeResult {
+    const existingPosition = portfolio.positions.get(coinId);
+
+    // Validate short position exists
+    if (!existingPosition || existingPosition.side !== 'short' || existingPosition.quantity === 0) {
+      return {
+        portfolio,
+        success: false,
+        error: 'No short position to close'
+      };
+    }
+
+    // Cap quantity to available
+    const actualQuantity = Math.min(quantity, existingPosition.quantity);
+
+    // Calculate realized P&L: (entryPrice - exitPrice) * quantity (profit when price drops)
+    const realizedPnL = (existingPosition.averagePrice - price) * actualQuantity;
+
+    // Return margin proportionally
+    const returnedMargin = (existingPosition.marginAmount ?? 0) * (actualQuantity / existingPosition.quantity);
+
+    // Cap loss at margin amount
+    const cappedPnL = Math.max(-returnedMargin, realizedPnL);
+
+    // Update cashBalance: += returnedMargin + cappedPnL - fee
+    const newCashBalance = portfolio.cashBalance + returnedMargin + cappedPnL - fee;
+
+    // Update position
+    const remainingQuantity = existingPosition.quantity - actualQuantity;
+    const newPositions = new Map(portfolio.positions);
+
+    if (remainingQuantity <= 0) {
+      newPositions.delete(coinId);
+    } else {
+      const remainingMargin = (existingPosition.marginAmount ?? 0) - returnedMargin;
+      newPositions.set(coinId, {
+        ...existingPosition,
+        quantity: remainingQuantity,
+        totalValue: remainingMargin + (existingPosition.averagePrice - price) * remainingQuantity,
+        marginAmount: remainingMargin
+      });
+    }
+
+    // Calculate new total value
+    const pricesForCalculation = currentPrices ?? new Map([[coinId, price]]);
+    const newTotalValue = newCashBalance + this.calculatePositionsValue(newPositions, pricesForCalculation);
+
+    const newTotalMarginUsed = Math.max(0, (portfolio.totalMarginUsed ?? 0) - returnedMargin);
+
+    return {
+      portfolio: {
+        cashBalance: newCashBalance,
+        positions: newPositions,
+        totalValue: newTotalValue,
+        totalMarginUsed: newTotalMarginUsed,
+        availableMargin: newCashBalance
+      },
+      success: true
+    };
+  }
+
+  /**
    * Create a snapshot of the current portfolio state
    */
   createSnapshot(
@@ -289,11 +478,20 @@ export class PortfolioStateService implements IPortfolioState {
 
     for (const [coinId, position] of positions) {
       const price = prices.get(coinId);
-      if (price !== undefined) {
-        total += position.quantity * price;
+      if (position.side === 'short' && position.marginAmount !== undefined) {
+        // Short position value = margin + unrealized P&L
+        if (price !== undefined) {
+          total += Math.max(0, position.marginAmount + (position.averagePrice - price) * position.quantity);
+        } else {
+          total += position.totalValue;
+        }
       } else {
-        // Use stored totalValue if no current price
-        total += position.totalValue;
+        if (price !== undefined) {
+          total += position.quantity * price;
+        } else {
+          // Use stored totalValue if no current price
+          total += position.totalValue;
+        }
       }
     }
 
@@ -310,7 +508,11 @@ export class PortfolioStateService implements IPortfolioState {
         coinId,
         quantity: pos.quantity,
         averagePrice: pos.averagePrice,
-        ...(pos.entryDate && { entryDate: pos.entryDate.toISOString() })
+        ...(pos.entryDate && { entryDate: pos.entryDate.toISOString() }),
+        ...(pos.side && { side: pos.side }),
+        ...(pos.leverage !== undefined && { leverage: pos.leverage }),
+        ...(pos.marginAmount !== undefined && { marginAmount: pos.marginAmount }),
+        ...(pos.liquidationPrice !== undefined && { liquidationPrice: pos.liquidationPrice })
       }))
     };
   }
@@ -321,17 +523,30 @@ export class PortfolioStateService implements IPortfolioState {
   deserialize(serialized: SerializablePortfolio, currentPrices?: Map<string, number>): Portfolio {
     const positions = new Map<string, Position>();
     let positionsValue = 0;
+    let totalMarginUsed = 0;
 
     for (const pos of serialized.positions) {
       const price = currentPrices?.get(pos.coinId) ?? pos.averagePrice;
-      const totalValue = pos.quantity * price;
+      let totalValue: number;
+
+      if (pos.side === 'short' && pos.marginAmount !== undefined) {
+        // Short position value = margin + unrealized P&L
+        totalValue = pos.marginAmount + (pos.averagePrice - price) * pos.quantity;
+        totalMarginUsed += pos.marginAmount;
+      } else {
+        totalValue = pos.quantity * price;
+      }
 
       positions.set(pos.coinId, {
         coinId: pos.coinId,
         quantity: pos.quantity,
         averagePrice: pos.averagePrice,
         totalValue,
-        ...(pos.entryDate && { entryDate: new Date(pos.entryDate) })
+        ...(pos.entryDate && { entryDate: new Date(pos.entryDate) }),
+        ...(pos.side && { side: pos.side }),
+        ...(pos.leverage !== undefined && { leverage: pos.leverage }),
+        ...(pos.marginAmount !== undefined && { marginAmount: pos.marginAmount }),
+        ...(pos.liquidationPrice !== undefined && { liquidationPrice: pos.liquidationPrice })
       });
 
       positionsValue += totalValue;
@@ -340,7 +555,9 @@ export class PortfolioStateService implements IPortfolioState {
     return {
       cashBalance: serialized.cashBalance,
       positions,
-      totalValue: serialized.cashBalance + positionsValue
+      totalValue: serialized.cashBalance + positionsValue,
+      totalMarginUsed,
+      availableMargin: serialized.cashBalance
     };
   }
 }

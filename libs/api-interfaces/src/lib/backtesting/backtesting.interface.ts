@@ -195,6 +195,10 @@ export interface BacktestRunDetail extends BacktestRunSummary {
   deterministicSeed?: string;
   signalsCount?: number;
   tradesCount?: number;
+  /** Market type: 'spot' or 'futures' */
+  marketType?: string;
+  /** Leverage multiplier for futures backtests */
+  leverage?: number;
   auditTrail?: Array<{
     previousStatus: BacktestStatus;
     nextStatus: BacktestStatus;
@@ -243,6 +247,10 @@ export interface CreateBacktestRequest {
   deterministicSeed?: string;
   /** Replay speed for LIVE_REPLAY backtests (default: FAST_5X) */
   replaySpeed?: ReplaySpeed;
+  /** Market type: 'spot' or 'futures' (default: 'spot') */
+  marketType?: string;
+  /** Leverage multiplier for futures backtests (1-10) */
+  leverage?: number;
 }
 
 export interface BacktestFilters {

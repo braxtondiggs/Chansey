@@ -21,10 +21,10 @@ export class PreTradeRiskGateService {
 
   async checkDrawdown(
     strategyConfigId: string,
-    action: 'buy' | 'sell'
+    action: 'buy' | 'sell' | 'short_entry' | 'short_exit'
   ): Promise<{ allowed: boolean; reason?: string }> {
-    // SELLs always allowed — must be able to unwind positions
-    if (action === 'sell') {
+    // SELLs and short exits always allowed — must be able to unwind positions
+    if (action === 'sell' || action === 'short_exit') {
       return { allowed: true };
     }
 

@@ -562,7 +562,8 @@ export class OptimizationOrchestratorService {
           window.trainEndDate,
           coins,
           preloadedCandlesByCoin,
-          trainPrecomputed
+          trainPrecomputed,
+          config.riskLevel
         ),
         this.executeBacktest(
           strategyConfig,
@@ -571,7 +572,8 @@ export class OptimizationOrchestratorService {
           window.testEndDate,
           coins,
           preloadedCandlesByCoin,
-          testPrecomputed
+          testPrecomputed,
+          config.riskLevel
         )
       ]);
 
@@ -684,7 +686,8 @@ export class OptimizationOrchestratorService {
     endDate: Date,
     coins: Coin[],
     preloadedCandlesByCoin?: Map<string, OHLCCandle[]>,
-    precomputedData?: PrecomputedWindowData
+    precomputedData?: PrecomputedWindowData,
+    riskLevel?: number
   ): Promise<import('@chansey/api-interfaces').WindowMetrics> {
     // Build optimization backtest config
     const backtestConfig: OptimizationBacktestConfig = {
@@ -694,7 +697,7 @@ export class OptimizationOrchestratorService {
       endDate,
       initialCapital: 10000,
       tradingFee: 0.001,
-      enableRegimeGate: true,
+      riskLevel,
       enableRegimeScaledSizing: true
     };
 
