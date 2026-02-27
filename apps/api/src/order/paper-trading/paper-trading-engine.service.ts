@@ -409,7 +409,9 @@ export class PaperTradingEngineService {
         metadata: {
           sessionId: session.id,
           isPaperTrading: true
-        }
+        },
+        compositeRegime: this.compositeRegimeService.getCompositeRegime(),
+        volatilityRegime: this.compositeRegimeService.getVolatilityRegime()
       };
 
       const result: AlgorithmResult = await this.algorithmRegistry.executeAlgorithm(

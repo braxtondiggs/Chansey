@@ -200,6 +200,7 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
         });
       };
 
+      const regimeConfig = backtest.configSnapshot?.regime;
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
@@ -208,7 +209,10 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
         onCheckpoint,
         onHeartbeat,
         resumeFrom,
-        exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined
+        exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined,
+        enableRegimeGate: regimeConfig?.enableRegimeGate,
+        enableRegimeScaledSizing: regimeConfig?.enableRegimeScaledSizing,
+        riskLevel: regimeConfig?.riskLevel
       });
 
       // Clear checkpoint on successful completion

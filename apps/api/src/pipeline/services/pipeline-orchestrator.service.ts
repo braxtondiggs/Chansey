@@ -1091,6 +1091,15 @@ export class PipelineOrchestratorService {
     this.logger.log(`Started optimization run ${run.id} for pipeline ${pipeline.id}`);
   }
 
+  private getUserRiskLevel(pipeline: Pipeline): number {
+    const user = pipeline.user as User;
+    if (!user.risk) {
+      this.logger.warn(`Pipeline ${pipeline.id}: user.risk not loaded, falling back to default risk level 3`);
+      return 3;
+    }
+    return user.risk.level ?? 3;
+  }
+
   private async executeHistoricalStage(pipeline: Pipeline): Promise<void> {
     const config = pipeline.stageConfig.historical;
     const marketDataSetId = config.marketDataSetId ?? (await this.backtestService.getDefaultDatasetId());
@@ -1108,7 +1117,8 @@ export class PipelineOrchestratorService {
       endDate: config.endDate,
       initialCapital: config.initialCapital,
       tradingFee: config.tradingFee ?? 0.001,
-      strategyParams: pipeline.optimizedParameters as Record<string, any>
+      strategyParams: pipeline.optimizedParameters as Record<string, any>,
+      riskLevel: this.getUserRiskLevel(pipeline)
     });
 
     // Store backtest reference
@@ -1135,7 +1145,8 @@ export class PipelineOrchestratorService {
       endDate: config.endDate,
       initialCapital: config.initialCapital,
       tradingFee: config.tradingFee ?? 0.001,
-      strategyParams: pipeline.optimizedParameters as Record<string, any>
+      strategyParams: pipeline.optimizedParameters as Record<string, any>,
+      riskLevel: this.getUserRiskLevel(pipeline)
     });
 
     // Store backtest reference
@@ -1164,7 +1175,7 @@ export class PipelineOrchestratorService {
       stopConditions: config.stopConditions,
       userId: pipeline.user.id,
       name: `Pipeline ${pipeline.name} - Paper Trading`,
-      riskLevel: (pipeline.user as any).risk?.level ?? 3
+      riskLevel: this.getUserRiskLevel(pipeline)
     });
 
     // Store session reference
