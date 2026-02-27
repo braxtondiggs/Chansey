@@ -93,6 +93,8 @@ export class SettingsComponent implements OnInit {
   readonly coinsQuery = this.settingsService.useCoinsQuery();
   readonly opportunitySellingQuery = this.settingsService.useOpportunitySellingQuery();
   readonly updateOpportunitySellingMutation = this.settingsService.useUpdateOpportunitySellingMutation();
+  readonly futuresTradingQuery = this.settingsService.useFuturesTradingQuery();
+  readonly updateFuturesTradingMutation = this.settingsService.useUpdateFuturesTradingMutation();
 
   darkMode = this.layoutService.isDarkTheme();
   compactMode = false;
@@ -117,6 +119,8 @@ export class SettingsComponent implements OnInit {
     protectedCoins: new FormControl([]),
     maxLiquidationPercent: new FormControl(30)
   });
+
+  futuresEnabled = false;
 
   private opportunitySellingInitialized = false;
   protectedCoinSuggestions: Coin[] = [];
@@ -297,6 +301,13 @@ export class SettingsComponent implements OnInit {
           },
           { emitEvent: false }
         );
+      }
+    });
+
+    effect(() => {
+      const data = this.futuresTradingQuery.data();
+      if (data) {
+        this.futuresEnabled = data.futuresEnabled;
       }
     });
   }
@@ -734,6 +745,34 @@ export class SettingsComponent implements OnInit {
           !selectedSlugs.has(c.slug) && (c.name.toLowerCase().includes(query) || c.symbol.toLowerCase().includes(query))
       )
       .slice(0, 10);
+  }
+
+  get hasFuturesCapableExchange(): boolean {
+    const user = this.userQuery.data();
+    return !!user?.exchanges?.some((ex) => ex.supportsFutures);
+  }
+
+  toggleFuturesTrading(event: { checked: boolean }): void {
+    this.updateFuturesTradingMutation.mutate(
+      { enabled: event.checked },
+      {
+        onSuccess: () => {
+          this.messageService.add({
+            severity: event.checked ? 'success' : 'warn',
+            summary: event.checked ? 'Enabled' : 'Disabled',
+            detail: `Futures trading has been ${event.checked ? 'enabled' : 'disabled'}`
+          });
+        },
+        onError: (error: Error) => {
+          this.futuresEnabled = !event.checked;
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error?.message || 'Failed to update futures trading'
+          });
+        }
+      }
+    );
   }
 
   toggleOpportunitySelling(event: { checked: boolean }): void {

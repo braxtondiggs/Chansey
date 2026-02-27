@@ -27,6 +27,7 @@ prioritized assessment. Optionally apply the worthwhile changes.
 
 Common AI review bots to look for:
 
+- `claude[bot]` (Anthropic Claude code review)
 - `gemini-code-assist[bot]` / `google-gemini-code-assist`
 - `github-actions[bot]` (when running AI review actions)
 - `coderabbitai[bot]`
@@ -44,13 +45,13 @@ gh pr view <pr-number> --json title,body,headRefName,baseRefName,changedFiles,fi
 Get all review comments (inline code comments):
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/<pr-number>/comments --paginate --jq '.[] | select(.user.login | test("bot|gemini|copilot|coderabbit|ai"; "i")) | {id: .id, user: .user.login, path: .path, line: .line, original_line: .original_line, side: .side, body: .body, diff_hunk: .diff_hunk, created_at: .created_at}'
+gh api repos/{owner}/{repo}/pulls/<pr-number>/comments --paginate --jq '.[] | select(.user.login | test("bot|gemini|copilot|coderabbit|claude|ai"; "i")) | {id: .id, user: .user.login, path: .path, line: .line, original_line: .original_line, side: .side, body: .body, diff_hunk: .diff_hunk, created_at: .created_at}'
 ```
 
 Also get issue-level comments (some bots post summary comments):
 
 ```bash
-gh api repos/{owner}/{repo}/issues/<pr-number>/comments --paginate --jq '.[] | select(.user.login | test("bot|gemini|copilot|coderabbit|ai"; "i")) | {id: .id, user: .user.login, body: .body, created_at: .created_at}'
+gh api repos/{owner}/{repo}/issues/<pr-number>/comments --paginate --jq '.[] | select(.user.login | test("bot|gemini|copilot|coderabbit|claude|ai"; "i")) | {id: .id, user: .user.login, body: .body, created_at: .created_at}'
 ```
 
 If `--bot` is specified, filter to only that bot's username.
@@ -61,14 +62,34 @@ If no bot comments are found with the filter, fall back to listing ALL commenter
 gh api repos/{owner}/{repo}/pulls/<pr-number>/comments --jq '.[].user.login' | sort -u
 ```
 
-### 3. Read Relevant Source Files
+### 3. Extract All Actionable Suggestions
 
-For each inline review comment, read the actual source file it references to understand the full context (not just the
-diff hunk).
+Collect suggestions from BOTH sources into a single unified list for evaluation:
 
-### 4. Evaluate Each Comment
+**From inline review comments**: Each comment already has a file path and line number — use those directly.
 
-For every bot suggestion, assess it on these criteria:
+**From issue-level comments**: Some bots (especially `claude[bot]`) post a single large comment containing multiple
+code-level suggestions with file:line references, code snippets, and recommendations. Parse these into individual
+suggestions by looking for:
+
+- File paths with line numbers (e.g., `backtest-exit-tracker.ts:289`)
+- `Location:` or `**Location**:` labels followed by file references
+- Numbered lists of suggestions with code blocks
+- Markdown headers that group individual suggestions (e.g., `### 1. ATR Calculation Limitations`)
+
+Each extracted suggestion should have: file path, line number (if given), description, and the bot's recommendation.
+Ignore purely informational sections (changelogs, summaries, approval statements) — only extract items with a concrete
+code-level suggestion or recommendation.
+
+### 4. Read Relevant Source Files
+
+For each suggestion (both inline and extracted from issue-level comments), read the actual source file it references to
+understand the full context (not just the diff hunk).
+
+### 5. Evaluate Each Suggestion
+
+Evaluate ALL suggestions equally — inline comments and issue-level suggestions get the same treatment. For every bot
+suggestion, assess it on these criteria:
 
 | Criteria        | Description                                                  |
 | --------------- | ------------------------------------------------------------ |
@@ -84,14 +105,18 @@ Assign each comment a verdict:
 - **CONSIDER** — Has merit but needs adjustment, or is a style preference. Discuss with user.
 - **SKIP** — Incorrect, irrelevant, too noisy, or not worth the effort.
 
-### 5. Present Results
+### 6. Present Results
+
+Group results by bot. For each bot, list ALL evaluated suggestions (both from inline comments and extracted from
+issue-level comments) in a single unified table. Do NOT separate inline vs issue-level — they should be interleaved by
+priority/verdict.
 
 Format the assessment as:
 
 ```markdown
 ## PR #<number>: <title>
 
-### Bot: <bot-username> — <total> comments reviewed
+### Bot: <bot-username> — <total> suggestions reviewed (X inline, Y from issue-level comment)
 
 ---
 
@@ -132,7 +157,7 @@ handled>
 **Recommendation**: <1-2 sentence overall take>
 ```
 
-### 6. Apply Changes (if --apply)
+### 7. Apply Changes (if --apply)
 
 If `--apply` flag is passed or the user confirms they want to implement:
 

@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 
 import { Role } from '@chansey/api-interfaces';
 
-import { UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
+import { UpdateFuturesEnabledDto, UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
 import { User } from './users.entity';
 
 import { CoinService } from '../coin/coin.service';
@@ -316,6 +316,34 @@ export class UsersService {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to get algo trading status for user ${userId}: ${err.message}`, err.stack);
       throw new InternalServerErrorException('Failed to get algo trading status');
+    }
+  }
+
+  async updateFuturesEnabled(userId: string, dto: UpdateFuturesEnabledDto): Promise<{ futuresEnabled: boolean }> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+
+      user.futuresEnabled = dto.enabled;
+      await this.user.save(user);
+
+      this.logger.log(`User ${userId} ${dto.enabled ? 'enabled' : 'disabled'} futures trading`);
+
+      return { futuresEnabled: user.futuresEnabled };
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to update futures trading for user ${userId}: ${err.message}`, err.stack);
+      throw new InternalServerErrorException('Failed to update futures trading');
+    }
+  }
+
+  async getFuturesEnabled(userId: string): Promise<{ futuresEnabled: boolean }> {
+    try {
+      const user = await this.user.findOneOrFail({ where: { id: userId } });
+      return { futuresEnabled: user.futuresEnabled };
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to get futures trading status for user ${userId}: ${err.message}`, err.stack);
+      throw new InternalServerErrorException('Failed to get futures trading status');
     }
   }
 

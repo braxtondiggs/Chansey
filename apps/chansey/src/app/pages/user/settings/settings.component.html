@@ -229,19 +229,13 @@
       <p-tabpanel value="3">
         <form [formGroup]="opportunitySellingForm">
           <p-panel header="Opportunity Selling" [toggleable]="false">
-            <div class="flex flex-row justify-between py-3">
-              <div class="mb-2 md:mb-0">
-                <div class="text-900 mb-1 text-lg font-semibold">Enable Opportunity Selling</div>
-                <div class="text-600 text-sm">
-                  When a strong buy opportunity appears but you don't have enough cash, the system can automatically
-                  sell your weakest-performing positions to fund the purchase.
-                </div>
-              </div>
-              <p-toggleswitch
-                formControlName="enabled"
-                (onChange)="toggleOpportunitySelling($event)"
-                class="mt-2 md:mt-0"
-              />
+            <div class="flex flex-row items-center justify-between py-3">
+              <span class="text-lg font-semibold">Enable Opportunity Selling</span>
+              <p-toggleswitch formControlName="enabled" (onChange)="toggleOpportunitySelling($event)" />
+            </div>
+            <div class="text-600 text-sm">
+              When a strong buy opportunity appears but you don't have enough cash, the system can automatically sell
+              your weakest-performing positions to fund the purchase.
             </div>
           </p-panel>
 
@@ -300,6 +294,18 @@
             </p-panel>
           }
         </form>
+        @if (hasFuturesCapableExchange) {
+          <p-panel header="Futures Trading" [toggleable]="false" class="mt-3">
+            <div class="flex flex-row items-center justify-between py-3">
+              <span class="text-lg font-semibold">Enable Futures Trading</span>
+              <p-toggleswitch [(ngModel)]="futuresEnabled" (onChange)="toggleFuturesTrading($event)" />
+            </div>
+            <div class="text-600 text-sm">
+              Allow the system to place futures and short-selling orders on exchanges that support it. When disabled,
+              all trades will be executed as spot orders only.
+            </div>
+          </p-panel>
+        }
       </p-tabpanel>
     </p-tabpanels>
   </p-tabs>

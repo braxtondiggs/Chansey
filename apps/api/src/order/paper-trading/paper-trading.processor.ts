@@ -240,6 +240,10 @@ export class PaperTradingProcessor extends WorkerHost {
       session.lastTickAt = new Date();
       session.currentPortfolioValue = result.portfolioValue;
 
+      if (result.ordersExecuted > 0) {
+        session.totalTrades = (session.totalTrades ?? 0) + result.ordersExecuted;
+      }
+
       // Update peak and drawdown
       if (result.portfolioValue > (session.peakPortfolioValue ?? session.initialCapital)) {
         session.peakPortfolioValue = result.portfolioValue;

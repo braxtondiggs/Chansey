@@ -27,6 +27,7 @@ export interface BacktestFinalMetrics {
   maxDrawdown: number;
   totalTrades: number;
   winningTrades: number;
+  losingTrades: number;
   winRate: number;
   profitFactor: number;
   volatility: number;
@@ -164,6 +165,8 @@ export class BacktestResultService {
           maxDrawdown: results.finalMetrics.maxDrawdown,
           winRate: results.finalMetrics.winRate,
           totalTrades: results.finalMetrics.totalTrades,
+          winningTrades: results.finalMetrics.winningTrades,
+          losingTrades: results.finalMetrics.losingTrades,
           profitFactor: results.finalMetrics.profitFactor,
           volatility: results.finalMetrics.volatility
         }
@@ -187,6 +190,7 @@ export class BacktestResultService {
       maxDrawdown: sanitizeNumericValue(metrics.maxDrawdown, { maxIntegerDigits: 4, fieldName: 'maxDrawdown' }) ?? 0,
       totalTrades: Number.isFinite(metrics.totalTrades) ? metrics.totalTrades : 0,
       winningTrades: Number.isFinite(metrics.winningTrades) ? metrics.winningTrades : 0,
+      losingTrades: Number.isFinite(metrics.losingTrades) ? metrics.losingTrades : 0,
       winRate: sanitizeNumericValue(metrics.winRate, { maxIntegerDigits: 4, fieldName: 'winRate' }) ?? 0,
       profitFactor: sanitizeNumericValue(metrics.profitFactor, { maxIntegerDigits: 4, fieldName: 'profitFactor' }) ?? 1,
       volatility: sanitizeNumericValue(metrics.volatility, { maxIntegerDigits: 4, fieldName: 'volatility' }) ?? 0

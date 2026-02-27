@@ -1,3 +1,4 @@
+import { IsNumber, IsOptional, Max, Min } from 'class-validator';
 import {
   Column,
   CreateDateColumn,
@@ -136,6 +137,27 @@ export class StrategyConfig {
     comment: 'Timestamp of last error occurrence'
   })
   lastErrorAt?: Date | null;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: 'spot',
+    comment: 'Market type: spot or futures'
+  })
+  marketType: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Max(10)
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    comment: 'Default leverage for futures strategies (1-10)'
+  })
+  defaultLeverage?: number | null;
 
   @CreateDateColumn({
     type: 'timestamptz'

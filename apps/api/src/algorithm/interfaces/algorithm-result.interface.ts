@@ -6,7 +6,9 @@ export enum SignalType {
   SELL = 'SELL',
   HOLD = 'HOLD',
   STOP_LOSS = 'STOP_LOSS',
-  TAKE_PROFIT = 'TAKE_PROFIT'
+  TAKE_PROFIT = 'TAKE_PROFIT',
+  SHORT_ENTRY = 'SHORT_ENTRY',
+  SHORT_EXIT = 'SHORT_EXIT'
 }
 
 /**

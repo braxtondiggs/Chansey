@@ -32,7 +32,8 @@ import {
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
   PaperTradingSessionListItemDto,
-  PipelineStageCountsDto
+  PipelineStageCountsDto,
+  StageCountWithStatusDto
 } from './dto/paper-trading-analytics.dto';
 import {
   SignalActivityFeedDto,
@@ -614,17 +615,55 @@ export class BacktestMonitoringService {
   // ===========================================================================
 
   /**
-   * Get counts of records across all pipeline stages
+   * Get counts of records across all pipeline stages with per-stage status breakdowns
    */
   async getPipelineStageCounts(): Promise<PipelineStageCountsDto> {
-    const [optimizationRuns, historicalBacktests, liveReplayBacktests, paperTradingSessions] = await Promise.all([
-      this.optimizationRunRepo.count(),
-      this.backtestRepo.count({ where: { type: BacktestType.HISTORICAL } }),
-      this.backtestRepo.count({ where: { type: BacktestType.LIVE_REPLAY } }),
-      this.paperSessionRepo.count()
+    const [optRows, historicalRows, replayRows, ptRows] = await Promise.all([
+      this.optimizationRunRepo
+        .createQueryBuilder('r')
+        .select('r.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('r.status')
+        .getRawMany(),
+      this.backtestRepo
+        .createQueryBuilder('b')
+        .select('b.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .where('b.type = :type', { type: BacktestType.HISTORICAL })
+        .groupBy('b.status')
+        .getRawMany(),
+      this.backtestRepo
+        .createQueryBuilder('b')
+        .select('b.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .where('b.type = :type', { type: BacktestType.LIVE_REPLAY })
+        .groupBy('b.status')
+        .getRawMany(),
+      this.paperSessionRepo
+        .createQueryBuilder('s')
+        .select('s.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('s.status')
+        .getRawMany()
     ]);
 
-    return { optimizationRuns, historicalBacktests, liveReplayBacktests, paperTradingSessions };
+    return {
+      optimizationRuns: this.buildStageCount(optRows),
+      historicalBacktests: this.buildStageCount(historicalRows),
+      liveReplayBacktests: this.buildStageCount(replayRows),
+      paperTradingSessions: this.buildStageCount(ptRows)
+    };
+  }
+
+  private buildStageCount(rows: { status: string; count: string }[]): StageCountWithStatusDto {
+    const statusBreakdown: Record<string, number> = {};
+    let total = 0;
+    for (const row of rows) {
+      const count = parseInt(row.count, 10);
+      statusBreakdown[row.status] = count;
+      total += count;
+    }
+    return { total, statusBreakdown };
   }
 
   // ===========================================================================

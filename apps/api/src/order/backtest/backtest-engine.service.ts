@@ -9,7 +9,9 @@ import {
   DEFAULT_VOLATILITY_CONFIG,
   determineVolatilityRegime,
   getAllocationLimits,
+  MAINTENANCE_MARGIN_RATE,
   MarketRegimeType,
+  MAX_LEVERAGE_CAP,
   PipelineStage
 } from '@chansey/api-interfaces';
 
@@ -101,7 +103,7 @@ export interface MarketData {
 export { Portfolio, Position } from './shared';
 
 export interface TradingSignal {
-  action: 'BUY' | 'SELL' | 'HOLD';
+  action: 'BUY' | 'SELL' | 'HOLD' | 'OPEN_SHORT' | 'CLOSE_SHORT';
   coinId: string;
   quantity?: number;
   percentage?: number;
@@ -160,6 +162,11 @@ interface ExecuteOptions {
   onHeartbeat?: (index: number, totalTimestamps: number) => Promise<void>;
   /** Checkpoint state to resume from (if resuming a previous run) */
   resumeFrom?: BacktestCheckpointState;
+
+  /** Market type: 'spot' (default) or 'futures' */
+  marketType?: string;
+  /** Leverage multiplier for futures trading (default: 1) */
+  leverage?: number;
 }
 
 interface MetricsAccumulator {
@@ -224,6 +231,12 @@ const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
     case AlgoSignalType.TAKE_PROFIT:
       action = 'SELL';
       break;
+    case AlgoSignalType.SHORT_ENTRY:
+      action = 'OPEN_SHORT';
+      break;
+    case AlgoSignalType.SHORT_EXIT:
+      action = 'CLOSE_SHORT';
+      break;
     default:
       action = 'HOLD';
   }
@@ -244,8 +257,8 @@ const classifySignalType = (signal: TradingSignal): SignalType => {
   if (signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT) {
     return SignalType.RISK_CONTROL;
   }
-  if (signal.action === 'BUY') return SignalType.ENTRY;
-  if (signal.action === 'SELL') return SignalType.EXIT;
+  if (signal.action === 'BUY' || signal.action === 'OPEN_SHORT') return SignalType.ENTRY;
+  if (signal.action === 'SELL' || signal.action === 'CLOSE_SHORT') return SignalType.EXIT;
   return SignalType.ADJUSTMENT;
 };
 
@@ -272,10 +285,14 @@ export interface OptimizationBacktestConfig {
   slippage?: SlippageConfig;
   /** Exit configuration for SL/TP/trailing stop simulation (overrides legacy hard stop-loss) */
   exitConfig?: ExitConfig;
-  /** Enable composite regime gate filtering (default: true) */
+  /** Enable composite regime gate filtering. Default: derived from riskLevel (ON for risk ≤ 2, OFF for risk ≥ 3). */
   enableRegimeGate?: boolean;
   /** Enable regime-scaled position sizing (default: true) */
   enableRegimeScaledSizing?: boolean;
+  /** Market type: 'spot' (default) or 'futures' */
+  marketType?: string;
+  /** Leverage multiplier for futures trading (default: 1) */
+  leverage?: number;
 }
 
 /**
@@ -444,7 +461,7 @@ export class BacktestEngine {
   ): { enableRegimeScaledSizing: boolean; riskLevel: number; regimeGateEnabled: boolean; btcCoin: Coin | undefined } {
     const enableRegimeScaledSizing = options.enableRegimeScaledSizing !== false;
     const riskLevel = options.riskLevel ?? 3;
-    const regimeGateEnabled = options.enableRegimeGate !== false;
+    const regimeGateEnabled = options.enableRegimeGate ?? riskLevel <= 2;
     const btcCoin =
       regimeGateEnabled || enableRegimeScaledSizing ? coins.find((c) => c.symbol?.toUpperCase() === 'BTC') : undefined;
     if (regimeGateEnabled && !btcCoin) {
@@ -758,6 +775,13 @@ export class BacktestEngine {
       // Always update portfolio values and advance price windows (needed for indicator warmup)
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
+      // Check for liquidated positions after price update
+      const liquidationTrades = this.checkAndApplyLiquidations(portfolio, marketData, backtest.tradingFee);
+      for (const liqTrade of liquidationTrades) {
+        liqTrade.executedAt = timestamp;
+        trades.push(liqTrade as Partial<BacktestTrade>);
+      }
+
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
       // During warmup: run algorithm to prime internal state but skip trading/recording
@@ -894,7 +918,11 @@ export class BacktestEngine {
               ? SignalDirection.FLAT
               : strategySignal.action === 'BUY'
                 ? SignalDirection.LONG
-                : SignalDirection.SHORT,
+                : strategySignal.action === 'OPEN_SHORT' ||
+                    strategySignal.action === 'CLOSE_SHORT' ||
+                    strategySignal.action === 'SELL'
+                  ? SignalDirection.SHORT
+                  : SignalDirection.FLAT,
           quantity: strategySignal.quantity ?? strategySignal.percentage ?? 0,
           price: marketData.prices.get(strategySignal.coinId),
           reason: strategySignal.reason,
@@ -998,7 +1026,7 @@ export class BacktestEngine {
       if (portfolio.totalValue > peakValue) {
         peakValue = portfolio.totalValue;
       }
-      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      const currentDrawdown = peakValue === 0 ? 0 : Math.max(0, (peakValue - portfolio.totalValue) / peakValue);
       if (currentDrawdown > maxDrawdown) {
         maxDrawdown = currentDrawdown;
       }
@@ -1525,6 +1553,13 @@ export class BacktestEngine {
       // Always update portfolio values and advance price windows (needed for indicator warmup)
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
+      // Check for liquidated positions after price update
+      const liquidationTrades = this.checkAndApplyLiquidations(portfolio, marketData, backtest.tradingFee);
+      for (const liqTrade of liquidationTrades) {
+        liqTrade.executedAt = timestamp;
+        trades.push(liqTrade as Partial<BacktestTrade>);
+      }
+
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
       // During warmup: run algorithm to prime internal state but skip trading/recording
@@ -1658,7 +1693,11 @@ export class BacktestEngine {
               ? SignalDirection.FLAT
               : strategySignal.action === 'BUY'
                 ? SignalDirection.LONG
-                : SignalDirection.SHORT,
+                : strategySignal.action === 'OPEN_SHORT' ||
+                    strategySignal.action === 'CLOSE_SHORT' ||
+                    strategySignal.action === 'SELL'
+                  ? SignalDirection.SHORT
+                  : SignalDirection.FLAT,
           quantity: strategySignal.quantity ?? strategySignal.percentage ?? 0,
           price: marketData.prices.get(strategySignal.coinId),
           reason: strategySignal.reason,
@@ -1723,7 +1762,7 @@ export class BacktestEngine {
       if (portfolio.totalValue > peakValue) {
         peakValue = portfolio.totalValue;
       }
-      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      const currentDrawdown = peakValue === 0 ? 0 : Math.max(0, (peakValue - portfolio.totalValue) / peakValue);
       if (currentDrawdown > maxDrawdown) {
         maxDrawdown = currentDrawdown;
       }
@@ -2133,7 +2172,8 @@ export class BacktestEngine {
     dailyVolume?: number,
     minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS,
     maxAllocation: number = getAllocationLimits().maxAllocation,
-    minAllocation: number = getAllocationLimits().minAllocation
+    minAllocation: number = getAllocationLimits().minAllocation,
+    defaultLeverage = 1
   ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
     const marketPrice = marketData.prices.get(signal.coinId);
     if (!marketPrice) {
@@ -2143,6 +2183,22 @@ export class BacktestEngine {
 
     if (signal.action === 'HOLD') {
       return null;
+    }
+
+    // Position conflict guards: prevent opposite-direction positions on same coin
+    if (signal.action === 'BUY') {
+      const existingShort = portfolio.positions.get(signal.coinId);
+      if (existingShort && existingShort.side === 'short' && existingShort.quantity > 0) {
+        this.logger.debug(`Cannot buy ${signal.coinId}: short position already exists`);
+        return null;
+      }
+    }
+    if (signal.action === 'OPEN_SHORT') {
+      const existingLong = portfolio.positions.get(signal.coinId);
+      if (existingLong && existingLong.side !== 'short' && existingLong.quantity > 0) {
+        this.logger.debug(`Cannot open short for ${signal.coinId}: long position already exists`);
+        return null;
+      }
     }
 
     // Hard stop-loss override: use the stop execution price (the price a real
@@ -2301,17 +2357,150 @@ export class BacktestEngine {
       }
     }
 
+    // Short position tracking fields
+    let positionSide: string | undefined;
+    let leverage: number | undefined;
+    let liquidationPrice: number | undefined;
+    let marginUsed: number | undefined;
+
+    if (signal.action === 'OPEN_SHORT') {
+      const shortLeverage = Math.min(
+        Math.max(1, (signal.metadata?.leverage as number) ?? defaultLeverage),
+        MAX_LEVERAGE_CAP
+      );
+
+      // Position sizing priority: quantity > percentage > confidence > random
+      if (signal.quantity) {
+        quantity = signal.quantity;
+      } else if (signal.percentage) {
+        const investmentAmount = portfolio.totalValue * signal.percentage;
+        quantity = investmentAmount / price;
+      } else if (signal.confidence !== undefined) {
+        const confidenceBasedAllocation = minAllocation + signal.confidence * (maxAllocation - minAllocation);
+        const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
+        quantity = investmentAmount / price;
+      } else {
+        const investmentAmount = portfolio.totalValue * Math.min(maxAllocation, Math.max(minAllocation, rng.next()));
+        quantity = investmentAmount / price;
+      }
+
+      const marginAmount = (quantity * price) / shortLeverage;
+      totalValue = marginAmount;
+
+      const estimatedFeeResult = this.feeCalculator.calculateFee(
+        { tradeValue: quantity * price },
+        this.feeCalculator.fromFlatRate(tradingFee)
+      );
+
+      if (portfolio.cashBalance < marginAmount + estimatedFeeResult.fee) {
+        this.logger.debug('Insufficient cash balance for OPEN_SHORT trade (margin + fees)');
+        return null;
+      }
+
+      portfolio.cashBalance -= marginAmount;
+
+      const maintenanceMarginRate = MAINTENANCE_MARGIN_RATE;
+      const calcLiquidationPrice = price * (1 + 1 / shortLeverage - maintenanceMarginRate);
+
+      const shortPosition: import('./shared').Position = {
+        coinId: signal.coinId,
+        quantity,
+        averagePrice: price,
+        totalValue: marginAmount,
+        side: 'short',
+        leverage: shortLeverage,
+        marginAmount,
+        liquidationPrice: calcLiquidationPrice,
+        entryDate: marketData.timestamp
+      };
+
+      portfolio.positions.set(signal.coinId, shortPosition);
+      portfolio.totalMarginUsed = (portfolio.totalMarginUsed ?? 0) + marginAmount;
+      portfolio.availableMargin = portfolio.cashBalance;
+
+      positionSide = 'short';
+      leverage = shortLeverage;
+      liquidationPrice = calcLiquidationPrice;
+      marginUsed = marginAmount;
+    }
+
+    if (signal.action === 'CLOSE_SHORT') {
+      const existingPosition = portfolio.positions.get(signal.coinId);
+      if (!existingPosition || existingPosition.side !== 'short' || existingPosition.quantity === 0) {
+        return null;
+      }
+
+      costBasis = existingPosition.averagePrice;
+
+      // Position sizing priority: quantity > percentage > confidence > random
+      if (signal.quantity) {
+        quantity = signal.quantity;
+      } else if (signal.percentage) {
+        quantity = existingPosition.quantity * Math.min(1, signal.percentage);
+      } else if (signal.confidence !== undefined) {
+        const confidenceBasedPercent = 0.25 + signal.confidence * 0.75;
+        quantity = existingPosition.quantity * confidenceBasedPercent;
+      } else {
+        quantity = existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
+      }
+      quantity = Math.min(quantity, existingPosition.quantity);
+
+      // Calculate realized P&L: (entryPrice - exitPrice) * quantity (inverted from long)
+      realizedPnL = (costBasis - price) * quantity;
+      realizedPnLPercent = costBasis > 0 ? (costBasis - price) / costBasis : 0;
+
+      // Return margin proportionally
+      const returnedMargin = (existingPosition.marginAmount ?? 0) * (quantity / existingPosition.quantity);
+      totalValue = returnedMargin;
+
+      // Cap loss at margin amount (can't lose more than margin posted)
+      realizedPnL = Math.max(-returnedMargin, realizedPnL);
+
+      portfolio.cashBalance += returnedMargin + realizedPnL;
+
+      existingPosition.quantity -= quantity;
+      if (existingPosition.quantity <= 0) {
+        portfolio.positions.delete(signal.coinId);
+      } else {
+        const remainingMargin = (existingPosition.marginAmount ?? 0) - returnedMargin;
+        existingPosition.marginAmount = remainingMargin;
+        existingPosition.totalValue =
+          remainingMargin + (existingPosition.averagePrice - price) * existingPosition.quantity;
+        portfolio.positions.set(signal.coinId, existingPosition);
+      }
+
+      portfolio.totalMarginUsed = Math.max(0, (portfolio.totalMarginUsed ?? 0) - returnedMargin);
+      portfolio.availableMargin = portfolio.cashBalance;
+
+      positionSide = 'short';
+      leverage = existingPosition.leverage;
+      liquidationPrice = existingPosition.liquidationPrice;
+      marginUsed = returnedMargin;
+    }
+
+    // Fee base: use notional value for shorts, totalValue for longs
+    const feeBaseValue =
+      signal.action === 'OPEN_SHORT' || signal.action === 'CLOSE_SHORT' ? quantity * price : totalValue;
+
     // Use shared FeeCalculatorService for consistent fee calculation
     const feeConfig = this.feeCalculator.fromFlatRate(tradingFee);
-    const feeResult = this.feeCalculator.calculateFee({ tradeValue: totalValue }, feeConfig);
+    const feeResult = this.feeCalculator.calculateFee({ tradeValue: feeBaseValue }, feeConfig);
     const fee = feeResult.fee;
     portfolio.cashBalance -= fee;
     portfolio.totalValue =
       portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, marketData.prices);
 
+    // Determine trade type
+    let tradeType: TradeType;
+    if (signal.action === 'BUY' || signal.action === 'OPEN_SHORT') {
+      tradeType = TradeType.BUY;
+    } else {
+      tradeType = TradeType.SELL;
+    }
+
     return {
       trade: {
-        type: signal.action === 'BUY' ? TradeType.BUY : TradeType.SELL,
+        type: tradeType,
         quantity,
         price,
         totalValue,
@@ -2319,6 +2508,10 @@ export class BacktestEngine {
         realizedPnL,
         realizedPnLPercent,
         costBasis,
+        positionSide,
+        leverage,
+        liquidationPrice,
+        marginUsed,
         metadata: {
           ...(signal.metadata ?? {}),
           reason: signal.reason,
@@ -2330,6 +2523,69 @@ export class BacktestEngine {
       } as Partial<BacktestTrade>,
       slippageBps
     };
+  }
+
+  /**
+   * Check all leveraged positions for liquidation and force-close any that have been breached.
+   * Returns an array of liquidation trade records.
+   */
+  private checkAndApplyLiquidations(
+    portfolio: Portfolio,
+    marketData: MarketData,
+    tradingFee: number
+  ): Partial<BacktestTrade>[] {
+    const liquidationTrades: Partial<BacktestTrade>[] = [];
+    const positionsToDelete: string[] = [];
+
+    for (const [coinId, position] of portfolio.positions) {
+      if (!position.leverage || position.leverage <= 1) continue;
+
+      const currentPrice = marketData.prices.get(coinId);
+      if (currentPrice === undefined) continue;
+
+      if (this.positionManager.isLiquidated(position, currentPrice)) {
+        const marginLost = position.marginAmount ?? 0;
+
+        // Record liquidation trade (total loss of margin)
+        liquidationTrades.push({
+          type: position.side === 'short' ? TradeType.BUY : TradeType.SELL,
+          quantity: position.quantity,
+          price: currentPrice,
+          totalValue: 0,
+          fee: 0,
+          realizedPnL: -marginLost,
+          realizedPnLPercent: -1,
+          costBasis: position.averagePrice,
+          positionSide: position.side,
+          leverage: position.leverage,
+          liquidationPrice: position.liquidationPrice,
+          marginUsed: marginLost,
+          metadata: { liquidated: true }
+        });
+
+        positionsToDelete.push(coinId);
+
+        // Update margin tracking
+        portfolio.totalMarginUsed = Math.max(0, (portfolio.totalMarginUsed ?? 0) - marginLost);
+
+        this.logger.debug(
+          `Position liquidated: ${coinId} ${position.side} at ${currentPrice} (liq price: ${position.liquidationPrice})`
+        );
+      }
+    }
+
+    // Delete liquidated positions
+    for (const coinId of positionsToDelete) {
+      portfolio.positions.delete(coinId);
+    }
+
+    if (positionsToDelete.length > 0) {
+      portfolio.availableMargin = portfolio.cashBalance;
+      portfolio.totalValue =
+        portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, marketData.prices);
+    }
+
+    return liquidationTrades;
   }
 
   /**
@@ -2812,6 +3068,7 @@ export class BacktestEngine {
       maxDrawdown,
       totalTrades: totalTradeCount,
       winningTrades: totalWinningSellCount,
+      losingTrades: totalSellCount - totalWinningSellCount,
       winRate: totalSellCount > 0 ? totalWinningSellCount / totalSellCount : 0,
       profitFactor,
       volatility
@@ -3324,7 +3581,7 @@ export class BacktestEngine {
       if (portfolio.totalValue > peakValue) {
         peakValue = portfolio.totalValue;
       }
-      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      const currentDrawdown = peakValue === 0 ? 0 : Math.max(0, (peakValue - portfolio.totalValue) / peakValue);
       if (currentDrawdown > maxDrawdown) {
         maxDrawdown = currentDrawdown;
       }
@@ -3786,7 +4043,7 @@ export class BacktestEngine {
       if (portfolio.totalValue > peakValue) {
         peakValue = portfolio.totalValue;
       }
-      const currentDrawdown = peakValue === 0 ? 0 : (peakValue - portfolio.totalValue) / peakValue;
+      const currentDrawdown = peakValue === 0 ? 0 : Math.max(0, (peakValue - portfolio.totalValue) / peakValue);
       if (currentDrawdown > maxDrawdown) {
         maxDrawdown = currentDrawdown;
       }

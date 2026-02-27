@@ -1239,12 +1239,28 @@ export class PositionManagementService {
 
   /**
    * Update trailing stop price for a position
+   * Supports both long positions (high water mark tracking) and short positions (low water mark tracking)
    */
-  async updateTrailingStopPrice(positionExitId: string, newStopPrice: number, highWaterMark: number): Promise<void> {
-    await this.positionExitRepo.update(positionExitId, {
-      currentTrailingStopPrice: newStopPrice,
-      trailingHighWaterMark: highWaterMark,
-      trailingActivated: true
-    });
+  async updateTrailingStopPrice(
+    positionExitId: string,
+    newStopPrice: number,
+    waterMark: number,
+    side?: 'BUY' | 'SELL'
+  ): Promise<void> {
+    if (side === 'SELL') {
+      // Short position: track lowest price (low water mark)
+      await this.positionExitRepo.update(positionExitId, {
+        currentTrailingStopPrice: newStopPrice,
+        trailingLowWaterMark: waterMark,
+        trailingActivated: true
+      });
+    } else {
+      // Long position (default): track highest price (high water mark)
+      await this.positionExitRepo.update(positionExitId, {
+        currentTrailingStopPrice: newStopPrice,
+        trailingHighWaterMark: waterMark,
+        trailingActivated: true
+      });
+    }
   }
 }

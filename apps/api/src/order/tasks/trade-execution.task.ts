@@ -1,8 +1,12 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
 
 import { Job, Queue } from 'bullmq';
+import { Repository } from 'typeorm';
+
+import { MarketType } from '@chansey/api-interfaces';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { SignalType, TradingSignal } from '../../algorithm/interfaces';
@@ -13,11 +17,17 @@ import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { toErrorInfo } from '../../shared/error.util';
+import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { UsersService } from '../../users/users.service';
 import { TradeExecutionService, TradeSignalWithExit } from '../services/trade-execution.service';
 
 const MIN_CONFIDENCE_THRESHOLD = 0.6;
-const ACTIONABLE_SIGNAL_TYPES = new Set([SignalType.BUY, SignalType.SELL]);
+const ACTIONABLE_SIGNAL_TYPES = new Set([
+  SignalType.BUY,
+  SignalType.SELL,
+  SignalType.SHORT_ENTRY,
+  SignalType.SHORT_EXIT
+]);
 
 /**
  * TradeExecutionTask
@@ -33,6 +43,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('trade-execution') private readonly tradeExecutionQueue: Queue,
+    @InjectRepository(StrategyConfig)
+    private readonly strategyConfigRepo: Repository<StrategyConfig>,
     private readonly tradeExecutionService: TradeExecutionService,
     private readonly algorithmActivationService: AlgorithmActivationService,
     private readonly algorithmRegistry: AlgorithmRegistry,
@@ -301,17 +313,79 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       return null;
     }
 
+    const marketContext = await this.resolveMarketContext(activation);
+    const mapped = this.mapSignalToAction(bestSignal.type, marketContext.marketType);
+    if (!mapped) {
+      this.logger.warn(`Unknown signal type ${bestSignal.type} for activation ${activation.id}, skipping`);
+      return null;
+    }
+    const { action, positionSide } = mapped;
+
     return {
       algorithmActivationId: activation.id,
       userId: activation.userId,
       exchangeKeyId: activation.exchangeKeyId,
-      action: bestSignal.type as 'BUY' | 'SELL',
+      action,
       symbol,
       quantity: 0,
       autoSize: true,
       portfolioValue,
-      allocationPercentage: activation.allocationPercentage || 5.0
+      allocationPercentage: activation.allocationPercentage || 5.0,
+      marketType: marketContext.marketType,
+      leverage: marketContext.leverage,
+      positionSide
     };
+  }
+
+  /**
+   * Resolve market context (spot vs futures, leverage) for an activation.
+   * Checks activation-level override first, then falls back to StrategyConfig.
+   */
+  private async resolveMarketContext(
+    activation: AlgorithmActivation
+  ): Promise<{ marketType: 'spot' | 'futures'; leverage: number }> {
+    // 1. Per-activation override via config metadata
+    const meta = activation.config?.metadata as Record<string, unknown> | undefined;
+    if (meta?.marketType === MarketType.FUTURES) {
+      return { marketType: 'futures', leverage: Number(meta.leverage) || 1 };
+    }
+
+    // 2. Canonical source: StrategyConfig linked to the algorithm
+    try {
+      const strategyConfig = await this.strategyConfigRepo.findOne({
+        where: { algorithmId: activation.algorithmId, shadowStatus: 'live' }
+      });
+
+      if (strategyConfig?.marketType === MarketType.FUTURES) {
+        return { marketType: 'futures', leverage: Number(strategyConfig.defaultLeverage) || 1 };
+      }
+    } catch (error) {
+      const err = toErrorInfo(error);
+      this.logger.debug(`Could not look up StrategyConfig for algorithm ${activation.algorithmId}: ${err.message}`);
+    }
+
+    return { marketType: 'spot', leverage: 1 };
+  }
+
+  /**
+   * Map an algorithm SignalType to the action/positionSide that TradeExecutionService expects.
+   */
+  private mapSignalToAction(
+    signalType: SignalType,
+    marketType: 'spot' | 'futures'
+  ): { action: 'BUY' | 'SELL'; positionSide?: 'long' | 'short' } | null {
+    switch (signalType) {
+      case SignalType.SHORT_ENTRY:
+        return { action: 'SELL', positionSide: 'short' };
+      case SignalType.SHORT_EXIT:
+        return { action: 'BUY', positionSide: 'short' };
+      case SignalType.BUY:
+        return { action: 'BUY', positionSide: marketType === 'futures' ? 'long' : undefined };
+      case SignalType.SELL:
+        return { action: 'SELL', positionSide: marketType === 'futures' ? 'long' : undefined };
+      default:
+        return null;
+    }
   }
 
   /**

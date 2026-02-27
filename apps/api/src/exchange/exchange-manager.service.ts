@@ -114,6 +114,24 @@ export class ExchangeManagerService implements IExchangeManagerService {
   }
 
   /**
+   * Configure futures trading for a given exchange, symbol, and leverage.
+   * Sets margin mode to isolated and applies the requested leverage.
+   * @param exchangeSlug Exchange identifier
+   * @param user User context for client initialization
+   * @param symbol Trading pair symbol
+   * @param leverage Leverage multiplier to apply
+   * @throws Error if the exchange does not support futures trading
+   */
+  async configureFuturesTrading(exchangeSlug: string, user: User, symbol: string, leverage: number): Promise<void> {
+    const exchangeService = this.getExchangeService(exchangeSlug);
+    if (!exchangeService.supportsFutures) {
+      throw new Error(`Exchange ${exchangeSlug} does not support futures trading`);
+    }
+    await exchangeService.setMarginMode('isolated', symbol, user);
+    await exchangeService.setLeverage(leverage, symbol, user);
+  }
+
+  /**
    * Get balances from all configured exchanges for a user
    * @param user User to get balances for
    * @returns Array of balance results from all exchanges

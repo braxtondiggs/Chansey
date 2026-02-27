@@ -66,6 +66,9 @@ export interface ConfluenceConfig {
   minSellConfluence: number; // Minimum indicators that must agree for SELL (default: same as minConfluence)
   minConfidence: number; // 0-1, minimum confidence to generate signal
 
+  // Short selling settings (futures only)
+  enableShortSignals: boolean; // When true and marketType is 'futures', emit SHORT_ENTRY/SHORT_EXIT signals
+
   // Individual indicator configurations
   ema: EMAIndicatorConfig;
   rsi: RSIIndicatorConfig;

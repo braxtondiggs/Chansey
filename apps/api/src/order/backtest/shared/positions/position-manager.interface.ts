@@ -18,6 +18,14 @@ export interface Position {
   totalValue: number;
   /** Timestamp when the position was first opened (used for hold-time calculation) */
   entryDate?: Date;
+  /** Position side: 'long' (default) or 'short' */
+  side?: 'long' | 'short';
+  /** Leverage multiplier (default: 1) */
+  leverage?: number;
+  /** Margin amount locked for leveraged/short positions */
+  marginAmount?: number;
+  /** Price at which the position is automatically liquidated */
+  liquidationPrice?: number;
 }
 
 /**
@@ -42,6 +50,10 @@ export interface PositionActionResult {
   totalValue: number;
   /** Error message if action failed */
   error?: string;
+  /** Margin amount locked for leveraged/short positions */
+  marginAmount?: number;
+  /** Price at which the position is automatically liquidated */
+  liquidationPrice?: number;
 }
 
 /**
@@ -194,4 +206,34 @@ export interface IPositionManager {
    * @returns Updated position
    */
   updatePositionValue(position: Position, currentPrice: number): Position;
+
+  /**
+   * Open a short position with leverage
+   */
+  openShort(
+    existingPosition: Position | undefined,
+    input: OpenPositionInput,
+    config?: PositionSizingConfig,
+    leverage?: number
+  ): PositionActionResult;
+
+  /**
+   * Close or reduce a short position
+   */
+  closeShort(position: Position, input: ClosePositionInput, config?: PositionSizingConfig): PositionActionResult;
+
+  /**
+   * Check if a position has been liquidated at the current price
+   */
+  isLiquidated(position: Position, currentPrice: number): boolean;
+
+  /**
+   * Calculate liquidation price for a leveraged position
+   */
+  calculateLiquidationPrice(
+    entryPrice: number,
+    leverage: number,
+    side: 'long' | 'short',
+    maintenanceMarginRate?: number
+  ): number;
 }

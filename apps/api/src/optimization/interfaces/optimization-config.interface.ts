@@ -105,6 +105,9 @@ export interface OptimizationConfig {
 
   /** Maximum number of coins to include in optimization (only coins with OHLC data) */
   maxCoins?: number;
+
+  /** User risk level (1-5) for regime gate derivation. Default: 3 */
+  riskLevel?: number;
 }
 
 /**

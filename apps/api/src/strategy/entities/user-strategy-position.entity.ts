@@ -1,12 +1,13 @@
+import { IsNumber, Max, Min } from 'class-validator';
 import {
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
   Entity,
-  PrimaryGeneratedColumn,
-  ManyToOne,
+  Index,
   JoinColumn,
-  Index
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn
 } from 'typeorm';
 
 import { StrategyConfig } from './strategy-config.entity';
@@ -19,7 +20,7 @@ import { User } from '../../users/users.entity';
  * Enables per-strategy position tracking and P&L calculation
  */
 @Entity('user_strategy_positions')
-@Index(['userId', 'strategyConfigId', 'symbol'], { unique: true })
+@Index('UQ_usp_user_strat_symbol_side', ['userId', 'strategyConfigId', 'symbol', 'positionSide'], { unique: true })
 @Index(['userId'])
 @Index(['strategyConfigId'])
 export class UserStrategyPosition {
@@ -86,6 +87,53 @@ export class UserStrategyPosition {
     comment: 'Realized profit/loss (closed trades)'
   })
   realizedPnL: number;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: 'long',
+    comment: 'Position side: long or short'
+  })
+  positionSide: string;
+
+  @IsNumber()
+  @Min(1)
+  @Max(10)
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 1,
+    comment: 'Leverage multiplier (1 = no leverage)'
+  })
+  leverage: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    nullable: true,
+    comment: 'Liquidation price for leveraged positions'
+  })
+  liquidationPrice?: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    nullable: true,
+    comment: 'Margin amount posted for this position'
+  })
+  marginAmount?: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    nullable: true,
+    comment: 'Maintenance margin required to keep position open'
+  })
+  maintenanceMargin?: number | null;
 
   @CreateDateColumn({
     type: 'timestamptz',

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { Transform } from 'class-transformer';
-import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import {
   Column,
   CreateDateColumn,
@@ -655,6 +655,99 @@ export class Order {
     required: false
   })
   info?: Record<string, unknown>;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: 'spot'
+  })
+  @IsString()
+  @IsOptional()
+  @Index('IDX_order_market_type')
+  @ApiProperty({
+    description: 'Market type: spot or futures',
+    example: 'spot',
+    default: 'spot'
+  })
+  marketType: string;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    nullable: true
+  })
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Position side for futures: long or short',
+    example: 'long',
+    required: false
+  })
+  positionSide?: string;
+
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Max(10)
+  @ApiProperty({
+    description: 'Leverage multiplier for futures positions',
+    example: 3,
+    required: false
+  })
+  leverage?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Liquidation price for leveraged positions',
+    example: 28000.0,
+    required: false
+  })
+  liquidationPrice?: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    transformer: new ColumnNumericTransformer(),
+    nullable: true
+  })
+  @IsNumber()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Margin amount posted for futures position',
+    example: 1000.0,
+    required: false
+  })
+  marginAmount?: number;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    nullable: true
+  })
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Margin mode: isolated or cross',
+    example: 'isolated',
+    required: false
+  })
+  marginMode?: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({

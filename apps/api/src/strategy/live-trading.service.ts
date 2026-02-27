@@ -4,7 +4,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
+import { MarketType, PositionSide } from '@chansey/api-interfaces';
+
 import { CapitalAllocationService } from './capital-allocation.service';
+import { StrategyConfig } from './entities/strategy-config.entity';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
@@ -19,6 +22,7 @@ import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { OrderService } from '../order/order.service';
+import { TradeExecutionService, TradeSignalWithExit } from '../order/services/trade-execution.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
 import { toErrorInfo } from '../shared/error.util';
@@ -52,7 +56,8 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly tradingStateService: TradingStateService,
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly regimeGateService: RegimeGateService,
-    private readonly preTradeRiskGate: PreTradeRiskGateService
+    private readonly preTradeRiskGate: PreTradeRiskGateService,
+    private readonly tradeExecutionService: TradeExecutionService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -202,7 +207,7 @@ export class LiveTradingService implements OnApplicationShutdown {
             continue;
           }
 
-          await this.placeOrder(user, strategy.id, signal);
+          await this.placeOrder(user, strategy.id, signal, strategy);
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
@@ -221,7 +226,12 @@ export class LiveTradingService implements OnApplicationShutdown {
     }
   }
 
-  private async placeOrder(user: User, strategyConfigId: string, signal: TradingSignal): Promise<void> {
+  private async placeOrder(
+    user: User,
+    strategyConfigId: string,
+    signal: TradingSignal,
+    strategy: StrategyConfig
+  ): Promise<void> {
     try {
       const exchangeKey = this.selectBestExchange(user.exchanges, signal.symbol);
       if (!exchangeKey) {
@@ -229,25 +239,51 @@ export class LiveTradingService implements OnApplicationShutdown {
         return;
       }
 
-      // Type guard: signal.action is guaranteed to be 'buy' | 'sell' by caller check
-      const orderSignal = {
-        action: signal.action as 'buy' | 'sell',
-        symbol: signal.symbol,
-        quantity: signal.quantity,
-        price: signal.price
-      };
+      const isFutures =
+        signal.action === 'short_entry' || signal.action === 'short_exit' || strategy.marketType === MarketType.FUTURES;
 
-      const order = await this.orderService.placeAlgorithmicOrder(
-        user.id,
-        strategyConfigId,
-        orderSignal,
-        exchangeKey.id
-      );
+      if (isFutures) {
+        // Route futures signals through TradeExecutionService which has full futures support
+        const { action, positionSide } = this.mapLiveSignalToTradeAction(signal.action, strategy.marketType);
+        const tradeSignal: TradeSignalWithExit = {
+          algorithmActivationId: strategyConfigId,
+          userId: user.id,
+          exchangeKeyId: exchangeKey.id,
+          action,
+          symbol: signal.symbol,
+          quantity: signal.quantity,
+          marketType: 'futures',
+          positionSide,
+          leverage: Number(strategy.defaultLeverage) || 1
+        };
 
-      this.logger.log(
-        `Order placed for user ${user.id}: ${signal.action} ${signal.quantity} ${signal.symbol} ` +
-          `on ${exchangeKey.name} (Order ID: ${order.id})`
-      );
+        await this.tradeExecutionService.executeTradeSignal(tradeSignal);
+
+        this.logger.log(
+          `Futures order placed for user ${user.id}: ${action} ${signal.quantity} ${signal.symbol} ` +
+            `positionSide=${positionSide} leverage=${tradeSignal.leverage}x on ${exchangeKey.name}`
+        );
+      } else {
+        // Spot path — unchanged
+        const orderSignal = {
+          action: signal.action as 'buy' | 'sell',
+          symbol: signal.symbol,
+          quantity: signal.quantity,
+          price: signal.price
+        };
+
+        const order = await this.orderService.placeAlgorithmicOrder(
+          user.id,
+          strategyConfigId,
+          orderSignal,
+          exchangeKey.id
+        );
+
+        this.logger.log(
+          `Order placed for user ${user.id}: ${signal.action} ${signal.quantity} ${signal.symbol} ` +
+            `on ${exchangeKey.name} (Order ID: ${order.id})`
+        );
+      }
 
       await this.positionTracking.updatePosition(
         user.id,
@@ -261,6 +297,27 @@ export class LiveTradingService implements OnApplicationShutdown {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to place order for user ${user.id}: ${err.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Map a live trading signal action to the BUY/SELL + positionSide that TradeExecutionService expects.
+   */
+  private mapLiveSignalToTradeAction(
+    action: string,
+    marketType: string
+  ): { action: 'BUY' | 'SELL'; positionSide?: 'long' | 'short' } {
+    switch (action) {
+      case 'short_entry':
+        return { action: 'SELL', positionSide: PositionSide.SHORT };
+      case 'short_exit':
+        return { action: 'BUY', positionSide: PositionSide.SHORT };
+      case 'buy':
+        return { action: 'BUY', positionSide: marketType === MarketType.FUTURES ? PositionSide.LONG : undefined };
+      case 'sell':
+        return { action: 'SELL', positionSide: marketType === MarketType.FUTURES ? PositionSide.LONG : undefined };
+      default:
+        throw new Error(`Unknown signal action: ${action}`);
     }
   }
 

@@ -16,6 +16,7 @@ import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { OrderService } from '../order/order.service';
+import { TradeExecutionService } from '../order/services/trade-execution.service';
 import { LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
 import { User } from '../users/users.entity';
@@ -113,6 +114,10 @@ describe('LiveTradingService', () => {
         {
           provide: PreTradeRiskGateService,
           useValue: { checkDrawdown: jest.fn().mockResolvedValue({ allowed: true }) }
+        },
+        {
+          provide: TradeExecutionService,
+          useValue: { executeTradeSignal: jest.fn().mockResolvedValue({ id: 'order-1' }) }
         }
       ]
     }).compile();

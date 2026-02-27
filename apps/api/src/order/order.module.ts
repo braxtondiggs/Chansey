@@ -37,6 +37,7 @@ import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
 import { PaperTradingModule } from './paper-trading/paper-trading.module';
+import { LiquidationMonitorService } from './services/liquidation-monitor.service';
 import { OpportunitySellService } from './services/opportunity-sell.service';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderCleanupService } from './services/order-cleanup.service';
@@ -47,6 +48,7 @@ import { PositionAnalysisService } from './services/position-analysis.service';
 import { PositionManagementService } from './services/position-management.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 import { TradeExecutionService } from './services/trade-execution.service';
+import { LiquidationMonitorTask } from './tasks/liquidation-monitor.task';
 import { OrderSyncTask } from './tasks/order-sync.task';
 import { PositionMonitorTask } from './tasks/position-monitor.task';
 import { TradeExecutionTask } from './tasks/trade-execution.task';
@@ -70,6 +72,7 @@ import { OHLCModule } from '../ohlc/ohlc.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { StorageModule } from '../storage/storage.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
+import { UserStrategyPosition } from '../strategy/entities/user-strategy-position.entity';
 import { User } from '../users/users.entity';
 import { UsersModule } from '../users/users.module';
 
@@ -86,6 +89,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestStreamService,
     BacktestResultService,
     SlippageAnalysisService,
+    LiquidationMonitorService,
     PositionManagementService,
     OrderStateMachineService,
     OpportunitySellService,
@@ -114,13 +118,15 @@ const BACKTEST_DEFAULTS = backtestConfig();
       ComparisonReport,
       ComparisonReportRun,
       PositionExit,
-      StrategyConfig
+      StrategyConfig,
+      UserStrategyPosition
     ]),
     BullModule.registerQueue({ name: 'order-queue' }),
     BullModule.registerQueue({ name: BACKTEST_DEFAULTS.historicalQueue }),
     BullModule.registerQueue({ name: BACKTEST_DEFAULTS.replayQueue }),
     BullModule.registerQueue({ name: 'trade-execution' }),
     BullModule.registerQueue({ name: 'position-monitor' }),
+    BullModule.registerQueue({ name: 'liquidation-monitor' }),
     SharedCacheModule,
     forwardRef(() => AlgorithmModule),
     forwardRef(() => BalanceModule),
@@ -149,6 +155,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     CoinResolverService,
     CoinService,
     DatasetValidatorService,
+    LiquidationMonitorService,
+    LiquidationMonitorTask,
     MarketDataReaderService,
     QuoteCurrencyResolverService,
     OpportunitySellService,

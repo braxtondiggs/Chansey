@@ -21,6 +21,13 @@ export class CoinbaseService extends BaseExchangeService {
   protected readonly apiSecretConfigName = 'COINBASE_API_SECRET';
   readonly quoteAsset = 'USD';
 
+  /**
+   * Coinbase Advanced supports futures/perpetual trading
+   */
+  override get supportsFutures(): boolean {
+    return true;
+  }
+
   constructor(
     configService?: ConfigService,
 
@@ -121,6 +128,72 @@ export class CoinbaseService extends BaseExchangeService {
         /* empty */
       }
     }
+  }
+
+  /**
+   * Set the margin mode for a futures symbol on Coinbase Advanced
+   * @param mode Margin mode (e.g. 'isolated', 'cross')
+   * @param symbol Trading pair symbol
+   * @param user User context for client initialization
+   */
+  override async setMarginMode(mode: string, symbol: string, user: User): Promise<void> {
+    const exchange = await this.getClient(user);
+    await exchange.setMarginMode(mode, symbol);
+  }
+
+  /**
+   * Set leverage for a futures symbol on Coinbase Advanced
+   * @param leverage Leverage multiplier
+   * @param symbol Trading pair symbol
+   * @param user User context for client initialization
+   */
+  override async setLeverage(leverage: number, symbol: string, user: User): Promise<void> {
+    const exchange = await this.getClient(user);
+    await exchange.setLeverage(leverage, symbol);
+  }
+
+  /**
+   * Create a futures order on Coinbase Advanced
+   * Configures margin mode and leverage, then places a market order
+   * @param user User context for client initialization
+   * @param symbol Trading pair symbol (e.g. 'BTC/USD:USD')
+   * @param side Order side: 'buy' or 'sell'
+   * @param quantity Order quantity
+   * @param leverage Leverage multiplier
+   * @param params Additional CCXT order parameters
+   * @returns CCXT order response
+   */
+  async createFuturesOrder(
+    user: User,
+    symbol: string,
+    side: 'buy' | 'sell',
+    quantity: number,
+    leverage: number,
+    params?: Record<string, unknown>
+  ): Promise<ccxt.Order> {
+    const exchange = await this.getClient(user);
+
+    // Configure margin and leverage for the symbol
+    await exchange.setMarginMode('isolated', symbol);
+    await exchange.setLeverage(leverage, symbol);
+
+    // Place market order with futures params
+    return exchange.createMarketOrder(symbol, side, quantity, undefined, {
+      marginMode: 'isolated',
+      ...params
+    });
+  }
+
+  /**
+   * Get open futures positions from Coinbase Advanced
+   * @param user User context for client initialization
+   * @param symbol Optional symbol filter; if omitted, returns all positions
+   * @returns Array of CCXT position objects
+   */
+  async getFuturesPositions(user: User, symbol?: string): Promise<ccxt.Position[]> {
+    const exchange = await this.getClient(user);
+    const symbols = symbol ? [symbol] : undefined;
+    return exchange.fetchPositions(symbols);
   }
 
   async getBalance(user: User): Promise<AssetBalanceDto[]> {

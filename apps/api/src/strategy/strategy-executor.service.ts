@@ -14,7 +14,7 @@ import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/t
 import { toErrorInfo } from '../shared/error.util';
 
 export interface TradingSignal {
-  action: 'buy' | 'sell' | 'hold';
+  action: 'buy' | 'sell' | 'hold' | 'short_entry' | 'short_exit';
   symbol: string;
   quantity: number;
   price: number;
@@ -82,6 +82,12 @@ export class StrategyExecutorService {
       context.compositeRegime = this.compositeRegimeService.getCompositeRegime();
       context.volatilityRegime = this.compositeRegimeService.getVolatilityRegime();
 
+      // Pass marketType so strategies can detect futures mode for short signals
+      context.metadata = {
+        ...context.metadata,
+        marketType: strategy.marketType ?? 'spot'
+      };
+
       // Execute the algorithm
       const result = await this.algorithmRegistry.executeAlgorithm(strategy.algorithm.id, context);
 
@@ -90,7 +96,7 @@ export class StrategyExecutorService {
         return null;
       }
 
-      // Filter to BUY/SELL signals meeting the confidence threshold
+      // Filter to actionable signals (BUY/SELL/SHORT_ENTRY/SHORT_EXIT) meeting the confidence threshold
       const actionableSignals = result.signals.filter(
         (s) => s.type !== SignalType.HOLD && s.confidence >= MIN_CONFIDENCE_THRESHOLD
       );
@@ -167,7 +173,7 @@ export class StrategyExecutorService {
       return { valid: false, reason: 'Price must be greater than 0' };
     }
 
-    if (signal.action === 'buy') {
+    if (signal.action === 'buy' || signal.action === 'short_entry') {
       const requiredCapital = signal.quantity * signal.price;
       if (requiredCapital > availableCapital) {
         return {
@@ -180,7 +186,7 @@ export class StrategyExecutorService {
     return { valid: true };
   }
 
-  private mapSignalType(type: SignalType): 'buy' | 'sell' | 'hold' {
+  private mapSignalType(type: SignalType): 'buy' | 'sell' | 'hold' | 'short_entry' | 'short_exit' {
     switch (type) {
       case SignalType.BUY:
         return 'buy';
@@ -188,6 +194,10 @@ export class StrategyExecutorService {
       case SignalType.STOP_LOSS:
       case SignalType.TAKE_PROFIT:
         return 'sell';
+      case SignalType.SHORT_ENTRY:
+        return 'short_entry';
+      case SignalType.SHORT_EXIT:
+        return 'short_exit';
       case SignalType.HOLD:
       default:
         return 'hold';
@@ -227,9 +237,9 @@ export class StrategyExecutorService {
 
     const action = this.mapSignalType(signal.type);
 
-    // Cap per-trade position size for buy signals (mirrors paper trading MAX_ALLOCATION)
-    // Sell signals are bounded by existing position size, so no cap needed.
-    if (action !== 'sell') {
+    // Cap per-trade position size for buy/short_entry signals (mirrors paper trading MAX_ALLOCATION)
+    // Sell and short_exit signals are bounded by existing position size, so no cap needed.
+    if (action === 'buy' || action === 'short_entry') {
       const maxQuantity = (availableCapital * MAX_PER_TRADE_ALLOCATION) / price;
       const minQuantity = (availableCapital * MIN_PER_TRADE_ALLOCATION) / price;
       if (quantity > maxQuantity) {

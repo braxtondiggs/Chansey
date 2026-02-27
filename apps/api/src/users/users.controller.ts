@@ -18,8 +18,10 @@ import { FastifyRequest } from 'fastify';
 import {
   AlgoTradingStatusDto,
   EnrollInAlgoTradingDto,
+  FuturesEnabledStatusDto,
   OpportunitySellingStatusDto,
   UpdateAlgoCapitalDto,
+  UpdateFuturesEnabledDto,
   UpdateOpportunitySellingConfigDto,
   UpdateUserDto,
   UserResponseDto
@@ -221,5 +223,31 @@ export class UserController {
   })
   async getOpportunitySellingConfig(@GetUser() user: User) {
     return this.user.getOpportunitySellingConfig(user.id);
+  }
+
+  @Patch('futures-trading')
+  @ApiOperation({
+    summary: 'Toggle futures trading',
+    description: 'Enable or disable futures/short-selling trading for the authenticated user.'
+  })
+  @ApiOkResponse({
+    description: 'Futures trading status updated successfully.',
+    type: FuturesEnabledStatusDto
+  })
+  async updateFuturesEnabled(@Body() dto: UpdateFuturesEnabledDto, @GetUser() user: User) {
+    return this.user.updateFuturesEnabled(user.id, dto);
+  }
+
+  @Get('futures-trading')
+  @ApiOperation({
+    summary: 'Get futures trading status',
+    description: 'Retrieve whether futures trading is enabled for the authenticated user.'
+  })
+  @ApiOkResponse({
+    description: 'Futures trading status retrieved successfully.',
+    type: FuturesEnabledStatusDto
+  })
+  async getFuturesEnabled(@GetUser() user: User) {
+    return this.user.getFuturesEnabled(user.id);
   }
 }

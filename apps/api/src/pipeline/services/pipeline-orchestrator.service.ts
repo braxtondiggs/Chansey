@@ -527,6 +527,8 @@ export class PipelineOrchestratorService {
       maxDrawdown: number;
       winRate: number;
       totalTrades: number;
+      winningTrades: number;
+      losingTrades: number;
       profitFactor: number;
       volatility: number;
     }
@@ -571,8 +573,8 @@ export class PipelineOrchestratorService {
         initialCapital: pipeline.stageConfig.historical.initialCapital,
         finalValue: pipeline.stageConfig.historical.initialCapital * (1 + metrics.totalReturn),
         annualizedReturn: metrics.totalReturn, // Simplified
-        winningTrades: Math.round(metrics.totalTrades * metrics.winRate),
-        losingTrades: Math.round(metrics.totalTrades * (1 - metrics.winRate)),
+        winningTrades: metrics.winningTrades,
+        losingTrades: metrics.losingTrades,
         duration: 0,
         completedAt: new Date().toISOString()
       };
@@ -599,8 +601,8 @@ export class PipelineOrchestratorService {
         initialCapital: pipeline.stageConfig.liveReplay.initialCapital,
         finalValue: pipeline.stageConfig.liveReplay.initialCapital * (1 + metrics.totalReturn),
         annualizedReturn: metrics.totalReturn,
-        winningTrades: Math.round(metrics.totalTrades * metrics.winRate),
-        losingTrades: Math.round(metrics.totalTrades * (1 - metrics.winRate)),
+        winningTrades: metrics.winningTrades,
+        losingTrades: metrics.losingTrades,
         degradationFromHistorical: degradation,
         duration: 0,
         completedAt: new Date().toISOString()
@@ -1081,7 +1083,8 @@ export class PipelineOrchestratorService {
         maxConcurrentBacktests: 2,
         maxConcurrentWindows: 2
       },
-      maxCoins: config.maxCoins
+      maxCoins: config.maxCoins,
+      riskLevel: this.getUserRiskLevel(pipeline)
     });
 
     // Store optimization run reference
@@ -1107,6 +1110,10 @@ export class PipelineOrchestratorService {
       throw new Error('No market data set configured and no auto-generated dataset available');
     }
 
+    // Extract futures config from strategy config
+    const marketType = pipeline.strategyConfig.marketType ?? 'spot';
+    const leverage = pipeline.strategyConfig.defaultLeverage ?? 1;
+
     // Create historical backtest (createBacktest auto-queues execution)
     const backtest = await this.backtestService.createBacktest(pipeline.user as User, {
       name: `Pipeline ${pipeline.name} - Historical`,
@@ -1120,6 +1127,12 @@ export class PipelineOrchestratorService {
       strategyParams: pipeline.optimizedParameters as Record<string, any>,
       riskLevel: this.getUserRiskLevel(pipeline)
     });
+
+    // If strategy uses futures, update backtest with marketType and leverage
+    if (marketType === 'futures') {
+      await this.backtestService.updateBacktestFuturesConfig(backtest.id, marketType, leverage);
+      this.logger.log(`Set futures config for backtest ${backtest.id}: marketType=${marketType}, leverage=${leverage}`);
+    }
 
     // Store backtest reference
     pipeline.historicalBacktestId = backtest.id;
@@ -1135,6 +1148,10 @@ export class PipelineOrchestratorService {
       throw new Error('No market data set configured and no auto-generated dataset available');
     }
 
+    // Extract futures config from strategy config
+    const marketType = pipeline.strategyConfig.marketType ?? 'spot';
+    const leverage = pipeline.strategyConfig.defaultLeverage ?? 1;
+
     // Create live replay backtest (createBacktest auto-queues execution)
     const backtest = await this.backtestService.createBacktest(pipeline.user as User, {
       name: `Pipeline ${pipeline.name} - Live Replay`,
@@ -1148,6 +1165,12 @@ export class PipelineOrchestratorService {
       strategyParams: pipeline.optimizedParameters as Record<string, any>,
       riskLevel: this.getUserRiskLevel(pipeline)
     });
+
+    // If strategy uses futures, update backtest with marketType and leverage
+    if (marketType === 'futures') {
+      await this.backtestService.updateBacktestFuturesConfig(backtest.id, marketType, leverage);
+      this.logger.log(`Set futures config for backtest ${backtest.id}: marketType=${marketType}, leverage=${leverage}`);
+    }
 
     // Store backtest reference
     pipeline.liveReplayBacktestId = backtest.id;

@@ -68,4 +68,5 @@ export interface ExchangeKey {
   isActive: boolean;
   name: string;
   slug: string;
+  supportsFutures?: boolean;
 }

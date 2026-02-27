@@ -303,9 +303,7 @@ export class CreateBacktestDto {
   @IsBoolean()
   @IsOptional()
   @ApiProperty({
-    description:
-      'Enable composite regime gate filtering. When enabled, BUY signals are blocked in BEAR/EXTREME regimes.',
-    default: true,
+    description: `Enable composite regime gate filtering. When enabled, BUY signals are blocked in BEAR/EXTREME regimes. When omitted, derived from riskLevel: ON for risk ≤ 2 (conservative), OFF for risk ≥ 3 (moderate+). Set explicitly to override the risk-level default.`,
     required: false
   })
   enableRegimeGate?: boolean;

@@ -494,6 +494,8 @@ describe('PipelineOrchestratorService', () => {
           maxDrawdown: 0.1,
           winRate: 0.55,
           totalTrades: 50,
+          winningTrades: 15,
+          losingTrades: 12,
           profitFactor: 2.0,
           volatility: 0.3
         }
@@ -507,6 +509,8 @@ describe('PipelineOrchestratorService', () => {
           maxDrawdown: 0.8,
           winRate: 0.1,
           totalTrades: 5,
+          winningTrades: 0,
+          losingTrades: 3,
           profitFactor: 0.5,
           volatility: 0.8
         }
@@ -557,6 +561,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0.15,
         winRate: 0.5,
         totalTrades: 50,
+        winningTrades: 15,
+        losingTrades: 15,
         profitFactor: 1.5,
         volatility: 0.25
       });
@@ -594,6 +600,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0.6,
         winRate: 0.2,
         totalTrades: 10,
+        winningTrades: 1,
+        losingTrades: 4,
         profitFactor: 0.3,
         volatility: 0.7
       });
@@ -623,6 +631,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0,
         winRate: 0,
         totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
         profitFactor: 0,
         volatility: 0
       });
@@ -657,6 +667,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0,
         winRate: 0,
         totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
         profitFactor: 0,
         volatility: 0
       });
@@ -698,6 +710,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0.2,
         winRate: 0.45,
         totalTrades: 30,
+        winningTrades: 8,
+        losingTrades: 10,
         profitFactor: 1.1,
         volatility: 0.35
       });
@@ -736,6 +750,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0.15,
         winRate: 0.5,
         totalTrades: 50,
+        winningTrades: 15,
+        losingTrades: 15,
         profitFactor: 1.5,
         volatility: 0.25
       });
@@ -778,6 +794,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0.1,
         winRate: 0.6,
         totalTrades: 80,
+        winningTrades: 30,
+        losingTrades: 20,
         profitFactor: 2.5,
         volatility: 0.2
       });
@@ -817,6 +835,8 @@ describe('PipelineOrchestratorService', () => {
         maxDrawdown: 0.25,
         winRate: 0.4,
         totalTrades: 20,
+        winningTrades: 5,
+        losingTrades: 8,
         profitFactor: 1.0,
         volatility: 0.4
       });

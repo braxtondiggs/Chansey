@@ -184,7 +184,7 @@ describe('TradeExecutionService', () => {
       quantity: 1
     };
 
-    const mockUser = { id: 'user-id' };
+    const mockUser = { id: 'user-id', futuresEnabled: true };
     const mockExchange = { slug: 'binance', name: 'Binance' };
 
     const buildExchangeClient = (overrides: Partial<any> = {}) => ({
@@ -665,7 +665,7 @@ describe('TradeExecutionService', () => {
   });
 
   describe('auto-sizing in executeTradeSignal', () => {
-    const mockUser = { id: 'user-id' };
+    const mockUser = { id: 'user-id', futuresEnabled: true };
     const mockExchange = { slug: 'binance', name: 'Binance' };
 
     const buildExchangeClient = (overrides: Partial<any> = {}) => ({
