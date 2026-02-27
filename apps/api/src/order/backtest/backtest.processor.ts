@@ -19,6 +19,7 @@ import { MarketDataSet } from './market-data-set.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { ExitConfig } from '../interfaces/exit-config.interface';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -206,7 +207,8 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
         checkpointInterval: DEFAULT_CHECKPOINT_CONFIG.checkpointInterval,
         onCheckpoint,
         onHeartbeat,
-        resumeFrom
+        resumeFrom,
+        exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined
       });
 
       // Clear checkpoint on successful completion

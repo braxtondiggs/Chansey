@@ -1,3 +1,4 @@
+import { SerializableExitTrackerState } from './shared/exits/backtest-exit-tracker';
 import { SerializableThrottleState } from './shared/throttle/signal-throttle.interface';
 
 /**
@@ -61,6 +62,9 @@ export interface BacktestCheckpointState {
 
   /** Signal throttle state for resume capability */
   throttleState?: SerializableThrottleState;
+
+  /** Exit tracker state for resume capability (positions with SL/TP/trailing levels) */
+  exitTrackerState?: SerializableExitTrackerState;
 
   /** SHA256 checksum (first 16 chars) for data integrity verification */
   checksum: string;
