@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -298,6 +299,39 @@ export class CreateBacktestDto {
     required: false
   })
   quoteCurrency?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  @ApiProperty({
+    description:
+      'Enable composite regime gate filtering. When enabled, BUY signals are blocked in BEAR/EXTREME regimes.',
+    default: true,
+    required: false
+  })
+  enableRegimeGate?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  @ApiProperty({
+    description: 'Enable regime-scaled position sizing to match live trading behavior.',
+    default: true,
+    required: false
+  })
+  enableRegimeScaledSizing?: boolean;
+
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  @IsOptional()
+  @ApiProperty({
+    description: 'User risk level (1=conservative, 5=aggressive) for regime multiplier lookup.',
+    example: 3,
+    default: 3,
+    minimum: 1,
+    maximum: 5,
+    required: false
+  })
+  riskLevel?: number;
 
   @IsEnum(ReplaySpeed)
   @IsOptional()

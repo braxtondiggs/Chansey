@@ -146,7 +146,7 @@ interface ExecuteOptions {
    *  When enabled, BUY signals are blocked when BTC is below its 200-day SMA. */
   enableRegimeGate?: boolean;
 
-  /** Enable regime-scaled position sizing (default: false for backward compatibility) */
+  /** Enable regime-scaled position sizing (default: true to match live trading) */
   enableRegimeScaledSizing?: boolean;
   /** User risk level for regime multiplier lookup (1-5). Default: 3 */
   riskLevel?: number;
@@ -272,6 +272,10 @@ export interface OptimizationBacktestConfig {
   slippage?: SlippageConfig;
   /** Exit configuration for SL/TP/trailing stop simulation (overrides legacy hard stop-loss) */
   exitConfig?: ExitConfig;
+  /** Enable composite regime gate filtering (default: true) */
+  enableRegimeGate?: boolean;
+  /** Enable regime-scaled position sizing (default: true) */
+  enableRegimeScaledSizing?: boolean;
 }
 
 /**
@@ -330,6 +334,7 @@ export interface PrecomputedWindowData {
 
 interface CompositeRegimeResult {
   compositeRegime: CompositeRegimeType;
+  volatilityRegime: MarketRegimeType;
 }
 
 @Injectable()
@@ -430,14 +435,14 @@ export class BacktestEngine {
     }
 
     const compositeRegime = this.regimeGateService.classifyComposite(volatilityRegime, trendAboveSma);
-    return { compositeRegime };
+    return { compositeRegime, volatilityRegime };
   }
 
   private resolveRegimeConfig(
     options: { enableRegimeGate?: boolean; enableRegimeScaledSizing?: boolean; riskLevel?: number },
     coins: Coin[]
   ): { enableRegimeScaledSizing: boolean; riskLevel: number; regimeGateEnabled: boolean; btcCoin: Coin | undefined } {
-    const enableRegimeScaledSizing = options.enableRegimeScaledSizing === true;
+    const enableRegimeScaledSizing = options.enableRegimeScaledSizing !== false;
     const riskLevel = options.riskLevel ?? 3;
     const regimeGateEnabled = options.enableRegimeGate !== false;
     const btcCoin =
@@ -448,11 +453,25 @@ export class BacktestEngine {
     return { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin };
   }
 
+  private resolveRegimeConfigForOptimization(
+    config: { enableRegimeGate?: boolean; enableRegimeScaledSizing?: boolean; riskLevel?: number },
+    coins: Coin[],
+    priceCtx: PriceTrackingContext
+  ): { enableRegimeScaledSizing: boolean; riskLevel: number; regimeGateEnabled: boolean; btcCoin: Coin | undefined } {
+    const result = this.resolveRegimeConfig(config, coins);
+    if (result.btcCoin) {
+      priceCtx.btcRegimeSma = new IncrementalSma(BacktestEngine.REGIME_SMA_PERIOD);
+      priceCtx.btcCoinId = result.btcCoin.id;
+    }
+    return result;
+  }
+
   private applyBarRegime(
     strategySignals: TradingSignal[],
     priceCtx: PriceTrackingContext,
     regimeConfig: { btcCoin?: Coin; regimeGateEnabled: boolean; enableRegimeScaledSizing: boolean; riskLevel: number },
-    allocationLimits: { maxAllocation: number; minAllocation: number }
+    allocationLimits: { maxAllocation: number; minAllocation: number },
+    precomputedRegime?: CompositeRegimeResult | null
   ): { filteredSignals: TradingSignal[]; barMaxAllocation: number; barMinAllocation: number } {
     if (!regimeConfig.btcCoin || strategySignals.length === 0) {
       return {
@@ -462,7 +481,10 @@ export class BacktestEngine {
       };
     }
 
-    const regimeResult = this.computeCompositeRegime(regimeConfig.btcCoin.id, priceCtx);
+    const regimeResult =
+      precomputedRegime !== undefined
+        ? precomputedRegime
+        : this.computeCompositeRegime(regimeConfig.btcCoin.id, priceCtx);
     if (!regimeResult) {
       return {
         filteredSignals: strategySignals,
@@ -740,6 +762,7 @@ export class BacktestEngine {
 
       // During warmup: run algorithm to prime internal state but skip trading/recording
       if (isWarmup) {
+        const warmupRegime = btcCoin ? this.computeCompositeRegime(btcCoin.id, priceCtx) : null;
         const context = {
           coins,
           priceData,
@@ -753,7 +776,9 @@ export class BacktestEngine {
             datasetId: options.dataset.id,
             deterministicSeed: options.deterministicSeed,
             backtestId: backtest.id
-          }
+          },
+          compositeRegime: warmupRegime?.compositeRegime,
+          volatilityRegime: warmupRegime?.volatilityRegime
         };
         try {
           await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
@@ -786,6 +811,9 @@ export class BacktestEngine {
         });
       }
 
+      // Compute regime once per bar for context + filtering
+      const barRegimeResult = btcCoin ? this.computeCompositeRegime(btcCoin.id, priceCtx) : null;
+
       const context = {
         coins,
         priceData,
@@ -799,7 +827,9 @@ export class BacktestEngine {
           datasetId: options.dataset.id,
           deterministicSeed: options.deterministicSeed,
           backtestId: backtest.id
-        }
+        },
+        compositeRegime: barRegimeResult?.compositeRegime,
+        volatilityRegime: barRegimeResult?.volatilityRegime
       };
 
       let strategySignals: TradingSignal[] = [];
@@ -844,12 +874,13 @@ export class BacktestEngine {
         timestamp.getTime()
       );
 
-      // Regime gate + regime-scaled position sizing
+      // Regime gate + regime-scaled position sizing (pass precomputed to avoid double-computing)
       const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
         strategySignals,
         priceCtx,
         { btcCoin, regimeGateEnabled, enableRegimeScaledSizing, riskLevel },
-        { maxAllocation, minAllocation }
+        { maxAllocation, minAllocation },
+        barRegimeResult
       );
       strategySignals = filteredSignals;
 
@@ -1551,6 +1582,9 @@ export class BacktestEngine {
         await this.delay(delayMs);
       }
 
+      // Compute regime once per bar for context + filtering
+      const barRegimeResult = btcCoin ? this.computeCompositeRegime(btcCoin.id, priceCtx) : null;
+
       const context = {
         coins,
         priceData,
@@ -1566,7 +1600,9 @@ export class BacktestEngine {
           backtestId: backtest.id,
           isLiveReplay: true,
           replaySpeed: replaySpeed
-        }
+        },
+        compositeRegime: barRegimeResult?.compositeRegime,
+        volatilityRegime: barRegimeResult?.volatilityRegime
       };
 
       let strategySignals: TradingSignal[] = [];
@@ -1602,12 +1638,13 @@ export class BacktestEngine {
         timestamp.getTime()
       );
 
-      // Regime gate + regime-scaled position sizing
+      // Regime gate + regime-scaled position sizing (pass precomputed to avoid double-computing)
       const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
         strategySignals,
         priceCtx,
         { btcCoin, regimeGateEnabled, enableRegimeScaledSizing, riskLevel },
-        { maxAllocation, minAllocation }
+        { maxAllocation, minAllocation },
+        barRegimeResult
       );
       strategySignals = filteredSignals;
 
@@ -3134,8 +3171,15 @@ export class BacktestEngine {
       maxAllocation: config.maxAllocation,
       minAllocation: config.minAllocation
     });
-    const optMaxAllocation = optAllocLimits.maxAllocation;
-    const optMinAllocation = optAllocLimits.minAllocation;
+    let optMaxAllocation = optAllocLimits.maxAllocation;
+    let optMinAllocation = optAllocLimits.minAllocation;
+
+    // Regime gate + scaled sizing for optimization
+    const { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin } = this.resolveRegimeConfigForOptimization(
+      config,
+      coins,
+      priceCtx
+    );
 
     let peakValue = initialCapital;
     let maxDrawdown = 0;
@@ -3187,6 +3231,9 @@ export class BacktestEngine {
         });
       }
 
+      // Compute regime for context + filtering
+      const barRegimeResult = btcCoin ? this.computeCompositeRegime(btcCoin.id, priceCtx) : null;
+
       // Build algorithm context
       const positions =
         portfolio.positions.size > 0
@@ -3205,7 +3252,9 @@ export class BacktestEngine {
           algorithmId: config.algorithmId
         },
         precomputedIndicators,
-        currentTimestampIndex: i
+        currentTimestampIndex: i,
+        compositeRegime: barRegimeResult?.compositeRegime,
+        volatilityRegime: barRegimeResult?.volatilityRegime
       };
 
       let strategySignals: TradingSignal[] = [];
@@ -3229,6 +3278,20 @@ export class BacktestEngine {
         throttleConfig,
         timestamp.getTime()
       );
+
+      // Regime gate + regime-scaled position sizing
+      if (btcCoin) {
+        const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
+          strategySignals,
+          priceCtx,
+          { btcCoin, regimeGateEnabled, enableRegimeScaledSizing, riskLevel },
+          { maxAllocation: optAllocLimits.maxAllocation, minAllocation: optAllocLimits.minAllocation },
+          barRegimeResult
+        );
+        strategySignals = filteredSignals;
+        optMaxAllocation = barMaxAllocation;
+        optMinAllocation = barMinAllocation;
+      }
 
       for (const strategySignal of strategySignals) {
         const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
@@ -3570,12 +3633,19 @@ export class BacktestEngine {
     }
 
     // Position sizing for OPTIMIZE stage
-    const coreOptAllocLimits = getAllocationLimits(PipelineStage.OPTIMIZE, config.riskLevel, {
+    const optAllocLimits = getAllocationLimits(PipelineStage.OPTIMIZE, config.riskLevel, {
       maxAllocation: config.maxAllocation,
       minAllocation: config.minAllocation
     });
-    const coreOptMaxAlloc = coreOptAllocLimits.maxAllocation;
-    const coreOptMinAlloc = coreOptAllocLimits.minAllocation;
+    let optMaxAllocation = optAllocLimits.maxAllocation;
+    let optMinAllocation = optAllocLimits.minAllocation;
+
+    // Regime gate + scaled sizing for optimization
+    const { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin } = this.resolveRegimeConfigForOptimization(
+      config,
+      coins,
+      priceCtx
+    );
 
     let peakValue = initialCapital;
     let maxDrawdown = 0;
@@ -3621,6 +3691,9 @@ export class BacktestEngine {
         });
       }
 
+      // Compute regime for context + filtering
+      const barRegimeResult = btcCoin ? this.computeCompositeRegime(btcCoin.id, priceCtx) : null;
+
       // Build algorithm context with optimization parameters
       // Lazy positions snapshot: only build when positions exist
       const positions =
@@ -3640,7 +3713,9 @@ export class BacktestEngine {
           algorithmId: config.algorithmId
         },
         precomputedIndicators,
-        currentTimestampIndex: i
+        currentTimestampIndex: i,
+        compositeRegime: barRegimeResult?.compositeRegime,
+        volatilityRegime: barRegimeResult?.volatilityRegime
       };
 
       let strategySignals: TradingSignal[] = [];
@@ -3665,6 +3740,20 @@ export class BacktestEngine {
         timestamp.getTime()
       );
 
+      // Regime gate + regime-scaled position sizing
+      if (btcCoin) {
+        const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
+          strategySignals,
+          priceCtx,
+          { btcCoin, regimeGateEnabled, enableRegimeScaledSizing, riskLevel },
+          { maxAllocation: optAllocLimits.maxAllocation, minAllocation: optAllocLimits.minAllocation },
+          barRegimeResult
+        );
+        strategySignals = filteredSignals;
+        optMaxAllocation = barMaxAllocation;
+        optMinAllocation = barMinAllocation;
+      }
+
       for (const strategySignal of strategySignals) {
         // Use precomputed volume map instead of .find() per signal
         const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
@@ -3678,8 +3767,8 @@ export class BacktestEngine {
           slippageConfig,
           dailyVolume,
           BacktestEngine.DEFAULT_MIN_HOLD_MS,
-          coreOptMaxAlloc,
-          coreOptMinAlloc
+          optMaxAllocation,
+          optMinAllocation
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });

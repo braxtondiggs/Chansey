@@ -196,6 +196,11 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
           baseBps: createBacktestDto.slippageBaseBps ?? 5,
           volumeImpactFactor: createBacktestDto.slippageVolumeImpactFactor ?? 100
         },
+        regime: {
+          enableRegimeGate: createBacktestDto.enableRegimeGate,
+          enableRegimeScaledSizing: createBacktestDto.enableRegimeScaledSizing,
+          riskLevel: createBacktestDto.riskLevel
+        },
         parameters: createBacktestDto.strategyParams ?? {},
         ...(createBacktestDto.exitConfig && { exitConfig: createBacktestDto.exitConfig })
       };

@@ -1,4 +1,4 @@
-import { CompositeRegimeType } from '@chansey/api-interfaces';
+import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 
 import { PaperTradingOrderSide } from './entities';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
@@ -56,7 +56,8 @@ const createService = (overrides: Partial<any> = {}) => {
   };
 
   const compositeRegimeService = {
-    getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.BULL)
+    getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.BULL),
+    getVolatilityRegime: jest.fn().mockReturnValue(MarketRegimeType.NORMAL)
   };
 
   const signalFilterChain = {
@@ -1498,7 +1499,8 @@ describe('PaperTradingEngineService', () => {
   describe('regime gate filtering', () => {
     it('blocks BUY signals in BEAR regime', async () => {
       const compositeRegimeService = {
-        getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.BEAR)
+        getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.BEAR),
+        getVolatilityRegime: jest.fn().mockReturnValue(MarketRegimeType.NORMAL)
       };
 
       const signalFilterChain = {
@@ -1557,7 +1559,8 @@ describe('PaperTradingEngineService', () => {
       const quoteAccount = { currency: 'USD', available: 5000, total: 5000 };
 
       const compositeRegimeService = {
-        getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.BEAR)
+        getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.BEAR),
+        getVolatilityRegime: jest.fn().mockReturnValue(MarketRegimeType.NORMAL)
       };
 
       // Passthrough: STOP_LOSS mapped to SELL passes the gate

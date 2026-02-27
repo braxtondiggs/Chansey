@@ -103,7 +103,7 @@ export interface LiveReplayExecuteOptions {
   /** Pipeline stage for allocation limit lookup (default: LIVE_REPLAY) */
   pipelineStage?: PipelineStage;
 
-  /** Enable regime-scaled position sizing (default: false for backward compatibility) */
+  /** Enable regime-scaled position sizing (default: true to match live trading) */
   enableRegimeScaledSizing?: boolean;
   /** User risk level for regime multiplier lookup (1-5). Default: 3 */
   riskLevel?: number;

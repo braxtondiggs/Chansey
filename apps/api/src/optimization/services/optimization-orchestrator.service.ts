@@ -693,7 +693,9 @@ export class OptimizationOrchestratorService {
       startDate,
       endDate,
       initialCapital: 10000,
-      tradingFee: 0.001
+      tradingFee: 0.001,
+      enableRegimeGate: true,
+      enableRegimeScaledSizing: true
     };
 
     try {
@@ -1167,7 +1169,10 @@ export class OptimizationOrchestratorService {
       return { stepDays: configuredStepDays, adjusted: false };
     }
 
-    const windowSize = trainDays + testDays;
+    // WalkForwardService.generateWindows() inserts a +1 day gap between
+    // trainEnd and testStart, so the effective window footprint is
+    // trainDays + 1 + testDays, not trainDays + testDays.
+    const windowSize = trainDays + 1 + testDays;
 
     // Not enough data for even one window — return configured value unchanged
     // (will fail at window generation with a clear error)
