@@ -49,6 +49,8 @@ import { QuoteCurrencyResolverService } from './quote-currency-resolver.service'
 import { RingBuffer } from './ring-buffer';
 import { SeededRandom } from './seeded-random';
 import {
+  BacktestExitTracker,
+  DEFAULT_BACKTEST_EXIT_CONFIG,
   DEFAULT_SLIPPAGE_CONFIG,
   FeeCalculatorService,
   MetricsCalculatorService,
@@ -83,6 +85,7 @@ import { VolatilityCalculator } from '../../market-regime/volatility.calculator'
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { ExitConfig } from '../interfaces/exit-config.interface';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   OpportunitySellingUserConfig
@@ -136,6 +139,9 @@ interface ExecuteOptions {
   /** Hard stop-loss threshold as a fraction (0-1). Default: 0.05 (5% loss triggers exit) */
   hardStopLossPercent?: number;
 
+  /** Exit configuration for SL/TP/trailing stop simulation (overrides legacy hard stop-loss when provided) */
+  exitConfig?: ExitConfig;
+
   /** Enable composite regime gate filtering (default: true).
    *  When enabled, BUY signals are blocked when BTC is below its 200-day SMA. */
   enableRegimeGate?: boolean;
@@ -177,19 +183,26 @@ interface MetricsAccumulator {
   };
 }
 
-interface HardStopLossProcessingOptions {
-  portfolio: Portfolio;
-  marketData: MarketData;
+interface ResolveExitTrackerOptions {
+  exitConfig?: ExitConfig;
+  enableHardStopLoss?: boolean;
+  hardStopLossPercent?: number;
+  resumeExitTrackerState?: import('./shared/exits/backtest-exit-tracker').SerializableExitTrackerState;
+}
+
+interface ProcessExitSignalsOptions {
+  exitTracker: BacktestExitTracker;
   currentPrices: OHLCCandle[];
-  hardStopLossPercent: number;
+  marketData: MarketData;
+  portfolio: Portfolio;
   tradingFee: number;
   rng: SeededRandom;
   timestamp: Date;
   trades: Partial<BacktestTrade>[];
-  // Optional — omit for lightweight optimization mode
   slippageConfig?: SlippageConfig;
   maxAllocation?: number;
   minAllocation?: number;
+  // Full-fidelity fields (omit for lightweight optimization mode)
   signals?: Partial<BacktestSignal>[];
   simulatedFills?: Partial<SimulatedOrderFill>[];
   backtest?: Backtest;
@@ -257,6 +270,8 @@ export interface OptimizationBacktestConfig {
   riskLevel?: number;
   /** Optional slippage config. Defaults to DEFAULT_SLIPPAGE_CONFIG (fixed 5 bps). */
   slippage?: SlippageConfig;
+  /** Exit configuration for SL/TP/trailing stop simulation (overrides legacy hard stop-loss) */
+  exitConfig?: ExitConfig;
 }
 
 /**
@@ -634,6 +649,14 @@ export class BacktestEngine {
     const enableHardStopLoss = options.enableHardStopLoss !== false;
     const hardStopLossPercent = options.hardStopLossPercent ?? 0.05;
 
+    // Exit tracker: resolve effective ExitConfig from options or legacy hard stop-loss
+    const exitTracker = this.resolveExitTracker({
+      exitConfig: options.exitConfig,
+      enableHardStopLoss,
+      hardStopLossPercent,
+      resumeExitTrackerState: isResuming ? options.resumeFrom?.exitTrackerState : undefined
+    });
+
     // Opportunity selling config
     const oppSellingEnabled = options.enableOpportunitySelling ?? false;
     const oppSellingConfig = options.opportunitySellingConfig ?? DEFAULT_OPPORTUNITY_SELLING_CONFIG;
@@ -741,13 +764,13 @@ export class BacktestEngine {
         continue;
       }
 
-      // Hard stop-loss: check all positions BEFORE algorithm runs new decisions
-      if (enableHardStopLoss) {
-        await this.processHardStopLoss({
-          portfolio,
-          marketData,
+      // Exit tracker: check SL/TP/trailing exits BEFORE algorithm runs new decisions
+      if (exitTracker) {
+        await this.processExitSignals({
+          exitTracker,
           currentPrices,
-          hardStopLossPercent,
+          marketData,
+          portfolio,
           tradingFee: backtest.tradingFee,
           rng,
           timestamp,
@@ -927,6 +950,15 @@ export class BacktestEngine {
             metadata: trade.metadata,
             backtest
           });
+
+          // Update exit tracker: register new BUY positions, reduce on SELL
+          if (exitTracker && trade.price != null && trade.quantity != null) {
+            if (strategySignal.action === 'BUY') {
+              exitTracker.onBuy(strategySignal.coinId, trade.price, trade.quantity);
+            } else if (strategySignal.action === 'SELL') {
+              exitTracker.onSell(strategySignal.coinId, trade.quantity);
+            }
+          }
         } else if (strategySignal.action === 'BUY') {
           metricsAcc.skippedBuyCount++;
         }
@@ -999,7 +1031,8 @@ export class BacktestEngine {
           metricsAcc.totalWinningSellCount + currentSells.winningSells,
           this.signalThrottle.serialize(throttleState),
           metricsAcc.grossProfit + currentSells.grossProfit,
-          metricsAcc.grossLoss + currentSells.grossLoss
+          metricsAcc.grossLoss + currentSells.grossLoss,
+          exitTracker?.serialize()
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -1251,6 +1284,14 @@ export class BacktestEngine {
     const enableHardStopLoss = options.enableHardStopLoss !== false;
     const hardStopLossPercent = options.hardStopLossPercent ?? 0.05;
 
+    // Exit tracker: resolve effective ExitConfig from options or legacy hard stop-loss
+    const exitTracker = this.resolveExitTracker({
+      exitConfig: options.exitConfig,
+      enableHardStopLoss,
+      hardStopLossPercent,
+      resumeExitTrackerState: isResuming ? options.resumeFrom?.exitTrackerState : undefined
+    });
+
     // Regime-scaled position sizing + regime gate
     const { enableRegimeScaledSizing, riskLevel, regimeGateEnabled, btcCoin } = this.resolveRegimeConfig(
       options,
@@ -1342,7 +1383,8 @@ export class BacktestEngine {
               metricsAcc.totalWinningSellCount + pauseSells.winningSells,
               this.signalThrottle.serialize(throttleState),
               metricsAcc.grossProfit + pauseSells.grossProfit,
-              metricsAcc.grossLoss + pauseSells.grossLoss
+              metricsAcc.grossLoss + pauseSells.grossLoss,
+              exitTracker?.serialize()
             );
 
             this.logger.log(`Live replay paused at index ${i - 1}/${timestamps.length}`);
@@ -1406,7 +1448,8 @@ export class BacktestEngine {
               metricsAcc.totalWinningSellCount + forcedPauseSells.winningSells,
               this.signalThrottle.serialize(throttleState),
               metricsAcc.grossProfit + forcedPauseSells.grossProfit,
-              metricsAcc.grossLoss + forcedPauseSells.grossLoss
+              metricsAcc.grossLoss + forcedPauseSells.grossLoss,
+              exitTracker?.serialize()
             );
 
             if (options.onPaused) {
@@ -1481,13 +1524,13 @@ export class BacktestEngine {
         continue;
       }
 
-      // Hard stop-loss: check all positions BEFORE algorithm runs new decisions
-      if (enableHardStopLoss) {
-        await this.processHardStopLoss({
-          portfolio,
-          marketData,
+      // Exit tracker: check SL/TP/trailing exits BEFORE algorithm runs new decisions
+      if (exitTracker) {
+        await this.processExitSignals({
+          exitTracker,
           currentPrices,
-          hardStopLossPercent,
+          marketData,
+          portfolio,
           tradingFee: backtest.tradingFee,
           rng,
           timestamp,
@@ -1626,6 +1669,15 @@ export class BacktestEngine {
             metadata: trade.metadata,
             backtest
           });
+
+          // Update exit tracker: register new BUY positions, reduce on SELL
+          if (exitTracker && trade.price != null && trade.quantity != null) {
+            if (strategySignal.action === 'BUY') {
+              exitTracker.onBuy(strategySignal.coinId, trade.price, trade.quantity);
+            } else if (strategySignal.action === 'SELL') {
+              exitTracker.onSell(strategySignal.coinId, trade.quantity);
+            }
+          }
         } else if (strategySignal.action === 'BUY') {
           metricsAcc.skippedBuyCount++;
         }
@@ -1693,7 +1745,8 @@ export class BacktestEngine {
           metricsAcc.totalWinningSellCount + currentSells.winningSells,
           this.signalThrottle.serialize(throttleState),
           metricsAcc.grossProfit + currentSells.grossProfit,
-          metricsAcc.grossLoss + currentSells.grossLoss
+          metricsAcc.grossLoss + currentSells.grossLoss,
+          exitTracker?.serialize()
         );
 
         // Results accumulated since last checkpoint - use counts from last checkpoint for proper slicing
@@ -2243,126 +2296,103 @@ export class BacktestEngine {
   }
 
   /**
-   * Generate hard stop-loss signals for all open positions whose unrealized loss
-   * exceeds the given threshold. Emits synthetic SELL signals with STOP_LOSS type
-   * that bypass throttle, regime gate, and minimum hold period.
+   * Resolve the effective ExitConfig and instantiate a BacktestExitTracker.
    *
-   * Fully deterministic — no RNG consumed.
+   * Centralises the exit-tracker initialisation logic shared by all four
+   * execution paths (historical, live-replay, optimization, optimization-precomputed).
    */
-  private generateHardStopLossSignals(
-    portfolio: Portfolio,
-    currentPrices: Map<string, number>,
-    threshold: number,
-    lowPrices?: Map<string, number>
-  ): TradingSignal[] {
-    const signals: TradingSignal[] = [];
-    for (const [coinId, position] of portfolio.positions) {
-      if (position.quantity <= 0 || position.averagePrice <= 0) continue;
-      const closePrice = currentPrices.get(coinId);
-      if (!closePrice || closePrice <= 0) continue;
+  private resolveExitTracker(opts: ResolveExitTrackerOptions): BacktestExitTracker | null {
+    const effectiveExitConfig = opts.exitConfig
+      ? { ...DEFAULT_BACKTEST_EXIT_CONFIG, ...opts.exitConfig }
+      : opts.enableHardStopLoss !== false
+        ? { ...DEFAULT_BACKTEST_EXIT_CONFIG, stopLossValue: (opts.hardStopLossPercent ?? 0.05) * 100 }
+        : null;
 
-      // Use candle LOW for breach detection (catches intra-candle wicks);
-      // fall back to close when low prices aren't available.
-      const detectionPrice = lowPrices?.get(coinId) ?? closePrice;
-      const unrealizedPnLPercent = (detectionPrice - position.averagePrice) / position.averagePrice;
-
-      if (unrealizedPnLPercent <= -threshold) {
-        // A real stop order would fill at exactly the stop price, not at the
-        // worst intra-candle price. Clamp execution to the stop level.
-        const stopExecutionPrice = position.averagePrice * (1 - threshold);
-        signals.push({
-          action: 'SELL',
-          coinId,
-          quantity: position.quantity, // 100% exit
-          reason: `Hard stop-loss triggered: ${(unrealizedPnLPercent * 100).toFixed(1)}% loss exceeds -${(threshold * 100).toFixed(0)}% threshold`,
-          confidence: 1,
-          originalType: AlgoSignalType.STOP_LOSS,
-          metadata: {
-            hardStopLoss: true,
-            unrealizedPnLPercent,
-            threshold,
-            stopExecutionPrice
-          }
-        });
-      }
+    if (
+      !effectiveExitConfig ||
+      (!effectiveExitConfig.enableStopLoss &&
+        !effectiveExitConfig.enableTakeProfit &&
+        !effectiveExitConfig.enableTrailingStop)
+    ) {
+      return null;
     }
-    return signals;
+
+    return opts.resumeExitTrackerState
+      ? BacktestExitTracker.deserialize(opts.resumeExitTrackerState, effectiveExitConfig)
+      : new BacktestExitTracker(effectiveExitConfig);
   }
 
   /**
-   * Process hard stop-loss for all positions in the portfolio.
+   * Process exit signals (SL/TP/trailing) for the current bar.
    *
    * When `signals`, `simulatedFills`, and `backtest` are all provided, runs in
-   * full-fidelity mode (historical / live-replay) — records BacktestSignal and
+   * full-fidelity mode (historical / live-replay) and records BacktestSignal and
    * SimulatedOrderFill entries. Otherwise runs in lightweight mode (optimization)
-   * — pushes only minimal trade records.
+   * and pushes only minimal trade records.
    */
-  private async processHardStopLoss(opts: HardStopLossProcessingOptions): Promise<void> {
-    const {
-      portfolio,
-      marketData,
-      currentPrices,
-      hardStopLossPercent,
-      tradingFee,
-      rng,
-      timestamp,
-      trades,
-      slippageConfig,
-      maxAllocation,
-      minAllocation,
-      signals,
-      simulatedFills,
-      backtest,
-      coinMap,
-      quoteCoin
-    } = opts;
+  private async processExitSignals(opts: ProcessExitSignalsOptions): Promise<void> {
+    const { exitTracker, currentPrices, marketData, portfolio, tradingFee, rng, timestamp, trades } = opts;
 
-    const fullFidelity = !!(signals && simulatedFills && backtest);
+    if (exitTracker.size === 0) return;
 
     const lowPrices = new Map(currentPrices.map((c) => [c.coinId, c.low]));
-    const stopLossSignals = this.generateHardStopLossSignals(
-      portfolio,
-      marketData.prices,
-      hardStopLossPercent,
-      lowPrices
-    );
+    const highPrices = new Map(currentPrices.map((c) => [c.coinId, c.high]));
+    const exitSignals = exitTracker.checkExits(marketData.prices, lowPrices, highPrices);
 
-    for (const slSignal of stopLossSignals) {
+    const fullFidelity = !!(opts.signals && opts.simulatedFills && opts.backtest);
+
+    for (const exitSig of exitSignals) {
+      const exitTradingSignal: TradingSignal = {
+        action: 'SELL',
+        coinId: exitSig.coinId,
+        quantity: exitSig.quantity,
+        reason: exitSig.reason,
+        confidence: 1,
+        originalType: exitSig.exitType === 'TAKE_PROFIT' ? AlgoSignalType.TAKE_PROFIT : AlgoSignalType.STOP_LOSS,
+        metadata: fullFidelity ? { ...exitSig.metadata, exitType: exitSig.exitType } : { exitType: exitSig.exitType }
+      };
+
       if (fullFidelity) {
-        signals.push({
+        opts.signals!.push({
           timestamp,
           signalType: SignalType.RISK_CONTROL,
-          instrument: slSignal.coinId,
+          instrument: exitSig.coinId,
           direction: SignalDirection.SHORT,
-          quantity: slSignal.quantity ?? 0,
-          price: slSignal.metadata?.stopExecutionPrice ?? marketData.prices.get(slSignal.coinId),
-          reason: slSignal.reason,
-          confidence: slSignal.confidence,
-          payload: slSignal.metadata,
-          backtest
+          quantity: exitSig.quantity,
+          price: exitSig.executionPrice,
+          reason: exitSig.reason,
+          confidence: 1,
+          payload: exitSig.metadata,
+          backtest: opts.backtest
         });
       }
 
-      const dailyVolume = this.extractDailyVolume(currentPrices, slSignal.coinId);
+      const dailyVolume = fullFidelity ? this.extractDailyVolume(currentPrices, exitSig.coinId) : undefined;
       const tradeResult = await this.executeTrade(
-        slSignal,
+        exitTradingSignal,
         portfolio,
         marketData,
         tradingFee,
         rng,
-        slippageConfig ?? DEFAULT_SLIPPAGE_CONFIG,
+        opts.slippageConfig ?? DEFAULT_SLIPPAGE_CONFIG,
         dailyVolume,
-        0, // bypass hold period
-        maxAllocation,
-        minAllocation
+        0, // bypass hold period for risk-control exits
+        opts.maxAllocation,
+        opts.minAllocation
       );
 
       if (tradeResult) {
         const { trade, slippageBps } = tradeResult;
         if (fullFidelity) {
-          const baseCoin = coinMap?.get(slSignal.coinId);
-          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin: baseCoin || undefined, quoteCoin });
-          simulatedFills.push({
+          const baseCoin = opts.coinMap?.get(exitSig.coinId);
+          trades.push({
+            ...trade,
+            executedAt: timestamp,
+            backtest: opts.backtest,
+            baseCoin: baseCoin || undefined,
+            quoteCoin: opts.quoteCoin
+          });
+          opts.simulatedFills!.push({
             orderType: SimulatedOrderType.MARKET,
             status: SimulatedOrderStatus.FILLED,
             filledQuantity: trade.quantity,
@@ -2370,14 +2400,15 @@ export class BacktestEngine {
             fees: trade.fee,
             slippageBps,
             executionTimestamp: timestamp,
-            instrument: slSignal.coinId,
-            metadata: { ...(trade.metadata ?? {}), hardStopLoss: true },
-            backtest
+            instrument: exitSig.coinId,
+            metadata: { ...(trade.metadata ?? {}), exitType: exitSig.exitType },
+            backtest: opts.backtest
           });
         } else {
           trades.push({ ...trade, executedAt: timestamp });
         }
       }
+      exitTracker.removePosition(exitSig.coinId);
     }
   }
 
@@ -2824,7 +2855,8 @@ export class BacktestEngine {
     winningSellsCount: number,
     serializedThrottleState?: SerializableThrottleState,
     grossProfit = 0,
-    grossLoss = 0
+    grossLoss = 0,
+    exitTrackerState?: import('./shared/exits/backtest-exit-tracker').SerializableExitTrackerState
   ): BacktestCheckpointState {
     // Convert Map-based positions to array format for JSON serialization
     const checkpointPortfolio: CheckpointPortfolio = {
@@ -2871,7 +2903,8 @@ export class BacktestEngine {
         grossLoss
       },
       checksum,
-      ...(serializedThrottleState && { throttleState: serializedThrottleState })
+      ...(serializedThrottleState && { throttleState: serializedThrottleState }),
+      ...(exitTrackerState && { exitTrackerState })
     };
   }
 
@@ -3045,6 +3078,13 @@ export class BacktestEngine {
     const slippageConfig = config.slippage ?? DEFAULT_SLIPPAGE_CONFIG;
     const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
 
+    // Exit tracker for optimization (lightweight — no signal/fill recording)
+    const optExitTracker = this.resolveExitTracker({
+      exitConfig: config.exitConfig,
+      enableHardStopLoss: true,
+      hardStopLossPercent
+    });
+
     this.logger.debug(
       `Running precomputed optimization backtest: algo=${config.algorithmId}, ` +
         `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
@@ -3132,13 +3172,13 @@ export class BacktestEngine {
         continue;
       }
 
-      // Hard stop-loss
-      if (portfolio.positions.size > 0) {
-        await this.processHardStopLoss({
-          portfolio,
-          marketData,
+      // Lightweight exit tracker check for optimization (no signal/fill recording)
+      if (optExitTracker) {
+        await this.processExitSignals({
+          exitTracker: optExitTracker,
           currentPrices,
-          hardStopLossPercent,
+          marketData,
+          portfolio,
           tradingFee,
           rng,
           timestamp,
@@ -3207,6 +3247,13 @@ export class BacktestEngine {
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
+          if (optExitTracker && tradeResult.trade.price != null && tradeResult.trade.quantity != null) {
+            if (strategySignal.action === 'BUY') {
+              optExitTracker.onBuy(strategySignal.coinId, tradeResult.trade.price, tradeResult.trade.quantity);
+            } else if (strategySignal.action === 'SELL') {
+              optExitTracker.onSell(strategySignal.coinId, tradeResult.trade.quantity);
+            }
+          }
         }
       }
 
@@ -3467,6 +3514,13 @@ export class BacktestEngine {
     const slippageConfig = config.slippage ?? DEFAULT_SLIPPAGE_CONFIG;
     const deterministicSeed = `optimization-${config.algorithmId}-${Date.now()}`;
 
+    // Exit tracker for core optimization (lightweight — no signal/fill recording)
+    const coreExitTracker = this.resolveExitTracker({
+      exitConfig: config.exitConfig,
+      enableHardStopLoss: true,
+      hardStopLossPercent
+    });
+
     this.logger.debug(
       `Running optimization backtest: algo=${config.algorithmId}, ` +
         `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
@@ -3552,13 +3606,13 @@ export class BacktestEngine {
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
 
-      // Hard stop-loss: skip when no positions are open
-      if (portfolio.positions.size > 0) {
-        await this.processHardStopLoss({
-          portfolio,
-          marketData,
+      // Lightweight exit tracker check for core optimization (no signal/fill recording)
+      if (coreExitTracker) {
+        await this.processExitSignals({
+          exitTracker: coreExitTracker,
           currentPrices,
-          hardStopLossPercent,
+          marketData,
+          portfolio,
           tradingFee,
           rng,
           timestamp,
@@ -3629,6 +3683,13 @@ export class BacktestEngine {
         );
         if (tradeResult) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
+          if (coreExitTracker && tradeResult.trade.price != null && tradeResult.trade.quantity != null) {
+            if (strategySignal.action === 'BUY') {
+              coreExitTracker.onBuy(strategySignal.coinId, tradeResult.trade.price, tradeResult.trade.quantity);
+            } else if (strategySignal.action === 'SELL') {
+              coreExitTracker.onSell(strategySignal.coinId, tradeResult.trade.quantity);
+            }
+          }
         }
       }
 

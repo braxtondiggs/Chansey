@@ -21,6 +21,7 @@ import { MarketDataSet } from './market-data-set.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { ExitConfig } from '../interfaces/exit-config.interface';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -232,7 +233,8 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         onHeartbeat,
         resumeFrom: backtest.checkpointState ?? undefined,
         shouldPause,
-        onPaused
+        onPaused,
+        exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined
       });
 
       // Handle paused state (don't mark as completed)
