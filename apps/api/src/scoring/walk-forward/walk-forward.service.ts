@@ -150,15 +150,16 @@ export class WalkForwardService {
   }
 
   /**
-   * Calculate total data days required
+   * Calculate total data days required.
+   * Accounts for the +1 day gap between train and test windows in generateWindows().
    */
   calculateRequiredDays(config: WalkForwardConfig, numWindows: number): number {
     if (config.method === 'anchored') {
       // Anchored: train window grows, test windows stack
-      return config.trainDays + numWindows * config.testDays;
+      return config.trainDays + 1 + numWindows * config.testDays;
     } else {
-      // Rolling: windows move forward
-      return config.trainDays + config.testDays + (numWindows - 1) * config.stepDays;
+      // Rolling: windows move forward (each window spans trainDays + 1 gap + testDays)
+      return config.trainDays + 1 + config.testDays + (numWindows - 1) * config.stepDays;
     }
   }
 
@@ -167,7 +168,8 @@ export class WalkForwardService {
    */
   estimateWindowCount(startDate: Date, endDate: Date, config: WalkForwardConfig): number {
     const totalDays = this.daysBetween(startDate, endDate);
-    const windowSize = config.trainDays + config.testDays;
+    // generateWindows() inserts a +1 day gap between train and test windows
+    const windowSize = config.trainDays + 1 + config.testDays;
 
     if (totalDays < windowSize) {
       return 0;

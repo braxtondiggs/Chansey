@@ -1,3 +1,5 @@
+import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
+
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { Order } from '../../order/order.entity';
 
@@ -60,4 +62,16 @@ export interface AlgorithmContext {
    * Used with `precomputedIndicators` to look up precomputed values.
    */
   currentTimestampIndex?: number;
+
+  /**
+   * Composite regime classification (trend + volatility) derived from BTC data.
+   * Available in both backtest and live trading contexts.
+   */
+  compositeRegime?: CompositeRegimeType;
+
+  /**
+   * Volatility regime derived from BTC realized volatility percentile.
+   * Available in both backtest and live trading contexts.
+   */
+  volatilityRegime?: MarketRegimeType;
 }

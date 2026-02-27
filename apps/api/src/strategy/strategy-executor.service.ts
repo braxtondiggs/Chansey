@@ -9,6 +9,7 @@ import {
 } from '../algorithm/interfaces/algorithm-result.interface';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
+import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -48,7 +49,8 @@ export class StrategyExecutorService {
   constructor(
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly algorithmContextBuilder: AlgorithmContextBuilder,
-    private readonly signalThrottle: SignalThrottleService
+    private readonly signalThrottle: SignalThrottleService,
+    private readonly compositeRegimeService: CompositeRegimeService
   ) {}
 
   /** Get or create throttle state for a strategy */
@@ -77,6 +79,8 @@ export class StrategyExecutorService {
       context.config = { ...context.config, ...strategy.parameters };
       context.availableBalance = availableCapital;
       context.positions = this.convertPositions(positions, context.coins);
+      context.compositeRegime = this.compositeRegimeService.getCompositeRegime();
+      context.volatilityRegime = this.compositeRegimeService.getVolatilityRegime();
 
       // Execute the algorithm
       const result = await this.algorithmRegistry.executeAlgorithm(strategy.algorithm.id, context);

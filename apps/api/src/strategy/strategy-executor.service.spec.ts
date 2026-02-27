@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
+
 import { MarketData, StrategyExecutorService } from './strategy-executor.service';
 
 import {
@@ -9,6 +11,7 @@ import {
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
 import { Coin } from '../coin/coin.entity';
+import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { SignalThrottleService } from '../order/backtest/shared/throttle';
 
 /**
@@ -42,7 +45,14 @@ describe('StrategyExecutorService – per-trade position cap', () => {
         StrategyExecutorService,
         { provide: AlgorithmRegistry, useValue: algorithmRegistry },
         { provide: AlgorithmContextBuilder, useValue: algorithmContextBuilder },
-        { provide: SignalThrottleService, useValue: { createState: jest.fn().mockReturnValue({}) } }
+        { provide: SignalThrottleService, useValue: { createState: jest.fn().mockReturnValue({}) } },
+        {
+          provide: CompositeRegimeService,
+          useValue: {
+            getCompositeRegime: jest.fn().mockReturnValue(CompositeRegimeType.NEUTRAL),
+            getVolatilityRegime: jest.fn().mockReturnValue(MarketRegimeType.NORMAL)
+          }
+        }
       ]
     }).compile();
 

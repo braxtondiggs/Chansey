@@ -223,6 +223,7 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
       };
 
       // Execute live replay with pacing, pause support, and checkpoints
+      const regimeConfig = backtest.configSnapshot?.regime;
       const results = await this.backtestEngine.executeLiveReplayBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
@@ -234,7 +235,10 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         resumeFrom: backtest.checkpointState ?? undefined,
         shouldPause,
         onPaused,
-        exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined
+        exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined,
+        enableRegimeGate: regimeConfig?.enableRegimeGate,
+        enableRegimeScaledSizing: regimeConfig?.enableRegimeScaledSizing,
+        riskLevel: regimeConfig?.riskLevel
       });
 
       // Handle paused state (don't mark as completed)
