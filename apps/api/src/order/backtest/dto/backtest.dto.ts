@@ -3,6 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -15,6 +16,13 @@ import {
   ValidateNested
 } from 'class-validator';
 
+import {
+  ExitConfig,
+  StopLossType,
+  TakeProfitType,
+  TrailingActivationType,
+  TrailingType
+} from '../../interfaces/exit-config.interface';
 import { ReplaySpeed } from '../backtest-pacing.interface';
 import {
   BacktestStatus,
@@ -25,6 +33,105 @@ import {
   SimulatedOrderType
 } from '../backtest.entity';
 import { SlippageModelType } from '../shared/slippage';
+
+export class ExitConfigDto implements Partial<ExitConfig> {
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({ description: 'Enable stop-loss exits', required: false })
+  enableStopLoss?: boolean;
+
+  @IsOptional()
+  @IsEnum(StopLossType)
+  @ApiProperty({ description: 'Stop loss type', enum: StopLossType, required: false })
+  stopLossType?: StopLossType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  @Max(100)
+  @ApiProperty({
+    description: 'Stop loss value (interpretation depends on type)',
+    required: false,
+    minimum: 0.01,
+    maximum: 100
+  })
+  stopLossValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({ description: 'Enable take-profit exits', required: false })
+  enableTakeProfit?: boolean;
+
+  @IsOptional()
+  @IsEnum(TakeProfitType)
+  @ApiProperty({ description: 'Take profit type', enum: TakeProfitType, required: false })
+  takeProfitType?: TakeProfitType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  @Max(1000)
+  @ApiProperty({
+    description: 'Take profit value (interpretation depends on type)',
+    required: false,
+    minimum: 0.01,
+    maximum: 1000
+  })
+  takeProfitValue?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(2)
+  @Max(200)
+  @ApiProperty({ description: 'ATR period for ATR-based exits', required: false, minimum: 2, maximum: 200 })
+  atrPeriod?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  @Max(10)
+  @ApiProperty({ description: 'ATR multiplier for ATR-based exits', required: false, minimum: 0.1, maximum: 10 })
+  atrMultiplier?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({ description: 'Enable trailing stop exits', required: false })
+  enableTrailingStop?: boolean;
+
+  @IsOptional()
+  @IsEnum(TrailingType)
+  @ApiProperty({ description: 'Trailing stop type', enum: TrailingType, required: false })
+  trailingType?: TrailingType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  @Max(100)
+  @ApiProperty({
+    description: 'Trailing stop value (interpretation depends on type)',
+    required: false,
+    minimum: 0.01,
+    maximum: 100
+  })
+  trailingValue?: number;
+
+  @IsOptional()
+  @IsEnum(TrailingActivationType)
+  @ApiProperty({ description: 'Trailing stop activation trigger', enum: TrailingActivationType, required: false })
+  trailingActivation?: TrailingActivationType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  @ApiProperty({ description: 'Trailing activation value', required: false, minimum: 0, maximum: 1000 })
+  trailingActivationValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiProperty({ description: 'Link SL and TP as OCO (one-cancels-other)', required: false })
+  useOco?: boolean;
+}
 
 export class CreateBacktestDto {
   @IsString()
@@ -204,6 +311,18 @@ export class CreateBacktestDto {
     required: false
   })
   replaySpeed?: ReplaySpeed = ReplaySpeed.FAST_5X;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExitConfigDto)
+  @ApiProperty({
+    description:
+      'Exit configuration for stop-loss, take-profit, and trailing stop simulation. ' +
+      'When omitted, the engine uses the default 5% percentage stop-loss (legacy behavior).',
+    required: false,
+    type: ExitConfigDto
+  })
+  exitConfig?: Partial<ExitConfig>;
 }
 
 export class UpdateBacktestDto {

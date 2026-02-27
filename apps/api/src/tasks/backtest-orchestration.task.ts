@@ -488,7 +488,8 @@ export class BacktestOrchestrationTask {
       if (!job) return false;
       const state = await job.getState();
       return state === 'waiting' || state === 'delayed' || state === 'active';
-    } catch {
+    } catch (error: unknown) {
+      this.logger.warn(`Failed to check queue status for job ${jobId}: ${toErrorInfo(error).message}`);
       return false;
     }
   }

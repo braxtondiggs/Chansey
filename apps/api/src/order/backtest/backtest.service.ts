@@ -196,7 +196,8 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
           baseBps: createBacktestDto.slippageBaseBps ?? 5,
           volumeImpactFactor: createBacktestDto.slippageVolumeImpactFactor ?? 100
         },
-        parameters: createBacktestDto.strategyParams ?? {}
+        parameters: createBacktestDto.strategyParams ?? {},
+        ...(createBacktestDto.exitConfig && { exitConfig: createBacktestDto.exitConfig })
       };
 
       const backtest = new Backtest({

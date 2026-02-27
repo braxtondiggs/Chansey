@@ -5,6 +5,8 @@ import { BacktestFinalMetrics } from './backtest-result.service';
 import { BacktestPerformanceSnapshot, BacktestSignal, BacktestTrade, SimulatedOrderFill } from './backtest.entity';
 import { MarketDataSet } from './market-data-set.entity';
 
+import { ExitConfig } from '../interfaces/exit-config.interface';
+
 // Re-export ReplaySpeed for convenience
 export { ReplaySpeed };
 
@@ -123,6 +125,9 @@ export interface LiveReplayExecuteOptions {
 
   /** Callback invoked when backtest is paused (for state persistence) */
   onPaused?: PauseCallback;
+
+  /** Exit configuration for SL/TP/trailing stop simulation (overrides legacy hard stop-loss) */
+  exitConfig?: ExitConfig;
 }
 
 /**
