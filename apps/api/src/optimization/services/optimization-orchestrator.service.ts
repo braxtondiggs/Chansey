@@ -9,6 +9,7 @@ import { DataSource, type FindOptionsWhere, type QueryDeepPartialEntity, Reposit
 import { GridSearchService } from './grid-search.service';
 
 import { Coin } from '../../coin/coin.entity';
+import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import {
@@ -732,30 +733,43 @@ export class OptimizationOrchestratorService {
     metrics: import('@chansey/api-interfaces').WindowMetrics,
     objective: OptimizationConfig['objective']
   ): number {
+    let score: number;
+
     switch (objective.metric) {
       case 'sharpe_ratio':
-        return metrics.sharpeRatio;
+        score = metrics.sharpeRatio;
+        break;
       case 'total_return':
-        return metrics.totalReturn;
+        score = metrics.totalReturn;
+        break;
       case 'calmar_ratio':
-        return metrics.maxDrawdown !== 0 ? metrics.totalReturn / Math.abs(metrics.maxDrawdown) : 0;
+        score = metrics.maxDrawdown !== 0 ? metrics.totalReturn / Math.abs(metrics.maxDrawdown) : 0;
+        break;
       case 'profit_factor':
-        return metrics.profitFactor || 1;
+        score = metrics.profitFactor || 1;
+        break;
       case 'sortino_ratio': {
         // Sortino ratio: (Return - Risk Free Rate) / Downside Deviation
         // Uses 2% annual risk-free rate, consistent with Sharpe calculation
         const riskFreeRate = 0.02;
         if (!metrics.downsideDeviation || metrics.downsideDeviation === 0) {
           // Fallback to Sharpe when no downside volatility (all returns positive)
-          return metrics.sharpeRatio;
+          score = metrics.sharpeRatio;
+        } else {
+          score = (metrics.totalReturn - riskFreeRate) / metrics.downsideDeviation;
         }
-        return (metrics.totalReturn - riskFreeRate) / metrics.downsideDeviation;
+        break;
       }
       case 'composite':
-        return this.calculateCompositeScore(metrics, objective.weights);
+        score = this.calculateCompositeScore(metrics, objective.weights);
+        break;
       default:
-        return metrics.sharpeRatio;
+        score = metrics.sharpeRatio;
     }
+
+    // Guard non-finite values and clamp to prevent downstream overflow
+    if (!Number.isFinite(score)) return 0;
+    return Math.max(-SharpeRatioCalculator.MAX_SHARPE, Math.min(SharpeRatioCalculator.MAX_SHARPE, score));
   }
 
   /**
