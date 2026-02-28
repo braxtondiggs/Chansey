@@ -156,7 +156,7 @@ describe('MetricsCalculatorService', () => {
     });
 
     it('should decrease Sharpe when risk-free rate increases', () => {
-      const returns = [0.01, 0.012, 0.011, 0.009, 0.013];
+      const returns = [0.05, -0.03, 0.02, -0.01, 0.04];
       const lowRf = service.calculateSharpeRatio(returns, {
         timeframe: TimeframeType.DAILY,
         useCryptoCalendar: true,
