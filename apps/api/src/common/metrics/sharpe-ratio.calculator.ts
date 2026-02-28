@@ -23,6 +23,10 @@ import { calculateMean, calculateStandardDeviation } from './metric-calculator';
  */
 @Injectable()
 export class SharpeRatioCalculator {
+  /** Minimum standard deviation threshold to avoid near-zero division producing extreme values */
+  private static readonly MIN_STDDEV = 1e-10;
+  /** Maximum absolute Sharpe/Sortino ratio to prevent downstream overflow */
+  static readonly MAX_SHARPE = 100;
   /**
    * Calculate annualized Sharpe ratio from an array of period returns.
    *
@@ -47,10 +51,11 @@ export class SharpeRatioCalculator {
     // Calculate standard deviation of excess returns
     const stdDev = calculateStandardDeviation(excessReturns);
 
-    if (stdDev === 0) return 0;
+    if (stdDev < SharpeRatioCalculator.MIN_STDDEV) return 0;
 
     // Annualize the Sharpe ratio
-    return (meanExcessReturn / stdDev) * Math.sqrt(periodsPerYear);
+    const sharpe = (meanExcessReturn / stdDev) * Math.sqrt(periodsPerYear);
+    return Math.max(-SharpeRatioCalculator.MAX_SHARPE, Math.min(SharpeRatioCalculator.MAX_SHARPE, sharpe));
   }
 
   /**
@@ -65,9 +70,10 @@ export class SharpeRatioCalculator {
    * @returns Sharpe ratio, or 0 if volatility is zero
    */
   calculateFromMetrics(annualizedReturn: number, annualizedVolatility: number, riskFreeRate = 0.02): number {
-    if (annualizedVolatility === 0) return 0;
+    if (annualizedVolatility < SharpeRatioCalculator.MIN_STDDEV) return 0;
 
-    return (annualizedReturn - riskFreeRate) / annualizedVolatility;
+    const sharpe = (annualizedReturn - riskFreeRate) / annualizedVolatility;
+    return Math.max(-SharpeRatioCalculator.MAX_SHARPE, Math.min(SharpeRatioCalculator.MAX_SHARPE, sharpe));
   }
 
   /**
@@ -116,15 +122,16 @@ export class SharpeRatioCalculator {
 
     // Calculate downside deviation (only negative returns)
     const downsideReturns = returns.filter((ret) => ret < periodRiskFreeRate);
-    if (downsideReturns.length === 0) return Infinity; // All returns above risk-free rate
+    if (downsideReturns.length === 0) return SharpeRatioCalculator.MAX_SHARPE; // All returns above risk-free rate
 
     const squaredDiffs = downsideReturns.map((ret) => Math.pow(ret - periodRiskFreeRate, 2));
     const downsideVariance = squaredDiffs.reduce((sum, val) => sum + val, 0) / returns.length;
     const downsideDeviation = Math.sqrt(downsideVariance);
 
-    if (downsideDeviation === 0) return 0;
+    if (downsideDeviation < SharpeRatioCalculator.MIN_STDDEV) return SharpeRatioCalculator.MAX_SHARPE;
 
-    return (meanExcessReturn / downsideDeviation) * Math.sqrt(periodsPerYear);
+    const sortino = (meanExcessReturn / downsideDeviation) * Math.sqrt(periodsPerYear);
+    return Math.max(-SharpeRatioCalculator.MAX_SHARPE, Math.min(SharpeRatioCalculator.MAX_SHARPE, sortino));
   }
 
   /**
