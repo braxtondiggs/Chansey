@@ -15,6 +15,7 @@
     "start:client": "serve -s dist/client -p 4200",
     "api": "nx serve api",
     "site": "nx serve chansey",
+    "site:prod": "nx serve chansey -c prod-debug",
     "test": "nx affected --target=test --parallel=3",
     "test:all": "nx run-many --target=test --all",
     "lint": "nx affected --target=lint --parallel=3",
