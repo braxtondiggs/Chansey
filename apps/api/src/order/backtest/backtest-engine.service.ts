@@ -365,6 +365,8 @@ export class BacktestEngine {
   private static readonly MAX_WINDOW_SIZE = 500;
   /** Wall-clock algorithm stall timeout (ms) — checked only on error */
   private static readonly ALGORITHM_STALL_TIMEOUT_MS = 60_000;
+  /** Per-call timeout for algorithm execution — prevents indefinite blocking */
+  private static readonly ALGORITHM_CALL_TIMEOUT_MS = 30_000;
   /** BTC SMA period for regime detection */
   private static readonly REGIME_SMA_PERIOD = 200;
 
@@ -805,11 +807,27 @@ export class BacktestEngine {
           volatilityRegime: warmupRegime?.volatilityRegime
         };
         try {
-          await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+          await this.executeWithTimeout(
+            this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context),
+            BacktestEngine.ALGORITHM_CALL_TIMEOUT_MS,
+            `Algorithm timed out during warmup at ${timestamp.toISOString()}`
+          );
           watchdog.recordSuccess();
         } catch {
           // Warmup failures are non-fatal — algorithm just won't have primed state
         }
+
+        // Heartbeat during warmup so the stale watchdog sees progress
+        if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+          await options.onHeartbeat(i, effectiveTimestampCount);
+          lastHeartbeatTime = Date.now();
+        }
+
+        // Yield to event loop periodically during warmup
+        if (i % 100 === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+
         continue;
       }
 
@@ -859,7 +877,11 @@ export class BacktestEngine {
       let strategySignals: TradingSignal[] = [];
       try {
         const algoExecStart = Date.now();
-        const result = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        const result = await this.executeWithTimeout(
+          this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context),
+          BacktestEngine.ALGORITHM_CALL_TIMEOUT_MS,
+          `Algorithm timed out at iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
+        );
 
         const algoExecDuration = Date.now() - algoExecStart;
         if (algoExecDuration > 5000) {
@@ -1059,9 +1081,9 @@ export class BacktestEngine {
       }
 
       // Lightweight heartbeat for stale detection (every ~30 seconds)
-      // Report progress relative to trading period
+      // Report progress using global indices so warmup + trading is monotonic
       if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
-        await options.onHeartbeat(tradingRelativeIdx, tradingTimestampCount);
+        await options.onHeartbeat(i, effectiveTimestampCount);
         lastHeartbeatTime = Date.now();
       }
 
@@ -1172,6 +1194,15 @@ export class BacktestEngine {
    */
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Race a promise against a timeout — prevents indefinite blocking on algorithm calls */
+  private executeWithTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
   }
 
   /**
@@ -1582,11 +1613,27 @@ export class BacktestEngine {
           }
         };
         try {
-          await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+          await this.executeWithTimeout(
+            this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context),
+            BacktestEngine.ALGORITHM_CALL_TIMEOUT_MS,
+            `Algorithm timed out during warmup at ${timestamp.toISOString()}`
+          );
           watchdog.recordSuccess();
         } catch {
           // Warmup failures are non-fatal
         }
+
+        // Heartbeat during warmup so the stale watchdog sees progress
+        if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+          await options.onHeartbeat(i, effectiveTimestampCount);
+          lastHeartbeatTime = Date.now();
+        }
+
+        // Yield to event loop periodically during warmup
+        if (i % 100 === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+
         continue;
       }
 
@@ -1642,7 +1689,11 @@ export class BacktestEngine {
 
       let strategySignals: TradingSignal[] = [];
       try {
-        const result = await this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context);
+        const result = await this.executeWithTimeout(
+          this.algorithmRegistry.executeAlgorithm(backtest.algorithm.id, context),
+          BacktestEngine.ALGORITHM_CALL_TIMEOUT_MS,
+          `Algorithm timed out at iteration ${i}/${effectiveTimestampCount} (${timestamp.toISOString()})`
+        );
 
         if (result.success && result.signals?.length) {
           strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
@@ -1789,9 +1840,9 @@ export class BacktestEngine {
       }
 
       // Lightweight heartbeat for stale detection (every ~30 seconds)
-      // Report progress relative to trading period
+      // Report progress using global indices so warmup + trading is monotonic
       if (options.onHeartbeat && Date.now() - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
-        await options.onHeartbeat(tradingRelativeIdx, tradingTimestampCount);
+        await options.onHeartbeat(i, effectiveTimestampCount);
         lastHeartbeatTime = Date.now();
       }
 
