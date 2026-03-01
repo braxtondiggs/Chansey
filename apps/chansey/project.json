@@ -99,6 +99,10 @@
         },
         "development": {
           "buildTarget": "chansey:build:development"
+        },
+        "prod-debug": {
+          "buildTarget": "chansey:build:development",
+          "proxyConfig": "apps/chansey/proxy.conf.prod.js"
         }
       },
       "defaultConfiguration": "development",
