@@ -21,11 +21,13 @@ import { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { OrderService } from '../order/order.service';
 import { TradeExecutionService, TradeSignalWithExit } from '../order/services/trade-execution.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
 import { toErrorInfo } from '../shared/error.util';
+import { TradeCooldownService } from '../shared/trade-cooldown.service';
 import { User } from '../users/users.entity';
 
 /** Maximum consecutive errors before disabling algo trading for a user */
@@ -57,7 +59,9 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly regimeGateService: RegimeGateService,
     private readonly preTradeRiskGate: PreTradeRiskGateService,
-    private readonly tradeExecutionService: TradeExecutionService
+    private readonly tradeExecutionService: TradeExecutionService,
+    private readonly tradeCooldownService: TradeCooldownService,
+    private readonly metricsService: MetricsService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -196,6 +200,7 @@ export class LiveTradingService implements OnApplicationShutdown {
             trendAboveSma
           );
           if (!gateDecision.allowed) {
+            this.metricsService.recordRegimeGateBlock(compositeRegime);
             gateBlockedCount++;
             continue;
           }
@@ -203,6 +208,7 @@ export class LiveTradingService implements OnApplicationShutdown {
           // Drawdown gate: block BUY signals when deployment is in drawdown breach
           const drawdownCheck = await this.preTradeRiskGate.checkDrawdown(strategy.id, action);
           if (!drawdownCheck.allowed) {
+            this.metricsService.recordDrawdownGateBlock();
             drawdownBlockedCount++;
             continue;
           }
@@ -239,64 +245,118 @@ export class LiveTradingService implements OnApplicationShutdown {
         return;
       }
 
-      const isFutures =
-        signal.action === 'short_entry' || signal.action === 'short_exit' || strategy.marketType === MarketType.FUTURES;
+      // Trade cooldown: prevent double-trading if Pipeline 2 already placed this trade
+      const direction = this.mapSignalActionToDirection(signal.action);
+      const cooldownCheck = await this.tradeCooldownService.checkAndClaim(
+        user.id,
+        signal.symbol,
+        direction,
+        `strategy:${strategyConfigId}`
+      );
 
-      if (isFutures) {
-        // Route futures signals through TradeExecutionService which has full futures support
-        const { action, positionSide } = this.mapLiveSignalToTradeAction(signal.action, strategy.marketType);
-        const tradeSignal: TradeSignalWithExit = {
-          algorithmActivationId: strategyConfigId,
-          userId: user.id,
-          exchangeKeyId: exchangeKey.id,
-          action,
-          symbol: signal.symbol,
-          quantity: signal.quantity,
-          marketType: 'futures',
-          positionSide,
-          leverage: Number(strategy.defaultLeverage) || 1
-        };
-
-        await this.tradeExecutionService.executeTradeSignal(tradeSignal);
-
-        this.logger.log(
-          `Futures order placed for user ${user.id}: ${action} ${signal.quantity} ${signal.symbol} ` +
-            `positionSide=${positionSide} leverage=${tradeSignal.leverage}x on ${exchangeKey.name}`
+      if (!cooldownCheck.allowed) {
+        this.metricsService.recordTradeCooldownBlock(direction, signal.symbol);
+        this.logger.warn(
+          `Trade cooldown blocked strategy ${strategyConfigId} for user ${user.id}: ` +
+            `${direction} ${signal.symbol} already claimed by ${cooldownCheck.existingClaim?.pipeline}`
         );
-      } else {
-        // Spot path — unchanged
-        const orderSignal = {
-          action: signal.action as 'buy' | 'sell',
-          symbol: signal.symbol,
-          quantity: signal.quantity,
-          price: signal.price
-        };
-
-        const order = await this.orderService.placeAlgorithmicOrder(
-          user.id,
-          strategyConfigId,
-          orderSignal,
-          exchangeKey.id
-        );
-
-        this.logger.log(
-          `Order placed for user ${user.id}: ${signal.action} ${signal.quantity} ${signal.symbol} ` +
-            `on ${exchangeKey.name} (Order ID: ${order.id})`
-        );
+        return;
       }
 
-      await this.positionTracking.updatePosition(
-        user.id,
-        strategyConfigId,
-        signal.symbol,
-        signal.quantity,
-        signal.price,
-        signal.action === 'buy' ? 'buy' : 'sell'
-      );
+      this.metricsService.recordTradeCooldownClaim(direction, signal.symbol);
+
+      try {
+        const isFutures =
+          signal.action === 'short_entry' ||
+          signal.action === 'short_exit' ||
+          strategy.marketType === MarketType.FUTURES;
+
+        if (isFutures) {
+          // Route futures signals through TradeExecutionService which has full futures support
+          const { action, positionSide } = this.mapLiveSignalToTradeAction(signal.action, strategy.marketType);
+          const tradeSignal: TradeSignalWithExit = {
+            algorithmActivationId: strategyConfigId,
+            userId: user.id,
+            exchangeKeyId: exchangeKey.id,
+            action,
+            symbol: signal.symbol,
+            quantity: signal.quantity,
+            marketType: 'futures',
+            positionSide,
+            leverage: Number(strategy.defaultLeverage) || 1
+          };
+
+          await this.tradeExecutionService.executeTradeSignal(tradeSignal);
+          this.metricsService.recordLiveOrderPlaced('futures', action);
+
+          this.logger.log(
+            `Futures order placed for user ${user.id}: ${action} ${signal.quantity} ${signal.symbol} ` +
+              `positionSide=${positionSide} leverage=${tradeSignal.leverage}x on ${exchangeKey.name}`
+          );
+        } else {
+          // Spot path — unchanged
+          const orderSignal = {
+            action: signal.action as 'buy' | 'sell',
+            symbol: signal.symbol,
+            quantity: signal.quantity,
+            price: signal.price
+          };
+
+          const order = await this.orderService.placeAlgorithmicOrder(
+            user.id,
+            strategyConfigId,
+            orderSignal,
+            exchangeKey.id
+          );
+          this.metricsService.recordLiveOrderPlaced('spot', signal.action);
+
+          this.logger.log(
+            `Order placed for user ${user.id}: ${signal.action} ${signal.quantity} ${signal.symbol} ` +
+              `on ${exchangeKey.name} (Order ID: ${order.id})`
+          );
+        }
+
+        const { side: trackingSide, positionSide: trackingPositionSide } = this.mapSignalToPositionTracking(
+          signal.action
+        );
+        await this.positionTracking.updatePosition(
+          user.id,
+          strategyConfigId,
+          signal.symbol,
+          signal.quantity,
+          signal.price,
+          trackingSide,
+          trackingPositionSide
+        );
+      } catch (error: unknown) {
+        // Clear cooldown on failure so next cycle can retry
+        await this.tradeCooldownService.clearCooldown(user.id, signal.symbol, direction);
+        this.metricsService.recordTradeCooldownCleared('order_failure');
+        throw error;
+      }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to place order for user ${user.id}: ${err.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Map a signal action string to a BUY/SELL direction for cooldown keys.
+   */
+  private mapSignalActionToDirection(action: string): string {
+    switch (action) {
+      case 'buy':
+      case 'short_exit':
+        return 'BUY';
+      case 'sell':
+      case 'short_entry':
+        return 'SELL';
+      default:
+        this.logger.warn(
+          `Unexpected signal action "${action}" — using "${action.toUpperCase()}" as cooldown direction`
+        );
+        return action.toUpperCase();
     }
   }
 
@@ -318,6 +378,32 @@ export class LiveTradingService implements OnApplicationShutdown {
         return { action: 'SELL', positionSide: marketType === MarketType.FUTURES ? PositionSide.LONG : undefined };
       default:
         throw new Error(`Unknown signal action: ${action}`);
+    }
+  }
+
+  /**
+   * Map a signal action to the side + positionSide used by PositionTrackingService.
+   *
+   * | signal.action | side   | positionSide |
+   * |---------------|--------|--------------|
+   * | buy           | buy    | long         |
+   * | sell          | sell   | long         |
+   * | short_entry   | buy    | short        |  (opening a short = "buying" into a short position)
+   * | short_exit    | sell   | short        |  (closing a short = "selling" the short position)
+   */
+  private mapSignalToPositionTracking(action: string): { side: 'buy' | 'sell'; positionSide: 'long' | 'short' } {
+    switch (action) {
+      case 'buy':
+        return { side: 'buy', positionSide: 'long' };
+      case 'sell':
+        return { side: 'sell', positionSide: 'long' };
+      case 'short_entry':
+        return { side: 'buy', positionSide: 'short' };
+      case 'short_exit':
+        return { side: 'sell', positionSide: 'short' };
+      default:
+        this.logger.error(`Unknown signal action "${action}" for position tracking`);
+        throw new Error(`Unknown signal action for position tracking: ${action}`);
     }
   }
 

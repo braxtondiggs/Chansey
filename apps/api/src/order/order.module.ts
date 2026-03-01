@@ -53,6 +53,7 @@ import { OrderSyncTask } from './tasks/order-sync.task';
 import { PositionMonitorTask } from './tasks/position-monitor.task';
 import { TradeExecutionTask } from './tasks/trade-execution.task';
 
+import { AdminModule } from '../admin/admin.module';
 import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
 import { AlgorithmPerformance } from '../algorithm/algorithm-performance.entity';
 import { Algorithm } from '../algorithm/algorithm.entity';
@@ -128,6 +129,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BullModule.registerQueue({ name: 'position-monitor' }),
     BullModule.registerQueue({ name: 'liquidation-monitor' }),
     SharedCacheModule,
+    forwardRef(() => AdminModule),
     forwardRef(() => AlgorithmModule),
     forwardRef(() => BalanceModule),
     forwardRef(() => ExchangeModule),

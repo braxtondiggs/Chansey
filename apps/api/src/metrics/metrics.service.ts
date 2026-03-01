@@ -166,7 +166,25 @@ export class MetricsService {
     @InjectMetric('chansey_strategy_heartbeat_failures')
     private readonly strategyHeartbeatFailures: Gauge<string>,
     @InjectMetric('chansey_strategy_health_score')
-    private readonly strategyHealthScore: Gauge<string>
+    private readonly strategyHealthScore: Gauge<string>,
+
+    // Live Trading & Throttle Metrics
+    @InjectMetric('chansey_trade_cooldown_blocks_total')
+    private readonly tradeCooldownBlocksTotal: Counter<string>,
+    @InjectMetric('chansey_trade_cooldown_claims_total')
+    private readonly tradeCooldownClaimsTotal: Counter<string>,
+    @InjectMetric('chansey_trade_cooldown_cleared_total')
+    private readonly tradeCooldownClearedTotal: Counter<string>,
+    @InjectMetric('chansey_signal_throttle_suppressed_total')
+    private readonly signalThrottleSuppressedTotal: Counter<string>,
+    @InjectMetric('chansey_signal_throttle_passed_total')
+    private readonly signalThrottlePassedTotal: Counter<string>,
+    @InjectMetric('chansey_regime_gate_blocks_total')
+    private readonly regimeGateBlocksTotal: Counter<string>,
+    @InjectMetric('chansey_drawdown_gate_blocks_total')
+    private readonly drawdownGateBlocksTotal: Counter<string>,
+    @InjectMetric('chansey_live_orders_placed_total')
+    private readonly liveOrdersPlacedTotal: Counter<string>
   ) {}
 
   // ===================
@@ -622,6 +640,42 @@ export class MetricsService {
    */
   setStrategyHealthScore(strategy: string, shadowStatus: string, score: number): void {
     this.strategyHealthScore.set({ strategy, shadow_status: shadowStatus }, Math.max(0, Math.min(100, score)));
+  }
+
+  // ===================
+  // Live Trading & Throttle Metrics
+  // ===================
+
+  recordTradeCooldownBlock(direction: string, symbol: string): void {
+    this.tradeCooldownBlocksTotal.inc({ direction, symbol });
+  }
+
+  recordTradeCooldownClaim(direction: string, symbol: string): void {
+    this.tradeCooldownClaimsTotal.inc({ direction, symbol });
+  }
+
+  recordTradeCooldownCleared(reason: string): void {
+    this.tradeCooldownClearedTotal.inc({ reason });
+  }
+
+  recordSignalThrottleSuppressed(strategy: string, count: number): void {
+    this.signalThrottleSuppressedTotal.inc({ strategy }, count);
+  }
+
+  recordSignalThrottlePassed(strategy: string, action: string): void {
+    this.signalThrottlePassedTotal.inc({ strategy, action });
+  }
+
+  recordRegimeGateBlock(regime: string): void {
+    this.regimeGateBlocksTotal.inc({ regime });
+  }
+
+  recordDrawdownGateBlock(): void {
+    this.drawdownGateBlocksTotal.inc();
+  }
+
+  recordLiveOrderPlaced(marketType: 'futures' | 'spot', side: string): void {
+    this.liveOrdersPlacedTotal.inc({ market_type: marketType, side });
   }
 
   /**

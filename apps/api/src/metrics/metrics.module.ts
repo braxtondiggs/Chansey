@@ -382,6 +382,57 @@ import { MetricsService } from './metrics.service';
       labelNames: ['strategy', 'shadow_status']
     }),
 
+    // ===================
+    // Live Trading & Throttle Metrics
+    // ===================
+
+    makeCounterProvider({
+      name: 'chansey_trade_cooldown_blocks_total',
+      help: 'Total trade signals blocked by cooldown',
+      labelNames: ['direction', 'symbol']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_trade_cooldown_claims_total',
+      help: 'Total trade signals that claimed a cooldown slot and proceeded',
+      labelNames: ['direction', 'symbol']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_trade_cooldown_cleared_total',
+      help: 'Total cooldown slots cleared after order failure',
+      labelNames: ['reason']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_signal_throttle_suppressed_total',
+      help: 'Total signals suppressed by the signal throttle',
+      labelNames: ['strategy']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_signal_throttle_passed_total',
+      help: 'Total signals that survived the signal throttle',
+      labelNames: ['strategy', 'action']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_regime_gate_blocks_total',
+      help: 'Total signals blocked by the regime gate',
+      labelNames: ['regime']
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_drawdown_gate_blocks_total',
+      help: 'Total signals blocked by the drawdown gate'
+    }),
+
+    makeCounterProvider({
+      name: 'chansey_live_orders_placed_total',
+      help: 'Total live orders placed successfully',
+      labelNames: ['market_type', 'side']
+    }),
+
     MetricsService
   ],
   exports: [PrometheusModule, MetricsService]

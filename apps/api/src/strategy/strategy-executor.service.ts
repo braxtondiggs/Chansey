@@ -10,6 +10,7 @@ import {
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -43,24 +44,40 @@ const MIN_PER_TRADE_ALLOCATION = 0.05;
 export class StrategyExecutorService {
   private readonly logger = new Logger(StrategyExecutorService.name);
 
+  private static readonly PRUNE_THRESHOLD = 100;
+  private static readonly STALE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
   /** Per-strategy throttle state persisted across cron cycles (keyed by strategy config ID) */
-  private readonly throttleStates = new Map<string, ThrottleState>();
+  private readonly throttleStates = new Map<string, { state: ThrottleState; lastAccessedAt: number }>();
 
   constructor(
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly algorithmContextBuilder: AlgorithmContextBuilder,
     private readonly signalThrottle: SignalThrottleService,
-    private readonly compositeRegimeService: CompositeRegimeService
+    private readonly compositeRegimeService: CompositeRegimeService,
+    private readonly metricsService: MetricsService
   ) {}
 
-  /** Get or create throttle state for a strategy */
+  /** Get or create throttle state for a strategy, with last-access tracking */
   private getThrottleState(strategyId: string): ThrottleState {
-    let state = this.throttleStates.get(strategyId);
-    if (!state) {
-      state = this.signalThrottle.createState();
-      this.throttleStates.set(strategyId, state);
+    const now = Date.now();
+    let entry = this.throttleStates.get(strategyId);
+    if (!entry) {
+      entry = { state: this.signalThrottle.createState(), lastAccessedAt: now };
+      this.throttleStates.set(strategyId, entry);
+    } else {
+      entry.lastAccessedAt = now;
     }
-    return state;
+
+    // Opportunistic pruning when map grows too large
+    if (this.throttleStates.size > StrategyExecutorService.PRUNE_THRESHOLD) {
+      const cutoff = now - StrategyExecutorService.STALE_AGE_MS;
+      for (const [key, val] of this.throttleStates) {
+        if (val.lastAccessedAt < cutoff) this.throttleStates.delete(key);
+      }
+    }
+
+    return entry.state;
   }
 
   async executeStrategy(
@@ -106,9 +123,38 @@ export class StrategyExecutorService {
         return null;
       }
 
-      // Sort by confidence descending and take the best
-      actionableSignals.sort((a, b) => b.confidence - a.confidence);
-      const best = actionableSignals[0];
+      // Apply signal throttle: cooldowns, daily cap, min sell %
+      const throttleState = this.getThrottleState(strategy.id);
+      const throttleConfig = this.signalThrottle.resolveConfig(
+        strategy.parameters as Record<string, unknown> | undefined
+      );
+      const throttleInput = actionableSignals.map((s) => this.signalThrottle.toThrottleSignal(s));
+      const throttleOutput = this.signalThrottle.filterSignals(
+        throttleInput,
+        throttleState,
+        throttleConfig,
+        Date.now()
+      );
+
+      if (throttleInput.length > throttleOutput.length) {
+        const suppressedCount = throttleInput.length - throttleOutput.length;
+        this.metricsService.recordSignalThrottleSuppressed(strategy.id, suppressedCount);
+        this.logger.debug(`Strategy ${strategy.id}: throttled ${suppressedCount}/${throttleInput.length} signals`);
+      }
+      if (throttleOutput.length === 0) {
+        this.logger.debug(`Strategy ${strategy.id}: all signals suppressed by throttle`);
+        return null;
+      }
+
+      // Map accepted throttle signals back to original algorithm signals
+      const acceptedKeys = new Set(throttleOutput.map((s) => `${s.coinId}:${s.action}`));
+      const surviving = actionableSignals.filter((s) => {
+        const t = this.signalThrottle.toThrottleSignal(s);
+        return acceptedKeys.has(`${t.coinId}:${t.action}`);
+      });
+
+      surviving.sort((a, b) => b.confidence - a.confidence);
+      const best = surviving[0];
 
       const signal = this.mapAlgorithmSignal(best, context.coins, marketData, availableCapital);
       if (!signal) {
@@ -116,6 +162,7 @@ export class StrategyExecutorService {
         return null;
       }
 
+      this.metricsService.recordSignalThrottlePassed(strategy.id, signal.action);
       this.logger.log(
         `Strategy ${strategy.id} generated ${signal.action} signal for ${signal.symbol} at ${signal.price}`
       );
