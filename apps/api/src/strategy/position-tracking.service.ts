@@ -31,9 +31,14 @@ export class PositionTrackingService {
     });
   }
 
-  async getPosition(userId: string, strategyConfigId: string, symbol: string): Promise<UserStrategyPosition | null> {
+  async getPosition(
+    userId: string,
+    strategyConfigId: string,
+    symbol: string,
+    positionSide: 'long' | 'short' = 'long'
+  ): Promise<UserStrategyPosition | null> {
     return this.positionRepo.findOne({
-      where: { userId, strategyConfigId, symbol },
+      where: { userId, strategyConfigId, symbol, positionSide },
       relations: ['strategyConfig', 'user']
     });
   }
@@ -44,15 +49,17 @@ export class PositionTrackingService {
     symbol: string,
     quantity: number,
     price: number,
-    side: 'buy' | 'sell'
+    side: 'buy' | 'sell',
+    positionSide: 'long' | 'short' = 'long'
   ): Promise<UserStrategyPosition> {
-    let position = await this.getPosition(userId, strategyConfigId, symbol);
+    let position = await this.getPosition(userId, strategyConfigId, symbol, positionSide);
 
     if (!position) {
       position = this.positionRepo.create({
         userId,
         strategyConfigId,
         symbol,
+        positionSide,
         quantity: 0,
         avgEntryPrice: 0,
         unrealizedPnL: 0,
@@ -71,7 +78,8 @@ export class PositionTrackingService {
     } else if (side === 'sell') {
       const soldValue = quantity * price;
       const costBasis = quantity * currentAvgPrice;
-      const tradePnL = soldValue - costBasis;
+      // For shorts, P&L is inverted: profit when price drops (entry - exit)
+      const tradePnL = positionSide === 'short' ? costBasis - soldValue : soldValue - costBasis;
 
       position.quantity = currentQuantity - quantity;
       position.realizedPnL = Number(position.realizedPnL) + tradePnL;
@@ -102,7 +110,8 @@ export class PositionTrackingService {
 
       const currentValue = Number(position.quantity) * currentPrice;
       const costBasis = Number(position.quantity) * Number(position.avgEntryPrice);
-      const unrealizedPnL = currentValue - costBasis;
+      // For shorts, profit when price drops: (entry - current) * qty
+      const unrealizedPnL = position.positionSide === 'short' ? costBasis - currentValue : currentValue - costBasis;
 
       position.unrealizedPnL = unrealizedPnL;
       await this.positionRepo.save(position);
@@ -113,8 +122,14 @@ export class PositionTrackingService {
     return totalUnrealizedPnL;
   }
 
-  async closePosition(userId: string, strategyConfigId: string, symbol: string, currentPrice: number): Promise<void> {
-    const position = await this.getPosition(userId, strategyConfigId, symbol);
+  async closePosition(
+    userId: string,
+    strategyConfigId: string,
+    symbol: string,
+    currentPrice: number,
+    positionSide: 'long' | 'short' = 'long'
+  ): Promise<void> {
+    const position = await this.getPosition(userId, strategyConfigId, symbol, positionSide);
     if (!position || Number(position.quantity) === 0) {
       this.logger.warn(`No position to close for user ${userId}, strategy ${strategyConfigId}, symbol ${symbol}`);
       return;
@@ -122,7 +137,8 @@ export class PositionTrackingService {
 
     const soldValue = Number(position.quantity) * currentPrice;
     const costBasis = Number(position.quantity) * Number(position.avgEntryPrice);
-    const tradePnL = soldValue - costBasis;
+    // For shorts, P&L is inverted: profit when price drops (entry - exit)
+    const tradePnL = positionSide === 'short' ? costBasis - soldValue : soldValue - costBasis;
 
     position.realizedPnL = Number(position.realizedPnL) + tradePnL;
     position.quantity = 0;

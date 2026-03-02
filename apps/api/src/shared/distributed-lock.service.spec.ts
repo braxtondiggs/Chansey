@@ -1,9 +1,7 @@
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 
 import { DistributedLockService } from './distributed-lock.service';
 
-// Mock Redis
 const createRedisMock = () => ({
   set: jest.fn(),
   get: jest.fn(),
@@ -13,40 +11,15 @@ const createRedisMock = () => ({
   disconnect: jest.fn()
 });
 
-jest.mock('ioredis', () => {
-  const RedisMockConstructor = jest.fn().mockImplementation(() => createRedisMock());
-  return {
-    __esModule: true,
-    default: RedisMockConstructor
-  };
-});
-
-// Create mock ConfigService
-const createMockConfigService = (): jest.Mocked<ConfigService> =>
-  ({
-    get: jest.fn((key: string, defaultValue?: unknown) => {
-      const config: Record<string, unknown> = {
-        REDIS_HOST: 'localhost',
-        REDIS_PORT: 6379,
-        REDIS_USER: undefined,
-        REDIS_PASSWORD: undefined,
-        REDIS_TLS: 'false'
-      };
-      return config[key] ?? defaultValue;
-    })
-  }) as unknown as jest.Mocked<ConfigService>;
-
 describe('DistributedLockService', () => {
   let service: DistributedLockService;
   let redisMock: ReturnType<typeof createRedisMock>;
-  let mockConfigService: jest.Mocked<ConfigService>;
 
   beforeEach(() => {
     jest.clearAllMocks();
 
-    mockConfigService = createMockConfigService();
-    service = new DistributedLockService(mockConfigService);
-    redisMock = (service as any).redis;
+    redisMock = createRedisMock();
+    service = new DistributedLockService(redisMock as any);
   });
 
   describe('acquire', () => {
@@ -233,27 +206,6 @@ describe('DistributedLockService', () => {
 
       expect(result).toBe(false);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to extend lock test-lock'));
-    });
-  });
-
-  describe('onModuleDestroy', () => {
-    it('closes Redis connection gracefully', async () => {
-      const logSpy = jest.spyOn(service['logger'] as Logger, 'log');
-
-      await service.onModuleDestroy();
-
-      expect(redisMock.quit).toHaveBeenCalled();
-      expect(logSpy).toHaveBeenCalledWith('Distributed lock Redis connection closed');
-    });
-
-    it('disconnects forcefully if quit fails', async () => {
-      redisMock.quit.mockRejectedValue(new Error('Timeout'));
-      const warnSpy = jest.spyOn(service['logger'] as Logger, 'warn');
-
-      await service.onModuleDestroy();
-
-      expect(redisMock.disconnect).toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Error closing Redis connection'));
     });
   });
 });

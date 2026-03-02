@@ -1,12 +1,12 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import Redis from 'ioredis';
 
 import { randomUUID } from 'crypto';
 
-import { LOCK_DEFAULTS, LOCK_REDIS_DB } from './distributed-lock.constants';
+import { LOCK_DEFAULTS } from './distributed-lock.constants';
 import { toErrorInfo } from './error.util';
+import { LOCK_REDIS } from './lock-redis.provider';
 
 export interface LockOptions {
   key: string;
@@ -27,9 +27,8 @@ export interface LockInfo {
 }
 
 @Injectable()
-export class DistributedLockService implements OnModuleDestroy {
+export class DistributedLockService {
   private readonly logger = new Logger(DistributedLockService.name);
-  private readonly redis: Redis;
 
   // Lua script for safe release (only delete if we own the lock)
   private readonly RELEASE_SCRIPT = `
@@ -49,18 +48,7 @@ export class DistributedLockService implements OnModuleDestroy {
     end
   `;
 
-  constructor(private readonly configService: ConfigService) {
-    this.redis = new Redis({
-      host: this.configService.get<string>('REDIS_HOST'),
-      port: this.configService.get<number>('REDIS_PORT', 6379),
-      db: LOCK_REDIS_DB,
-      username: this.configService.get<string>('REDIS_USER') || undefined,
-      password: this.configService.get<string>('REDIS_PASSWORD') || undefined,
-      tls: this.configService.get<string>('REDIS_TLS') === 'true' ? {} : undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false
-    });
-  }
+  constructor(@Inject(LOCK_REDIS) private readonly redis: Redis) {}
 
   /**
    * Attempts to acquire a distributed lock.
@@ -163,16 +151,5 @@ export class DistributedLockService implements OnModuleDestroy {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    try {
-      await this.redis.quit();
-      this.logger.log('Distributed lock Redis connection closed');
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.warn(`Error closing Redis connection: ${err.message}`);
-      this.redis.disconnect();
-    }
   }
 }
