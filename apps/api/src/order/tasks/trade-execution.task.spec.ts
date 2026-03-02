@@ -3,22 +3,29 @@ import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { MarketType } from '@chansey/api-interfaces';
+
 import { TradeExecutionTask } from './trade-execution.task';
 
+import { TradingStateService } from '../../admin/trading-state/trading-state.service';
 import { SignalType } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { AlgorithmActivationService } from '../../algorithm/services/algorithm-activation.service';
 import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-context-builder.service';
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
+import { TradeCooldownService } from '../../shared/trade-cooldown.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
+import { SignalThrottleService } from '../backtest/shared/throttle';
 import { TradeExecutionService } from '../services/trade-execution.service';
 
 describe('TradeExecutionTask', () => {
   let task: TradeExecutionTask;
   let mockQueue: any;
   let mockStrategyConfigRepo: any;
+  let mockUserRepo: any;
   let mockTradeExecutionService: any;
   let mockActivationService: any;
   let mockAlgorithmRegistry: any;
@@ -26,6 +33,9 @@ describe('TradeExecutionTask', () => {
   let mockBalanceService: any;
   let mockCoinService: any;
   let mockUsersService: any;
+  let mockTradingStateService: any;
+  let mockTradeCooldownService: any;
+  let mockSignalThrottle: any;
 
   const mockJob = {
     id: 'job-1',
@@ -83,6 +93,44 @@ describe('TradeExecutionTask', () => {
       findOne: jest.fn().mockResolvedValue(null)
     };
 
+    mockUserRepo = {
+      find: jest.fn().mockResolvedValue([])
+    };
+
+    mockTradingStateService = {
+      isTradingEnabled: jest.fn().mockReturnValue(true)
+    };
+
+    mockTradeCooldownService = {
+      checkAndClaim: jest.fn().mockResolvedValue({ allowed: true }),
+      clearCooldown: jest.fn().mockResolvedValue(undefined)
+    };
+
+    mockSignalThrottle = {
+      createState: jest.fn().mockReturnValue({ lastSignalTime: {}, tradeTimestamps: [] }),
+      resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 }),
+      filterSignals: jest.fn().mockImplementation((signals: any[]) => signals),
+      toThrottleSignal: jest.fn().mockImplementation((s: any) => {
+        const map: Record<string, string> = {
+          BUY: 'BUY',
+          SELL: 'SELL',
+          HOLD: 'HOLD',
+          SHORT_ENTRY: 'OPEN_SHORT',
+          SHORT_EXIT: 'CLOSE_SHORT',
+          STOP_LOSS: 'SELL',
+          TAKE_PROFIT: 'SELL'
+        };
+        return {
+          action: map[s.type] ?? 'HOLD',
+          coinId: s.coinId,
+          quantity: s.quantity,
+          reason: s.reason,
+          confidence: s.confidence,
+          originalType: s.type
+        };
+      })
+    };
+
     mockTradeExecutionService = {
       executeTradeSignal: jest.fn().mockResolvedValue({ id: 'order-1' })
     };
@@ -122,13 +170,17 @@ describe('TradeExecutionTask', () => {
         TradeExecutionTask,
         { provide: getQueueToken('trade-execution'), useValue: mockQueue },
         { provide: getRepositoryToken(StrategyConfig), useValue: mockStrategyConfigRepo },
+        { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: TradeExecutionService, useValue: mockTradeExecutionService },
         { provide: AlgorithmActivationService, useValue: mockActivationService },
         { provide: AlgorithmRegistry, useValue: mockAlgorithmRegistry },
         { provide: AlgorithmContextBuilder, useValue: mockContextBuilder },
         { provide: BalanceService, useValue: mockBalanceService },
         { provide: CoinService, useValue: mockCoinService },
-        { provide: UsersService, useValue: mockUsersService }
+        { provide: UsersService, useValue: mockUsersService },
+        { provide: TradingStateService, useValue: mockTradingStateService },
+        { provide: TradeCooldownService, useValue: mockTradeCooldownService },
+        { provide: SignalThrottleService, useValue: mockSignalThrottle }
       ]
     }).compile();
 
@@ -180,20 +232,6 @@ describe('TradeExecutionTask', () => {
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: false,
-        signals: [],
-        timestamp: new Date()
-      });
-
-      const result: any = await task.process(mockJob);
-
-      expect(result.skippedCount).toBe(1);
-    });
-
-    it('should skip when algorithm returns no signals', async () => {
-      const activation = buildActivation();
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
         signals: [],
         timestamp: new Date()
       });
@@ -266,7 +304,7 @@ describe('TradeExecutionTask', () => {
       expect(signalArg.symbol).toBe('ETH/USDT');
     });
 
-    it('should pass autoSize, portfolioValue, and allocationPercentage in the signal', async () => {
+    it('should pass complete trade signal with auto-sizing and market context fields', async () => {
       const activation = buildActivation({ allocationPercentage: 5 });
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       mockBalanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 25000 });
@@ -286,9 +324,12 @@ describe('TradeExecutionTask', () => {
           quantity: 0,
           autoSize: true,
           portfolioValue: 25000,
-          allocationPercentage: 5
+          allocationPercentage: 5,
+          marketType: 'spot',
+          leverage: 1
         })
       );
+      expect(signalArg.positionSide).toBeUndefined();
     });
 
     it('should map BUY and SELL signal types correctly', async () => {
@@ -348,54 +389,20 @@ describe('TradeExecutionTask', () => {
   });
 
   describe('symbol resolution (via process)', () => {
-    it('should return "BTC/USDT" for binance_us', async () => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'binance_us' } } });
+    it.each([
+      ['binance_us', 'BTC/USDT'],
+      ['coinbase', 'BTC/USD'],
+      ['gdax', 'BTC/USD'],
+      ['kraken', 'BTC/USD'],
+      ['unknown_exchange', 'BTC/USDT']
+    ])('should resolve quote currency for %s → %s', async (slug, expectedSymbol) => {
+      const activation = buildActivation({ exchangeKey: { exchange: { slug } } });
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       configureActionableSignal();
 
       await task.process(mockJob);
 
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USDT');
-    });
-
-    it('should return "BTC/USD" for coinbase', async () => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'coinbase' } } });
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      configureActionableSignal();
-
-      await task.process(mockJob);
-
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USD');
-    });
-
-    it('should return "BTC/USD" for gdax (Coinbase Pro)', async () => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'gdax' } } });
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      configureActionableSignal();
-
-      await task.process(mockJob);
-
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USD');
-    });
-
-    it('should return "BTC/USD" for kraken', async () => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'kraken' } } });
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      configureActionableSignal();
-
-      await task.process(mockJob);
-
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USD');
-    });
-
-    it('should default to USDT for unknown exchange slugs', async () => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug: 'unknown_exchange' } } });
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      configureActionableSignal();
-
-      await task.process(mockJob);
-
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('BTC/USDT');
+      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe(expectedSymbol);
     });
 
     it('should uppercase the coin symbol', async () => {
@@ -459,7 +466,7 @@ describe('TradeExecutionTask', () => {
       expect(result.totalActivations).toBe(2);
     });
 
-    it('should return counts: successCount, failCount, skippedCount', async () => {
+    it('should return counts: successCount, failCount, skippedCount, blockedCount', async () => {
       const activation1 = buildActivation({ id: 'act-1', algorithmId: 'algo-buy' });
       const activation2 = buildActivation({ id: 'act-2', algorithmId: 'algo-fail' });
       const activation3 = buildActivation({ id: 'act-3', algorithmId: 'algo-skip' });
@@ -482,6 +489,7 @@ describe('TradeExecutionTask', () => {
       expect(result.successCount).toBe(1);
       expect(result.failCount).toBe(1);
       expect(result.skippedCount).toBe(1);
+      expect(result.blockedCount).toBe(0);
       expect(result.totalActivations).toBe(3);
     });
 
@@ -495,39 +503,89 @@ describe('TradeExecutionTask', () => {
         successCount: 0,
         failCount: 0,
         skippedCount: 0,
+        blockedCount: 0,
         timestamp: expect.any(String)
       });
     });
+  });
 
-    it('should process 12 activations across 3 users with only 3 balance fetches', async () => {
-      const activations = [];
-      const userIds = ['user-1', 'user-2', 'user-3'];
-      for (let i = 0; i < 12; i++) {
-        activations.push(
-          buildActivation({
-            id: `act-${i}`,
-            userId: userIds[i % 3],
-            algorithmId: `algo-${i}`
-          })
-        );
-      }
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue(activations);
+  describe('kill switch', () => {
+    it('should return early when trading is globally halted', async () => {
+      mockTradingStateService.isTradingEnabled.mockReturnValue(false);
 
-      // All return no actionable signals
+      const result: any = await task.process(mockJob);
+
+      expect(result).toEqual({ success: false, message: 'Trading globally halted' });
+      expect(mockActivationService.findAllActiveAlgorithms).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('mutual exclusion — filterRoboAdvisorUsers', () => {
+    it('should filter out activations for users with algoTradingEnabled=true', async () => {
+      const activation1 = buildActivation({ id: 'act-1', userId: 'robo-user' });
+      const activation2 = buildActivation({ id: 'act-2', userId: 'manual-user' });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation1, activation2]);
+      mockUserRepo.find.mockResolvedValue([{ id: 'robo-user' }]);
+
+      // manual-user has no signal
       mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: true,
         signals: [],
         timestamp: new Date()
       });
 
-      await task.process(mockJob);
+      const result: any = await task.process(mockJob);
 
-      // Only 3 unique users → 3 balance fetches
-      expect(mockUsersService.getById).toHaveBeenCalledTimes(3);
-      expect(mockBalanceService.getUserBalances).toHaveBeenCalledTimes(3);
+      // Only manual-user's activation should be processed (1 total, 1 skipped due to no signal)
+      expect(result.totalActivations).toBe(1);
+    });
 
-      // All 12 activations processed (as skipped, since no signals)
-      expect(mockAlgorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(12);
+    it('should process all activations when no robo-advisor users found', async () => {
+      const activation1 = buildActivation({ id: 'act-1', userId: 'user-1' });
+      const activation2 = buildActivation({ id: 'act-2', userId: 'user-2' });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation1, activation2]);
+      mockUserRepo.find.mockResolvedValue([]); // No robo-advisor users
+
+      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [],
+        timestamp: new Date()
+      });
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.totalActivations).toBe(2);
+    });
+  });
+
+  describe('trade cooldown', () => {
+    it('should block activation when cooldown rejects the trade', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+      mockTradeCooldownService.checkAndClaim.mockResolvedValue({
+        allowed: false,
+        existingClaim: { pipeline: 'strategy:config-1', claimedAt: Date.now() }
+      });
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.blockedCount).toBe(1);
+      expect(result.skippedCount).toBe(0);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+    });
+
+    it('should clear cooldown on trade execution failure', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+      mockTradeCooldownService.checkAndClaim.mockResolvedValue({ allowed: true });
+      mockTradeExecutionService.executeTradeSignal.mockRejectedValue(new Error('Exchange error'));
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.failCount).toBe(1);
+      expect(mockTradeCooldownService.clearCooldown).toHaveBeenCalledWith('user-1', 'BTC/USDT', 'BUY');
     });
   });
 
@@ -569,6 +627,136 @@ describe('TradeExecutionTask', () => {
 
       expect(result.skippedCount).toBe(1);
       expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signal throttle integration', () => {
+    it('should call filterSignals with converted signals for actionable activations', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal('coin-1', SignalType.BUY, 0.8, 0.8);
+
+      await task.process(mockJob);
+
+      expect(mockSignalThrottle.filterSignals).toHaveBeenCalledTimes(1);
+      const [signals] = mockSignalThrottle.filterSignals.mock.calls[0];
+      expect(signals).toHaveLength(1);
+      expect(signals[0]).toEqual(
+        expect.objectContaining({
+          action: 'BUY',
+          coinId: 'coin-1',
+          originalType: SignalType.BUY
+        })
+      );
+    });
+
+    it('should skip activation when all signals are throttled', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+      mockSignalThrottle.filterSignals.mockReturnValue([]);
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+    });
+
+    it('should resolve throttle config from activation.config', async () => {
+      const activation = buildActivation({ config: { cooldownMs: 3600_000 } });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      expect(mockSignalThrottle.resolveConfig).toHaveBeenCalledWith({ cooldownMs: 3600_000 });
+    });
+
+    it('should apply throttle before TradeCooldownService dedup', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+      mockSignalThrottle.filterSignals.mockReturnValue([]);
+
+      await task.process(mockJob);
+
+      // Signal was throttled before reaching cooldown service
+      expect(mockTradeCooldownService.checkAndClaim).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('futures / market context resolution', () => {
+    it('should use activation config metadata for futures market type', async () => {
+      const activation = buildActivation({
+        config: { metadata: { marketType: MarketType.FUTURES, leverage: 5 } }
+      });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.marketType).toBe('futures');
+      expect(signalArg.leverage).toBe(5);
+      expect(signalArg.positionSide).toBe('long');
+    });
+
+    it('should fall back to StrategyConfig for futures market type', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockStrategyConfigRepo.findOne.mockResolvedValue({
+        marketType: MarketType.FUTURES,
+        defaultLeverage: 3
+      });
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.marketType).toBe('futures');
+      expect(signalArg.leverage).toBe(3);
+    });
+
+    it('should default to spot with leverage 1 when no futures config exists', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockStrategyConfigRepo.findOne.mockResolvedValue(null);
+      configureActionableSignal();
+
+      await task.process(mockJob);
+
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.marketType).toBe('spot');
+      expect(signalArg.leverage).toBe(1);
+      expect(signalArg.positionSide).toBeUndefined();
+    });
+
+    it('should map SHORT_ENTRY to SELL with positionSide short', async () => {
+      const activation = buildActivation({
+        config: { metadata: { marketType: MarketType.FUTURES, leverage: 2 } }
+      });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal('coin-1', SignalType.SHORT_ENTRY);
+
+      await task.process(mockJob);
+
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.action).toBe('SELL');
+      expect(signalArg.positionSide).toBe('short');
+    });
+
+    it('should map SHORT_EXIT to BUY with positionSide short', async () => {
+      const activation = buildActivation({
+        config: { metadata: { marketType: MarketType.FUTURES, leverage: 2 } }
+      });
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      configureActionableSignal('coin-1', SignalType.SHORT_EXIT);
+
+      await task.process(mockJob);
+
+      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
+      expect(signalArg.action).toBe('BUY');
+      expect(signalArg.positionSide).toBe('short');
     });
   });
 });

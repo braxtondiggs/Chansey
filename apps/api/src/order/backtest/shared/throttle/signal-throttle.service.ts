@@ -3,12 +3,14 @@ import { Injectable } from '@nestjs/common';
 import {
   CooldownKey,
   DEFAULT_THROTTLE_CONFIG,
+  SIGNAL_TYPE_TO_ACTION,
   SerializableThrottleState,
   SignalThrottleConfig,
   THROTTLE_BYPASS_TYPES,
   ThrottleState
 } from './signal-throttle.interface';
 
+import { TradingSignal as AlgorithmTradingSignal } from '../../../../algorithm/interfaces/algorithm-result.interface';
 import { TradingSignal } from '../../backtest-engine.service';
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -141,6 +143,18 @@ export class SignalThrottleService {
     return {
       lastSignalTime: { ...serialized.lastSignalTime } as Record<CooldownKey, number>,
       tradeTimestamps: [...serialized.tradeTimestamps]
+    };
+  }
+
+  /** Convert an algorithm signal to the backtest TradingSignal format expected by filterSignals() */
+  toThrottleSignal(signal: AlgorithmTradingSignal): TradingSignal {
+    return {
+      action: SIGNAL_TYPE_TO_ACTION[signal.type] ?? 'HOLD',
+      coinId: signal.coinId,
+      quantity: signal.quantity,
+      reason: signal.reason,
+      confidence: signal.confidence,
+      originalType: signal.type
     };
   }
 }

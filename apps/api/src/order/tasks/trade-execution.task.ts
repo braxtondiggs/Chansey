@@ -4,10 +4,11 @@ import { CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Job, Queue } from 'bullmq';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { MarketType } from '@chansey/api-interfaces';
 
+import { TradingStateService } from '../../admin/trading-state/trading-state.service';
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { SignalType, TradingSignal } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
@@ -17,8 +18,11 @@ import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { toErrorInfo } from '../../shared/error.util';
+import { TradeCooldownService } from '../../shared/trade-cooldown.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
+import { SignalThrottleService, ThrottleState } from '../backtest/shared/throttle';
 import { TradeExecutionService, TradeSignalWithExit } from '../services/trade-execution.service';
 
 const MIN_CONFIDENCE_THRESHOLD = 0.6;
@@ -41,17 +45,25 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(TradeExecutionTask.name);
   private jobScheduled = false;
 
+  /** Per-activation throttle state persisted across cron cycles (keyed by activation ID) */
+  private readonly throttleStates = new Map<string, ThrottleState>();
+
   constructor(
     @InjectQueue('trade-execution') private readonly tradeExecutionQueue: Queue,
     @InjectRepository(StrategyConfig)
     private readonly strategyConfigRepo: Repository<StrategyConfig>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly tradeExecutionService: TradeExecutionService,
     private readonly algorithmActivationService: AlgorithmActivationService,
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly contextBuilder: AlgorithmContextBuilder,
     private readonly balanceService: BalanceService,
     private readonly coinService: CoinService,
-    private readonly usersService: UsersService
+    private readonly usersService: UsersService,
+    private readonly tradingStateService: TradingStateService,
+    private readonly tradeCooldownService: TradeCooldownService,
+    private readonly signalThrottle: SignalThrottleService
   ) {
     super();
   }
@@ -115,6 +127,12 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
 
+    // Kill switch check — must be first before any trading activity
+    if (!this.tradingStateService.isTradingEnabled()) {
+      this.logger.warn('Trading is globally halted — skipping trade execution job');
+      return { success: false, message: 'Trading globally halted' };
+    }
+
     try {
       if (job.name === 'execute-trades') {
         return await this.handleExecuteTrades(job);
@@ -138,9 +156,16 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     try {
       await job.updateProgress(10);
 
-      const activeActivations = await this.algorithmActivationService.findAllActiveAlgorithms();
+      const allActivations = await this.algorithmActivationService.findAllActiveAlgorithms();
 
-      this.logger.log(`Found ${activeActivations.length} active algorithm activations`);
+      // Mutual exclusion: filter out users who have algoTradingEnabled=true
+      // Those users are handled exclusively by Pipeline 1 (LiveTradingService)
+      const activeActivations = await this.filterRoboAdvisorUsers(allActivations);
+
+      this.logger.log(
+        `Found ${allActivations.length} active activations, ${allActivations.length - activeActivations.length} ` +
+          `skipped (robo-advisor users), ${activeActivations.length} to process`
+      );
 
       if (activeActivations.length === 0) {
         return {
@@ -148,6 +173,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           successCount: 0,
           failCount: 0,
           skippedCount: 0,
+          blockedCount: 0,
           timestamp: new Date().toISOString()
         };
       }
@@ -171,6 +197,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       let successCount = 0;
       let failCount = 0;
       let skippedCount = 0;
+      let blockedCount = 0;
       let processedActivations = 0;
 
       const groups = this.groupByExchangeKey(activeActivations);
@@ -179,11 +206,12 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       for (const chunk of chunks) {
         const results = await Promise.allSettled(
           chunk.map(async (group) => {
-            const groupCounts = { success: 0, fail: 0, skipped: 0 };
+            const groupCounts = { success: 0, fail: 0, skipped: 0, blocked: 0 };
             for (const activation of group) {
               try {
                 const outcome = await this.processActivation(activation, portfolioCache.get(activation.userId) ?? 0);
                 if (outcome === 'executed') groupCounts.success++;
+                else if (outcome === 'blocked') groupCounts.blocked++;
                 else groupCounts.skipped++;
               } catch (error: unknown) {
                 const err = toErrorInfo(error);
@@ -200,6 +228,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
             successCount += result.value.success;
             failCount += result.value.fail;
             skippedCount += result.value.skipped;
+            blockedCount += result.value.blocked;
           } else {
             const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
             this.logger.error(`Activation group processing failed: ${reason}`, result.reason?.stack);
@@ -213,9 +242,15 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         await job.updateProgress(progressPercentage);
       }
 
+      // Prune throttle states for deactivated activations to prevent unbounded growth
+      const activeIds = new Set(activeActivations.map((a) => a.id));
+      for (const key of this.throttleStates.keys()) {
+        if (!activeIds.has(key)) this.throttleStates.delete(key);
+      }
+
       await job.updateProgress(100);
       this.logger.log(
-        `Trade execution complete: ${totalActivations} activations — ${successCount} executed, ${skippedCount} skipped, ${failCount} failed`
+        `Trade execution complete: ${totalActivations} activations — ${successCount} executed, ${skippedCount} skipped, ${blockedCount} blocked, ${failCount} failed`
       );
 
       return {
@@ -223,6 +258,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         successCount,
         failCount,
         skippedCount,
+        blockedCount,
         timestamp: new Date().toISOString()
       };
     } catch (error: unknown) {
@@ -234,12 +270,12 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
   /**
    * Process a single activation: generate signal and execute trade
-   * @returns 'executed' if a trade was placed, 'skipped' otherwise
+   * @returns 'executed' if a trade was placed, 'skipped' if no signal, 'blocked' if cooldown rejected
    */
   private async processActivation(
     activation: AlgorithmActivation,
     portfolioValue: number
-  ): Promise<'executed' | 'skipped'> {
+  ): Promise<'executed' | 'skipped' | 'blocked'> {
     if (portfolioValue <= 0) {
       this.logger.warn(
         `Skipping activation ${activation.id}: portfolio value is $${portfolioValue} (cannot auto-size)`
@@ -250,11 +286,33 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     const signal = await this.generateTradeSignal(activation, portfolioValue);
 
     if (signal) {
-      await this.tradeExecutionService.executeTradeSignal(signal);
-      this.logger.log(
-        `Executed trade for activation ${activation.id} (${activation.algorithm.name}): ${signal.action} ${signal.symbol}`
+      // Trade cooldown: prevent double-trading if Pipeline 1 already placed this trade
+      const cooldownCheck = await this.tradeCooldownService.checkAndClaim(
+        signal.userId,
+        signal.symbol,
+        signal.action,
+        `activation:${activation.id}`
       );
-      return 'executed';
+
+      if (!cooldownCheck.allowed) {
+        this.logger.warn(
+          `Trade cooldown blocked activation ${activation.id}: ${signal.action} ${signal.symbol} ` +
+            `already claimed by ${cooldownCheck.existingClaim?.pipeline}`
+        );
+        return 'blocked';
+      }
+
+      try {
+        await this.tradeExecutionService.executeTradeSignal(signal);
+        this.logger.log(
+          `Executed trade for activation ${activation.id} (${activation.algorithm.name}): ${signal.action} ${signal.symbol}`
+        );
+        return 'executed';
+      } catch (error: unknown) {
+        // Clear cooldown on failure so next cycle can retry
+        await this.tradeCooldownService.clearCooldown(signal.userId, signal.symbol, signal.action);
+        throw error;
+      }
     }
 
     this.logger.debug(`No actionable signal for activation ${activation.id} (${activation.algorithm.name})`);
@@ -301,8 +359,25 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       return null;
     }
 
+    // Apply signal throttle: cooldowns, daily cap, min sell %
+    const throttleState = this.getThrottleState(activation.id);
+    const throttleConfig = this.signalThrottle.resolveConfig(activation.config as Record<string, unknown> | undefined);
+    const throttleInput = actionableSignals.map((s) => this.signalThrottle.toThrottleSignal(s));
+    const throttleOutput = this.signalThrottle.filterSignals(throttleInput, throttleState, throttleConfig, Date.now());
+
+    if (throttleOutput.length === 0) {
+      return null;
+    }
+
+    // Map accepted throttle signals back to original algorithm signals
+    const acceptedKeys = new Set(throttleOutput.map((s) => `${s.coinId}:${s.action}`));
+    const surviving = actionableSignals.filter((s) => {
+      const t = this.signalThrottle.toThrottleSignal(s);
+      return acceptedKeys.has(`${t.coinId}:${t.action}`);
+    });
+
     // Pick the strongest signal by strength × confidence
-    const bestSignal = actionableSignals.reduce((best: TradingSignal, current: TradingSignal) =>
+    const bestSignal = surviving.reduce((best: TradingSignal, current: TradingSignal) =>
       current.strength * current.confidence > best.strength * best.confidence ? current : best
     );
 
@@ -425,6 +500,31 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     }
   }
 
+  /**
+   * Filter out activations belonging to robo-advisor users (algoTradingEnabled=true).
+   * Those users are handled exclusively by Pipeline 1 (LiveTradingService).
+   */
+  private async filterRoboAdvisorUsers(activations: AlgorithmActivation[]): Promise<AlgorithmActivation[]> {
+    if (activations.length === 0) return activations;
+
+    const uniqueUserIds = [...new Set(activations.map((a) => a.userId))];
+
+    const roboAdvisorUsers = await this.userRepo.find({
+      where: { id: In(uniqueUserIds), algoTradingEnabled: true },
+      select: ['id']
+    });
+
+    if (roboAdvisorUsers.length === 0) return activations;
+
+    const roboUserIds = new Set(roboAdvisorUsers.map((u) => u.id));
+
+    this.logger.log(
+      `Filtering ${roboAdvisorUsers.length} robo-advisor user(s) from activation pipeline (handled by LiveTradingService)`
+    );
+
+    return activations.filter((a) => !roboUserIds.has(a.userId));
+  }
+
   private chunkArray<T>(array: T[], size: number): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < array.length; i += size) {
@@ -442,5 +542,15 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       groups.set(key, group);
     }
     return [...groups.values()];
+  }
+
+  /** Get or create throttle state for an activation */
+  private getThrottleState(activationId: string): ThrottleState {
+    let state = this.throttleStates.get(activationId);
+    if (!state) {
+      state = this.signalThrottle.createState();
+      this.throttleStates.set(activationId, state);
+    }
+    return state;
   }
 }

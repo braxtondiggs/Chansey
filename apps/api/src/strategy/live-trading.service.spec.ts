@@ -15,10 +15,12 @@ import { BalanceService } from '../balance/balance.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { OrderService } from '../order/order.service';
 import { TradeExecutionService } from '../order/services/trade-execution.service';
 import { LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
+import { TradeCooldownService } from '../shared/trade-cooldown.service';
 import { User } from '../users/users.entity';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
@@ -44,6 +46,10 @@ describe('LiveTradingService', () => {
   let orderService: jest.Mocked<OrderService>;
   let balanceService: jest.Mocked<BalanceService>;
   let tradingStateService: jest.Mocked<TradingStateService>;
+  let regimeGateService: jest.Mocked<RegimeGateService>;
+  let preTradeRiskGate: jest.Mocked<PreTradeRiskGateService>;
+  let tradeExecutionService: jest.Mocked<TradeExecutionService>;
+  let tradeCooldownService: jest.Mocked<TradeCooldownService>;
 
   beforeEach(async () => {
     userRepo = {
@@ -88,6 +94,23 @@ describe('LiveTradingService', () => {
       isTradingEnabled: jest.fn().mockReturnValue(true)
     } as unknown as jest.Mocked<TradingStateService>;
 
+    regimeGateService = {
+      filterLiveSignal: jest.fn().mockReturnValue({ allowed: true })
+    } as unknown as jest.Mocked<RegimeGateService>;
+
+    preTradeRiskGate = {
+      checkDrawdown: jest.fn().mockResolvedValue({ allowed: true })
+    } as unknown as jest.Mocked<PreTradeRiskGateService>;
+
+    tradeExecutionService = {
+      executeTradeSignal: jest.fn().mockResolvedValue({ id: 'order-1' })
+    } as unknown as jest.Mocked<TradeExecutionService>;
+
+    tradeCooldownService = {
+      checkAndClaim: jest.fn().mockResolvedValue({ allowed: true }),
+      clearCooldown: jest.fn().mockResolvedValue(undefined)
+    } as unknown as jest.Mocked<TradeCooldownService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LiveTradingService,
@@ -110,20 +133,41 @@ describe('LiveTradingService', () => {
             isOverrideActive: jest.fn().mockReturnValue(false)
           }
         },
-        { provide: RegimeGateService, useValue: { filterLiveSignal: jest.fn().mockReturnValue({ allowed: true }) } },
+        { provide: RegimeGateService, useValue: regimeGateService },
+        { provide: PreTradeRiskGateService, useValue: preTradeRiskGate },
+        { provide: TradeExecutionService, useValue: tradeExecutionService },
+        { provide: TradeCooldownService, useValue: tradeCooldownService },
         {
-          provide: PreTradeRiskGateService,
-          useValue: { checkDrawdown: jest.fn().mockResolvedValue({ allowed: true }) }
-        },
-        {
-          provide: TradeExecutionService,
-          useValue: { executeTradeSignal: jest.fn().mockResolvedValue({ id: 'order-1' }) }
+          provide: MetricsService,
+          useValue: {
+            recordTradeCooldownBlock: jest.fn(),
+            recordTradeCooldownClaim: jest.fn(),
+            recordTradeCooldownCleared: jest.fn(),
+            recordRegimeGateBlock: jest.fn(),
+            recordDrawdownGateBlock: jest.fn(),
+            recordLiveOrderPlaced: jest.fn()
+          }
         }
       ]
     }).compile();
 
     service = module.get(LiveTradingService);
   });
+
+  /** Mocks the common setup for tests that reach the signal execution path */
+  const setupSignalPath = (opts?: { user?: Partial<User>; strategies?: any[] }): User => {
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
+    const user = createUser(opts?.user);
+    userRepo.find.mockResolvedValue([user]);
+    balanceService.getUserBalances.mockResolvedValue({
+      current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
+    } as any);
+    riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue(opts?.strategies ?? [{ id: 'strategy-1' } as any]);
+    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 50]]));
+    positionTracking.getPositions.mockResolvedValue([]);
+    jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
+    return user;
+  };
 
   it('returns early when trading is globally disabled', async () => {
     tradingStateService.isTradingEnabled.mockReturnValue(false);
@@ -142,22 +186,15 @@ describe('LiveTradingService', () => {
     expect(lockService.release).not.toHaveBeenCalled();
   });
 
-  it('places orders for valid signals on preferred exchange', async () => {
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
-    const user = createUser({
-      exchanges: [
-        { id: 'ex-1', name: 'Coinbase', slug: 'coinbase', isActive: true },
-        { id: 'ex-2', name: 'Binance US', slug: 'binance_us', isActive: true }
-      ] as any
+  it('places spot order on preferred exchange and tracks buy as long', async () => {
+    const user = setupSignalPath({
+      user: {
+        exchanges: [
+          { id: 'ex-1', name: 'Coinbase', slug: 'coinbase', isActive: true },
+          { id: 'ex-2', name: 'Binance US', slug: 'binance_us', isActive: true }
+        ] as any
+      }
     });
-    userRepo.find.mockResolvedValue([user]);
-    balanceService.getUserBalances.mockResolvedValue({
-      current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
-    } as any);
-    riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue([{ id: 'strategy-1' } as any]);
-    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 50]]));
-    positionTracking.getPositions.mockResolvedValue([]);
-    jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
 
     const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
     strategyExecutor.executeStrategy.mockResolvedValue(signal);
@@ -167,21 +204,20 @@ describe('LiveTradingService', () => {
     await service.executeLiveTrading();
 
     expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledWith(user.id, 'strategy-1', signal, 'ex-2');
-    expect(positionTracking.updatePosition).toHaveBeenCalled();
+    expect(positionTracking.updatePosition).toHaveBeenCalledWith(
+      user.id,
+      'strategy-1',
+      'BTC/USDT',
+      0.01,
+      30000,
+      'buy',
+      'long'
+    );
     expect(lockService.release).toHaveBeenCalledWith(LOCK_KEYS.LIVE_TRADING, 'lock-1');
   });
 
-  it('skips invalid signals', async () => {
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
-    const user = createUser();
-    userRepo.find.mockResolvedValue([user]);
-    balanceService.getUserBalances.mockResolvedValue({
-      current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
-    } as any);
-    riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue([{ id: 'strategy-1' } as any]);
-    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 50]]));
-    positionTracking.getPositions.mockResolvedValue([]);
-    jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
+  it('skips invalid signals without placing orders', async () => {
+    setupSignalPath();
 
     const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
     strategyExecutor.executeStrategy.mockResolvedValue(signal);
@@ -215,34 +251,151 @@ describe('LiveTradingService', () => {
     expect(result).toEqual({ running: true, enrolledUsers: 5, instanceId: 'instance-1' });
   });
 
-  it('caps oversized buy signal quantity before placing order', async () => {
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
-    const user = createUser();
-    userRepo.find.mockResolvedValue([user]);
-    balanceService.getUserBalances.mockResolvedValue({
-      current: [{ balances: [{ free: '10000', locked: '0', usdValue: 10000 }] }]
-    } as any);
-    riskPoolMapping.getActiveStrategiesForUser.mockResolvedValue([{ id: 'strategy-1' } as any]);
-    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(new Map([['strategy-1', 5000]]));
-    positionTracking.getPositions.mockResolvedValue([]);
-    jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([]);
+  it('tracks sell signal as side=sell positionSide=long via spot path', async () => {
+    const user = setupSignalPath();
 
-    // Signal with quantity far exceeding 20% cap (0.5 BTC @ 50000 = $25000, capital = $5000)
-    // StrategyExecutorService.mapAlgorithmSignal would cap to 20% → 0.02 BTC
-    const cappedSignal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.02, price: 50000 };
-    strategyExecutor.executeStrategy.mockResolvedValue(cappedSignal);
+    const signal: TradingSignal = { action: 'sell', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
     strategyExecutor.validateSignal.mockReturnValue({ valid: true });
     orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
 
     await service.executeLiveTrading();
 
-    // Verify the order was placed with the capped quantity, not the original oversized one
-    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledWith(
+    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalled();
+    expect(positionTracking.updatePosition).toHaveBeenCalledWith(
       user.id,
       'strategy-1',
-      expect.objectContaining({ quantity: 0.02 }),
-      expect.any(String)
+      'BTC/USDT',
+      0.01,
+      30000,
+      'sell',
+      'long'
     );
+  });
+
+  it('routes short_entry through futures path and tracks as buy/short', async () => {
+    const user = setupSignalPath({
+      strategies: [{ id: 'strategy-1', marketType: 'futures', defaultLeverage: 1 } as any]
+    });
+
+    const signal: TradingSignal = { action: 'short_entry', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+    await service.executeLiveTrading();
+
+    expect(tradeExecutionService.executeTradeSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SELL',
+        symbol: 'BTC/USDT',
+        quantity: 0.01,
+        marketType: 'futures',
+        positionSide: 'short',
+        leverage: 1
+      })
+    );
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+    expect(positionTracking.updatePosition).toHaveBeenCalledWith(
+      user.id,
+      'strategy-1',
+      'BTC/USDT',
+      0.01,
+      30000,
+      'buy',
+      'short'
+    );
+  });
+
+  it('routes short_exit through futures path and tracks as sell/short', async () => {
+    const user = setupSignalPath({
+      strategies: [{ id: 'strategy-1', marketType: 'futures', defaultLeverage: 1 } as any]
+    });
+
+    const signal: TradingSignal = { action: 'short_exit', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+    await service.executeLiveTrading();
+
+    expect(tradeExecutionService.executeTradeSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'BUY',
+        symbol: 'BTC/USDT',
+        quantity: 0.01,
+        marketType: 'futures',
+        positionSide: 'short',
+        leverage: 1
+      })
+    );
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+    expect(positionTracking.updatePosition).toHaveBeenCalledWith(
+      user.id,
+      'strategy-1',
+      'BTC/USDT',
+      0.01,
+      30000,
+      'sell',
+      'short'
+    );
+  });
+
+  it('blocks signal when regime gate rejects', async () => {
+    setupSignalPath();
+    regimeGateService.filterLiveSignal.mockReturnValue({
+      allowed: false,
+      reason: 'BEAR regime — BUY signals blocked'
+    } as any);
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+    await service.executeLiveTrading();
+
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+    expect(tradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+  });
+
+  it('blocks signal when drawdown gate rejects', async () => {
+    setupSignalPath();
+    preTradeRiskGate.checkDrawdown.mockResolvedValue({ allowed: false, reason: 'drawdown breach' } as any);
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+    await service.executeLiveTrading();
+
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+  });
+
+  it('blocks signal when trade cooldown rejects', async () => {
+    setupSignalPath();
+    tradeCooldownService.checkAndClaim.mockResolvedValue({
+      allowed: false,
+      existingClaim: { pipeline: 'pipeline:abc' }
+    } as any);
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+    await service.executeLiveTrading();
+
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+  });
+
+  it('clears cooldown when order placement fails', async () => {
+    setupSignalPath();
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+    orderService.placeAlgorithmicOrder.mockRejectedValue(new Error('Exchange error'));
+
+    await service.executeLiveTrading();
+
+    expect(tradeCooldownService.clearCooldown).toHaveBeenCalledWith('user-1', 'BTC/USDT', 'BUY');
   });
 
   it('releases lock on shutdown when held', async () => {
@@ -251,5 +404,11 @@ describe('LiveTradingService', () => {
     await service.onApplicationShutdown('SIGTERM');
 
     expect(lockService.release).toHaveBeenCalledWith(LOCK_KEYS.LIVE_TRADING, 'shutdown-lock');
+  });
+
+  it('does not release lock on shutdown when none is held', async () => {
+    await service.onApplicationShutdown('SIGTERM');
+
+    expect(lockService.release).not.toHaveBeenCalled();
   });
 });

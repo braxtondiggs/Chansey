@@ -1,8 +1,10 @@
 export { LOCK_DEFAULTS, LOCK_KEYS, LOCK_REDIS_DB } from './distributed-lock.constants';
 export { DistributedLockService, LockInfo, LockOptions, LockResult } from './distributed-lock.service';
 export { isUniqueConstraintViolation, toErrorInfo } from './error.util';
+export { LOCK_REDIS, lockRedisProvider } from './lock-redis.provider';
 export { forceRemoveJob } from './queue.util';
 export { SharedLockModule } from './shared-lock.module';
+export { CooldownCheckResult, CooldownClaim, TradeCooldownService } from './trade-cooldown.service';
 
 // Resilience patterns
 export {

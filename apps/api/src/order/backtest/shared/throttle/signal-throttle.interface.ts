@@ -1,4 +1,5 @@
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
+import type { TradingSignal } from '../../backtest-engine.service';
 
 /**
  * Configuration for signal throttling.
@@ -52,3 +53,14 @@ export const THROTTLE_BYPASS_TYPES: ReadonlySet<AlgoSignalType> = new Set([
   AlgoSignalType.STOP_LOSS,
   AlgoSignalType.TAKE_PROFIT
 ]);
+
+/** Maps each algorithm signal type to the backtest TradingSignal action. */
+export const SIGNAL_TYPE_TO_ACTION: Record<AlgoSignalType, TradingSignal['action']> = {
+  [AlgoSignalType.BUY]: 'BUY',
+  [AlgoSignalType.SELL]: 'SELL',
+  [AlgoSignalType.STOP_LOSS]: 'SELL',
+  [AlgoSignalType.TAKE_PROFIT]: 'SELL',
+  [AlgoSignalType.SHORT_ENTRY]: 'OPEN_SHORT',
+  [AlgoSignalType.SHORT_EXIT]: 'CLOSE_SHORT',
+  [AlgoSignalType.HOLD]: 'HOLD'
+};

@@ -97,7 +97,17 @@ const buildService = () => {
     strategyHeartbeatAge: createGaugeMock(),
     strategyHeartbeatTotal: createCounterMock(),
     strategyHeartbeatFailures: createGaugeMock(),
-    strategyHealthScore: createGaugeMock()
+    strategyHealthScore: createGaugeMock(),
+
+    // Live Trading & Throttle Metrics
+    tradeCooldownBlocksTotal: createCounterMock(),
+    tradeCooldownClaimsTotal: createCounterMock(),
+    tradeCooldownClearedTotal: createCounterMock(),
+    signalThrottleSuppressedTotal: createCounterMock(),
+    signalThrottlePassedTotal: createCounterMock(),
+    regimeGateBlocksTotal: createCounterMock(),
+    drawdownGateBlocksTotal: createCounterMock(),
+    liveOrdersPlacedTotal: createCounterMock()
   };
 
   const service = new MetricsService(
@@ -170,7 +180,16 @@ const buildService = () => {
     mocks.strategyHeartbeatAge,
     mocks.strategyHeartbeatTotal,
     mocks.strategyHeartbeatFailures,
-    mocks.strategyHealthScore
+    mocks.strategyHealthScore,
+    // Live Trading & Throttle Metrics
+    mocks.tradeCooldownBlocksTotal,
+    mocks.tradeCooldownClaimsTotal,
+    mocks.tradeCooldownClearedTotal,
+    mocks.signalThrottleSuppressedTotal,
+    mocks.signalThrottlePassedTotal,
+    mocks.regimeGateBlocksTotal,
+    mocks.drawdownGateBlocksTotal,
+    mocks.liveOrdersPlacedTotal
   );
 
   return { service, mocks };
