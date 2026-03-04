@@ -5,6 +5,7 @@
 export enum PaperTradingJobType {
   START_SESSION = 'START_SESSION',
   TICK = 'TICK',
+  RETRY_TICK = 'RETRY_TICK',
   STOP_SESSION = 'STOP_SESSION',
   PROCESS_SIGNAL = 'PROCESS_SIGNAL',
   NOTIFY_PIPELINE = 'NOTIFY_PIPELINE'
@@ -35,6 +36,12 @@ export interface ProcessSignalJobData extends PaperTradingJobData {
   signalId: string;
 }
 
+export interface RetryTickJobData extends PaperTradingJobData {
+  type: PaperTradingJobType.RETRY_TICK;
+  retryAttempt: number;
+  delayMs: number;
+}
+
 export interface NotifyPipelineJobData extends PaperTradingJobData {
   type: PaperTradingJobType.NOTIFY_PIPELINE;
   pipelineId: string;
@@ -44,6 +51,7 @@ export interface NotifyPipelineJobData extends PaperTradingJobData {
 export type AnyPaperTradingJobData =
   | StartSessionJobData
   | TickJobData
+  | RetryTickJobData
   | StopSessionJobData
   | ProcessSignalJobData
   | NotifyPipelineJobData;

@@ -36,7 +36,7 @@ export const pipelineConfig = registerAs(
     queue: process.env.PIPELINE_QUEUE ?? 'pipeline',
     telemetryStream: process.env.PIPELINE_TELEMETRY_STREAM ?? 'pipeline:telemetry',
     telemetryStreamMaxLen: parseInteger(process.env.PIPELINE_TELEMETRY_STREAM_MAXLEN, 50000),
-    concurrency: parseInteger(process.env.PIPELINE_CONCURRENCY, 2),
+    concurrency: parseInteger(process.env.PIPELINE_CONCURRENCY, 3),
     timeoutMs: parseInteger(process.env.PIPELINE_TIMEOUT_MS, 3600000), // 1 hour default
     defaultProgressionRules: DEFAULT_PROGRESSION_RULES,
     websocket: {

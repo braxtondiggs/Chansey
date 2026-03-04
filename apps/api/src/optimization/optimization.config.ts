@@ -12,6 +12,6 @@ const parseInteger = (value: string | undefined, fallback: number): number => {
 export const optimizationConfig = registerAs(
   'optimization',
   (): OptimizationAppConfig => ({
-    concurrency: parseInteger(process.env.OPTIMIZATION_CONCURRENCY, 3)
+    concurrency: parseInteger(process.env.OPTIMIZATION_CONCURRENCY, 5)
   })
 );
