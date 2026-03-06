@@ -47,7 +47,8 @@ describe('PaperTradingService', () => {
     const paperTradingQueue = {
       add: jest.fn(),
       getJob: jest.fn().mockResolvedValue(null),
-      removeJobScheduler: jest.fn()
+      removeJobScheduler: jest.fn(),
+      upsertJobScheduler: jest.fn()
     };
 
     const eventEmitter = {
@@ -205,6 +206,20 @@ describe('PaperTradingService', () => {
     expect(paperTradingQueue.removeJobScheduler).toHaveBeenCalledWith('paper-trading-tick-session-4');
     // Verify forceRemoveJob was called for the retry job
     expect(paperTradingQueue.getJob).toHaveBeenCalledWith('paper-trading-retry-session-4');
+  });
+
+  it('scheduleTickJob uses upsertJobScheduler with matching jobId', async () => {
+    const { service, paperTradingQueue } = createService();
+
+    paperTradingQueue.upsertJobScheduler.mockResolvedValue(undefined);
+
+    await service.scheduleTickJob('session-tick-1', 'user-1', 30000);
+
+    expect(paperTradingQueue.upsertJobScheduler).toHaveBeenCalledWith(
+      'paper-trading-tick-session-tick-1',
+      { every: 30000 },
+      { name: 'tick', data: { type: PaperTradingJobType.TICK, sessionId: 'session-tick-1', userId: 'user-1' } }
+    );
   });
 
   it('stops a session and enqueues pipeline notification', async () => {

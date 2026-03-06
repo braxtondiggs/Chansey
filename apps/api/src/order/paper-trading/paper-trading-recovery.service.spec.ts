@@ -1,8 +1,14 @@
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 
 import { PaperTradingRecoveryService } from './paper-trading-recovery.service';
 
 describe('PaperTradingRecoveryService', () => {
+  const createMockQueue = (overrides: Record<string, jest.Mock> = {}) => ({
+    getRepeatableJobs: jest.fn().mockResolvedValue([]),
+    removeRepeatableByKey: jest.fn(),
+    ...overrides
+  });
+
   beforeEach(() => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
@@ -22,10 +28,12 @@ describe('PaperTradingRecoveryService', () => {
       ]),
       removeTickJobs: jest.fn(),
       scheduleTickJob: jest.fn(),
-      markFailed: jest.fn()
+      markFailed: jest.fn(),
+      getSessionStatus: jest.fn()
     };
 
-    const service = new PaperTradingRecoveryService(paperTradingService as any);
+    const queue = createMockQueue();
+    const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
 
     await service.onApplicationBootstrap();
 
@@ -43,22 +51,121 @@ describe('PaperTradingRecoveryService', () => {
         .mockResolvedValue([{ id: 'session-3', user: { id: 'user-3' }, tickIntervalMs: 5000 }]),
       removeTickJobs: jest.fn(),
       scheduleTickJob: jest.fn().mockRejectedValue(new Error('queue down')),
-      markFailed: jest.fn()
+      markFailed: jest.fn(),
+      getSessionStatus: jest.fn()
     };
 
-    const service = new PaperTradingRecoveryService(paperTradingService as any);
+    const queue = createMockQueue();
+    const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
 
     await service.onApplicationBootstrap();
 
     expect(paperTradingService.markFailed).toHaveBeenCalledWith('session-3', expect.stringContaining('queue down'));
   });
 
+  describe('cleanupOrphanedSchedulers', () => {
+    it('removes legacy repeatable jobs for terminal sessions', async () => {
+      const paperTradingService = {
+        findActiveSessions: jest.fn().mockResolvedValue([]),
+        removeTickJobs: jest.fn(),
+        scheduleTickJob: jest.fn(),
+        markFailed: jest.fn(),
+        getSessionStatus: jest
+          .fn()
+          .mockResolvedValueOnce({ status: 'FAILED' })
+          .mockResolvedValueOnce({ status: 'ACTIVE' })
+          .mockResolvedValueOnce({ status: 'COMPLETED' })
+      };
+
+      const queue = createMockQueue({
+        getRepeatableJobs: jest.fn().mockResolvedValue([
+          { id: 'paper-trading-tick-session-failed', key: 'tick:abc123:session-failed' },
+          { id: 'paper-trading-tick-session-active', key: 'tick:abc456:session-active' },
+          { id: 'paper-trading-tick-session-done', key: 'tick:abc789:session-done' }
+        ]),
+        removeRepeatableByKey: jest.fn()
+      });
+
+      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+
+      await service.onApplicationBootstrap();
+
+      // Should remove FAILED and COMPLETED, but not ACTIVE
+      expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('tick:abc123:session-failed');
+      expect(queue.removeRepeatableByKey).not.toHaveBeenCalledWith('tick:abc456:session-active');
+      expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('tick:abc789:session-done');
+      expect(queue.removeRepeatableByKey).toHaveBeenCalledTimes(2);
+    });
+
+    it('removes legacy repeatable jobs for missing sessions', async () => {
+      const paperTradingService = {
+        findActiveSessions: jest.fn().mockResolvedValue([]),
+        removeTickJobs: jest.fn(),
+        scheduleTickJob: jest.fn(),
+        markFailed: jest.fn(),
+        getSessionStatus: jest.fn().mockRejectedValue(new NotFoundException('not found'))
+      };
+
+      const queue = createMockQueue({
+        getRepeatableJobs: jest
+          .fn()
+          .mockResolvedValue([{ id: 'paper-trading-tick-session-gone', key: 'tick:abc123:session-gone' }]),
+        removeRepeatableByKey: jest.fn()
+      });
+
+      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+
+      await service.onApplicationBootstrap();
+
+      expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('tick:abc123:session-gone');
+    });
+
+    it('skips non-tick repeatable jobs', async () => {
+      const paperTradingService = {
+        findActiveSessions: jest.fn().mockResolvedValue([]),
+        removeTickJobs: jest.fn(),
+        scheduleTickJob: jest.fn(),
+        markFailed: jest.fn(),
+        getSessionStatus: jest.fn()
+      };
+
+      const queue = createMockQueue({
+        getRepeatableJobs: jest.fn().mockResolvedValue([{ id: 'some-other-job', key: 'other:abc123' }]),
+        removeRepeatableByKey: jest.fn()
+      });
+
+      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+
+      await service.onApplicationBootstrap();
+
+      expect(paperTradingService.getSessionStatus).not.toHaveBeenCalled();
+      expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
+    });
+
+    it('no-op when no repeatable jobs exist', async () => {
+      const paperTradingService = {
+        findActiveSessions: jest.fn().mockResolvedValue([]),
+        removeTickJobs: jest.fn(),
+        scheduleTickJob: jest.fn(),
+        markFailed: jest.fn(),
+        getSessionStatus: jest.fn()
+      };
+
+      const queue = createMockQueue();
+      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+
+      await service.onApplicationBootstrap();
+
+      expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
+    });
+  });
+
   describe('detectStaleSessions', () => {
-    const TEN_MINUTES = 10 * 60 * 1000;
     const TWENTY_MINUTES = 20 * 60 * 1000;
 
     function createService(paperTradingService: any, bootedAgo = TWENTY_MINUTES): PaperTradingRecoveryService {
-      const service = new PaperTradingRecoveryService(paperTradingService as any);
+      const queue = createMockQueue();
+      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
       // Override bootedAt to simulate time since boot
       (service as any).bootedAt = Date.now() - bootedAgo;
       return service;
