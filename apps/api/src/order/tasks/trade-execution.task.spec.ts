@@ -599,7 +599,7 @@ describe('TradeExecutionTask', () => {
 
       await task.process(mockJob);
 
-      expect(mockUsersService.getById).toHaveBeenCalledWith('user-1', true);
+      expect(mockUsersService.getById).toHaveBeenCalledWith('user-1');
       const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
       expect(signalArg.portfolioValue).toBe(50000);
     });

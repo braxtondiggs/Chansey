@@ -9,7 +9,7 @@ export interface IExchangeKeyService {
   findAll(userId: string): Promise<ExchangeKey[]>;
   findOneByExchangeId(exchangeId: string, userId: string): Promise<ExchangeKey | null>;
   findByExchange(exchangeId: string, userId: string): Promise<ExchangeKey[]>;
-  getSupportedExchangeKeys(userId: string, includeSecrets?: boolean): Promise<SupportedExchangeKeyDto[]>;
+  getSupportedExchangeKeys(userId: string): Promise<SupportedExchangeKeyDto[]>;
 }
 
 /**

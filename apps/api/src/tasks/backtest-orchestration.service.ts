@@ -88,7 +88,7 @@ export class BacktestOrchestrationService {
 
     try {
       // Get user with exchange keys
-      const user = await this.usersService.getById(userId, true);
+      const user = await this.usersService.getById(userId);
       const riskLevel = user.risk?.level ?? DEFAULT_RISK_LEVEL;
       const riskConfig = getRiskConfig(riskLevel);
 

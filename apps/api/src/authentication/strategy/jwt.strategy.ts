@@ -39,8 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: AccessTokenPayload): Promise<User> {
     const userId = payload.sub;
-    // Pass true for top_level parameter to include decrypted API keys
-    const user = await this.userService.getById(userId, true);
+    const user = await this.userService.getById(userId);
     // Merge roles from JWT payload with user data
     return new User({
       ...user,
