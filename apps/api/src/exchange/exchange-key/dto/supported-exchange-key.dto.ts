@@ -36,18 +36,6 @@ export class SupportedExchangeKeyDto {
   slug: string;
 
   @ApiPropertyOptional({
-    description: 'Decrypted API key (only included for internal/top-level requests)',
-    example: 'abc123...'
-  })
-  decryptedApiKey?: string;
-
-  @ApiPropertyOptional({
-    description: 'Decrypted secret key (only included for internal/top-level requests)',
-    example: 'xyz789...'
-  })
-  decryptedSecretKey?: string;
-
-  @ApiPropertyOptional({
     description: 'Whether this exchange supports futures trading'
   })
   supportsFutures?: boolean;

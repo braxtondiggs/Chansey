@@ -347,7 +347,7 @@ describe('BacktestOrchestrationService', () => {
 
       const result = await service.orchestrateForUser('user-123');
 
-      expect(usersService.getById).toHaveBeenCalledWith('user-123', true);
+      expect(usersService.getById).toHaveBeenCalledWith('user-123');
       expect(result.backtestsCreated).toBe(0);
       expect(result.backtestIds).toHaveLength(0);
     });

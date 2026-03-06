@@ -99,10 +99,10 @@ export class UsersService {
     }
   }
 
-  async getById(id: string, top_level = false): Promise<User> {
+  async getById(id: string): Promise<User> {
     try {
       const user = await this.user.findOneOrFail({ where: { id } });
-      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id, top_level);
+      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
 
       this.logger.debug(`User retrieved with ID: ${id}`);
       return {

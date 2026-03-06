@@ -115,20 +115,18 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
         if (exchangeEntity) {
           const userExchangeKey = await this.exchangeKeyService.findOneByExchangeId(exchangeEntity.id, user.id);
 
-          if (
-            userExchangeKey &&
-            userExchangeKey.isActive &&
-            userExchangeKey.decryptedApiKey &&
-            userExchangeKey.decryptedSecretKey
-          ) {
+          const decryptedApi = userExchangeKey?.isActive ? await userExchangeKey.getDecryptedApiKey() : undefined;
+          const decryptedSecret = userExchangeKey?.isActive ? await userExchangeKey.getDecryptedSecretKey() : undefined;
+
+          if (decryptedApi && decryptedSecret) {
             // Use user-specific API keys
             const clientKey = `user-${user.id}`;
 
             if (!this.clients.has(clientKey)) {
               this.logger.debug(`Creating user-specific client for user ${user.id} on ${this.exchangeSlug}`);
               const userClient = this.createClient(
-                userExchangeKey.decryptedApiKey.replace(/\\n/g, '\n').trim(),
-                userExchangeKey.decryptedSecretKey.replace(/\\n/g, '\n').trim()
+                decryptedApi.replace(/\\n/g, '\n').trim(),
+                decryptedSecret.replace(/\\n/g, '\n').trim()
               );
               this.clients.set(clientKey, userClient);
             }
@@ -142,15 +140,13 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
         this.logger.error(
           `Failed to get user exchange keys for user ${user.id} on ${this.exchangeSlug}: ${err.message}`
         );
-        throw new InternalServerErrorException(
-          `Failed to get user exchange keys for ${this.exchangeSlug}: ${err.message}`
-        );
+        throw new InternalServerErrorException(`Failed to get exchange keys for ${this.exchangeSlug}`);
       }
     }
 
     // No fallback - if we reach here, user keys are not available
     this.logger.error(`No valid exchange keys found for user ${user.id} on ${this.exchangeSlug}`);
-    throw new InternalServerErrorException(`No valid exchange keys found for user ${user.id} on ${this.exchangeSlug}`);
+    throw new InternalServerErrorException(`No valid exchange keys found for ${this.exchangeSlug}`);
   }
 
   /**

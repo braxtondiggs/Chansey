@@ -48,7 +48,7 @@ export class WsJwtAuthenticationGuard implements CanActivate {
         return false;
       }
 
-      const user = await this.usersService.getById(payload.sub, false);
+      const user = await this.usersService.getById(payload.sub);
       if (!user) {
         this.logger.debug(`User ${payload.sub} not found`);
         client.emit('error', { message: 'Authentication failed' });
