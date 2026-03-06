@@ -27,6 +27,8 @@ import { OptimizationResult, WindowResult } from '../entities/optimization-resul
 import { OptimizationProgressDetails, OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 import { OptimizationConfig, ParameterSpace } from '../interfaces';
 
+const ZERO_TRADE_PENALTY = -10;
+
 /**
  * Evaluation result for a single parameter combination
  */
@@ -766,6 +768,9 @@ export class OptimizationOrchestratorService {
       default:
         score = metrics.sharpeRatio;
     }
+
+    // Penalize zero-trade combinations: doing nothing should never win
+    if (metrics.tradeCount === 0) return ZERO_TRADE_PENALTY;
 
     // Guard non-finite values and clamp to prevent downstream overflow
     if (!Number.isFinite(score)) return 0;

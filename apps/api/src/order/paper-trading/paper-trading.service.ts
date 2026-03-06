@@ -28,6 +28,7 @@ import { PaperTradingEngineService } from './paper-trading-engine.service';
 import {
   NotifyPipelineJobData,
   PaperTradingJobType,
+  RetryTickJobData,
   StartSessionJobData,
   StopSessionJobData
 } from './paper-trading.job-data';
@@ -216,6 +217,7 @@ export class PaperTradingService {
       session.startedAt = session.startedAt ?? new Date();
       session.pausedAt = undefined;
       session.consecutiveErrors = 0;
+      session.retryAttempts = 0;
       await transactionalEntityManager.save(session);
 
       // Queue the start job within the transaction
@@ -279,6 +281,7 @@ export class PaperTradingService {
       session.status = PaperTradingStatus.ACTIVE;
       session.pausedAt = undefined;
       session.consecutiveErrors = 0;
+      session.retryAttempts = 0;
       await transactionalEntityManager.save(session);
 
       // Schedule tick job within transaction context
@@ -620,22 +623,51 @@ export class PaperTradingService {
   }
 
   /**
+   * Schedule a one-shot delayed retry tick after backoff
+   */
+  async scheduleRetryTick(sessionId: string, userId: string, delayMs: number, retryAttempt: number): Promise<void> {
+    const jobId = `paper-trading-retry-${sessionId}`;
+
+    await forceRemoveJob(this.paperTradingQueue, jobId, this.logger);
+
+    const jobData: RetryTickJobData = {
+      type: PaperTradingJobType.RETRY_TICK,
+      sessionId,
+      userId,
+      retryAttempt,
+      delayMs
+    };
+
+    await this.paperTradingQueue.add('retry-tick', jobData, {
+      delay: delayMs,
+      jobId,
+      removeOnComplete: true
+    });
+
+    this.logger.debug(`Scheduled retry tick ${jobId} with delay ${delayMs}ms (attempt ${retryAttempt})`);
+  }
+
+  /**
    * Remove tick jobs for a session
    */
   async removeTickJobs(sessionId: string): Promise<void> {
-    const jobId = `paper-trading-tick-${sessionId}`;
+    const tickJobId = `paper-trading-tick-${sessionId}`;
+    const retryJobId = `paper-trading-retry-${sessionId}`;
 
     try {
       // Use the new BullMQ v5+ API for removing job schedulers
-      await this.paperTradingQueue.removeJobScheduler(jobId);
-      this.logger.debug(`Removed tick job ${jobId}`);
+      await this.paperTradingQueue.removeJobScheduler(tickJobId);
+      this.logger.debug(`Removed tick job ${tickJobId}`);
     } catch (error: unknown) {
       // Job scheduler might not exist if session was never started
       const msg = error instanceof Error ? error.message : String(error);
       if (!msg.includes('Job scheduler') && !msg.includes('not found')) {
-        this.logger.warn(`Failed to remove tick job ${jobId}: ${msg}`);
+        this.logger.warn(`Failed to remove tick job ${tickJobId}: ${msg}`);
       }
     }
+
+    // Also remove any pending retry job (no-op if it doesn't exist)
+    await forceRemoveJob(this.paperTradingQueue, retryJobId, this.logger);
   }
 
   /**

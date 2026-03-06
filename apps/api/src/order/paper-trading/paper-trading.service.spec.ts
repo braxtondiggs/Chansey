@@ -176,6 +176,8 @@ describe('PaperTradingService', () => {
     const result = await service.start('session-2', mockUser);
 
     expect(session.status).toBe(PaperTradingStatus.ACTIVE);
+    expect(session.consecutiveErrors).toBe(0);
+    expect(session.retryAttempts).toBe(0);
     expect(sessionRepository.save).toHaveBeenCalledWith(session);
     expect(paperTradingQueue.add).toHaveBeenCalledWith(
       'start-session',
@@ -193,7 +195,7 @@ describe('PaperTradingService', () => {
     await expect(service.start('session-3', mockUser)).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('removes job scheduler for session tick jobs', async () => {
+  it('removes job scheduler and retry job for session tick jobs', async () => {
     const { service, paperTradingQueue } = createService();
 
     paperTradingQueue.removeJobScheduler.mockResolvedValue(undefined);
@@ -201,6 +203,8 @@ describe('PaperTradingService', () => {
     await service.removeTickJobs('session-4');
 
     expect(paperTradingQueue.removeJobScheduler).toHaveBeenCalledWith('paper-trading-tick-session-4');
+    // Verify forceRemoveJob was called for the retry job
+    expect(paperTradingQueue.getJob).toHaveBeenCalledWith('paper-trading-retry-session-4');
   });
 
   it('stops a session and enqueues pipeline notification', async () => {
