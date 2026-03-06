@@ -22,6 +22,7 @@ import { PositionManagementService } from './services/position-management.servic
 
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { InvalidSymbolException } from '../common/exceptions/order';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
@@ -1265,6 +1266,13 @@ export class OrderService {
 
       const exchange = await this.exchangeManager.getExchangeClient(exchangeKey.exchange.slug, user);
       await exchange.loadMarkets();
+
+      // Validate order size against exchange minimums
+      const market = exchange.markets[signal.symbol];
+      if (!market) {
+        throw new InvalidSymbolException(signal.symbol, exchangeKey.exchange.name);
+      }
+      this.orderValidationService.validateAlgorithmicOrderSize(signal.quantity, signal.price, market);
 
       const ccxtOrder = await exchange.createOrder(
         signal.symbol,
