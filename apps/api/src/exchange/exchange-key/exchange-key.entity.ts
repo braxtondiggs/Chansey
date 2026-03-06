@@ -14,7 +14,7 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'crypto';
 import { promisify } from 'util';
 
 import type { User } from '../../users/users.entity';
@@ -77,6 +77,13 @@ export class ExchangeKey {
     Object.assign(this, partial);
   }
 
+  /** Matches the exact format: 32-hex-char IV : 32-hex-char salt : hex ciphertext */
+  private static readonly ENCRYPTED_FORMAT = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/;
+
+  private static isEncrypted(value: string): boolean {
+    return ExchangeKey.ENCRYPTED_FORMAT.test(value);
+  }
+
   private static getEncryptionKey(): string {
     const key = process.env.ENCRYPTION_KEY;
     if (!key) {
@@ -88,7 +95,7 @@ export class ExchangeKey {
   @BeforeInsert()
   @BeforeUpdate()
   async encryptApiKey() {
-    if (!this.apiKey || this.apiKey.includes(':')) return;
+    if (!this.apiKey || ExchangeKey.isEncrypted(this.apiKey)) return;
     const iv = randomBytes(16);
     const salt = randomBytes(16);
     const key = (await promisify(scrypt)(ExchangeKey.getEncryptionKey(), salt, 32)) as Buffer;
@@ -102,7 +109,7 @@ export class ExchangeKey {
   @BeforeInsert()
   @BeforeUpdate()
   async encryptSecretKey() {
-    if (!this.secretKey || this.secretKey.includes(':')) return;
+    if (!this.secretKey || ExchangeKey.isEncrypted(this.secretKey)) return;
     const iv = randomBytes(16);
     const salt = randomBytes(16);
     const key = (await promisify(scrypt)(ExchangeKey.getEncryptionKey(), salt, 32)) as Buffer;
@@ -113,23 +120,23 @@ export class ExchangeKey {
     ]).toString('hex')}`;
   }
 
-  get decryptedApiKey() {
-    if (!this.apiKey || !this.apiKey.includes(':')) return;
+  async getDecryptedApiKey(): Promise<string | undefined> {
+    if (!this.apiKey || !ExchangeKey.isEncrypted(this.apiKey)) return;
     const [ivs, salts, apiKey] = this.apiKey.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
-    const key = scryptSync(ExchangeKey.getEncryptionKey(), salt, 32);
+    const key = (await promisify(scrypt)(ExchangeKey.getEncryptionKey(), salt, 32)) as Buffer;
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(apiKey, 'hex'), decipher.final()]).toString();
   }
 
-  get decryptedSecretKey() {
-    if (!this.secretKey || !this.secretKey.includes(':')) return;
+  async getDecryptedSecretKey(): Promise<string | undefined> {
+    if (!this.secretKey || !ExchangeKey.isEncrypted(this.secretKey)) return;
     const [ivs, salts, secretKey] = this.secretKey.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
-    const key = scryptSync(ExchangeKey.getEncryptionKey(), salt, 32);
+    const key = (await promisify(scrypt)(ExchangeKey.getEncryptionKey(), salt, 32)) as Buffer;
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(secretKey, 'hex'), decipher.final()]).toString();

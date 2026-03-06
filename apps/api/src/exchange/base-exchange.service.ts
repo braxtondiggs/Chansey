@@ -115,20 +115,18 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
         if (exchangeEntity) {
           const userExchangeKey = await this.exchangeKeyService.findOneByExchangeId(exchangeEntity.id, user.id);
 
-          if (
-            userExchangeKey &&
-            userExchangeKey.isActive &&
-            userExchangeKey.decryptedApiKey &&
-            userExchangeKey.decryptedSecretKey
-          ) {
+          const decryptedApi = userExchangeKey?.isActive ? await userExchangeKey.getDecryptedApiKey() : undefined;
+          const decryptedSecret = userExchangeKey?.isActive ? await userExchangeKey.getDecryptedSecretKey() : undefined;
+
+          if (decryptedApi && decryptedSecret) {
             // Use user-specific API keys
             const clientKey = `user-${user.id}`;
 
             if (!this.clients.has(clientKey)) {
               this.logger.debug(`Creating user-specific client for user ${user.id} on ${this.exchangeSlug}`);
               const userClient = this.createClient(
-                userExchangeKey.decryptedApiKey.replace(/\\n/g, '\n').trim(),
-                userExchangeKey.decryptedSecretKey.replace(/\\n/g, '\n').trim()
+                decryptedApi.replace(/\\n/g, '\n').trim(),
+                decryptedSecret.replace(/\\n/g, '\n').trim()
               );
               this.clients.set(clientKey, userClient);
             }
