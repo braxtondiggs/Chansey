@@ -605,18 +605,13 @@ export class PaperTradingService {
   async scheduleTickJob(sessionId: string, userId: string, intervalMs: number): Promise<void> {
     const jobId = `paper-trading-tick-${sessionId}`;
 
-    // Add repeatable tick job
-    await this.paperTradingQueue.add(
-      'tick',
-      {
-        type: PaperTradingJobType.TICK,
-        sessionId,
-        userId
-      },
-      {
-        repeat: { every: intervalMs },
-        jobId
-      }
+    // Use upsertJobScheduler so the scheduler key matches the jobId used by removeJobScheduler().
+    // The legacy queue.add(name, data, { repeat, jobId }) stores schedulers under an MD5 hash key,
+    // causing removeJobScheduler(jobId) to silently no-op.
+    await this.paperTradingQueue.upsertJobScheduler(
+      jobId,
+      { every: intervalMs },
+      { name: 'tick', data: { type: PaperTradingJobType.TICK, sessionId, userId } }
     );
 
     this.logger.debug(`Scheduled tick job ${jobId} with interval ${intervalMs}ms`);

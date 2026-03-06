@@ -1,6 +1,10 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 
+import { Queue } from 'bullmq';
+
+import { PaperTradingStatus } from './entities';
 import { PaperTradingService } from './paper-trading.service';
 
 import { toErrorInfo } from '../../shared/error.util';
@@ -11,14 +15,24 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
   private static readonly STALE_RECOVERY_THRESHOLD_MS = 10 * 60 * 1000; // 10 min — attempt recovery
   private static readonly STALE_FAIL_THRESHOLD_MS = 20 * 60 * 1000; // 20 min — mark FAILED
 
+  private static readonly TERMINAL_STATUSES: ReadonlySet<PaperTradingStatus> = new Set([
+    PaperTradingStatus.FAILED,
+    PaperTradingStatus.STOPPED,
+    PaperTradingStatus.COMPLETED
+  ]);
+
   private readonly logger = new Logger(PaperTradingRecoveryService.name);
   private readonly bootedAt = Date.now();
 
-  constructor(private readonly paperTradingService: PaperTradingService) {}
+  constructor(
+    private readonly paperTradingService: PaperTradingService,
+    @InjectQueue('paper-trading') private readonly paperTradingQueue: Queue
+  ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     // OnApplicationBootstrap is called after all modules are initialized
     // This is the proper lifecycle hook for recovery operations
+    await this.cleanupOrphanedSchedulers();
     await this.recoverActiveSessions();
   }
 
@@ -88,6 +102,57 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
 
     if (recovered > 0 || failed > 0) {
       this.logger.log(`Stale session watchdog: recovered=${recovered}, failed=${failed}`);
+    }
+  }
+
+  /**
+   * One-time cleanup of legacy repeatable jobs created by the old queue.add({ repeat }) API.
+   * Those schedulers are stored under an MD5 hash key, so removeJobScheduler(jobId) never matches them.
+   * This method uses the legacy getRepeatableJobs() / removeRepeatableByKey() APIs to remove them
+   * for sessions that are already in a terminal state (FAILED / STOPPED / COMPLETED).
+   */
+  private async cleanupOrphanedSchedulers(): Promise<void> {
+    try {
+      const repeatableJobs = await this.paperTradingQueue.getRepeatableJobs();
+
+      if (repeatableJobs.length === 0) return;
+
+      let cleaned = 0;
+
+      for (const job of repeatableJobs) {
+        // Extract sessionId from the legacy jobId (format: "paper-trading-tick-{sessionId}")
+        const match = (job.id ?? '').match(/^paper-trading-tick-(.+)$/);
+        if (!match) continue;
+
+        const sessionId = match[1];
+
+        try {
+          const { status } = await this.paperTradingService.getSessionStatus(sessionId);
+
+          if (PaperTradingRecoveryService.TERMINAL_STATUSES.has(status as PaperTradingStatus)) {
+            await this.paperTradingQueue.removeRepeatableByKey(job.key);
+            cleaned++;
+            this.logger.log(`Removed orphaned legacy scheduler for terminal session ${sessionId} (status: ${status})`);
+          }
+        } catch (error: unknown) {
+          if (error instanceof NotFoundException) {
+            // Session not found in DB — safe to remove the orphaned scheduler
+            await this.paperTradingQueue.removeRepeatableByKey(job.key);
+            cleaned++;
+            this.logger.log(`Removed orphaned legacy scheduler for missing session ${sessionId}`);
+          } else {
+            const err = toErrorInfo(error);
+            this.logger.warn(`Failed to check session ${sessionId} for orphan cleanup: ${err.message}`);
+          }
+        }
+      }
+
+      if (cleaned > 0) {
+        this.logger.log(`Orphaned scheduler cleanup complete: removed ${cleaned} legacy repeatable job(s)`);
+      }
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Orphaned scheduler cleanup failed: ${err.message}`, err.stack);
     }
   }
 
