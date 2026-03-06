@@ -152,7 +152,7 @@ export class PipelineOrchestrationService {
    * Get user by ID with relations
    */
   async getUser(userId: string): Promise<User> {
-    return this.usersService.getById(userId, true);
+    return this.usersService.getById(userId);
   }
 
   /**
@@ -170,7 +170,7 @@ export class PipelineOrchestrationService {
 
     try {
       // Get user with exchange keys
-      const user = await this.usersService.getById(userId, true);
+      const user = await this.usersService.getById(userId);
       const riskLevel = user.risk?.level ?? DEFAULT_RISK_LEVEL;
 
       this.logger.log(`Orchestrating pipelines for user ${userId} with risk level ${riskLevel}`);

@@ -142,15 +142,13 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
         this.logger.error(
           `Failed to get user exchange keys for user ${user.id} on ${this.exchangeSlug}: ${err.message}`
         );
-        throw new InternalServerErrorException(
-          `Failed to get user exchange keys for ${this.exchangeSlug}: ${err.message}`
-        );
+        throw new InternalServerErrorException(`Failed to get exchange keys for ${this.exchangeSlug}`);
       }
     }
 
     // No fallback - if we reach here, user keys are not available
     this.logger.error(`No valid exchange keys found for user ${user.id} on ${this.exchangeSlug}`);
-    throw new InternalServerErrorException(`No valid exchange keys found for user ${user.id} on ${this.exchangeSlug}`);
+    throw new InternalServerErrorException(`No valid exchange keys found for ${this.exchangeSlug}`);
   }
 
   /**

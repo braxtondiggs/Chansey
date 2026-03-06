@@ -47,6 +47,11 @@ const envSchema = z.object({
     .min(32, 'JWT secret must be at least 32 characters for security')
     .describe('Generate with: openssl rand -base64 32'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT refresh secret must be at least 32 characters for security').optional(),
+  ENCRYPTION_KEY: z
+    .string()
+    .length(64, 'Encryption key must be exactly 64 hex characters (256-bit key)')
+    .regex(/^[0-9a-fA-F]+$/, 'Encryption key must be a hex string')
+    .describe('Generate with: openssl rand -hex 32'),
   JWT_EXPIRATION_TIME: z.string().default('15m'),
   JWT_REFRESH_EXPIRATION_TIME: z.string().default('7d'),
 

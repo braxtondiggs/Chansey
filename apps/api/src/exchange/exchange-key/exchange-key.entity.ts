@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+import { Exclude } from 'class-transformer';
 import {
   BeforeInsert,
   BeforeUpdate,
@@ -49,9 +50,11 @@ export class ExchangeKey {
   exchangeId: string;
 
   @Column({ nullable: true })
+  @Exclude()
   apiKey?: string;
 
   @Column({ nullable: true })
+  @Exclude()
   secretKey?: string;
 
   @Column({ default: true })
@@ -74,13 +77,21 @@ export class ExchangeKey {
     Object.assign(this, partial);
   }
 
+  private static getEncryptionKey(): string {
+    const key = process.env.ENCRYPTION_KEY;
+    if (!key) {
+      throw new Error('ENCRYPTION_KEY environment variable is not set');
+    }
+    return key;
+  }
+
   @BeforeInsert()
   @BeforeUpdate()
   async encryptApiKey() {
-    if (!this.apiKey || this.apiKey === this.decryptedApiKey) return;
+    if (!this.apiKey || this.apiKey.includes(':')) return;
     const iv = randomBytes(16);
     const salt = randomBytes(16);
-    const key = (await promisify(scrypt)(process.env.JWT_SECRET ?? '', salt, 32)) as Buffer;
+    const key = (await promisify(scrypt)(ExchangeKey.getEncryptionKey(), salt, 32)) as Buffer;
     const cipher = createCipheriv('aes-256-cbc', key, iv);
     this.apiKey = `${iv.toString('hex')}:${salt.toString('hex')}:${Buffer.concat([
       cipher.update(this.apiKey),
@@ -91,10 +102,10 @@ export class ExchangeKey {
   @BeforeInsert()
   @BeforeUpdate()
   async encryptSecretKey() {
-    if (!this.secretKey || this.secretKey === this.decryptedSecretKey) return;
+    if (!this.secretKey || this.secretKey.includes(':')) return;
     const iv = randomBytes(16);
     const salt = randomBytes(16);
-    const key = (await promisify(scrypt)(process.env.JWT_SECRET ?? '', salt, 32)) as Buffer;
+    const key = (await promisify(scrypt)(ExchangeKey.getEncryptionKey(), salt, 32)) as Buffer;
     const cipher = createCipheriv('aes-256-cbc', key, iv);
     this.secretKey = `${iv.toString('hex')}:${salt.toString('hex')}:${Buffer.concat([
       cipher.update(this.secretKey),
@@ -107,7 +118,7 @@ export class ExchangeKey {
     const [ivs, salts, apiKey] = this.apiKey.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
-    const key = scryptSync(process.env.JWT_SECRET ?? '', salt, 32);
+    const key = scryptSync(ExchangeKey.getEncryptionKey(), salt, 32);
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(apiKey, 'hex'), decipher.final()]).toString();
@@ -118,7 +129,7 @@ export class ExchangeKey {
     const [ivs, salts, secretKey] = this.secretKey.split(':');
     const iv = Buffer.from(ivs, 'hex');
     const salt = Buffer.from(salts, 'hex');
-    const key = scryptSync(process.env.JWT_SECRET ?? '', salt, 32);
+    const key = scryptSync(ExchangeKey.getEncryptionKey(), salt, 32);
 
     const decipher = createDecipheriv('aes-256-cbc', key, iv);
     return Buffer.concat([decipher.update(secretKey, 'hex'), decipher.final()]).toString();

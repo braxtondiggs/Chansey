@@ -490,7 +490,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
    */
   private async fetchPortfolioValue(activation: AlgorithmActivation): Promise<number> {
     try {
-      const user = await this.usersService.getById(activation.userId, true);
+      const user = await this.usersService.getById(activation.userId);
       const balances = await this.balanceService.getUserBalances(user);
       return balances.totalUsdValue || 0;
     } catch (error) {

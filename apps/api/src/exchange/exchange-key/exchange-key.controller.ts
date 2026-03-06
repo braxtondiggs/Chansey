@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -102,8 +103,9 @@ export class ExchangeKeyController {
     status: HttpStatus.NOT_FOUND,
     description: 'Exchange key not found'
   })
-  async remove(@GetUser() user: User, @Param('id') id: string): Promise<ExchangeKey> {
-    return await this.exchangeKeyService.remove(id, user.id);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@GetUser() user: User, @Param('id') id: string): Promise<void> {
+    await this.exchangeKeyService.remove(id, user.id);
   }
 
   private transformToResponse(exchangeKey: ExchangeKey): ExchangeKeyResponseDto {

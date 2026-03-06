@@ -42,10 +42,9 @@ export class ExchangeKeyService implements IExchangeKeyService {
    * Returns a deduplicated list of supported exchange keys with their exchange information.
    *
    * @param userId - The ID of the user
-   * @param includeSecrets - Whether to include decrypted API keys (for internal use only)
    * @returns List of supported exchange keys with exchange details
    */
-  async getSupportedExchangeKeys(userId: string, includeSecrets = false): Promise<SupportedExchangeKeyDto[]> {
+  async getSupportedExchangeKeys(userId: string): Promise<SupportedExchangeKeyDto[]> {
     const keys = await this.exchangeKeyRepository.find({
       where: { userId },
       relations: ['exchange']
@@ -65,13 +64,6 @@ export class ExchangeKeyService implements IExchangeKeyService {
           name: key.exchange.name,
           slug: key.exchange.slug
         };
-
-        // Include decrypted API keys when includeSecrets is true
-        // This makes them available for internal services without exposing them externally
-        if (includeSecrets) {
-          keyDto.decryptedApiKey = key.decryptedApiKey;
-          keyDto.decryptedSecretKey = key.decryptedSecretKey;
-        }
 
         try {
           const exchangeSvc = this.exchangeManagerService.getExchangeService(key.exchange.slug);
