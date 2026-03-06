@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { OrderStateMachineService } from './order-state-machine.service';
+import { OrderValidationService } from './order-validation.service';
 import { TradeExecutionService } from './trade-execution.service';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
@@ -40,6 +41,7 @@ describe('TradeExecutionService', () => {
             { provide: ExchangeManagerService, useValue: {} },
             { provide: CoinService, useValue: {} },
             { provide: OrderStateMachineService, useValue: {} },
+            { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
             {
               provide: slippageLimitsConfig.KEY,
               useValue: {
@@ -66,6 +68,7 @@ describe('TradeExecutionService', () => {
             { provide: ExchangeManagerService, useValue: {} },
             { provide: CoinService, useValue: {} },
             { provide: OrderStateMachineService, useValue: {} },
+            { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
             {
               provide: slippageLimitsConfig.KEY,
               useValue: {
@@ -148,6 +151,10 @@ describe('TradeExecutionService', () => {
         {
           provide: OrderStateMachineService,
           useValue: mockStateMachineService
+        },
+        {
+          provide: OrderValidationService,
+          useValue: { validateAlgorithmicOrderSize: jest.fn() }
         },
         {
           provide: slippageLimitsConfig.KEY,
@@ -314,6 +321,7 @@ describe('TradeExecutionService', () => {
           { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
           { provide: CoinService, useValue: mockCoinService },
           { provide: OrderStateMachineService, useValue: mockStateMachineService },
+          { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
           {
             provide: slippageLimitsConfig.KEY,
             useValue: {

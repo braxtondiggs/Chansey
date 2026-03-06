@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { MarketType, MAX_LEVERAGE_CAP } from '@chansey/api-interfaces';
 
 import { OrderStateMachineService } from './order-state-machine.service';
+import { OrderValidationService } from './order-validation.service';
 import { PositionManagementService } from './position-management.service';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
@@ -89,6 +90,7 @@ export class TradeExecutionService {
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly coinService: CoinService,
     private readonly stateMachineService: OrderStateMachineService,
+    private readonly orderValidationService: OrderValidationService,
     @Optional()
     @Inject(forwardRef(() => PositionManagementService))
     private readonly positionManagementService?: PositionManagementService,
@@ -186,6 +188,10 @@ export class TradeExecutionService {
             `cannot place order for ${signal.symbol}`
         );
       }
+
+      // VALIDATE ORDER SIZE against exchange minimums
+      const market = exchangeClient.markets[signal.symbol];
+      this.orderValidationService.validateAlgorithmicOrderSize(effectiveQuantity, expectedPrice, market);
 
       // PRE-EXECUTION SLIPPAGE CHECK
       if (this.slippageLimits.enabled) {
