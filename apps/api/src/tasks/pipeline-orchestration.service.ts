@@ -196,7 +196,7 @@ export class PipelineOrchestrationService {
       // Process each strategy config
       for (const strategyConfig of strategyConfigs) {
         try {
-          await this.processStrategyConfig(user, strategyConfig, exchangeKey, riskLevel, result);
+          await this.processStrategyConfig(user, strategyConfig, riskLevel, result);
         } catch (error: unknown) {
           const err = toErrorInfo(error);
           const errorMsg = `Failed to process strategy config ${strategyConfig.id}: ${err.message}`;
@@ -309,7 +309,6 @@ export class PipelineOrchestrationService {
   private async processStrategyConfig(
     user: User,
     strategyConfig: StrategyConfig,
-    exchangeKey: ExchangeKey,
     riskLevel: number,
     result: PipelineOrchestrationResult
   ): Promise<void> {
@@ -341,7 +340,6 @@ export class PipelineOrchestrationService {
         name: `Auto: ${strategyName} - ${dateStr}`,
         description: `Orchestrated pipeline for ${strategyName}`,
         strategyConfigId,
-        exchangeKeyId: exchangeKey.id,
         stageConfig,
         initialStage
       },

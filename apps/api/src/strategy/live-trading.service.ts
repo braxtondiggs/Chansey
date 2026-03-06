@@ -18,8 +18,8 @@ import { TradingStateService } from '../admin/trading-state/trading-state.servic
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeBalanceDto } from '../balance/dto';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../exchange/constants';
-import { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
+import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { MetricsService } from '../metrics/metrics.service';
@@ -63,7 +63,8 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly dailyLossLimitGate: DailyLossLimitGateService,
     private readonly tradeExecutionService: TradeExecutionService,
     private readonly tradeCooldownService: TradeCooldownService,
-    private readonly metricsService: MetricsService
+    private readonly metricsService: MetricsService,
+    private readonly exchangeSelectionService: ExchangeSelectionService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -259,8 +260,14 @@ export class LiveTradingService implements OnApplicationShutdown {
     strategy: StrategyConfig
   ): Promise<void> {
     try {
-      const exchangeKey = this.selectBestExchange(user.exchanges, signal.symbol);
-      if (!exchangeKey) {
+      // Dynamically select exchange key based on signal action
+      const isBuyAction = signal.action === 'buy' || signal.action === 'short_exit';
+      let exchangeKey;
+      try {
+        exchangeKey = isBuyAction
+          ? await this.exchangeSelectionService.selectForBuy(user.id, signal.symbol)
+          : await this.exchangeSelectionService.selectForSell(user.id, signal.symbol, strategyConfigId);
+      } catch {
         this.logger.error(`No suitable exchange key found for user ${user.id} and symbol ${signal.symbol}`);
         return;
       }
@@ -346,7 +353,8 @@ export class LiveTradingService implements OnApplicationShutdown {
           signal.quantity,
           signal.price,
           trackingSide,
-          trackingPositionSide
+          trackingPositionSide,
+          isBuyAction ? exchangeKey.id : undefined
         );
       } catch (error: unknown) {
         // Clear cooldown on failure so next cycle can retry
@@ -425,37 +433,6 @@ export class LiveTradingService implements OnApplicationShutdown {
         this.logger.error(`Unknown signal action "${action}" for position tracking`);
         throw new Error(`Unknown signal action for position tracking: ${action}`);
     }
-  }
-
-  /**
-   * Select the best exchange for a given trading symbol.
-   * Prioritizes active exchanges that support the symbol.
-   */
-  private selectBestExchange(exchanges: SupportedExchangeKeyDto[], symbol: string): SupportedExchangeKeyDto | null {
-    if (!exchanges || exchanges.length === 0) {
-      return null;
-    }
-
-    // Filter to only active exchanges
-    const activeExchanges = exchanges.filter((ex) => ex.isActive);
-
-    if (activeExchanges.length === 0) {
-      this.logger.warn('No active exchanges found');
-      return null;
-    }
-
-    // For BTC pairs, prefer Binance US for better liquidity
-    // For other pairs, use the first active exchange
-    const baseCurrency = symbol.split('/')[0];
-    if (baseCurrency === 'BTC' || baseCurrency === 'ETH') {
-      const binance = activeExchanges.find((ex) => ex.slug === 'binance_us');
-      if (binance) {
-        return binance;
-      }
-    }
-
-    // Default to first active exchange
-    return activeExchanges[0];
   }
 
   /**

@@ -143,7 +143,7 @@ export class UserController {
     type: UserResponseDto
   })
   async enrollInAlgoTrading(@Body() dto: EnrollInAlgoTradingDto, @GetUser() user: User) {
-    return this.user.enrollInAlgoTrading(user.id, dto.capitalAllocationPercentage, dto.exchangeKeyId);
+    return this.user.enrollInAlgoTrading(user.id, dto.capitalAllocationPercentage);
   }
 
   @Patch('algo-trading/pause')

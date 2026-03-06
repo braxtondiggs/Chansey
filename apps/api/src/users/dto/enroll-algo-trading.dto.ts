@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsNumber, IsPositive, IsUUID, Max, Min } from 'class-validator';
+import { IsNumber, IsPositive, Max, Min } from 'class-validator';
 
 /**
  * DTO for enabling algo trading (robo-advisor).
@@ -18,13 +18,6 @@ export class EnrollInAlgoTradingDto {
   @Min(5, { message: 'Minimum capital allocation is 5% of your free balance' })
   @Max(100, { message: 'Maximum capital allocation is 100% of your free balance' })
   capitalAllocationPercentage: number;
-
-  @ApiProperty({
-    description: 'Exchange key ID to use for algo trading',
-    example: 'e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0'
-  })
-  @IsUUID()
-  exchangeKeyId: string;
 }
 
 /**
@@ -81,11 +74,4 @@ export class AlgoTradingStatusDto {
     example: 25
   })
   activeStrategies: number;
-
-  @ApiProperty({
-    description: 'Exchange key ID being used',
-    example: 'e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0',
-    nullable: true
-  })
-  exchangeKeyId: string | null;
 }

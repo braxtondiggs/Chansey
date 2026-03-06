@@ -1,5 +1,5 @@
 import { getQueueToken } from '@nestjs/bullmq';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -13,7 +13,7 @@ import { StrategyGrade } from '@chansey/api-interfaces';
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
 
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
-import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { BacktestService } from '../../order/backtest/backtest.service';
@@ -30,7 +30,6 @@ describe('PipelineOrchestratorService', () => {
   let service: PipelineOrchestratorService;
   let pipelineRepository: jest.Mocked<Repository<Pipeline>>;
   let strategyConfigRepository: jest.Mocked<Repository<StrategyConfig>>;
-  let exchangeKeyRepository: jest.Mocked<Repository<ExchangeKey>>;
   let pipelineQueue: jest.Mocked<Queue>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
   let scoringService: jest.Mocked<ScoringService>;
@@ -49,19 +48,12 @@ describe('PipelineOrchestratorService', () => {
     parameters: { param1: 10 }
   } as unknown as StrategyConfig;
 
-  const mockExchangeKey: ExchangeKey = {
-    id: 'exchange-key-123',
-    user: mockUser,
-    exchange: { name: 'Binance' }
-  } as unknown as ExchangeKey;
-
   const mockPipeline: Pipeline = {
     id: 'pipeline-123',
     name: 'Test Pipeline',
     status: PipelineStatus.PENDING,
     currentStage: PipelineStage.OPTIMIZE,
     strategyConfigId: 'strategy-123',
-    exchangeKeyId: 'exchange-key-123',
     stageConfig: {
       optimization: {
         trainDays: 90,
@@ -87,7 +79,6 @@ describe('PipelineOrchestratorService', () => {
     progressionRules: DEFAULT_PROGRESSION_RULES,
     user: mockUser,
     strategyConfig: mockStrategyConfig,
-    exchangeKey: mockExchangeKey,
     createdAt: new Date(),
     updatedAt: new Date()
   } as Pipeline;
@@ -95,7 +86,6 @@ describe('PipelineOrchestratorService', () => {
   const mockCreateDto: CreatePipelineInput = {
     name: 'Test Pipeline',
     strategyConfigId: 'strategy-123',
-    exchangeKeyId: 'exchange-key-123',
     stageConfig: mockPipeline.stageConfig
   };
 
@@ -133,12 +123,6 @@ describe('PipelineOrchestratorService', () => {
         },
         {
           provide: getRepositoryToken(StrategyConfig),
-          useValue: {
-            findOne: jest.fn()
-          }
-        },
-        {
-          provide: getRepositoryToken(ExchangeKey),
           useValue: {
             findOne: jest.fn()
           }
@@ -215,6 +199,13 @@ describe('PipelineOrchestratorService', () => {
           useValue: {
             transaction: jest.fn((cb) => cb({ save: jest.fn() }))
           }
+        },
+        {
+          provide: ExchangeSelectionService,
+          useValue: {
+            selectForBuy: jest.fn().mockResolvedValue({ id: 'exchange-key-123', exchange: { slug: 'binance_us' } }),
+            selectForSell: jest.fn().mockResolvedValue({ id: 'exchange-key-123', exchange: { slug: 'binance_us' } })
+          }
         }
       ]
     }).compile();
@@ -222,7 +213,6 @@ describe('PipelineOrchestratorService', () => {
     service = module.get<PipelineOrchestratorService>(PipelineOrchestratorService);
     pipelineRepository = module.get(getRepositoryToken(Pipeline));
     strategyConfigRepository = module.get(getRepositoryToken(StrategyConfig));
-    exchangeKeyRepository = module.get(getRepositoryToken(ExchangeKey));
     pipelineQueue = module.get(getQueueToken('pipeline'));
     eventEmitter = module.get(EventEmitter2);
     scoringService = module.get(ScoringService);
@@ -233,7 +223,6 @@ describe('PipelineOrchestratorService', () => {
   describe('createPipeline', () => {
     it('should create a pipeline successfully', async () => {
       strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      exchangeKeyRepository.findOne.mockResolvedValue(mockExchangeKey);
       pipelineRepository.create.mockReturnValue(mockPipeline);
       pipelineRepository.save.mockResolvedValue(mockPipeline);
       pipelineRepository.findOne.mockResolvedValue(mockPipeline);
@@ -243,10 +232,6 @@ describe('PipelineOrchestratorService', () => {
       expect(result).toEqual(mockPipeline);
       expect(strategyConfigRepository.findOne).toHaveBeenCalledWith({
         where: { id: mockCreateDto.strategyConfigId }
-      });
-      expect(exchangeKeyRepository.findOne).toHaveBeenCalledWith({
-        where: { id: mockCreateDto.exchangeKeyId },
-        relations: ['user', 'exchange']
       });
       expect(pipelineRepository.create).toHaveBeenCalled();
       expect(pipelineRepository.save).toHaveBeenCalled();
@@ -258,26 +243,8 @@ describe('PipelineOrchestratorService', () => {
       await expect(service.createPipeline(mockCreateDto, mockUser)).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw NotFoundException if exchange key not found', async () => {
-      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      exchangeKeyRepository.findOne.mockResolvedValue(null);
-
-      await expect(service.createPipeline(mockCreateDto, mockUser)).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw ForbiddenException if exchange key belongs to another user', async () => {
-      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      exchangeKeyRepository.findOne.mockResolvedValue({
-        ...mockExchangeKey,
-        user: { id: 'other-user' }
-      } as unknown as ExchangeKey);
-
-      await expect(service.createPipeline(mockCreateDto, mockUser)).rejects.toThrow(ForbiddenException);
-    });
-
     it('should use initialStage when provided', async () => {
       strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      exchangeKeyRepository.findOne.mockResolvedValue(mockExchangeKey);
       pipelineRepository.create.mockReturnValue(mockPipeline);
       pipelineRepository.save.mockResolvedValue(mockPipeline);
       pipelineRepository.findOne.mockResolvedValue(mockPipeline);
@@ -291,7 +258,6 @@ describe('PipelineOrchestratorService', () => {
 
     it('should default to OPTIMIZE when initialStage not provided', async () => {
       strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      exchangeKeyRepository.findOne.mockResolvedValue(mockExchangeKey);
       pipelineRepository.create.mockReturnValue(mockPipeline);
       pipelineRepository.save.mockResolvedValue(mockPipeline);
       pipelineRepository.findOne.mockResolvedValue(mockPipeline);

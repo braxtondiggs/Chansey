@@ -237,8 +237,6 @@ export interface PipelineSummary {
 }
 
 export interface PipelineDetail extends PipelineSummary {
-  exchangeKeyId: string;
-  exchangeName: string;
   optimizationRunId?: string;
   historicalBacktestId?: string;
   liveReplayBacktestId?: string;

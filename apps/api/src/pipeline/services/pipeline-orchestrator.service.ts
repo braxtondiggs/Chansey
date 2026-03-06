@@ -1,13 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-  forwardRef
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,7 +10,7 @@ import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { MarketRegimeType } from '@chansey/api-interfaces';
 
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
-import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { buildParameterSpace } from '../../optimization/utils/parameter-space-builder';
@@ -62,8 +54,6 @@ export class PipelineOrchestratorService {
     private readonly pipelineRepository: Repository<Pipeline>,
     @InjectRepository(StrategyConfig)
     private readonly strategyConfigRepository: Repository<StrategyConfig>,
-    @InjectRepository(ExchangeKey)
-    private readonly exchangeKeyRepository: Repository<ExchangeKey>,
     @InjectQueue('pipeline')
     private readonly pipelineQueue: Queue,
     @Inject(pipelineConfig.KEY)
@@ -81,7 +71,8 @@ export class PipelineOrchestratorService {
     @Inject(forwardRef(() => AlgorithmRegistry))
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly eventEmitter: EventEmitter2,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly exchangeSelectionService: ExchangeSelectionService
   ) {}
 
   /**
@@ -96,18 +87,6 @@ export class PipelineOrchestratorService {
       throw new NotFoundException(`Strategy config ${dto.strategyConfigId} not found`);
     }
 
-    // Validate exchange key exists and belongs to user
-    const exchangeKey = await this.exchangeKeyRepository.findOne({
-      where: { id: dto.exchangeKeyId },
-      relations: ['user', 'exchange']
-    });
-    if (!exchangeKey) {
-      throw new NotFoundException(`Exchange key ${dto.exchangeKeyId} not found`);
-    }
-    if (exchangeKey.user.id !== user.id) {
-      throw new ForbiddenException('Exchange key does not belong to user');
-    }
-
     // Use provided progression rules or defaults
     const progressionRules: PipelineProgressionRules = dto.progressionRules ?? {
       ...DEFAULT_PROGRESSION_RULES
@@ -119,7 +98,6 @@ export class PipelineOrchestratorService {
       status: PipelineStatus.PENDING,
       currentStage: dto.initialStage ?? PipelineStage.OPTIMIZE,
       strategyConfigId: dto.strategyConfigId,
-      exchangeKeyId: dto.exchangeKeyId,
       stageConfig: dto.stageConfig,
       progressionRules,
       user
@@ -138,7 +116,7 @@ export class PipelineOrchestratorService {
   async findOne(id: string, user: User): Promise<Pipeline> {
     const pipeline = await this.pipelineRepository.findOne({
       where: { id, user: { id: user.id } },
-      relations: ['strategyConfig', 'exchangeKey', 'exchangeKey.exchange', 'user']
+      relations: ['strategyConfig', 'user']
     });
 
     if (!pipeline) {
@@ -208,7 +186,7 @@ export class PipelineOrchestratorService {
   async findOneAdmin(id: string): Promise<Pipeline> {
     const pipeline = await this.pipelineRepository.findOne({
       where: { id },
-      relations: ['strategyConfig', 'exchangeKey', 'exchangeKey.exchange', 'user']
+      relations: ['strategyConfig', 'user']
     });
 
     if (!pipeline) {
@@ -401,7 +379,7 @@ export class PipelineOrchestratorService {
   async executeStage(pipelineId: string, stage: PipelineStage): Promise<void> {
     const pipeline = await this.pipelineRepository.findOne({
       where: { id: pipelineId },
-      relations: ['strategyConfig', 'strategyConfig.algorithm', 'exchangeKey', 'user', 'user.risk']
+      relations: ['strategyConfig', 'strategyConfig.algorithm', 'user', 'user.risk']
     });
 
     if (!pipeline) {
@@ -1187,11 +1165,14 @@ export class PipelineOrchestratorService {
       throw new Error(`Pipeline ${pipeline.id} missing user relation for paper trading stage`);
     }
 
+    // Dynamically select exchange key for paper trading (symbol not known yet — determined at runtime by algorithm signals)
+    const exchangeKey = await this.exchangeSelectionService.selectDefault(pipeline.user.id);
+
     // Start paper trading session through the pipeline integration method
     const session = await this.paperTradingService.startFromPipeline({
       pipelineId: pipeline.id,
       algorithmId: pipeline.strategyConfig.algorithmId,
-      exchangeKeyId: pipeline.exchangeKeyId,
+      exchangeKeyId: exchangeKey.id,
       initialCapital: config.initialCapital,
       optimizedParameters: pipeline.optimizedParameters as Record<string, number>,
       duration: config.duration,

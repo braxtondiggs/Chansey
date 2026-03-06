@@ -14,7 +14,7 @@ import { PipelineReportService } from './services/pipeline-report.service';
 
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuthenticationModule } from '../authentication/authentication.module';
-import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { OptimizationModule } from '../optimization/optimization.module';
 import { OrderModule } from '../order/order.module';
@@ -27,7 +27,7 @@ const PIPELINE_CONFIG = pipelineConfig();
 @Module({
   imports: [
     ConfigModule.forFeature(pipelineConfig),
-    TypeOrmModule.forFeature([Pipeline, StrategyConfig, ExchangeKey]),
+    TypeOrmModule.forFeature([Pipeline, StrategyConfig]),
     BullModule.registerQueue({ name: PIPELINE_CONFIG.queue }),
     EventEmitterModule.forRoot(),
     forwardRef(() => AlgorithmModule),
@@ -36,7 +36,8 @@ const PIPELINE_CONFIG = pipelineConfig();
     forwardRef(() => OrderModule),
     forwardRef(() => PaperTradingModule),
     forwardRef(() => ScoringModule),
-    forwardRef(() => MarketRegimeModule)
+    forwardRef(() => MarketRegimeModule),
+    ExchangeSelectionModule
   ],
   controllers: [PipelineController],
   providers: [PipelineOrchestratorService, PipelineProcessor, PipelineEventListener, PipelineReportService],
