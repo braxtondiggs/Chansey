@@ -81,6 +81,9 @@ export interface TradeExecution {
 @Index('IDX_order_algo_trade_slippage', ['isAlgorithmicTrade', 'actualSlippageBps'], {
   where: '"actualSlippageBps" IS NOT NULL'
 })
+@Index('IDX_order_daily_loss_gate', ['user', 'isAlgorithmicTrade', 'status', 'side', 'createdAt'], {
+  where: '"gainLoss" < 0'
+})
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   @IsUUID()

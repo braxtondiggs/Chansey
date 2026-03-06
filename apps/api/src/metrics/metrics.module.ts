@@ -428,6 +428,11 @@ import { MetricsService } from './metrics.service';
     }),
 
     makeCounterProvider({
+      name: 'chansey_daily_loss_gate_blocks_total',
+      help: 'Total entry signals blocked by the daily loss limit gate'
+    }),
+
+    makeCounterProvider({
       name: 'chansey_live_orders_placed_total',
       help: 'Total live orders placed successfully',
       labelNames: ['market_type', 'side']

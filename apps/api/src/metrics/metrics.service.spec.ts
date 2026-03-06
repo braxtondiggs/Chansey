@@ -107,6 +107,7 @@ const buildService = () => {
     signalThrottlePassedTotal: createCounterMock(),
     regimeGateBlocksTotal: createCounterMock(),
     drawdownGateBlocksTotal: createCounterMock(),
+    dailyLossGateBlocksTotal: createCounterMock(),
     liveOrdersPlacedTotal: createCounterMock()
   };
 
@@ -189,6 +190,7 @@ const buildService = () => {
     mocks.signalThrottlePassedTotal,
     mocks.regimeGateBlocksTotal,
     mocks.drawdownGateBlocksTotal,
+    mocks.dailyLossGateBlocksTotal,
     mocks.liveOrdersPlacedTotal
   );
 

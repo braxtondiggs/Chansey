@@ -47,8 +47,9 @@ automatically.
   - `db`: Database related changes
 - **Present tense, imperative mood**: Write commit messages as commands (e.g., "add feature" not "added feature")
 - **Concise first line**: Keep the first line under 72 characters
+- **No issue numbers in the title**: NEVER include issue/PR numbers (e.g., `(#123)`) in the commit subject line
 - **Link GitHub issues**: When working on a tracked issue, add `Closes #<number>` on a separate line at the bottom of
-  the commit body
+  the commit body (this is the only place issue numbers should appear)
 
 ## Guidelines for Splitting Commits
 
