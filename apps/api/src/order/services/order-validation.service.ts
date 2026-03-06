@@ -238,6 +238,31 @@ export class OrderValidationService {
     return order;
   }
 
+  /**
+   * Validate order size for algorithmic trades against CCXT market limits.
+   * Checks quantity min/max and notional (cost) minimum.
+   * Skips any check whose limit is undefined, null, or 0.
+   */
+  validateAlgorithmicOrderSize(quantity: number, price: number, market: ccxt.MarketInterface): void {
+    const amountMin = market.limits?.amount?.min;
+    if (amountMin && quantity < amountMin) {
+      throw new OrderSizeException('min', quantity, amountMin, 'quantity');
+    }
+
+    const amountMax = market.limits?.amount?.max;
+    if (amountMax && quantity > amountMax) {
+      throw new OrderSizeException('max', quantity, amountMax, 'quantity');
+    }
+
+    const costMin = market.limits?.cost?.min;
+    if (costMin) {
+      const notional = quantity * price;
+      if (notional < costMin) {
+        throw new OrderSizeException('min', notional, costMin, 'order value');
+      }
+    }
+  }
+
   private isValidTickSize(price: number, tickSize: string): boolean {
     const precision = this.getPrecisionFromStepSize(tickSize);
     const multiplier = Math.pow(10, precision);
