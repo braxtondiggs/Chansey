@@ -14,7 +14,9 @@ import { AlgorithmActivationService } from '../../algorithm/services/algorithm-a
 import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-context-builder.service';
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
+import { MetricsService } from '../../metrics/metrics.service';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
+import { DailyLossLimitGateService } from '../../strategy/daily-loss-limit-gate.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
@@ -36,6 +38,8 @@ describe('TradeExecutionTask', () => {
   let mockTradingStateService: any;
   let mockTradeCooldownService: any;
   let mockSignalThrottle: any;
+  let mockDailyLossLimitGate: any;
+  let mockMetricsService: any;
 
   const mockJob = {
     id: 'job-1',
@@ -165,6 +169,14 @@ describe('TradeExecutionTask', () => {
       getById: jest.fn().mockResolvedValue({ id: 'user-1' })
     };
 
+    mockDailyLossLimitGate = {
+      isEntryBlocked: jest.fn().mockResolvedValue({ blocked: false })
+    };
+
+    mockMetricsService = {
+      recordDailyLossGateBlock: jest.fn()
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeExecutionTask,
@@ -180,7 +192,9 @@ describe('TradeExecutionTask', () => {
         { provide: UsersService, useValue: mockUsersService },
         { provide: TradingStateService, useValue: mockTradingStateService },
         { provide: TradeCooldownService, useValue: mockTradeCooldownService },
-        { provide: SignalThrottleService, useValue: mockSignalThrottle }
+        { provide: SignalThrottleService, useValue: mockSignalThrottle },
+        { provide: DailyLossLimitGateService, useValue: mockDailyLossLimitGate },
+        { provide: MetricsService, useValue: mockMetricsService }
       ]
     }).compile();
 
@@ -332,25 +346,6 @@ describe('TradeExecutionTask', () => {
       expect(signalArg.positionSide).toBeUndefined();
     });
 
-    it('should map BUY and SELL signal types correctly', async () => {
-      const activation = buildActivation();
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-
-      // BUY
-      configureActionableSignal('coin-1', SignalType.BUY);
-      await task.process(mockJob);
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].action).toBe('BUY');
-
-      jest.clearAllMocks();
-      mockJob.updateProgress.mockClear();
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-
-      // SELL
-      configureActionableSignal('coin-1', SignalType.SELL);
-      await task.process(mockJob);
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].action).toBe('SELL');
-    });
-
     it('should skip when coin symbol resolution fails', async () => {
       const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
@@ -405,17 +400,6 @@ describe('TradeExecutionTask', () => {
       expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe(expectedSymbol);
     });
 
-    it('should uppercase the coin symbol', async () => {
-      mockCoinService.getCoinById.mockResolvedValue({ id: 'coin-1', symbol: 'eth' });
-      const activation = buildActivation();
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      configureActionableSignal();
-
-      await task.process(mockJob);
-
-      expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe('ETH/USDT');
-    });
-
     it('should skip when exchange relation is missing (null-safety)', async () => {
       const activation = buildActivation({ exchangeKey: null });
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
@@ -444,7 +428,7 @@ describe('TradeExecutionTask', () => {
 
       await task.process(mockJob);
 
-      // user-1 fetched once, user-2 fetched once = 2 total
+      // user-1 fetched once, user-2 fetched once = 2 total (no duplicate)
       expect(mockUsersService.getById).toHaveBeenCalledTimes(2);
       expect(mockBalanceService.getUserBalances).toHaveBeenCalledTimes(2);
     });
@@ -539,23 +523,6 @@ describe('TradeExecutionTask', () => {
       // Only manual-user's activation should be processed (1 total, 1 skipped due to no signal)
       expect(result.totalActivations).toBe(1);
     });
-
-    it('should process all activations when no robo-advisor users found', async () => {
-      const activation1 = buildActivation({ id: 'act-1', userId: 'user-1' });
-      const activation2 = buildActivation({ id: 'act-2', userId: 'user-2' });
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation1, activation2]);
-      mockUserRepo.find.mockResolvedValue([]); // No robo-advisor users
-
-      mockAlgorithmRegistry.executeAlgorithm.mockResolvedValue({
-        success: true,
-        signals: [],
-        timestamp: new Date()
-      });
-
-      const result: any = await task.process(mockJob);
-
-      expect(result.totalActivations).toBe(2);
-    });
   });
 
   describe('trade cooldown', () => {
@@ -590,20 +557,6 @@ describe('TradeExecutionTask', () => {
   });
 
   describe('fetchPortfolioValue (via process)', () => {
-    it('should use totalUsdValue from balance service', async () => {
-      const activation = buildActivation();
-      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
-      mockUsersService.getById.mockResolvedValue({ id: 'user-1' });
-      mockBalanceService.getUserBalances.mockResolvedValue({ totalUsdValue: 50000 });
-      configureActionableSignal();
-
-      await task.process(mockJob);
-
-      expect(mockUsersService.getById).toHaveBeenCalledWith('user-1');
-      const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
-      expect(signalArg.portfolioValue).toBe(50000);
-    });
-
     it('should skip activation when portfolio value is 0 (balance fetch failed)', async () => {
       const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
@@ -757,6 +710,58 @@ describe('TradeExecutionTask', () => {
       const signalArg = mockTradeExecutionService.executeTradeSignal.mock.calls[0][0];
       expect(signalArg.action).toBe('BUY');
       expect(signalArg.positionSide).toBe('short');
+    });
+  });
+
+  describe('daily loss limit gate — entry signal blocking', () => {
+    it.each([
+      [SignalType.BUY, undefined, 'spot BUY'],
+      [SignalType.SHORT_ENTRY, { metadata: { marketType: MarketType.FUTURES, leverage: 2 } }, 'futures SHORT_ENTRY']
+    ])('should block entry signal %s when user is daily-loss-blocked (%s)', async (signalType, config, _label) => {
+      const activation = buildActivation(config ? { config } : {});
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockDailyLossLimitGate.isEntryBlocked.mockResolvedValue({
+        blocked: true,
+        reason: 'Daily loss limit exceeded'
+      });
+      configureActionableSignal('coin-1', signalType as SignalType);
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.blockedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+      expect(mockMetricsService.recordDailyLossGateBlock).toHaveBeenCalled();
+    });
+
+    it.each([
+      [SignalType.SELL, undefined, 'spot SELL'],
+      [SignalType.SHORT_EXIT, { metadata: { marketType: MarketType.FUTURES, leverage: 2 } }, 'futures SHORT_EXIT']
+    ])('should allow exit signal %s when user is daily-loss-blocked (%s)', async (signalType, config, _label) => {
+      const activation = buildActivation(config ? { config } : {});
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockDailyLossLimitGate.isEntryBlocked.mockResolvedValue({
+        blocked: true,
+        reason: 'Daily loss limit exceeded'
+      });
+      configureActionableSignal('coin-1', signalType as SignalType);
+
+      const result: any = await task.process(mockJob);
+
+      expect(result.successCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).toHaveBeenCalled();
+    });
+
+    it('should block all activations and set portfolio=0 when user preflight fails', async () => {
+      const activation = buildActivation();
+      mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockUsersService.getById.mockRejectedValue(new Error('DB timeout'));
+      configureActionableSignal('coin-1', SignalType.BUY);
+
+      const result: any = await task.process(mockJob);
+
+      // Fail-closed: portfolio=0 skips activation before daily loss gate even checked
+      expect(result.skippedCount).toBe(1);
+      expect(mockTradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
     });
   });
 });

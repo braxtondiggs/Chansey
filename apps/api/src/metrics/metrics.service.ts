@@ -183,6 +183,8 @@ export class MetricsService {
     private readonly regimeGateBlocksTotal: Counter<string>,
     @InjectMetric('chansey_drawdown_gate_blocks_total')
     private readonly drawdownGateBlocksTotal: Counter<string>,
+    @InjectMetric('chansey_daily_loss_gate_blocks_total')
+    private readonly dailyLossGateBlocksTotal: Counter<string>,
     @InjectMetric('chansey_live_orders_placed_total')
     private readonly liveOrdersPlacedTotal: Counter<string>
   ) {}
@@ -672,6 +674,10 @@ export class MetricsService {
 
   recordDrawdownGateBlock(): void {
     this.drawdownGateBlocksTotal.inc();
+  }
+
+  recordDailyLossGateBlock(): void {
+    this.dailyLossGateBlocksTotal.inc();
   }
 
   recordLiveOrderPlaced(marketType: 'futures' | 'spot', side: string): void {

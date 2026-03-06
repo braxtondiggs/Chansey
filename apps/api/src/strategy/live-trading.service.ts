@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { MarketType, PositionSide } from '@chansey/api-interfaces';
 
 import { CapitalAllocationService } from './capital-allocation.service';
+import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
@@ -59,6 +60,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly regimeGateService: RegimeGateService,
     private readonly preTradeRiskGate: PreTradeRiskGateService,
+    private readonly dailyLossLimitGate: DailyLossLimitGateService,
     private readonly tradeExecutionService: TradeExecutionService,
     private readonly tradeCooldownService: TradeCooldownService,
     private readonly metricsService: MetricsService
@@ -169,6 +171,11 @@ export class LiveTradingService implements OnApplicationShutdown {
     const overrideActive = this.compositeRegimeService.isOverrideActive();
     let gateBlockedCount = 0;
     let drawdownBlockedCount = 0;
+    let dailyLossBlockedCount = 0;
+
+    // Daily loss limit gate: user-level check before strategy loop
+    const dailyLossCheck = await this.dailyLossLimitGate.isEntryBlocked(user.id, actualCapital, user.risk?.level ?? 3);
+    const dailyLossBlocked = dailyLossCheck.blocked;
 
     for (const strategy of strategies) {
       try {
@@ -188,6 +195,13 @@ export class LiveTradingService implements OnApplicationShutdown {
           const validation = this.strategyExecutor.validateSignal(signal, allocatedCapital);
           if (!validation.valid) {
             this.logger.warn(`Invalid signal for user ${user.id}, strategy ${strategy.id}: ${validation.reason}`);
+            continue;
+          }
+
+          // Daily loss limit gate: block BUY/short_entry when rolling 24h losses exceed threshold
+          if (dailyLossBlocked && (action === 'buy' || action === 'short_entry')) {
+            this.metricsService.recordDailyLossGateBlock();
+            dailyLossBlockedCount++;
             continue;
           }
 
@@ -229,6 +243,12 @@ export class LiveTradingService implements OnApplicationShutdown {
 
     if (drawdownBlockedCount > 0) {
       this.logger.log(`Drawdown gate blocked ${drawdownBlockedCount} BUY signal(s) for user ${user.id}`);
+    }
+
+    if (dailyLossBlockedCount > 0) {
+      this.logger.log(
+        `Daily loss limit gate blocked ${dailyLossBlockedCount} entry signal(s) for user ${user.id}: ${dailyLossCheck.reason}`
+      );
     }
   }
 
