@@ -15,6 +15,7 @@ import {
   AnyPaperTradingJobData,
   NotifyPipelineJobData,
   PaperTradingJobType,
+  RetryTickJobData,
   StartSessionJobData,
   StopSessionJobData,
   TickJobData
@@ -24,6 +25,8 @@ import { PaperTradingService } from './paper-trading.service';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
+
+const MAX_RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes
 
 // Error types for classification
 class RecoverableError extends Error {
@@ -97,6 +100,8 @@ function classifyError(error: Error): RecoverableError | UnrecoverableError {
 export class PaperTradingProcessor extends WorkerHost {
   private readonly logger = new Logger(PaperTradingProcessor.name);
   private readonly maxConsecutiveErrors: number;
+  private readonly maxRetryAttempts: number;
+  private readonly retryBackoffMs: number;
 
   constructor(
     @Inject(paperTradingConfig.KEY) private readonly config: ConfigType<typeof paperTradingConfig>,
@@ -112,6 +117,8 @@ export class PaperTradingProcessor extends WorkerHost {
   ) {
     super();
     this.maxConsecutiveErrors = config.maxConsecutiveErrors;
+    this.maxRetryAttempts = config.maxRetryAttempts;
+    this.retryBackoffMs = config.retryBackoffMs;
   }
 
   async process(job: Job<AnyPaperTradingJobData>): Promise<void> {
@@ -125,6 +132,9 @@ export class PaperTradingProcessor extends WorkerHost {
         break;
       case PaperTradingJobType.TICK:
         await this.handleTick(job.data as TickJobData);
+        break;
+      case PaperTradingJobType.RETRY_TICK:
+        await this.handleRetryTick(job.data as RetryTickJobData);
         break;
       case PaperTradingJobType.STOP_SESSION:
         await this.handleStopSession(job.data as StopSessionJobData);
@@ -234,33 +244,8 @@ export class PaperTradingProcessor extends WorkerHost {
         return;
       }
 
-      // Reset error count on success
-      session.consecutiveErrors = 0;
-      session.tickCount++;
-      session.lastTickAt = new Date();
-      session.currentPortfolioValue = result.portfolioValue;
-
-      if (result.ordersExecuted > 0) {
-        session.totalTrades = (session.totalTrades ?? 0) + result.ordersExecuted;
-      }
-
-      // Update peak and drawdown
-      if (result.portfolioValue > (session.peakPortfolioValue ?? session.initialCapital)) {
-        session.peakPortfolioValue = result.portfolioValue;
-      }
-
-      const currentDrawdown =
-        (session.peakPortfolioValue ?? 0) > 0
-          ? ((session.peakPortfolioValue ?? 0) - result.portfolioValue) / (session.peakPortfolioValue ?? 0)
-          : 0;
-
-      if (currentDrawdown > (session.maxDrawdown ?? 0)) {
-        session.maxDrawdown = currentDrawdown;
-      }
-
-      session.totalReturn = (result.portfolioValue - session.initialCapital) / session.initialCapital;
-
-      await this.sessionRepository.save(session);
+      // Apply successful tick result (reset counters, update metrics, save)
+      const currentDrawdown = await this.applySuccessfulTickResult(session, result);
 
       // Check stop conditions
       await this.checkStopConditions(session, result.portfolioValue, currentDrawdown);
@@ -280,7 +265,7 @@ export class PaperTradingProcessor extends WorkerHost {
       // Emit metrics periodically
       if (session.tickCount % 10 === 0) {
         await this.streamService.publishMetric(sessionId, 'portfolio_value', result.portfolioValue, 'USD');
-        await this.streamService.publishMetric(sessionId, 'total_return', session.totalReturn * 100, 'percent');
+        await this.streamService.publishMetric(sessionId, 'total_return', (session.totalReturn ?? 0) * 100, 'percent');
       }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -469,12 +454,154 @@ export class PaperTradingProcessor extends WorkerHost {
   }
 
   /**
-   * Pause session due to consecutive errors
+   * Apply successful tick result to session — shared by handleTick and handleRetryTick
+   */
+  private async applySuccessfulTickResult(
+    session: PaperTradingSession,
+    result: { portfolioValue: number; ordersExecuted: number }
+  ): Promise<number> {
+    session.consecutiveErrors = 0;
+    session.retryAttempts = 0;
+    session.tickCount++;
+    session.lastTickAt = new Date();
+    session.currentPortfolioValue = result.portfolioValue;
+
+    if (result.ordersExecuted > 0) {
+      session.totalTrades = (session.totalTrades ?? 0) + result.ordersExecuted;
+    }
+
+    if (result.portfolioValue > (session.peakPortfolioValue ?? session.initialCapital)) {
+      session.peakPortfolioValue = result.portfolioValue;
+    }
+
+    const currentDrawdown =
+      (session.peakPortfolioValue ?? 0) > 0
+        ? ((session.peakPortfolioValue ?? 0) - result.portfolioValue) / (session.peakPortfolioValue ?? 0)
+        : 0;
+
+    if (currentDrawdown > (session.maxDrawdown ?? 0)) {
+      session.maxDrawdown = currentDrawdown;
+    }
+
+    session.totalReturn = (result.portfolioValue - session.initialCapital) / session.initialCapital;
+    await this.sessionRepository.save(session);
+
+    return currentDrawdown;
+  }
+
+  /**
+   * Handle retry tick - attempt a single tick after backoff delay
+   */
+  private async handleRetryTick(data: RetryTickJobData): Promise<void> {
+    const { sessionId, retryAttempt } = data;
+
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId },
+      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange', 'user']
+    });
+
+    if (!session) {
+      this.logger.warn(`Session ${sessionId} not found during retry tick`);
+      return;
+    }
+
+    if (session.status !== PaperTradingStatus.ACTIVE) {
+      this.logger.debug(`Session ${sessionId} is no longer active (status: ${session.status}), skipping retry`);
+      return;
+    }
+
+    this.logger.log(`Retry tick ${retryAttempt}/${this.maxRetryAttempts} for session ${sessionId}`);
+
+    const endTimer = this.metricsService.startBacktestTimer('paper-trading');
+
+    try {
+      const result = await this.engineService.processTick(session, session.exchangeKey);
+
+      if (result.processed) {
+        // Clear error message before save (applySuccessfulTickResult saves the session)
+        session.errorMessage = undefined;
+        const currentDrawdown = await this.applySuccessfulTickResult(session, result);
+
+        // Check stop conditions before rescheduling (may complete the session)
+        await this.checkStopConditions(session, result.portfolioValue, currentDrawdown);
+        await this.checkDuration(session);
+
+        // Re-schedule normal repeating tick job
+        if (!session.user?.id) {
+          throw new Error(`User not loaded for session ${sessionId}, cannot schedule tick job.`);
+        }
+        await this.paperTradingService.scheduleTickJob(sessionId, session.user.id, session.tickIntervalMs);
+
+        await this.streamService.publishStatus(sessionId, 'active', 'retry_recovered', {
+          retryAttempt,
+          portfolioValue: result.portfolioValue
+        });
+
+        this.logger.log(`Session ${sessionId} recovered after retry ${retryAttempt}, normal ticks resumed`);
+      } else {
+        // Tick processed but failed — trigger next retry or permanent pause
+        await this.pauseSessionDueToErrors(session, result.errors.join('; '));
+      }
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Retry tick error for session ${sessionId}: ${err.message}`, err.stack);
+
+      const classifiedError = classifyError(error instanceof Error ? error : new Error(err.message));
+
+      if (classifiedError instanceof UnrecoverableError) {
+        await this.paperTradingService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
+        await this.streamService.publishStatus(sessionId, 'failed', 'unrecoverable_error', {
+          errorMessage: classifiedError.message,
+          errorType: 'unrecoverable'
+        });
+        this.engineService.clearThrottleState(sessionId);
+        return;
+      }
+
+      await this.pauseSessionDueToErrors(session, classifiedError.message);
+    } finally {
+      endTimer();
+    }
+  }
+
+  /**
+   * Pause session due to consecutive errors, with exponential backoff retry
    */
   private async pauseSessionDueToErrors(session: PaperTradingSession, errorMessage: string): Promise<void> {
+    if (session.retryAttempts < this.maxRetryAttempts) {
+      // Schedule retry with exponential backoff
+      const delay = Math.min(this.retryBackoffMs * Math.pow(2, session.retryAttempts), MAX_RETRY_DELAY_MS);
+      session.retryAttempts++;
+      session.consecutiveErrors = 0;
+      session.errorMessage = `Retry ${session.retryAttempts}/${this.maxRetryAttempts} scheduled (${delay / 1000}s): ${errorMessage}`;
+      await this.sessionRepository.save(session);
+
+      // Remove repeating tick scheduler — the retry job will re-schedule it on success
+      await this.paperTradingService.removeTickJobs(session.id);
+
+      // Queue one-shot delayed retry
+      if (!session.user?.id) {
+        throw new Error(`User not loaded for session ${session.id}, cannot schedule retry tick.`);
+      }
+      await this.paperTradingService.scheduleRetryTick(session.id, session.user.id, delay, session.retryAttempts);
+
+      await this.streamService.publishStatus(session.id, 'retry_scheduled', 'consecutive_errors', {
+        errorMessage,
+        retryAttempt: session.retryAttempts,
+        delayMs: delay
+      });
+
+      this.logger.warn(
+        `Session ${session.id} scheduling retry ${session.retryAttempts}/${this.maxRetryAttempts} in ${delay / 1000}s`
+      );
+      return;
+    }
+
+    // Exhausted retries — permanent pause
     session.status = PaperTradingStatus.PAUSED;
     session.pausedAt = new Date();
-    session.errorMessage = `Auto-paused due to errors: ${errorMessage}`;
+    session.retryAttempts = 0;
+    session.errorMessage = `Auto-paused after ${this.maxRetryAttempts} retry attempts: ${errorMessage}`;
     await this.sessionRepository.save(session);
 
     await this.paperTradingService.removeTickJobs(session.id);
@@ -484,9 +611,10 @@ export class PaperTradingProcessor extends WorkerHost {
 
     await this.streamService.publishStatus(session.id, 'paused', 'consecutive_errors', {
       errorMessage,
-      consecutiveErrors: session.consecutiveErrors
+      consecutiveErrors: session.consecutiveErrors,
+      retriesExhausted: true
     });
 
-    this.logger.warn(`Session ${session.id} auto-paused due to ${session.consecutiveErrors} consecutive errors`);
+    this.logger.warn(`Session ${session.id} auto-paused after exhausting ${this.maxRetryAttempts} retry attempts`);
   }
 }

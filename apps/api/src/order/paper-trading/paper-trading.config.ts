@@ -7,6 +7,8 @@ export interface PaperTradingConfig {
   concurrency: number;
   defaultTickIntervalMs: number;
   maxConsecutiveErrors: number;
+  maxRetryAttempts: number;
+  retryBackoffMs: number;
   priceCacheTtlMs: number;
   orderBookCacheTtlMs: number;
   maxAllocation: number;
@@ -55,6 +57,8 @@ export const paperTradingConfig = registerAs(
     concurrency: parseInteger(process.env.PAPER_TRADING_CONCURRENCY, 4),
     defaultTickIntervalMs: parseInteger(process.env.PAPER_TRADING_TICK_INTERVAL_MS, 30000),
     maxConsecutiveErrors: parseInteger(process.env.PAPER_TRADING_MAX_CONSECUTIVE_ERRORS, 3),
+    maxRetryAttempts: parseInteger(process.env.PAPER_TRADING_MAX_RETRY_ATTEMPTS, 5),
+    retryBackoffMs: parseInteger(process.env.PAPER_TRADING_RETRY_BACKOFF_MS, 60000),
     priceCacheTtlMs: parseInteger(process.env.PAPER_TRADING_PRICE_CACHE_TTL_MS, 5000),
     orderBookCacheTtlMs: parseInteger(process.env.PAPER_TRADING_ORDER_BOOK_CACHE_TTL_MS, 2000),
     maxAllocation: parseFloat(process.env.PAPER_TRADING_MAX_ALLOCATION, 0.2),

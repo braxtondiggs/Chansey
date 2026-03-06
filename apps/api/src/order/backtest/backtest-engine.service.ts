@@ -363,10 +363,15 @@ export class BacktestEngine {
   /** Maximum price history entries kept per coin in the sliding window.
    *  Strategies typically need at most ~200 periods; 500 provides ample margin. */
   private static readonly MAX_WINDOW_SIZE = 500;
-  /** Wall-clock algorithm stall timeout (ms) — checked only on error */
-  private static readonly ALGORITHM_STALL_TIMEOUT_MS = 60_000;
-  /** Per-call timeout for algorithm execution — prevents indefinite blocking */
-  private static readonly ALGORITHM_CALL_TIMEOUT_MS = 30_000;
+  /** Wall-clock algorithm stall timeout (ms) — checked only on error.
+   *  Must accommodate concurrent workers (default 4) sharing the event loop;
+   *  heavy strategies like Triple EMA take ~9s solo → ~35s under contention,
+   *  so 180s allows several retries before giving up. */
+  private static readonly ALGORITHM_STALL_TIMEOUT_MS = 180_000;
+  /** Per-call timeout for algorithm execution — prevents indefinite blocking.
+   *  With 4 concurrent backtest workers, CPU-bound iterations that take ~9s
+   *  solo can spike to 35s+ under contention; 60s gives safe headroom. */
+  private static readonly ALGORITHM_CALL_TIMEOUT_MS = 60_000;
   /** BTC SMA period for regime detection */
   private static readonly REGIME_SMA_PERIOD = 200;
 

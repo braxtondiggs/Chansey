@@ -191,6 +191,11 @@ export class PaperTradingSession {
   @ApiProperty({ description: 'Count of consecutive errors (for auto-pause)', default: 0 })
   consecutiveErrors: number;
 
+  @IsNumber()
+  @Column({ type: 'integer', default: 0 })
+  @ApiProperty({ description: 'Number of backoff retry attempts after consecutive errors', default: 0 })
+  retryAttempts: number;
+
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: 'When the session was created' })
   createdAt: Date;
