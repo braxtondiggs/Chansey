@@ -74,6 +74,7 @@ import { SharedCacheModule } from '../shared-cache.module';
 import { StorageModule } from '../storage/storage.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { UserStrategyPosition } from '../strategy/entities/user-strategy-position.entity';
+import { StrategyModule } from '../strategy/strategy.module';
 import { User } from '../users/users.entity';
 import { UsersModule } from '../users/users.module';
 
@@ -137,6 +138,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     forwardRef(() => OHLCModule),
     forwardRef(() => UsersModule),
     forwardRef(() => MarketRegimeModule),
+    forwardRef(() => StrategyModule),
     IndicatorModule,
     MetricsModule,
     StorageModule,

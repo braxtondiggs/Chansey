@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AdminPoolController } from './admin-pool.controller';
 import { CapitalAllocationService } from './capital-allocation.service';
+import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { DeploymentController } from './deployment.controller';
 import { DeploymentService } from './deployment.service';
 import { BacktestRun } from './entities/backtest-run.entity';
@@ -86,6 +87,7 @@ import { User } from '../users/users.entity';
     SignalThrottleService,
     LiveTradingService,
     PreTradeRiskGateService,
+    DailyLossLimitGateService,
     UserPerformanceService,
     PoolStatisticsService,
     PromotionGateService,
@@ -114,7 +116,8 @@ import { User } from '../users/users.entity';
     PositionTrackingService,
     CapitalAllocationService,
     StrategyExecutorService,
-    UserPerformanceService
+    UserPerformanceService,
+    DailyLossLimitGateService
   ]
 })
 export class StrategyModule {}

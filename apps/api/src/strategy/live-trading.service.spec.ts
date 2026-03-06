@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ObjectLiteral, Repository } from 'typeorm';
 
 import { CapitalAllocationService } from './capital-allocation.service';
+import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { LiveTradingService } from './live-trading.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
@@ -48,6 +49,7 @@ describe('LiveTradingService', () => {
   let tradingStateService: jest.Mocked<TradingStateService>;
   let regimeGateService: jest.Mocked<RegimeGateService>;
   let preTradeRiskGate: jest.Mocked<PreTradeRiskGateService>;
+  let dailyLossLimitGate: jest.Mocked<DailyLossLimitGateService>;
   let tradeExecutionService: jest.Mocked<TradeExecutionService>;
   let tradeCooldownService: jest.Mocked<TradeCooldownService>;
 
@@ -102,6 +104,11 @@ describe('LiveTradingService', () => {
       checkDrawdown: jest.fn().mockResolvedValue({ allowed: true })
     } as unknown as jest.Mocked<PreTradeRiskGateService>;
 
+    dailyLossLimitGate = {
+      isEntryBlocked: jest.fn().mockResolvedValue({ blocked: false }),
+      checkDailyLossLimit: jest.fn().mockResolvedValue({ allowed: true })
+    } as unknown as jest.Mocked<DailyLossLimitGateService>;
+
     tradeExecutionService = {
       executeTradeSignal: jest.fn().mockResolvedValue({ id: 'order-1' })
     } as unknown as jest.Mocked<TradeExecutionService>;
@@ -135,6 +142,7 @@ describe('LiveTradingService', () => {
         },
         { provide: RegimeGateService, useValue: regimeGateService },
         { provide: PreTradeRiskGateService, useValue: preTradeRiskGate },
+        { provide: DailyLossLimitGateService, useValue: dailyLossLimitGate },
         { provide: TradeExecutionService, useValue: tradeExecutionService },
         { provide: TradeCooldownService, useValue: tradeCooldownService },
         {
@@ -145,6 +153,7 @@ describe('LiveTradingService', () => {
             recordTradeCooldownCleared: jest.fn(),
             recordRegimeGateBlock: jest.fn(),
             recordDrawdownGateBlock: jest.fn(),
+            recordDailyLossGateBlock: jest.fn(),
             recordLiveOrderPlaced: jest.fn()
           }
         }

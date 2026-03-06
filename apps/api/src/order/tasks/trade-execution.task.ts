@@ -17,8 +17,10 @@ import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-cont
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
+import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
+import { DailyLossLimitGateService } from '../../strategy/daily-loss-limit-gate.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
@@ -63,7 +65,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     private readonly usersService: UsersService,
     private readonly tradingStateService: TradingStateService,
     private readonly tradeCooldownService: TradeCooldownService,
-    private readonly signalThrottle: SignalThrottleService
+    private readonly signalThrottle: SignalThrottleService,
+    private readonly dailyLossLimitGate: DailyLossLimitGateService,
+    private readonly metricsService: MetricsService
   ) {
     super();
   }
@@ -182,13 +186,30 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
       const totalActivations = activeActivations.length;
 
-      // Phase 1: Pre-populate portfolio cache (one fetch per unique user)
+      // Phase 1: Pre-populate portfolio cache and daily loss limit check (one per unique user)
       const portfolioCache = new Map<string, number>();
+      const dailyLossBlockedUsers = new Set<string>();
       const uniqueUserIds = [...new Set(activeActivations.map((a) => a.userId))];
       for (const userId of uniqueUserIds) {
-        const activation = activeActivations.find((a) => a.userId === userId);
-        if (!activation) continue;
-        portfolioCache.set(userId, await this.fetchPortfolioValue(activation));
+        try {
+          const user = await this.usersService.getById(userId);
+          const portfolioValue = await this.fetchPortfolioValue(user);
+          portfolioCache.set(userId, portfolioValue);
+
+          // Daily loss limit gate: check per user
+          const riskLevel = user.risk?.level ?? 3;
+          const dailyLossCheck = await this.dailyLossLimitGate.isEntryBlocked(userId, portfolioValue, riskLevel);
+          if (dailyLossCheck.blocked) {
+            dailyLossBlockedUsers.add(userId);
+            this.logger.warn(`Daily loss limit gate blocked user ${userId}: ${dailyLossCheck.reason}`);
+          }
+        } catch (error) {
+          // Fail closed: set portfolio=0 (will skip activations) and block user
+          const err = toErrorInfo(error);
+          this.logger.warn(`User ${userId} pre-flight failed: ${err.message}, blocking as precaution`);
+          portfolioCache.set(userId, 0);
+          dailyLossBlockedUsers.add(userId);
+        }
       }
 
       // Phase 2: Group by exchangeKeyId to avoid CCXT client concurrency issues,
@@ -209,7 +230,11 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
             const groupCounts = { success: 0, fail: 0, skipped: 0, blocked: 0 };
             for (const activation of group) {
               try {
-                const outcome = await this.processActivation(activation, portfolioCache.get(activation.userId) ?? 0);
+                const outcome = await this.processActivation(
+                  activation,
+                  portfolioCache.get(activation.userId) ?? 0,
+                  dailyLossBlockedUsers
+                );
                 if (outcome === 'executed') groupCounts.success++;
                 else if (outcome === 'blocked') groupCounts.blocked++;
                 else groupCounts.skipped++;
@@ -274,7 +299,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
    */
   private async processActivation(
     activation: AlgorithmActivation,
-    portfolioValue: number
+    portfolioValue: number,
+    dailyLossBlockedUsers: Set<string> = new Set()
   ): Promise<'executed' | 'skipped' | 'blocked'> {
     if (portfolioValue <= 0) {
       this.logger.warn(
@@ -286,6 +312,18 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     const signal = await this.generateTradeSignal(activation, portfolioValue);
 
     if (signal) {
+      // Daily loss limit gate: block entry signals when user's rolling 24h losses exceed threshold
+      const isEntryAction =
+        (signal.action === 'BUY' && signal.positionSide !== 'short') ||
+        (signal.action === 'SELL' && signal.positionSide === 'short');
+      if (dailyLossBlockedUsers.has(activation.userId) && isEntryAction) {
+        this.metricsService.recordDailyLossGateBlock();
+        this.logger.warn(
+          `Daily loss limit blocked activation ${activation.id}: ${signal.action} ${signal.symbol} (entry) for user ${activation.userId}`
+        );
+        return 'blocked';
+      }
+
       // Trade cooldown: prevent double-trading if Pipeline 1 already placed this trade
       const cooldownCheck = await this.tradeCooldownService.checkAndClaim(
         signal.userId,
@@ -485,17 +523,16 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Fetch total portfolio USD value for an activation's user
+   * Fetch total portfolio USD value for a user
    * Returns 0 on error for graceful degradation
    */
-  private async fetchPortfolioValue(activation: AlgorithmActivation): Promise<number> {
+  private async fetchPortfolioValue(user: User): Promise<number> {
     try {
-      const user = await this.usersService.getById(activation.userId);
       const balances = await this.balanceService.getUserBalances(user);
       return balances.totalUsdValue || 0;
     } catch (error) {
       const err = toErrorInfo(error);
-      this.logger.warn(`Failed to fetch portfolio value for user ${activation.userId}: ${err.message}`);
+      this.logger.warn(`Failed to fetch portfolio value for user ${user.id}: ${err.message}`);
       return 0;
     }
   }
