@@ -21,7 +21,7 @@ export const backtestConfig = registerAs(
     replayQueue: process.env.BACKTEST_REPLAY_QUEUE ?? 'backtest-replay',
     telemetryStream: process.env.BACKTEST_TELEMETRY_STREAM ?? 'backtest-telemetry',
     telemetryStreamMaxLen: parseInteger(process.env.BACKTEST_TELEMETRY_STREAM_MAXLEN, 10000),
-    historicalConcurrency: parseInteger(process.env.BACKTEST_HISTORICAL_CONCURRENCY, 4),
+    historicalConcurrency: parseInteger(process.env.BACKTEST_HISTORICAL_CONCURRENCY, 2),
     replayConcurrency: parseInteger(process.env.BACKTEST_REPLAY_CONCURRENCY, 2)
   })
 );

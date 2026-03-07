@@ -26,7 +26,7 @@ describe('BacktestProcessor', () => {
 
   const createMockConfigService = () => ({
     get: jest.fn((key: string, defaultValue?: any) => {
-      if (key === 'backtest.historicalConcurrency') return defaultValue ?? 4;
+      if (key === 'backtest.historicalConcurrency') return defaultValue ?? 2;
       return defaultValue;
     })
   });

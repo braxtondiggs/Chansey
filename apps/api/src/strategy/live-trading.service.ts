@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { MarketType, PositionSide } from '@chansey/api-interfaces';
 
 import { CapitalAllocationService } from './capital-allocation.service';
+import { ConcentrationGateService } from './concentration-gate.service';
 import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { PositionTrackingService } from './position-tracking.service';
@@ -61,6 +62,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly regimeGateService: RegimeGateService,
     private readonly preTradeRiskGate: PreTradeRiskGateService,
     private readonly dailyLossLimitGate: DailyLossLimitGateService,
+    private readonly concentrationGate: ConcentrationGateService,
     private readonly tradeExecutionService: TradeExecutionService,
     private readonly tradeCooldownService: TradeCooldownService,
     private readonly metricsService: MetricsService,
@@ -170,9 +172,14 @@ export class LiveTradingService implements OnApplicationShutdown {
     const volatilityRegime = this.compositeRegimeService.getVolatilityRegime();
     const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();
+    // Build asset allocations for concentration gate (reuse fetched balances)
+    const assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
+
     let gateBlockedCount = 0;
     let drawdownBlockedCount = 0;
     let dailyLossBlockedCount = 0;
+    let concentrationBlockedCount = 0;
+    let concentrationReducedCount = 0;
 
     // Daily loss limit gate: user-level check before strategy loop
     const dailyLossCheck = await this.dailyLossLimitGate.isEntryBlocked(user.id, actualCapital, user.risk?.level ?? 3);
@@ -228,6 +235,27 @@ export class LiveTradingService implements OnApplicationShutdown {
             continue;
           }
 
+          // Concentration gate: block/reduce BUY/short_entry when single-asset concentration is too high
+          if (action === 'buy' || action === 'short_entry') {
+            const tradeUsdValue = signal.quantity * signal.price;
+            const concCheck = this.concentrationGate.checkTrade(
+              assetAllocations,
+              signal.symbol,
+              tradeUsdValue,
+              user.risk?.level ?? 3,
+              action
+            );
+            if (!concCheck.allowed) {
+              this.metricsService.recordConcentrationGateBlock();
+              concentrationBlockedCount++;
+              continue;
+            }
+            if (concCheck.adjustedQuantity != null && concCheck.adjustedQuantity < 1) {
+              signal.quantity *= concCheck.adjustedQuantity;
+              concentrationReducedCount++;
+            }
+          }
+
           await this.placeOrder(user, strategy.id, signal, strategy);
         }
       } catch (error: unknown) {
@@ -244,6 +272,14 @@ export class LiveTradingService implements OnApplicationShutdown {
 
     if (drawdownBlockedCount > 0) {
       this.logger.log(`Drawdown gate blocked ${drawdownBlockedCount} BUY signal(s) for user ${user.id}`);
+    }
+
+    if (concentrationBlockedCount > 0) {
+      this.logger.log(`Concentration gate blocked ${concentrationBlockedCount} entry signal(s) for user ${user.id}`);
+    }
+
+    if (concentrationReducedCount > 0) {
+      this.logger.log(`Concentration gate reduced ${concentrationReducedCount} entry signal(s) for user ${user.id}`);
     }
 
     if (dailyLossBlockedCount > 0) {

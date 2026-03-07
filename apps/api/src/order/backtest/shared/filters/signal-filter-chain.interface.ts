@@ -6,6 +6,7 @@ import { CompositeRegimeType } from '@chansey/api-interfaces';
 export interface FilterableSignal {
   action: string;
   originalType?: string;
+  coinId?: string;
 }
 
 /**
@@ -17,6 +18,11 @@ export interface SignalFilterContext {
   riskLevel: number;
   regimeGateEnabled: boolean;
   regimeScaledSizingEnabled: boolean;
+  concentrationContext?: {
+    portfolioPositions: Map<string, { quantity: number; averagePrice: number }>;
+    portfolioTotalValue: number;
+    currentPrices?: Map<string, number>;
+  };
 }
 
 /**
