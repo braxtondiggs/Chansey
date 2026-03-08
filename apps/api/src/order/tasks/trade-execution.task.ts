@@ -21,8 +21,10 @@ import { ExchangeSelectionService } from '../../exchange/exchange-selection/exch
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
+import { ConcentrationGateService } from '../../strategy/concentration-gate.service';
 import { DailyLossLimitGateService } from '../../strategy/daily-loss-limit-gate.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { AssetAllocation } from '../../strategy/risk/concentration-check.service';
 import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
 import { SignalThrottleService, ThrottleState } from '../backtest/shared/throttle';
@@ -68,6 +70,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     private readonly tradeCooldownService: TradeCooldownService,
     private readonly signalThrottle: SignalThrottleService,
     private readonly dailyLossLimitGate: DailyLossLimitGateService,
+    private readonly concentrationGate: ConcentrationGateService,
     private readonly metricsService: MetricsService,
     private readonly exchangeSelectionService: ExchangeSelectionService
   ) {
@@ -188,15 +191,20 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
       const totalActivations = activeActivations.length;
 
-      // Phase 1: Pre-populate portfolio cache and daily loss limit check (one per unique user)
+      // Phase 1: Pre-populate portfolio cache, balance cache, and daily loss limit check (one per unique user)
       const portfolioCache = new Map<string, number>();
+      const balanceCache = new Map<string, AssetAllocation[]>();
+      const userRiskLevels = new Map<string, number>();
       const dailyLossBlockedUsers = new Set<string>();
       const uniqueUserIds = [...new Set(activeActivations.map((a) => a.userId))];
       for (const userId of uniqueUserIds) {
         try {
           const user = await this.usersService.getById(userId);
-          const portfolioValue = await this.fetchPortfolioValue(user);
+          const balances = await this.balanceService.getUserBalances(user);
+          const portfolioValue = balances.totalUsdValue || 0;
           portfolioCache.set(userId, portfolioValue);
+          balanceCache.set(userId, this.concentrationGate.buildAssetAllocations(balances.current));
+          userRiskLevels.set(userId, user.risk?.level ?? 3);
 
           // Daily loss limit gate: check per user
           const riskLevel = user.risk?.level ?? 3;
@@ -235,7 +243,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
                 const outcome = await this.processActivation(
                   activation,
                   portfolioCache.get(activation.userId) ?? 0,
-                  dailyLossBlockedUsers
+                  dailyLossBlockedUsers,
+                  balanceCache,
+                  userRiskLevels
                 );
                 if (outcome === 'executed') groupCounts.success++;
                 else if (outcome === 'blocked') groupCounts.blocked++;
@@ -302,7 +312,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   private async processActivation(
     activation: AlgorithmActivation,
     portfolioValue: number,
-    dailyLossBlockedUsers: Set<string> = new Set()
+    dailyLossBlockedUsers: Set<string> = new Set(),
+    balanceCache: Map<string, AssetAllocation[]> = new Map(),
+    userRiskLevels: Map<string, number> = new Map()
   ): Promise<'executed' | 'skipped' | 'blocked'> {
     if (portfolioValue <= 0) {
       this.logger.warn(
@@ -324,6 +336,28 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           `Daily loss limit blocked activation ${activation.id}: ${signal.action} ${signal.symbol} (entry) for user ${activation.userId}`
         );
         return 'blocked';
+      }
+
+      // Concentration gate: block entry signals when single-asset concentration is too high
+      if (isEntryAction) {
+        const assets = balanceCache.get(activation.userId) ?? [];
+        const riskLevel = userRiskLevels.get(activation.userId) ?? 3;
+        const estimatedTradeUsd =
+          (signal.portfolioValue ?? portfolioValue) * ((signal.allocationPercentage ?? 5) / 100);
+        const concCheck = this.concentrationGate.checkTrade(
+          assets,
+          signal.symbol,
+          estimatedTradeUsd,
+          riskLevel,
+          signal.action
+        );
+        if (!concCheck.allowed) {
+          this.metricsService.recordConcentrationGateBlock();
+          this.logger.warn(
+            `Concentration gate blocked activation ${activation.id}: ${signal.action} ${signal.symbol} for user ${activation.userId}: ${concCheck.reason}`
+          );
+          return 'blocked';
+        }
       }
 
       // Trade cooldown: prevent double-trading if Pipeline 1 already placed this trade

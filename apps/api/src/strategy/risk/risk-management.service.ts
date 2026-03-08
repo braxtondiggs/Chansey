@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import { AuditEventType } from '@chansey/api-interfaces';
 
+import { ConcentrationRiskCheck } from './concentration-risk.check';
 import { ConsecutiveLossesCheck } from './consecutive-losses.check';
 import { DailyLossLimitCheck } from './daily-loss-limit.check';
 import { DrawdownBreachCheck } from './drawdown-breach.check';
@@ -51,7 +52,8 @@ export class RiskManagementService {
     private readonly dailyLossLimitCheck: DailyLossLimitCheck,
     private readonly consecutiveLossesCheck: ConsecutiveLossesCheck,
     private readonly volatilitySpikeCheck: VolatilitySpikeCheck,
-    private readonly sharpeDegradationCheck: SharpeDegradationCheck
+    private readonly sharpeDegradationCheck: SharpeDegradationCheck,
+    private readonly concentrationRiskCheck: ConcentrationRiskCheck
   ) {
     // Register all checks in priority order
     this.checks = [
@@ -59,7 +61,8 @@ export class RiskManagementService {
       this.dailyLossLimitCheck,
       this.consecutiveLossesCheck,
       this.volatilitySpikeCheck,
-      this.sharpeDegradationCheck
+      this.sharpeDegradationCheck,
+      this.concentrationRiskCheck
     ].sort((a, b) => a.priority - b.priority);
   }
 

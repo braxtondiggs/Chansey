@@ -47,7 +47,7 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    const concurrency = this.configService.get<number>('backtest.historicalConcurrency', 4);
+    const concurrency = this.configService.get<number>('backtest.historicalConcurrency', 2);
     this.worker.concurrency = concurrency;
     this.logger.log(`Historical backtest worker concurrency set to ${concurrency}`);
   }

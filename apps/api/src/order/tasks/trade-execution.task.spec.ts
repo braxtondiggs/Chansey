@@ -17,6 +17,7 @@ import { CoinService } from '../../coin/coin.service';
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
+import { ConcentrationGateService } from '../../strategy/concentration-gate.service';
 import { DailyLossLimitGateService } from '../../strategy/daily-loss-limit-gate.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
@@ -172,7 +173,8 @@ describe('TradeExecutionTask', () => {
     };
 
     mockMetricsService = {
-      recordDailyLossGateBlock: jest.fn()
+      recordDailyLossGateBlock: jest.fn(),
+      recordConcentrationGateBlock: jest.fn()
     };
 
     mockExchangeSelectionService = {
@@ -197,6 +199,13 @@ describe('TradeExecutionTask', () => {
         { provide: TradeCooldownService, useValue: mockTradeCooldownService },
         { provide: SignalThrottleService, useValue: mockSignalThrottle },
         { provide: DailyLossLimitGateService, useValue: mockDailyLossLimitGate },
+        {
+          provide: ConcentrationGateService,
+          useValue: {
+            buildAssetAllocations: jest.fn().mockReturnValue([]),
+            checkTrade: jest.fn().mockReturnValue({ allowed: true })
+          }
+        },
         { provide: MetricsService, useValue: mockMetricsService },
         { provide: ExchangeSelectionService, useValue: mockExchangeSelectionService }
       ]

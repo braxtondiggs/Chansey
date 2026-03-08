@@ -50,6 +50,10 @@ export enum AuditEventType {
   // Configuration events
   PARAMETER_CHANGED = 'PARAMETER_CHANGED',
 
+  // Concentration risk events
+  CONCENTRATION_WARNING = 'CONCENTRATION_WARNING',
+  CONCENTRATION_BLOCKED = 'CONCENTRATION_BLOCKED',
+
   // Manual intervention
   MANUAL_INTERVENTION = 'MANUAL_INTERVENTION'
 }

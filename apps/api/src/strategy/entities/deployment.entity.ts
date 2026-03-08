@@ -92,6 +92,15 @@ export class Deployment {
   })
   maxLeverage: number | null;
 
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 4,
+    nullable: true,
+    comment: 'Max single-asset concentration limit (decimal, 0.35 = 35%). NULL = use risk-level default.'
+  })
+  concentrationLimit: number | null;
+
   // Live Performance Tracking
   @Column({ type: 'decimal', precision: 15, scale: 4, default: 0, comment: 'Total realized P&L in USD' })
   realizedPnl: number;

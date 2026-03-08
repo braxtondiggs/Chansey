@@ -2,6 +2,7 @@ import { Repository } from 'typeorm';
 
 import { DeploymentStatus } from '@chansey/api-interfaces';
 
+import { ConcentrationRiskCheck } from './concentration-risk.check';
 import { ConsecutiveLossesCheck } from './consecutive-losses.check';
 import { DailyLossLimitCheck } from './daily-loss-limit.check';
 import { DrawdownBreachCheck } from './drawdown-breach.check';
@@ -113,6 +114,21 @@ describe('RiskManagementService', () => {
     volatilitySpikeCheck = new VolatilitySpikeCheck();
     sharpeDegradationCheck = new SharpeDegradationCheck();
 
+    const concentrationRiskCheck = {
+      name: 'concentration-risk',
+      description: 'Detect concentration risk',
+      priority: 6,
+      autoDemote: false,
+      evaluate: jest.fn().mockResolvedValue({
+        checkName: 'concentration-risk',
+        passed: true,
+        actualValue: 'within limits',
+        threshold: 'N/A',
+        severity: 'low',
+        message: 'All asset concentrations within acceptable limits'
+      })
+    } as unknown as ConcentrationRiskCheck;
+
     service = new RiskManagementService(
       deploymentRepo,
       performanceMetricRepo,
@@ -122,7 +138,8 @@ describe('RiskManagementService', () => {
       dailyLossLimitCheck,
       consecutiveLossesCheck,
       volatilitySpikeCheck,
-      sharpeDegradationCheck
+      sharpeDegradationCheck,
+      concentrationRiskCheck
     );
   });
 
@@ -284,14 +301,15 @@ describe('RiskManagementService', () => {
   describe('getChecks', () => {
     it('returns all registered risk checks', () => {
       const checks = service.getChecks();
-      expect(checks.length).toBe(5);
+      expect(checks.length).toBe(6);
       expect(checks.map((c) => c.name)).toEqual(
         expect.arrayContaining([
           'drawdown-breach',
           'daily-loss-limit',
           'consecutive-losses',
           'volatility-spike',
-          'sharpe-degradation'
+          'sharpe-degradation',
+          'concentration-risk'
         ])
       );
     });

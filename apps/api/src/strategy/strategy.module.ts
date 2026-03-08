@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AdminPoolController } from './admin-pool.controller';
 import { CapitalAllocationService } from './capital-allocation.service';
+import { ConcentrationGateService } from './concentration-gate.service';
 import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { DeploymentController } from './deployment.controller';
 import { DeploymentService } from './deployment.service';
@@ -28,6 +29,8 @@ import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 // eslint-disable-next-line import/order
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
+import { ConcentrationCheckService } from './risk/concentration-check.service';
+import { ConcentrationRiskCheck } from './risk/concentration-risk.check';
 import { ConsecutiveLossesCheck } from './risk/consecutive-losses.check';
 import { DailyLossLimitCheck } from './risk/daily-loss-limit.check';
 import { DrawdownBreachCheck } from './risk/drawdown-breach.check';
@@ -90,6 +93,9 @@ import { User } from '../users/users.entity';
     LiveTradingService,
     PreTradeRiskGateService,
     DailyLossLimitGateService,
+    ConcentrationCheckService,
+    ConcentrationGateService,
+    ConcentrationRiskCheck,
     UserPerformanceService,
     PoolStatisticsService,
     PromotionGateService,
@@ -119,7 +125,8 @@ import { User } from '../users/users.entity';
     CapitalAllocationService,
     StrategyExecutorService,
     UserPerformanceService,
-    DailyLossLimitGateService
+    DailyLossLimitGateService,
+    ConcentrationGateService
   ]
 })
 export class StrategyModule {}

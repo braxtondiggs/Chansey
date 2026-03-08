@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { ConcentrationFilter } from './concentration-filter';
 import { RegimeFilter } from './regime-filter';
 import {
   FilterableSignal,
@@ -21,7 +22,7 @@ export class SignalFilterChainService {
   private readonly filters: SignalFilter[];
 
   constructor() {
-    this.filters = [new RegimeFilter()];
+    this.filters = [new RegimeFilter(), new ConcentrationFilter()];
   }
 
   apply<T extends FilterableSignal>(
@@ -48,7 +49,7 @@ export class SignalFilterChainService {
         maxAllocation: result.maxAllocation,
         minAllocation: result.minAllocation,
         regimeGateBlockedCount: current.regimeGateBlockedCount + result.regimeGateBlockedCount,
-        regimeMultiplier: result.regimeMultiplier
+        regimeMultiplier: result.regimeMultiplier !== 1 ? result.regimeMultiplier : current.regimeMultiplier
       };
     }
 

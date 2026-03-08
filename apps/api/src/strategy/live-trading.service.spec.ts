@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ObjectLiteral, Repository } from 'typeorm';
 
 import { CapitalAllocationService } from './capital-allocation.service';
+import { ConcentrationGateService } from './concentration-gate.service';
 import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { LiveTradingService } from './live-trading.service';
 import { PositionTrackingService } from './position-tracking.service';
@@ -144,6 +145,13 @@ describe('LiveTradingService', () => {
         { provide: RegimeGateService, useValue: regimeGateService },
         { provide: PreTradeRiskGateService, useValue: preTradeRiskGate },
         { provide: DailyLossLimitGateService, useValue: dailyLossLimitGate },
+        {
+          provide: ConcentrationGateService,
+          useValue: {
+            buildAssetAllocations: jest.fn().mockReturnValue([]),
+            checkTrade: jest.fn().mockReturnValue({ allowed: true })
+          }
+        },
         { provide: TradeExecutionService, useValue: tradeExecutionService },
         { provide: TradeCooldownService, useValue: tradeCooldownService },
         {
@@ -162,6 +170,7 @@ describe('LiveTradingService', () => {
             recordRegimeGateBlock: jest.fn(),
             recordDrawdownGateBlock: jest.fn(),
             recordDailyLossGateBlock: jest.fn(),
+            recordConcentrationGateBlock: jest.fn(),
             recordLiveOrderPlaced: jest.fn()
           }
         }
