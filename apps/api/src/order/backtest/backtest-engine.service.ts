@@ -493,6 +493,19 @@ export class BacktestEngine {
     return result;
   }
 
+  private buildConcentrationContext(
+    portfolio: Portfolio,
+    marketData: MarketData
+  ): SignalFilterContext['concentrationContext'] {
+    return portfolio.positions.size > 0
+      ? {
+          portfolioPositions: portfolio.positions,
+          portfolioTotalValue: portfolio.totalValue,
+          currentPrices: marketData.prices
+        }
+      : undefined;
+  }
+
   private applyBarRegime(
     strategySignals: TradingSignal[],
     priceCtx: PriceTrackingContext,
@@ -936,14 +949,7 @@ export class BacktestEngine {
       );
 
       // Regime gate + regime-scaled position sizing + concentration filter
-      const concentrationCtx: SignalFilterContext['concentrationContext'] =
-        portfolio.positions.size > 0
-          ? {
-              portfolioPositions: portfolio.positions,
-              portfolioTotalValue: portfolio.totalValue,
-              currentPrices: marketData.prices
-            }
-          : undefined;
+      const concentrationCtx = this.buildConcentrationContext(portfolio, marketData);
 
       const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
         strategySignals,
@@ -1749,14 +1755,7 @@ export class BacktestEngine {
       );
 
       // Regime gate + regime-scaled position sizing + concentration filter
-      const concentrationCtx: SignalFilterContext['concentrationContext'] =
-        portfolio.positions.size > 0
-          ? {
-              portfolioPositions: portfolio.positions,
-              portfolioTotalValue: portfolio.totalValue,
-              currentPrices: marketData.prices
-            }
-          : undefined;
+      const concentrationCtx = this.buildConcentrationContext(portfolio, marketData);
 
       const { filteredSignals, barMaxAllocation, barMinAllocation } = this.applyBarRegime(
         strategySignals,

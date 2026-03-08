@@ -56,10 +56,8 @@ export class ConcentrationFilter implements SignalFilter {
       const concentration = positionValue / portfolioTotalValue;
 
       if (concentration > limits.soft) {
-        const cap = limits.hard - concentration;
-        if (cap > 0) {
-          adjustedMax = Math.min(adjustedMax, cap);
-        }
+        const cap = Math.max(0, limits.hard - concentration);
+        adjustedMax = Math.min(adjustedMax, cap);
       }
     }
 
@@ -68,7 +66,7 @@ export class ConcentrationFilter implements SignalFilter {
     // Filter BUY signals for assets already at hard limit
     const filtered = signals.filter((signal) => {
       const action = signal.action.toUpperCase();
-      if (action !== 'BUY') return true;
+      if (action !== 'BUY' && action !== 'OPEN_SHORT') return true;
 
       const coinId = signal.coinId;
       if (!coinId) return true;
