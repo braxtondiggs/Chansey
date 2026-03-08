@@ -43,6 +43,7 @@ import { AdminModule } from '../admin/admin.module';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { BalanceModule } from '../balance/balance.module';
+import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
@@ -72,6 +73,7 @@ import { User } from '../users/users.entity';
     AuditModule,
     forwardRef(() => BalanceModule),
     forwardRef(() => ExchangeModule),
+    ExchangeSelectionModule,
     forwardRef(() => MarketRegimeModule),
     MetricsModule,
     forwardRef(() => OrderModule),

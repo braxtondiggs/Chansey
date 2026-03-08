@@ -14,6 +14,7 @@ import { StrategyExecutorService, TradingSignal } from './strategy-executor.serv
 import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
+import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { MetricsService } from '../metrics/metrics.service';
@@ -146,6 +147,13 @@ describe('LiveTradingService', () => {
         { provide: TradeExecutionService, useValue: tradeExecutionService },
         { provide: TradeCooldownService, useValue: tradeCooldownService },
         {
+          provide: ExchangeSelectionService,
+          useValue: {
+            selectForBuy: jest.fn().mockResolvedValue({ id: 'ek-1', exchange: { slug: 'binance_us' } }),
+            selectForSell: jest.fn().mockResolvedValue({ id: 'ek-1', exchange: { slug: 'binance_us' } })
+          }
+        },
+        {
           provide: MetricsService,
           useValue: {
             recordTradeCooldownBlock: jest.fn(),
@@ -212,7 +220,7 @@ describe('LiveTradingService', () => {
 
     await service.executeLiveTrading();
 
-    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledWith(user.id, 'strategy-1', signal, 'ex-2');
+    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledWith(user.id, 'strategy-1', signal, 'ek-1');
     expect(positionTracking.updatePosition).toHaveBeenCalledWith(
       user.id,
       'strategy-1',
@@ -220,7 +228,8 @@ describe('LiveTradingService', () => {
       0.01,
       30000,
       'buy',
-      'long'
+      'long',
+      'ek-1'
     );
     expect(lockService.release).toHaveBeenCalledWith(LOCK_KEYS.LIVE_TRADING, 'lock-1');
   });
@@ -278,7 +287,8 @@ describe('LiveTradingService', () => {
       0.01,
       30000,
       'sell',
-      'long'
+      'long',
+      undefined
     );
   });
 
@@ -311,7 +321,8 @@ describe('LiveTradingService', () => {
       0.01,
       30000,
       'buy',
-      'short'
+      'short',
+      undefined
     );
   });
 
@@ -344,7 +355,8 @@ describe('LiveTradingService', () => {
       0.01,
       30000,
       'sell',
-      'short'
+      'short',
+      'ek-1'
     );
   });
 

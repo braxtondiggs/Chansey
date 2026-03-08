@@ -17,6 +17,7 @@ import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-cont
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
+import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
@@ -67,7 +68,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     private readonly tradeCooldownService: TradeCooldownService,
     private readonly signalThrottle: SignalThrottleService,
     private readonly dailyLossLimitGate: DailyLossLimitGateService,
-    private readonly metricsService: MetricsService
+    private readonly metricsService: MetricsService,
+    private readonly exchangeSelectionService: ExchangeSelectionService
   ) {
     super();
   }
@@ -212,7 +214,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         }
       }
 
-      // Phase 2: Group by exchangeKeyId to avoid CCXT client concurrency issues,
+      // Phase 2: Group by userId to serialize each user's trades,
       // then process groups in parallel (up to CONCURRENCY_LIMIT) with sequential
       // processing within each group.
       let successCount = 0;
@@ -221,7 +223,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       let blockedCount = 0;
       let processedActivations = 0;
 
-      const groups = this.groupByExchangeKey(activeActivations);
+      const groups = this.groupByUser(activeActivations);
       const chunks = this.chunkArray(groups, TradeExecutionTask.CONCURRENCY_LIMIT);
 
       for (const chunk of chunks) {
@@ -419,8 +421,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       current.strength * current.confidence > best.strength * best.confidence ? current : best
     );
 
-    // Resolve trading symbol (e.g. "BTC/USDT")
-    const symbol = await this.resolveTradingSymbol(bestSignal.coinId, activation);
+    // Resolve trading symbol (e.g. "BTC/USDT") — use default quote currency first
+    const symbol = await this.resolveTradingSymbol(bestSignal.coinId);
     if (!symbol) {
       this.logger.warn(`Could not resolve trading symbol for coin ${bestSignal.coinId}, skipping`);
       return null;
@@ -434,12 +436,31 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     }
     const { action, positionSide } = mapped;
 
+    // Dynamically select exchange key based on signal action
+    let exchangeKey;
+    try {
+      exchangeKey =
+        action === 'BUY'
+          ? await this.exchangeSelectionService.selectForBuy(activation.userId, symbol)
+          : await this.exchangeSelectionService.selectForSell(activation.userId, symbol);
+    } catch (error) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Exchange selection failed for activation ${activation.id}: ${err.message}`);
+      return null;
+    }
+
+    // Re-resolve symbol with correct exchange-specific quote currency if needed
+    const exchangeSlug = exchangeKey.exchange?.slug;
+    const finalSymbol = exchangeSlug
+      ? ((await this.resolveTradingSymbol(bestSignal.coinId, exchangeSlug)) ?? symbol)
+      : symbol;
+
     return {
       algorithmActivationId: activation.id,
       userId: activation.userId,
-      exchangeKeyId: activation.exchangeKeyId,
+      exchangeKeyId: exchangeKey.id,
       action,
-      symbol,
+      symbol: finalSymbol,
       quantity: 0,
       autoSize: true,
       portfolioValue,
@@ -502,18 +523,15 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Resolve a coin ID + exchange into a trading symbol (e.g. "BTC/USDT")
+   * Resolve a coin ID into a trading symbol (e.g. "BTC/USDT")
+   * @param exchangeSlug - Exchange slug for quote currency lookup (optional)
    */
-  private async resolveTradingSymbol(coinId: string, activation: AlgorithmActivation): Promise<string | null> {
+  private async resolveTradingSymbol(coinId: string, exchangeSlug?: string): Promise<string | null> {
     try {
-      const exchangeSlug = activation.exchangeKey?.exchange?.slug;
-      if (!exchangeSlug) {
-        this.logger.warn(`Activation ${activation.id} missing exchange relation, cannot resolve symbol`);
-        return null;
-      }
-
       const coin = await this.coinService.getCoinById(coinId);
-      const quoteCurrency = EXCHANGE_QUOTE_CURRENCY[exchangeSlug] || DEFAULT_QUOTE_CURRENCY;
+      const quoteCurrency = exchangeSlug
+        ? EXCHANGE_QUOTE_CURRENCY[exchangeSlug] || DEFAULT_QUOTE_CURRENCY
+        : DEFAULT_QUOTE_CURRENCY;
       return `${coin.symbol.toUpperCase()}/${quoteCurrency}`;
     } catch (error) {
       const err = toErrorInfo(error);
@@ -570,10 +588,16 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     return chunks;
   }
 
-  private groupByExchangeKey(activations: AlgorithmActivation[]): AlgorithmActivation[][] {
+  /**
+   * Groups activations by userId (not exchangeKeyId) because exchange keys are
+   * selected dynamically per-activation at trade time. Per-user serialization
+   * prevents concurrent portfolio/balance reads for the same user, while different
+   * users' trades are parallelized via CONCURRENCY_LIMIT chunking.
+   */
+  private groupByUser(activations: AlgorithmActivation[]): AlgorithmActivation[][] {
     const groups = new Map<string, AlgorithmActivation[]>();
     for (const activation of activations) {
-      const key = activation.exchangeKeyId;
+      const key = activation.userId;
       const group = groups.get(key) ?? [];
       group.push(activation);
       groups.set(key, group);

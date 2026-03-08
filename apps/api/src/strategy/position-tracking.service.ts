@@ -50,7 +50,8 @@ export class PositionTrackingService {
     quantity: number,
     price: number,
     side: 'buy' | 'sell',
-    positionSide: 'long' | 'short' = 'long'
+    positionSide: 'long' | 'short' = 'long',
+    exchangeKeyId?: string
   ): Promise<UserStrategyPosition> {
     let position = await this.getPosition(userId, strategyConfigId, symbol, positionSide);
 
@@ -75,6 +76,10 @@ export class PositionTrackingService {
       const newQuantity = currentQuantity + quantity;
       position.quantity = newQuantity;
       position.avgEntryPrice = newQuantity > 0 ? totalCost / newQuantity : 0;
+      // Track which exchange was used to open the position (for SELL routing)
+      if (exchangeKeyId) {
+        position.exchangeKeyId = exchangeKeyId;
+      }
     } else if (side === 'sell') {
       const soldValue = quantity * price;
       const costBasis = quantity * currentAvgPrice;

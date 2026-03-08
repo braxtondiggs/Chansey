@@ -210,14 +210,9 @@ export class UsersService {
     }
   }
 
-  async enrollInAlgoTrading(userId: string, capitalAllocationPercentage: number, exchangeKeyId: string): Promise<User> {
+  async enrollInAlgoTrading(userId: string, capitalAllocationPercentage: number): Promise<User> {
     try {
       const user = await this.user.findOneOrFail({ where: { id: userId }, relations: ['risk'] });
-
-      const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, userId);
-      if (!exchangeKey) {
-        throw new NotFoundException('Exchange key not found');
-      }
 
       user.algoTradingEnabled = true;
       user.algoCapitalAllocationPercentage = capitalAllocationPercentage;
@@ -302,15 +297,12 @@ export class UsersService {
         activeStrategies = strategies.length;
       }
 
-      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
-
       return {
         enabled: user.algoTradingEnabled,
         capitalAllocationPercentage: user.algoCapitalAllocationPercentage,
         enrolledAt: user.algoEnrolledAt,
         riskLevel: user.risk?.name || 'Not set',
-        activeStrategies,
-        exchangeKeyId: exchanges?.[0]?.id || null
+        activeStrategies
       };
     } catch (error: unknown) {
       const err = toErrorInfo(error);

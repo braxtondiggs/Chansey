@@ -15,7 +15,6 @@ import {
 import type { Algorithm } from './algorithm.entity';
 import { AlgorithmConfig } from './algorithm.entity';
 
-import type { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import type { User } from '../users/users.entity';
 
 /**
@@ -27,7 +26,6 @@ import type { User } from '../users/users.entity';
 @Entity('algorithm_activations')
 @Index(['userId', 'algorithmId'], { unique: true }) // User can activate algorithm once
 @Index(['userId', 'isActive']) // Query active algorithms
-@Index(['exchangeKeyId']) // Query by exchange
 export class AlgorithmActivation {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
@@ -63,20 +61,6 @@ export class AlgorithmActivation {
     description: 'Algorithm that is activated'
   })
   algorithm: Relation<Algorithm>;
-
-  @Column({ type: 'uuid' })
-  @ApiProperty({
-    description: 'Exchange key ID to use for trading',
-    example: 'd6ee401g-1eh2-6111-2235-dfh7h9876335'
-  })
-  exchangeKeyId: string;
-
-  @ManyToOne('ExchangeKey', { nullable: false, onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'exchangeKeyId' })
-  @ApiProperty({
-    description: 'Exchange key to use for trading'
-  })
-  exchangeKey: Relation<ExchangeKey>;
 
   @Column({ type: 'boolean', default: false })
   @ApiProperty({

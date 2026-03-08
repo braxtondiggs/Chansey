@@ -66,6 +66,7 @@ import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
+import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
@@ -135,6 +136,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     forwardRef(() => BalanceModule),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
+    ExchangeSelectionModule,
     forwardRef(() => OHLCModule),
     forwardRef(() => UsersModule),
     forwardRef(() => MarketRegimeModule),

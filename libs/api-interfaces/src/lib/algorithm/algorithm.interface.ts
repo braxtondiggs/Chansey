@@ -105,7 +105,6 @@ export interface AlgorithmActivation {
   id: string;
   userId: string;
   algorithmId: string;
-  exchangeKeyId: string;
   isActive: boolean;
   allocationPercentage: number;
   config?: Record<string, unknown>;

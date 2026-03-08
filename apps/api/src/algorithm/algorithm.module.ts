@@ -33,7 +33,6 @@ import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
-import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 import { Backtest } from '../order/backtest/backtest.entity';
@@ -58,7 +57,6 @@ import { UsersModule } from '../users/users.module';
     SharedCacheModule,
     IndicatorModule,
     forwardRef(() => ExchangeModule),
-    forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
     forwardRef(() => UsersModule),
     forwardRef(() => PortfolioModule),

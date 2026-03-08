@@ -14,6 +14,7 @@ import { AlgorithmActivationService } from '../../algorithm/services/algorithm-a
 import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-context-builder.service';
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
+import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
 import { DailyLossLimitGateService } from '../../strategy/daily-loss-limit-gate.service';
@@ -40,6 +41,7 @@ describe('TradeExecutionTask', () => {
   let mockSignalThrottle: any;
   let mockDailyLossLimitGate: any;
   let mockMetricsService: any;
+  let mockExchangeSelectionService: any;
 
   const mockJob = {
     id: 'job-1',
@@ -52,7 +54,6 @@ describe('TradeExecutionTask', () => {
       id: 'activation-1',
       userId: 'user-1',
       algorithmId: 'algo-1',
-      exchangeKeyId: 'key-1',
       allocationPercentage: 5,
       isActive: true,
       createdAt: new Date(),
@@ -62,9 +63,6 @@ describe('TradeExecutionTask', () => {
         name: 'Test Algorithm',
         strategyId: 'strategy-1',
         service: null
-      },
-      exchangeKey: {
-        exchange: { slug: 'binance_us' }
       },
       user: { id: 'user-1' },
       activate: jest.fn(),
@@ -177,6 +175,11 @@ describe('TradeExecutionTask', () => {
       recordDailyLossGateBlock: jest.fn()
     };
 
+    mockExchangeSelectionService = {
+      selectForBuy: jest.fn().mockResolvedValue({ id: 'key-1', exchange: { slug: 'binance_us' } }),
+      selectForSell: jest.fn().mockResolvedValue({ id: 'key-1', exchange: { slug: 'binance_us' } })
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeExecutionTask,
@@ -194,7 +197,8 @@ describe('TradeExecutionTask', () => {
         { provide: TradeCooldownService, useValue: mockTradeCooldownService },
         { provide: SignalThrottleService, useValue: mockSignalThrottle },
         { provide: DailyLossLimitGateService, useValue: mockDailyLossLimitGate },
-        { provide: MetricsService, useValue: mockMetricsService }
+        { provide: MetricsService, useValue: mockMetricsService },
+        { provide: ExchangeSelectionService, useValue: mockExchangeSelectionService }
       ]
     }).compile();
 
@@ -391,8 +395,9 @@ describe('TradeExecutionTask', () => {
       ['kraken', 'BTC/USD'],
       ['unknown_exchange', 'BTC/USDT']
     ])('should resolve quote currency for %s → %s', async (slug, expectedSymbol) => {
-      const activation = buildActivation({ exchangeKey: { exchange: { slug } } });
+      const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockExchangeSelectionService.selectForBuy.mockResolvedValue({ id: 'key-1', exchange: { slug } });
       configureActionableSignal();
 
       await task.process(mockJob);
@@ -400,9 +405,10 @@ describe('TradeExecutionTask', () => {
       expect(mockTradeExecutionService.executeTradeSignal.mock.calls[0][0].symbol).toBe(expectedSymbol);
     });
 
-    it('should skip when exchange relation is missing (null-safety)', async () => {
-      const activation = buildActivation({ exchangeKey: null });
+    it('should skip when exchange selection fails', async () => {
+      const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
+      mockExchangeSelectionService.selectForBuy.mockRejectedValue(new Error('No active exchange keys'));
       configureActionableSignal();
 
       const result: any = await task.process(mockJob);

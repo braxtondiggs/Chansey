@@ -13,7 +13,6 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { OptimizationRun } from '../../optimization/entities/optimization-run.entity';
 import { Backtest } from '../../order/backtest/backtest.entity';
 import { PaperTradingSession } from '../../order/paper-trading/entities/paper-trading-session.entity';
@@ -72,16 +71,6 @@ export class Pipeline {
   @JoinColumn({ name: 'strategyConfigId' })
   @ApiProperty({ description: 'Strategy configuration entity' })
   strategyConfig: StrategyConfig;
-
-  @IsUUID()
-  @Column({ type: 'uuid' })
-  @ApiProperty({ description: 'Exchange key for live replay and paper trading' })
-  exchangeKeyId: string;
-
-  @ManyToOne(() => ExchangeKey, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'exchangeKeyId' })
-  @ApiProperty({ description: 'Exchange key entity' })
-  exchangeKey: Relation<ExchangeKey>;
 
   @IsUUID()
   @IsOptional()
