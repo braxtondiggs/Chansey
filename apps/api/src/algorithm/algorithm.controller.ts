@@ -8,21 +8,21 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  UseGuards,
   Query,
-  Req
+  Req,
+  UseGuards
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Role } from '@chansey/api-interfaces';
 
 import { AlgorithmService } from './algorithm.service';
 import {
-  CreateAlgorithmDto,
-  UpdateAlgorithmDto,
+  ActivateAlgorithmDto,
   AlgorithmResponseDto,
+  CreateAlgorithmDto,
   DeleteResponseDto,
-  ActivateAlgorithmDto
+  UpdateAlgorithmDto
 } from './dto';
 import { AlgorithmRegistry } from './registry/algorithm-registry.service';
 import { AlgorithmActivationService } from './services/algorithm-activation.service';
@@ -289,7 +289,7 @@ export class AlgorithmController {
   @Post(':id/activate')
   @ApiOperation({
     summary: 'Activate an algorithm',
-    description: 'Activate an algorithm for automated trading with a specific exchange key.'
+    description: 'Activate an algorithm for automated trading. Exchange selection happens dynamically at trade time.'
   })
   @ApiParam({
     name: 'id',
@@ -302,7 +302,7 @@ export class AlgorithmController {
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Algorithm is already activated or exchange key not found.'
+    description: 'Algorithm is already activated.'
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
@@ -314,12 +314,7 @@ export class AlgorithmController {
     @Req() request: any
   ) {
     const userId = request.user.id;
-    return await this.algorithmActivationService.activate(
-      userId,
-      algorithmId,
-      activateAlgorithmDto.exchangeKeyId,
-      activateAlgorithmDto.config
-    );
+    return await this.algorithmActivationService.activate(userId, algorithmId, activateAlgorithmDto.config);
   }
 
   @Post(':id/deactivate')

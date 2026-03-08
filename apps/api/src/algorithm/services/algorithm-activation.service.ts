@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { AlgorithmActivation } from '../algorithm-activation.entity';
 import { AlgorithmConfig } from '../algorithm.entity';
 
@@ -11,41 +10,28 @@ import { AlgorithmConfig } from '../algorithm.entity';
  * AlgorithmActivationService
  *
  * Manages user-specific algorithm activations and deactivations.
- * Validates exchange keys and handles activation state transitions.
+ * Exchange key selection is handled dynamically at trade time by ExchangeSelectionService.
  */
 @Injectable()
 export class AlgorithmActivationService {
   constructor(
     @InjectRepository(AlgorithmActivation)
-    private readonly algorithmActivationRepository: Repository<AlgorithmActivation>,
-    private readonly exchangeKeyService: ExchangeKeyService
+    private readonly algorithmActivationRepository: Repository<AlgorithmActivation>
   ) {}
 
   /**
-   * Activate an algorithm for a user with a specific exchange key
+   * Activate an algorithm for a user
    * @param userId - User ID who is activating the algorithm
    * @param algorithmId - Algorithm ID to activate
-   * @param exchangeKeyId - Exchange key ID to use for trading
    * @param config - Optional user-specific configuration overrides
    * @returns The created or updated AlgorithmActivation
-   * @throws BadRequestException if already activated or exchange key not found
+   * @throws BadRequestException if already activated
    */
-  async activate(
-    userId: string,
-    algorithmId: string,
-    exchangeKeyId: string,
-    config?: AlgorithmConfig
-  ): Promise<AlgorithmActivation> {
-    // Validate that exchange key exists and belongs to the user
-    const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, userId);
-    if (!exchangeKey) {
-      throw new NotFoundException('Exchange key not found');
-    }
-
+  async activate(userId: string, algorithmId: string, config?: AlgorithmConfig): Promise<AlgorithmActivation> {
     // Check if activation already exists
     const existingActivation = await this.algorithmActivationRepository.findOne({
       where: { userId, algorithmId },
-      relations: ['algorithm', 'exchangeKey']
+      relations: ['algorithm']
     });
 
     if (existingActivation && existingActivation.isActive) {
@@ -54,7 +40,6 @@ export class AlgorithmActivationService {
 
     // If activation exists but was deactivated, reactivate it
     if (existingActivation) {
-      existingActivation.exchangeKeyId = exchangeKeyId;
       existingActivation.config = config || existingActivation.config;
       existingActivation.activate();
       return await this.algorithmActivationRepository.save(existingActivation);
@@ -64,7 +49,6 @@ export class AlgorithmActivationService {
     const activation = new AlgorithmActivation({
       userId,
       algorithmId,
-      exchangeKeyId,
       isActive: true,
       allocationPercentage: 5.0, // Default 5% allocation
       config,
@@ -86,7 +70,7 @@ export class AlgorithmActivationService {
   async deactivate(userId: string, algorithmId: string): Promise<AlgorithmActivation> {
     const activation = await this.algorithmActivationRepository.findOne({
       where: { userId, algorithmId },
-      relations: ['algorithm', 'exchangeKey']
+      relations: ['algorithm']
     });
 
     if (!activation) {
@@ -109,7 +93,7 @@ export class AlgorithmActivationService {
   async findUserActiveAlgorithms(userId: string): Promise<AlgorithmActivation[]> {
     return await this.algorithmActivationRepository.find({
       where: { userId, isActive: true },
-      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange'],
+      relations: ['algorithm'],
       order: { activatedAt: 'DESC' }
     });
   }
@@ -122,7 +106,7 @@ export class AlgorithmActivationService {
   async findUserAlgorithms(userId: string): Promise<AlgorithmActivation[]> {
     return await this.algorithmActivationRepository.find({
       where: { userId },
-      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange'],
+      relations: ['algorithm'],
       order: { createdAt: 'DESC' }
     });
   }
@@ -139,7 +123,7 @@ export class AlgorithmActivationService {
 
     const activation = await this.algorithmActivationRepository.findOne({
       where,
-      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange']
+      relations: ['algorithm']
     });
 
     if (!activation) {
@@ -156,7 +140,7 @@ export class AlgorithmActivationService {
   async findAllActiveAlgorithms(): Promise<AlgorithmActivation[]> {
     return await this.algorithmActivationRepository.find({
       where: { isActive: true },
-      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange', 'user']
+      relations: ['algorithm', 'user']
     });
   }
 

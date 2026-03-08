@@ -8,6 +8,7 @@ import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity
 import { AlgorithmPerformance } from '../../algorithm/algorithm-performance.entity';
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { AlgorithmModule } from '../../algorithm/algorithm.module';
+import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { Backtest, SimulatedOrderFill } from '../../order/backtest/backtest.entity';
 import { Order } from '../../order/order.entity';
 import { User } from '../../users/users.entity';
@@ -29,7 +30,8 @@ import { User } from '../../users/users.entity';
       Backtest,
       SimulatedOrderFill,
       Algorithm,
-      User
+      User,
+      ExchangeKey
     ]),
     forwardRef(() => AlgorithmModule)
   ],

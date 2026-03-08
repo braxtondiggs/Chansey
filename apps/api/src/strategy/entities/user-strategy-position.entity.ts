@@ -12,6 +12,7 @@ import {
 
 import { StrategyConfig } from './strategy-config.entity';
 
+import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { User } from '../../users/users.entity';
 
 /**
@@ -134,6 +135,17 @@ export class UserStrategyPosition {
     comment: 'Maintenance margin required to keep position open'
   })
   maintenanceMargin?: number | null;
+
+  @Column({
+    type: 'uuid',
+    nullable: true,
+    comment: 'Exchange key used to open this position (for SELL routing)'
+  })
+  exchangeKeyId?: string;
+
+  @ManyToOne(() => ExchangeKey, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'exchangeKeyId' })
+  exchangeKey?: ExchangeKey;
 
   @CreateDateColumn({
     type: 'timestamptz',

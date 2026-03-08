@@ -9,7 +9,6 @@ export interface CreatePipelineInput {
   name: string;
   description?: string;
   strategyConfigId: string;
-  exchangeKeyId: string;
   stageConfig: PipelineStageConfig;
   progressionRules?: PipelineProgressionRules;
   /** Optional initial stage to start at (defaults to OPTIMIZE) */

@@ -43,6 +43,7 @@ import { PaginatedUserActivityDto, UserActivityItemDto, UserAlgorithmSummaryDto 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { AlgorithmPerformance } from '../../algorithm/algorithm-performance.entity';
 import { Algorithm } from '../../algorithm/algorithm.entity';
+import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { Backtest, BacktestStatus, SimulatedOrderFill } from '../../order/backtest/backtest.entity';
 import { Order } from '../../order/order.entity';
 import { User } from '../../users/users.entity';
@@ -105,7 +106,9 @@ export class LiveTradeMonitoringService {
     @InjectRepository(Algorithm)
     private readonly algorithmRepo: Repository<Algorithm>,
     @InjectRepository(User)
-    private readonly userRepo: Repository<User>
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(ExchangeKey)
+    private readonly exchangeKeyRepo: Repository<ExchangeKey>
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -152,10 +155,7 @@ export class LiveTradeMonitoringService {
     const qb = this.activationRepo
       .createQueryBuilder('aa')
       .leftJoinAndSelect('aa.algorithm', 'a')
-      .leftJoinAndSelect('aa.user', 'u')
-      .leftJoinAndSelect('aa.exchangeKey', 'ek')
-      .leftJoin('ek.exchange', 'ex');
-
+      .leftJoinAndSelect('aa.user', 'u');
     // Join performance for metrics
     qb.leftJoin(
       (subQuery) =>
@@ -223,6 +223,26 @@ export class LiveTradeMonitoringService {
     const activationIds = activations.entities.map((aa) => aa.id);
     const orderStatsMap = await this.getBatchActivationOrderStats(activationIds);
 
+    // Batch-load exchange names for all unique users in one query
+    const uniqueUserIds = [...new Set(activations.entities.map((aa) => aa.userId))];
+    const exchangeNameMap = new Map<string, string>();
+    if (uniqueUserIds.length > 0) {
+      const userKeys = await this.exchangeKeyRepo.find({
+        where: uniqueUserIds.map((uid) => ({ userId: uid, isActive: true })),
+        relations: ['exchange']
+      });
+      for (const key of userKeys) {
+        const name = key.exchange?.name;
+        if (!name) continue;
+        const existing = exchangeNameMap.get(key.userId);
+        if (!existing) {
+          exchangeNameMap.set(key.userId, name);
+        } else if (!existing.includes(name)) {
+          exchangeNameMap.set(key.userId, `${existing}, ${name}`);
+        }
+      }
+    }
+
     // Map to DTOs
     const data: AlgorithmActivationListItemDto[] = activations.entities.map((aa, index) => {
       const raw = activations.raw[index];
@@ -246,7 +266,7 @@ export class LiveTradeMonitoringService {
         sharpeRatio: raw.sharpeRatio ? Number(raw.sharpeRatio) : undefined,
         maxDrawdown: raw.maxDrawdown ? Number(raw.maxDrawdown) : undefined,
         avgSlippageBps: orderStats.avgSlippageBps,
-        exchangeName: aa.exchangeKey?.exchange?.name || 'Unknown',
+        exchangeName: exchangeNameMap.get(aa.userId) || 'No exchanges',
         createdAt: aa.createdAt.toISOString()
       };
     });
