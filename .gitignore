@@ -58,3 +58,5 @@ Thumbs.db
 # Codex prompts (keep these)
 .codex/*
 !.codex/prompts/*
+
+.nx/polygraph
