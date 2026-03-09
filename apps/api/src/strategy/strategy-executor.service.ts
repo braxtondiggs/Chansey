@@ -12,6 +12,7 @@ import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
+import { ExitConfig } from '../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../shared/error.util';
 
 export interface TradingSignal {
@@ -20,6 +21,8 @@ export interface TradingSignal {
   quantity: number;
   price: number;
   reason?: string;
+  /** Strategy-provided exit configuration (per-signal > result-level) */
+  exitConfig?: Partial<ExitConfig>;
 }
 
 export interface MarketData {
@@ -156,7 +159,7 @@ export class StrategyExecutorService {
       surviving.sort((a, b) => b.confidence - a.confidence);
       const best = surviving[0];
 
-      const signal = this.mapAlgorithmSignal(best, context.coins, marketData, availableCapital);
+      const signal = this.mapAlgorithmSignal(best, context.coins, marketData, availableCapital, result.exitConfig);
       if (!signal) {
         this.logger.warn(`Strategy ${strategy.id}: could not map algorithm signal to trading signal`);
         return null;
@@ -255,7 +258,8 @@ export class StrategyExecutorService {
     signal: AlgorithmTradingSignal,
     coins: Array<{ id: string; symbol: string }>,
     marketData: MarketData[],
-    availableCapital: number
+    availableCapital: number,
+    resultExitConfig?: Partial<ExitConfig>
   ): TradingSignal | null {
     const coin = coins.find((c) => c.id === signal.coinId);
     if (!coin) {
@@ -302,12 +306,16 @@ export class StrategyExecutorService {
       }
     }
 
+    // Per-signal exitConfig takes priority over result-level exitConfig
+    const exitConfig = signal.exitConfig ?? resultExitConfig;
+
     return {
       action,
       symbol,
       quantity,
       price,
-      reason: signal.reason
+      reason: signal.reason,
+      exitConfig
     };
   }
 

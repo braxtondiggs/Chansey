@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -831,7 +832,34 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       price,
       confidence,
       reason,
-      metadata
+      metadata,
+      exitConfig: this.buildExitConfig(confluenceScore)
+    };
+  }
+
+  /**
+   * Build strategy-specific exit configuration scaled by confluence score.
+   * Higher confluence → tighter stops and wider take-profit (more confident trade).
+   */
+  private buildExitConfig(confluenceScore: ConfluenceScore): Partial<ExitConfig> {
+    const ratio =
+      confluenceScore.totalEnabled > 0 ? confluenceScore.confluenceCount / confluenceScore.totalEnabled : 0.5;
+
+    // Stop loss: 2-4% — tighter for higher confluence (more confident)
+    const stopLossValue = Math.max(1, 4 - ratio * 2); // ratio=1 → 2%, ratio=0.4 → 3.2%
+
+    // Take profit: 1.5:1 to 3:1 risk-reward scaled by confluence
+    const takeProfitRR = Math.max(1, 1.5 + ratio * 1.5); // ratio=1 → 3:1, ratio=0.4 → 2.1:1
+
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.RISK_REWARD,
+      takeProfitValue: takeProfitRR,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
