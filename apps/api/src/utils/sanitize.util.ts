@@ -171,3 +171,18 @@ export function isObjectSafe(obj: unknown, options: SanitizeOptions = {}): boole
 export function escapeLikeWildcards(input: string): string {
   return input.replace(/[%_\\]/g, '\\$&');
 }
+
+/**
+ * Escapes HTML special characters to prevent XSS in HTML templates.
+ * Handles `& < > " '` — safe for use in HTML element content and attribute values.
+ */
+export function escapeHtml(value: unknown): string {
+  if (value == null) return '';
+  const str = String(value);
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

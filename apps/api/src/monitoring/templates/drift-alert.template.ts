@@ -1,4 +1,5 @@
 import { Deployment } from '../../strategy/entities/deployment.entity';
+import { escapeHtml } from '../../utils/sanitize.util';
 import { DriftAlert } from '../entities/drift-alert.entity';
 
 /**
@@ -20,7 +21,7 @@ export class DriftAlertTemplate {
       low: 'ℹ️  LOW'
     }[alert.severity];
 
-    return `${severityPrefix}: ${alert.driftType.replace('_', ' ').toUpperCase()} Drift - ${deployment.strategyConfig?.name}`;
+    return `${severityPrefix}: ${alert.driftType.replace('_', ' ').toUpperCase()} Drift - ${escapeHtml(deployment.strategyConfig?.name)}`;
   }
 
   /**
@@ -51,12 +52,12 @@ export class DriftAlertTemplate {
 </head>
 <body>
   <div class="alert-box">
-    <h2 style="color: ${severityColor}; margin-top: 0;">${alert.severity.toUpperCase()} Drift Alert</h2>
+    <h2 style="color: ${severityColor}; margin-top: 0;">${escapeHtml(alert.severity.toUpperCase())} Drift Alert</h2>
 
-    <h3>Strategy: ${strategyName}</h3>
-    <p><strong>Deployment ID:</strong> ${deployment.id}</p>
-    <p><strong>Drift Type:</strong> ${alert.driftType.replace('_', ' ').toUpperCase()}</p>
-    <p><strong>Alert Time:</strong> ${alert.createdAt.toISOString()}</p>
+    <h3>Strategy: ${escapeHtml(strategyName)}</h3>
+    <p><strong>Deployment ID:</strong> ${escapeHtml(deployment.id)}</p>
+    <p><strong>Drift Type:</strong> ${escapeHtml(alert.driftType.replace('_', ' ').toUpperCase())}</p>
+    <p><strong>Alert Time:</strong> ${escapeHtml(alert.createdAt.toISOString())}</p>
   </div>
 
   <div style="margin: 20px 0;">
@@ -64,30 +65,30 @@ export class DriftAlertTemplate {
 
     <div class="metric">
       <div class="metric-label">Expected Value</div>
-      <div class="metric-value">${alert.expectedValue}</div>
+      <div class="metric-value">${escapeHtml(alert.expectedValue)}</div>
     </div>
 
     <div class="metric">
       <div class="metric-label">Actual Value</div>
-      <div class="metric-value" style="color: ${severityColor};">${alert.actualValue}</div>
+      <div class="metric-value" style="color: ${severityColor};">${escapeHtml(alert.actualValue)}</div>
     </div>
 
     <div class="metric">
       <div class="metric-label">Deviation</div>
-      <div class="metric-value">${Number(alert.deviationPercent).toFixed(1)}%</div>
+      <div class="metric-value">${escapeHtml(Number(alert.deviationPercent).toFixed(1))}%</div>
     </div>
   </div>
 
   <div class="recommendation">
     <h4 style="margin-top: 0;">📋 Recommendation</h4>
-    <p>${alert.metadata?.recommendation || 'Review strategy performance and consider appropriate action.'}</p>
+    <p>${escapeHtml(alert.metadata?.recommendation || 'Review strategy performance and consider appropriate action.')}</p>
   </div>
 
   <div style="margin: 20px 0;">
     <h3>Deployment Status</h3>
-    <p><strong>Days Live:</strong> ${deployment.daysLive}</p>
-    <p><strong>Status:</strong> ${deployment.status}</p>
-    <p><strong>Total Drift Alerts:</strong> ${deployment.driftAlertCount}</p>
+    <p><strong>Days Live:</strong> ${escapeHtml(deployment.daysLive)}</p>
+    <p><strong>Status:</strong> ${escapeHtml(deployment.status)}</p>
+    <p><strong>Total Drift Alerts:</strong> ${escapeHtml(deployment.driftAlertCount)}</p>
   </div>
 
   <div class="footer">

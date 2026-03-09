@@ -1,5 +1,6 @@
 import { forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
@@ -26,6 +27,7 @@ import {
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { Exchange } from '../../exchange/exchange.entity';
+import { NOTIFICATION_EVENTS } from '../../notification/interfaces/notification-events.interface';
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
@@ -91,6 +93,7 @@ export class TradeExecutionService {
     private readonly coinService: CoinService,
     private readonly stateMachineService: OrderStateMachineService,
     private readonly orderValidationService: OrderValidationService,
+    private readonly eventEmitter: EventEmitter2,
     @Optional()
     @Inject(forwardRef(() => PositionManagementService))
     private readonly positionManagementService?: PositionManagementService,
@@ -319,6 +322,17 @@ export class TradeExecutionService {
         }
       }
 
+      // Emit trade executed notification
+      this.eventEmitter.emit(NOTIFICATION_EVENTS.TRADE_EXECUTED, {
+        userId: signal.userId,
+        action: signal.action,
+        symbol: signal.symbol,
+        quantity: order.executedQuantity || effectiveQuantity,
+        price: order.price || 0,
+        exchangeName: exchangeKey.exchange.name,
+        orderId: order.id
+      });
+
       return order;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -327,6 +341,15 @@ export class TradeExecutionService {
         `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${err.message}`,
         err.stack
       );
+
+      // Emit trade error notification
+      this.eventEmitter.emit(NOTIFICATION_EVENTS.TRADE_ERROR, {
+        userId: signal.userId,
+        symbol: signal.symbol,
+        action: signal.action,
+        errorMessage: err.message
+      });
+
       throw error;
     }
   }

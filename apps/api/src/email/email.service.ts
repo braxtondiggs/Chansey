@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
 import { toErrorInfo } from '../shared/error.util';
+import { escapeHtml } from '../utils/sanitize.util';
 
 export interface EmailOptions {
   to: string;
@@ -66,7 +67,7 @@ export class EmailService {
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #4F46E5; margin: 0;">Welcome to Cymbit Trading!</h1>
           </div>
-          <p>Hi ${name},</p>
+          <p>Hi ${escapeHtml(name)},</p>
           <p>Thank you for signing up! Please verify your email address by clicking the button below:</p>
           <div style="text-align: center; margin: 30px 0;">
             <a href="${verificationUrl}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">
@@ -99,7 +100,7 @@ export class EmailService {
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #4F46E5; margin: 0;">Verification Code</h1>
           </div>
-          <p>Hi ${name},</p>
+          <p>Hi ${escapeHtml(name)},</p>
           <p>Your one-time verification code is:</p>
           <div style="text-align: center; margin: 30px 0;">
             <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; padding: 20px 30px; background-color: #F3F4F6; border-radius: 8px; display: inline-block; color: #1F2937;">
@@ -132,7 +133,7 @@ export class EmailService {
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #4F46E5; margin: 0;">Password Reset</h1>
           </div>
-          <p>Hi ${name},</p>
+          <p>Hi ${escapeHtml(name)},</p>
           <p>We received a request to reset your password. Click the button below to choose a new password:</p>
           <div style="text-align: center; margin: 30px 0;">
             <a href="${resetUrl}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">
@@ -167,7 +168,7 @@ export class EmailService {
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #4F46E5; margin: 0;">Welcome to Cymbit Trading!</h1>
           </div>
-          <p>Hi ${name},</p>
+          <p>Hi ${escapeHtml(name)},</p>
           <p>Your email has been verified and your account is now active. You're all set to start trading!</p>
           <h3 style="color: #1F2937;">Here's what you can do:</h3>
           <ul style="color: #4B5563;">

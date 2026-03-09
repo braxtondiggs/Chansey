@@ -21,8 +21,9 @@ import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
-import { Coin } from '@chansey/api-interfaces';
+import { Coin, NotificationEventType } from '@chansey/api-interfaces';
 
+import { NotificationSettingsService } from './notification-settings.service';
 import { SettingsService } from './settings.service';
 
 import { AuthService } from '../../../shared/services/auth.service';
@@ -83,6 +84,7 @@ export class SettingsComponent implements OnInit {
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
   private settingsService = inject(SettingsService);
+  private notificationSettingsService = inject(NotificationSettingsService);
   private authService = inject(AuthService);
   private fb = inject(FormBuilder);
 
@@ -95,6 +97,8 @@ export class SettingsComponent implements OnInit {
   readonly updateOpportunitySellingMutation = this.settingsService.useUpdateOpportunitySellingMutation();
   readonly futuresTradingQuery = this.settingsService.useFuturesTradingQuery();
   readonly updateFuturesTradingMutation = this.settingsService.useUpdateFuturesTradingMutation();
+  readonly notifPrefsQuery = this.notificationSettingsService.usePreferencesQuery();
+  readonly updateNotifPrefsMutation = this.notificationSettingsService.useUpdatePreferencesMutation();
 
   darkMode = this.layoutService.isDarkTheme();
   compactMode = false;
@@ -104,6 +108,71 @@ export class SettingsComponent implements OnInit {
   // Password dialog for disabling 2FA
   showPasswordDialog = signal(false);
   disablePassword = '';
+
+  // Notification preferences
+  prefChannelEmail = true;
+  prefChannelPush = false;
+  prefQuietEnabled = false;
+  prefQuietStart = 22;
+  prefQuietEnd = 7;
+  hours = Array.from({ length: 24 }, (_, i) => i);
+
+  notificationEventOptions: { key: string; label: string; description: string; enabled: boolean }[] = [
+    {
+      key: NotificationEventType.TRADE_EXECUTED,
+      label: 'Trade Executed',
+      description: 'When a trade is successfully placed',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.TRADE_ERROR,
+      label: 'Trade Errors',
+      description: 'When a trade fails to execute',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.RISK_BREACH,
+      label: 'Risk Breaches',
+      description: 'When risk limits are exceeded',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.DRIFT_ALERT,
+      label: 'Drift Alerts',
+      description: 'When strategy performance drifts',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.TRADING_HALTED,
+      label: 'Trading Halted',
+      description: 'When trading is stopped',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.DAILY_SUMMARY,
+      label: 'Daily Summary',
+      description: 'End-of-day trading recap',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.STRATEGY_DEPLOYED,
+      label: 'Strategy Deployed',
+      description: 'When a strategy goes live',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.STRATEGY_DEMOTED,
+      label: 'Strategy Demoted',
+      description: 'When a strategy is pulled back',
+      enabled: true
+    },
+    {
+      key: NotificationEventType.DAILY_LOSS_LIMIT,
+      label: 'Daily Loss Limit',
+      description: 'When daily loss limit is hit',
+      enabled: true
+    }
+  ];
 
   // Form groups
   notificationForm: FormGroup = this.fb.group({
@@ -122,6 +191,7 @@ export class SettingsComponent implements OnInit {
 
   futuresEnabled = false;
 
+  private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private opportunitySellingInitialized = false;
   protectedCoinSuggestions: Coin[] = [];
 
@@ -308,6 +378,20 @@ export class SettingsComponent implements OnInit {
       const data = this.futuresTradingQuery.data();
       if (data) {
         this.futuresEnabled = data.futuresEnabled;
+      }
+    });
+
+    effect(() => {
+      const prefs = this.notifPrefsQuery.data();
+      if (prefs) {
+        this.prefChannelEmail = prefs.channels.email;
+        this.prefChannelPush = prefs.channels.push;
+        this.prefQuietEnabled = prefs.quietHours.enabled;
+        this.prefQuietStart = prefs.quietHours.startHourUtc;
+        this.prefQuietEnd = prefs.quietHours.endHourUtc;
+        for (const opt of this.notificationEventOptions) {
+          opt.enabled = prefs.events[opt.key as NotificationEventType] ?? true;
+        }
       }
     });
   }
@@ -590,6 +674,81 @@ export class SettingsComponent implements OnInit {
     // In a real application, this would update the layout or UI density
     console.log('Compact mode:', this.compactMode);
     //this.saveSettings();
+  }
+
+  saveNotificationPreferences(): void {
+    if (this.saveDebounceTimer) {
+      clearTimeout(this.saveDebounceTimer);
+    }
+
+    this.saveDebounceTimer = setTimeout(() => {
+      const events: Record<string, boolean> = {};
+      for (const opt of this.notificationEventOptions) {
+        events[opt.key] = opt.enabled;
+      }
+
+      this.updateNotifPrefsMutation.mutate(
+        {
+          channels: { email: this.prefChannelEmail, push: this.prefChannelPush, sms: false },
+          events: events as any,
+          quietHours: {
+            enabled: this.prefQuietEnabled,
+            startHourUtc: this.prefQuietStart,
+            endHourUtc: this.prefQuietEnd
+          }
+        },
+        {
+          onSuccess: () => {
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Saved',
+              detail: 'Notification preferences updated'
+            });
+          },
+          onError: (error: Error) => {
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Error',
+              detail: error?.message || 'Failed to save'
+            });
+          }
+        }
+      );
+    }, 500);
+  }
+
+  saveEventPreference(): void {
+    this.saveNotificationPreferences();
+  }
+
+  togglePushNotifications(event: { checked: boolean }): void {
+    if (event.checked) {
+      if ('Notification' in window) {
+        Notification.requestPermission().then((permission) => {
+          if (permission === 'granted') {
+            this.prefChannelPush = true;
+            this.saveNotificationPreferences();
+          } else {
+            this.prefChannelPush = false;
+            this.messageService.add({
+              severity: 'warn',
+              summary: 'Permission Denied',
+              detail: 'Push notification permission was denied'
+            });
+          }
+        });
+      } else {
+        this.prefChannelPush = false;
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Not Supported',
+          detail: 'Your browser does not support push notifications'
+        });
+      }
+    } else {
+      this.prefChannelPush = false;
+      this.saveNotificationPreferences();
+    }
   }
 
   saveNotificationSettings(): void {
