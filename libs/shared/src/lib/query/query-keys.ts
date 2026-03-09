@@ -187,6 +187,20 @@ export const queryKeys = {
   },
 
   // --------------------------------------------------------------------------
+  // Notifications Domain
+  // --------------------------------------------------------------------------
+  notifications: {
+    all: ['notifications'] as const,
+    feed: (limit?: number) =>
+      limit
+        ? ([...queryKeys.notifications.all, 'feed', limit] as const)
+        : ([...queryKeys.notifications.all, 'feed'] as const),
+    unreadCount: () => [...queryKeys.notifications.all, 'unread-count'] as const,
+    preferences: () => [...queryKeys.notifications.all, 'preferences'] as const,
+    vapidKey: () => [...queryKeys.notifications.all, 'vapid-key'] as const
+  },
+
+  // --------------------------------------------------------------------------
   // Admin Domain
   // --------------------------------------------------------------------------
   admin: {
@@ -293,4 +307,5 @@ export type BacktestsQueryKeys = (typeof queryKeys)['backtests'];
 export type ComparisonReportsQueryKeys = (typeof queryKeys)['comparisonReports'];
 export type PricesQueryKeys = (typeof queryKeys)['prices'];
 export type TradingQueryKeys = (typeof queryKeys)['trading'];
+export type NotificationsQueryKeys = (typeof queryKeys)['notifications'];
 export type AdminQueryKeys = (typeof queryKeys)['admin'];

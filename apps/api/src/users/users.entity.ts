@@ -11,7 +11,7 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { Role } from '@chansey/api-interfaces';
+import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPreferences, Role } from '@chansey/api-interfaces';
 
 import type { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import {
@@ -141,6 +141,10 @@ export class User {
 
   @Column({ type: 'jsonb', default: () => `'${JSON.stringify(DEFAULT_OPPORTUNITY_SELLING_CONFIG)}'` })
   opportunitySellingConfig: OpportunitySellingUserConfig;
+
+  // Notification preferences
+  @Column({ type: 'jsonb', default: () => `'${JSON.stringify(DEFAULT_NOTIFICATION_PREFERENCES)}'` })
+  notificationPreferences: NotificationPreferences;
 
   // Runtime-only fields (not persisted to database)
   rememberMe: boolean;

@@ -2,7 +2,6 @@ import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/
 import { ApplicationConfig } from '@angular/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withEnabledBlockingInitialNavigation, withInMemoryScrolling } from '@angular/router';
-import { provideServiceWorker } from '@angular/service-worker';
 
 import { definePreset } from '@primeng/themes';
 import Aura from '@primeng/themes/aura';
@@ -74,15 +73,6 @@ const providers = [
     ...(environment.production ? [] : [withDevtools(() => ({ loadDevtools: true, buttonPosition: 'bottom-left' }))])
   )
 ];
-
-if (environment.production) {
-  providers.push(
-    provideServiceWorker('ngsw-worker.js', {
-      enabled: true,
-      registrationStrategy: 'registerWhenStable:30000'
-    })
-  );
-}
 
 export const appConfig: ApplicationConfig = {
   providers

@@ -17,6 +17,7 @@ export * from './lib/strategy/strategy-config.interface';
 export * from './lib/user';
 // Export backtest result interfaces (BacktestRun may be duplicated from api-interfaces, export others explicitly)
 export * from './lib/market/market-regime.interface';
+export * from './lib/notification';
 export * from './lib/paper-trading';
 export * from './lib/pipeline';
 export {

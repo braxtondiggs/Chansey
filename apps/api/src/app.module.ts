@@ -29,6 +29,7 @@ import { ExchangeModule } from './exchange/exchange.module';
 import { HealthModule } from './health/health.module';
 import { MarketRegimeModule } from './market-regime/market-regime.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationModule } from './notification/notification.module';
 import { OHLCModule } from './ohlc/ohlc.module';
 import { OptimizationModule } from './optimization/optimization.module';
 import { OrderModule } from './order/order.module';
@@ -119,6 +120,7 @@ import { TradingModule } from './trading/trading.module';
     HealthModule,
     MarketRegimeModule,
     MetricsModule,
+    NotificationModule,
     OHLCModule,
     OptimizationModule,
     OrderModule,

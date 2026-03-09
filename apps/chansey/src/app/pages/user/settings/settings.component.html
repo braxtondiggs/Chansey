@@ -194,17 +194,84 @@
       </p-tabpanel>
 
       <p-tabpanel value="1">
-        <p-panel header="General" [toggleable]="true">
-          <form [formGroup]="notificationForm">
-            <h3 class="text-md mr-1 mb-3 text-right font-semibold">Push</h3>
-            <div class="flex flex-row justify-between py-3">
-              <div class="mb-2 md:mb-0">
-                <div class="text-900 mb-1 text-lg font-semibold">Account Updates</div>
-                <div class="text-600 text-sm">Receive notifications for account-related activities</div>
+        <p-panel header="Notification Channels" [toggleable]="true">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-row items-center justify-between py-3">
+              <div>
+                <div class="text-900 mb-1 text-lg font-semibold">Email Notifications</div>
+                <div class="text-600 text-sm">Receive trade alerts and summaries via email</div>
               </div>
-              <p-toggleswitch formControlName="pushNotifications" class="mt-2 md:mt-0"></p-toggleswitch>
+              <p-toggleswitch [(ngModel)]="prefChannelEmail" (onChange)="saveNotificationPreferences()" />
             </div>
-          </form>
+            <div class="flex flex-row items-center justify-between py-3">
+              <div>
+                <div class="text-900 mb-1 text-lg font-semibold">Push Notifications</div>
+                <div class="text-600 text-sm">Browser push notifications for real-time alerts</div>
+              </div>
+              <p-toggleswitch [(ngModel)]="prefChannelPush" (onChange)="togglePushNotifications($event)" />
+            </div>
+            <div class="flex flex-row items-center justify-between py-3">
+              <div>
+                <div class="text-900 mb-1 text-lg font-semibold">SMS Notifications</div>
+                <div class="text-600 text-surface-400 text-sm">Coming soon</div>
+              </div>
+              <p-toggleswitch [ngModel]="false" [disabled]="true" />
+            </div>
+          </div>
+        </p-panel>
+
+        <p-panel header="Event Preferences" [toggleable]="true" class="mt-3">
+          <div class="flex flex-col gap-3">
+            @for (evt of notificationEventOptions; track evt.key) {
+              <div class="flex flex-row items-center justify-between py-2">
+                <div>
+                  <div class="text-900 font-semibold">{{ evt.label }}</div>
+                  <div class="text-600 text-xs">{{ evt.description }}</div>
+                </div>
+                <p-toggleswitch [(ngModel)]="evt.enabled" (onChange)="saveEventPreference()" />
+              </div>
+            }
+          </div>
+        </p-panel>
+
+        <p-panel header="Quiet Hours" [toggleable]="true" class="mt-3">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-row items-center justify-between py-3">
+              <div>
+                <div class="text-900 mb-1 text-lg font-semibold">Enable Quiet Hours</div>
+                <div class="text-600 text-sm">Suppress non-critical notifications during specified hours (UTC)</div>
+              </div>
+              <p-toggleswitch [(ngModel)]="prefQuietEnabled" (onChange)="saveNotificationPreferences()" />
+            </div>
+            @if (prefQuietEnabled) {
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <label class="text-900 font-semibold">From</label>
+                  <select
+                    class="border-surface rounded-lg border px-3 py-2"
+                    [(ngModel)]="prefQuietStart"
+                    (ngModelChange)="saveNotificationPreferences()"
+                  >
+                    @for (h of hours; track h) {
+                      <option [ngValue]="h">{{ h }}:00 UTC</option>
+                    }
+                  </select>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="text-900 font-semibold">To</label>
+                  <select
+                    class="border-surface rounded-lg border px-3 py-2"
+                    [(ngModel)]="prefQuietEnd"
+                    (ngModelChange)="saveNotificationPreferences()"
+                  >
+                    @for (h of hours; track h) {
+                      <option [ngValue]="h">{{ h }}:00 UTC</option>
+                    }
+                  </select>
+                </div>
+              </div>
+            }
+          </div>
         </p-panel>
       </p-tabpanel>
 

@@ -23,4 +23,13 @@ if (!environment.production) {
   }
 }
 
-bootstrapApplication(AppComponent, finalAppConfig).catch((err) => console.error(err));
+bootstrapApplication(AppComponent, finalAppConfig)
+  .then(() => {
+    // Register custom service worker for push notifications (production only)
+    if (environment.production && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/custom-sw.js').catch((err) => {
+        console.warn('Custom SW registration failed:', err);
+      });
+    }
+  })
+  .catch((err) => console.error(err));

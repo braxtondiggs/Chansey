@@ -53,7 +53,7 @@ libs/
 
 ```typescript
 @Controller('coins')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthenticationGuard)
 export class CoinController {
   constructor(private readonly coinService: CoinService) {}
 

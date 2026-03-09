@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -42,6 +43,7 @@ describe('TradeExecutionService', () => {
             { provide: CoinService, useValue: {} },
             { provide: OrderStateMachineService, useValue: {} },
             { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
+            { provide: EventEmitter2, useValue: { emit: jest.fn() } },
             {
               provide: slippageLimitsConfig.KEY,
               useValue: {
@@ -69,6 +71,7 @@ describe('TradeExecutionService', () => {
             { provide: CoinService, useValue: {} },
             { provide: OrderStateMachineService, useValue: {} },
             { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
+            { provide: EventEmitter2, useValue: { emit: jest.fn() } },
             {
               provide: slippageLimitsConfig.KEY,
               useValue: {
@@ -155,6 +158,10 @@ describe('TradeExecutionService', () => {
         {
           provide: OrderValidationService,
           useValue: { validateAlgorithmicOrderSize: jest.fn() }
+        },
+        {
+          provide: EventEmitter2,
+          useValue: { emit: jest.fn() }
         },
         {
           provide: slippageLimitsConfig.KEY,
@@ -322,6 +329,7 @@ describe('TradeExecutionService', () => {
           { provide: CoinService, useValue: mockCoinService },
           { provide: OrderStateMachineService, useValue: mockStateMachineService },
           { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
+          { provide: EventEmitter2, useValue: { emit: jest.fn() } },
           {
             provide: slippageLimitsConfig.KEY,
             useValue: {

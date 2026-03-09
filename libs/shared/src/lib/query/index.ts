@@ -37,6 +37,7 @@ export type {
   CoinsQueryKeys,
   ComparisonReportsQueryKeys,
   ExchangesQueryKeys,
+  NotificationsQueryKeys,
   PricesQueryKeys,
   ProfileQueryKeys,
   QueryKeys,

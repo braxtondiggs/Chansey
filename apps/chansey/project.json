@@ -29,6 +29,11 @@
             "glob": "**/*",
             "input": "node_modules/primeicons/fonts",
             "output": "/assets/fonts/primeicons"
+          },
+          {
+            "glob": "custom-sw.js",
+            "input": "apps/chansey/src",
+            "output": "/"
           }
         ],
         "styles": ["node_modules/primeicons/primeicons.css", "apps/chansey/src/styles.scss"],

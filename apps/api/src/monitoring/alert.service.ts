@@ -1,13 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { AuditEventType } from '@chansey/api-interfaces';
 
 import { DriftAlert } from './entities/drift-alert.entity';
 
 import { AuditService } from '../audit/audit.service';
+import { NOTIFICATION_EVENTS } from '../notification/interfaces/notification-events.interface';
 import { Deployment } from '../strategy/entities/deployment.entity';
 
 /**
@@ -33,7 +35,8 @@ export class AlertService {
     private readonly driftAlertRepo: Repository<DriftAlert>,
     @InjectRepository(Deployment)
     private readonly deploymentRepo: Repository<Deployment>,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   /**
@@ -42,7 +45,7 @@ export class AlertService {
   async sendDriftAlert(alert: DriftAlert): Promise<void> {
     const deployment = await this.deploymentRepo.findOne({
       where: { id: alert.deploymentId },
-      relations: ['strategyConfig']
+      relations: ['strategyConfig', 'strategyConfig.creator']
     });
 
     if (!deployment) {
@@ -73,9 +76,19 @@ export class AlertService {
       }
     });
 
-    // TODO: Integrate with notification service
-    // await this.emailService.send({ to: admin, subject: ..., body: message });
-    // await this.webhookService.post({ url: slackWebhook, payload: { text: message } });
+    // Emit drift alert notification to the strategy owner
+    const userId = deployment.strategyConfig?.creator?.id;
+    if (userId) {
+      this.eventEmitter.emit(NOTIFICATION_EVENTS.DRIFT_ALERT, {
+        userId,
+        driftType: alert.driftType,
+        severity: alert.severity,
+        message: alert.message,
+        strategyName: deployment.strategyConfig?.name || 'Unknown',
+        deploymentId: deployment.id,
+        deviationPercent: Number(alert.deviationPercent)
+      });
+    }
   }
 
   /**
@@ -96,7 +109,27 @@ export class AlertService {
     );
     this.logger.warn(summary);
 
-    // TODO: Send daily email summary
+    // Batch-fetch all deployments to avoid N+1 queries
+    const deploymentIds = [...new Set(alerts.map((a) => a.deploymentId))];
+    const deployments = await this.deploymentRepo.find({
+      where: { id: In(deploymentIds) },
+      relations: ['strategyConfig', 'strategyConfig.creator']
+    });
+    const deploymentMap = new Map(deployments.map((d) => [d.id, d]));
+
+    for (const deploymentId of deploymentIds) {
+      const deployment = deploymentMap.get(deploymentId);
+      const userId = deployment?.strategyConfig?.creator?.id;
+      if (userId) {
+        const userAlerts = alerts.filter((a) => a.deploymentId === deploymentId);
+        this.eventEmitter.emit(NOTIFICATION_EVENTS.DAILY_SUMMARY, {
+          userId,
+          totalTrades: 0,
+          totalAlerts: userAlerts.length,
+          criticalAlerts: userAlerts.filter((a) => a.severity === 'critical').length
+        });
+      }
+    }
   }
 
   /**
@@ -205,7 +238,28 @@ Critical Alerts Require Immediate Attention!
         `⚠️  ESCALATION: ${unresolvedAlerts.length} unresolved high/critical alerts older than 24 hours`
       );
 
-      // TODO: Send escalation notification to management
+      // Batch-fetch all deployments to avoid N+1 queries
+      const deploymentIds = [...new Set(unresolvedAlerts.map((a) => a.deploymentId))];
+      const deployments = await this.deploymentRepo.find({
+        where: { id: In(deploymentIds) },
+        relations: ['strategyConfig', 'strategyConfig.creator']
+      });
+      const deploymentMap = new Map(deployments.map((d) => [d.id, d]));
+
+      for (const alert of unresolvedAlerts) {
+        const deployment = deploymentMap.get(alert.deploymentId);
+        const userId = deployment?.strategyConfig?.creator?.id;
+        if (userId) {
+          this.eventEmitter.emit(NOTIFICATION_EVENTS.RISK_BREACH, {
+            userId,
+            metric: `Unresolved ${alert.driftType} alert`,
+            threshold: 24,
+            actual: Math.round((Date.now() - alert.createdAt.getTime()) / 3600000),
+            strategyName: deployment.strategyConfig?.name,
+            deploymentId: deployment.id
+          });
+        }
+      }
     }
   }
 }
