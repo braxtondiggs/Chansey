@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 
 import { NotificationEventType, NotificationPreferences, NotificationSeverity } from '@chansey/api-interfaces';
 
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { NotificationJobData, NotificationPayload } from './interfaces/notification-events.interface';
 import { NOTIFICATION_REDIS } from './notification-redis.provider';
 
@@ -135,7 +136,7 @@ export class NotificationService {
   /**
    * Update a user's notification preferences (partial merge)
    */
-  async updatePreferences(userId: string, partial: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
+  async updatePreferences(userId: string, partial: UpdatePreferencesDto): Promise<NotificationPreferences> {
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) {
       throw new Error(`User ${userId} not found`);

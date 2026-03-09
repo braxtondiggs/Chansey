@@ -1,7 +1,10 @@
+/* eslint-env serviceworker */
 /**
  * Custom Service Worker for push notification handling.
- * This works alongside the Angular service worker (ngsw-worker.js).
+ * Imports the Angular service worker so a single registration handles both
+ * PWA caching and push notifications.
  */
+importScripts('./ngsw-worker.js');
 
 self.addEventListener('push', (event) => {
   if (!event.data) return;

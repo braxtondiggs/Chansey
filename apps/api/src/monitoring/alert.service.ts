@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { AuditEventType } from '@chansey/api-interfaces';
 
@@ -109,13 +109,16 @@ export class AlertService {
     );
     this.logger.warn(summary);
 
-    // Emit daily summary notifications per affected deployment owner
+    // Batch-fetch all deployments to avoid N+1 queries
     const deploymentIds = [...new Set(alerts.map((a) => a.deploymentId))];
+    const deployments = await this.deploymentRepo.find({
+      where: { id: In(deploymentIds) },
+      relations: ['strategyConfig', 'strategyConfig.creator']
+    });
+    const deploymentMap = new Map(deployments.map((d) => [d.id, d]));
+
     for (const deploymentId of deploymentIds) {
-      const deployment = await this.deploymentRepo.findOne({
-        where: { id: deploymentId },
-        relations: ['strategyConfig', 'strategyConfig.creator']
-      });
+      const deployment = deploymentMap.get(deploymentId);
       const userId = deployment?.strategyConfig?.creator?.id;
       if (userId) {
         const userAlerts = alerts.filter((a) => a.deploymentId === deploymentId);
@@ -235,12 +238,16 @@ Critical Alerts Require Immediate Attention!
         `⚠️  ESCALATION: ${unresolvedAlerts.length} unresolved high/critical alerts older than 24 hours`
       );
 
-      // Emit risk breach notifications per affected deployment owner
+      // Batch-fetch all deployments to avoid N+1 queries
+      const deploymentIds = [...new Set(unresolvedAlerts.map((a) => a.deploymentId))];
+      const deployments = await this.deploymentRepo.find({
+        where: { id: In(deploymentIds) },
+        relations: ['strategyConfig', 'strategyConfig.creator']
+      });
+      const deploymentMap = new Map(deployments.map((d) => [d.id, d]));
+
       for (const alert of unresolvedAlerts) {
-        const deployment = await this.deploymentRepo.findOne({
-          where: { id: alert.deploymentId },
-          relations: ['strategyConfig', 'strategyConfig.creator']
-        });
+        const deployment = deploymentMap.get(alert.deploymentId);
         const userId = deployment?.strategyConfig?.creator?.id;
         if (userId) {
           this.eventEmitter.emit(NOTIFICATION_EVENTS.RISK_BREACH, {

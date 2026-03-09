@@ -35,7 +35,7 @@ export class NotificationController {
   @Patch('preferences')
   @UseGuards(JwtAuthenticationGuard)
   async updatePreferences(@Req() req: AuthenticatedRequest, @Body() dto: UpdatePreferencesDto) {
-    return this.notificationService.updatePreferences(req.user.id, dto as any);
+    return this.notificationService.updatePreferences(req.user.id, dto);
   }
 
   // ─── Push Subscriptions ────────────────────────────────────
@@ -70,8 +70,8 @@ export class NotificationController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string
   ) {
-    const take = Math.min(parseInt(limit || '20', 10), 50);
-    const skip = parseInt(offset || '0', 10);
+    const take = Math.min(Math.max(1, parseInt(limit || '20', 10) || 20), 50);
+    const skip = Math.max(0, parseInt(offset || '0', 10) || 0);
 
     const qb = this.notificationRepo
       .createQueryBuilder('n')
