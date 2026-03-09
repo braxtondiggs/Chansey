@@ -346,7 +346,8 @@ export class LiveTradingService implements OnApplicationShutdown {
             quantity: signal.quantity,
             marketType: 'futures',
             positionSide,
-            leverage: Number(strategy.defaultLeverage) || 1
+            leverage: Number(strategy.defaultLeverage) || 1,
+            exitConfig: signal.exitConfig
           };
 
           await this.tradeExecutionService.executeTradeSignal(tradeSignal);

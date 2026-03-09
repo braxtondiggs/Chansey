@@ -455,6 +455,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       current.strength * current.confidence > best.strength * best.confidence ? current : best
     );
 
+    // Per-signal exitConfig takes priority over result-level exitConfig
+    const exitConfig = bestSignal.exitConfig ?? result.exitConfig;
+
     // Resolve trading symbol (e.g. "BTC/USDT") — use default quote currency first
     const symbol = await this.resolveTradingSymbol(bestSignal.coinId);
     if (!symbol) {
@@ -501,7 +504,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       allocationPercentage: activation.allocationPercentage || 5.0,
       marketType: marketContext.marketType,
       leverage: marketContext.leverage,
-      positionSide
+      positionSide,
+      exitConfig
     };
   }
 

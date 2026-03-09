@@ -7,6 +7,7 @@ import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../exchange/exchange.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { withRetry } from '../../shared/retry.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 import { CoinService } from '../coin.service';
 
@@ -16,7 +17,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinSyncTask.name);
   private jobScheduled = false;
-  private readonly API_RATE_LIMIT_DELAY = 1000; // 1 second delay between API calls
+  private readonly API_RATE_LIMIT_DELAY = 2500; // 2.5 second delay between API batches
 
   constructor(
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
@@ -388,7 +389,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       let updatedCount = 0;
       let errorCount = 0;
-      const batchSize = 10;
+      const batchSize = 3;
 
       for (let i = 0; i < allCoins.length; i += batchSize) {
         const batch = allCoins.slice(i, i + batchSize);
@@ -396,12 +397,31 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
           batch.map(async ({ id, slug, symbol, geckoRank }) => {
             try {
               this.logger.debug(`Updating details for ${symbol} (${slug})`);
-              const coin = await this.gecko.coinId({
-                id: slug,
-                localization: false,
-                tickers: false
-              });
 
+              const retryResult = await withRetry(
+                () =>
+                  this.gecko.coinId({
+                    id: slug,
+                    localization: false,
+                    tickers: false
+                  }),
+                {
+                  maxRetries: 2,
+                  initialDelayMs: 3000,
+                  maxDelayMs: 10000,
+                  logger: this.logger,
+                  operationName: `coinId(${symbol})`
+                }
+              );
+
+              if (!retryResult.success) {
+                const { message } = toErrorInfo(retryResult.error);
+                this.logger.error(`Failed to update ${symbol}: ${message}`);
+                return { success: false, error: message };
+              }
+
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guarded by retryResult.success check
+              const coin = retryResult.result!;
               const md = coin.market_data;
 
               await this.coin.update(id, {
@@ -524,9 +544,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
               this.logger.debug(`Successfully updated ${symbol}`);
               return { success: true };
             } catch (error: unknown) {
-              const err = toErrorInfo(error);
-              this.logger.error(`Failed to update ${symbol}: ${err.message}`);
-              return { success: false, error: err.message };
+              const { message } = toErrorInfo(error);
+              this.logger.error(`Failed to update ${symbol}: ${message}`);
+              return { success: false, error: message };
             }
           })
         );

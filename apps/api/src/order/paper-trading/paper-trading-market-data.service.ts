@@ -9,6 +9,7 @@ import { paperTradingConfig } from './paper-trading.config';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
+import { isTransientError, withRetry } from '../../shared/retry.util';
 import type { User } from '../../users/users.entity';
 
 export interface PriceData {
@@ -64,18 +65,27 @@ export class PaperTradingMarketDataService {
       return cached;
     }
 
-    try {
-      // Format symbol for exchange
-      const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
+    // Format symbol for exchange
+    const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
 
-      // Get client (public if no user)
-      const client = user
-        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-        : await this.exchangeManager.getPublicClient(exchangeSlug);
+    // Get client (public if no user)
+    const client = user
+      ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
+      : await this.exchangeManager.getPublicClient(exchangeSlug);
 
-      // Fetch ticker
-      const ticker = await client.fetchTicker(formattedSymbol);
+    // Fetch ticker with retry
+    const result = await withRetry(() => client.fetchTicker(formattedSymbol), {
+      maxRetries: 3,
+      initialDelayMs: 2000,
+      maxDelayMs: 8000,
+      backoffMultiplier: 2,
+      isRetryable: isTransientError,
+      logger: this.logger,
+      operationName: `fetchTicker(${exchangeSlug}:${symbol})`
+    });
 
+    if (result.success) {
+      const ticker = result.result!;
       const priceData: PriceData = {
         symbol,
         price: ticker.last ?? ticker.close ?? 0,
@@ -88,12 +98,27 @@ export class PaperTradingMarketDataService {
       // Cache the result
       await this.cacheManager.set(cacheKey, priceData, this.cacheTtlMs);
 
+      // Write stale fallback cache with longer TTL
+      const staleKey = `${cacheKey}:stale`;
+      await this.cacheManager.set(staleKey, priceData, 5 * 60 * 1000);
+
       return priceData;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to fetch price for ${symbol} from ${exchangeSlug}: ${err.message}`);
-      throw error;
     }
+
+    // All retries exhausted — fall back to stale cache
+    const staleKey = `${cacheKey}:stale`;
+    const stale = await this.cacheManager.get<PriceData>(staleKey);
+    if (stale) {
+      this.logger.warn(
+        `All retries exhausted fetching price for ${symbol} from ${exchangeSlug}. Using stale cached price.`
+      );
+      return { ...stale, source: `${stale.source}:stale` };
+    }
+
+    this.logger.error(
+      `Failed to fetch price for ${symbol} from ${exchangeSlug} after retries, and no stale cache fallback`
+    );
+    throw result.error;
   }
 
   /**
@@ -124,16 +149,27 @@ export class PaperTradingMarketDataService {
       return results;
     }
 
-    try {
-      // Get client
-      const client = user
-        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-        : await this.exchangeManager.getPublicClient(exchangeSlug);
+    // Get client
+    const client = user
+      ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
+      : await this.exchangeManager.getPublicClient(exchangeSlug);
 
-      // Fetch all tickers (more efficient than individual calls)
-      const tickers = await client.fetchTickers(
-        uncachedSymbols.map((s) => this.exchangeManager.formatSymbol(exchangeSlug, s))
-      );
+    // Fetch all tickers with retry
+    const result = await withRetry(
+      () => client.fetchTickers(uncachedSymbols.map((s) => this.exchangeManager.formatSymbol(exchangeSlug, s))),
+      {
+        maxRetries: 3,
+        initialDelayMs: 2000,
+        maxDelayMs: 8000,
+        backoffMultiplier: 2,
+        isRetryable: isTransientError,
+        logger: this.logger,
+        operationName: `fetchTickers(${exchangeSlug})`
+      }
+    );
+
+    if (result.success) {
+      const tickers = result.result!;
 
       for (const symbol of uncachedSymbols) {
         const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
@@ -154,15 +190,41 @@ export class PaperTradingMarketDataService {
           // Cache the result
           const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}`;
           await this.cacheManager.set(cacheKey, priceData, this.cacheTtlMs);
+
+          // Write stale fallback cache with longer TTL
+          const staleKey = `${cacheKey}:stale`;
+          await this.cacheManager.set(staleKey, priceData, 5 * 60 * 1000);
         }
       }
 
       return results;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to fetch prices from ${exchangeSlug}: ${err.message}`);
-      throw error;
     }
+
+    // All retries exhausted — fall back to stale cache
+    this.logger.warn(
+      `All retries exhausted fetching prices from ${exchangeSlug}. ` +
+        `Falling back to stale cached prices for ${uncachedSymbols.length} symbol(s).`
+    );
+
+    let staleMisses = 0;
+    for (const symbol of uncachedSymbols) {
+      const staleKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
+      const stale = await this.cacheManager.get<PriceData>(staleKey);
+      if (stale) {
+        results.set(symbol, { ...stale, source: `${stale.source}:stale` });
+      } else {
+        staleMisses++;
+      }
+    }
+
+    if (staleMisses > 0) {
+      throw new Error(
+        `Failed to fetch prices from ${exchangeSlug} after retries, ` +
+          `and ${staleMisses} symbol(s) have no stale cache fallback`
+      );
+    }
+
+    return results;
   }
 
   /**
@@ -356,6 +418,7 @@ export class PaperTradingMarketDataService {
   async clearCache(exchangeSlug: string, symbol?: string): Promise<void> {
     if (symbol) {
       await this.cacheManager.del(`paper-trading:price:${exchangeSlug}:${symbol}`);
+      await this.cacheManager.del(`paper-trading:price:${exchangeSlug}:${symbol}:stale`);
       await this.cacheManager.del(`paper-trading:orderbook:${exchangeSlug}:${symbol}`);
     }
     // Note: cache-manager doesn't support pattern-based deletion easily

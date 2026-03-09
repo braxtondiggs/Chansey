@@ -1,3 +1,5 @@
+import { ExitConfig } from '../../order/interfaces/exit-config.interface';
+
 /**
  * Types of signals an algorithm can generate
  */
@@ -54,6 +56,12 @@ export interface TradingSignal {
    * Additional metadata
    */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Strategy-provided exit configuration for this signal.
+   * When present, overrides result-level and default exit configs.
+   */
+  exitConfig?: Partial<ExitConfig>;
 }
 
 /**
@@ -106,6 +114,12 @@ export interface AlgorithmResult {
    * Additional metadata
    */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Strategy-provided exit configuration applied to all signals in this result.
+   * Per-signal exitConfig takes priority over this.
+   */
+  exitConfig?: Partial<ExitConfig>;
 
   /**
    * Timestamp of the execution

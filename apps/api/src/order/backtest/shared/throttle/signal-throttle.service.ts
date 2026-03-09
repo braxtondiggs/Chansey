@@ -23,7 +23,8 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
  * 2. Cap daily trade frequency (rolling 24h window)
  * 3. Floor sell percentages (prevent micro-sell fragmentation)
  *
- * Risk-control signals (STOP_LOSS, TAKE_PROFIT) always bypass throttling.
+ * Risk-control signals (STOP_LOSS, TAKE_PROFIT) bypass daily cap and min sell %,
+ * but respect per-coin+direction cooldowns to prevent duplicate signal spam.
  *
  * State is passed explicitly to support checkpoint/resume without service-level mutability.
  */
@@ -86,8 +87,17 @@ export class SignalThrottleService {
         continue;
       }
 
-      // Risk-control signals always pass — don't set cooldown or count against daily limit
+      // Risk-control signals bypass daily cap & min sell %, but respect cooldown
       if (signal.originalType && THROTTLE_BYPASS_TYPES.has(signal.originalType)) {
+        if (config.cooldownMs > 0) {
+          const direction = signal.action as 'BUY' | 'SELL';
+          const key: CooldownKey = `${signal.coinId}:${direction}`;
+          const lastTime = state.lastSignalTime[key];
+          if (lastTime !== undefined && currentTimestampMs - lastTime < config.cooldownMs) {
+            continue; // Duplicate risk-control signal — suppress
+          }
+          state.lastSignalTime[key] = currentTimestampMs;
+        }
         accepted.push(signal);
         continue;
       }
@@ -154,7 +164,8 @@ export class SignalThrottleService {
       quantity: signal.quantity,
       reason: signal.reason,
       confidence: signal.confidence,
-      originalType: signal.type
+      originalType: signal.type,
+      exitConfig: signal.exitConfig
     };
   }
 }

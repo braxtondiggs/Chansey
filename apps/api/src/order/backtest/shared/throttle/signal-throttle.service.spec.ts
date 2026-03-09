@@ -162,13 +162,30 @@ describe('SignalThrottleService', () => {
       it.each([
         ['STOP_LOSS', AlgoSignalType.STOP_LOSS, () => makeStopLoss('btc')],
         ['TAKE_PROFIT', AlgoSignalType.TAKE_PROFIT, () => makeTakeProfit('btc')]
-      ] as const)('%s bypasses cooldown and daily limit', (_label, expectedType, makeSignal) => {
+      ] as const)('%s bypasses daily limit', (_label, expectedType, makeSignal) => {
         const state = service.createState();
-        service.filterSignals([makeBuy('btc')], state, strictConfig, BASE_TIME);
+        // Fill daily cap with a normal trade
+        const noCooldownStrict: SignalThrottleConfig = { ...strictConfig, cooldownMs: 0 };
+        service.filterSignals([makeBuy('btc')], state, noCooldownStrict, BASE_TIME);
 
-        const result = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME + ONE_HOUR);
+        // Risk-control signal still passes despite daily cap reached
+        const result = service.filterSignals([makeSignal()], state, noCooldownStrict, BASE_TIME + ONE_HOUR);
         expect(result).toHaveLength(1);
         expect(result[0].originalType).toBe(expectedType);
+      });
+
+      it.each([
+        ['STOP_LOSS', () => makeStopLoss('btc')],
+        ['TAKE_PROFIT', () => makeTakeProfit('btc')]
+      ] as const)('%s respects cooldown', (_label, makeSignal) => {
+        const state = service.createState();
+        // First risk-control signal passes
+        const result1 = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME);
+        expect(result1).toHaveLength(1);
+
+        // Second within cooldown is suppressed
+        const result2 = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME + ONE_HOUR);
+        expect(result2).toHaveLength(0);
       });
 
       it('bypass signals do not count against daily limit', () => {
@@ -182,12 +199,23 @@ describe('SignalThrottleService', () => {
         expect(result).toHaveLength(1);
       });
 
-      it('bypass signals do not set cooldown', () => {
+      it('bypass signals set cooldown — blocks subsequent normal SELL for same coin', () => {
         const state = service.createState();
         service.filterSignals([makeStopLoss('btc')], state, config, BASE_TIME);
 
+        // Normal SELL for same coin+direction within cooldown is suppressed
         const result = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
-        expect(result).toHaveLength(1);
+        expect(result).toHaveLength(0);
+      });
+
+      it('bypass signals pass freely when cooldownMs is 0', () => {
+        const state = service.createState();
+        const noCooldown: SignalThrottleConfig = { cooldownMs: 0, maxTradesPerDay: 10, minSellPercent: 0 };
+
+        const r1 = service.filterSignals([makeStopLoss('btc')], state, noCooldown, BASE_TIME);
+        const r2 = service.filterSignals([makeStopLoss('btc')], state, noCooldown, BASE_TIME + 1);
+        expect(r1).toHaveLength(1);
+        expect(r2).toHaveLength(1);
       });
     });
 
@@ -293,6 +321,54 @@ describe('SignalThrottleService', () => {
         minSellPercent: -Infinity
       });
       expect(config).toEqual({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 });
+    });
+  });
+
+  describe('toThrottleSignal', () => {
+    it.each([
+      [AlgoSignalType.BUY, 'BUY'],
+      [AlgoSignalType.SELL, 'SELL'],
+      [AlgoSignalType.STOP_LOSS, 'SELL'],
+      [AlgoSignalType.TAKE_PROFIT, 'SELL'],
+      [AlgoSignalType.SHORT_ENTRY, 'OPEN_SHORT'],
+      [AlgoSignalType.SHORT_EXIT, 'CLOSE_SHORT'],
+      [AlgoSignalType.HOLD, 'HOLD']
+    ] as const)('maps %s → %s', (type, expectedAction) => {
+      const result = service.toThrottleSignal({
+        type,
+        coinId: 'btc',
+        reason: 'test',
+        confidence: 0.5,
+        strength: 0.5
+      });
+      expect(result.action).toBe(expectedAction);
+      expect(result.coinId).toBe('btc');
+      expect(result.originalType).toBe(type);
+    });
+
+    it('preserves optional quantity field', () => {
+      const result = service.toThrottleSignal({
+        type: AlgoSignalType.SELL,
+        coinId: 'eth',
+        reason: 'sell all',
+        confidence: 1.0,
+        strength: 1.0,
+        quantity: 2.5
+      });
+      expect(result.quantity).toBe(2.5);
+    });
+
+    it('preserves exitConfig when present', () => {
+      const exitConfig = { enableStopLoss: true, stopLossValue: 5 };
+      const result = service.toThrottleSignal({
+        type: AlgoSignalType.BUY,
+        coinId: 'btc',
+        reason: 'test',
+        confidence: 0.8,
+        strength: 0.8,
+        exitConfig
+      });
+      expect(result.exitConfig).toEqual(exitConfig);
     });
   });
 

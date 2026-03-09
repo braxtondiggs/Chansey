@@ -94,6 +94,7 @@ import {
   OpportunitySellingUserConfig
 } from '../interfaces/opportunity-selling.interface';
 import { PositionAnalysisService } from '../services/position-analysis.service';
+import { resolveExitConfig } from '../utils/exit-config-merge.util';
 
 export interface MarketData {
   timestamp: Date;
@@ -113,6 +114,8 @@ export interface TradingSignal {
   metadata?: Record<string, any>;
   /** Preserves the original algorithm signal type (e.g. STOP_LOSS, TAKE_PROFIT) */
   originalType?: AlgoSignalType;
+  /** Strategy-provided exit configuration (per-signal > result-level) */
+  exitConfig?: Partial<ExitConfig>;
 }
 
 interface ExecuteOptions {
@@ -221,7 +224,7 @@ interface ProcessExitSignalsOptions {
 // Note: Seeded random generation now uses SeededRandom class for checkpoint support
 // CheckpointResults is imported from backtest-pacing.interface.ts
 
-const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
+const mapStrategySignal = (signal: StrategySignal, resultExitConfig?: Partial<ExitConfig>): TradingSignal => {
   let action: TradingSignal['action'];
   switch (signal.type) {
     case AlgoSignalType.BUY:
@@ -242,6 +245,9 @@ const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
       action = 'HOLD';
   }
 
+  // Per-signal exitConfig takes priority over result-level exitConfig
+  const exitConfig = signal.exitConfig ?? resultExitConfig;
+
   return {
     action,
     coinId: signal.coinId,
@@ -250,7 +256,8 @@ const mapStrategySignal = (signal: StrategySignal): TradingSignal => {
     reason: signal.reason,
     confidence: signal.confidence,
     metadata: signal.metadata,
-    originalType: signal.type
+    originalType: signal.type,
+    exitConfig
   };
 };
 
@@ -920,7 +927,9 @@ export class BacktestEngine {
         }
 
         if (result.success && result.signals?.length) {
-          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+          strategySignals = result.signals
+            .map((s) => mapStrategySignal(s, result.exitConfig))
+            .filter((signal) => signal.action !== 'HOLD');
         }
         watchdog.recordSuccess();
         consecutiveErrors = 0;
@@ -979,7 +988,10 @@ export class BacktestEngine {
           price: marketData.prices.get(strategySignal.coinId),
           reason: strategySignal.reason,
           confidence: strategySignal.confidence,
-          payload: strategySignal.metadata,
+          payload: {
+            ...strategySignal.metadata,
+            ...(strategySignal.exitConfig ? { strategyExitConfig: strategySignal.exitConfig } : {})
+          },
           backtest
         };
         signals.push(signalRecord);
@@ -1065,7 +1077,13 @@ export class BacktestEngine {
           // Update exit tracker: register new BUY positions, reduce on SELL
           if (exitTracker && trade.price != null && trade.quantity != null) {
             if (strategySignal.action === 'BUY') {
-              exitTracker.onBuy(strategySignal.coinId, trade.price, trade.quantity);
+              exitTracker.onBuy(
+                strategySignal.coinId,
+                trade.price,
+                trade.quantity,
+                undefined,
+                strategySignal.exitConfig
+              );
             } else if (strategySignal.action === 'SELL') {
               exitTracker.onSell(strategySignal.coinId, trade.quantity);
             }
@@ -1726,7 +1744,9 @@ export class BacktestEngine {
         );
 
         if (result.success && result.signals?.length) {
-          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+          strategySignals = result.signals
+            .map((s) => mapStrategySignal(s, result.exitConfig))
+            .filter((signal) => signal.action !== 'HOLD');
         }
         watchdog.recordSuccess();
         consecutiveErrors = 0;
@@ -1785,7 +1805,10 @@ export class BacktestEngine {
           price: marketData.prices.get(strategySignal.coinId),
           reason: strategySignal.reason,
           confidence: strategySignal.confidence,
-          payload: strategySignal.metadata,
+          payload: {
+            ...strategySignal.metadata,
+            ...(strategySignal.exitConfig ? { strategyExitConfig: strategySignal.exitConfig } : {})
+          },
           backtest
         };
         signals.push(signalRecord);
@@ -1832,7 +1855,13 @@ export class BacktestEngine {
           // Update exit tracker: register new BUY positions, reduce on SELL
           if (exitTracker && trade.price != null && trade.quantity != null) {
             if (strategySignal.action === 'BUY') {
-              exitTracker.onBuy(strategySignal.coinId, trade.price, trade.quantity);
+              exitTracker.onBuy(
+                strategySignal.coinId,
+                trade.price,
+                trade.quantity,
+                undefined,
+                strategySignal.exitConfig
+              );
             } else if (strategySignal.action === 'SELL') {
               exitTracker.onSell(strategySignal.coinId, trade.quantity);
             }
@@ -2679,7 +2708,7 @@ export class BacktestEngine {
    */
   private resolveExitTracker(opts: ResolveExitTrackerOptions): BacktestExitTracker | null {
     const effectiveExitConfig = opts.exitConfig
-      ? { ...DEFAULT_BACKTEST_EXIT_CONFIG, ...opts.exitConfig }
+      ? resolveExitConfig(DEFAULT_BACKTEST_EXIT_CONFIG, opts.exitConfig)
       : opts.enableHardStopLoss !== false
         ? { ...DEFAULT_BACKTEST_EXIT_CONFIG, stopLossValue: (opts.hardStopLossPercent ?? 0.05) * 100 }
         : null;
@@ -3601,7 +3630,9 @@ export class BacktestEngine {
       try {
         const result = await this.algorithmRegistry.executeAlgorithm(config.algorithmId, context);
         if (result.success && result.signals?.length) {
-          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+          strategySignals = result.signals
+            .map((s) => mapStrategySignal(s, result.exitConfig))
+            .filter((signal) => signal.action !== 'HOLD');
         }
       } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {
@@ -4062,7 +4093,9 @@ export class BacktestEngine {
       try {
         const result = await this.algorithmRegistry.executeAlgorithm(config.algorithmId, context);
         if (result.success && result.signals?.length) {
-          strategySignals = result.signals.map(mapStrategySignal).filter((signal) => signal.action !== 'HOLD');
+          strategySignals = result.signals
+            .map((s) => mapStrategySignal(s, result.exitConfig))
+            .filter((signal) => signal.action !== 'HOLD');
         }
       } catch (error: unknown) {
         if (error instanceof AlgorithmNotRegisteredException) {

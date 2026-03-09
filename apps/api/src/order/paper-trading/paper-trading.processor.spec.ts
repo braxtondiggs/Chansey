@@ -462,6 +462,26 @@ describe('PaperTradingProcessor', () => {
     expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-nonexistent');
   });
 
+  it('silently returns on subsequent ticks for a missing session (no repeated cleanup)', async () => {
+    const { processor, sessionRepository, paperTradingService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(null);
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-gone',
+      userId: 'user-1'
+    });
+
+    await processor.process(job);
+    expect(paperTradingService.removeTickJobs).toHaveBeenCalledTimes(1);
+
+    paperTradingService.removeTickJobs.mockClear();
+
+    await processor.process(job);
+    expect(paperTradingService.removeTickJobs).not.toHaveBeenCalled();
+  });
+
   it('removes tick jobs when session is externally marked as FAILED', async () => {
     const session = {
       id: 'session-failed',
@@ -482,6 +502,35 @@ describe('PaperTradingProcessor', () => {
     await processor.process(job);
 
     expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-failed');
+    expect(engineService.processTick).not.toHaveBeenCalled();
+  });
+
+  it('silently returns on subsequent ticks for a FAILED session (no repeated cleanup)', async () => {
+    const session = {
+      id: 'session-failed-dup',
+      status: PaperTradingStatus.FAILED,
+      initialCapital: 1000
+    };
+
+    const { processor, sessionRepository, paperTradingService, engineService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-failed-dup',
+      userId: 'user-1'
+    });
+
+    // First tick: should log warning and remove jobs
+    await processor.process(job);
+    expect(paperTradingService.removeTickJobs).toHaveBeenCalledTimes(1);
+
+    paperTradingService.removeTickJobs.mockClear();
+
+    // Second tick: should silently return
+    await processor.process(job);
+    expect(paperTradingService.removeTickJobs).not.toHaveBeenCalled();
     expect(engineService.processTick).not.toHaveBeenCalled();
   });
 

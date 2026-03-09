@@ -2,6 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import {
+  ExitConfig,
+  StopLossType,
+  TakeProfitType,
+  TrailingActivationType,
+  TrailingType
+} from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -88,10 +95,14 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
             )
           ).values;
 
+        // Build strategy-provided exit config from ATR parameters
+        const exitConfig = this.buildExitConfig(config, atr[priceHistory.length - 1]);
+
         // Generate entry signals based on trend-flip detection, then stop signals
         if (config.tradeDirection === 'long' || config.tradeDirection === 'both') {
           const longEntry = this.generateLongEntrySignal(coin.id, coin.symbol, priceHistory, atr, config);
           if (longEntry && longEntry.confidence >= config.minConfidence) {
+            longEntry.exitConfig = exitConfig;
             signals.push(longEntry);
           }
 
@@ -104,6 +115,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         if (config.tradeDirection === 'short' || config.tradeDirection === 'both') {
           const shortEntry = this.generateShortEntrySignal(coin.id, coin.symbol, priceHistory, atr, config);
           if (shortEntry && shortEntry.confidence >= config.minConfidence) {
+            shortEntry.exitConfig = exitConfig;
             signals.push(shortEntry);
           }
 
@@ -118,11 +130,14 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      // Result-level exitConfig from the last config computed (covers all coins uniformly)
+      const resultExitConfig = this.buildExitConfig(this.getConfigWithDefaults(context.config));
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        { algorithm: this.name, version: this.version, signalsGenerated: signals.length },
+        resultExitConfig
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`ATR Trailing Stop strategy execution failed: ${err.message}`, err.stack);
@@ -131,12 +146,35 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   }
 
   /**
+   * Build strategy-specific exit configuration from ATR parameters.
+   * Uses ATR-based stop loss + trailing stop, and risk-reward take profit.
+   */
+  private buildExitConfig(config: ATRTrailingStopConfig, _currentAtr?: number): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.ATR,
+      stopLossValue: config.atrMultiplier,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.RISK_REWARD,
+      takeProfitValue: 2, // 2:1 risk-reward
+      atrPeriod: config.atrPeriod,
+      atrMultiplier: config.atrMultiplier,
+      enableTrailingStop: true,
+      trailingType: TrailingType.ATR,
+      trailingValue: config.atrMultiplier,
+      trailingActivation: TrailingActivationType.PERCENTAGE,
+      trailingActivationValue: 1, // Activate at 1% profit
+      useOco: true
+    };
+  }
+
+  /**
    * Get configuration with defaults
    */
   private getConfigWithDefaults(config: Record<string, unknown>): ATRTrailingStopConfig {
     return {
-      atrPeriod: (config.atrPeriod as number) ?? 14,
-      atrMultiplier: (config.atrMultiplier as number) ?? 2.5,
+      atrPeriod: Math.max(2, Math.min(50, (config.atrPeriod as number) ?? 14)),
+      atrMultiplier: Math.max(0.5, Math.min(10, (config.atrMultiplier as number) ?? 2.5)),
       tradeDirection: (config.tradeDirection as 'long' | 'short' | 'both') ?? 'long',
       useHighLow: (config.useHighLow as boolean) ?? true,
       minConfidence: (config.minConfidence as number) ?? 0.6

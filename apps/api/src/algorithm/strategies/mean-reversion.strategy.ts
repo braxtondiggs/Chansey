@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import {
@@ -182,7 +183,8 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           movingAverage: currentMA,
           standardDeviation: currentStdDev,
           signalType: 'oversold'
-        }
+        },
+        exitConfig: this.buildExitConfig(absZScore, threshold)
       };
     }
 
@@ -201,12 +203,35 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           movingAverage: currentMA,
           standardDeviation: currentStdDev,
           signalType: 'overbought'
-        }
+        },
+        exitConfig: this.buildExitConfig(absZScore, threshold)
       };
     }
 
     // No signal if within normal range
     return null;
+  }
+
+  /**
+   * Build strategy-specific exit configuration for mean reversion.
+   * Tight stop loss (mean reversion expects bounded moves) and
+   * take profit scaled by z-score distance from the mean.
+   */
+  private buildExitConfig(absZScore: number, threshold: number): Partial<ExitConfig> {
+    // Take profit: scaled by z-score distance, capped at 8%
+    // At threshold (e.g., 2σ) → ~3%, at 3σ → ~5%, at 4σ → 8%
+    const takeProfitPct = Math.max(1, Math.min(8, 1.5 + ((absZScore - threshold) / threshold) * 3.5));
+
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: 1.5, // Tight 1.5% stop — mean reversion expects bounded moves
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: takeProfitPct,
+      enableTrailingStop: false,
+      useOco: true
+    };
   }
 
   /**

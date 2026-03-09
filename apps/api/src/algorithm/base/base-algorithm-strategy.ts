@@ -4,6 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm, AlgorithmStatus } from '../algorithm.entity';
 import { IndicatorRequirement } from '../indicators/indicator-requirements.interface';
@@ -284,13 +285,15 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   protected createSuccessResult(
     signals: AlgorithmResult['signals'],
     chartData?: AlgorithmResult['chartData'],
-    metadata?: AlgorithmResult['metadata']
+    metadata?: AlgorithmResult['metadata'],
+    exitConfig?: Partial<ExitConfig>
   ): AlgorithmResult {
     return {
       success: true,
       signals,
       chartData,
       metadata,
+      exitConfig,
       metrics: {
         executionTime: 0, // Will be set by safeExecute
         signalsGenerated: signals.length,

@@ -102,6 +102,7 @@ export class PaperTradingProcessor extends WorkerHost {
   private readonly maxConsecutiveErrors: number;
   private readonly maxRetryAttempts: number;
   private readonly retryBackoffMs: number;
+  private readonly cleanedUpSessions = new Set<string>();
 
   constructor(
     @Inject(paperTradingConfig.KEY) private readonly config: ConfigType<typeof paperTradingConfig>,
@@ -206,15 +207,21 @@ export class PaperTradingProcessor extends WorkerHost {
     });
 
     if (!session) {
-      this.logger.warn(`Session ${sessionId} not found, removing tick jobs`);
-      await this.paperTradingService.removeTickJobs(sessionId);
+      if (!this.cleanedUpSessions.has(sessionId)) {
+        this.logger.warn(`Session ${sessionId} not found, removing tick jobs`);
+        await this.paperTradingService.removeTickJobs(sessionId);
+        this.cleanedUpSessions.add(sessionId);
+      }
       return;
     }
 
     // Actively stop ticks if externally marked as FAILED
     if (session.status === PaperTradingStatus.FAILED) {
-      this.logger.warn(`Session ${sessionId} was externally marked as FAILED, removing tick jobs`);
-      await this.paperTradingService.removeTickJobs(sessionId);
+      if (!this.cleanedUpSessions.has(sessionId)) {
+        this.logger.warn(`Session ${sessionId} was externally marked as FAILED, removing tick jobs`);
+        await this.paperTradingService.removeTickJobs(sessionId);
+        this.cleanedUpSessions.add(sessionId);
+      }
       return;
     }
 

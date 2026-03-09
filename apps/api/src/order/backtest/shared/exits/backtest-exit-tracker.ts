@@ -6,6 +6,7 @@ import {
 } from './exit-price.utils';
 
 import { ExitConfig, TrailingActivationType, TrailingType } from '../../../interfaces/exit-config.interface';
+import { resolveExitConfig } from '../../../utils/exit-config-merge.util';
 
 /**
  * Type of exit that triggered position closure.
@@ -41,6 +42,8 @@ export interface TrackedExit {
   highWaterMark: number;
   entryAtr?: number;
   ocoLinked: boolean;
+  /** Per-position exit config override (merged from strategy-provided exitConfig) */
+  positionConfig?: ExitConfig;
 }
 
 /**
@@ -85,9 +88,24 @@ export class BacktestExitTracker {
    * exit levels from the new averaged entry. Trailing activation state is
    * preserved so an already-activated trailing stop keeps ratcheting.
    */
-  onBuy(coinId: string, entryPrice: number, quantity: number, currentAtr?: number): void {
+  onBuy(
+    coinId: string,
+    entryPrice: number,
+    quantity: number,
+    currentAtr?: number,
+    overrideExitConfig?: Partial<ExitConfig>
+  ): void {
+    // Resolve effective config: strategy override merged on top of tracker-level config
+    const effectiveConfig = overrideExitConfig ? resolveExitConfig(this.config, overrideExitConfig) : this.config;
+
     const existing = this.positions.get(coinId);
     if (existing) {
+      // Update positionConfig if a new override is provided
+      if (overrideExitConfig) {
+        existing.positionConfig = effectiveConfig;
+      }
+      const cfg = existing.positionConfig ?? this.config;
+
       // Cost-average: weighted-average entry, sum quantities, recalculate exit levels
       const totalQty = existing.quantity + quantity;
       const avgEntry = (existing.entryPrice * existing.quantity + entryPrice * quantity) / totalQty;
@@ -96,22 +114,17 @@ export class BacktestExitTracker {
       existing.highWaterMark = Math.max(existing.highWaterMark, entryPrice);
       existing.entryAtr = currentAtr ?? existing.entryAtr;
 
-      if (this.config.enableStopLoss) {
-        existing.stopLossPrice = calculateStopLossPrice(avgEntry, existing.side, this.config, existing.entryAtr);
+      if (cfg.enableStopLoss) {
+        existing.stopLossPrice = calculateStopLossPrice(avgEntry, existing.side, cfg, existing.entryAtr);
       }
-      if (this.config.enableTakeProfit) {
-        existing.takeProfitPrice = calculateTakeProfitPrice(
-          avgEntry,
-          existing.side,
-          this.config,
-          existing.stopLossPrice
-        );
+      if (cfg.enableTakeProfit) {
+        existing.takeProfitPrice = calculateTakeProfitPrice(avgEntry, existing.side, cfg, existing.stopLossPrice);
       }
-      if (this.config.enableTrailingStop) {
+      if (cfg.enableTrailingStop) {
         existing.trailingStopPrice = existing.trailingActivated
           ? this.recalcTrailingStop(existing)
-          : calculateTrailingStopPrice(avgEntry, existing.side, this.config, existing.entryAtr);
-        existing.trailingActivationPrice = calculateTrailingActivationPrice(avgEntry, existing.side, this.config);
+          : calculateTrailingStopPrice(avgEntry, existing.side, cfg, existing.entryAtr);
+        existing.trailingActivationPrice = calculateTrailingActivationPrice(avgEntry, existing.side, cfg);
       }
       return;
     }
@@ -126,23 +139,24 @@ export class BacktestExitTracker {
       trailingActivated: false,
       highWaterMark: entryPrice,
       entryAtr: currentAtr,
-      ocoLinked: this.config.useOco
+      ocoLinked: effectiveConfig.useOco,
+      ...(overrideExitConfig ? { positionConfig: effectiveConfig } : {})
     };
 
-    if (this.config.enableStopLoss) {
-      tracked.stopLossPrice = calculateStopLossPrice(entryPrice, side, this.config, currentAtr);
+    if (effectiveConfig.enableStopLoss) {
+      tracked.stopLossPrice = calculateStopLossPrice(entryPrice, side, effectiveConfig, currentAtr);
     }
 
-    if (this.config.enableTakeProfit) {
-      tracked.takeProfitPrice = calculateTakeProfitPrice(entryPrice, side, this.config, tracked.stopLossPrice);
+    if (effectiveConfig.enableTakeProfit) {
+      tracked.takeProfitPrice = calculateTakeProfitPrice(entryPrice, side, effectiveConfig, tracked.stopLossPrice);
     }
 
-    if (this.config.enableTrailingStop) {
-      tracked.trailingStopPrice = calculateTrailingStopPrice(entryPrice, side, this.config, currentAtr);
-      tracked.trailingActivationPrice = calculateTrailingActivationPrice(entryPrice, side, this.config);
+    if (effectiveConfig.enableTrailingStop) {
+      tracked.trailingStopPrice = calculateTrailingStopPrice(entryPrice, side, effectiveConfig, currentAtr);
+      tracked.trailingActivationPrice = calculateTrailingActivationPrice(entryPrice, side, effectiveConfig);
 
       // Immediate activation means trailing is active from the start
-      if (this.config.trailingActivation === TrailingActivationType.IMMEDIATE) {
+      if (effectiveConfig.trailingActivation === TrailingActivationType.IMMEDIATE) {
         tracked.trailingActivated = true;
       }
     }
@@ -238,7 +252,8 @@ export class BacktestExitTracker {
       }
 
       // 3. Trailing Stop: update activation → high water mark → recalc → check breach
-      if (!exited && this.config.enableTrailingStop && tracked.trailingStopPrice != null) {
+      const posConfig = tracked.positionConfig ?? this.config;
+      if (!exited && posConfig.enableTrailingStop && tracked.trailingStopPrice != null) {
         // Check activation if not yet activated
         if (!tracked.trailingActivated && tracked.trailingActivationPrice != null) {
           if (tracked.side === 'BUY' && highPrice >= tracked.trailingActivationPrice) {
@@ -290,22 +305,23 @@ export class BacktestExitTracker {
    * known simplification; live trading would use a rolling ATR instead.
    */
   private recalcTrailingStop(tracked: TrackedExit): number {
+    const cfg = tracked.positionConfig ?? this.config;
     let distance: number;
 
-    switch (this.config.trailingType) {
+    switch (cfg.trailingType) {
       case TrailingType.AMOUNT:
-        distance = this.config.trailingValue;
+        distance = cfg.trailingValue;
         break;
 
       case TrailingType.PERCENTAGE:
-        distance = tracked.highWaterMark * (this.config.trailingValue / 100);
+        distance = tracked.highWaterMark * (cfg.trailingValue / 100);
         break;
 
       case TrailingType.ATR:
         if (!tracked.entryAtr || isNaN(tracked.entryAtr)) {
           distance = tracked.highWaterMark * 0.01; // 1% fallback
         } else {
-          distance = tracked.entryAtr * this.config.trailingValue;
+          distance = tracked.entryAtr * cfg.trailingValue;
         }
         break;
 
