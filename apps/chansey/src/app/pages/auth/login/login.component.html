@@ -5,6 +5,7 @@
     <app-auth-messages [messages]="messages()" />
     @if (showResendVerification()) {
       <p-button
+        data-testid="login-resend-verification"
         type="button"
         [text]="true"
         [loading]="resendVerificationMutation.isPending()"
@@ -19,6 +20,7 @@
     <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8">
       <p-floatlabel variant="on" class="mt-4">
         <input
+          data-testid="login-email"
           id="email"
           type="email"
           formControlName="email"
@@ -38,6 +40,7 @@
       }
       <p-floatlabel variant="on" class="mt-4">
         <p-password
+          data-testid="login-password"
           formControlName="password"
           inputId="password"
           size="large"
@@ -55,12 +58,22 @@
 
       <div class="my-8 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <p-checkbox inputId="rememberMe" formControlName="rememberMe" [binary]="true" />
+          <p-checkbox
+            data-testid="login-remember"
+            inputId="rememberMe"
+            formControlName="rememberMe"
+            [binary]="true"
+          />
           <label for="rememberMe" class="body-small">Remember me</label>
         </div>
         <a routerLink="/forgot-password" class="body-small text-primary-500 hover:underline">Forgot password?</a>
       </div>
-      <p-button type="submit" [loading]="loginMutation.isPending()" [raised]="true">
+      <p-button
+        data-testid="login-submit"
+        type="submit"
+        [loading]="loginMutation.isPending()"
+        [raised]="true"
+      >
         <span>Login</span>
       </p-button>
     </form>

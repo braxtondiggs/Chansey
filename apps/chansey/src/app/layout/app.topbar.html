@@ -126,6 +126,7 @@
       </li>
       <li class="profile-item static sm:relative">
         <a
+          data-testid="profile-menu-trigger"
           class="right-sidebar-button relative z-50"
           pStyleClass="@next"
           enterFromClass="hidden"
@@ -153,6 +154,7 @@
             </li>
             <li>
               <a
+                data-testid="profile-logout"
                 class="label-small flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-emphasis dark:text-surface-400"
                 (click)="logout()"
               >
