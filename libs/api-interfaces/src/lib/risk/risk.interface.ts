@@ -41,7 +41,11 @@ export function getCapitalAllocationForRisk(calculationRiskLevel: number): numbe
   return CALCULATION_RISK_CAPITAL_ALLOCATION[calculationRiskLevel] ?? 35;
 }
 
-export function getEffectiveCalculationRisk(coinRiskLevel: number, calculationRiskLevel?: number | null): number {
+export function getEffectiveCalculationRisk(
+  coinRiskLevel: number | undefined | null,
+  calculationRiskLevel?: number | null
+): number {
+  if (coinRiskLevel == null) return 3;
   if (coinRiskLevel === 6 && calculationRiskLevel != null) {
     return calculationRiskLevel;
   }

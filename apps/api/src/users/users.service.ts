@@ -50,7 +50,7 @@ export class UsersService {
         this.logger.warn('Default "Moderate" risk level not found');
       }
 
-      newUser.algoCapitalAllocationPercentage = 35;
+      newUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(3);
 
       const savedUser = await this.user.save(newUser);
       savedUser.exchanges = [];
@@ -79,22 +79,27 @@ export class UsersService {
     try {
       const { coinRisk, calculationRiskLevel, ...rest } = updateUserDto;
       const updatedUser = this.user.merge(user, rest);
+      let riskChanged = false;
 
       // Handle coinRisk change
       if (coinRisk && user.coinRisk?.id !== coinRisk) {
         updatedUser.coinRisk = await this.getRiskLevel(coinRisk);
         await this.updatePortfolioByUserRisk(updatedUser);
+        riskChanged = true;
       }
 
       // Handle calculationRiskLevel change
       if (calculationRiskLevel !== undefined) {
         updatedUser.calculationRiskLevel = calculationRiskLevel;
+        riskChanged = true;
       }
 
-      // Auto-derive capital allocation from effective calculation risk
-      updatedUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(
-        updatedUser.effectiveCalculationRiskLevel
-      );
+      // Only recalculate capital allocation when risk settings change
+      if (riskChanged) {
+        updatedUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(
+          updatedUser.effectiveCalculationRiskLevel
+        );
+      }
 
       await this.user.save(updatedUser);
       this.logger.debug(`Local profile updated for user ID: ${user.id}`);

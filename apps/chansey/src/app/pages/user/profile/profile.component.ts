@@ -1,4 +1,5 @@
-import { AfterViewInit, Component, computed, effect, inject, signal, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, computed, DestroyRef, effect, inject, signal, ViewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
@@ -79,6 +80,7 @@ export class ProfileComponent implements AfterViewInit {
   private confirmationService = inject(ConfirmationService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
 
   @ViewChild('fileUpload') fileUpload!: FileUpload;
 
@@ -168,8 +170,14 @@ export class ProfileComponent implements AfterViewInit {
 
   constructor() {
     // Track form control changes for computed signals
-    this.profileForm.get('coinRisk')?.valueChanges.subscribe((v) => this.selectedCoinRiskId.set(v));
-    this.profileForm.get('calculationRiskLevel')?.valueChanges.subscribe((v) => this.selectedCalcRiskLevel.set(v));
+    this.profileForm
+      .get('coinRisk')
+      ?.valueChanges.pipe(takeUntilDestroyed())
+      .subscribe((v) => this.selectedCoinRiskId.set(v));
+    this.profileForm
+      .get('calculationRiskLevel')
+      ?.valueChanges.pipe(takeUntilDestroyed())
+      .subscribe((v) => this.selectedCalcRiskLevel.set(v));
 
     // Setup effects to update forms when user data changes
     effect(() => {
@@ -244,7 +252,8 @@ export class ProfileComponent implements AfterViewInit {
     this.router.events
       .pipe(
         filter((e) => e instanceof NavigationEnd),
-        delay(50)
+        delay(50),
+        takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(() => {
         const fragment = this.route.snapshot.fragment;

@@ -3,12 +3,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber, IsPositive, Max, Min } from 'class-validator';
 
 /**
- * DTO for enabling algo trading (robo-advisor).
- * Capital allocation is auto-derived from the user's effective calculation risk level.
- */
-export class EnrollInAlgoTradingDto {}
-
-/**
  * DTO for updating capital allocation percentage.
  * Allows user to increase/decrease allocation percentage while algo trading is active.
  */
