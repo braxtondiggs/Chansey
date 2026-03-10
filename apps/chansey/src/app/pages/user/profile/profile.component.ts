@@ -28,7 +28,7 @@ import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import { delay, filter } from 'rxjs';
 
-import { CALCULATION_RISK_CAPITAL_ALLOCATION, ExchangeKey } from '@chansey/api-interfaces';
+import { CALCULATION_RISK_CAPITAL_ALLOCATION, ExchangeKey, Risk } from '@chansey/api-interfaces';
 
 import { ProfileService } from './profile.service';
 
@@ -112,7 +112,7 @@ export class ProfileComponent implements AfterViewInit {
     const risks = this.risksQuery.data();
     const selectedId = this.selectedCoinRiskId();
     if (!risks || !selectedId) return false;
-    const selected = risks.find((r: any) => r.id === selectedId);
+    const selected = risks.find((r: Risk) => r.id === selectedId);
     return selected?.level === 6;
   });
 
@@ -121,7 +121,7 @@ export class ProfileComponent implements AfterViewInit {
     const risks = this.risksQuery.data();
     const selectedId = this.selectedCoinRiskId();
     if (!risks || !selectedId) return null;
-    const selected = risks.find((r: any) => r.id === selectedId);
+    const selected = risks.find((r: Risk) => r.id === selectedId);
     if (!selected) return null;
     if (selected.level === 6 && calcRisk) {
       return CALCULATION_RISK_CAPITAL_ALLOCATION[calcRisk] ?? 35;

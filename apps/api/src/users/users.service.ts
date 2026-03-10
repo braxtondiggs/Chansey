@@ -89,7 +89,7 @@ export class UsersService {
       }
 
       // Handle calculationRiskLevel change
-      if (calculationRiskLevel !== undefined) {
+      if (calculationRiskLevel !== undefined && user.calculationRiskLevel !== calculationRiskLevel) {
         updatedUser.calculationRiskLevel = calculationRiskLevel;
         riskChanged = true;
       }
