@@ -67,7 +67,7 @@ export class PipelineOrchestrationService {
       // Find users with algo trading enabled who have at least one active exchange key
       const users = await this.userRepository
         .createQueryBuilder('user')
-        .leftJoinAndSelect('user.risk', 'risk')
+        .leftJoinAndSelect('user.coinRisk', 'risk')
         .innerJoin(ExchangeKey, 'exchangeKey', 'exchangeKey.userId = user.id AND exchangeKey.isActive = true')
         .where('user.algoTradingEnabled = :enabled', { enabled: true })
         .groupBy('user.id')
@@ -171,7 +171,7 @@ export class PipelineOrchestrationService {
     try {
       // Get user with exchange keys
       const user = await this.usersService.getById(userId);
-      const riskLevel = user.risk?.level ?? DEFAULT_RISK_LEVEL;
+      const riskLevel = user.effectiveCalculationRiskLevel;
 
       this.logger.log(`Orchestrating pipelines for user ${userId} with risk level ${riskLevel}`);
 

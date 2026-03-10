@@ -1,6 +1,6 @@
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 import { CreateUserDto } from './create-user.dto';
 
@@ -15,10 +15,20 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   binanceSecret?: string;
 
-  @ApiProperty({ description: 'Risk level ID', required: false })
+  @ApiProperty({ description: 'Coin risk level ID', required: false })
   @IsUUID()
   @IsOptional()
-  risk?: string;
+  coinRisk?: string;
+
+  @ApiProperty({
+    description: 'Calculation risk level (1-5). Only used when coinRisk level = 6 (Custom)',
+    required: false
+  })
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  @IsOptional()
+  calculationRiskLevel?: number;
 
   @ApiProperty({ example: 'Braxton', description: 'User first name', required: false })
   @IsString()

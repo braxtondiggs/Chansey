@@ -34,7 +34,8 @@ const createUser = (overrides: Partial<User> = {}): User =>
     algoTradingEnabled: true,
     algoCapitalAllocationPercentage: 50,
     exchanges: [{ id: 'ex-1', name: 'Binance US', slug: 'binance_us', isActive: true }],
-    risk: { level: 'medium' } as any,
+    coinRisk: { level: 3 } as any,
+    effectiveCalculationRiskLevel: 3,
     ...overrides
   }) as User;
 

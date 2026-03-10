@@ -84,7 +84,7 @@ export class ConcentrationRiskCheck implements IRiskCheck {
         };
       }
 
-      const riskLevel = user.risk?.level ?? 3;
+      const riskLevel = user.effectiveCalculationRiskLevel;
       const result = this.concentrationCheck.checkConcentration(assets, riskLevel, deployment.concentrationLimit);
 
       if (result.breached) {

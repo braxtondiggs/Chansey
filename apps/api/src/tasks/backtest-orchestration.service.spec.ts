@@ -31,13 +31,14 @@ describe('BacktestOrchestrationService', () => {
   let algorithmService: jest.Mocked<AlgorithmService>;
   let backtestService: jest.Mocked<BacktestService>;
 
-  const mockUser: Partial<User> = {
+  const mockUser = {
     id: 'user-123',
     algoTradingEnabled: true,
     algoCapitalAllocationPercentage: 25,
-    risk: { id: 'risk-1', level: 3, name: 'Moderate', description: '' } as Risk,
-    exchanges: []
-  };
+    coinRisk: { id: 'risk-1', level: 3, name: 'Moderate', description: '' } as Risk,
+    exchanges: [],
+    effectiveCalculationRiskLevel: 3
+  } as unknown as User;
 
   const mockAlgorithm: Partial<Algorithm> = {
     id: 'algo-1',
@@ -166,7 +167,7 @@ describe('BacktestOrchestrationService', () => {
       const result = await service.getEligibleUsers();
 
       expect(userRepository.createQueryBuilder).toHaveBeenCalledWith('user');
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('user.risk', 'risk');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('user.coinRisk', 'risk');
       expect(mockQueryBuilder.where).toHaveBeenCalledWith('user.algoTradingEnabled = :enabled', { enabled: true });
       expect(result).toHaveLength(1);
     });
@@ -413,7 +414,7 @@ describe('BacktestOrchestrationService', () => {
     });
 
     it('should use default risk level when user has no risk', async () => {
-      const userWithoutRisk = { ...mockUser, risk: undefined } as unknown as User;
+      const userWithoutRisk = { ...mockUser, coinRisk: undefined } as unknown as User;
       usersService.getById.mockResolvedValueOnce(userWithoutRisk);
       algorithmService.getAlgorithmsForTesting.mockResolvedValue([mockAlgorithm as Algorithm]);
 

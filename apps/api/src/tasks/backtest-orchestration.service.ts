@@ -60,7 +60,7 @@ export class BacktestOrchestrationService {
     try {
       const users = await this.userRepository
         .createQueryBuilder('user')
-        .leftJoinAndSelect('user.risk', 'risk')
+        .leftJoinAndSelect('user.coinRisk', 'risk')
         .where('user.algoTradingEnabled = :enabled', { enabled: true })
         .getMany();
 
@@ -89,7 +89,7 @@ export class BacktestOrchestrationService {
     try {
       // Get user with exchange keys
       const user = await this.usersService.getById(userId);
-      const riskLevel = user.risk?.level ?? DEFAULT_RISK_LEVEL;
+      const riskLevel = user.effectiveCalculationRiskLevel;
       const riskConfig = getRiskConfig(riskLevel);
 
       this.logger.log(`Orchestrating backtests for user ${userId} with risk level ${riskLevel}`);
@@ -163,7 +163,7 @@ export class BacktestOrchestrationService {
     // Select appropriate dataset
     const dataset = await this.selectDataset(riskConfig);
     if (!dataset) {
-      this.logger.warn(`No suitable dataset found for risk config (level ${user.risk?.level})`);
+      this.logger.warn(`No suitable dataset found for risk config (level ${user.coinRisk?.level})`);
       result.skippedAlgorithms.push({
         algorithmId,
         algorithmName,
@@ -294,7 +294,7 @@ export class BacktestOrchestrationService {
       ...backtestResult.configSnapshot,
       orchestrated: true,
       orchestratedAt: new Date().toISOString(),
-      riskLevel: user.risk?.level ?? DEFAULT_RISK_LEVEL
+      riskLevel: user.effectiveCalculationRiskLevel
     };
 
     await this.backtestRepository.update(backtestResult.id, {

@@ -11,7 +11,12 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPreferences, Role } from '@chansey/api-interfaces';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  getEffectiveCalculationRisk,
+  NotificationPreferences,
+  Role
+} from '@chansey/api-interfaces';
 
 import type { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import {
@@ -167,8 +172,19 @@ export class User {
   @ManyToOne('Risk', 'users', {
     eager: true
   })
-  @JoinColumn({ name: 'risk' })
-  risk: Relation<Risk>;
+  @JoinColumn({ name: 'coin_risk' })
+  coinRisk: Relation<Risk>;
+
+  @Column({
+    type: 'smallint',
+    nullable: true,
+    comment: 'Calculation risk level (1-5). Only used when coinRisk.level = 6'
+  })
+  calculationRiskLevel: number | null;
+
+  get effectiveCalculationRiskLevel(): number {
+    return getEffectiveCalculationRisk(this.coinRisk?.level, this.calculationRiskLevel);
+  }
 
   exchanges: SupportedExchangeKeyDto[];
 

@@ -35,12 +35,13 @@ describe('PipelineOrchestrationService', () => {
   let algorithmService: jest.Mocked<AlgorithmService>;
   let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
 
-  const mockUser: Partial<User> = {
+  const mockUser = {
     id: 'user-123',
     email: 'test@example.com',
     algoTradingEnabled: true,
-    risk: { id: 'risk-1', level: 3 } as any
-  };
+    coinRisk: { id: 'risk-1', level: 3 } as any,
+    effectiveCalculationRiskLevel: 3
+  } as unknown as User;
 
   const mockExchangeKey: Partial<ExchangeKey> = {
     id: 'exchange-key-123',

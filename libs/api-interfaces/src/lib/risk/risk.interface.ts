@@ -28,3 +28,22 @@ export interface UpdateRisk {
   description?: string;
   level?: number;
 }
+
+export const CALCULATION_RISK_CAPITAL_ALLOCATION: Record<number, number> = {
+  1: 15,
+  2: 25,
+  3: 35,
+  4: 50,
+  5: 70
+};
+
+export function getCapitalAllocationForRisk(calculationRiskLevel: number): number {
+  return CALCULATION_RISK_CAPITAL_ALLOCATION[calculationRiskLevel] ?? 35;
+}
+
+export function getEffectiveCalculationRisk(coinRiskLevel: number, calculationRiskLevel?: number | null): number {
+  if (coinRiskLevel === 6 && calculationRiskLevel != null) {
+    return calculationRiskLevel;
+  }
+  return coinRiskLevel >= 1 && coinRiskLevel <= 5 ? coinRiskLevel : 3;
+}
