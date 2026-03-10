@@ -4,9 +4,13 @@
       "command": "npx",
       "args": ["-y", "@angular/cli", "mcp"]
     },
-    "executeautomation-playwright-server": {
+    "playwright": {
       "command": "npx",
-      "args": ["-y", "@executeautomation/playwright-mcp-server"]
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
     },
     "github": {
       "command": "npx",
