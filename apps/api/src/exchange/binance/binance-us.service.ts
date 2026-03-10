@@ -38,38 +38,8 @@ export class BinanceUSService extends BaseExchangeService {
     return (await this.getClient(user)) as ccxt.binanceus;
   }
 
-  /**
-   * Override getBalance to handle Binance-specific balance fetching
-   * @param user The user to fetch balances for
-   * @returns Array of balances
-   */
-  async getBalance(user: User): Promise<AssetBalanceDto[]> {
-    try {
-      const client = await this.getClient(user);
-      const balanceData = await client.fetchBalance({
-        type: 'spot' // Ensure we're getting spot account balances
-      });
-
-      const assetBalances: AssetBalanceDto[] = [];
-
-      for (const [asset, balance] of Object.entries(balanceData)) {
-        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
-
-        const total = Number(balance.total ?? 0);
-        const free = Number(balance.free ?? 0);
-        const locked = total - free;
-
-        if (free > 0 || locked > 0) {
-          assetBalances.push({ asset, free: free.toString(), locked: locked.toString() });
-        }
-      }
-
-      return assetBalances;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
-      throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
-    }
+  protected override getFetchBalanceParams(): object | undefined {
+    return { type: 'spot' };
   }
 
   /**
@@ -127,7 +97,7 @@ export class BinanceUSService extends BaseExchangeService {
       // Try to fetch balance - this will throw an error if the keys are invalid
       await client.fetchBalance();
       return true;
-    } catch (error: unknown) {
+    } catch {
       return false;
     } finally {
       try {

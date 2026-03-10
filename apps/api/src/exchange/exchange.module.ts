@@ -13,6 +13,7 @@ import { ExchangeController } from './exchange.controller';
 import { Exchange } from './exchange.entity';
 import { ExchangeService } from './exchange.service';
 import { EXCHANGE_MANAGER_SERVICE, EXCHANGE_SERVICE } from './interfaces';
+import { KrakenFuturesService } from './kraken/kraken-futures.service';
 import { KrakenService } from './kraken/kraken.service';
 import { ExchangeSyncTask } from './tasks/exchange-sync.task';
 
@@ -35,6 +36,7 @@ import { SharedCacheModule } from '../shared-cache.module';
     CoinbaseService,
     CoinbaseExchangeService,
     KrakenService,
+    KrakenFuturesService,
     CoinService,
     ExchangeService,
     {
@@ -56,6 +58,7 @@ import { SharedCacheModule } from '../shared-cache.module';
     CoinbaseService,
     CoinbaseExchangeService,
     KrakenService,
+    KrakenFuturesService,
     ExchangeManagerService,
     EXCHANGE_MANAGER_SERVICE
   ]
