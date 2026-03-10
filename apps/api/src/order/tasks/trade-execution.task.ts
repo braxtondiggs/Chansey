@@ -204,10 +204,10 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           const portfolioValue = balances.totalUsdValue || 0;
           portfolioCache.set(userId, portfolioValue);
           balanceCache.set(userId, this.concentrationGate.buildAssetAllocations(balances.current));
-          userRiskLevels.set(userId, user.risk?.level ?? 3);
+          userRiskLevels.set(userId, user.effectiveCalculationRiskLevel);
 
           // Daily loss limit gate: check per user
-          const riskLevel = user.risk?.level ?? 3;
+          const riskLevel = user.effectiveCalculationRiskLevel;
           const dailyLossCheck = await this.dailyLossLimitGate.isEntryBlocked(userId, portfolioValue, riskLevel);
           if (dailyLossCheck.blocked) {
             dailyLossBlockedUsers.add(userId);

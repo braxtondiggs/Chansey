@@ -379,7 +379,7 @@ export class PipelineOrchestratorService {
   async executeStage(pipelineId: string, stage: PipelineStage): Promise<void> {
     const pipeline = await this.pipelineRepository.findOne({
       where: { id: pipelineId },
-      relations: ['strategyConfig', 'strategyConfig.algorithm', 'user', 'user.risk']
+      relations: ['strategyConfig', 'strategyConfig.algorithm', 'user', 'user.coinRisk']
     });
 
     if (!pipeline) {
@@ -1074,11 +1074,7 @@ export class PipelineOrchestratorService {
 
   private getUserRiskLevel(pipeline: Pipeline): number {
     const user = pipeline.user as User;
-    if (!user.risk) {
-      this.logger.warn(`Pipeline ${pipeline.id}: user.risk not loaded, falling back to default risk level 3`);
-      return 3;
-    }
-    return user.risk.level ?? 3;
+    return user.effectiveCalculationRiskLevel;
   }
 
   private async executeHistoricalStage(pipeline: Pipeline): Promise<void> {

@@ -95,18 +95,36 @@
           </p-floatlabel>
           <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
             <p-select
-              id="risk"
-              formControlName="risk"
+              id="coinRisk"
+              formControlName="coinRisk"
               [options]="risksQuery.data()"
               [loading]="risksQuery.isLoading() || risksQuery.isPending()"
               optionLabel="name"
               optionValue="id"
-              placeholder="Select Risk Profile"
+              placeholder="Select Coin Risk Profile"
               class="w-full"
               size="large"
             />
-            <label for="risk">Risk Profile</label>
+            <label for="coinRisk">Coin Risk Profile</label>
           </p-floatlabel>
+          @if (isCustomRisk()) {
+            <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
+              <p-select
+                id="calculationRiskLevel"
+                formControlName="calculationRiskLevel"
+                [options]="calculationRiskOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select Calculation Risk"
+                class="w-full"
+                size="large"
+              />
+              <label for="calculationRiskLevel">Calculation Risk Level</label>
+            </p-floatlabel>
+          }
+          @if (effectiveCapitalAllocation() !== null) {
+            <div class="text-surface-500 mt-4 text-sm">Capital Allocation: {{ effectiveCapitalAllocation() }}%</div>
+          }
           <div class="mt-8 flex flex-wrap justify-end">
             <p-button
               type="submit"

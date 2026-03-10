@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { Role } from '@chansey/api-interfaces';
+import { getCapitalAllocationForRisk, Role } from '@chansey/api-interfaces';
 
 import { UpdateFuturesEnabledDto, UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
 import { User } from './users.entity';
@@ -39,16 +39,18 @@ export class UsersService {
     try {
       const newUser = this.user.create(user);
 
-      // Set default risk level
+      // Set default coin risk level
       const defaultRisk = await this.risk.findOne({
         where: { level: 3 }
       });
 
       if (defaultRisk) {
-        newUser.risk = defaultRisk;
+        newUser.coinRisk = defaultRisk;
       } else {
         this.logger.warn('Default "Moderate" risk level not found');
       }
+
+      newUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(3);
 
       const savedUser = await this.user.save(newUser);
       savedUser.exchanges = [];
@@ -75,17 +77,28 @@ export class UsersService {
 
   async updateLocalProfile(updateUserDto: UpdateUserDto, user: User): Promise<User> {
     try {
-      const { risk, ...rest } = updateUserDto;
+      const { coinRisk, calculationRiskLevel, ...rest } = updateUserDto;
       const updatedUser = this.user.merge(user, rest);
+      let riskChanged = false;
 
-      if (risk && user.risk?.id !== risk) {
-        updatedUser.risk = await this.getRiskLevel(risk);
+      // Handle coinRisk change
+      if (coinRisk && user.coinRisk?.id !== coinRisk) {
+        updatedUser.coinRisk = await this.getRiskLevel(coinRisk);
+        await this.updatePortfolioByUserRisk(updatedUser);
+        riskChanged = true;
       }
 
-      // Handle risk update separately
-      if (updateUserDto.risk && user.risk?.id !== updateUserDto.risk) {
-        updatedUser.risk = await this.getRiskLevel(updateUserDto.risk);
-        await this.updatePortfolioByUserRisk(updatedUser);
+      // Handle calculationRiskLevel change
+      if (calculationRiskLevel !== undefined && user.calculationRiskLevel !== calculationRiskLevel) {
+        updatedUser.calculationRiskLevel = calculationRiskLevel;
+        riskChanged = true;
+      }
+
+      // Only recalculate capital allocation when risk settings change
+      if (riskChanged) {
+        updatedUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(
+          updatedUser.effectiveCalculationRiskLevel
+        );
       }
 
       await this.user.save(updatedUser);
@@ -105,10 +118,8 @@ export class UsersService {
       const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
 
       this.logger.debug(`User retrieved with ID: ${id}`);
-      return {
-        ...user,
-        exchanges
-      };
+      user.exchanges = exchanges;
+      return user;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`User not found with ID: ${id}`, err.stack);
@@ -141,11 +152,9 @@ export class UsersService {
       // Get supported exchange keys information
       const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
 
-      return {
-        ...dbUser,
-        roles: user.roles || dbUser.roles || [Role.USER],
-        exchanges
-      };
+      dbUser.roles = user.roles || dbUser.roles || [Role.USER];
+      dbUser.exchanges = exchanges;
+      return dbUser;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to get user profile: ${user.id}`, err.stack);
@@ -194,15 +203,14 @@ export class UsersService {
         .getMany();
 
       // Load supported exchange keys for each user in parallel
-      const usersWithKeys = await Promise.all(
+      await Promise.all(
         users.map(async (user) => {
-          const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
-          return { ...user, exchanges };
+          user.exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
         })
       );
 
-      this.logger.debug(`Found ${usersWithKeys.length} users with active exchange keys`);
-      return usersWithKeys;
+      this.logger.debug(`Found ${users.length} users with active exchange keys`);
+      return users;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch users with active exchange keys: ${err.message}`, err.stack);
@@ -210,9 +218,11 @@ export class UsersService {
     }
   }
 
-  async enrollInAlgoTrading(userId: string, capitalAllocationPercentage: number): Promise<User> {
+  async enrollInAlgoTrading(userId: string): Promise<User> {
     try {
-      const user = await this.user.findOneOrFail({ where: { id: userId }, relations: ['risk'] });
+      const user = await this.user.findOneOrFail({ where: { id: userId }, relations: ['coinRisk'] });
+
+      const capitalAllocationPercentage = getCapitalAllocationForRisk(user.effectiveCalculationRiskLevel);
 
       user.algoTradingEnabled = true;
       user.algoCapitalAllocationPercentage = capitalAllocationPercentage;
@@ -288,11 +298,11 @@ export class UsersService {
     try {
       const user = await this.user.findOneOrFail({
         where: { id: userId },
-        relations: ['risk']
+        relations: ['coinRisk']
       });
 
       let activeStrategies = 0;
-      if (user.risk) {
+      if (user.coinRisk) {
         const strategies = await this.riskPoolMapping.getActiveStrategiesForUser(user);
         activeStrategies = strategies.length;
       }
@@ -301,7 +311,8 @@ export class UsersService {
         enabled: user.algoTradingEnabled,
         capitalAllocationPercentage: user.algoCapitalAllocationPercentage,
         enrolledAt: user.algoEnrolledAt,
-        riskLevel: user.risk?.name || 'Not set',
+        coinRiskLevel: user.coinRisk?.name || 'Not set',
+        calculationRiskLevel: user.effectiveCalculationRiskLevel,
         activeStrategies
       };
     } catch (error: unknown) {

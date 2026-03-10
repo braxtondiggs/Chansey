@@ -132,7 +132,8 @@ export class AdminPoolController {
       family_name: user.family_name,
       algoCapitalAllocationPercentage: user.algoCapitalAllocationPercentage,
       algoEnrolledAt: user.algoEnrolledAt,
-      riskLevel: user.risk?.name
+      coinRiskLevel: user.coinRisk?.name,
+      calculationRiskLevel: user.effectiveCalculationRiskLevel
     }));
   }
 

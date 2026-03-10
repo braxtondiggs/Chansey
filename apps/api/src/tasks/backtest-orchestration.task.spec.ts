@@ -105,8 +105,8 @@ describe('BacktestOrchestrationTask', () => {
 
     it('should queue staggered orchestration jobs for eligible users', async () => {
       orchestrationService.getEligibleUsers.mockResolvedValue([
-        { id: 'user-1', risk: { level: 4 } },
-        { id: 'user-2', risk: null }
+        { id: 'user-1', coinRisk: { level: 4 }, effectiveCalculationRiskLevel: 4 },
+        { id: 'user-2', coinRisk: null, effectiveCalculationRiskLevel: 3 }
       ] as any);
 
       await task.scheduleOrchestration();

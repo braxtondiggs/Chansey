@@ -3,24 +3,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber, IsPositive, Max, Min } from 'class-validator';
 
 /**
- * DTO for enabling algo trading (robo-advisor).
- * User opts in by allocating a percentage of their free balance to automated strategies.
- */
-export class EnrollInAlgoTradingDto {
-  @ApiProperty({
-    description: 'Percentage of free balance to allocate to algorithmic trading (e.g., 25 = 25%)',
-    example: 25,
-    minimum: 5,
-    maximum: 100
-  })
-  @IsNumber()
-  @IsPositive()
-  @Min(5, { message: 'Minimum capital allocation is 5% of your free balance' })
-  @Max(100, { message: 'Maximum capital allocation is 100% of your free balance' })
-  capitalAllocationPercentage: number;
-}
-
-/**
  * DTO for updating capital allocation percentage.
  * Allows user to increase/decrease allocation percentage while algo trading is active.
  */
@@ -64,10 +46,16 @@ export class AlgoTradingStatusDto {
   enrolledAt: Date | null;
 
   @ApiProperty({
-    description: 'User risk level (determines strategy assignment)',
+    description: 'Coin risk level name (determines which coins to trade)',
     example: 'Moderate'
   })
-  riskLevel: string;
+  coinRiskLevel: string;
+
+  @ApiProperty({
+    description: 'Effective calculation risk level (1-5)',
+    example: 3
+  })
+  calculationRiskLevel: number;
 
   @ApiProperty({
     description: 'Number of active strategies for user risk level',

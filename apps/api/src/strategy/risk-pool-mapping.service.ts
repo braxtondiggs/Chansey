@@ -38,17 +38,16 @@ export class RiskPoolMappingService {
    * @returns Risk ID to filter strategies by
    */
   async getRiskIdForUser(user: User): Promise<string | null> {
-    if (!user.risk) {
+    if (!user.coinRisk) {
       return null;
     }
 
-    // Custom risk (level 6) defaults to Moderate (level 3)
-    if (user.risk.level === 6) {
-      // TODO: Could make this configurable
-      return await this.getRiskIdByLevel(3);
+    // Custom risk (level 6) uses effective calculation risk level
+    if (user.coinRisk.level === 6) {
+      return await this.getRiskIdByLevel(user.effectiveCalculationRiskLevel);
     }
 
-    return user.risk.id;
+    return user.coinRisk.id;
   }
 
   /**
@@ -158,11 +157,11 @@ export class RiskPoolMappingService {
     return this.userRepo.find({
       where: {
         algoTradingEnabled: true,
-        risk: {
+        coinRisk: {
           id: riskId
         }
       },
-      relations: ['risk'],
+      relations: ['coinRisk'],
       order: {
         algoEnrolledAt: 'DESC'
       }

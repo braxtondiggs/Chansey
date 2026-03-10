@@ -84,7 +84,7 @@ export class UsersTaskService extends WorkerHost implements OnModuleInit {
       await job.updateProgress(30);
       let updated = 0;
       for (const user of users) {
-        if (user.risk) {
+        if (user.coinRisk) {
           await this.user.updatePortfolioByUserRisk(user);
           updated++;
           this.logger.debug(`Updated portfolio for user: ${user.id}`);

@@ -197,7 +197,7 @@ export class AuthenticationService {
           'algoCapitalAllocationPercentage',
           'algoEnrolledAt'
         ],
-        relations: ['risk']
+        relations: ['coinRisk']
       });
 
       if (!user) {

@@ -86,7 +86,7 @@ export class BacktestOrchestrationTask {
         const jobData: OrchestrationJobData = {
           userId: user.id,
           scheduledAt: new Date().toISOString(),
-          riskLevel: user.risk?.level ?? 3
+          riskLevel: user.effectiveCalculationRiskLevel
         };
 
         await this.orchestrationQueue.add('orchestrate-user', jobData, {

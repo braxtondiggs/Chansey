@@ -58,7 +58,7 @@ export class ConcentrationRiskCheck implements IRiskCheck {
         };
       }
 
-      const user = await this.userRepo.findOne({ where: { id: userId }, relations: ['risk', 'exchanges'] });
+      const user = await this.userRepo.findOne({ where: { id: userId } });
       if (!user) {
         return {
           checkName: this.name,
@@ -84,7 +84,7 @@ export class ConcentrationRiskCheck implements IRiskCheck {
         };
       }
 
-      const riskLevel = user.risk?.level ?? 3;
+      const riskLevel = user.effectiveCalculationRiskLevel;
       const result = this.concentrationCheck.checkConcentration(assets, riskLevel, deployment.concentrationLimit);
 
       if (result.breached) {

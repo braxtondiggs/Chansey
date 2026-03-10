@@ -35,6 +35,7 @@ export interface IUser {
   exchanges: ExchangeKey[];
   hide_balance?: boolean;
   algoTradingEnabled?: boolean;
+  calculationRiskLevel?: number | null;
   algoCapitalAllocationPercentage?: number;
   algoEnrolledAt?: Date;
   futuresEnabled?: boolean;
@@ -51,7 +52,8 @@ export interface IUserProfileUpdate {
   gender?: string;
   birthdate?: string;
   phone_number?: string;
-  risk?: string;
+  coinRisk?: string;
+  calculationRiskLevel?: number;
   hide_balance?: boolean;
 }
 

@@ -52,6 +52,6 @@ export class Risk implements RiskInterface {
   })
   updatedAt: Date;
 
-  @OneToMany('User', 'risk')
+  @OneToMany('User', 'coinRisk')
   users: Relation<User[]>;
 }

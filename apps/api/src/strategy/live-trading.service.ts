@@ -92,7 +92,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     try {
       const enrolledUsers = await this.userRepo.find({
         where: { algoTradingEnabled: true },
-        relations: ['risk']
+        relations: ['coinRisk']
       });
 
       if (enrolledUsers.length === 0) {
@@ -153,7 +153,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     const strategies = await this.riskPoolMapping.getActiveStrategiesForUser(user);
 
     if (strategies.length === 0) {
-      this.logger.debug(`No active strategies for user ${user.id} (risk level ${user.risk?.level})`);
+      this.logger.debug(`No active strategies for user ${user.id} (risk level ${user.coinRisk?.level})`);
       return;
     }
 
@@ -162,7 +162,7 @@ export class LiveTradingService implements OnApplicationShutdown {
 
     const capitalMap = await this.capitalAllocation.allocateCapitalByKelly(actualCapital, strategies, {
       compositeRegime,
-      riskLevel: user.risk?.level ?? 3
+      riskLevel: user.effectiveCalculationRiskLevel
     });
 
     const userPositions = await this.positionTracking.getPositions(user.id);
@@ -182,7 +182,11 @@ export class LiveTradingService implements OnApplicationShutdown {
     let concentrationReducedCount = 0;
 
     // Daily loss limit gate: user-level check before strategy loop
-    const dailyLossCheck = await this.dailyLossLimitGate.isEntryBlocked(user.id, actualCapital, user.risk?.level ?? 3);
+    const dailyLossCheck = await this.dailyLossLimitGate.isEntryBlocked(
+      user.id,
+      actualCapital,
+      user.effectiveCalculationRiskLevel
+    );
     const dailyLossBlocked = dailyLossCheck.blocked;
 
     for (const strategy of strategies) {
@@ -242,7 +246,7 @@ export class LiveTradingService implements OnApplicationShutdown {
               assetAllocations,
               signal.symbol,
               tradeUsdValue,
-              user.risk?.level ?? 3,
+              user.effectiveCalculationRiskLevel,
               action
             );
             if (!concCheck.allowed) {

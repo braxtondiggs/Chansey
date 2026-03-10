@@ -297,8 +297,8 @@ export class CoinService {
     return this.coin.findOne({ where: { slug } });
   }
 
-  async getCoinsByRiskLevel({ risk }: User, take = 10) {
-    const { level: riskLevel } = risk;
+  async getCoinsByRiskLevel({ coinRisk }: User, take = 10) {
+    const { level: riskLevel } = coinRisk;
 
     if (riskLevel === 1) {
       return await this.coin.find({

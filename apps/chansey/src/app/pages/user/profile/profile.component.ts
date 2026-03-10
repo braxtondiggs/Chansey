@@ -1,4 +1,5 @@
-import { AfterViewInit, Component, computed, effect, inject, signal, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, computed, DestroyRef, effect, inject, signal, ViewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
@@ -27,7 +28,7 @@ import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import { delay, filter } from 'rxjs';
 
-import { ExchangeKey } from '@chansey/api-interfaces';
+import { CALCULATION_RISK_CAPITAL_ALLOCATION, ExchangeKey, Risk } from '@chansey/api-interfaces';
 
 import { ProfileService } from './profile.service';
 
@@ -79,6 +80,7 @@ export class ProfileComponent implements AfterViewInit {
   private confirmationService = inject(ConfirmationService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
 
   @ViewChild('fileUpload') fileUpload!: FileUpload;
 
@@ -91,7 +93,40 @@ export class ProfileComponent implements AfterViewInit {
     given_name: ['', Validators.required],
     family_name: ['', Validators.required],
     email: ['', Validators.compose([Validators.required, Validators.email])],
-    risk: ['', Validators.required]
+    coinRisk: ['', Validators.required],
+    calculationRiskLevel: [null]
+  });
+
+  calculationRiskOptions = [
+    { label: 'Level 1 - Ultra Conservative (15%)', value: 1 },
+    { label: 'Level 2 - Conservative (25%)', value: 2 },
+    { label: 'Level 3 - Moderate (35%)', value: 3 },
+    { label: 'Level 4 - Growth (50%)', value: 4 },
+    { label: 'Level 5 - Aggressive (70%)', value: 5 }
+  ];
+
+  selectedCoinRiskId = signal<string | null>(null);
+  selectedCalcRiskLevel = signal<number | null>(null);
+
+  isCustomRisk = computed(() => {
+    const risks = this.risksQuery.data();
+    const selectedId = this.selectedCoinRiskId();
+    if (!risks || !selectedId) return false;
+    const selected = risks.find((r: Risk) => r.id === selectedId);
+    return selected?.level === 6;
+  });
+
+  effectiveCapitalAllocation = computed(() => {
+    const calcRisk = this.selectedCalcRiskLevel();
+    const risks = this.risksQuery.data();
+    const selectedId = this.selectedCoinRiskId();
+    if (!risks || !selectedId) return null;
+    const selected = risks.find((r: Risk) => r.id === selectedId);
+    if (!selected) return null;
+    if (selected.level === 6 && calcRisk) {
+      return CALCULATION_RISK_CAPITAL_ALLOCATION[calcRisk] ?? 35;
+    }
+    return CALCULATION_RISK_CAPITAL_ALLOCATION[selected.level] ?? 35;
   });
   passwordForm: FormGroup = this.fb.group(
     {
@@ -134,6 +169,16 @@ export class ProfileComponent implements AfterViewInit {
   isLoading = computed(() => this.userQuery.isLoading());
 
   constructor() {
+    // Track form control changes for computed signals
+    this.profileForm
+      .get('coinRisk')
+      ?.valueChanges.pipe(takeUntilDestroyed())
+      .subscribe((v) => this.selectedCoinRiskId.set(v));
+    this.profileForm
+      .get('calculationRiskLevel')
+      ?.valueChanges.pipe(takeUntilDestroyed())
+      .subscribe((v) => this.selectedCalcRiskLevel.set(v));
+
     // Setup effects to update forms when user data changes
     effect(() => {
       const userData = this.user();
@@ -207,7 +252,8 @@ export class ProfileComponent implements AfterViewInit {
     this.router.events
       .pipe(
         filter((e) => e instanceof NavigationEnd),
-        delay(50)
+        delay(50),
+        takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(() => {
         const fragment = this.route.snapshot.fragment;
@@ -650,8 +696,11 @@ export class ProfileComponent implements AfterViewInit {
       given_name: user.given_name || '',
       family_name: user.family_name || '',
       email: user.email || '',
-      risk: user.risk?.id || ''
+      coinRisk: user.coinRisk?.id || '',
+      calculationRiskLevel: user.calculationRiskLevel ?? null
     });
+    this.selectedCoinRiskId.set(user.coinRisk?.id || null);
+    this.selectedCalcRiskLevel.set(user.calculationRiskLevel ?? null);
 
     // Update exchange forms if they exist
     if (user.exchanges && this.exchangeForms) {

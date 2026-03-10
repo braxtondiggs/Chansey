@@ -17,7 +17,6 @@ import { FastifyRequest } from 'fastify';
 
 import {
   AlgoTradingStatusDto,
-  EnrollInAlgoTradingDto,
   FuturesEnabledStatusDto,
   OpportunitySellingStatusDto,
   UpdateAlgoCapitalDto,
@@ -142,8 +141,8 @@ export class UserController {
     description: 'Successfully enrolled in algo trading.',
     type: UserResponseDto
   })
-  async enrollInAlgoTrading(@Body() dto: EnrollInAlgoTradingDto, @GetUser() user: User) {
-    return this.user.enrollInAlgoTrading(user.id, dto.capitalAllocationPercentage);
+  async enrollInAlgoTrading(@GetUser() user: User) {
+    return this.user.enrollInAlgoTrading(user.id);
   }
 
   @Patch('algo-trading/pause')
