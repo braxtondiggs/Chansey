@@ -407,19 +407,24 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * @param user User context for client initialization
    * @throws Error if exchange doesn't support futures
    */
-  async setMarginMode(_mode: string, _symbol: string, _user: User): Promise<void> {
-    throw new Error(`${this.constructor.name} does not support futures trading`);
+  async setMarginMode(mode: string, symbol: string, _user: User): Promise<void> {
+    this.logger.warn(
+      `${this.constructor.name} does not support setMarginMode — ignoring (mode=${mode}, symbol=${symbol})`
+    );
   }
 
   /**
    * Set leverage for a symbol.
+   * Default is a no-op for exchanges that don't support leverage configuration.
+   * Override in subclass to provide real implementation.
    * @param leverage Leverage multiplier
    * @param symbol Trading pair symbol
    * @param user User context for client initialization
-   * @throws Error if exchange doesn't support futures
    */
-  async setLeverage(_leverage: number, _symbol: string, _user: User): Promise<void> {
-    throw new Error(`${this.constructor.name} does not support futures trading`);
+  async setLeverage(leverage: number, symbol: string, _user: User): Promise<void> {
+    this.logger.warn(
+      `${this.constructor.name} does not support setLeverage — ignoring (leverage=${leverage}, symbol=${symbol})`
+    );
   }
 
   /**

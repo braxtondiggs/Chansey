@@ -215,8 +215,8 @@ export class ExchangeKeyService implements IExchangeKeyService {
 
       return isValid;
     } catch (error: unknown) {
-      // Validation failed, return false instead of throwing an exception
-      // The caller will handle setting isActive to false
+      const err = toErrorInfo(error);
+      this.logger.warn(`Exchange key validation failed for ${exchangeSlug}: ${err.message}`);
       return false;
     }
   }
