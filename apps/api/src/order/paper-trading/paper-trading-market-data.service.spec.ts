@@ -28,16 +28,19 @@ const createService = (overrides: Partial<{ cacheManager: any; exchangeManager: 
 };
 
 describe('PaperTradingMarketDataService', () => {
-  let withRetrySpy: jest.SpyInstance;
+  let withRateLimitRetrySpy: jest.SpyInstance;
+  let withRateLimitRetryThrowSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Spy on withRetry to avoid real delays in tests
-    withRetrySpy = jest.spyOn(retryUtil, 'withRetry');
+    // Spy on rate-limit-aware retry wrappers to avoid real delays in tests
+    withRateLimitRetrySpy = jest.spyOn(retryUtil, 'withRateLimitRetry');
+    withRateLimitRetryThrowSpy = jest.spyOn(retryUtil, 'withRateLimitRetryThrow');
   });
 
   afterEach(() => {
-    withRetrySpy.mockRestore();
+    withRateLimitRetrySpy.mockRestore();
+    withRateLimitRetryThrowSpy.mockRestore();
   });
 
   it('returns cached price data when available', async () => {
@@ -82,7 +85,7 @@ describe('PaperTradingMarketDataService', () => {
       getPublicClient: jest.fn().mockResolvedValue(client)
     };
 
-    withRetrySpy.mockResolvedValue({
+    withRateLimitRetrySpy.mockResolvedValue({
       success: true,
       result: ticker,
       attempts: 1,
@@ -204,9 +207,8 @@ describe('PaperTradingMarketDataService', () => {
     it('returns empty array when fetch throws', async () => {
       const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
 
-      const client = {
-        fetchOHLCV: jest.fn().mockRejectedValue(new Error('network error'))
-      };
+      // Mock withRateLimitRetryThrow to throw immediately (avoid real retry delays)
+      withRateLimitRetryThrowSpy.mockRejectedValue(new Error('network error'));
 
       const cacheManager = {
         get: jest.fn().mockResolvedValue(null),
@@ -215,7 +217,7 @@ describe('PaperTradingMarketDataService', () => {
 
       const exchangeManager = {
         formatSymbol: jest.fn().mockReturnValue('BTC/USD'),
-        getPublicClient: jest.fn().mockResolvedValue(client)
+        getPublicClient: jest.fn().mockResolvedValue({})
       };
 
       const { service } = createService({ cacheManager, exchangeManager });
@@ -244,7 +246,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue(client)
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: true,
         result: ticker,
         attempts: 2,
@@ -255,12 +257,10 @@ describe('PaperTradingMarketDataService', () => {
       const result = await service.getCurrentPrice('binance', 'BTC/USDT');
 
       expect(result.price).toBe(45000);
-      expect(withRetrySpy).toHaveBeenCalledWith(
+      expect(withRateLimitRetrySpy).toHaveBeenCalledWith(
         expect.any(Function),
         expect.objectContaining({
-          maxRetries: 3,
-          initialDelayMs: 2000,
-          isRetryable: retryUtil.isTransientError
+          operationName: expect.stringContaining('fetchTicker')
         })
       );
     });
@@ -291,7 +291,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue({ fetchTicker: jest.fn() })
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: false,
         error: new Error('ETIMEDOUT'),
         attempts: 4,
@@ -320,7 +320,7 @@ describe('PaperTradingMarketDataService', () => {
       };
 
       const timeoutError = new Error('ETIMEDOUT');
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: false,
         error: timeoutError,
         attempts: 4,
@@ -353,7 +353,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue(client)
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: true,
         result: tickers,
         attempts: 2,
@@ -401,7 +401,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue({ fetchTickers: jest.fn() })
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: false,
         error: new Error('ETIMEDOUT'),
         attempts: 4,
@@ -443,7 +443,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue({ fetchTickers: jest.fn() })
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: false,
         error: new Error('ETIMEDOUT'),
         attempts: 4,
@@ -485,7 +485,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue({ fetchTickers: jest.fn() })
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: true,
         result: tickers,
         attempts: 1,
@@ -517,7 +517,7 @@ describe('PaperTradingMarketDataService', () => {
         getPublicClient: jest.fn().mockResolvedValue({ fetchTickers: jest.fn() })
       };
 
-      withRetrySpy.mockResolvedValue({
+      withRateLimitRetrySpy.mockResolvedValue({
         success: true,
         result: tickers,
         attempts: 1,

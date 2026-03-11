@@ -7,6 +7,12 @@ import * as https from 'https';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { toErrorInfo } from '../../shared/error.util';
+import {
+  isAuthenticationError,
+  isTransientError,
+  withRateLimitRetry,
+  withRateLimitRetryThrow
+} from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
@@ -50,7 +56,10 @@ export class KrakenService extends BaseExchangeService {
   async getFreeBalance(user: User) {
     try {
       const client = await this.getClient(user);
-      const balanceData = await client.fetchBalance();
+      const balanceData = await withRateLimitRetryThrow(() => client.fetchBalance(), {
+        logger: this.logger,
+        operationName: 'getFreeBalance'
+      });
 
       const balances: AssetBalanceDto[] = [];
 
@@ -99,9 +108,11 @@ export class KrakenService extends BaseExchangeService {
     });
 
     try {
-      // Try to fetch balance - this will throw an error if the keys are invalid
-      await client.fetchBalance();
-      return true;
+      const result = await withRateLimitRetry(() => client.fetchBalance(), {
+        operationName: 'validateApiKeys',
+        isRetryable: (err) => isTransientError(err) && !isAuthenticationError(err)
+      });
+      return result.success;
     } catch {
       return false;
     } finally {

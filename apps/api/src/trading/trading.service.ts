@@ -11,6 +11,7 @@ import { CCXT_BALANCE_META_KEYS } from '../exchange/ccxt-balance.util';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { toErrorInfo } from '../shared/error.util';
+import { withRateLimitRetryThrow } from '../shared/retry.util';
 import { User } from '../users/users.entity';
 
 @Injectable()
@@ -51,7 +52,10 @@ export class TradingService {
       const { client, name: exchangeName } = await this.resolveExchangeClient(exchangeId);
 
       if (!client.markets) {
-        await client.loadMarkets();
+        await withRateLimitRetryThrow(() => client.loadMarkets(), {
+          logger: this.logger,
+          operationName: 'loadMarkets'
+        });
       }
 
       if (!client.markets[symbol]) {
@@ -67,7 +71,10 @@ export class TradingService {
         );
       }
 
-      const orderBook = await client.fetchOrderBook(symbol, 10);
+      const orderBook = await withRateLimitRetryThrow(() => client.fetchOrderBook(symbol, 10), {
+        logger: this.logger,
+        operationName: `fetchOrderBook(${symbol})`
+      });
 
       return {
         bids: orderBook.bids.map(([price, quantity]) => this.toOrderBookEntry(price, quantity)),
@@ -92,7 +99,10 @@ export class TradingService {
 
     try {
       const { client } = await this.resolveExchangeClient(exchangeId);
-      const ticker = await client.fetchTicker(symbol);
+      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(symbol), {
+        logger: this.logger,
+        operationName: `fetchTicker(${symbol})`
+      });
 
       return {
         symbol,
@@ -154,7 +164,10 @@ export class TradingService {
       const exchange = await this.exchangeService.findOne(exchangeId);
       const service = this.exchangeManagerService.getExchangeService(exchange.slug);
       const client = await service.getClient(user);
-      const ccxtBalances = await client.fetchBalance();
+      const ccxtBalances = await withRateLimitRetryThrow(() => client.fetchBalance(), {
+        logger: this.logger,
+        operationName: 'fetchBalance'
+      });
 
       const balances: TradingBalanceDto[] = [];
 

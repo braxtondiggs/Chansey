@@ -30,6 +30,7 @@ import { Exchange } from '../../exchange/exchange.entity';
 import { NOTIFICATION_EVENTS } from '../../notification/interfaces/notification-events.interface';
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
+import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
@@ -146,7 +147,10 @@ export class TradeExecutionService {
       const exchangeClient = await this.exchangeManagerService.getExchangeClient(exchangeKey.exchange.slug, user);
 
       // Load markets
-      await exchangeClient.loadMarkets();
+      await withRateLimitRetryThrow(() => exchangeClient.loadMarkets(), {
+        logger: this.logger,
+        operationName: 'loadMarkets'
+      });
 
       // Verify symbol exists
       if (!exchangeClient.markets[signal.symbol]) {
@@ -157,7 +161,10 @@ export class TradeExecutionService {
       // await this.verifyFunds(exchangeClient, signal);
 
       // CAPTURE EXPECTED PRICE BEFORE EXECUTION (for slippage calculation)
-      const ticker = await exchangeClient.fetchTicker(signal.symbol);
+      const ticker = await withRateLimitRetryThrow(() => exchangeClient.fetchTicker(signal.symbol), {
+        logger: this.logger,
+        operationName: `fetchTicker(${signal.symbol})`
+      });
       const expectedPrice = signal.action === 'BUY' ? ticker.ask || ticker.last || 0 : ticker.bid || ticker.last || 0;
 
       this.logger.debug(
@@ -624,7 +631,10 @@ export class TradeExecutionService {
   ): Promise<number> {
     try {
       // Fetch order book with limited depth for efficiency
-      const orderBook = await exchangeClient.fetchOrderBook(symbol, 20);
+      const orderBook = await withRateLimitRetryThrow(() => exchangeClient.fetchOrderBook(symbol, 20), {
+        logger: this.logger,
+        operationName: `fetchOrderBook(${symbol})`
+      });
 
       // Use asks for BUY orders, bids for SELL orders
       const relevantSide = action === 'BUY' ? orderBook.asks : orderBook.bids;
