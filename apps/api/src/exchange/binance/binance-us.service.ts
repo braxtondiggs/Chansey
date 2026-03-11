@@ -1,15 +1,13 @@
-import { forwardRef, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
 import * as https from 'https';
 
-import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
-import { toErrorInfo } from '../../shared/error.util';
+import { isAuthenticationError, isTransientError, withRateLimitRetry } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
-import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -43,37 +41,6 @@ export class BinanceUSService extends BaseExchangeService {
   }
 
   /**
-   * Override getFreeBalance to handle Binance-specific free balance fetching
-   * @param user The user to get balances for
-   * @returns USD/USDT balance information
-   */
-  async getFreeBalance(user: User) {
-    try {
-      const client = await this.getClient(user);
-      const balanceData = await client.fetchBalance();
-
-      const balances: AssetBalanceDto[] = [];
-
-      for (const [asset, balance] of Object.entries(balanceData)) {
-        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
-        if (asset !== 'USD' && asset !== 'USDT') continue;
-
-        const free = Number(balance.free ?? 0);
-        if (free > 0) {
-          const total = Number(balance.total ?? 0);
-          balances.push({ asset, free: free.toString(), locked: (total - free).toString() });
-        }
-      }
-
-      return balances;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Error fetching ${this.constructor.name} free balance`, err.stack || err.message);
-      throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} free balance`);
-    }
-  }
-
-  /**
    * Static method to validate Binance US API keys without requiring an instance
    * @param apiKey - The API key to validate
    * @param secretKey - The secret key to validate
@@ -94,9 +61,11 @@ export class BinanceUSService extends BaseExchangeService {
     });
 
     try {
-      // Try to fetch balance - this will throw an error if the keys are invalid
-      await client.fetchBalance();
-      return true;
+      const result = await withRateLimitRetry(() => client.fetchBalance(), {
+        operationName: 'validateApiKeys',
+        isRetryable: (err) => isTransientError(err) && !isAuthenticationError(err)
+      });
+      return result.success;
     } catch {
       return false;
     } finally {

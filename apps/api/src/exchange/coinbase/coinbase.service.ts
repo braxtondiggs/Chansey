@@ -7,6 +7,12 @@ import * as https from 'https';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { toErrorInfo } from '../../shared/error.util';
+import {
+  isAuthenticationError,
+  isTransientError,
+  withRateLimitRetry,
+  withRateLimitRetryThrow
+} from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
@@ -57,7 +63,10 @@ export class CoinbaseService extends BaseExchangeService {
       const formattedSymbol = symbol.includes('/') ? symbol : symbol.replace('-', '/');
 
       const client = await this.getCoinbaseClient();
-      const ticker = await client.fetchTicker(formattedSymbol);
+      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
+        logger: this.logger,
+        operationName: `getPrice(${symbol})`
+      });
 
       // Return in the format expected by existing code
       return {
@@ -116,9 +125,11 @@ export class CoinbaseService extends BaseExchangeService {
     });
 
     try {
-      // Try to fetch balance - this will throw an error if the keys are invalid
-      await client.fetchBalance();
-      return true;
+      const result = await withRateLimitRetry(() => client.fetchBalance(), {
+        operationName: 'validateApiKeys',
+        isRetryable: (err) => isTransientError(err) && !isAuthenticationError(err)
+      });
+      return result.success;
     } catch (error: unknown) {
       return false;
     } finally {
@@ -165,14 +176,20 @@ export class CoinbaseService extends BaseExchangeService {
   async getFuturesPositions(user: User, symbol?: string): Promise<ccxt.Position[]> {
     const exchange = await this.getClient(user);
     const symbols = symbol ? [symbol] : undefined;
-    return exchange.fetchPositions(symbols);
+    return withRateLimitRetryThrow(() => exchange.fetchPositions(symbols), {
+      logger: this.logger,
+      operationName: 'getFuturesPositions'
+    });
   }
 
   async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
       const client = await this.getCoinbaseClient(user);
       this.logger.log(`Fetching Coinbase balance for user ${user.id}...`);
-      const balances = await client.fetchBalance();
+      const balances = await withRateLimitRetryThrow(() => client.fetchBalance(), {
+        logger: this.logger,
+        operationName: 'getBalance'
+      });
       this.logger.debug(`Fetched Coinbase balance for user ${user.id}: ${JSON.stringify(balances)}`);
 
       const assetBalances: AssetBalanceDto[] = [];

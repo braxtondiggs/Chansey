@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { firstValueFrom } from 'rxjs';
 
+import { withRateLimitRetryThrow } from '../shared/retry.util';
+
 @Injectable()
 export class CoinAlertService {
   private BASE_URL = 'https://api.cryptocurrencyalerting.com/v1/alert-conditions';
@@ -24,7 +26,10 @@ export class CoinAlertService {
   }
 
   async get(type: AlertType = 'percent_price') {
-    const { data } = await firstValueFrom(this.http.get(this.BASE_URL, { ...this.auth, params: { type } }));
+    const { data } = await withRateLimitRetryThrow(
+      () => firstValueFrom(this.http.get(this.BASE_URL, { ...this.auth, params: { type } })),
+      { operationName: 'getCoinAlerts' }
+    );
     return data;
   }
 

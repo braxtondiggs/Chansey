@@ -11,6 +11,7 @@ import { EXCHANGE_KEY_SERVICE, EXCHANGE_SERVICE, IExchangeKeyService, IExchangeS
 
 import { AssetBalanceDto } from '../balance/dto/balance-response.dto';
 import { toErrorInfo } from '../shared/error.util';
+import { withRateLimitRetryThrow } from '../shared/retry.util';
 import { User } from '../users/users.entity';
 
 /**
@@ -229,7 +230,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
       const client = await this.getClient(user);
-      const balanceData = await client.fetchBalance(this.getFetchBalanceParams());
+      const balanceData = await withRateLimitRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
+        logger: this.logger,
+        operationName: 'getBalance'
+      });
 
       const assetBalances: AssetBalanceDto[] = [];
 
@@ -283,7 +287,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     try {
       const formattedSymbol = this.formatSymbol(symbol);
       const client = await this.getClient(user);
-      const ticker = await client.fetchTicker(formattedSymbol);
+      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
+        logger: this.logger,
+        operationName: `fetchTicker(${symbol})`
+      });
 
       return ticker.last ?? 0;
     } catch (error: unknown) {
@@ -326,7 +333,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async validateKeys(apiKey: string, apiSecret: string): Promise<void> {
     const client = await this.getTemporaryClient(apiKey, apiSecret);
     try {
-      await client.fetchBalance();
+      await withRateLimitRetryThrow(() => client.fetchBalance(), {
+        logger: this.logger,
+        operationName: 'validateKeys'
+      });
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`${this.constructor.name} API key validation failed: ${err.message}`, err.stack);

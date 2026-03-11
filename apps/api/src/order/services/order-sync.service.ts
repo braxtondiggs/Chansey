@@ -18,6 +18,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 import { ExchangeService } from '../../exchange/exchange.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { withRateLimitRetry, withRateLimitRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide, OrderStatus } from '../order.entity';
@@ -51,19 +52,24 @@ export class OrderSyncService {
 
     try {
       const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
-      const markets = await client.loadMarkets();
+      const markets = await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        logger: this.logger,
+        operationName: 'loadMarkets (fetchHistoricalOrders)'
+      });
       this.logger.log(`Fetching historical orders since: ${since}`);
       this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
       const allOrders: ccxt.Order[] = [];
 
       for (const symbol of Object.keys(markets)) {
-        try {
-          const symbolOrders = await client.fetchOrders(symbol, since);
-          this.logger.log(`Fetched ${symbolOrders.length} orders for ${symbol}`);
-          allOrders.push(...symbolOrders);
-        } catch (error: unknown) {
-          const err = toErrorInfo(error);
-          this.logger.log(`Failed to fetch orders for ${symbol}: ${err.message}`);
+        const result = await withRateLimitRetry(() => client.fetchOrders(symbol, since), {
+          logger: this.logger,
+          operationName: `fetchOrders(${symbol})`
+        });
+        if (result.success) {
+          this.logger.log(`Fetched ${result.result!.length} orders for ${symbol}`);
+          allOrders.push(...result.result!);
+        } else {
+          this.logger.log(`Failed to fetch orders for ${symbol}: ${result.error!.message}`);
         }
       }
 
@@ -89,19 +95,24 @@ export class OrderSyncService {
         return [];
       }
 
-      const markets = await client.loadMarkets();
+      const markets = await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        logger: this.logger,
+        operationName: 'loadMarkets (fetchMyTrades)'
+      });
       this.logger.log(`Fetching historical trades since: ${since}`);
       this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
       const allTrades: ccxt.Trade[] = [];
 
       for (const symbol of Object.keys(markets)) {
-        try {
-          const symbolTrades = await client.fetchMyTrades(symbol, since);
-          this.logger.log(`Fetched ${symbolTrades.length} trades for ${symbol}`);
-          allTrades.push(...symbolTrades);
-        } catch (error: unknown) {
-          const err = toErrorInfo(error);
-          this.logger.log(`Failed to fetch trades for ${symbol}: ${err.message}`);
+        const result = await withRateLimitRetry(() => client.fetchMyTrades(symbol, since), {
+          logger: this.logger,
+          operationName: `fetchMyTrades(${symbol})`
+        });
+        if (result.success) {
+          this.logger.log(`Fetched ${result.result!.length} trades for ${symbol}`);
+          allTrades.push(...result.result!);
+        } else {
+          this.logger.log(`Failed to fetch trades for ${symbol}: ${result.error!.message}`);
         }
       }
 

@@ -1,6 +1,7 @@
 import { ExchangeOHLCService } from './exchange-ohlc.service';
 
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import * as retryUtil from '../../shared/retry.util';
 
 const createClient = (overrides: Partial<any> = {}) => ({
   has: { fetchOHLCV: true },
@@ -15,6 +16,8 @@ describe('ExchangeOHLCService', () => {
   let exchangeManager: jest.Mocked<ExchangeManagerService>;
   let configService: { get: jest.Mock };
 
+  let withRateLimitRetryThrowSpy: jest.SpyInstance;
+
   beforeEach(() => {
     exchangeManager = {
       getPublicClient: jest.fn()
@@ -22,9 +25,15 @@ describe('ExchangeOHLCService', () => {
     configService = { get: jest.fn() };
 
     service = new ExchangeOHLCService(exchangeManager, configService as any);
+
+    // Mock withRateLimitRetryThrow to execute operation once without retry delays
+    withRateLimitRetryThrowSpy = jest
+      .spyOn(retryUtil, 'withRateLimitRetryThrow')
+      .mockImplementation(async (fn) => fn());
   });
 
   afterEach(() => {
+    withRateLimitRetryThrowSpy.mockRestore();
     jest.clearAllMocks();
   });
 
@@ -58,17 +67,14 @@ describe('ExchangeOHLCService', () => {
     expect(result.candles?.[0].open).toBe(1);
   });
 
-  it('fetchOHLCWithRetry retries on rate limit and succeeds', async () => {
+  it('fetchOHLCWithRetry delegates to fetchOHLC', async () => {
     const fetchSpy = jest
       .spyOn(service, 'fetchOHLC')
-      .mockResolvedValueOnce({ success: false, error: 'rate limit exceeded' })
-      .mockResolvedValueOnce({ success: true, candles: [] });
+      .mockResolvedValueOnce({ success: true, candles: [], exchangeSlug: 'binance_us' });
 
-    jest.spyOn(service as any, 'sleep').mockResolvedValue(undefined);
+    const result = await service.fetchOHLCWithRetry('binance_us', 'BTC/USD', 0, 500);
 
-    const result = await service.fetchOHLCWithRetry('binance_us', 'BTC/USD', 0, 500, 2);
-
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
   });
 
@@ -89,8 +95,6 @@ describe('ExchangeOHLCService', () => {
       .mockResolvedValueOnce({ success: false, error: 'fail1' })
       .mockResolvedValueOnce({ success: false, error: 'fail2' })
       .mockResolvedValueOnce({ success: false, error: 'fail3' });
-
-    jest.spyOn(service as any, 'sleep').mockResolvedValue(undefined);
 
     const result = await service.fetchOHLCWithFallback('BTC/USD', 0, 500);
 

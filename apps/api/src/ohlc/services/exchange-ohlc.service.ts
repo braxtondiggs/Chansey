@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY, USD_QUOTE_CURRENCIES } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { formatSymbolForExchange } from '../../exchange/utils';
+import { withRateLimitRetryThrow } from '../../shared/retry.util';
 
 export interface OHLCRawData {
   timestamp: number; // Unix ms
@@ -25,8 +26,6 @@ export interface OHLCFetchResult {
 export class ExchangeOHLCService {
   private readonly logger = new Logger(ExchangeOHLCService.name);
   private readonly EXCHANGE_PRIORITY: string[];
-  private readonly MAX_RETRIES = 3;
-  private readonly INITIAL_BACKOFF_MS = 2000;
 
   constructor(
     private readonly exchangeManager: ExchangeManagerService,
@@ -65,7 +64,7 @@ export class ExchangeOHLCService {
       errors.push(`${exchangeSlug}: ${result.error}`);
 
       // Add delay between exchange attempts to avoid rate limiting
-      await this.sleep(500);
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     return {
@@ -75,56 +74,11 @@ export class ExchangeOHLCService {
   }
 
   /**
-   * Fetch OHLC data from a specific exchange with retry logic
+   * Fetch OHLC data from a specific exchange with retry logic.
+   * Retry is handled inside fetchOHLC via withRateLimitRetryThrow.
    */
-  async fetchOHLCWithRetry(
-    exchangeSlug: string,
-    symbol: string,
-    since: number,
-    limit = 500,
-    retries = this.MAX_RETRIES
-  ): Promise<OHLCFetchResult> {
-    let lastError = '';
-    let backoffMs = this.INITIAL_BACKOFF_MS;
-
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const result = await this.fetchOHLC(exchangeSlug, symbol, since, limit);
-
-        if (result.success) {
-          return result;
-        }
-
-        lastError = result.error || 'Unknown error';
-
-        // Check if it's a rate limit error
-        if (lastError.toLowerCase().includes('rate limit')) {
-          this.logger.warn(
-            `Rate limit hit on ${exchangeSlug}, waiting ${backoffMs}ms before retry ${attempt}/${retries}`
-          );
-          await this.sleep(backoffMs);
-          backoffMs *= 2; // Exponential backoff
-        } else if (attempt < retries) {
-          // Other errors - shorter delay
-          await this.sleep(backoffMs);
-          backoffMs *= 2;
-        }
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error.message : 'Unknown error';
-        this.logger.warn(`OHLC fetch attempt ${attempt}/${retries} failed for ${exchangeSlug}: ${lastError}`);
-
-        if (attempt < retries) {
-          await this.sleep(backoffMs);
-          backoffMs *= 2;
-        }
-      }
-    }
-
-    return {
-      success: false,
-      exchangeSlug,
-      error: lastError
-    };
+  async fetchOHLCWithRetry(exchangeSlug: string, symbol: string, since: number, limit = 500): Promise<OHLCFetchResult> {
+    return this.fetchOHLC(exchangeSlug, symbol, since, limit);
   }
 
   /**
@@ -147,7 +101,10 @@ export class ExchangeOHLCService {
 
       // Load markets if not already loaded
       if (!client.markets) {
-        await client.loadMarkets();
+        await withRateLimitRetryThrow(() => client.loadMarkets(), {
+          logger: this.logger,
+          operationName: `loadMarkets(${exchangeSlug})`
+        });
       }
 
       // Check if the symbol exists on this exchange
@@ -162,7 +119,10 @@ export class ExchangeOHLCService {
 
       // Fetch OHLCV data (Open, High, Low, Close, Volume)
       // Format: [[timestamp, open, high, low, close, volume], ...]
-      const ohlcv = await client.fetchOHLCV(formattedSymbol, '1h', since, limit);
+      const ohlcv = await withRateLimitRetryThrow(() => client.fetchOHLCV(formattedSymbol, '1h', since, limit), {
+        logger: this.logger,
+        operationName: `fetchOHLCV(${exchangeSlug}:${symbol})`
+      });
 
       if (!ohlcv || ohlcv.length === 0) {
         return {
@@ -221,7 +181,10 @@ export class ExchangeOHLCService {
       const client = await this.exchangeManager.getPublicClient(exchangeSlug);
 
       if (!client.markets) {
-        await client.loadMarkets();
+        await withRateLimitRetryThrow(() => client.loadMarkets(), {
+          logger: this.logger,
+          operationName: `loadMarkets(${exchangeSlug})`
+        });
       }
 
       const symbols: string[] = [];
@@ -249,12 +212,5 @@ export class ExchangeOHLCService {
       this.logger.warn(`Failed to get available symbols for ${baseAsset} on ${exchangeSlug}: ${error}`);
       return [];
     }
-  }
-
-  /**
-   * Sleep helper for delays
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

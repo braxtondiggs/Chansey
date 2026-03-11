@@ -15,7 +15,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { CircuitBreakerService, CircuitOpenError } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { isTransientError, withRetry } from '../../shared/retry.util';
+import { extractRetryAfterMs, isRateLimitError, isTransientError, withRetry } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import {
   calculateStopLossPrice as computeSL,
@@ -116,13 +116,18 @@ export class PositionManagementService {
       throw error;
     }
 
-    // Execute with retry
+    // Execute with retry (rate-limit-aware delays)
     const result = await withRetry(operation, {
       maxRetries: 3,
       initialDelayMs: 1000,
       maxDelayMs: 10000,
       backoffMultiplier: 2,
       isRetryable: isTransientError,
+      onRetry: (error, _attempt, defaultDelay) => {
+        if (isRateLimitError(error)) {
+          return extractRetryAfterMs(error) ?? Math.max(defaultDelay, 5000);
+        }
+      },
       logger: this.logger,
       operationName: `${operationName} (${exchangeSlug})`
     });

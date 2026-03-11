@@ -9,7 +9,7 @@ import { paperTradingConfig } from './paper-trading.config';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
-import { isTransientError, withRetry } from '../../shared/retry.util';
+import { withRateLimitRetry, withRateLimitRetryThrow } from '../../shared/retry.util';
 import type { User } from '../../users/users.entity';
 
 export interface PriceData {
@@ -74,12 +74,7 @@ export class PaperTradingMarketDataService {
       : await this.exchangeManager.getPublicClient(exchangeSlug);
 
     // Fetch ticker with retry
-    const result = await withRetry(() => client.fetchTicker(formattedSymbol), {
-      maxRetries: 3,
-      initialDelayMs: 2000,
-      maxDelayMs: 8000,
-      backoffMultiplier: 2,
-      isRetryable: isTransientError,
+    const result = await withRateLimitRetry(() => client.fetchTicker(formattedSymbol), {
       logger: this.logger,
       operationName: `fetchTicker(${exchangeSlug}:${symbol})`
     });
@@ -155,14 +150,9 @@ export class PaperTradingMarketDataService {
       : await this.exchangeManager.getPublicClient(exchangeSlug);
 
     // Fetch all tickers with retry
-    const result = await withRetry(
+    const result = await withRateLimitRetry(
       () => client.fetchTickers(uncachedSymbols.map((s) => this.exchangeManager.formatSymbol(exchangeSlug, s))),
       {
-        maxRetries: 3,
-        initialDelayMs: 2000,
-        maxDelayMs: 8000,
-        backoffMultiplier: 2,
-        isRetryable: isTransientError,
         logger: this.logger,
         operationName: `fetchTickers(${exchangeSlug})`
       }
@@ -246,7 +236,10 @@ export class PaperTradingMarketDataService {
         ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
         : await this.exchangeManager.getPublicClient(exchangeSlug);
 
-      const rawOrderBook = await client.fetchOrderBook(formattedSymbol, depth);
+      const rawOrderBook = await withRateLimitRetryThrow(() => client.fetchOrderBook(formattedSymbol, depth), {
+        logger: this.logger,
+        operationName: `fetchOrderBook(${exchangeSlug}:${symbol})`
+      });
 
       const orderBook: OrderBook = {
         symbol,
@@ -367,7 +360,10 @@ export class PaperTradingMarketDataService {
         ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
         : await this.exchangeManager.getPublicClient(exchangeSlug);
 
-      const ohlcv = await client.fetchOHLCV(formattedSymbol, timeframe, undefined, limit);
+      const ohlcv = await withRateLimitRetryThrow(
+        () => client.fetchOHLCV(formattedSymbol, timeframe, undefined, limit),
+        { logger: this.logger, operationName: `fetchOHLCV(${exchangeSlug}:${symbol})` }
+      );
 
       const candles = ohlcv.map((candle) => ({
         avg: candle[4] as number, // close price — representative price for indicators
@@ -397,7 +393,17 @@ export class PaperTradingMarketDataService {
 
     try {
       const client = await this.exchangeManager.getPublicClient(exchangeSlug);
-      await client.fetchTime();
+      const result = await withRateLimitRetry(() => client.fetchTime(), {
+        logger: this.logger,
+        operationName: `checkExchangeHealth(${exchangeSlug})`
+      });
+
+      if (!result.success) {
+        return {
+          healthy: false,
+          error: result.error?.message
+        };
+      }
 
       return {
         healthy: true,

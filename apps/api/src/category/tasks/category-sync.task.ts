@@ -5,9 +5,10 @@ import { CronExpression } from '@nestjs/schedule';
 
 import { AxiosError } from 'axios';
 import { Job, Queue } from 'bullmq';
-import { firstValueFrom, retry, timeout } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 
 import { toErrorInfo } from '../../shared/error.util';
+import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { CategoryService } from '../category.service';
 
 @Processor('category-queue')
@@ -92,12 +93,14 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
   }
 
   private async fetchCategories() {
-    return firstValueFrom(
-      this.http
-        .get('https://api.coingecko.com/api/v3/coins/categories/list', {
-          timeout: 10000
-        })
-        .pipe(timeout(12000), retry({ count: 3, delay: 1000 }))
+    return withRateLimitRetryThrow(
+      () =>
+        firstValueFrom(
+          this.http.get('https://api.coingecko.com/api/v3/coins/categories/list', {
+            timeout: 10000
+          })
+        ),
+      { operationName: 'fetchCategories' }
     );
   }
 
