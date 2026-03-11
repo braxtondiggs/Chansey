@@ -18,6 +18,12 @@ export interface RetryOptions {
   logger?: Logger;
   /** Operation name for logging */
   operationName?: string;
+  /**
+   * Callback invoked before each retry sleep.
+   * If it returns a number, that value is used as the delay (in ms) instead of the default.
+   * If it returns void/undefined, the default calculated delay is used.
+   */
+  onRetry?: (error: Error, attempt: number, defaultDelayMs: number) => number | void;
 }
 
 /**
@@ -34,7 +40,7 @@ export interface RetryResult<T> {
 /**
  * Default retry options
  */
-export const DEFAULT_RETRY_OPTIONS: Required<Omit<RetryOptions, 'logger' | 'operationName'>> = {
+export const DEFAULT_RETRY_OPTIONS: Required<Omit<RetryOptions, 'logger' | 'operationName' | 'onRetry'>> = {
   maxRetries: 3,
   initialDelayMs: 1000,
   maxDelayMs: 30000,
@@ -67,7 +73,7 @@ export function isTransientError(error: Error): boolean {
   if (
     message.includes('rate limit') ||
     message.includes('too many requests') ||
-    message.includes('429') ||
+    /\b429\b/.test(message) ||
     name.includes('ratelimit')
   ) {
     return true;
@@ -75,9 +81,9 @@ export function isTransientError(error: Error): boolean {
 
   // Temporary server errors
   if (
-    message.includes('503') ||
-    message.includes('502') ||
-    message.includes('504') ||
+    /\b503\b/.test(message) ||
+    /\b502\b/.test(message) ||
+    /\b504\b/.test(message) ||
     message.includes('service unavailable') ||
     message.includes('bad gateway') ||
     message.includes('gateway timeout') ||
@@ -100,6 +106,66 @@ export function isTransientError(error: Error): boolean {
 }
 
 /**
+ * Check if an error is specifically a rate limit error (subset of transient errors).
+ * Detects CCXT RateLimitExceeded/DDoSProtection and HTTP 429 patterns.
+ */
+export function isRateLimitError(error: Error): boolean {
+  const constructorName = error.constructor?.name || '';
+  const errorName = error.name || '';
+  const message = error.message?.toLowerCase() || '';
+
+  // CCXT class hierarchy: RateLimitExceeded, DDoSProtection
+  if (
+    constructorName === 'RateLimitExceeded' ||
+    constructorName === 'DDoSProtection' ||
+    errorName === 'RateLimitExceeded' ||
+    errorName === 'DDoSProtection'
+  ) {
+    return true;
+  }
+
+  // String fallback for name (case-insensitive)
+  const nameLower = (constructorName + errorName).toLowerCase();
+  if (nameLower.includes('ratelimitexceeded') || nameLower.includes('ddosprotection')) {
+    return true;
+  }
+
+  // String fallback for message
+  if (message.includes('rate limit') || message.includes('too many requests') || /\b429\b/.test(message)) {
+    return true;
+  }
+
+  return false;
+}
+
+/** Check if a CCXT error is an authentication/permission error (never retryable). */
+export function isAuthenticationError(error: Error): boolean {
+  const name = (error.constructor?.name || '') + (error.name || '');
+  return /AuthenticationError|PermissionDenied|AccountSuspended/i.test(name);
+}
+
+/**
+ * Extract a Retry-After hint from an error message (in milliseconds).
+ * Parses numeric seconds from patterns like "Retry-After: 5" or "retry after 10 seconds".
+ * Bounds result to 1000ms–120000ms.
+ * Returns null if no hint is found.
+ */
+export function extractRetryAfterMs(error: Error): number | null {
+  const message = error.message || '';
+
+  // Match patterns: "Retry-After: 5", "retry-after 10", "retry after 30 seconds"
+  const match = message.match(/retry[- ]?after[:\s]*(\d+)/i);
+  if (!match) return null;
+
+  const seconds = parseInt(match[1], 10);
+  if (isNaN(seconds) || seconds <= 0) return null;
+
+  const ms = seconds * 1000;
+  // Bound to 1s–120s
+  return Math.max(1000, Math.min(ms, 120000));
+}
+
+/**
  * Sleep for a specified duration
  */
 function sleep(ms: number): Promise<void> {
@@ -109,7 +175,10 @@ function sleep(ms: number): Promise<void> {
 /**
  * Calculate delay with exponential backoff and jitter
  */
-function calculateDelay(attempt: number, options: Required<Omit<RetryOptions, 'logger' | 'operationName'>>): number {
+function calculateDelay(
+  attempt: number,
+  options: Required<Omit<RetryOptions, 'logger' | 'operationName' | 'onRetry'>>
+): number {
   const exponentialDelay = options.initialDelayMs * Math.pow(options.backoffMultiplier, attempt);
   const cappedDelay = Math.min(exponentialDelay, options.maxDelayMs);
   // Add jitter (±25%) to prevent thundering herd
@@ -170,7 +239,16 @@ export async function withRetry<T>(operation: () => Promise<T>, options: RetryOp
       const shouldRetry = attempt < opts.maxRetries && opts.isRetryable(lastError);
 
       if (shouldRetry) {
-        const delay = calculateDelay(attempt, opts);
+        let delay = calculateDelay(attempt, opts);
+
+        // Allow onRetry callback to override the delay
+        if (opts.onRetry) {
+          const customDelay = opts.onRetry(lastError, attempt + 1, delay);
+          if (typeof customDelay === 'number') {
+            delay = customDelay;
+          }
+        }
+
         totalDelayMs += delay;
 
         if (opts.logger) {
@@ -218,4 +296,59 @@ export async function withRetryThrow<T>(operation: () => Promise<T>, options: Re
   }
 
   throw result.error;
+}
+
+/**
+ * onRetry callback that uses longer delays for rate limit errors.
+ * If the error is a rate limit, uses the Retry-After header hint or the preset initial delay (whichever is longer).
+ * For non-rate-limit errors, returns undefined to use the default delay.
+ */
+export function rateLimitAwareDelay(error: Error, _attempt: number, defaultDelayMs: number): number | void {
+  if (isRateLimitError(error)) {
+    const retryAfter = extractRetryAfterMs(error);
+    const rateLimitDelay = retryAfter ?? RATE_LIMIT_RETRY_OPTIONS.initialDelayMs ?? 5000;
+    return Math.max(rateLimitDelay, defaultDelayMs);
+  }
+}
+
+/**
+ * Retry options tuned for exchange rate limit errors.
+ * Uses 5s initial delay with 3x backoff (vs default 1s/2x).
+ * Still retries all transient errors, but rate limits get longer delays via onRetry.
+ */
+export const RATE_LIMIT_RETRY_OPTIONS: Partial<RetryOptions> = {
+  initialDelayMs: 5000,
+  backoffMultiplier: 3,
+  maxDelayMs: 60000,
+  maxRetries: 3,
+  isRetryable: isTransientError,
+  onRetry: rateLimitAwareDelay
+};
+
+/**
+ * Execute an async operation with rate-limit-aware retry logic.
+ * Merges caller options with RATE_LIMIT_RETRY_OPTIONS presets.
+ *
+ * @param operation - The async operation to execute
+ * @param options - Additional retry options (merged over rate limit defaults)
+ * @returns RetryResult with success status, result/error, and metrics
+ */
+export async function withRateLimitRetry<T>(
+  operation: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<RetryResult<T>> {
+  return withRetry(operation, { ...RATE_LIMIT_RETRY_OPTIONS, ...options });
+}
+
+/**
+ * Execute an async operation with rate-limit-aware retry, throwing on final failure.
+ * Convenience wrapper that throws instead of returning RetryResult.
+ *
+ * @param operation - The async operation to execute
+ * @param options - Additional retry options (merged over rate limit defaults)
+ * @returns The operation result
+ * @throws The last error if all retries fail
+ */
+export async function withRateLimitRetryThrow<T>(operation: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  return withRetryThrow(operation, { ...RATE_LIMIT_RETRY_OPTIONS, ...options });
 }

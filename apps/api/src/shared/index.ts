@@ -17,9 +17,15 @@ export {
 } from './circuit-breaker.service';
 export {
   DEFAULT_RETRY_OPTIONS,
+  extractRetryAfterMs,
+  isAuthenticationError,
+  isRateLimitError,
   isTransientError,
+  RATE_LIMIT_RETRY_OPTIONS,
   RetryOptions,
   RetryResult,
+  withRateLimitRetry,
+  withRateLimitRetryThrow,
   withRetry,
   withRetryThrow
 } from './retry.util';

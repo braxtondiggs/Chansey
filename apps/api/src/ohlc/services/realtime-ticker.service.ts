@@ -7,6 +7,7 @@ import { CoinService } from '../../coin/coin.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { formatSymbolForExchange } from '../../exchange/utils';
 import { toErrorInfo } from '../../shared/error.util';
+import { withRateLimitRetryThrow } from '../../shared/retry.util';
 
 export interface TickerPrice {
   coinId: string;
@@ -168,7 +169,10 @@ export class RealtimeTickerService {
 
         // Load markets if not loaded
         if (!client.markets) {
-          await client.loadMarkets();
+          await withRateLimitRetryThrow(() => client.loadMarkets(), {
+            logger: this.logger,
+            operationName: `loadMarkets(${exchangeSlug})`
+          });
         }
 
         // Check if symbol exists
@@ -178,7 +182,10 @@ export class RealtimeTickerService {
         }
 
         // Fetch ticker
-        const ticker = await client.fetchTicker(formattedSymbol);
+        const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
+          logger: this.logger,
+          operationName: `fetchTicker(${exchangeSlug}:${tradingSymbol})`
+        });
 
         if (ticker && ticker.last) {
           return {

@@ -5,6 +5,7 @@ import * as ccxt from 'ccxt';
 
 import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import { toErrorInfo } from '../../shared/error.util';
+import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
@@ -38,7 +39,10 @@ export class CoinbaseExchangeService extends BaseExchangeService {
       const formattedSymbol = symbol.includes('/') ? symbol : symbol.replace('-', '/');
 
       const client = await this.getClient();
-      const ticker = await client.fetchTicker(formattedSymbol);
+      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
+        logger: this.logger,
+        operationName: `getPrice(${symbol})`
+      });
 
       // Return in the format expected by existing code
       return {
@@ -65,7 +69,10 @@ export class CoinbaseExchangeService extends BaseExchangeService {
   async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
       const client = await this.getClient(user);
-      const balances = await client.fetchBalance();
+      const balances = await withRateLimitRetryThrow(() => client.fetchBalance(), {
+        logger: this.logger,
+        operationName: 'getBalance'
+      });
 
       const assetBalances: AssetBalanceDto[] = [];
 
