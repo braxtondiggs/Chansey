@@ -5,7 +5,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="my-0 ml-2 pl-2 leading-normal">
+    <ul class="my-0 ml-2 pl-2 leading-normal" aria-label="Password requirements">
       <li>At least one lowercase</li>
       <li>At least one uppercase</li>
       <li>At least one numeric</li>

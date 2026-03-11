@@ -95,9 +95,9 @@ export class NewPasswordComponent {
                 icon: 'pi-check-circle'
               }
             ]);
-            setTimeout(() => {
-              this.router.navigate(['/login']);
-            }, AUTH_REDIRECT_DELAY);
+            timer(AUTH_REDIRECT_DELAY)
+              .pipe(takeUntilDestroyed(this.destroyRef))
+              .subscribe(() => this.router.navigate(['/login']));
           },
           onError: (error) => {
             this.messages.set([
