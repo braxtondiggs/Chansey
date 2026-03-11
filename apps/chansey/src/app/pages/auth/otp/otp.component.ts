@@ -43,9 +43,11 @@ export class OtpComponent {
   formSubmitted = signal(false);
   emailCensored: string | null = null;
   email: string | null = null;
+  private rememberMe = false;
 
   constructor() {
     this.email = sessionStorage.getItem('otpEmail');
+    this.rememberMe = sessionStorage.getItem('otpRemember') === 'true';
     this.emailCensored = this.email ? this.email.replace(/(.{2})(.*)(@.*)/, '$1****$3') : null;
 
     if (!this.email) {
@@ -68,11 +70,12 @@ export class OtpComponent {
       const { code } = this.otpForm.getRawValue();
 
       this.verifyOtpMutation.mutate(
-        { otp: code, email: this.email },
+        { otp: code, email: this.email, rememberMe: this.rememberMe },
         {
           onSuccess: (response: ILoginResponse) => {
             if (response.user) {
               sessionStorage.removeItem('otpEmail');
+              sessionStorage.removeItem('otpRemember');
               this.router.navigate(['/app/dashboard']);
             } else {
               this.messages.set([

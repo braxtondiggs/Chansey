@@ -73,7 +73,8 @@ export class BalanceService {
    * Get current balances from all connected exchanges in parallel
    */
   private async getCurrentBalances(user: User): Promise<ExchangeBalanceDto[]> {
-    const activeExchanges = user.exchanges.filter((e) => e.isActive);
+    const exchanges = await this.userService.getExchangeKeysForUser(user.id);
+    const activeExchanges = exchanges.filter((e) => e.isActive);
 
     const results = await Promise.allSettled(
       activeExchanges.map((exchange) => this.fetchExchangeBalance(exchange, user))

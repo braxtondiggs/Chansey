@@ -45,7 +45,7 @@ export class LoginComponent {
   loginForm = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
     password: ['', Validators.required],
-    remember: [false]
+    rememberMe: [false]
   });
 
   onSubmit() {
@@ -53,14 +53,14 @@ export class LoginComponent {
     this.showResendVerification.set(false);
 
     if (this.loginForm.valid) {
-      const { email, password, remember } = this.loginForm.value;
+      const { email, password, rememberMe } = this.loginForm.value;
       if (!email || !password) return;
 
       this.loginMutation.mutate(
         {
           email,
           password,
-          remember
+          rememberMe
         },
         {
           onSuccess: (response) => {
