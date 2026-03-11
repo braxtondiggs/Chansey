@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, inject, Input, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, inject, Input, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
   selector: 'app-lazy-image',
@@ -10,6 +10,8 @@ import { Component, ElementRef, inject, Input, OnDestroy, OnInit } from '@angula
       [src]="isIntersecting ? src : ''"
       [alt]="alt"
       [class]="className"
+      [attr.width]="width || null"
+      [attr.height]="height || null"
       [ngClass]="{
         'opacity-0': !isLoaded,
         'transition-opacity delay-75 duration-700 ease-out': true
@@ -23,8 +25,11 @@ export class LazyImageComponent implements OnInit, OnDestroy {
   @Input() src = '';
   @Input() alt = '';
   @Input() className = '';
+  @Input() width: number | undefined;
+  @Input() height: number | undefined;
 
   private readonly el = inject(ElementRef);
+  private readonly cdr = inject(ChangeDetectorRef);
   isIntersecting = false;
   isLoaded = false;
   imageElement: HTMLElement | undefined;
@@ -34,12 +39,13 @@ export class LazyImageComponent implements OnInit, OnDestroy {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.1) {
+        if (entry.isIntersecting) {
           this.isIntersecting = true;
+          this.cdr.markForCheck();
           observer.unobserve(entry.target);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0 }
     );
 
     if (this.imageElement) {

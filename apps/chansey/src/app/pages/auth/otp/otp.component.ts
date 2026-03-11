@@ -1,72 +1,78 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { InputOtpModule } from 'primeng/inputotp';
-import { MessageModule } from 'primeng/message';
+import { filter } from 'rxjs';
 
 import { ILoginResponse, IOtpResponse } from '@chansey/api-interfaces';
 
 import { OtpService } from './otp.service';
 
-import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
-
-interface Message {
-  content: string;
-  severity: 'success' | 'info' | 'warn' | 'error';
-  icon: string;
-}
+import { AuthMessage, AuthMessagesComponent } from '../../../shared/components/auth-messages';
+import { AuthPageShellComponent } from '../../../shared/components/auth-page-shell';
 
 @Component({
   selector: 'app-otp',
   standalone: true,
-  imports: [ButtonModule, InputOtpModule, LazyImageComponent, MessageModule, ReactiveFormsModule, RouterLink],
-  providers: [MessageService],
+  imports: [
+    AuthMessagesComponent,
+    AuthPageShellComponent,
+    ButtonModule,
+    InputOtpModule,
+    ReactiveFormsModule,
+    RouterLink
+  ],
   templateUrl: './otp.component.html'
 })
-export class OtpComponent implements OnInit {
-  // Use inject instead of constructor
-  private fb = inject(FormBuilder);
-  private otpService = inject(OtpService);
-  private router = inject(Router);
+export class OtpComponent {
+  private readonly fb = inject(FormBuilder).nonNullable;
+  private readonly otpService = inject(OtpService);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
-  // TanStack Query mutations
   readonly verifyOtpMutation = this.otpService.useVerifyOtpMutation();
   readonly resendOtpMutation = this.otpService.useResendOtpMutation();
 
-  otpForm: FormGroup = this.fb.group({
+  otpForm = this.fb.group({
     code: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(6)]]
   });
-  messages = signal<Message[]>([]);
-  formSubmitted = false;
+  messages = signal<AuthMessage[]>([]);
+  formSubmitted = signal(false);
   emailCensored: string | null = null;
   email: string | null = null;
 
-  ngOnInit(): void {
+  constructor() {
     this.email = sessionStorage.getItem('otpEmail');
     this.emailCensored = this.email ? this.email.replace(/(.{2})(.*)(@.*)/, '$1****$3') : null;
 
     if (!this.email) {
       this.router.navigate(['/login']);
+      return;
     }
+
+    this.otpForm
+      .get('code')
+      ?.valueChanges.pipe(
+        takeUntilDestroyed(this.destroyRef),
+        filter((value) => value?.length === 6)
+      )
+      .subscribe(() => this.onSubmit());
   }
 
   onSubmit() {
-    this.formSubmitted = true;
+    this.formSubmitted.set(true);
     if (this.otpForm.valid && this.email) {
-      const { code } = this.otpForm.value;
+      const { code } = this.otpForm.getRawValue();
 
       this.verifyOtpMutation.mutate(
         { otp: code, email: this.email },
         {
           onSuccess: (response: ILoginResponse) => {
             if (response.user) {
-              // Clear the OTP email from session storage
               sessionStorage.removeItem('otpEmail');
-
-              // Navigate to dashboard
               this.router.navigate(['/app/dashboard']);
             } else {
               this.messages.set([
@@ -86,7 +92,6 @@ export class OtpComponent implements OnInit {
                 icon: 'pi-exclamation-circle'
               }
             ]);
-            console.error('OTP verification error:', error);
           }
         }
       );
@@ -116,7 +121,6 @@ export class OtpComponent implements OnInit {
               icon: 'pi-exclamation-circle'
             }
           ]);
-          console.error('Resend OTP error:', error);
         }
       }
     );

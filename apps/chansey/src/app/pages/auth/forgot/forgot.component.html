@@ -1,73 +1,44 @@
-<section
-  class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
->
-  <div class="flex h-full w-full gap-12 lg:gap-0">
-    <div class="flex flex-col p-20 lg:w-1/2 lg:min-w-160">
-      <a routerLink="/" class="mb-8 flex items-center justify-center">
-        <app-lazy-image className="w-auto h-24 object-contain object-left" src="/public/icon.png" alt="Auth Image" />
-        <h5 class="title-h5 font-normal whitespace-nowrap">Cymbit Trading</h5>
-      </a>
-      <div class="flex grow flex-col justify-center">
-        <div class="mx-auto w-full max-w-md">
-          <h5 class="title-h5 text-center lg:text-left">Forgot Password</h5>
-          <p class="body-small mt-4 text-center lg:text-left">Enter your email to reset your password.</p>
-          <div class="flex flex-col">
-            @for (message of messages(); track message; let first = $first) {
-              <p-message
-                [severity]="message.severity"
-                [text]="message.content"
-                icon="pi {{ message.icon }}"
-                size="large"
-                class="mt-4"
-              />
-            }
-          </div>
-          <form [formGroup]="forgotForm" (ngSubmit)="onSubmit()" class="mt-8">
-            <p-floatlabel variant="on" class="mt-4">
-              <input type="text" formControlName="email" pInputText class="w-full" pSize="large" required />
-              <label for="on_label">Email</label>
-            </p-floatlabel>
-            @if (formSubmitted && forgotForm.get('email')?.invalid) {
-              <small class="text-red-500">
-                {{ forgotForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
-              </small>
-            }
-            <div class="my-8 flex items-center justify-between gap-4">
-              <p-button
-                routerLink="/login"
-                [raised]="true"
-                [style]="{ width: '100%' }"
-                class="w-1/2"
-                severity="secondary"
-              >
-                <span>Cancel</span>
-              </p-button>
-              <p-button
-                type="submit"
-                [loading]="forgotMutation.isPending()"
-                [raised]="true"
-                [style]="{ width: '100%' }"
-                class="w-1/2"
-              >
-                <span>Submit</span>
-              </p-button>
-            </div>
-          </form>
-          <div class="body-small mt-8 text-center lg:text-left">
-            Not registered?
-            <a routerLink="/register" class="text-primary-500 hover:underline">Create an Account</a>
-          </div>
-        </div>
-      </div>
+<app-auth-page-shell illustration="forgot">
+  <h5 class="title-h5 text-center lg:text-left">Forgot Password</h5>
+  <p class="body-small mt-4 text-center lg:text-left">Enter your email to reset your password.</p>
+  <app-auth-messages [messages]="messages()" />
+  <form [formGroup]="forgotForm" (ngSubmit)="onSubmit()" class="mt-8">
+    <p-floatlabel variant="on" class="mt-4">
+      <input
+        id="email"
+        type="email"
+        formControlName="email"
+        pInputText
+        class="w-full"
+        pSize="large"
+        required
+        autocomplete="email"
+        [attr.aria-describedby]="formSubmitted() && forgotForm.get('email')?.invalid ? 'email-error' : null"
+      />
+      <label for="email">Email</label>
+    </p-floatlabel>
+    @if (formSubmitted() && forgotForm.get('email')?.invalid) {
+      <small id="email-error" class="text-red-500" role="alert">
+        {{ forgotForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
+      </small>
+    }
+    <div class="my-8 flex items-center justify-between gap-4">
+      <p-button routerLink="/login" [raised]="true" [style]="{ width: '100%' }" class="w-1/2" severity="secondary">
+        <span>Cancel</span>
+      </p-button>
+      <p-button
+        type="submit"
+        [loading]="forgotMutation.isPending()"
+        [raised]="true"
+        [style]="{ width: '100%' }"
+        class="w-1/2"
+      >
+        <span>Submit</span>
+      </p-button>
     </div>
-    <div class="landing-container hidden h-screen w-full py-10 lg:flex lg:w-1/2 lg:items-center lg:justify-center">
-      <div class="flex h-full w-full items-center justify-center overflow-hidden">
-        <app-lazy-image
-          className="w-auto max-h-[75vh] object-contain object-center"
-          src="/public/landing/auth/forgot-welcome.png"
-          alt="Auth Image"
-        />
-      </div>
-    </div>
+  </form>
+  <div class="body-small mt-8 text-center lg:text-left">
+    Not registered?
+    <a routerLink="/register" class="text-primary-500 hover:underline">Create an Account</a>
   </div>
-</section>
+</app-auth-page-shell>

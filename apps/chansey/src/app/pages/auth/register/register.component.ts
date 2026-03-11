@@ -1,50 +1,46 @@
 import { Component, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
-import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
+import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
-import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 
 import { IRegister } from '@chansey/api-interfaces';
 
 import { RegisterService } from './register.service';
 
-import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { AuthMessage, AuthMessagesComponent } from '../../../shared/components/auth-messages';
+import { AuthPageShellComponent } from '../../../shared/components/auth-page-shell';
+import { PasswordRequirementsComponent } from '../../../shared/components/password-requirements';
 import { PasswordMatchValidator, getPasswordError } from '../../../validators/password-match.validator';
 import { PasswordStrengthValidator } from '../../../validators/password-strength.validator';
-
-interface Message {
-  content: string;
-  severity: 'success' | 'error' | 'info' | 'warn';
-  icon: string;
-}
 
 @Component({
   selector: 'app-register',
   standalone: true,
   imports: [
-    CheckboxModule,
+    AuthMessagesComponent,
+    AuthPageShellComponent,
     ButtonModule,
     FloatLabelModule,
+    FluidModule,
     InputTextModule,
-    LazyImageComponent,
-    MessageModule,
     PasswordModule,
+    PasswordRequirementsComponent,
     ReactiveFormsModule,
     RouterLink
   ],
   templateUrl: './register.component.html'
 })
 export class RegisterComponent {
-  private fb = inject(FormBuilder);
-  private registerService = inject(RegisterService);
+  private readonly fb = inject(FormBuilder).nonNullable;
+  private readonly registerService = inject(RegisterService);
   readonly registerMutation = this.registerService.useRegisterMutation();
 
-  registerForm: FormGroup = this.fb.group(
+  registerForm = this.fb.group(
     {
       given_name: ['', Validators.required],
       family_name: ['', Validators.required],
@@ -57,18 +53,24 @@ export class RegisterComponent {
     }
   );
 
-  messages = signal<Message[]>([]);
-  formSubmitted = false;
+  messages = signal<AuthMessage[]>([]);
+  formSubmitted = signal(false);
 
   getPasswordError(controlName: string): string {
-    return getPasswordError(this.registerForm, controlName, this.formSubmitted);
+    return getPasswordError(this.registerForm, controlName, this.formSubmitted());
   }
 
   onSubmit() {
-    this.formSubmitted = true;
+    this.formSubmitted.set(true);
 
     if (this.registerForm.valid) {
-      const { email, password, given_name, family_name, confirmPassword: confirm_password } = this.registerForm.value;
+      const {
+        email,
+        password,
+        given_name,
+        family_name,
+        confirmPassword: confirm_password
+      } = this.registerForm.getRawValue();
       const registerData: IRegister = {
         email,
         password,
@@ -79,7 +81,7 @@ export class RegisterComponent {
 
       this.registerMutation.mutate(registerData, {
         onSuccess: () => {
-          this.formSubmitted = false;
+          this.formSubmitted.set(false);
           this.messages.set([
             {
               content: 'Registration successful! Please check your email for verification.',
@@ -97,7 +99,6 @@ export class RegisterComponent {
               icon: 'pi-exclamation-circle'
             }
           ]);
-          console.error('Register error:', error);
         }
       });
     }

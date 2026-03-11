@@ -1,46 +1,46 @@
 import { Component, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { InputTextModule } from 'primeng/inputtext';
-import { MessageModule } from 'primeng/message';
 
 import { ForgotService } from './forgot.service';
 
-import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { AuthMessage, AuthMessagesComponent } from '../../../shared/components/auth-messages';
+import { AuthPageShellComponent } from '../../../shared/components/auth-page-shell';
 
 @Component({
   selector: 'app-forgot',
   standalone: true,
   imports: [
+    AuthMessagesComponent,
+    AuthPageShellComponent,
     ButtonModule,
     FloatLabelModule,
     InputTextModule,
-    LazyImageComponent,
-    MessageModule,
     ReactiveFormsModule,
     RouterLink
   ],
   templateUrl: './forgot.component.html'
 })
 export class ForgotComponent {
-  private readonly fb = inject(FormBuilder);
+  private readonly fb = inject(FormBuilder).nonNullable;
   private readonly forgotService = inject(ForgotService);
   readonly forgotMutation = this.forgotService.useForgotPasswordMutation();
 
-  forgotForm: FormGroup = this.fb.group({
+  forgotForm = this.fb.group({
     email: ['', [Validators.required, Validators.email]]
   });
-  messages = signal<any[]>([]);
-  formSubmitted = false;
+  messages = signal<AuthMessage[]>([]);
+  formSubmitted = signal(false);
 
   onSubmit() {
-    this.formSubmitted = true;
+    this.formSubmitted.set(true);
 
     if (this.forgotForm.valid) {
-      const { email } = this.forgotForm.value;
+      const { email } = this.forgotForm.getRawValue();
 
       this.forgotMutation.mutate(
         { email },
@@ -62,7 +62,6 @@ export class ForgotComponent {
                 icon: 'pi-exclamation-circle'
               }
             ]);
-            console.error('Forgot password error:', error);
           }
         }
       );

@@ -1,44 +1,48 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { FluidModule } from 'primeng/fluid';
-import { InputTextModule } from 'primeng/inputtext';
-import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
+import { take, timer } from 'rxjs';
 
 import { NewPasswordService } from './new-password.service';
 
-import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { AuthMessage, AuthMessagesComponent } from '../../../shared/components/auth-messages';
+import { AuthPageShellComponent } from '../../../shared/components/auth-page-shell';
+import { PasswordRequirementsComponent } from '../../../shared/components/password-requirements';
 import { PasswordMatchValidator, getPasswordError } from '../../../validators/password-match.validator';
 import { PasswordStrengthValidator } from '../../../validators/password-strength.validator';
+import { AUTH_REDIRECT_DELAY } from '../auth.constants';
 
 @Component({
   selector: 'app-new-password',
   standalone: true,
   imports: [
+    AuthMessagesComponent,
+    AuthPageShellComponent,
     ButtonModule,
     FloatLabelModule,
     FluidModule,
-    InputTextModule,
-    LazyImageComponent,
-    MessageModule,
     PasswordModule,
+    PasswordRequirementsComponent,
     ReactiveFormsModule,
     RouterLink
   ],
   templateUrl: './new-password.component.html'
 })
-export class NewPasswordComponent implements OnInit {
-  private fb = inject(FormBuilder);
-  private newPasswordService = inject(NewPasswordService);
-  private route = inject(ActivatedRoute);
-  private router = inject(Router);
+export class NewPasswordComponent {
+  private readonly fb = inject(FormBuilder).nonNullable;
+  private readonly newPasswordService = inject(NewPasswordService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   readonly newPasswordMutation = this.newPasswordService.useResetPasswordMutation();
 
-  newPasswordForm: FormGroup = this.fb.group(
+  newPasswordForm = this.fb.group(
     {
       password: ['', [Validators.required, PasswordStrengthValidator()]],
       confirmPassword: ['', Validators.required]
@@ -47,12 +51,12 @@ export class NewPasswordComponent implements OnInit {
       validators: PasswordMatchValidator
     }
   );
-  messages = signal<any[]>([]);
-  formSubmitted = false;
+  messages = signal<AuthMessage[]>([]);
+  formSubmitted = signal(false);
   token: string | null = null;
 
-  ngOnInit() {
-    this.route.queryParams.subscribe((params) => {
+  constructor() {
+    this.route.queryParams.pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       this.token = params['token'];
 
       if (!this.token) {
@@ -63,22 +67,22 @@ export class NewPasswordComponent implements OnInit {
             icon: 'pi-exclamation-circle'
           }
         ]);
-        setTimeout(() => {
-          this.router.navigate(['/login']);
-        }, 3000);
+        timer(AUTH_REDIRECT_DELAY)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(() => this.router.navigate(['/login']));
       }
     });
   }
 
   getPasswordError(controlName: string): string {
-    return getPasswordError(this.newPasswordForm, controlName, this.formSubmitted);
+    return getPasswordError(this.newPasswordForm, controlName, this.formSubmitted());
   }
 
   onSubmit() {
-    this.formSubmitted = true;
+    this.formSubmitted.set(true);
 
     if (this.newPasswordForm.valid && this.token) {
-      const { password, confirmPassword } = this.newPasswordForm.value;
+      const { password, confirmPassword } = this.newPasswordForm.getRawValue();
 
       this.newPasswordMutation.mutate(
         { token: this.token, password, confirm_password: confirmPassword },
@@ -91,9 +95,9 @@ export class NewPasswordComponent implements OnInit {
                 icon: 'pi-check-circle'
               }
             ]);
-            setTimeout(() => {
-              this.router.navigate(['/login']);
-            }, 2000);
+            timer(AUTH_REDIRECT_DELAY)
+              .pipe(takeUntilDestroyed(this.destroyRef))
+              .subscribe(() => this.router.navigate(['/login']));
           },
           onError: (error) => {
             this.messages.set([
@@ -103,7 +107,6 @@ export class NewPasswordComponent implements OnInit {
                 icon: 'pi-exclamation-circle'
               }
             ]);
-            console.error('Password reset error:', error);
           }
         }
       );

@@ -1,94 +1,71 @@
-<section
-  class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
->
-  <div class="flex h-full w-full gap-12 lg:gap-0">
-    <div class="flex flex-col p-20 lg:w-1/2 lg:min-w-160">
-      <a routerLink="/" class="mb-8 flex items-center justify-center">
-        <app-lazy-image className="w-auto h-24 object-contain object-left" src="/public/icon.png" alt="Auth Image" />
-        <h5 class="title-h5 font-normal whitespace-nowrap">Cymbit Trading</h5>
-      </a>
-      <div class="flex grow flex-col justify-center">
-        <div class="mx-auto w-full max-w-md">
-          <h5 class="title-h5 text-center lg:text-left">Login</h5>
-          <p class="body-small mt-4 text-center lg:text-left">Welcome back! Please login to your account.</p>
-          <div class="flex flex-col">
-            @for (message of messages(); track message; let first = $first) {
-              <p-message
-                [severity]="message.severity"
-                [text]="message.content"
-                icon="pi {{ message.icon }}"
-                size="large"
-                class="mt-4"
-              />
-            }
-            @if (showResendVerification()) {
-              <p-button
-                type="button"
-                [text]="true"
-                [loading]="resendVerificationMutation.isPending()"
-                (click)="resendVerificationEmail()"
-                class="mt-2"
-              >
-                <span class="text-primary-500 hover:underline">Resend verification email</span>
-              </p-button>
-            }
-          </div>
-          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8">
-            <p-floatlabel variant="on" class="mt-4">
-              <input
-                type="text"
-                formControlName="email"
-                pInputText
-                class="w-full"
-                pSize="large"
-                required
-                autocomplete="email"
-              />
-              <label for="on_label">Email</label>
-            </p-floatlabel>
-            @if (formSubmitted && loginForm.get('email')?.invalid) {
-              <small class="text-red-500">
-                {{ loginForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
-              </small>
-            }
-            <p-fluid>
-              <p-floatlabel variant="on" class="mt-4">
-                <p-password
-                  formControlName="password"
-                  size="large"
-                  [toggleMask]="true"
-                  [feedback]="false"
-                  required
-                  autocomplete="current-password"
-                />
-                <label for="on_label">Password</label>
-              </p-floatlabel>
-            </p-fluid>
-            @if (formSubmitted && loginForm.get('password')?.invalid) {
-              <small class="text-red-500"> Password is required </small>
-            }
-
-            <div class="my-8 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <p-checkbox inputId="remember" formControlName="remember" [binary]="true" />
-                <label for="remember" class="body-small">Remember me</label>
-              </div>
-              <a routerLink="/forgot-password" class="body-small text-primary-500 hover:underline">Forgot password?</a>
-            </div>
-            <p-button type="submit" [loading]="loginMutation.isPending()" [raised]="true" [style]="{ width: '100%' }">
-              <span>Login</span>
-            </p-button>
-          </form>
-          <div class="body-small mt-8 text-center lg:text-left">
-            Not registered? <a routerLink="/register" class="text-primary-500 hover:underline">Create an Account</a>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="landing-container hidden h-screen w-full py-10 lg:flex lg:w-1/2 lg:items-center lg:justify-center">
-      <div class="flex h-full w-full items-center justify-center overflow-hidden">
-        <app-lazy-image src="/public/landing/auth/login-welcome.png" alt="Auth Image" />
-      </div>
-    </div>
+<app-auth-page-shell illustration="login">
+  <h5 class="title-h5 text-center lg:text-left">Login</h5>
+  <p class="body-small mt-4 text-center lg:text-left">Welcome back! Please login to your account.</p>
+  <div class="flex flex-col">
+    <app-auth-messages [messages]="messages()" />
+    @if (showResendVerification()) {
+      <p-button
+        type="button"
+        [text]="true"
+        [loading]="resendVerificationMutation.isPending()"
+        (click)="resendVerificationEmail()"
+        class="mt-2"
+      >
+        <span class="text-primary-500 hover:underline">Resend verification email</span>
+      </p-button>
+    }
   </div>
-</section>
+  <p-fluid>
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8">
+      <p-floatlabel variant="on" class="mt-4">
+        <input
+          id="email"
+          type="email"
+          formControlName="email"
+          pInputText
+          class="w-full"
+          pSize="large"
+          required
+          autocomplete="email"
+          [attr.aria-describedby]="formSubmitted() && loginForm.get('email')?.invalid ? 'email-error' : null"
+        />
+        <label for="email">Email</label>
+      </p-floatlabel>
+      @if (formSubmitted() && loginForm.get('email')?.invalid) {
+        <small id="email-error" class="text-red-500" role="alert">
+          {{ loginForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
+        </small>
+      }
+      <p-floatlabel variant="on" class="mt-4">
+        <p-password
+          formControlName="password"
+          inputId="password"
+          size="large"
+          [toggleMask]="true"
+          [feedback]="false"
+          required
+          autocomplete="current-password"
+          [attr.aria-describedby]="formSubmitted() && loginForm.get('password')?.invalid ? 'password-error' : null"
+        />
+        <label for="password">Password</label>
+      </p-floatlabel>
+      @if (formSubmitted() && loginForm.get('password')?.invalid) {
+        <small id="password-error" class="text-red-500" role="alert"> Password is required </small>
+      }
+
+      <div class="my-8 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <p-checkbox inputId="remember" formControlName="remember" [binary]="true" />
+          <label for="remember" class="body-small">Remember me</label>
+        </div>
+        <a routerLink="/forgot-password" class="body-small text-primary-500 hover:underline">Forgot password?</a>
+      </div>
+      <p-button type="submit" [loading]="loginMutation.isPending()" [raised]="true">
+        <span>Login</span>
+      </p-button>
+    </form>
+  </p-fluid>
+  <div class="body-small mt-8 text-center lg:text-left">
+    Not registered? <a routerLink="/register" class="text-primary-500 hover:underline">Create an Account</a>
+  </div>
+</app-auth-page-shell>
