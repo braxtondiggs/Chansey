@@ -1,32 +1,36 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
-import { MessageModule } from 'primeng/message';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { take, timer } from 'rxjs';
 
 import { VerifyEmailService } from './verify-email.service';
 
-import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { AuthMessage, AuthMessagesComponent } from '../../../shared/components/auth-messages';
+import { AuthPageShellComponent } from '../../../shared/components/auth-page-shell';
+import { AUTH_REDIRECT_DELAY } from '../auth.constants';
 
 @Component({
   selector: 'app-verify-email',
   standalone: true,
-  imports: [ButtonModule, LazyImageComponent, MessageModule, ProgressSpinnerModule, RouterLink],
+  imports: [AuthMessagesComponent, AuthPageShellComponent, ButtonModule, ProgressSpinnerModule, RouterLink],
   templateUrl: './verify-email.component.html'
 })
-export class VerifyEmailComponent implements OnInit {
-  private verifyEmailService = inject(VerifyEmailService);
-  private route = inject(ActivatedRoute);
-  private router = inject(Router);
+export class VerifyEmailComponent {
+  private readonly verifyEmailService = inject(VerifyEmailService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   readonly verifyEmailMutation = this.verifyEmailService.useVerifyEmailMutation();
 
-  messages = signal<{ content: string; severity: any; icon: string }[]>([]);
+  messages = signal<AuthMessage[]>([]);
   isVerifying = signal(true);
   isSuccess = signal(false);
 
-  ngOnInit() {
-    this.route.queryParams.subscribe((params) => {
+  constructor() {
+    this.route.queryParams.pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const token = params['token'];
 
       if (!token) {
@@ -59,9 +63,9 @@ export class VerifyEmailComponent implements OnInit {
               icon: 'pi-check-circle'
             }
           ]);
-          setTimeout(() => {
-            this.router.navigate(['/login']);
-          }, 3000);
+          timer(AUTH_REDIRECT_DELAY)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.router.navigate(['/login']));
         },
         onError: (error: Error & { message?: string }) => {
           this.isVerifying.set(false);

@@ -1,153 +1,123 @@
-<section
-  class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
->
-  <div class="flex h-full w-full gap-12 lg:gap-0">
-    <div class="flex flex-col p-20 lg:w-1/2 lg:min-w-160">
-      <a routerLink="/" class="mb-8 flex items-center justify-center">
-        <app-lazy-image className="w-auto h-24 object-contain object-left" src="/public/icon.png" alt="Auth Image" />
-        <h5 class="title-h5 font-normal whitespace-nowrap">Cymbit Trading</h5>
-      </a>
-      <div class="flex grow flex-col justify-center">
-        <div class="mx-auto w-full max-w-md">
-          <h5 class="title-h5 text-center lg:text-left">Register</h5>
-          <p class="body-small mt-4 text-center lg:text-left">Let's get started! Create your account.</p>
-          <div class="flex flex-col">
-            @for (message of messages(); track message; let first = $first) {
-              <p-message
-                [severity]="message.severity"
-                [text]="message.content"
-                icon="pi {{ message.icon }}"
-                size="large"
-                class="my-4"
-              />
-            }
-          </div>
-          <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="mt-8">
-            <div class="flex gap-4">
-              <p-floatlabel variant="on" class="mt-4 w-1/2">
-                <input
-                  type="text"
-                  formControlName="given_name"
-                  pInputText
-                  class="w-full"
-                  pSize="large"
-                  required
-                  autocomplete="given-name"
-                />
-                <label for="given_name">First Name</label>
-              </p-floatlabel>
-              <p-floatlabel variant="on" class="mt-4 w-1/2">
-                <input
-                  type="text"
-                  formControlName="family_name"
-                  pInputText
-                  class="w-full"
-                  pSize="large"
-                  required
-                  autocomplete="family-name"
-                />
-                <label for="family_name">Last Name</label>
-              </p-floatlabel>
-            </div>
-            <div class="flex">
-              @if (formSubmitted && registerForm.get('given_name')?.invalid) {
-                <small class="w-1/2 pr-2 text-red-500"> First name is required </small>
-              }
-              @if (formSubmitted && registerForm.get('family_name')?.invalid) {
-                <small class="w-1/2 pl-2 text-red-500"> Last name is required </small>
-              }
-            </div>
-            <p-floatlabel variant="on" class="mt-4">
-              <input
-                type="text"
-                formControlName="email"
-                pInputText
-                class="w-full"
-                pSize="large"
-                required
-                autocomplete="email"
-              />
-              <label for="on_label">Email</label>
-            </p-floatlabel>
-            @if (formSubmitted && registerForm.get('email')?.invalid) {
-              <small class="text-red-500">
-                {{
-                  registerForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email'
-                }}
-              </small>
-            }
-            <p-floatlabel variant="on" class="mt-4">
-              <p-password
-                formControlName="password"
-                size="large"
-                [inputStyle]="{ width: '100%' }"
-                [style]="{ width: '100%' }"
-                [toggleMask]="true"
-                required
-                autocomplete="new-password"
-              >
-                <ng-template #footer>
-                  <ul class="my-0 ml-2 pl-2 leading-normal">
-                    <li>At least one lowercase</li>
-                    <li>At least one uppercase</li>
-                    <li>At least one numeric</li>
-                    <li>At least one special character</li>
-                    <li>Minimum 8 characters</li>
-                  </ul>
-                </ng-template>
-              </p-password>
-              <label for="on_label">Password</label>
-            </p-floatlabel>
-            @if (registerForm.get('password')?.invalid) {
-              <small class="text-red-500">
-                {{ getPasswordError('password') }}
-              </small>
-            }
-            <p-floatlabel variant="on" class="mt-4">
-              <p-password
-                formControlName="confirmPassword"
-                size="large"
-                [inputStyle]="{ width: '100%' }"
-                [style]="{ width: '100%' }"
-                [toggleMask]="true"
-                [feedback]="false"
-                required
-                autocomplete="new-password"
-              />
-              <label for="on_label">Confirm Password</label>
-            </p-floatlabel>
-            @if (formSubmitted && registerForm.get('confirmPassword')?.invalid) {
-              <small class="text-red-500"> Password confirmation is required </small>
-            }
-            @if (
-              formSubmitted && registerForm.get('confirmPassword')?.valid && registerForm.hasError('passwordMismatch')
-            ) {
-              <small class="text-red-500"> Passwords do not match </small>
-            }
-            <p-button
-              type="submit"
-              class="mt-8 block w-full"
-              [loading]="registerMutation.isPending()"
-              [raised]="true"
-              [style]="{ width: '100%' }"
-            >
-              <span>Register</span>
-            </p-button>
-          </form>
-          <div class="body-small mt-8 text-center lg:text-left">
-            Already have an account? <a routerLink="/login" class="text-primary-500 hover:underline">Login</a>
-          </div>
-        </div>
+<app-auth-page-shell illustration="register">
+  <h5 class="title-h5 text-center lg:text-left">Register</h5>
+  <p class="body-small mt-4 text-center lg:text-left">Let's get started! Create your account.</p>
+  <app-auth-messages [messages]="messages()" />
+  <p-fluid>
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="mt-8">
+      <div class="flex gap-4">
+        <p-floatlabel variant="on" class="mt-4 w-1/2">
+          <input
+            id="given_name"
+            type="text"
+            formControlName="given_name"
+            pInputText
+            class="w-full"
+            pSize="large"
+            required
+            autocomplete="given-name"
+            [attr.aria-describedby]="
+              formSubmitted() && registerForm.get('given_name')?.invalid ? 'given-name-error' : null
+            "
+          />
+          <label for="given_name">First Name</label>
+        </p-floatlabel>
+        <p-floatlabel variant="on" class="mt-4 w-1/2">
+          <input
+            id="family_name"
+            type="text"
+            formControlName="family_name"
+            pInputText
+            class="w-full"
+            pSize="large"
+            required
+            autocomplete="family-name"
+            [attr.aria-describedby]="
+              formSubmitted() && registerForm.get('family_name')?.invalid ? 'family-name-error' : null
+            "
+          />
+          <label for="family_name">Last Name</label>
+        </p-floatlabel>
       </div>
-    </div>
-    <div class="landing-container hidden h-screen w-full py-10 lg:flex lg:w-1/2 lg:items-center lg:justify-center">
-      <div class="flex h-full w-full items-center justify-center overflow-hidden">
-        <app-lazy-image
-          className="w-auto lg:max-h-[75vh] object-contain object-center"
-          src="/public/landing/auth/register-welcome.png"
-          alt="Auth Image"
+      <div class="flex">
+        @if (formSubmitted() && registerForm.get('given_name')?.invalid) {
+          <small id="given-name-error" class="w-1/2 pr-2 text-red-500" role="alert"> First name is required </small>
+        }
+        @if (formSubmitted() && registerForm.get('family_name')?.invalid) {
+          <small id="family-name-error" class="w-1/2 pl-2 text-red-500" role="alert"> Last name is required </small>
+        }
+      </div>
+      <p-floatlabel variant="on" class="mt-4">
+        <input
+          id="email"
+          type="email"
+          formControlName="email"
+          pInputText
+          class="w-full"
+          pSize="large"
+          required
+          autocomplete="email"
+          [attr.aria-describedby]="formSubmitted() && registerForm.get('email')?.invalid ? 'email-error' : null"
         />
-      </div>
-    </div>
+        <label for="email">Email</label>
+      </p-floatlabel>
+      @if (formSubmitted() && registerForm.get('email')?.invalid) {
+        <small id="email-error" class="text-red-500" role="alert">
+          {{ registerForm.get('email')?.hasError('required') ? 'Email is required' : 'Please enter a valid email' }}
+        </small>
+      }
+      <p-floatlabel variant="on" class="mt-4">
+        <p-password
+          formControlName="password"
+          inputId="password"
+          size="large"
+          [toggleMask]="true"
+          required
+          autocomplete="new-password"
+          [attr.aria-describedby]="formSubmitted() && registerForm.get('password')?.invalid ? 'password-error' : null"
+        >
+          <ng-template #footer>
+            <app-password-requirements />
+          </ng-template>
+        </p-password>
+        <label for="password">Password</label>
+      </p-floatlabel>
+      @if (formSubmitted() && registerForm.get('password')?.invalid) {
+        <small id="password-error" class="text-red-500" role="alert">
+          {{ getPasswordError('password') }}
+        </small>
+      }
+      <p-floatlabel variant="on" class="mt-4">
+        <p-password
+          formControlName="confirmPassword"
+          inputId="confirmPassword"
+          size="large"
+          [toggleMask]="true"
+          [feedback]="false"
+          required
+          autocomplete="new-password"
+          [attr.aria-describedby]="
+            formSubmitted() &&
+            (registerForm.get('confirmPassword')?.invalid || registerForm.hasError('passwordMismatch'))
+              ? 'confirm-password-required-error confirm-password-mismatch-error'
+              : null
+          "
+        />
+        <label for="confirmPassword">Confirm Password</label>
+      </p-floatlabel>
+      @if (formSubmitted() && registerForm.get('confirmPassword')?.invalid) {
+        <small id="confirm-password-required-error" class="text-red-500" role="alert">
+          Password confirmation is required
+        </small>
+      }
+      @if (formSubmitted() && registerForm.get('confirmPassword')?.valid && registerForm.hasError('passwordMismatch')) {
+        <small id="confirm-password-mismatch-error" class="text-red-500" role="alert"> Passwords do not match </small>
+      }
+      <p-button type="submit" class="mt-8 block w-full" [loading]="registerMutation.isPending()" [raised]="true">
+        <span>Register</span>
+      </p-button>
+    </form>
+  </p-fluid>
+  <div class="body-small mt-8 text-center lg:text-left">
+    Already have an account? <a routerLink="/login" class="text-primary-500 hover:underline">Login</a>
   </div>
-</section>
+</app-auth-page-shell>

@@ -24,6 +24,7 @@ export class LoginService {
         }
 
         this.queryClient.setQueryData(queryKeys.auth.user(), response.user);
+        this.router.navigate(['/app/dashboard']);
       },
       invalidateQueries: [queryKeys.auth.user()]
     });

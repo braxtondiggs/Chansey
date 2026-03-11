@@ -1,56 +1,55 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { FloatLabelModule } from 'primeng/floatlabel';
 import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
-import { MessageModule } from 'primeng/message';
 import { PasswordModule } from 'primeng/password';
 
 import { ErrorCodes, isApiError } from '@chansey/shared';
 
 import { LoginService } from './login.service';
 
-import { LazyImageComponent } from '../../../shared/components/lazy-image/lazy-image.component';
+import { AuthMessage, AuthMessagesComponent } from '../../../shared/components/auth-messages';
+import { AuthPageShellComponent } from '../../../shared/components/auth-page-shell';
 
 @Component({
   selector: 'app-login',
   standalone: true,
   imports: [
+    AuthMessagesComponent,
+    AuthPageShellComponent,
     CheckboxModule,
     ButtonModule,
     FloatLabelModule,
+    FluidModule,
     InputTextModule,
-    LazyImageComponent,
-    MessageModule,
     PasswordModule,
     ReactiveFormsModule,
-    RouterLink,
-    FluidModule
+    RouterLink
   ],
   templateUrl: './login.component.html'
 })
 export class LoginComponent {
   private readonly fb = inject(FormBuilder).nonNullable;
   private readonly loginService = inject(LoginService);
-  private readonly router = inject(Router);
   readonly loginMutation = this.loginService.useLogin();
   readonly resendVerificationMutation = this.loginService.useResendVerificationEmail();
 
-  messages = signal<any[]>([]);
+  messages = signal<AuthMessage[]>([]);
   showResendVerification = signal(false);
-  formSubmitted = false;
+  formSubmitted = signal(false);
   loginForm = this.fb.group({
-    email: ['', Validators.compose([Validators.required, Validators.email])],
+    email: ['', [Validators.required, Validators.email]],
     password: ['', Validators.required],
     remember: [false]
   });
 
   onSubmit() {
-    this.formSubmitted = true;
+    this.formSubmitted.set(true);
     this.showResendVerification.set(false);
 
     if (this.loginForm.valid) {
@@ -73,9 +72,7 @@ export class LoginComponent {
                   icon: 'pi-info-circle'
                 }
               ]);
-            } else if (response.user) {
-              this.router.navigate(['/app/dashboard']);
-            } else {
+            } else if (!response.user) {
               this.messages.set([
                 {
                   content: response.message || 'Login failed. Please check your credentials.',
@@ -101,7 +98,6 @@ export class LoginComponent {
                 icon: 'pi-exclamation-circle'
               }
             ]);
-            console.error('Login error:', error);
           }
         }
       );

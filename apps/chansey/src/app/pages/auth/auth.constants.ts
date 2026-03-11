@@ -1,0 +1,1 @@
+export const AUTH_REDIRECT_DELAY = 3000;
