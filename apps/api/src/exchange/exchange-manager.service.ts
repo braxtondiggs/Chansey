@@ -7,6 +7,7 @@ import { CoinbaseExchangeService } from './coinbase-exchange/coinbase-exchange.s
 // eslint-disable-next-line import/order
 import { CoinbaseService } from './coinbase/coinbase.service';
 import { EXCHANGE_SERVICE, IBaseExchangeService, IExchangeManagerService, IExchangeService } from './interfaces';
+import { KrakenFuturesService } from './kraken/kraken-futures.service';
 import { KrakenService } from './kraken/kraken.service';
 
 import { toErrorInfo } from '../shared/error.util';
@@ -25,6 +26,7 @@ export class ExchangeManagerService implements IExchangeManagerService {
     private readonly coinbaseService: CoinbaseService,
     private readonly coinbaseExchangeService: CoinbaseExchangeService,
     private readonly krakenService: KrakenService,
+    private readonly krakenFuturesService: KrakenFuturesService,
     @Inject(EXCHANGE_SERVICE)
     private readonly exchangeService: IExchangeService
   ) {}
@@ -44,6 +46,8 @@ export class ExchangeManagerService implements IExchangeManagerService {
         return this.coinbaseExchangeService;
       case 'kraken':
         return this.krakenService;
+      case 'kraken_futures':
+        return this.krakenFuturesService;
       default:
         throw new Error(`Exchange service not found for: ${exchangeSlug}`);
     }

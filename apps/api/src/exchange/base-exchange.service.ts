@@ -6,6 +6,7 @@ import * as ccxt from 'ccxt';
 import * as http from 'http';
 import * as https from 'https';
 
+import { CCXT_BALANCE_META_KEYS } from './ccxt-balance.util';
 import { EXCHANGE_KEY_SERVICE, EXCHANGE_SERVICE, IExchangeKeyService, IExchangeService } from './interfaces';
 
 import { AssetBalanceDto } from '../balance/dto/balance-response.dto';
@@ -207,11 +208,54 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   }
 
   /**
-   * Get balances for all assets or a specific one
+   * Parameters passed to CCXT fetchBalance(). Override in subclass if needed (e.g. { type: 'spot' }).
+   */
+  protected getFetchBalanceParams(): object | undefined {
+    return undefined;
+  }
+
+  /**
+   * Normalize an asset name returned by CCXT. Override in subclass if needed (e.g. Kraken ZUSD → USD).
+   */
+  protected normalizeAssetName(asset: string): string {
+    return asset;
+  }
+
+  /**
+   * Get balances for all assets
    * @param user The user to fetch balances for
    * @returns Array of balances
    */
-  abstract getBalance(user: User): Promise<AssetBalanceDto[]>;
+  async getBalance(user: User): Promise<AssetBalanceDto[]> {
+    try {
+      const client = await this.getClient(user);
+      const balanceData = await client.fetchBalance(this.getFetchBalanceParams());
+
+      const assetBalances: AssetBalanceDto[] = [];
+
+      for (const [asset, balance] of Object.entries(balanceData)) {
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
+
+        const free = Number(balance.free ?? 0);
+        const used = Number(balance.used ?? 0);
+        const locked = used > 0 ? used : Math.max(0, Number(balance.total ?? 0) - free);
+
+        if (free > 0 || locked > 0) {
+          assetBalances.push({
+            asset: this.normalizeAssetName(asset),
+            free: free.toString(),
+            locked: locked.toString()
+          });
+        }
+      }
+
+      return assetBalances;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
+      throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
+    }
+  }
 
   /**
    * Get free USD balance
@@ -382,10 +426,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     // Handle common patterns like BTCUSD, BTCUSDT, ETHUSDT, etc.
     if (symbol.endsWith('USDT')) {
       const base = symbol.slice(0, -4); // Remove 'USDT'
-      return `${base}/USDT`;
+      if (base.length >= 2) return `${base}/USDT`;
     } else if (symbol.endsWith('USD')) {
       const base = symbol.slice(0, -3); // Remove 'USD'
-      return `${base}/USD`;
+      if (base.length >= 2) return `${base}/USD`;
     }
 
     // Fallback: try to split common crypto pairs
@@ -407,19 +451,24 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * @param user User context for client initialization
    * @throws Error if exchange doesn't support futures
    */
-  async setMarginMode(_mode: string, _symbol: string, _user: User): Promise<void> {
-    throw new Error(`${this.constructor.name} does not support futures trading`);
+  async setMarginMode(mode: string, symbol: string, _user: User): Promise<void> {
+    this.logger.warn(
+      `${this.constructor.name} does not support setMarginMode — ignoring (mode=${mode}, symbol=${symbol})`
+    );
   }
 
   /**
    * Set leverage for a symbol.
+   * Default is a no-op for exchanges that don't support leverage configuration.
+   * Override in subclass to provide real implementation.
    * @param leverage Leverage multiplier
    * @param symbol Trading pair symbol
    * @param user User context for client initialization
-   * @throws Error if exchange doesn't support futures
    */
-  async setLeverage(_leverage: number, _symbol: string, _user: User): Promise<void> {
-    throw new Error(`${this.constructor.name} does not support futures trading`);
+  async setLeverage(leverage: number, symbol: string, _user: User): Promise<void> {
+    this.logger.warn(
+      `${this.constructor.name} does not support setLeverage — ignoring (leverage=${leverage}, symbol=${symbol})`
+    );
   }
 
   /**

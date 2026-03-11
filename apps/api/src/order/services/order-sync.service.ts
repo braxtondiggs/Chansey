@@ -44,6 +44,11 @@ export class OrderSyncService {
    * Fetch historical orders from exchange
    */
   async fetchHistoricalOrders(client: ccxt.Exchange, lastSyncTime?: Date): Promise<ccxt.Order[]> {
+    if (!client.has.fetchOrders) {
+      this.logger.debug(`Exchange ${client.id} does not support fetchOrders, skipping`);
+      return [];
+    }
+
     try {
       const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
       const markets = await client.loadMarkets();

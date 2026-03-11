@@ -107,11 +107,11 @@ export class CoinbaseService extends BaseExchangeService {
     });
 
     // Create a temporary Coinbase client with the provided keys
-    const client = new ccxt.coinbase({
+    const client = new ccxt.coinbaseadvanced({
       apiKey,
       secret: secretKey.replace(/\\n/g, '\n').trim(),
       enableRateLimit: true,
-      v3: true, // Use v3 API for Coinbase Pro
+      sandbox: false,
       httpsAgent
     });
 
@@ -131,37 +131,9 @@ export class CoinbaseService extends BaseExchangeService {
   }
 
   /**
-   * Set the margin mode for a futures symbol on Coinbase Advanced
-   * @param mode Margin mode (e.g. 'isolated', 'cross')
-   * @param symbol Trading pair symbol
-   * @param user User context for client initialization
-   */
-  override async setMarginMode(mode: string, symbol: string, user: User): Promise<void> {
-    const exchange = await this.getClient(user);
-    await exchange.setMarginMode(mode, symbol);
-  }
-
-  /**
-   * Set leverage for a futures symbol on Coinbase Advanced
-   * @param leverage Leverage multiplier
-   * @param symbol Trading pair symbol
-   * @param user User context for client initialization
-   */
-  override async setLeverage(leverage: number, symbol: string, user: User): Promise<void> {
-    const exchange = await this.getClient(user);
-    await exchange.setLeverage(leverage, symbol);
-  }
-
-  /**
-   * Create a futures order on Coinbase Advanced
-   * Configures margin mode and leverage, then places a market order
-   * @param user User context for client initialization
-   * @param symbol Trading pair symbol (e.g. 'BTC/USD:USD')
-   * @param side Order side: 'buy' or 'sell'
-   * @param quantity Order quantity
-   * @param leverage Leverage multiplier
-   * @param params Additional CCXT order parameters
-   * @returns CCXT order response
+   * Create a futures order on Coinbase Advanced.
+   * Coinbase Advanced does not support setMarginMode or setLeverage via API —
+   * margin/leverage is managed by the exchange, not user-configurable.
    */
   async createFuturesOrder(
     user: User,
@@ -171,15 +143,15 @@ export class CoinbaseService extends BaseExchangeService {
     leverage: number,
     params?: Record<string, unknown>
   ): Promise<ccxt.Order> {
+    if (leverage !== undefined && leverage !== 1) {
+      this.logger.debug(
+        `Coinbase Advanced: leverage=${leverage} ignored — margin/leverage is managed by the exchange, not user-configurable`
+      );
+    }
+
     const exchange = await this.getClient(user);
 
-    // Configure margin and leverage for the symbol
-    await exchange.setMarginMode('isolated', symbol);
-    await exchange.setLeverage(leverage, symbol);
-
-    // Place market order with futures params
     return exchange.createMarketOrder(symbol, side, quantity, undefined, {
-      marginMode: 'isolated',
       ...params
     });
   }
