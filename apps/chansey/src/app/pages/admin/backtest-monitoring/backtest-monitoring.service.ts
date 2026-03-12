@@ -18,7 +18,15 @@ import {
   SignalAnalyticsDto,
   TradeAnalyticsDto
 } from '@chansey/api-interfaces';
-import { buildUrl, FREQUENT_POLICY, queryKeys, REALTIME_POLICY, useAuthQuery } from '@chansey/shared';
+import {
+  authenticatedBlobFetch,
+  buildUrl,
+  FREQUENT_POLICY,
+  queryKeys,
+  REALTIME_POLICY,
+  type UrlParamValue,
+  useAuthQuery
+} from '@chansey/shared';
 
 /**
  * Service for backtest monitoring dashboard via TanStack Query
@@ -41,7 +49,7 @@ export class BacktestMonitoringService {
       const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.overview(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/overview`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/overview`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -55,7 +63,7 @@ export class BacktestMonitoringService {
       const currentQuery = query?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.backtests(currentQuery as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/backtests`, currentQuery as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/backtests`, currentQuery),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -69,7 +77,7 @@ export class BacktestMonitoringService {
       const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.signalAnalytics(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/signal-analytics`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/signal-analytics`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -83,7 +91,7 @@ export class BacktestMonitoringService {
       const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.tradeAnalytics(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/trade-analytics`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/trade-analytics`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -97,7 +105,7 @@ export class BacktestMonitoringService {
       const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.optimizationAnalytics(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/optimization-analytics`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/optimization-analytics`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -111,7 +119,7 @@ export class BacktestMonitoringService {
       const currentFilters = filters?.() ?? {};
       return {
         queryKey: queryKeys.admin.backtestMonitoring.paperTradingAnalytics(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/paper-trading-analytics`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/paper-trading-analytics`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -120,7 +128,7 @@ export class BacktestMonitoringService {
   /**
    * Query paginated optimization runs with progress
    */
-  useOptimizationRuns(query?: Signal<Record<string, unknown>>) {
+  useOptimizationRuns(query?: Signal<Record<string, UrlParamValue>>) {
     return useAuthQuery<PaginatedOptimizationRunsDto>(() => {
       const currentQuery = query?.() ?? {};
       return {
@@ -134,7 +142,7 @@ export class BacktestMonitoringService {
   /**
    * Query paginated live replay runs with progress
    */
-  useLiveReplayRuns(query?: Signal<Record<string, unknown>>) {
+  useLiveReplayRuns(query?: Signal<Record<string, UrlParamValue>>) {
     return useAuthQuery<PaginatedLiveReplayRunsDto>(() => {
       const currentQuery = query?.() ?? {};
       return {
@@ -148,7 +156,7 @@ export class BacktestMonitoringService {
   /**
    * Query paginated paper trading sessions with progress
    */
-  usePaperTradingSessions(query?: Signal<Record<string, unknown>>) {
+  usePaperTradingSessions(query?: Signal<Record<string, UrlParamValue>>) {
     return useAuthQuery<PaginatedPaperTradingSessionsDto>(() => {
       const currentQuery = query?.() ?? {};
       return {
@@ -210,20 +218,7 @@ export class BacktestMonitoringService {
       throw new Error('Invalid export parameters');
     }
 
-    const response = await fetch(url, { credentials: 'include' });
-
-    if (!response.ok) {
-      // Try to extract detailed error message from response
-      let errorDetail = response.statusText;
-      try {
-        const errorBody = await response.json();
-        errorDetail = errorBody.message || errorBody.error || errorDetail;
-      } catch {
-        // Ignore JSON parse errors, use statusText
-      }
-      throw new Error(`Export failed: ${errorDetail}`);
-    }
-
+    const response = await authenticatedBlobFetch(url);
     const blob = await response.blob();
     const filename =
       type === 'backtests'

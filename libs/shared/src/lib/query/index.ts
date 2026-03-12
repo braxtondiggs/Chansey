@@ -47,6 +47,7 @@ export type {
 
 // Query Utilities
 export {
+  authenticatedBlobFetch,
   authenticatedFetch,
   batchInvalidate,
   buildUrl,
@@ -60,7 +61,13 @@ export {
   usePrefetchQuery,
   useSetQueryData
 } from './query-utils';
-export type { AuthQueryOptions, BaseQueryOptions, MutationOptions, ReactiveAuthQueryConfig } from './query-utils';
+export type {
+  AuthQueryOptions,
+  BaseQueryOptions,
+  MutationOptions,
+  ReactiveAuthQueryConfig,
+  UrlParamValue
+} from './query-utils';
 
 // API Error Handling
 export { ApiError, ErrorCodes, extractErrorInfo, isApiError } from './api-error';

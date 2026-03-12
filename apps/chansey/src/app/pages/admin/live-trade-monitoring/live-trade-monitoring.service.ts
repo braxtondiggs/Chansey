@@ -1,6 +1,6 @@
 import { Injectable, Signal, signal } from '@angular/core';
 
-import { buildUrl, FREQUENT_POLICY, queryKeys, useAuthQuery } from '@chansey/shared';
+import { authenticatedBlobFetch, buildUrl, FREQUENT_POLICY, queryKeys, useAuthQuery } from '@chansey/shared';
 
 // ============================================================================
 // Types (mirroring backend DTOs)
@@ -378,7 +378,7 @@ export class LiveTradeMonitoringService {
       const currentFilters = filters?.() ?? this.filtersSignal();
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.overview(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/overview`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/overview`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -392,7 +392,7 @@ export class LiveTradeMonitoringService {
       const currentQuery = query?.() ?? {};
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.algorithms(currentQuery as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/algorithms`, currentQuery as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/algorithms`, currentQuery),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -406,7 +406,7 @@ export class LiveTradeMonitoringService {
       const currentQuery = query?.() ?? {};
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.orders(currentQuery as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/orders`, currentQuery as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/orders`, currentQuery),
         options: { cachePolicy: FREQUENT_POLICY }
       };
     });
@@ -434,7 +434,7 @@ export class LiveTradeMonitoringService {
       const currentFilters = filters?.() ?? this.filtersSignal();
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.slippageAnalysis(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/slippage-analysis`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/slippage-analysis`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY, enabled: enabled?.() ?? true }
       };
     });
@@ -448,7 +448,7 @@ export class LiveTradeMonitoringService {
       const currentQuery = query?.() ?? {};
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.userActivity(currentQuery as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/user-activity`, currentQuery as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/user-activity`, currentQuery),
         options: { cachePolicy: FREQUENT_POLICY, enabled: enabled?.() ?? true }
       };
     });
@@ -462,7 +462,7 @@ export class LiveTradeMonitoringService {
       const currentFilters = filters?.() ?? this.filtersSignal();
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.alerts(currentFilters as Record<string, unknown>),
-        url: buildUrl(`${this.apiUrl}/alerts`, currentFilters as Record<string, unknown>),
+        url: buildUrl(`${this.apiUrl}/alerts`, currentFilters),
         options: { cachePolicy: FREQUENT_POLICY, enabled: enabled?.() ?? true }
       };
     });
@@ -474,19 +474,7 @@ export class LiveTradeMonitoringService {
   async downloadExport(format: ExportFormat, filters?: LiveTradeFiltersDto): Promise<void> {
     const url = buildUrl(`${this.apiUrl}/export/orders`, { ...filters, format });
 
-    const response = await fetch(url, { credentials: 'include' });
-
-    if (!response.ok) {
-      let errorDetail = response.statusText;
-      try {
-        const errorBody = await response.json();
-        errorDetail = errorBody.message || errorBody.error || errorDetail;
-      } catch {
-        // Ignore JSON parse errors
-      }
-      throw new Error(`Export failed: ${errorDetail}`);
-    }
-
+    const response = await authenticatedBlobFetch(url);
     const blob = await response.blob();
     const filename = `algorithmic-orders.${format}`;
 

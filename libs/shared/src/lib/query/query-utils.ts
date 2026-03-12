@@ -192,6 +192,64 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
   return await response.json();
 }
 
+/**
+ * Performs an authenticated fetch that returns the raw Response (for blob/binary downloads).
+ * Same cookie/retry logic as authenticatedFetch, but does not parse the body.
+ */
+export async function authenticatedBlobFetch(
+  url: string,
+  options: RequestInit = {},
+  isRetry = false
+): Promise<Response> {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      const isRefreshEndpoint = url.includes('/api/auth/refresh');
+
+      if (!isRetry && !sessionExpired && !isRefreshEndpoint) {
+        const refreshed = await attemptTokenRefresh();
+        if (refreshed) {
+          return authenticatedBlobFetch(url, options, true);
+        }
+
+        sessionExpired = true;
+        dispatchSessionExpiredEvent();
+      }
+
+      throw new ApiError({
+        statusCode: 401,
+        code: 'AUTH.INVALID_CREDENTIALS',
+        message: 'Authentication required',
+        path: url,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Try to extract error detail from response
+    let errorMessage = `Error ${response.status}: ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorMessage;
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    throw new ApiError({
+      statusCode: response.status,
+      code: `HTTP_${response.status}`,
+      message: errorMessage,
+      path: url,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return response;
+}
+
 // ============================================================================
 // URL Utilities
 // ============================================================================
@@ -203,13 +261,19 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
  * @param params - Optional record of query parameters
  * @returns The URL with query string appended (if any params are present)
  */
-export function buildUrl(base: string, params?: Record<string, unknown>): string {
+export type UrlParamValue = string | number | boolean | string[] | null | undefined;
+
+export function buildUrl<T extends Partial<Record<keyof T & string, UrlParamValue>>>(base: string, params?: T): string {
   if (!params) return base;
 
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '' && typeof value !== 'object') {
-      searchParams.set(key, String(value));
+    if (value !== undefined && value !== null && value !== '') {
+      if (Array.isArray(value)) {
+        searchParams.set(key, value.join(','));
+      } else {
+        searchParams.set(key, String(value));
+      }
     }
   }
 

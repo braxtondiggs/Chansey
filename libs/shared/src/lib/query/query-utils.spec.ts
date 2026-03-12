@@ -20,6 +20,7 @@ jest.mock('@tanstack/angular-query-experimental', () => {
 
 import { STANDARD_POLICY } from './cache-policies';
 import {
+  authenticatedBlobFetch,
   authenticatedFetch,
   batchInvalidate,
   buildUrl,
@@ -124,6 +125,39 @@ describe('query-utils', () => {
         json: jest.fn().mockRejectedValue(new Error('bad json'))
       });
       await expect(authenticatedFetch('/api/error')).rejects.toThrow('Error 500: Server Error');
+    });
+  });
+
+  describe('authenticatedBlobFetch', () => {
+    it('returns raw response with credentials included', async () => {
+      const blobResponse = { ok: true, status: 200, statusText: 'OK', blob: jest.fn().mockResolvedValue(new Blob()) };
+      fetchMock().mockResolvedValueOnce(blobResponse);
+
+      const result = await authenticatedBlobFetch('/api/export');
+
+      expect(fetchMock()).toHaveBeenCalledWith('/api/export', expect.objectContaining({ credentials: 'include' }));
+      expect(result).toBe(blobResponse);
+    });
+
+    it('retries once after successful token refresh on 401', async () => {
+      const blobResponse = { ok: true, status: 200, statusText: 'OK' };
+      fetchMock().mockResolvedValueOnce(make401()).mockResolvedValueOnce(make200()).mockResolvedValueOnce(blobResponse);
+
+      const result = await authenticatedBlobFetch('/api/export');
+
+      expect(result).toBe(blobResponse);
+      expect(fetchMock()).toHaveBeenCalledTimes(3);
+    });
+
+    it('throws ApiError on non-401 failure', async () => {
+      fetchMock().mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Server Error',
+        json: jest.fn().mockResolvedValue({ message: 'Internal error' })
+      });
+
+      await expect(authenticatedBlobFetch('/api/export')).rejects.toThrow('Internal error');
     });
   });
 
@@ -436,14 +470,13 @@ describe('query-utils', () => {
       expect(result).toBe('/api/test');
     });
 
-    it('silently skips object and array values', () => {
+    it('serializes array values as comma-separated strings', () => {
       const result = buildUrl('/api/test', {
         keep: 'yes',
-        obj: { nested: true },
-        arr: [1, 2, 3],
+        arr: ['a', 'b', 'c'],
         num: 42
       });
-      expect(result).toBe('/api/test?keep=yes&num=42');
+      expect(result).toBe('/api/test?keep=yes&arr=a%2Cb%2Cc&num=42');
     });
   });
 
