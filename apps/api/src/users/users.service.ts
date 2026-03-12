@@ -7,6 +7,7 @@ import { getCapitalAllocationForRisk, Role } from '@chansey/api-interfaces';
 
 import { UpdateFuturesEnabledDto, UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
 import { User } from './users.entity';
+import { UserWithExchanges } from './users.types';
 
 import { CoinService } from '../coin/coin.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
@@ -35,7 +36,7 @@ export class UsersService {
     private readonly riskPoolMapping: RiskPoolMappingService
   ) {}
 
-  async create(user: Partial<User>) {
+  async create(user: Partial<User>): Promise<UserWithExchanges> {
     try {
       const newUser = this.user.create(user);
 
@@ -53,10 +54,9 @@ export class UsersService {
       newUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(3);
 
       const savedUser = await this.user.save(newUser);
-      savedUser.exchanges = [];
 
       this.logger.debug(`User created with ID: ${savedUser.id}`);
-      return savedUser;
+      return Object.assign(savedUser, { exchanges: [] });
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to create user`, err.stack);
@@ -112,14 +112,13 @@ export class UsersService {
     }
   }
 
-  async getById(id: string): Promise<User> {
+  async getById(id: string): Promise<UserWithExchanges> {
     try {
       const user = await this.user.findOneOrFail({ where: { id } });
       const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
 
       this.logger.debug(`User retrieved with ID: ${id}`);
-      user.exchanges = exchanges;
-      return user;
+      return Object.assign(user, { exchanges });
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`User not found with ID: ${id}`, err.stack);
@@ -145,15 +144,11 @@ export class UsersService {
     }
   }
 
-  async getProfile(user: User) {
+  async getProfile(user: User): Promise<UserWithExchanges> {
     try {
       const dbUser = await this.getById(user.id);
 
-      // Get supported exchange keys information
-      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
-
       dbUser.roles = user.roles || dbUser.roles || [Role.USER];
-      dbUser.exchanges = exchanges;
       return dbUser;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -192,7 +187,7 @@ export class UsersService {
     }
   }
 
-  async getUsersWithActiveExchangeKeys(): Promise<User[]> {
+  async getUsersWithActiveExchangeKeys(): Promise<UserWithExchanges[]> {
     try {
       this.logger.debug('Fetching users with active exchange keys');
 
@@ -203,14 +198,15 @@ export class UsersService {
         .getMany();
 
       // Load supported exchange keys for each user in parallel
-      await Promise.all(
+      const usersWithExchanges = await Promise.all(
         users.map(async (user) => {
-          user.exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+          const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+          return Object.assign(user, { exchanges });
         })
       );
 
-      this.logger.debug(`Found ${users.length} users with active exchange keys`);
-      return users;
+      this.logger.debug(`Found ${usersWithExchanges.length} users with active exchange keys`);
+      return usersWithExchanges;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch users with active exchange keys: ${err.message}`, err.stack);

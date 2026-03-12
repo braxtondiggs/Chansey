@@ -28,12 +28,11 @@ import { User } from '../users/users.entity';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
-const createUser = (overrides: Partial<User> = {}): User =>
+const createUser = (overrides: Record<string, unknown> = {}): User =>
   ({
     id: 'user-1',
     algoTradingEnabled: true,
     algoCapitalAllocationPercentage: 50,
-    exchanges: [{ id: 'ex-1', name: 'Binance US', slug: 'binance_us', isActive: true }],
     coinRisk: { level: 3 } as any,
     effectiveCalculationRiskLevel: 3,
     ...overrides
@@ -182,7 +181,7 @@ describe('LiveTradingService', () => {
   });
 
   /** Mocks the common setup for tests that reach the signal execution path */
-  const setupSignalPath = (opts?: { user?: Partial<User>; strategies?: any[] }): User => {
+  const setupSignalPath = (opts?: { user?: Record<string, unknown>; strategies?: any[] }): User => {
     lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
     const user = createUser(opts?.user);
     userRepo.find.mockResolvedValue([user]);

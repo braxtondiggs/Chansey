@@ -109,8 +109,9 @@ describe('AuthenticationService', () => {
       id: 'user-id-123',
       email: 'user@example.com',
       given_name: 'Sam',
-      family_name: 'Stone'
-    } as User);
+      family_name: 'Stone',
+      exchanges: []
+    } as any);
 
     emailService.sendVerificationEmail.mockResolvedValue(true);
 

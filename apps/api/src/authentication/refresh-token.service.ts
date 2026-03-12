@@ -34,10 +34,8 @@ export class RefreshTokenService {
       // Get user with full profile including roles
       const user = await this.usersService.getProfile(baseUser);
 
-      // Check if this was a "remember me" token by looking at its expiration
-      const currentTime = Math.floor(Date.now() / 1000);
-      const timeUntilExpiry = payload.exp - currentTime;
-      const rememberMe = timeUntilExpiry > 14 * 24 * 60 * 60; // If more than 14 days remaining, it was a remember me token
+      // Read rememberMe from token payload (backward-compatible: defaults to false for old tokens)
+      const rememberMe = payload.rememberMe === true;
 
       // Generate new tokens with same remember me preference and preserved roles
       const newAccessToken = await this.generateAccessToken(user);
@@ -72,7 +70,8 @@ export class RefreshTokenService {
     const payload = {
       sub: user.id,
       type: 'refresh',
-      roles: user.roles || [Role.USER] // Include roles in refresh token to preserve them
+      roles: user.roles || [Role.USER], // Include roles in refresh token to preserve them
+      rememberMe
     };
 
     // Use longer expiration for remember me

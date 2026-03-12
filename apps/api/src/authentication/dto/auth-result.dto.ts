@@ -1,12 +1,13 @@
-import { User } from '../../users/users.entity';
+import { UserWithExchanges } from '../../users/users.types';
 
 /**
  * Result returned from authentication operations that provide user data
  */
 export interface AuthResult {
-  user: User;
+  user: UserWithExchanges;
   access_token: string | null;
   message?: string;
+  rememberMe?: boolean;
 }
 
 /**

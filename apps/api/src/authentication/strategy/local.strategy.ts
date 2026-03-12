@@ -16,7 +16,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(request: any, email: string, password: string) {
-    const rememberMe = request.body.remember === true;
+    const rememberMe = request.body.rememberMe === true;
     return this.authenticationService.getAuthenticatedUser(email, password, rememberMe);
   }
 }

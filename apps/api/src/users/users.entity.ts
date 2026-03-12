@@ -18,7 +18,6 @@ import {
   Role
 } from '@chansey/api-interfaces';
 
-import type { SupportedExchangeKeyDto } from '../exchange/exchange-key/dto';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   OpportunitySellingUserConfig
@@ -151,10 +150,6 @@ export class User {
   @Column({ type: 'jsonb', default: () => `'${JSON.stringify(DEFAULT_NOTIFICATION_PREFERENCES)}'` })
   notificationPreferences: NotificationPreferences;
 
-  // Runtime-only fields (not persisted to database)
-  rememberMe: boolean;
-  token: string;
-
   @CreateDateColumn({ select: false, type: 'timestamptz' })
   createdAt: Date;
 
@@ -185,8 +180,6 @@ export class User {
   get effectiveCalculationRiskLevel(): number {
     return getEffectiveCalculationRisk(this.coinRisk?.level, this.calculationRiskLevel);
   }
-
-  exchanges: SupportedExchangeKeyDto[];
 
   constructor(partial: Partial<User>) {
     Object.assign(this, partial);

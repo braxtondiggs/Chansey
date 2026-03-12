@@ -19,6 +19,7 @@ export class LoginService {
         resetSessionExpiredFlag();
         if (response.should_show_email_otp_screen) {
           sessionStorage.setItem('otpEmail', variables.email);
+          sessionStorage.setItem('otpRemember', String(variables.rememberMe === true));
           this.router.navigate(['/auth/otp']);
           return;
         }

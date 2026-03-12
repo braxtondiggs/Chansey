@@ -148,20 +148,11 @@ export class AuthenticationController {
     }
 
     const userData = authResult.user;
-    const rememberMe = userData.rememberMe || false;
+    const rememberMe = authResult.rememberMe || false;
 
-    // Generate new secure tokens
-    const accessToken = await this.refreshTokenService.generateAccessToken(userData);
-    const refreshToken = await this.refreshTokenService.generateRefreshToken(userData, rememberMe);
-
-    // Set secure HttpOnly cookies with appropriate expiration
-    const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, refreshToken, rememberMe);
-    cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
-
-    // Return user data with remember me preference
-    return response.send({
+    return this.sendAuthResponse(response, userData, rememberMe, {
       user: userData,
-      rememberMe: rememberMe
+      rememberMe
     });
   }
 
@@ -280,7 +271,6 @@ export class AuthenticationController {
     const authResult = await this.authentication.verifyOtp(verifyOtpDto);
 
     if (authResult.user) {
-      // Create user object for token generation
       const user = {
         id: authResult.user.id,
         email: authResult.user.email,
@@ -289,15 +279,9 @@ export class AuthenticationController {
         roles: authResult.user.roles
       } as User;
 
-      const rememberMe = false; // OTP usually doesn't have remember me context
+      const rememberMe = verifyOtpDto.rememberMe || false;
 
-      // Generate new secure tokens
-      const accessToken = await this.refreshTokenService.generateAccessToken(user);
-      const refreshToken = await this.refreshTokenService.generateRefreshToken(user, rememberMe);
-
-      // Set secure HttpOnly cookies
-      const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, refreshToken, rememberMe);
-      cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
+      return this.sendAuthResponse(response, user, rememberMe, authResult);
     }
 
     return response.send(authResult);
@@ -368,6 +352,14 @@ export class AuthenticationController {
   @HttpCode(HttpStatus.OK)
   async disableOtp(@GetUser() user: User, @Body() disableOtpDto: DisableOtpDto) {
     return this.authentication.disableOtp(user.id, disableOtpDto.password);
+  }
+
+  private async sendAuthResponse(response: FastifyReply, user: User, rememberMe: boolean, body: object) {
+    const accessToken = await this.refreshTokenService.generateAccessToken(user);
+    const refreshToken = await this.refreshTokenService.generateRefreshToken(user, rememberMe);
+    const cookies = this.refreshTokenService.getCookieWithTokens(accessToken, refreshToken, rememberMe);
+    cookies.forEach((cookie) => response.header('Set-Cookie', cookie));
+    return response.send(body);
   }
 
   @Post('refresh')

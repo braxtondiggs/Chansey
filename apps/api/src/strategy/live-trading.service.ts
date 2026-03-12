@@ -128,11 +128,6 @@ export class LiveTradingService implements OnApplicationShutdown {
       return;
     }
 
-    if (!user.exchanges || user.exchanges.length === 0) {
-      this.logger.debug(`User ${user.id} has no exchange keys configured`);
-      return;
-    }
-
     // Fetch user's free balance from exchange
     const balances = await this.balanceService.getUserBalances(user, false);
     const totalFreeUsdValue = this.calculateFreeUsdValue(balances.current);

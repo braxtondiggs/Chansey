@@ -1,6 +1,7 @@
 export interface IVerifyOtpRequest {
   otp: string;
   email: string;
+  rememberMe?: boolean;
 }
 
 export interface IOtpResponse {

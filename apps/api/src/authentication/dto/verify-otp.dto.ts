@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { IsNotEmpty, IsString, Length } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, Length } from 'class-validator';
 
 export class VerifyOtpDto {
   @ApiProperty({
@@ -19,6 +19,14 @@ export class VerifyOtpDto {
   @IsNotEmpty()
   @IsString()
   email: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether to extend token lifetime (remember me)',
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  rememberMe?: boolean;
 }
 
 export class OtpResponseDto {
