@@ -1,9 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { Category, CreateCategoryDto, UpdateCategoryDto } from '@chansey/api-interfaces';
-import { authenticatedFetch, queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
+import { queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing categories in admin panel via TanStack Query
@@ -31,13 +29,12 @@ export class CategoriesService {
    * @param categoryId - Signal containing the category ID
    */
   useCategory(categoryId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<Category>(() => {
       const id = categoryId();
       return {
         queryKey: queryKeys.categories.detail(id || ''),
-        queryFn: () => authenticatedFetch<Category>(`${this.apiUrl}/${id}`),
-        ...STANDARD_POLICY,
-        enabled: !!id
+        url: `${this.apiUrl}/${id}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!id }
       };
     });
   }

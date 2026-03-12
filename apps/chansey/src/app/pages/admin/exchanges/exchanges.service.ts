@@ -1,9 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { CreateExchangeDto, Exchange, UpdateExchangeDto } from '@chansey/api-interfaces';
-import { authenticatedFetch, queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
+import { queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing exchanges in admin panel via TanStack Query
@@ -31,13 +29,12 @@ export class ExchangesService {
    * @param exchangeId - Signal containing the exchange ID
    */
   useExchange(exchangeId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<Exchange>(() => {
       const id = exchangeId();
       return {
         queryKey: queryKeys.exchanges.detail(id || ''),
-        queryFn: () => authenticatedFetch<Exchange>(`${this.apiUrl}/${id}`),
-        ...STANDARD_POLICY,
-        enabled: !!id
+        url: `${this.apiUrl}/${id}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!id }
       };
     });
   }

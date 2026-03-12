@@ -1,17 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { Coin, CreatePortfolioDto, PortfolioItem } from '@chansey/api-interfaces';
-import {
-  authenticatedFetch,
-  FREQUENT_POLICY,
-  queryKeys,
-  STANDARD_POLICY,
-  TIME,
-  useAuthMutation,
-  useAuthQuery
-} from '@chansey/shared';
+import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for prices page data via TanStack Query
@@ -46,19 +36,20 @@ export class PriceService {
    * Uses a reactive signal for coin IDs to enable dynamic refetching
    */
   usePrices(coins: Signal<string>) {
-    return injectQuery(() => {
+    return useAuthQuery<Record<string, { usd: number }>>(() => {
       const coinValue = coins();
       return {
         queryKey: queryKeys.prices.byIds(coinValue),
-        queryFn: () =>
-          authenticatedFetch<Record<string, { usd: number }>>(
-            `/api/simple/price?ids=${coinValue}&vs_currencies=usd&include_24hr_vol=false&include_market_cap=false&include_24hr_change=false&include_last_updated_at=false`
-          ),
-        staleTime: TIME.MINUTES.m1,
-        gcTime: TIME.MINUTES.m5,
-        refetchInterval: TIME.MINUTES.m1,
-        refetchOnWindowFocus: true,
-        enabled: !!coinValue
+        url: `/api/simple/price?ids=${coinValue}&vs_currencies=usd&include_24hr_vol=false&include_market_cap=false&include_24hr_change=false&include_last_updated_at=false`,
+        options: {
+          cachePolicy: {
+            staleTime: TIME.MINUTES.m1,
+            gcTime: TIME.MINUTES.m5,
+            refetchInterval: TIME.MINUTES.m1
+          },
+          refetchOnWindowFocus: true,
+          enabled: !!coinValue
+        }
       };
     });
   }

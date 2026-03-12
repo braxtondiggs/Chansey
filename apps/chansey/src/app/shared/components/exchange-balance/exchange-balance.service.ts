@@ -1,9 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { AccountValueHistoryDto, BalanceResponseDto } from '@chansey/api-interfaces';
-import { authenticatedFetch, FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthQuery } from '@chansey/shared';
+import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for exchange balance data via TanStack Query
@@ -49,14 +47,15 @@ export class ExchangeBalanceService {
    * Uses a reactive signal for dynamic day selection
    */
   useBalanceHistory(days: Signal<number>) {
-    return injectQuery(() => {
+    return useAuthQuery<AccountValueHistoryDto>(() => {
       const daysValue = days();
       return {
         queryKey: queryKeys.balances.accountHistory(daysValue),
-        queryFn: () => authenticatedFetch<AccountValueHistoryDto>(`api/balance/history?days=${daysValue}`),
-        staleTime: TIME.MINUTES.m5,
-        gcTime: TIME.MINUTES.m15,
-        refetchOnWindowFocus: true
+        url: `api/balance/history?days=${daysValue}`,
+        options: {
+          cachePolicy: { staleTime: TIME.MINUTES.m5, gcTime: TIME.MINUTES.m15 },
+          refetchOnWindowFocus: true
+        }
       };
     });
   }

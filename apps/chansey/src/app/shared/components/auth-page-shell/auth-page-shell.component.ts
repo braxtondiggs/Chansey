@@ -24,10 +24,10 @@ import { LazyImageComponent } from '../lazy-image/lazy-image.component';
       class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
     >
       <div class="flex h-full w-full gap-12 lg:gap-0">
-        <div class="flex flex-col p-20 lg:w-1/2 lg:min-w-160">
+        <div class="flex w-full flex-col p-20 lg:w-1/2 lg:min-w-160">
           <a routerLink="/" class="mb-8 flex items-center justify-center">
             <app-lazy-image
-              className="object-contain object-left w-auto h-24"
+              className="object-contain object-left w-auto h-24 -translate-y-3"
               src="/public/icon.png"
               alt="Cymbit Trading logo"
               [width]="114"

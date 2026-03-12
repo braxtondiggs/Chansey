@@ -22,6 +22,7 @@ import { STANDARD_POLICY } from './cache-policies';
 import {
   authenticatedFetch,
   batchInvalidate,
+  buildUrl,
   createDomainInvalidator,
   createQueryConfig,
   resetSessionExpiredFlag,
@@ -246,6 +247,35 @@ describe('query-utils', () => {
       await expect(query.queryFn()).resolves.toEqual({});
       expect(fetchMock()).toHaveBeenCalledWith('/api/items', expect.objectContaining({ credentials: 'include' }));
     });
+
+    it('does not leak cachePolicy into the query config object', () => {
+      const query = useAuthQuery(['items'], '/api/items', {
+        cachePolicy: { staleTime: 5000 }
+      }) as unknown as Record<string, unknown>;
+
+      expect(query).not.toHaveProperty('cachePolicy');
+      expect(query.staleTime).toBe(5000);
+    });
+
+    it('passes through select and throwOnError in static overload', () => {
+      const selectFn = (data: string[]) => data.slice(0, 1);
+      const query = useAuthQuery<string[]>(['items'], '/api/items', {
+        select: selectFn,
+        throwOnError: true
+      }) as unknown as {
+        select: (data: string[]) => string[];
+        throwOnError: boolean;
+      };
+
+      expect(query.select).toBe(selectFn);
+      expect(query.throwOnError).toBe(true);
+    });
+
+    it('throws when url is missing in static overload', () => {
+      expect(() => {
+        useAuthQuery(['items'], undefined as unknown as string);
+      }).toThrow('useAuthQuery: url is required for static (non-factory) calls');
+    });
   });
 
   describe('useAuthMutation', () => {
@@ -324,25 +354,17 @@ describe('query-utils', () => {
       expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['key'] });
     });
 
-    it('prefetches queries with explicit stale time', async () => {
+    it.each([
+      { label: 'explicit stale time', staleTime: 123, expected: 123 },
+      { label: 'default stale time', staleTime: undefined, expected: 60000 }
+    ])('prefetches queries with $label', async ({ staleTime, expected }) => {
       const prefetch = usePrefetchQuery();
 
-      await prefetch(['prefetch'], () => Promise.resolve('data'), 123);
+      await prefetch(['prefetch'], () => Promise.resolve('data'), staleTime!);
       expect(queryClientMock.prefetchQuery).toHaveBeenCalledWith({
         queryFn: expect.any(Function),
         queryKey: ['prefetch'],
-        staleTime: 123
-      });
-    });
-
-    it('uses default stale time when none is provided to prefetch', async () => {
-      const prefetch = usePrefetchQuery();
-
-      await prefetch(['prefetch-default'], () => Promise.resolve('data'));
-      expect(queryClientMock.prefetchQuery).toHaveBeenCalledWith({
-        queryFn: expect.any(Function),
-        queryKey: ['prefetch-default'],
-        staleTime: 60000
+        staleTime: expected
       });
     });
 
@@ -370,6 +392,117 @@ describe('query-utils', () => {
       await batchInvalidate(queryClientMock as unknown as QueryClient, [['a'], ['b']]);
       expect(queryClientMock.invalidateQueries).toHaveBeenNthCalledWith(1, { queryKey: ['a'] });
       expect(queryClientMock.invalidateQueries).toHaveBeenNthCalledWith(2, { queryKey: ['b'] });
+    });
+  });
+
+  describe('buildUrl', () => {
+    it('returns base URL when no params or empty params are provided', () => {
+      expect(buildUrl('/api/test')).toBe('/api/test');
+      expect(buildUrl('/api/test', undefined)).toBe('/api/test');
+      expect(buildUrl('/api/test', {})).toBe('/api/test');
+    });
+
+    it('appends query parameters to URL', () => {
+      const result = buildUrl('/api/test', { page: 1, limit: 10 });
+      expect(result).toBe('/api/test?page=1&limit=10');
+    });
+
+    it('filters out null, undefined, and empty string values', () => {
+      const result = buildUrl('/api/test', {
+        keep: 'yes',
+        nullVal: null,
+        undefinedVal: undefined,
+        emptyVal: '',
+        zero: 0
+      });
+      expect(result).toBe('/api/test?keep=yes&zero=0');
+    });
+
+    it('coerces non-string values to strings', () => {
+      const result = buildUrl('/api/test', {
+        num: 42,
+        bool: true,
+        falseBool: false
+      });
+      expect(result).toBe('/api/test?num=42&bool=true&falseBool=false');
+    });
+
+    it('returns base URL when all params are filtered out', () => {
+      const result = buildUrl('/api/test', {
+        a: null,
+        b: undefined,
+        c: ''
+      });
+      expect(result).toBe('/api/test');
+    });
+
+    it('silently skips object and array values', () => {
+      const result = buildUrl('/api/test', {
+        keep: 'yes',
+        obj: { nested: true },
+        arr: [1, 2, 3],
+        num: 42
+      });
+      expect(result).toBe('/api/test?keep=yes&num=42');
+    });
+  });
+
+  describe('useAuthQuery reactive overload', () => {
+    it('resolves factory function and builds authenticated query', async () => {
+      const query = useAuthQuery<{ id: string }>(() => ({
+        queryKey: ['items', 'abc'],
+        url: '/api/items/abc'
+      })) as unknown as {
+        queryFn: () => Promise<unknown>;
+        queryKey: QueryKey;
+        staleTime: number;
+      };
+
+      expect(query.queryKey).toEqual(['items', 'abc']);
+      expect(query.staleTime).toBe(STANDARD_POLICY.staleTime);
+
+      await expect(query.queryFn()).resolves.toEqual({});
+      expect(fetchMock()).toHaveBeenCalledWith('/api/items/abc', expect.objectContaining({ credentials: 'include' }));
+    });
+
+    it('merges cache policy from reactive options', () => {
+      const query = useAuthQuery<string[]>(() => ({
+        queryKey: ['items'],
+        url: '/api/items',
+        options: {
+          cachePolicy: { staleTime: 99_000, retry: 0 }
+        }
+      })) as unknown as {
+        queryKey: QueryKey;
+        staleTime: number;
+        retry: number;
+        gcTime: number;
+      };
+
+      expect(query.staleTime).toBe(99_000);
+      expect(query.retry).toBe(0);
+      expect(query.gcTime).toBe(STANDARD_POLICY.gcTime);
+    });
+
+    it('passes through enabled, refetchOnWindowFocus, and select options', () => {
+      const selectFn = (data: string[]) => data.filter(Boolean);
+      const query = useAuthQuery<string[]>(() => ({
+        queryKey: ['items'],
+        url: '/api/items',
+        options: {
+          enabled: false,
+          refetchOnWindowFocus: false,
+          select: selectFn
+        }
+      })) as unknown as {
+        enabled: boolean;
+        refetchOnWindowFocus: boolean;
+        select: (data: string[]) => string[];
+      };
+
+      expect(query.enabled).toBe(false);
+      expect(query.refetchOnWindowFocus).toBe(false);
+      expect(query.select).toBe(selectFn);
     });
   });
 });

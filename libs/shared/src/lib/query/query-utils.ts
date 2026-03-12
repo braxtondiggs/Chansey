@@ -3,6 +3,7 @@ import { inject } from '@angular/core';
 import {
   CreateMutationOptions,
   CreateQueryOptions,
+  CreateQueryResult,
   QueryClient,
   QueryKey,
   injectMutation,
@@ -32,6 +33,22 @@ export interface BaseQueryOptions<TData, _TError = Error> {
   placeholderData?: TData | (() => TData);
   /** Custom error type */
   throwOnError?: boolean;
+}
+
+/**
+ * Options for reactive (signal-based) auth query configuration
+ */
+export interface AuthQueryOptions<TData> extends Omit<BaseQueryOptions<TData>, 'placeholderData'> {
+  refetchOnWindowFocus?: boolean;
+}
+
+/**
+ * Configuration returned by the reactive useAuthQuery factory function
+ */
+export interface ReactiveAuthQueryConfig<TData> {
+  queryKey: QueryKey;
+  url: string;
+  options?: AuthQueryOptions<TData>;
 }
 
 /**
@@ -176,6 +193,31 @@ export async function authenticatedFetch<T>(url: string, options: RequestInit = 
 }
 
 // ============================================================================
+// URL Utilities
+// ============================================================================
+
+/**
+ * Builds a URL with query parameters, filtering out null/undefined/empty values.
+ *
+ * @param base - The base URL path
+ * @param params - Optional record of query parameters
+ * @returns The URL with query string appended (if any params are present)
+ */
+export function buildUrl(base: string, params?: Record<string, unknown>): string {
+  if (!params) return base;
+
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '' && typeof value !== 'object') {
+      searchParams.set(key, String(value));
+    }
+  }
+
+  const queryString = searchParams.toString();
+  return queryString ? `${base}?${queryString}` : base;
+}
+
+// ============================================================================
 // Query Factory Functions
 // ============================================================================
 
@@ -212,20 +254,25 @@ export function createQueryConfig<TData, TKey extends QueryKey = QueryKey>(
 }
 
 /**
- * Injects a query with authenticated fetch and standardized configuration
+ * Injects a query with authenticated fetch and standardized configuration.
  *
- * @param queryKey - The query key
- * @param url - The API URL
- * @param options - Additional query options
- * @returns Query result signal
+ * Supports two calling styles:
  *
- * @example
- * // Static query
- * coinsQuery = useAuthQuery<Coin[]>(
- *   queryKeys.coins.lists(),
- *   '/api/coin'
- * );
+ * **Static** (existing, unchanged):
+ * ```ts
+ * useAuthQuery<Coin[]>(queryKeys.coins.lists(), '/api/coin');
+ * ```
+ *
+ * **Reactive** (new, for signal-based queries):
+ * ```ts
+ * useAuthQuery<Coin>(() => ({
+ *   queryKey: queryKeys.coins.detail(id()),
+ *   url: `/api/coin/${id()}`,
+ *   options: { enabled: !!id() }
+ * }));
+ * ```
  */
+export function useAuthQuery<TData>(factory: () => ReactiveAuthQueryConfig<TData>): CreateQueryResult<TData, Error>;
 export function useAuthQuery<TData>(
   queryKey: QueryKey,
   url: string,
@@ -234,7 +281,48 @@ export function useAuthQuery<TData>(
     enabled?: boolean;
     refetchOnWindowFocus?: boolean;
   }
-) {
+): CreateQueryResult<TData, Error>;
+export function useAuthQuery<TData>(
+  queryKeyOrFactory: QueryKey | (() => ReactiveAuthQueryConfig<TData>),
+  url?: string,
+  options?: Omit<CreateQueryOptions<TData, Error>, 'queryKey' | 'queryFn'> & {
+    cachePolicy?: Partial<CachePolicy>;
+    enabled?: boolean;
+    refetchOnWindowFocus?: boolean;
+  }
+): CreateQueryResult<TData, Error> {
+  // Reactive overload: factory function
+  if (typeof queryKeyOrFactory === 'function') {
+    const factory = queryKeyOrFactory as () => ReactiveAuthQueryConfig<TData>;
+    return injectQuery(() => {
+      const config = factory();
+      const opts = config.options;
+      const policy = opts?.cachePolicy ? mergeCachePolicy(STANDARD_POLICY, opts.cachePolicy) : STANDARD_POLICY;
+
+      return {
+        queryKey: config.queryKey,
+        queryFn: () => authenticatedFetch<TData>(config.url),
+        staleTime: policy.staleTime,
+        gcTime: policy.gcTime,
+        refetchInterval: policy.refetchInterval,
+        refetchIntervalInBackground: policy.refetchIntervalInBackground,
+        refetchOnWindowFocus: opts?.refetchOnWindowFocus ?? policy.refetchOnWindowFocus,
+        retry: policy.retry,
+        retryDelay: policy.retryDelay,
+        enabled: opts?.enabled,
+        select: opts?.select,
+        throwOnError: opts?.throwOnError
+      };
+    });
+  }
+
+  // Static overload: queryKey + url
+  const queryKey = queryKeyOrFactory as QueryKey;
+
+  if (!url) {
+    throw new Error('useAuthQuery: url is required for static (non-factory) calls');
+  }
+
   const policy = options?.cachePolicy ? mergeCachePolicy(STANDARD_POLICY, options.cachePolicy) : STANDARD_POLICY;
 
   return injectQuery(() => ({
@@ -248,7 +336,8 @@ export function useAuthQuery<TData>(
     retry: policy.retry,
     retryDelay: policy.retryDelay,
     enabled: options?.enabled,
-    ...options
+    select: options?.select,
+    throwOnError: options?.throwOnError
   }));
 }
 

@@ -1,9 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { Coin, CreateCoinDto, UpdateCoinDto } from '@chansey/api-interfaces';
-import { authenticatedFetch, queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
+import { queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing coins in admin panel via TanStack Query
@@ -31,13 +29,12 @@ export class CoinsService {
    * @param coinId - Signal containing the coin ID
    */
   useCoin(coinId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<Coin>(() => {
       const id = coinId();
       return {
         queryKey: queryKeys.coins.detail(id || ''),
-        queryFn: () => authenticatedFetch<Coin>(`${this.apiUrl}/${id}`),
-        ...STANDARD_POLICY,
-        enabled: !!id
+        url: `${this.apiUrl}/${id}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!id }
       };
     });
   }
