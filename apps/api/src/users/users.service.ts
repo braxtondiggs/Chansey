@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { getCapitalAllocationForRisk, Role } from '@chansey/api-interfaces';
+import { getCapitalAllocationForRisk } from '@chansey/api-interfaces';
 
 import { UpdateFuturesEnabledDto, UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
 import { User } from './users.entity';
@@ -146,10 +146,8 @@ export class UsersService {
 
   async getProfile(user: User): Promise<UserWithExchanges> {
     try {
-      const dbUser = await this.getById(user.id);
-
-      dbUser.roles = user.roles || dbUser.roles || [Role.USER];
-      return dbUser;
+      const freshUser = await this.getById(user.id);
+      return freshUser;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to get user profile: ${user.id}`, err.stack);

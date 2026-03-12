@@ -1,27 +1,17 @@
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 
-import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUrl, IsUUID, Max, Min } from 'class-validator';
 
 import { CreateUserDto } from './create-user.dto';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
-  @ApiProperty({ example: '1234567890', description: 'Binance API Key', required: false })
-  @IsString()
-  @IsOptional()
-  binance?: string;
-
-  @ApiProperty({ example: '0987654321', description: 'Binance API Secret Key', required: false })
-  @IsString()
-  @IsOptional()
-  binanceSecret?: string;
-
   @ApiProperty({ description: 'Coin risk level ID', required: false })
   @IsUUID()
   @IsOptional()
   coinRisk?: string;
 
   @ApiProperty({
-    description: 'Calculation risk level (1-5). Only used when coinRisk level = 6 (Custom)',
+    description: 'Independent trading style level (1-5)',
     required: false
   })
   @IsInt()
@@ -65,27 +55,13 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   phone_number?: string;
 
-  @ApiProperty({ description: 'Base64 encoded profile picture or URL', required: false })
-  @IsString()
+  @ApiProperty({ description: 'Profile picture URL', required: false })
+  @IsUrl()
   @IsOptional()
   picture?: string;
 
-  @ApiProperty({ description: "User's old password", required: false })
-  @IsString()
-  @IsOptional()
-  old_password?: string;
-
-  @ApiProperty({ description: "User's new password", required: false })
-  @IsString()
-  @IsOptional()
-  new_password?: string;
-
-  @ApiProperty({ description: "User's new password confirmation", required: false })
-  @IsString()
-  @IsOptional()
-  confirm_new_password?: string;
-
   @ApiProperty({ description: 'Whether to hide user balance display', required: false })
+  @IsBoolean()
   @IsOptional()
   hide_balance?: boolean;
 }

@@ -69,4 +69,5 @@ export interface ExchangeKey {
   name: string;
   slug: string;
   supportsFutures?: boolean;
+  createdAt?: Date;
 }

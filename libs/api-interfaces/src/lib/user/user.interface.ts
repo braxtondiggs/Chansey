@@ -44,6 +44,7 @@ export interface IUser {
 }
 
 export interface IUserProfileUpdate {
+  email?: string;
   given_name?: string;
   family_name?: string;
   middle_name?: string;
