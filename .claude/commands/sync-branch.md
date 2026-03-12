@@ -1,12 +1,12 @@
 ---
 allowed-tools: Bash, Read, Grep, Glob
 argument-hint: [PR number] [--rebase | --merge] [--auto-resolve]
-description: Sync a GitHub PR branch that is behind master and resolve conflicts to get it ready for merge
+description: Sync the current branch with master, resolve conflicts, and push
 ---
 
-# Sync PR Branch
+# Sync Branch
 
-Sync a PR branch with master and resolve conflicts: $ARGUMENTS
+Sync a branch with master and resolve conflicts: $ARGUMENTS
 
 ## Current State
 
@@ -17,11 +17,11 @@ Sync a PR branch with master and resolve conflicts: $ARGUMENTS
 
 ## Task
 
-Get a PR branch that is behind master and/or has merge conflicts synced up and ready for merge.
+Get the current branch synced up with master, resolving any conflicts along the way.
 
 ### 1. Identify Target Branch
 
-**If a PR number is provided** (e.g., `sync-pr 123`):
+**If a PR number is provided** (e.g., `sync-branch 123`):
 
 ```bash
 # Get the branch name and PR details
@@ -34,13 +34,16 @@ gh pr view <number> --json headRefName,baseRefName,mergeable,mergeStateStatus,ti
 **If no PR number is provided**:
 
 - Use the current branch
-- Find the associated PR:
+- Check if there's an associated PR (for reporting purposes only):
 
 ```bash
-gh pr view --json headRefName,baseRefName,mergeable,mergeStateStatus,title,number,statusCheckRollup
+gh pr view --json headRefName,baseRefName,mergeable,mergeStateStatus,title,number,statusCheckRollup 2>/dev/null
 ```
 
-**If no PR exists for the current branch**: Error and exit.
+- If a PR exists: note it for the sync report
+- If no PR exists: that's fine — proceed with a branch-only sync
+
+**If on main/master**: Error and exit — nothing to sync.
 
 ### 2. Pre-Flight Checks
 
@@ -55,7 +58,7 @@ git status --porcelain
 
 ```bash
 # Stash if user agrees
-git stash push -m "sync-pr: auto-stash before syncing"
+git stash push -m "sync-branch: auto-stash before syncing"
 ```
 
 ### 3. Fetch Latest Remote State
@@ -69,11 +72,12 @@ git rev-list --left-right --count origin/master...HEAD
 ```
 
 Report the status:
+
 - Commits behind master
 - Commits ahead of master
-- Whether conflicts exist
+- Whether conflicts are likely
 
-**If the branch is already up-to-date with master and has no conflicts**: Report this and exit early.
+**If the branch is already up-to-date with master**: Report this and exit early.
 
 ### 4. Sync Strategy
 
@@ -161,7 +165,7 @@ git push --force-with-lease origin $(git branch --show-current)
 
 **Important**: Use `--force-with-lease` (not `--force`) to prevent overwriting any new commits pushed by others.
 
-After pushing, verify the PR state:
+If a PR is associated, verify the PR state after pushing:
 
 ```bash
 gh pr view --json mergeable,mergeStateStatus,statusCheckRollup
@@ -178,10 +182,10 @@ git stash pop
 ## Output Format
 
 ```
-## PR Sync Report
+## Branch Sync Report
 
-PR: #<number> - <title>
-Branch: <branch-name> → <base-branch>
+Branch: <branch-name> → master
+PR: #<number> - <title> (or "none")
 
 ## Before Sync
 Behind master: <count> commits
@@ -200,9 +204,9 @@ Method: <rebase|merge>
 Behind master: 0 commits
 Ahead of master: <count> commits
 Pushed: ✓ (force-with-lease)
-PR mergeable: <status>
+PR mergeable: <status> (or "n/a — no PR")
 
-## Status Checks
+## Status Checks (if PR exists)
 <check-1>: <pass|fail|pending>
 <check-2>: <pass|fail|pending>
 ...
@@ -210,27 +214,29 @@ PR mergeable: <status>
 
 ## Error Handling
 
-**No PR found**: "Error: No PR found for the current branch. Create one first with /create-pr"
+**On main/master**: "Error: Already on the default branch. Switch to a feature branch first."
 
-**Dirty working directory (user declines stash)**: "Error: Working directory has uncommitted changes. Commit or stash them first."
+**Dirty working directory (user declines stash)**: "Error: Working directory has uncommitted changes. Commit or stash
+them first."
 
 **Force push rejected**: "Error: Force push rejected. Someone may have pushed new commits. Fetch and try again."
 
-**Rebase conflict too complex**: "This conflict requires manual resolution. Here are the conflicted files and the changes on each side..."
+**Rebase conflict too complex**: "This conflict requires manual resolution. Here are the conflicted files and the
+changes on each side..."
 
 **Branch already up-to-date**: "Branch is already up-to-date with master. No sync needed."
 
 ## Examples
 
-### Example 1: Simple Sync (no conflicts)
+### Example 1: Simple Sync (no conflicts, no PR)
 
 ```
-/sync-pr 42
+/sync-branch
 
-## PR Sync Report
+## Branch Sync Report
 
-PR: #42 - feat: add RSI indicator support
 Branch: feat/rsi-indicator → master
+PR: none
 
 ## Before Sync
 Behind master: 5 commits
@@ -244,18 +250,17 @@ Method: rebase
 Behind master: 0 commits
 Ahead of master: 3 commits
 Pushed: ✓ (force-with-lease)
-PR mergeable: MERGEABLE
 ```
 
-### Example 2: Sync with Conflicts
+### Example 2: Sync with Conflicts (has PR)
 
 ```
-/sync-pr --rebase
+/sync-branch --rebase
 
-## PR Sync Report
+## Branch Sync Report
 
-PR: #87 - fix: order sync timeout handling
 Branch: fix/order-sync-timeout → master
+PR: #87 - fix: order sync timeout handling
 
 ## Before Sync
 Behind master: 12 commits
@@ -276,11 +281,24 @@ Pushed: ✓ (force-with-lease)
 PR mergeable: MERGEABLE
 ```
 
+### Example 3: Sync a specific PR
+
+```
+/sync-branch 42
+
+## Branch Sync Report
+
+Branch: feat/add-rsi → master
+PR: #42 - feat: add RSI indicator support
+
+...
+```
+
 ## Options
 
-| Flag             | Description                                           |
-| ---------------- | ----------------------------------------------------- |
-| `<PR number>`    | Target a specific PR (default: current branch's PR)   |
-| `--rebase`       | Rebase onto master (default)                          |
-| `--merge`        | Merge master into branch instead of rebasing          |
-| `--auto-resolve` | Attempt to auto-resolve conflicts intelligently       |
+| Flag             | Description                                     |
+| ---------------- | ----------------------------------------------- |
+| `<PR number>`    | Check out and sync a specific PR's branch       |
+| `--rebase`       | Rebase onto master (default)                    |
+| `--merge`        | Merge master into branch instead of rebasing    |
+| `--auto-resolve` | Attempt to auto-resolve conflicts intelligently |

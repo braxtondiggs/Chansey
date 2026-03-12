@@ -1,76 +1,53 @@
 import { AfterViewInit, Component, computed, DestroyRef, effect, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
-import { funEmoji } from '@dicebear/collection';
-import { createAvatar } from '@dicebear/core';
 import { ConfirmationService, MessageService } from 'primeng/api';
-import { AvatarModule } from 'primeng/avatar';
-import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { DialogModule } from 'primeng/dialog';
-import { DividerModule } from 'primeng/divider';
-import { FieldsetModule } from 'primeng/fieldset';
-import { FileSelectEvent, FileUpload, FileUploadModule } from 'primeng/fileupload';
-import { FloatLabel } from 'primeng/floatlabel';
-import { FluidModule } from 'primeng/fluid';
-import { InputTextModule } from 'primeng/inputtext';
-import { MessageModule } from 'primeng/message';
-import { PasswordModule } from 'primeng/password';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { SelectModule } from 'primeng/select';
-import { SkeletonModule } from 'primeng/skeleton';
-import { TabsModule } from 'primeng/tabs';
-import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
-import { TooltipModule } from 'primeng/tooltip';
 import { delay, filter } from 'rxjs';
 
-import { CALCULATION_RISK_CAPITAL_ALLOCATION, ExchangeKey, Risk } from '@chansey/api-interfaces';
+import { ChangePasswordRequest, Exchange, ExchangeKey } from '@chansey/api-interfaces';
 
+import { ChangePasswordComponent } from './components/change-password/change-password.component';
+import { ExchangeIntegrationsComponent } from './components/exchange-integrations/exchange-integrations.component';
+import { ProfileInfoComponent } from './components/profile-info/profile-info.component';
 import { ProfileService } from './profile.service';
+import { ExchangeFormState } from './profile.types';
 
-import { ImageCropComponent } from '../../../shared/components/image-crop/image-crop.component';
+import { AuthMessage } from '../../../shared/components/auth-messages/auth-message.interface';
 import { AuthService } from '../../../shared/services/auth.service';
 import { ExchangeService } from '../../../shared/services/exchange.service';
-import { getPasswordError, PasswordMatchValidator } from '../../../validators/password-match.validator';
-import { PasswordStrengthValidator } from '../../../validators/password-strength.validator';
 import { RisksService } from '../../admin/risks/risks.service';
 
 @Component({
   selector: 'app-profile',
   standalone: true,
   imports: [
-    AvatarModule,
-    ButtonModule,
-    CardModule,
+    ChangePasswordComponent,
     ConfirmDialogModule,
-    DialogModule,
-    DividerModule,
-    FieldsetModule,
-    FileUploadModule,
-    FloatLabel,
-    FluidModule,
-    ImageCropComponent,
-    InputTextModule,
-    MessageModule,
-    PasswordModule,
-    ProgressSpinnerModule,
-    ReactiveFormsModule,
-    SelectModule,
-    SkeletonModule,
-    TabsModule,
-    TagModule,
-    ToastModule,
-    TooltipModule
+    ExchangeIntegrationsComponent,
+    ProfileInfoComponent,
+    ToastModule
   ],
   providers: [MessageService, ConfirmationService],
-  templateUrl: './profile.component.html'
+  templateUrl: './profile.component.html',
+  styles: `
+    @keyframes highlight-flash {
+      0% {
+        background-color: rgba(59, 130, 246, 0.2);
+      }
+      100% {
+        background-color: transparent;
+      }
+    }
+    :host ::ng-deep .highlight-flash {
+      animation: highlight-flash 1.8s ease-out;
+    }
+  `
 })
 export class ProfileComponent implements AfterViewInit {
-  // Inject dependencies
   private fb = inject(FormBuilder);
   private authService = inject(AuthService);
   private riskService = inject(RisksService);
@@ -78,84 +55,19 @@ export class ProfileComponent implements AfterViewInit {
   private profileService = inject(ProfileService);
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
+  private logoutMutation = this.authService.useLogoutMutation();
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private destroyRef = inject(DestroyRef);
 
-  @ViewChild('fileUpload') fileUpload!: FileUpload;
+  @ViewChild('profileInfo') profileInfo!: ProfileInfoComponent;
+  @ViewChild('changePasswordRef') changePasswordRef!: ChangePasswordComponent;
 
-  messages = signal<any[]>([]);
-  showBinanceHelp = signal<boolean>(false);
-  showCoinbaseHelp = signal<boolean>(false);
-  showImageCropper = signal<boolean>(false);
-  selectedImageFile: File | null = null;
-  profileForm: FormGroup = this.fb.group({
-    given_name: ['', Validators.required],
-    family_name: ['', Validators.required],
-    email: ['', Validators.compose([Validators.required, Validators.email])],
-    coinRisk: ['', Validators.required],
-    calculationRiskLevel: [null]
-  });
-
-  calculationRiskOptions = [
-    { label: 'Level 1 - Ultra Conservative (15%)', value: 1 },
-    { label: 'Level 2 - Conservative (25%)', value: 2 },
-    { label: 'Level 3 - Moderate (35%)', value: 3 },
-    { label: 'Level 4 - Growth (50%)', value: 4 },
-    { label: 'Level 5 - Aggressive (70%)', value: 5 }
-  ];
-
-  selectedCoinRiskId = signal<string | null>(null);
-  selectedCalcRiskLevel = signal<number | null>(null);
-
-  isCustomRisk = computed(() => {
-    const risks = this.risksQuery.data();
-    const selectedId = this.selectedCoinRiskId();
-    if (!risks || !selectedId) return false;
-    const selected = risks.find((r: Risk) => r.id === selectedId);
-    return selected?.level === 6;
-  });
-
-  effectiveCapitalAllocation = computed(() => {
-    const calcRisk = this.selectedCalcRiskLevel();
-    const risks = this.risksQuery.data();
-    const selectedId = this.selectedCoinRiskId();
-    if (!risks || !selectedId) return null;
-    const selected = risks.find((r: Risk) => r.id === selectedId);
-    if (!selected) return null;
-    if (selected.level === 6 && calcRisk) {
-      return CALCULATION_RISK_CAPITAL_ALLOCATION[calcRisk] ?? 35;
-    }
-    return CALCULATION_RISK_CAPITAL_ALLOCATION[selected.level] ?? 35;
-  });
-  passwordForm: FormGroup = this.fb.group(
-    {
-      currentPassword: ['', Validators.required],
-      newPassword: ['', Validators.compose([Validators.required, PasswordStrengthValidator()])],
-      confirmPassword: ['', [Validators.required]]
-    },
-    { validators: PasswordMatchValidator }
-  );
-  uploadedFile: any = null;
-  formSubmitted = false;
-  passwordFormSubmitted = false;
-  croppedImageBlob: Blob | null = null;
-
-  exchangeForms: Record<
-    string,
-    {
-      form: FormGroup;
-      connected: boolean;
-      loading: boolean;
-      submitted: boolean;
-      editMode: boolean;
-      name?: string;
-    }
-  > = {};
+  messages = signal<AuthMessage[]>([]);
+  exchangeForms = signal<Record<string, ExchangeFormState>>({});
 
   // TanStack Query hooks
   private readonly userQuery = this.authService.useUser();
-  private readonly logoutMutation = this.authService.useLogoutMutation();
   readonly risksQuery = this.riskService.useRisks();
   readonly supportedExchangesQuery = this.exchangeService.useSupportedExchanges();
   readonly updateProfileMutation = this.profileService.useUpdateProfileMutation();
@@ -164,54 +76,50 @@ export class ProfileComponent implements AfterViewInit {
   readonly saveExchangeKeysMutation = this.profileService.useSaveExchangeKeysMutation();
   readonly deleteExchangeKeyMutation = this.profileService.useDeleteExchangeKeyMutation();
 
-  // Computed signals for user data
   user = computed(() => this.userQuery.data());
   isLoading = computed(() => this.userQuery.isLoading());
 
   constructor() {
-    // Track form control changes for computed signals
-    this.profileForm
-      .get('coinRisk')
-      ?.valueChanges.pipe(takeUntilDestroyed())
-      .subscribe((v) => this.selectedCoinRiskId.set(v));
-    this.profileForm
-      .get('calculationRiskLevel')
-      ?.valueChanges.pipe(takeUntilDestroyed())
-      .subscribe((v) => this.selectedCalcRiskLevel.set(v));
-
-    // Setup effects to update forms when user data changes
-    effect(() => {
-      const userData = this.user();
-      if (userData && !this.profileForm.dirty) {
-        this.updateForms(userData);
-      }
-    });
-
+    // Build exchange forms when exchanges + user data are available
     effect(() => {
       const exchanges = this.supportedExchangesQuery.data();
-      if (exchanges) {
-        // Create dynamic forms for each supported exchange
-        const userData = this.user();
-        if (userData) {
-          exchanges.forEach((exchange) => {
-            const exchangeKey = exchange.slug;
-            const isConnected = !!userData.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchange.id);
+      const userData = this.user();
+      if (!exchanges || !userData) return;
 
-            // Create a form for this exchange with masked placeholders if connected
-            this.exchangeForms[exchangeKey] = {
-              form: this.fb.group({
+      this.exchangeForms.update((current) => {
+        const updated = { ...current };
+        exchanges.forEach((exchange: Exchange) => {
+          const slug = exchange.slug;
+          const matchedKey = userData.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchange.id);
+          const isConnected = !!matchedKey;
+
+          if (updated[slug]) {
+            // Only update connected status, don't destroy form state
+            if (!updated[slug].editMode) {
+              updated[slug] = { ...updated[slug], connected: isConnected, connectedAt: matchedKey?.createdAt };
+              const form = updated[slug].form;
+              const apiKey = form.get('apiKey');
+              const secretKey = form.get('secretKey');
+              if (apiKey && secretKey) {
+                if (isConnected) {
+                  apiKey.disable();
+                  secretKey.disable();
+                  form.patchValue({ apiKey: '••••••••••••••••••••••••', secretKey: '••••••••••••••••••••••••' });
+                } else {
+                  apiKey.enable();
+                  secretKey.enable();
+                }
+              }
+            }
+          } else {
+            updated[slug] = {
+              form: this.fb.nonNullable.group({
                 apiKey: [
-                  {
-                    value: isConnected ? '••••••••••••••••••••••••' : '',
-                    disabled: isConnected
-                  },
+                  { value: isConnected ? '••••••••••••••••••••••••' : '', disabled: isConnected },
                   Validators.required
                 ],
                 secretKey: [
-                  {
-                    value: isConnected ? '••••••••••••••••••••••••' : '',
-                    disabled: isConnected
-                  },
+                  { value: isConnected ? '••••••••••••••••••••••••' : '', disabled: isConnected },
                   Validators.required
                 ]
               }),
@@ -219,34 +127,17 @@ export class ProfileComponent implements AfterViewInit {
               loading: false,
               submitted: false,
               editMode: false,
-              name: exchange.name // Store the exchange name for display
+              name: exchange.name,
+              exchangeId: exchange.id,
+              slug,
+              connectedAt: matchedKey?.createdAt
             };
-          });
-        }
-      }
+          }
+        });
+        return updated;
+      });
     });
   }
-
-  userProfileImage = computed(() => {
-    const user = this.user();
-    if (!user) return '';
-
-    const avatar = createAvatar(funEmoji, {
-      seed: user.id
-    });
-    return user.picture || avatar.toDataUri();
-  });
-
-  userName = computed(() => {
-    const user = this.user();
-    if (!user) return '';
-    return `${user.given_name || ''} ${user.family_name || ''}`.trim();
-  });
-
-  userEmail = computed(() => {
-    const user = this.user();
-    return user?.email || '';
-  });
 
   ngAfterViewInit(): void {
     this.router.events
@@ -268,108 +159,29 @@ export class ProfileComponent implements AfterViewInit {
   }
 
   private highlightElement(element: HTMLElement): void {
-    const targetElement = (element.firstElementChild as HTMLElement) || element;
-
-    const originalBg = targetElement.style.backgroundColor;
-    const originalTransition = targetElement.style.transition;
-
-    targetElement.style.transition = 'background-color 0.3s ease';
-    targetElement.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
-
-    setTimeout(() => {
-      targetElement.style.backgroundColor = originalBg;
-      setTimeout(() => {
-        targetElement.style.transition = originalTransition;
-      }, 600);
-    }, 1200);
+    const target = (element.firstElementChild as HTMLElement) || element;
+    target.classList.add('highlight-flash');
+    setTimeout(() => target.classList.remove('highlight-flash'), 1800);
   }
 
-  isExchangeActive(exchangeId: string): boolean {
-    const user = this.user();
-    return !!user?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeId)?.isActive;
-  }
+  // --- Profile Info handlers ---
 
-  getPasswordError(controlName: string): string {
-    return getPasswordError(this.passwordForm, controlName, this.passwordFormSubmitted);
-  }
+  onSubmitProfile(updatedFields: Partial<Record<string, unknown>>): void {
+    const isEmailChanged = this.profileInfo?.isEmailChanged() ?? false;
 
-  onSubmit(): void {
-    this.formSubmitted = true;
-    if (this.profileForm.valid) {
-      // Prepare JSON data for API submission
-      const profileData = this.profileForm.getRawValue();
-      const currentUser = this.user();
-      const updatedFields: any = {};
-      const isEmailChanged = profileData.email !== currentUser?.email;
-
-      Object.keys(profileData).forEach((key) => {
-        if (
-          profileData[key] !== null &&
-          profileData[key] !== undefined &&
-          profileData[key] !== (currentUser as Record<string, any>)[key]
-        ) {
-          updatedFields[key] = profileData[key];
-        }
+    if (isEmailChanged) {
+      this.confirmationService.confirm({
+        message: 'Changing your email will log you out and require email verification. Do you want to continue?',
+        header: 'Email Change Confirmation',
+        icon: 'pi pi-exclamation-triangle',
+        accept: () => this.processProfileUpdate(updatedFields, true)
       });
-
-      if (Object.keys(updatedFields).length === 0) return;
-
-      if (isEmailChanged) {
-        this.confirmationService.confirm({
-          message: 'Changing your email will log you out and require email verification. Do you want to continue?',
-          header: 'Email Change Confirmation',
-          icon: 'pi pi-exclamation-triangle',
-          accept: () => {
-            this.processProfileUpdate(updatedFields, isEmailChanged);
-          }
-        });
-      } else {
-        this.processProfileUpdate(updatedFields, isEmailChanged);
-      }
+    } else {
+      this.processProfileUpdate(updatedFields, false);
     }
   }
 
-  onChangePassword(): void {
-    this.passwordFormSubmitted = true;
-    if (this.passwordForm.valid) {
-      const passwordData = {
-        old_password: this.passwordForm.get('currentPassword')?.value,
-        new_password: this.passwordForm.get('newPassword')?.value,
-        confirm_new_password: this.passwordForm.get('confirmPassword')?.value
-      };
-
-      // Use the TanStack mutation
-      this.changePasswordMutation.mutate(passwordData, {
-        onSuccess: () => {
-          this.messageService.add({
-            severity: 'success',
-            summary: 'Password Changed',
-            detail: 'Your password has been updated successfully'
-          });
-          this.passwordForm.reset();
-          this.passwordFormSubmitted = false;
-        },
-        onError: (error: any) => {
-          let errorMessage = 'Failed to update password. Please try again.';
-
-          if (error.status === 400) {
-            errorMessage = 'Invalid password. Please check your inputs and try again.';
-          }
-
-          this.messageService.add({
-            severity: 'error',
-            summary: 'Password Change Failed',
-            detail: errorMessage
-          });
-        }
-      });
-    }
-  }
-
-  private processProfileUpdate(updatedFields: any, isEmailChanged: boolean): void {
-    // No need to handle profile image here, it's uploaded separately
-
-    // Use TanStack mutation
+  private processProfileUpdate(updatedFields: Partial<Record<string, unknown>>, isEmailChanged: boolean): void {
     this.updateProfileMutation.mutate(updatedFields, {
       onSuccess: () => {
         this.messageService.add({
@@ -377,9 +189,7 @@ export class ProfileComponent implements AfterViewInit {
           summary: 'Profile Updated',
           detail: 'Your profile information has been updated successfully'
         });
-
-        this.profileForm.markAsPristine();
-        this.formSubmitted = false;
+        this.profileInfo?.markAsPristine();
 
         if (isEmailChanged) {
           this.messages.set([
@@ -389,13 +199,10 @@ export class ProfileComponent implements AfterViewInit {
               icon: 'pi-info-circle'
             }
           ]);
-
-          setTimeout(() => {
-            this.logoutMutation.mutate();
-          }, 5000);
+          setTimeout(() => this.logoutMutation.mutate(), 5000);
         }
       },
-      onError: (error: any) => {
+      onError: (error: Error & { message?: string }) => {
         this.messageService.add({
           severity: 'error',
           summary: 'Update Failed',
@@ -405,30 +212,7 @@ export class ProfileComponent implements AfterViewInit {
     });
   }
 
-  onUpload(event: FileSelectEvent): void {
-    if (event.currentFiles && event.currentFiles.length > 0) {
-      // Instead of uploading directly, open the cropper
-      this.selectedImageFile = event.currentFiles[0];
-      this.showImageCropper.set(true);
-
-      // Clear the file upload component
-      if (this.fileUpload) {
-        this.fileUpload.clear();
-      }
-    }
-  }
-
-  handleCroppedImage(croppedImage: Blob): void {
-    // Create FormData object to send the cropped blob
-    const formData = new FormData();
-    const fileName = this.selectedImageFile?.name || 'profile-image.png';
-    const croppedFile = new File([croppedImage], fileName, {
-      type: croppedImage.type || 'image/png'
-    });
-
-    formData.append('file', croppedFile);
-
-    // Upload the cropped image using the file upload endpoint
+  onUploadImage(formData: FormData): void {
     this.uploadProfileImageMutation.mutate(formData, {
       onSuccess: () => {
         this.messageService.add({
@@ -436,10 +220,6 @@ export class ProfileComponent implements AfterViewInit {
           summary: 'Profile Image Updated',
           detail: 'Your profile picture has been updated successfully'
         });
-
-        // Reset state
-        this.selectedImageFile = null;
-        this.showImageCropper.set(false);
       },
       onError: (error: Error) => {
         this.messageService.add({
@@ -451,74 +231,100 @@ export class ProfileComponent implements AfterViewInit {
     });
   }
 
-  cancelCropping(): void {
-    // Reset state when user cancels cropping
-    this.selectedImageFile = null;
-    this.showImageCropper.set(false);
+  // --- Change Password handler ---
+
+  onChangePassword(passwordData: ChangePasswordRequest): void {
+    this.changePasswordMutation.mutate(passwordData, {
+      onSuccess: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Password Changed',
+          detail: 'Your password has been updated successfully'
+        });
+        this.changePasswordRef?.resetForm();
+      },
+      onError: (error: Error & { status?: number }) => {
+        const errorMessage =
+          error.status === 400
+            ? 'Invalid password. Please check your inputs and try again.'
+            : 'Failed to update password. Please try again.';
+        this.messageService.add({ severity: 'error', summary: 'Password Change Failed', detail: errorMessage });
+      }
+    });
   }
 
-  onSaveExchangeKeys(exchangeKey: string): void {
-    const exchange = this.exchangeForms[exchangeKey];
+  // --- Exchange Key handlers ---
+
+  onSaveExchangeKeys(exchangeSlug: string): void {
+    const forms = this.exchangeForms();
+    const exchange = forms[exchangeSlug];
     if (!exchange) return;
 
-    exchange.submitted = true;
-    if (exchange.form.valid) {
-      exchange.loading = true;
-      const formData = exchange.form.getRawValue();
+    this.updateExchangeForm(exchangeSlug, { submitted: true });
+    if (!exchange.form.valid) return;
 
-      // Find the exchange object
-      const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
-      if (!exchangeObj) {
+    this.updateExchangeForm(exchangeSlug, { loading: true });
+    const formData = exchange.form.getRawValue();
+
+    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex: Exchange) => ex.slug === exchangeSlug);
+    if (!exchangeObj) {
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Connection Failed',
+        detail: `Could not find exchange with key: ${exchangeSlug}`
+      });
+      this.updateExchangeForm(exchangeSlug, { loading: false });
+      return;
+    }
+
+    if (exchange.editMode) {
+      const userData = this.user();
+      const existingKey = userData?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj.id);
+      if (!existingKey?.id) {
         this.messageService.add({
           severity: 'error',
-          summary: 'Connection Failed',
-          detail: `Could not find exchange with key: ${exchangeKey}`
+          summary: 'Update Failed',
+          detail: `Could not find existing keys for ${exchangeObj.name}.`
         });
-        exchange.loading = false;
+        this.updateExchangeForm(exchangeSlug, { loading: false });
         return;
       }
 
-      // If we're in edit mode, first remove the existing key then add the new one
-      if (exchange.editMode) {
-        // Find the existing exchange key ID
-        const userData = this.user();
-        const existingKey = userData?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj.id);
-
-        if (!existingKey || !existingKey.id) {
-          this.messageService.add({
-            severity: 'error',
-            summary: 'Update Failed',
-            detail: `Could not find existing keys for ${exchangeObj.name}.`
+      this.updateExchangeForm(exchangeSlug, { loading: false });
+      this.confirmationService.confirm({
+        message:
+          "Updating exchange keys will briefly disconnect your exchange. If the new keys fail validation, you'll need to re-enter them.",
+        header: 'Update Exchange Keys',
+        icon: 'pi pi-exclamation-triangle',
+        accept: () => {
+          this.updateExchangeForm(exchangeSlug, { loading: true });
+          this.deleteExchangeKeyMutation.mutate(existingKey.id, {
+            onSuccess: () => this.addNewExchangeKey(exchangeSlug, exchangeObj, formData),
+            onError: (error: Error & { error?: { message?: string } }) => {
+              this.updateExchangeForm(exchangeSlug, { loading: false });
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Update Failed',
+                detail:
+                  error.error?.message || `Failed to remove existing keys for ${exchangeObj.name}. Please try again.`
+              });
+            }
           });
-          exchange.loading = false;
-          return;
+        },
+        reject: () => {
+          this.updateExchangeForm(exchangeSlug, { loading: false });
         }
-
-        // Step 1: Remove the existing key using TanStack mutation
-        this.deleteExchangeKeyMutation.mutate(existingKey.id, {
-          onSuccess: () => {
-            // Step 2: Add the new key
-            this.addNewExchangeKey(exchange, exchangeObj, formData);
-          },
-          onError: (error: any) => {
-            exchange.loading = false;
-            this.messageService.add({
-              severity: 'error',
-              summary: 'Update Failed',
-              detail:
-                error.error?.message || `Failed to remove existing keys for ${exchangeObj.name}. Please try again.`
-            });
-          }
-        });
-      } else {
-        // Not in edit mode, just add the key
-        this.addNewExchangeKey(exchange, exchangeObj, formData);
-      }
+      });
+    } else {
+      this.addNewExchangeKey(exchangeSlug, exchangeObj, formData);
     }
   }
 
-  // Helper method to add a new exchange key using TanStack Query
-  private addNewExchangeKey(exchange: any, exchangeObj: any, formData: any): void {
+  private addNewExchangeKey(
+    exchangeSlug: string,
+    exchangeObj: Exchange,
+    formData: { apiKey: string; secretKey: string }
+  ): void {
     const exchangeKeyDto = {
       exchangeId: exchangeObj.id,
       apiKey: formData.apiKey,
@@ -528,10 +334,7 @@ export class ProfileComponent implements AfterViewInit {
 
     this.saveExchangeKeysMutation.mutate(exchangeKeyDto, {
       onSuccess: ({ isActive }) => {
-        exchange.connected = true;
-        exchange.loading = false;
-        exchange.editMode = false; // Exit edit mode after successful save
-
+        this.updateExchangeForm(exchangeSlug, { connected: true, loading: false, editMode: false });
         this.messageService.add({
           severity: isActive ? 'success' : 'error',
           summary: isActive ? 'Connection Successful' : 'Connection Failed',
@@ -540,90 +343,62 @@ export class ProfileComponent implements AfterViewInit {
             : `Failed to connect to ${exchangeObj.name}. Please check your API keys and try again.`
         });
       },
-      onError: (error: any) => {
-        exchange.loading = false;
-
-        // Handle the specific conflict error when a key already exists
-        if (error.status === 409) {
-          this.messageService.add({
-            severity: 'error',
-            summary: 'Connection Failed',
-            detail: `You already have API keys for this exchange. Please remove the existing keys before adding new ones.`
-          });
-        } else {
-          this.messageService.add({
-            severity: 'error',
-            summary: 'Connection Failed',
-            detail:
-              error.error?.message ||
-              `Failed to connect to ${exchangeObj.name}. Please check your API keys and try again.`
-          });
-        }
+      onError: (error: Error & { status?: number; error?: { message?: string } }) => {
+        this.updateExchangeForm(exchangeSlug, { loading: false });
+        const detail =
+          error.status === 409
+            ? 'You already have API keys for this exchange. Please remove the existing keys before adding new ones.'
+            : error.error?.message ||
+              `Failed to connect to ${exchangeObj.name}. Please check your API keys and try again.`;
+        this.messageService.add({ severity: 'error', summary: 'Connection Failed', detail });
       }
     });
   }
 
-  toggleEditExchangeKeys(exchangeKey: string): void {
-    const exchange = this.exchangeForms[exchangeKey];
+  onEditExchangeKeys(exchangeSlug: string): void {
+    const forms = this.exchangeForms();
+    const exchange = forms[exchangeSlug];
     if (!exchange) return;
 
-    exchange.editMode = true;
-
-    // Get the exchange object
-    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
-    if (!exchangeObj) return;
-
-    // Enable the form controls and clear the values
-    const apiKeyControl = exchange.form.get('apiKey');
-    const secretKeyControl = exchange.form.get('secretKey');
-
-    if (apiKeyControl && secretKeyControl) {
-      apiKeyControl.enable();
-      secretKeyControl.enable();
-
-      // Clear the form fields when entering edit mode
-      exchange.form.patchValue({
-        apiKey: '',
-        secretKey: ''
-      });
+    const apiKey = exchange.form.get('apiKey');
+    const secretKey = exchange.form.get('secretKey');
+    if (apiKey && secretKey) {
+      apiKey.enable();
+      secretKey.enable();
+      exchange.form.patchValue({ apiKey: '', secretKey: '' });
     }
+    this.updateExchangeForm(exchangeSlug, { editMode: true });
   }
 
-  cancelEditExchangeKeys(exchangeKey: string): void {
-    const exchange = this.exchangeForms[exchangeKey];
+  onCancelEditExchangeKeys(exchangeSlug: string): void {
+    const forms = this.exchangeForms();
+    const exchange = forms[exchangeSlug];
     if (!exchange) return;
 
-    exchange.editMode = false;
-    exchange.submitted = false;
-
-    // Reset the form values to placeholder values and disable controls
     const userData = this.user();
-    if (userData) {
-      const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
-      const isConnected = !!userData?.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchangeObj?.id);
+    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex: Exchange) => ex.slug === exchangeSlug);
+    const isConnected = !!userData?.exchanges?.find((key: ExchangeKey) => key.exchangeId === exchangeObj?.id);
 
-      const apiKeyControl = exchange.form.get('apiKey');
-      const secretKeyControl = exchange.form.get('secretKey');
-
-      if (apiKeyControl && secretKeyControl) {
-        exchange.form.patchValue({
-          apiKey: isConnected ? '••••••••••••••••••••••••' : '',
-          secretKey: isConnected ? '••••••••••••••••••••••••' : ''
-        });
-
-        apiKeyControl.disable();
-        secretKeyControl.disable();
-      }
+    const apiKey = exchange.form.get('apiKey');
+    const secretKey = exchange.form.get('secretKey');
+    if (apiKey && secretKey) {
+      exchange.form.patchValue({
+        apiKey: isConnected ? '••••••••••••••••••••••••' : '',
+        secretKey: isConnected ? '••••••••••••••••••••••••' : ''
+      });
+      apiKey.disable();
+      secretKey.disable();
     }
+    this.updateExchangeForm(exchangeSlug, { editMode: false, submitted: false });
   }
 
-  removeExchangeKeys(exchangeKey: string): void {
-    const exchange = this.exchangeForms[exchangeKey];
+  onRemoveExchangeKeys(exchangeSlug: string): void {
+    const forms = this.exchangeForms();
+    const exchange = forms[exchangeSlug];
     if (!exchange) return;
 
-    // Get the exchange name for display in confirmation dialog
-    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex) => ex.slug === exchangeKey);
-    const exchangeName = exchangeObj?.name || exchangeKey;
+    const exchangeObj = this.supportedExchangesQuery.data()?.find((ex: Exchange) => ex.slug === exchangeSlug);
+    const exchangeName = exchangeObj?.name || exchangeSlug;
 
     this.confirmationService.confirm({
       message: `Are you sure you want to disconnect your ${exchangeName} account? This will remove your API keys.`,
@@ -632,50 +407,39 @@ export class ProfileComponent implements AfterViewInit {
       acceptButtonStyleClass: 'p-button-danger',
       rejectButtonStyleClass: 'p-button-secondary',
       accept: () => {
-        exchange.loading = true;
-
-        // Find the exchange key ID for the exchange we want to delete
+        this.updateExchangeForm(exchangeSlug, { loading: true });
         const userData = this.user();
         const exchangeKeyData = userData?.exchanges?.find((ex: ExchangeKey) => ex.exchangeId === exchangeObj?.id);
 
-        if (!exchangeKeyData || !exchangeKeyData.id) {
+        if (!exchangeKeyData?.id) {
           this.messageService.add({
             severity: 'error',
             summary: 'Disconnection Failed',
             detail: `Could not find exchange key for ${exchangeName}.`
           });
-          exchange.loading = false;
+          this.updateExchangeForm(exchangeSlug, { loading: false });
           return;
         }
 
-        // Use the TanStack mutation for deleting exchange key
         this.deleteExchangeKeyMutation.mutate(exchangeKeyData.id, {
           onSuccess: () => {
-            exchange.connected = false;
-            exchange.loading = false;
-
-            // Reset and enable the form for new keys
-            const apiKeyControl = exchange.form.get('apiKey');
-            const secretKeyControl = exchange.form.get('secretKey');
-
-            if (apiKeyControl && secretKeyControl) {
-              apiKeyControl.enable();
-              secretKeyControl.enable();
-
-              exchange.form.patchValue({
-                apiKey: '',
-                secretKey: ''
-              });
+            this.updateExchangeForm(exchangeSlug, { connected: false, loading: false });
+            const form = this.exchangeForms()[exchangeSlug]?.form;
+            const apiKey = form?.get('apiKey');
+            const secretKey = form?.get('secretKey');
+            if (apiKey && secretKey) {
+              apiKey.enable();
+              secretKey.enable();
+              form.patchValue({ apiKey: '', secretKey: '' });
             }
-
             this.messageService.add({
               severity: 'success',
               summary: 'Exchange Disconnected',
               detail: `Your ${exchangeName} account has been disconnected successfully`
             });
           },
-          onError: (error: any) => {
-            exchange.loading = false;
+          onError: (error: Error & { error?: { message?: string } }) => {
+            this.updateExchangeForm(exchangeSlug, { loading: false });
             this.messageService.add({
               severity: 'error',
               summary: 'Disconnection Failed',
@@ -687,76 +451,10 @@ export class ProfileComponent implements AfterViewInit {
     });
   }
 
-  // Update forms with user data
-  private updateForms(user: any): void {
-    if (!user) return;
-
-    // Update profile form
-    this.profileForm?.patchValue({
-      given_name: user.given_name || '',
-      family_name: user.family_name || '',
-      email: user.email || '',
-      coinRisk: user.coinRisk?.id || '',
-      calculationRiskLevel: user.calculationRiskLevel ?? null
+  private updateExchangeForm(slug: string, updates: Partial<ExchangeFormState>): void {
+    this.exchangeForms.update((current) => {
+      if (!current[slug]) return current;
+      return { ...current, [slug]: { ...current[slug], ...updates } };
     });
-    this.selectedCoinRiskId.set(user.coinRisk?.id || null);
-    this.selectedCalcRiskLevel.set(user.calculationRiskLevel ?? null);
-
-    // Update exchange forms if they exist
-    if (user.exchanges && this.exchangeForms) {
-      const exchanges = this.supportedExchangesQuery.data() || [];
-      exchanges.forEach((exchange) => {
-        const exchangeKey = exchange.slug;
-        const exchangeForm = this.exchangeForms[exchangeKey];
-        if (exchangeForm) {
-          const isConnected = !!user.exchanges.find((key: ExchangeKey) => key.exchangeId === exchange.id);
-          exchangeForm.connected = isConnected;
-
-          // Only update the form controls if they're not in edit mode
-          if (!exchangeForm.editMode) {
-            const apiKeyControl = exchangeForm.form.get('apiKey');
-            const secretKeyControl = exchangeForm.form.get('secretKey');
-
-            if (apiKeyControl && secretKeyControl) {
-              if (isConnected) {
-                apiKeyControl.disable();
-                secretKeyControl.disable();
-                exchangeForm.form.patchValue({
-                  apiKey: '••••••••••••••••••••••••',
-                  secretKey: '••••••••••••••••••••••••'
-                });
-              } else {
-                apiKeyControl.enable();
-                secretKeyControl.enable();
-              }
-            }
-          }
-        }
-      });
-    }
-  }
-
-  isBinanceUs(exchangeName: string): boolean {
-    // Check if the exchange is Binance US
-    return exchangeName?.toLowerCase().includes('binance us');
-  }
-
-  isCoinbase(exchangeName: string): boolean {
-    // Check if the exchange is Coinbase
-    return exchangeName?.toLowerCase().includes('coinbase');
-  }
-
-  toggleBinanceHelp(): void {
-    this.showBinanceHelp.set(!this.showBinanceHelp());
-  }
-
-  toggleCoinbaseHelp(): void {
-    this.showCoinbaseHelp.set(!this.showCoinbaseHelp());
-  }
-
-  openFileUpload(): void {
-    if (this.fileUpload) {
-      this.fileUpload.basicFileInput?.nativeElement.click();
-    }
   }
 }

@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule } from '@angular/router';
 
 import { BehaviorSubject, filter } from 'rxjs';
@@ -31,15 +32,27 @@ export class AppBreadcrumb implements OnInit {
   readonly breadcrumbs$ = this._breadcrumbs$.asObservable();
 
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   ngOnInit(): void {
-    this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe((event) => {
-      const root = this.router.routerState.snapshot.root;
-      const breadcrumbs: Breadcrumb[] = [];
-      this.addBreadcrumb(root, [], breadcrumbs);
+    // Build breadcrumbs from current route (handles page refresh)
+    const root = this.router.routerState.snapshot.root;
+    const breadcrumbs: Breadcrumb[] = [];
+    this.addBreadcrumb(root, [], breadcrumbs);
+    this._breadcrumbs$.next(breadcrumbs);
 
-      this._breadcrumbs$.next(breadcrumbs);
-    });
+    // Continue listening for future navigations
+    this.router.events
+      .pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(() => {
+        const root = this.router.routerState.snapshot.root;
+        const breadcrumbs: Breadcrumb[] = [];
+        this.addBreadcrumb(root, [], breadcrumbs);
+        this._breadcrumbs$.next(breadcrumbs);
+      });
   }
 
   private addBreadcrumb(route: ActivatedRouteSnapshot, parentUrl: string[], breadcrumbs: Breadcrumb[]) {

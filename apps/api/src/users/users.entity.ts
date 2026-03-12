@@ -173,7 +173,7 @@ export class User {
   @Column({
     type: 'smallint',
     nullable: true,
-    comment: 'Calculation risk level (1-5). Only used when coinRisk.level = 6'
+    comment: 'Independent trading style level (1-5)'
   })
   calculationRiskLevel: number | null;
 

@@ -123,7 +123,21 @@ EOF
 - `--base <branch>`: Target branch (default: master/main)
 - `--reviewer <user>`: Request review from user
 
-### 6. Post-Creation
+### 6. Conflict Check
+
+After the PR is created, check if the branch has conflicts with master:
+
+```bash
+# Check PR mergeable status
+gh pr view --json mergeable,mergeStateStatus
+```
+
+**If `mergeable` is `CONFLICTING` or `mergeStateStatus` is `DIRTY`**: Warn the user and ask if they'd like to run
+`/sync-branch` to resolve conflicts and get the branch ready for merge.
+
+**If mergeable**: Continue without interruption.
+
+### 7. Post-Creation
 
 After PR is created:
 

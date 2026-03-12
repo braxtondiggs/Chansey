@@ -62,7 +62,8 @@ export class ExchangeKeyService implements IExchangeKeyService {
           exchangeId: key.exchange.id,
           isActive: key.isActive,
           name: key.exchange.name,
-          slug: key.exchange.slug
+          slug: key.exchange.slug,
+          createdAt: key.createdAt
         };
 
         try {

@@ -39,4 +39,10 @@ export class SupportedExchangeKeyDto {
     description: 'Whether this exchange supports futures trading'
   })
   supportsFutures?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'When the exchange key was first created',
+    example: '2026-03-12T00:00:00.000Z'
+  })
+  createdAt?: Date;
 }
