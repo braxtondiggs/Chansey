@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 
 import { ButtonModule } from 'primeng/button';
@@ -9,11 +9,10 @@ import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { TooltipModule } from 'primeng/tooltip';
 
-import { ExchangeFormState } from '../../profile.types';
+import { ExchangeFormState } from '../../settings.types';
 
 @Component({
   selector: 'app-exchange-key-form',
-  standalone: true,
   imports: [
     DatePipe,
     ReactiveFormsModule,
@@ -24,7 +23,8 @@ import { ExchangeFormState } from '../../profile.types';
     MessageModule,
     TooltipModule
   ],
-  templateUrl: './exchange-key-form.component.html'
+  templateUrl: './exchange-key-form.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ExchangeKeyFormComponent {
   formState = input.required<ExchangeFormState>();

@@ -1,0 +1,13 @@
+@if (isLoading()) {
+  <app-profile-info [messages]="messages()" />
+} @else if (user(); as userData) {
+  <app-profile-info
+    #profileInfo
+    [user]="userData"
+    [isUpdating]="updateProfileMutation.isPending()"
+    [isUploadingImage]="uploadProfileImageMutation.isPending()"
+    [messages]="messages()"
+    (submitProfile)="onSubmitProfile($event)"
+    (uploadImage)="onUploadImage($event)"
+  />
+}

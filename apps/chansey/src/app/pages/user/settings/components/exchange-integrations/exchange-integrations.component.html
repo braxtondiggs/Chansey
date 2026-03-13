@@ -1,12 +1,9 @@
-<p-card class="mx-auto mt-8 max-w-4xl p-4" id="exchange-integrations">
-  <ng-template pTemplate="header">
-    <div class="flex items-center gap-3 border-b border-gray-100 p-4 dark:border-neutral-700">
-      <i class="pi pi-link text-primary text-2xl!"></i>
-      <div>
-        <h2 class="m-0 text-xl font-semibold">Exchange Integrations</h2>
-        <p class="text-surface-500 m-0 mt-1 text-sm">Connect your trading exchange accounts</p>
-      </div>
-    </div>
+<p-panel [toggleable]="true" [collapsed]="panelCollapsed" (onAfterToggle)="onPanelToggle($event)">
+  <ng-template #header>
+    <span class="flex items-center gap-2">
+      <i class="pi pi-link"></i>
+      <span class="font-semibold">Exchange Integrations</span>
+    </span>
   </ng-template>
   <p-message class="mb-8 p-4" severity="warn">
     <div class="flex items-start gap-2">
@@ -113,7 +110,7 @@
       <p class="text-center text-gray-500 italic">No exchange integrations are currently available.</p>
     }
   }
-</p-card>
+</p-panel>
 
 <!-- Binance US Help Dialog -->
 <p-dialog

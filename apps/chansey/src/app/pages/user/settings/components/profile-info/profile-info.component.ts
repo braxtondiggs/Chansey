@@ -1,49 +1,48 @@
-import { Component, computed, effect, inject, input, output, signal, ViewChild } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  ViewChild
+} from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { funEmoji } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
 import { FileSelectEvent, FileUpload, FileUploadModule } from 'primeng/fileupload';
 import { FloatLabel } from 'primeng/floatlabel';
 import { FluidModule } from 'primeng/fluid';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
-import { PanelModule } from 'primeng/panel';
-import { ProgressBar } from 'primeng/progressbar';
-import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
-import { TooltipModule } from 'primeng/tooltip';
 
-import { IUser, IUserProfileUpdate, Risk, TRADING_STYLE_PROFILES, TradingStyleProfile } from '@chansey/api-interfaces';
+import { IUser, IUserProfileUpdate } from '@chansey/api-interfaces';
 
 import { AuthMessage } from '../../../../../shared/components/auth-messages/auth-message.interface';
 import { ImageCropComponent } from '../../../../../shared/components/image-crop/image-crop.component';
 
 @Component({
   selector: 'app-profile-info',
-  standalone: true,
   imports: [
     AvatarModule,
     ButtonModule,
-    CardModule,
     FileUploadModule,
     FloatLabel,
     FluidModule,
     ImageCropComponent,
     InputTextModule,
     MessageModule,
-    PanelModule,
-    ProgressBar,
     ReactiveFormsModule,
-    SelectModule,
-    SkeletonModule,
-    TooltipModule
+    SkeletonModule
   ],
   templateUrl: './profile-info.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .p-avatar.profile {
       width: 20rem;
@@ -63,9 +62,6 @@ export class ProfileInfoComponent {
   @ViewChild('fileUpload') fileUpload!: FileUpload;
 
   user = input<IUser>();
-  risks = input<Risk[]>();
-  risksLoading = input(false);
-  risksError = input(false);
   isUpdating = input(false);
   isUploadingImage = input(false);
   messages = input<AuthMessage[]>([]);
@@ -77,37 +73,10 @@ export class ProfileInfoComponent {
   showImageCropper = signal(false);
   selectedImageFile = signal<File | null>(null);
 
-  readonly DAILY_LOSS_LIMIT_SCALE = 5;
-  readonly BEAR_MARKET_CAPITAL_SCALE = 4;
-
   profileForm: FormGroup = this.fb.group({
     given_name: ['', Validators.required],
     family_name: ['', Validators.required],
-    email: ['', Validators.compose([Validators.required, Validators.email])],
-    coinRisk: ['', Validators.required],
-    calculationRiskLevel: [null]
-  });
-
-  calculationRiskOptions = [
-    { label: 'Ultra Conservative', value: 1 },
-    { label: 'Conservative', value: 2 },
-    { label: 'Moderate', value: 3 },
-    { label: 'Growth', value: 4 },
-    { label: 'Aggressive', value: 5 }
-  ];
-
-  selectedCoinRiskId = signal<string | null>(null);
-  selectedCalcRiskLevel = signal<number | null>(null);
-
-  tradingStyleProfile = computed<TradingStyleProfile | null>(() => {
-    const calcRisk = this.selectedCalcRiskLevel();
-    const risks = this.risks();
-    const selectedId = this.selectedCoinRiskId();
-    if (!risks || !selectedId) return null;
-    const selected = risks.find((r: Risk) => r.id === selectedId);
-    if (!selected) return null;
-    const level = calcRisk ?? selected.level;
-    return TRADING_STYLE_PROFILES[level] ?? TRADING_STYLE_PROFILES[3];
+    email: ['', Validators.compose([Validators.required, Validators.email])]
   });
 
   userProfileImage = computed(() => {
@@ -118,24 +87,6 @@ export class ProfileInfoComponent {
   });
 
   constructor() {
-    this.profileForm
-      .get('coinRisk')
-      ?.valueChanges.pipe(takeUntilDestroyed())
-      .subscribe((v) => {
-        this.selectedCoinRiskId.set(v);
-        // Auto-default Trading Style to match Portfolio Pool level
-        const risks = this.risks();
-        const selected = risks?.find((r: Risk) => r.id === v);
-        if (selected && selected.level >= 1 && selected.level <= 5) {
-          this.profileForm.get('calculationRiskLevel')?.setValue(selected.level);
-        }
-      });
-    this.profileForm
-      .get('calculationRiskLevel')
-      ?.valueChanges.pipe(takeUntilDestroyed())
-      .subscribe((v) => this.selectedCalcRiskLevel.set(v));
-
-    // Reactively populate form when user input changes
     effect(() => {
       const userData = this.user();
       if (userData && !this.profileForm.dirty) {
@@ -146,19 +97,11 @@ export class ProfileInfoComponent {
 
   updateForm(user: IUser): void {
     if (!user) return;
-    const userAny = user as unknown as Record<string, unknown>;
-    const coinRiskObj = userAny['coinRisk'] as { id: string; level?: number } | undefined;
-    // Default calculationRiskLevel to coinRisk level when not explicitly set
-    const calcLevel = user.calculationRiskLevel ?? coinRiskObj?.level ?? null;
     this.profileForm.patchValue({
       given_name: user.given_name || '',
       family_name: user.family_name || '',
-      email: user.email || '',
-      coinRisk: coinRiskObj?.id || '',
-      calculationRiskLevel: calcLevel
+      email: user.email || ''
     });
-    this.selectedCoinRiskId.set(coinRiskObj?.id || null);
-    this.selectedCalcRiskLevel.set(calcLevel);
   }
 
   onSubmit(): void {
@@ -166,30 +109,21 @@ export class ProfileInfoComponent {
     if (this.profileForm.valid) {
       const profileData = this.profileForm.getRawValue();
       const currentUser = this.user();
-      const userAny = currentUser as unknown as Record<string, unknown> | undefined;
       const updatedFields: Partial<IUserProfileUpdate> = {};
 
-      // Build a normalized record for comparison, extracting coinRisk.id
-      const normalizedUser: Record<string, unknown> = {};
-      if (userAny) {
+      if (currentUser) {
+        const userRecord: Record<string, string | null> = {
+          given_name: currentUser.given_name,
+          family_name: currentUser.family_name,
+          email: currentUser.email
+        };
+
         Object.keys(profileData).forEach((key) => {
-          if (key === 'coinRisk') {
-            const coinRiskObj = userAny['coinRisk'] as { id: string } | undefined;
-            normalizedUser[key] = coinRiskObj?.id || '';
-          } else if (key === 'calculationRiskLevel') {
-            const coinRiskObj = userAny['coinRisk'] as { level?: number } | undefined;
-            normalizedUser[key] = userAny['calculationRiskLevel'] ?? coinRiskObj?.level ?? null;
-          } else {
-            normalizedUser[key] = userAny[key];
+          if (profileData[key] !== null && profileData[key] !== undefined && profileData[key] !== userRecord[key]) {
+            (updatedFields as Record<string, unknown>)[key] = profileData[key];
           }
         });
       }
-
-      Object.keys(profileData).forEach((key) => {
-        if (profileData[key] !== null && profileData[key] !== undefined && profileData[key] !== normalizedUser[key]) {
-          (updatedFields as Record<string, unknown>)[key] = profileData[key];
-        }
-      });
 
       if (Object.keys(updatedFields).length === 0) return;
       this.submitProfile.emit(updatedFields);

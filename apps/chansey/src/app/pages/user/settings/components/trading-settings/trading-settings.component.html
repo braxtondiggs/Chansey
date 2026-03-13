@@ -1,0 +1,276 @@
+<!-- Risk Profile -->
+@if (risksQuery.isPending()) {
+  <div class="border-surface-200 dark:border-surface-700 rounded-lg border p-4">
+    <p-skeleton width="180px" height="1.5rem" styleClass="mb-4" />
+    <p-skeleton width="100%" height="3rem" styleClass="mt-2" />
+    <p-skeleton width="100%" height="3rem" styleClass="mt-2" />
+  </div>
+} @else {
+  <form [formGroup]="riskForm">
+    <p-panel
+      [toggleable]="true"
+      [collapsed]="panelCollapsed['riskProfile']"
+      (onAfterToggle)="onPanelToggle('riskProfile', $event)"
+    >
+      <ng-template #header>
+        <span class="flex items-center gap-2">
+          <i class="pi pi-shield"></i>
+          <span class="font-semibold">Risk Profile</span>
+        </span>
+      </ng-template>
+      @if (risksQuery.isError()) {
+        <p class="text-sm text-red-500">Failed to load risk profiles. Please try again later.</p>
+      }
+      <div class="flex flex-col gap-4 py-3">
+        <p-floatlabel variant="on" class="flex flex-wrap">
+          <p-select
+            id="coinRisk"
+            formControlName="coinRisk"
+            [options]="risksQuery.data()"
+            [loading]="risksQuery.isLoading() || risksQuery.isPending()"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="Select Coin Risk Profile"
+            class="w-full"
+            size="large"
+          />
+          <label for="coinRisk">Portfolio Pool</label>
+        </p-floatlabel>
+        <p-floatlabel variant="on" class="flex flex-wrap">
+          <p-select
+            id="calculationRiskLevel"
+            formControlName="calculationRiskLevel"
+            [options]="calculationRiskOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Select Trading Style"
+            class="w-full"
+            size="large"
+          />
+          <label for="calculationRiskLevel">Trading Style</label>
+        </p-floatlabel>
+        @if (tradingStyleProfile(); as profile) {
+          <p-panel class="mt-2 block">
+            <ng-template #header>
+              <div class="flex items-center gap-2">
+                <i class="pi pi-shield text-primary"></i>
+                <span class="font-medium">Risk Summary</span>
+              </div>
+            </ng-template>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="flex flex-col gap-1">
+                <span class="text-muted-color text-xs">Capital Allocation</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-semibold">{{ profile.capitalAllocation }}%</span>
+                </div>
+                <p-progressbar
+                  [value]="profile.capitalAllocation"
+                  [showValue]="false"
+                  [style]="{ height: '0.25rem' }"
+                  class="block"
+                />
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="text-muted-color text-xs">Max Single Position</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-semibold">{{ profile.maxSinglePosition }}%</span>
+                </div>
+                <p-progressbar
+                  [value]="profile.maxSinglePosition"
+                  [showValue]="false"
+                  [style]="{ height: '0.25rem' }"
+                  class="block"
+                />
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="text-muted-color text-xs">Daily Loss Limit</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-semibold">{{ profile.dailyLossLimit }}%</span>
+                </div>
+                <p-progressbar
+                  [value]="profile.dailyLossLimit * DAILY_LOSS_LIMIT_SCALE"
+                  [showValue]="false"
+                  [style]="{ height: '0.25rem' }"
+                  class="block"
+                />
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="text-muted-color text-xs">Bear Market Capital</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-semibold">{{ profile.bearMarketCapital }}%</span>
+                </div>
+                <p-progressbar
+                  [value]="profile.bearMarketCapital * BEAR_MARKET_CAPITAL_SCALE"
+                  [showValue]="false"
+                  [style]="{ height: '0.25rem' }"
+                  class="block"
+                />
+              </div>
+            </div>
+            <p class="text-muted-color mt-3 mb-0 text-xs">How your trading style affects risk controls</p>
+          </p-panel>
+        }
+        <div class="flex justify-end pt-2">
+          <p-button
+            label="Save Risk Profile"
+            icon="pi pi-save"
+            [loading]="updateProfileMutation.isPending()"
+            [disabled]="!riskForm.valid || !riskForm.dirty"
+            (click)="saveRiskProfile()"
+          />
+        </div>
+      </div>
+    </p-panel>
+  </form>
+}
+
+<!-- Exchange Integrations -->
+<app-exchange-integrations
+  class="mt-3 block"
+  [exchanges]="supportedExchangesQuery.data() || []"
+  [exchangeForms]="exchangeForms()"
+  [isLoading]="supportedExchangesQuery.isLoading() || supportedExchangesQuery.isPending()"
+  [isError]="supportedExchangesQuery.isError()"
+  [user]="user()"
+  (saveKeys)="onSaveExchangeKeys($event)"
+  (editKeys)="onEditExchangeKeys($event)"
+  (cancelEditKeys)="onCancelEditExchangeKeys($event)"
+  (removeKeys)="onRemoveExchangeKeys($event)"
+/>
+
+<!-- Opportunity Selling -->
+@if (opportunitySellingQuery.isPending()) {
+  <div class="border-surface-200 dark:border-surface-700 mt-3 rounded-lg border p-4">
+    <p-skeleton width="180px" height="1.5rem" styleClass="mb-4" />
+    <div class="flex items-center justify-between py-3">
+      <p-skeleton width="200px" height="1.25rem" />
+      <p-skeleton width="3rem" height="1.5rem" borderRadius="1rem" />
+    </div>
+    <p-skeleton width="100%" height="2.5rem" styleClass="mt-2" />
+  </div>
+  <div class="border-surface-200 dark:border-surface-700 mt-3 rounded-lg border p-4">
+    <p-skeleton width="150px" height="1.5rem" styleClass="mb-4" />
+    <div class="flex items-center justify-between py-3">
+      <p-skeleton width="180px" height="1.25rem" />
+      <p-skeleton width="3rem" height="1.5rem" borderRadius="1rem" />
+    </div>
+    <p-skeleton width="100%" height="2.5rem" styleClass="mt-2" />
+  </div>
+} @else {
+  <form [formGroup]="opportunitySellingForm">
+    <p-panel
+      [toggleable]="true"
+      [collapsed]="panelCollapsed['opportunitySelling']"
+      (onAfterToggle)="onPanelToggle('opportunitySelling', $event)"
+      class="mt-3"
+    >
+      <ng-template #header>
+        <span class="flex w-full items-center justify-between">
+          <span class="flex items-center gap-2">
+            <i class="pi pi-money-bill"></i>
+            <span class="font-semibold">Opportunity Selling</span>
+          </span>
+          <app-save-status [status]="opportunityToggleAutoSave.status()" />
+        </span>
+      </ng-template>
+      <div class="flex flex-row items-center justify-between py-3">
+        <div>
+          <div class="text-900 mb-1 text-lg font-semibold">Enable Opportunity Selling</div>
+          <div class="text-600 text-sm">Auto-sell weak positions to fund strong buy opportunities</div>
+        </div>
+        <p-toggleswitch formControlName="enabled" (onChange)="toggleOpportunitySelling($event)" />
+      </div>
+    </p-panel>
+
+    @if (opportunitySellingForm.get('enabled')?.value) {
+      <p-panel
+        [toggleable]="true"
+        [collapsed]="panelCollapsed['opportunityConfig']"
+        (onAfterToggle)="onPanelToggle('opportunityConfig', $event)"
+        class="mt-3"
+      >
+        <ng-template #header>
+          <span class="flex items-center gap-2">
+            <i class="pi pi-cog"></i>
+            <span class="font-semibold">Configuration</span>
+          </span>
+        </ng-template>
+        <div class="flex flex-col gap-6">
+          <!-- Protected Coins -->
+          <div class="flex flex-col gap-2">
+            <label class="text-900 font-semibold">Never Sell These Coins</label>
+            <p-autocomplete
+              formControlName="protectedCoins"
+              [multiple]="true"
+              [suggestions]="protectedCoinSuggestions"
+              (completeMethod)="searchProtectedCoins($event)"
+              optionLabel="name"
+              placeholder="Search for a coin..."
+              class="w-full"
+            >
+              <ng-template #item let-coin>
+                <div class="flex items-center gap-2">
+                  @if (coin.image) {
+                    <img [src]="coin.image" [alt]="coin.name" class="h-5 w-5 rounded-full" />
+                  }
+                  <span>{{ coin.name }}</span>
+                  <span class="text-surface-500 text-xs uppercase">{{ coin.symbol }}</span>
+                </div>
+              </ng-template>
+            </p-autocomplete>
+            <span class="text-600 text-xs">These coins will never be sold, even if they are underperforming</span>
+          </div>
+
+          <!-- Max Liquidation -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <label class="text-900 font-semibold">Max Sell Limit</label>
+              <span class="text-primary font-semibold"
+                >{{ opportunitySellingForm.get('maxLiquidationPercent')?.value }}%</span
+              >
+            </div>
+            <p-slider formControlName="maxLiquidationPercent" [min]="1" [max]="100" [step]="1" />
+            <span class="text-600 text-xs"
+              >The most of your portfolio that can be sold at once to fund a new opportunity</span
+            >
+          </div>
+
+          <!-- Save Button -->
+          <div class="flex justify-end pt-2">
+            <p-button
+              label="Save"
+              icon="pi pi-save"
+              [loading]="updateOpportunitySellingMutation.isPending()"
+              (click)="saveOpportunitySelling()"
+            />
+          </div>
+        </div>
+      </p-panel>
+    }
+  </form>
+  @if (hasFuturesCapableExchange()) {
+    <p-panel
+      [toggleable]="true"
+      [collapsed]="panelCollapsed['futuresTrading']"
+      (onAfterToggle)="onPanelToggle('futuresTrading', $event)"
+      class="mt-3"
+    >
+      <ng-template #header>
+        <span class="flex w-full items-center justify-between">
+          <span class="flex items-center gap-2">
+            <i class="pi pi-bolt"></i>
+            <span class="font-semibold">Futures Trading</span>
+          </span>
+          <app-save-status [status]="futuresAutoSave.status()" />
+        </span>
+      </ng-template>
+      <div class="flex flex-row items-center justify-between py-3">
+        <div>
+          <div class="text-900 mb-1 text-lg font-semibold">Enable Futures Trading</div>
+          <div class="text-600 text-sm">Allow futures and short-selling orders on supported exchanges</div>
+        </div>
+        <p-toggleswitch [(ngModel)]="futuresEnabled" (onChange)="toggleFuturesTrading($event)" />
+      </div>
+    </p-panel>
+  }
+}

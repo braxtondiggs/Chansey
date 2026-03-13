@@ -1,22 +1,23 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
 import { FloatLabel } from 'primeng/floatlabel';
 import { FluidModule } from 'primeng/fluid';
+import { PanelModule } from 'primeng/panel';
 import { PasswordModule } from 'primeng/password';
 
 import { ChangePasswordRequest } from '@chansey/api-interfaces';
 
 import { getPasswordError, PasswordMatchValidator } from '../../../../../validators/password-match.validator';
 import { PasswordStrengthValidator } from '../../../../../validators/password-strength.validator';
+import { createSinglePanelState } from '../../utils/panel-state';
 
 @Component({
   selector: 'app-change-password',
-  standalone: true,
-  imports: [ReactiveFormsModule, ButtonModule, CardModule, FloatLabel, FluidModule, PasswordModule],
-  templateUrl: './change-password.component.html'
+  imports: [ReactiveFormsModule, ButtonModule, FloatLabel, FluidModule, PanelModule, PasswordModule],
+  templateUrl: './change-password.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ChangePasswordComponent {
   private fb = inject(FormBuilder);
@@ -26,6 +27,12 @@ export class ChangePasswordComponent {
   changePassword = output<ChangePasswordRequest>();
 
   passwordFormSubmitted = signal(false);
+
+  private panelState = createSinglePanelState('security.changePassword');
+  get panelCollapsed() {
+    return this.panelState.collapsed;
+  }
+  onPanelToggle = this.panelState.onToggle;
 
   passwordForm: FormGroup = this.fb.group(
     {

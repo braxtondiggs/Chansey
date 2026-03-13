@@ -1,6 +1,14 @@
 import { Injectable } from '@angular/core';
 
-import { Coin, OpportunitySellingStatusResponse, OtpResponse } from '@chansey/api-interfaces';
+import {
+  ChangePasswordRequest,
+  Coin,
+  ExchangeKey,
+  IUser,
+  IUserProfileUpdate,
+  OpportunitySellingStatusResponse,
+  OtpResponse
+} from '@chansey/api-interfaces';
 import { queryKeys, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 @Injectable({
@@ -46,6 +54,34 @@ export class SettingsService {
   useUpdateFuturesTradingMutation() {
     return useAuthMutation<{ futuresEnabled: boolean }, { enabled: boolean }>('/api/user/futures-trading', 'PATCH', {
       invalidateQueries: [queryKeys.profile.futuresTrading(), queryKeys.auth.user()]
+    });
+  }
+
+  useUpdateProfileMutation() {
+    return useAuthMutation<IUser, IUserProfileUpdate>('/api/user', 'PATCH', {
+      invalidateQueries: [queryKeys.auth.user()]
+    });
+  }
+
+  useChangePasswordMutation() {
+    return useAuthMutation<{ message: string }, ChangePasswordRequest>('/api/auth/change-password', 'POST');
+  }
+
+  useSaveExchangeKeysMutation() {
+    return useAuthMutation<ExchangeKey, Record<string, unknown>>('/api/exchange-keys', 'POST', {
+      invalidateQueries: [queryKeys.auth.user(), queryKeys.profile.exchangeKeys()]
+    });
+  }
+
+  useDeleteExchangeKeyMutation() {
+    return useAuthMutation<ExchangeKey, string>((id: string) => `/api/exchange-keys/${id}`, 'DELETE', {
+      invalidateQueries: [queryKeys.auth.user(), queryKeys.profile.exchangeKeys()]
+    });
+  }
+
+  useUploadProfileImageMutation() {
+    return useAuthMutation<IUser, FormData>('/api/user/profile-image', 'POST', {
+      invalidateQueries: [queryKeys.auth.user()]
     });
   }
 }

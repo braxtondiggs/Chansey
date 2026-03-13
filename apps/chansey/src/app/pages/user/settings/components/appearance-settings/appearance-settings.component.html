@@ -1,0 +1,142 @@
+<p-panel
+  [toggleable]="true"
+  [collapsed]="panelCollapsed['colorScheme']"
+  (onAfterToggle)="onPanelToggle('colorScheme', $event)"
+  class="mt-3"
+>
+  <ng-template #header>
+    <span class="flex items-center gap-2">
+      <i class="pi pi-palette"></i>
+      <span class="font-semibold">Color Scheme</span>
+    </span>
+  </ng-template>
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center justify-between py-3">
+      <div>
+        <div class="text-900 mb-1 text-lg font-semibold">Dark Mode</div>
+        <div class="text-600 text-sm">Switch between light and dark color schemes</div>
+      </div>
+      <p-toggleswitch class="mt-2 block" [(ngModel)]="darkMode" (ngModelChange)="toggleDarkMode()" />
+    </div>
+
+    <div class="flex flex-row items-center justify-between py-3">
+      <span class="text-lg font-semibold">App Theme</span>
+      <p-selectbutton
+        class="mt-2 block"
+        [options]="presetNames"
+        [(ngModel)]="selectedPreset"
+        (ngModelChange)="onPresetChange($event)"
+        [allowEmpty]="false"
+      />
+    </div>
+
+    <div class="flex flex-row items-center justify-between py-3">
+      <span class="text-lg font-semibold">Card Style</span>
+      <p-selectbutton
+        class="mt-2 block md:mt-0"
+        [(ngModel)]="cardStyle"
+        (ngModelChange)="onCardStyleChange($event)"
+        [options]="cardStyleOptions"
+        optionLabel="name"
+        optionValue="value"
+        [allowEmpty]="false"
+      />
+    </div>
+
+    <div class="mb-4 flex flex-col items-start py-3">
+      <span class="mb-2 text-lg font-semibold">Theme Color:</span>
+      <div class="flex max-w-full flex-wrap gap-2 pt-2 pr-0 md:max-w-lg md:pr-48">
+        @for (primaryColor of primaryColors; track primaryColor.name) {
+          <button
+            type="button"
+            [title]="primaryColor.name"
+            [attr.aria-label]="'Select ' + primaryColor.name + ' theme color'"
+            (click)="updateColors($event, 'primary', primaryColor)"
+            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded duration-150 hover:shadow-lg"
+            [style]="{
+              'background-color': primaryColor?.name === 'noir' ? 'var(--text-color)' : primaryColor?.palette?.['500']
+            }"
+          >
+            @if (primaryColor.name === selectedPrimaryColor) {
+              <i class="pi pi-check text-white"></i>
+            }
+          </button>
+        }
+      </div>
+    </div>
+
+    <div>
+      <span class="mb-2 text-lg font-semibold">Surface Color:</span>
+      <div class="flex max-w-full flex-wrap gap-2 pt-2 pr-0 md:max-w-lg md:pr-48">
+        @for (surface of surfaces; track surface.name) {
+          <button
+            type="button"
+            [title]="surface.name"
+            [attr.aria-label]="'Select ' + surface.name + ' surface color'"
+            (click)="updateColors($event, 'surface', surface)"
+            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded duration-150 hover:shadow-lg"
+            [style]="{
+              'background-color': surface?.palette?.['500']
+            }"
+          >
+            @if (
+              selectedSurfaceColor
+                ? selectedSurfaceColor === surface.name
+                : darkMode
+                  ? surface.name === 'zinc'
+                  : surface.name === 'slate'
+            ) {
+              <i class="pi pi-check text-white"></i>
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+</p-panel>
+
+<p-panel
+  [toggleable]="true"
+  [collapsed]="panelCollapsed['menuSettings']"
+  (onAfterToggle)="onPanelToggle('menuSettings', $event)"
+  class="mt-3"
+>
+  <ng-template #header>
+    <span class="flex items-center gap-2">
+      <i class="pi pi-bars"></i>
+      <span class="font-semibold">Menu Settings</span>
+    </span>
+  </ng-template>
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center justify-between py-3">
+      <span class="text-lg font-semibold">Menu Theme</span>
+      <p-selectbutton
+        class="mt-2 block md:mt-0"
+        [(ngModel)]="menuTheme"
+        (ngModelChange)="onMenuThemeChange($event)"
+        [options]="menuThemeOptions"
+        optionLabel="name"
+        optionValue="value"
+        [allowEmpty]="false"
+      />
+    </div>
+
+    <div class="flex flex-col justify-between py-3 md:flex-row md:items-center">
+      <span class="text-lg font-semibold">Menu Type</span>
+      <div class="grid w-64 grid-cols-2 gap-3 pt-2">
+        @for (mode of menuModeOptions; track mode.value) {
+          <div class="flex items-center gap-2">
+            <p-radiobutton
+              name="menuMode"
+              [value]="mode.value"
+              [(ngModel)]="menuMode"
+              (ngModelChange)="setMenuMode(mode.value)"
+              [inputId]="mode.inputId"
+            />
+            <label [for]="mode.inputId">{{ mode.name }}</label>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</p-panel>

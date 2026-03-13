@@ -17,7 +17,7 @@ import { AccountValueDataPoint, ExchangeKey } from '@chansey/api-interfaces';
 
 import { ExchangeBalanceService } from './exchange-balance.service';
 
-import { ProfileService } from '../../../pages/user/profile/profile.service';
+import { SettingsService } from '../../../pages/user/settings/settings.service';
 import { CounterDirective } from '../../directives/counter/counter.directive';
 import { AuthService } from '../../services/auth.service';
 import { LayoutService } from '../../services/layout.service';
@@ -55,7 +55,7 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly layoutService = inject(LayoutService);
   private readonly authService = inject(AuthService);
-  private readonly profileService = inject(ProfileService);
+  private readonly settingsService = inject(SettingsService);
 
   timePeriodForm: FormGroup = this.fb.group({
     value: new FormControl(this.currentDays())
@@ -67,7 +67,7 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
 
   // User and preferences
   userQuery = this.authService.useUser();
-  updatePreferencesMutation = this.profileService.useUpdateProfileMutation();
+  updatePreferencesMutation = this.settingsService.useUpdateProfileMutation();
   isBalanceHidden = computed(() => this.userQuery.data()?.hide_balance ?? false);
 
   balanceQuery = this.balanceService.useExchangeBalance();
