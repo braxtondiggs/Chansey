@@ -1,10 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, computed, EventEmitter, inject, Input, Output } from '@angular/core';
 
 import { ChartData, ChartDataset, ChartOptions, TooltipItem } from 'chart.js';
 import { ChartModule } from 'primeng/chart';
 
 import { MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
+
+import { LayoutService } from '../../../shared/services/layout.service';
 
 /**
  * T025: PriceChartComponent
@@ -25,7 +27,10 @@ import { MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
   styleUrls: ['./price-chart.component.scss']
 })
 export class PriceChartComponent {
+  private readonly layoutService = inject(LayoutService);
+  private isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
   private _chartData?: MarketChartResponseDto | null;
+  private _lastPeriod?: TimePeriod;
 
   @Input()
   set chartData(value: MarketChartResponseDto | null | undefined) {
@@ -118,10 +123,11 @@ export class PriceChartComponent {
       fill: true,
       borderColor: lineColor,
       backgroundColor: fillColor,
-      tension: 0.4, // Smooth curve
+      normalized: true,
+      tension: 0.4,
       borderWidth: 2,
-      pointRadius: 0, // Hide points on line
-      pointHoverRadius: 5 // Show point on hover
+      pointRadius: 0,
+      pointHoverRadius: 5
     };
 
     this.data = {
@@ -129,15 +135,19 @@ export class PriceChartComponent {
       datasets: [dataset]
     };
 
-    // Chart.js options
-    this.options = this.createChartOptions();
+    // Only recreate options when period or theme changes
+    if (this._lastPeriod !== this.selectedPeriod) {
+      this._lastPeriod = this.selectedPeriod;
+      this.options = this.createChartOptions();
+    }
   }
 
   private createChartOptions(): ChartOptions<'line'> {
+    const gridColor = this.isDarkTheme() ? 'rgba(255, 255, 255, 0.1)' : 'rgba(200, 200, 200, 0.2)';
+
     return {
       maintainAspectRatio: false,
       responsive: true,
-      aspectRatio: 1,
       interaction: {
         mode: 'index',
         intersect: false
@@ -156,6 +166,11 @@ export class PriceChartComponent {
               return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             }
           }
+        },
+        decimation: {
+          enabled: true,
+          algorithm: 'lttb',
+          samples: 150
         }
       },
       scales: {
@@ -170,7 +185,7 @@ export class PriceChartComponent {
         },
         y: {
           grid: {
-            color: 'rgba(200, 200, 200, 0.2)'
+            color: gridColor
           },
           ticks: {
             callback: (value) => {

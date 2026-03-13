@@ -2,7 +2,6 @@ import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
-import { ChartModule } from 'primeng/chart';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
@@ -11,7 +10,7 @@ import { TradeAnalyticsDto } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-trade-analytics-panel',
   standalone: true,
-  imports: [CommonModule, CardModule, ChartModule, CurrencyPipe, DecimalPipe, TableModule, TagModule],
+  imports: [CommonModule, CardModule, CurrencyPipe, DecimalPipe, TableModule, TagModule],
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
       <!-- Trade Summary -->

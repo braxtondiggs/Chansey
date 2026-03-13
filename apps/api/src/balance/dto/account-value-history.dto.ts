@@ -32,4 +32,10 @@ export class AccountValueHistoryDto {
     example: 12.5
   })
   changePercentage: number;
+
+  @ApiProperty({
+    description: 'Change in account value over the period (as dollar amount)',
+    example: 14.92
+  })
+  changeAmount: number;
 }

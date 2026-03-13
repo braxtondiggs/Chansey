@@ -1,5 +1,5 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, computed, Input } from '@angular/core';
+import { CurrencyPipe, DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
@@ -15,12 +15,12 @@ import { UserAssetsService } from './user-assets.service';
 
 @Component({
   selector: 'app-user-assets',
-  standalone: true,
   imports: [
     AvatarModule,
     ButtonModule,
     CardModule,
-    CommonModule,
+    CurrencyPipe,
+    DecimalPipe,
     PaginatorModule,
     ProgressSpinnerModule,
     RouterModule,
@@ -32,7 +32,7 @@ import { UserAssetsService } from './user-assets.service';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class UserAssetsComponent {
-  @Input() limit = 10;
+  readonly limit = input(10);
 
   // Service injection
   private readonly assetsService = inject(UserAssetsService);
@@ -42,6 +42,7 @@ export class UserAssetsComponent {
 
   // Computed states
   assets = computed(() => this.assetsQuery.data() || []);
+  skeletonRows = computed(() => Array.from({ length: Math.min(this.limit(), 4) }, (_, i) => i));
 
   // Calculate total value (price * quantity)
   calculateTotalValue(price: number, quantity: number): number {

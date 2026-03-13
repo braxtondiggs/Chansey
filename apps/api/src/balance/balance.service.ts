@@ -490,7 +490,8 @@ export class BalanceService {
         return {
           history: [],
           currentValue: 0,
-          changePercentage: 0
+          changePercentage: 0,
+          changeAmount: 0
         };
       }
 
@@ -545,10 +546,12 @@ export class BalanceService {
         }
       }
 
-      // Calculate change percentage
+      // Calculate change percentage and dollar amount
       let changePercentage = 0;
+      let changeAmount = 0;
       if (history.length > 0) {
         const oldestValue = history[0].value;
+        changeAmount = Math.round((currentValue - oldestValue) * 100) / 100;
         if (oldestValue > 0) {
           changePercentage = ((currentValue - oldestValue) / oldestValue) * 100;
           // Round to 2 decimal places
@@ -565,7 +568,8 @@ export class BalanceService {
       return {
         history: sampledHistory,
         currentValue: Math.round(currentValue * 100) / 100, // Round to 2 decimal places
-        changePercentage
+        changePercentage,
+        changeAmount
       };
     } catch (error: unknown) {
       const err = toErrorInfo(error);

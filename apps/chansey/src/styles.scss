@@ -2,6 +2,11 @@
 @use './app/styles/layout/layout.scss';
 @use './app/shared/directives/counter/counter.directive.css';
 
+/* Shared table utility: remove bottom border on last row */
+.no-bottom-border.no-bottom-border tr:last-child > td {
+  border-bottom: none;
+}
+
 body {
   margin: 0;
   min-height: 100%;

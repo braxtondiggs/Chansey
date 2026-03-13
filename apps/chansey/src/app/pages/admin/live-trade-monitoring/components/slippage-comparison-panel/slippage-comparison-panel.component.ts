@@ -1,6 +1,7 @@
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
+import { ChartData, ChartOptions } from 'chart.js';
 import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { TableModule } from 'primeng/table';
@@ -170,10 +171,10 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
 export class SlippageComparisonPanelComponent implements OnChanges {
   @Input() slippageAnalysis: SlippageAnalysisDto | undefined;
 
-  timeOfDayChartData: unknown;
-  orderSizeChartData: unknown;
+  timeOfDayChartData: ChartData<'bar'> | null = null;
+  orderSizeChartData: ChartData<'bar'> | null = null;
 
-  chartOptions = {
+  chartOptions: ChartOptions<'bar'> = {
     plugins: {
       legend: { display: false }
     },
