@@ -16,8 +16,12 @@ Navigate to any page in the Chansey app, handling login automatically.
     - `otp` → `/auth/otp`
   - **App pages** (user login):
     - `dashboard` → `/app/dashboard`
-    - `profile` → `/app/profile`
-    - `settings` → `/app/settings`
+    - `settings` → `/app/settings` (defaults to account tab)
+    - `account` → `/app/settings?tab=account`
+    - `trading` → `/app/settings?tab=trading`
+    - `notification` → `/app/settings?tab=notification`
+    - `security` → `/app/settings?tab=security`
+    - `appearance` → `/app/settings?tab=appearance`
     - `transactions` → `/app/transactions`
     - `prices` → `/app/prices`
     - `watchlist` → `/app/watchlist`

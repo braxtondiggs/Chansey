@@ -3,38 +3,22 @@ import { Injectable, Signal } from '@angular/core';
 import { Coin, CreatePortfolioDto, PortfolioItem } from '@chansey/api-interfaces';
 import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
-/**
- * Service for prices page data via TanStack Query
- *
- * Provides queries for coin listings, watchlist, and price data.
- */
 @Injectable({
   providedIn: 'root'
 })
-export class PriceService {
-  /**
-   * Query all coins for price listing
-   */
+export class CoinDataService {
   useCoins() {
     return useAuthQuery<Coin[]>(queryKeys.coins.lists(), '/api/coin', {
       cachePolicy: STANDARD_POLICY
     });
   }
 
-  /**
-   * Query user's watchlist
-   */
   useWatchlist() {
     return useAuthQuery<PortfolioItem[]>(queryKeys.coins.watchlist(), '/api/portfolio?type=MANUAL', {
       cachePolicy: FREQUENT_POLICY
     });
   }
 
-  /**
-   * Query real-time prices for specific coins
-   *
-   * Uses a reactive signal for coin IDs to enable dynamic refetching
-   */
   usePrices(coins: Signal<string>) {
     return useAuthQuery<Record<string, { usd: number }>>(() => {
       const coinValue = coins();
@@ -54,18 +38,12 @@ export class PriceService {
     });
   }
 
-  /**
-   * Add a coin to watchlist
-   */
   useAddToWatchlist() {
     return useAuthMutation<{ id: string }, CreatePortfolioDto>('/api/portfolio', 'POST', {
       invalidateQueries: [queryKeys.coins.watchlist()]
     });
   }
 
-  /**
-   * Remove a coin from watchlist
-   */
   useRemoveFromWatchlist() {
     return useAuthMutation<void, string>((portfolioId: string) => `/api/portfolio/${portfolioId}`, 'DELETE', {
       invalidateQueries: [queryKeys.coins.watchlist()]
