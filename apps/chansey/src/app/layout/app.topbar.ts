@@ -175,16 +175,6 @@ import { PwaService } from '../shared/services/pwa.service';
               <li>
                 <a
                   class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
-                  routerLink="/app/profile"
-                  (click)="closeProfileMenu()"
-                >
-                  <i class="pi pi-user"></i>
-                  <span>Profile</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
                   routerLink="/app/settings"
                   (click)="closeProfileMenu()"
                 >

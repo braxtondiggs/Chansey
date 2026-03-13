@@ -1,0 +1,117 @@
+@if (!user()) {
+  <div class="py-8">
+    <div class="flex-column my-8 flex flex-col items-center gap-8 md:flex-row md:gap-4">
+      <div class="flex w-full flex-col items-center gap-3 md:w-1/2">
+        <p-skeleton shape="circle" size="16rem" class="mb-4"></p-skeleton>
+        <p-skeleton width="10rem" height="2.5rem"></p-skeleton>
+      </div>
+      <div class="flex w-full max-w-full flex-col gap-4 md:w-1/2">
+        <div class="flex flex-col gap-4 md:flex-row">
+          <div class="flex w-full flex-col gap-4 md:flex-row">
+            <p-skeleton width="100%" height="3rem" class="mb-2"></p-skeleton>
+            <p-skeleton width="100%" height="3rem" class="mb-2"></p-skeleton>
+          </div>
+        </div>
+        <p-skeleton width="100%" height="3rem" class="mb-2"></p-skeleton>
+        <div class="mt-4 flex justify-end">
+          <p-skeleton width="10rem" height="3rem"></p-skeleton>
+        </div>
+      </div>
+    </div>
+  </div>
+} @else {
+  <p-fluid>
+    <div class="flex-column my-8 flex flex-col items-center gap-8 md:flex-row md:gap-4">
+      <div class="flex w-full flex-col items-center gap-3 md:w-1/2">
+        <div class="relative">
+          <p-avatar
+            [size]="'xlarge'"
+            [image]="userProfileImage()"
+            shape="circle"
+            class="profile mb-8 cursor-pointer"
+            [class.opacity-50]="isUploadingImage()"
+            (click)="openFileUpload()"
+          />
+          @if (isUploadingImage()) {
+            <div class="absolute inset-0 flex items-center justify-center">
+              <i class="pi pi-spin pi-spinner text-primary text-4xl"></i>
+            </div>
+          }
+        </div>
+        <p-fileUpload
+          #fileUpload
+          mode="basic"
+          chooseIcon="pi pi-upload"
+          chooseLabel="Upload Profile Image"
+          class="profile-upload-button"
+          accept="image/*"
+          [auto]="true"
+          [disabled]="isUploadingImage()"
+          (onSelect)="onUpload($event)"
+          [maxFileSize]="2097152"
+        ></p-fileUpload>
+      </div>
+      <form [formGroup]="profileForm" (ngSubmit)="onSubmit()" class="flex w-full max-w-full flex-col gap-4 md:w-1/2">
+        <div class="flex flex-col">
+          @for (message of messages(); track message.content) {
+            <p-message
+              [severity]="message.severity"
+              [text]="message.content"
+              icon="pi {{ message.icon }}"
+              size="large"
+              class="my-4"
+            />
+          }
+        </div>
+        <div class="flex flex-col gap-4 md:flex-row">
+          <div class="flex w-full flex-col gap-4 md:flex-row">
+            <p-floatlabel variant="on" class="flex w-full flex-wrap">
+              <input
+                id="given_name"
+                type="text"
+                pInputText
+                formControlName="given_name"
+                pSize="large"
+                autocomplete="given-name"
+              />
+              <label for="given_name">First Name</label>
+            </p-floatlabel>
+            <p-floatlabel variant="on" class="flex w-full flex-wrap">
+              <input
+                id="family_name"
+                type="text"
+                pInputText
+                formControlName="family_name"
+                pSize="large"
+                autocomplete="family-name"
+              />
+              <label for="family_name">Last Name</label>
+            </p-floatlabel>
+          </div>
+        </div>
+        <p-floatlabel variant="on" class="mt-4 flex flex-wrap">
+          <input id="email" type="email" pInputText formControlName="email" pSize="large" autocomplete="email" />
+          <label for="email">Email</label>
+        </p-floatlabel>
+        <div class="mt-8 flex flex-wrap justify-end">
+          <p-button
+            type="submit"
+            label="Save Changes"
+            icon="pi pi-check"
+            size="large"
+            [loading]="isUpdating()"
+            [disabled]="!profileForm.valid || !profileForm.dirty"
+          />
+        </div>
+      </form>
+    </div>
+  </p-fluid>
+}
+
+<app-image-crop
+  [visible]="showImageCropper()"
+  (visibleChange)="showImageCropper.set($event)"
+  [imageFile]="selectedImageFile()"
+  (croppedImageChange)="handleCroppedImage($event)"
+  (cancel)="cancelCropping()"
+/>

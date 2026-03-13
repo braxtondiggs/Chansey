@@ -1,38 +1,39 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { DividerModule } from 'primeng/divider';
 import { FieldsetModule } from 'primeng/fieldset';
 import { MessageModule } from 'primeng/message';
+import { PanelModule } from 'primeng/panel';
 import { SkeletonModule } from 'primeng/skeleton';
 import { TabsModule } from 'primeng/tabs';
 
 import { Exchange, ExchangeKey, IUser } from '@chansey/api-interfaces';
 
-import { ExchangeFormState } from '../../profile.types';
+import { ExchangeFormState } from '../../settings.types';
+import { createSinglePanelState } from '../../utils/panel-state';
 import { ExchangeKeyFormComponent } from '../exchange-key-form/exchange-key-form.component';
 
 @Component({
   selector: 'app-exchange-integrations',
-  standalone: true,
   imports: [
     AvatarModule,
     ButtonModule,
-    CardModule,
     DialogModule,
     DividerModule,
     ExchangeKeyFormComponent,
     FieldsetModule,
     MessageModule,
     NgTemplateOutlet,
+    PanelModule,
     SkeletonModule,
     TabsModule
   ],
-  templateUrl: './exchange-integrations.component.html'
+  templateUrl: './exchange-integrations.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ExchangeIntegrationsComponent {
   exchanges = input<Exchange[]>([]);
@@ -48,6 +49,12 @@ export class ExchangeIntegrationsComponent {
 
   showBinanceHelp = signal(false);
   showCoinbaseHelp = signal(false);
+
+  private panelState = createSinglePanelState('trading.exchangeIntegrations');
+  get panelCollapsed() {
+    return this.panelState.collapsed;
+  }
+  onPanelToggle = this.panelState.onToggle;
 
   isConnected(slug: string): boolean {
     return !!this.exchangeForms()[slug]?.connected;

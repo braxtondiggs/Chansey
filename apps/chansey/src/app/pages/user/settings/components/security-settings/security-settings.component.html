@@ -1,0 +1,62 @@
+<app-change-password
+  #changePasswordRef
+  [isPending]="changePasswordMutation.isPending()"
+  (changePassword)="onChangePassword($event)"
+/>
+
+<p-panel
+  [toggleable]="true"
+  [collapsed]="twoFactorPanelCollapsed"
+  (onAfterToggle)="onTwoFactorPanelToggle($event)"
+  class="mt-3"
+>
+  <ng-template #header>
+    <span class="flex items-center gap-2">
+      <i class="pi pi-lock"></i>
+      <span class="font-semibold">Two-Factor Authentication</span>
+    </span>
+  </ng-template>
+  <form [formGroup]="securityForm">
+    <div class="flex flex-row justify-between py-3">
+      <div class="mb-2 md:mb-0">
+        <div class="text-900 mb-1 text-lg font-semibold">Enable 2FA</div>
+        <div class="text-600 text-sm">Add an extra layer of security to your account</div>
+      </div>
+      <p-toggleswitch formControlName="twoFactorAuth" (onChange)="toggleTwoFactorAuth($event)" class="mt-2 md:mt-0" />
+    </div>
+  </form>
+</p-panel>
+
+<!-- Password Dialog for Disabling 2FA -->
+<p-dialog
+  header="Confirm Password"
+  [visible]="showPasswordDialog()"
+  [modal]="true"
+  [closable]="true"
+  [style]="{ width: '400px' }"
+  (onHide)="cancelDisable2FA()"
+>
+  <div class="flex flex-col gap-4">
+    <p class="text-surface-600 text-sm">Please enter your password to disable two-factor authentication.</p>
+    <p-floatlabel variant="on" class="w-full">
+      <p-password
+        [(ngModel)]="disablePassword"
+        [ngModelOptions]="{ standalone: true }"
+        [feedback]="false"
+        [toggleMask]="true"
+        [fluid]="true"
+        size="large"
+        autocomplete="current-password"
+      />
+      <label>Password</label>
+    </p-floatlabel>
+  </div>
+  <ng-template #footer>
+    <div class="flex justify-end gap-2">
+      <p-button severity="secondary" (click)="cancelDisable2FA()">Cancel</p-button>
+      <p-button severity="danger" [loading]="disableOtpMutation.isPending()" (click)="confirmDisable2FA()">
+        Disable 2FA
+      </p-button>
+    </div>
+  </ng-template>
+</p-dialog>

@@ -16,12 +16,12 @@
     @if (!userQuery.isPending()) {
       <p-card class="mb-4">
         <div class="flex min-h-96 flex-col items-center justify-center p-3 text-center">
-          <p class="text-600 mb-8">Connect your exchanges in the profile section to see your balances here.</p>
+          <p class="text-600 mb-8">Connect your exchanges in the settings to see your balances here.</p>
           <p-button
             icon="pi pi-wallet"
             label="Connect a Wallet"
-            fragment="exchange-integrations"
-            routerLink="/app/profile"
+            routerLink="/app/settings"
+            [queryParams]="{ tab: 'trading' }"
             size="large"
           />
         </div>

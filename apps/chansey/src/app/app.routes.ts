@@ -59,11 +59,6 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Portfolio' }
       },
       {
-        path: 'profile',
-        loadComponent: () => import('./pages/user/profile').then((c) => c.ProfileComponent),
-        data: { breadcrumb: 'Profile' }
-      },
-      {
         path: 'settings',
         loadComponent: () => import('./pages/user/settings').then((c) => c.SettingsComponent),
         data: { breadcrumb: 'Settings' }
