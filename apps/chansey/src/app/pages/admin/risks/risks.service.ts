@@ -1,16 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { Risk, CreateRisk, UpdateRisk } from '@chansey/api-interfaces';
-import {
-  queryKeys,
-  useAuthQuery,
-  useAuthMutation,
-  authenticatedFetch,
-  STANDARD_POLICY,
-  STATIC_POLICY
-} from '@chansey/shared';
+import { queryKeys, STANDARD_POLICY, STATIC_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing risks in admin panel via TanStack Query
@@ -41,13 +32,12 @@ export class RisksService {
    * @param riskId - Signal containing the risk ID
    */
   useRisk(riskId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<Risk>(() => {
       const id = riskId();
       return {
         queryKey: queryKeys.risks.detail(id || ''),
-        queryFn: () => authenticatedFetch<Risk>(`${this.apiUrl}/${id}`),
-        ...STANDARD_POLICY,
-        enabled: !!id
+        url: `${this.apiUrl}/${id}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!id }
       };
     });
   }

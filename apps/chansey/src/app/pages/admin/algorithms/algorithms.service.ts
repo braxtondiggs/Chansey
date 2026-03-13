@@ -1,16 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { Algorithm, AlgorithmStrategy, CreateAlgorithmDto, UpdateAlgorithmDto } from '@chansey/api-interfaces';
-import {
-  queryKeys,
-  useAuthQuery,
-  useAuthMutation,
-  authenticatedFetch,
-  STANDARD_POLICY,
-  STATIC_POLICY
-} from '@chansey/shared';
+import { queryKeys, STANDARD_POLICY, STATIC_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for managing algorithms via TanStack Query
@@ -49,13 +40,12 @@ export class AlgorithmsService {
    * @param algorithmId - Signal containing the algorithm ID
    */
   useAlgorithm(algorithmId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<Algorithm>(() => {
       const id = algorithmId();
       return {
         queryKey: queryKeys.algorithms.detail(id || ''),
-        queryFn: () => authenticatedFetch<Algorithm>(`${this.apiUrl}/${id}`),
-        ...STANDARD_POLICY,
-        enabled: !!id
+        url: `${this.apiUrl}/${id}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!id }
       };
     });
   }

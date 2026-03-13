@@ -1,8 +1,6 @@
 import { Injectable, Signal, signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
-import { FREQUENT_POLICY, authenticatedFetch, queryKeys } from '@chansey/shared';
+import { authenticatedBlobFetch, buildUrl, FREQUENT_POLICY, queryKeys, useAuthQuery } from '@chansey/shared';
 
 // ============================================================================
 // Types (mirroring backend DTOs)
@@ -343,31 +341,6 @@ export interface AlertsDto {
   lastCalculatedAt: string;
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Builds URL with query parameters
- */
-function buildUrl(base: string, params?: Record<string, unknown>): string {
-  if (!params) return base;
-
-  const searchParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') {
-      searchParams.set(key, String(value));
-    }
-  }
-
-  const queryString = searchParams.toString();
-  return queryString ? `${base}?${queryString}` : base;
-}
-
-// ============================================================================
-// Service
-// ============================================================================
-
 /**
  * Service for live trade monitoring dashboard via TanStack Query
  *
@@ -401,15 +374,12 @@ export class LiveTradeMonitoringService {
    * Query live trade overview with current filters
    */
   useOverview(filters?: Signal<LiveTradeFiltersDto>) {
-    return injectQuery(() => {
+    return useAuthQuery<LiveTradeOverviewDto>(() => {
       const currentFilters = filters?.() ?? this.filtersSignal();
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.overview(currentFilters as Record<string, unknown>),
-        queryFn: () =>
-          authenticatedFetch<LiveTradeOverviewDto>(
-            buildUrl(`${this.apiUrl}/overview`, currentFilters as Record<string, unknown>)
-          ),
-        ...FREQUENT_POLICY
+        url: buildUrl(`${this.apiUrl}/overview`, currentFilters),
+        options: { cachePolicy: FREQUENT_POLICY }
       };
     });
   }
@@ -418,15 +388,12 @@ export class LiveTradeMonitoringService {
    * Query paginated algorithm activations
    */
   useAlgorithms(query?: Signal<AlgorithmListQueryDto>) {
-    return injectQuery(() => {
+    return useAuthQuery<PaginatedAlgorithmListDto>(() => {
       const currentQuery = query?.() ?? {};
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.algorithms(currentQuery as Record<string, unknown>),
-        queryFn: () =>
-          authenticatedFetch<PaginatedAlgorithmListDto>(
-            buildUrl(`${this.apiUrl}/algorithms`, currentQuery as Record<string, unknown>)
-          ),
-        ...FREQUENT_POLICY
+        url: buildUrl(`${this.apiUrl}/algorithms`, currentQuery),
+        options: { cachePolicy: FREQUENT_POLICY }
       };
     });
   }
@@ -435,15 +402,12 @@ export class LiveTradeMonitoringService {
    * Query paginated algorithmic orders
    */
   useOrders(query?: Signal<OrderListQueryDto>) {
-    return injectQuery(() => {
+    return useAuthQuery<PaginatedOrderListDto>(() => {
       const currentQuery = query?.() ?? {};
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.orders(currentQuery as Record<string, unknown>),
-        queryFn: () =>
-          authenticatedFetch<PaginatedOrderListDto>(
-            buildUrl(`${this.apiUrl}/orders`, currentQuery as Record<string, unknown>)
-          ),
-        ...FREQUENT_POLICY
+        url: buildUrl(`${this.apiUrl}/orders`, currentQuery),
+        options: { cachePolicy: FREQUENT_POLICY }
       };
     });
   }
@@ -452,13 +416,12 @@ export class LiveTradeMonitoringService {
    * Query backtest vs live comparison for a specific algorithm
    */
   useComparison(algorithmId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<ComparisonDto>(() => {
       const id = algorithmId();
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.comparison(id || ''),
-        queryFn: () => authenticatedFetch<ComparisonDto>(`${this.apiUrl}/comparison/${id}`),
-        enabled: !!id,
-        ...FREQUENT_POLICY
+        url: `${this.apiUrl}/comparison/${id}`,
+        options: { cachePolicy: FREQUENT_POLICY, enabled: !!id }
       };
     });
   }
@@ -467,17 +430,12 @@ export class LiveTradeMonitoringService {
    * Query slippage analysis
    */
   useSlippageAnalysis(filters?: Signal<LiveTradeFiltersDto>, enabled?: Signal<boolean>) {
-    return injectQuery(() => {
+    return useAuthQuery<SlippageAnalysisDto>(() => {
       const currentFilters = filters?.() ?? this.filtersSignal();
-      const isEnabled = enabled?.() ?? true;
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.slippageAnalysis(currentFilters as Record<string, unknown>),
-        queryFn: () =>
-          authenticatedFetch<SlippageAnalysisDto>(
-            buildUrl(`${this.apiUrl}/slippage-analysis`, currentFilters as Record<string, unknown>)
-          ),
-        enabled: isEnabled,
-        ...FREQUENT_POLICY
+        url: buildUrl(`${this.apiUrl}/slippage-analysis`, currentFilters),
+        options: { cachePolicy: FREQUENT_POLICY, enabled: enabled?.() ?? true }
       };
     });
   }
@@ -486,17 +444,12 @@ export class LiveTradeMonitoringService {
    * Query user activity
    */
   useUserActivity(query?: Signal<UserActivityQueryDto>, enabled?: Signal<boolean>) {
-    return injectQuery(() => {
+    return useAuthQuery<PaginatedUserActivityDto>(() => {
       const currentQuery = query?.() ?? {};
-      const isEnabled = enabled?.() ?? true;
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.userActivity(currentQuery as Record<string, unknown>),
-        queryFn: () =>
-          authenticatedFetch<PaginatedUserActivityDto>(
-            buildUrl(`${this.apiUrl}/user-activity`, currentQuery as Record<string, unknown>)
-          ),
-        enabled: isEnabled,
-        ...FREQUENT_POLICY
+        url: buildUrl(`${this.apiUrl}/user-activity`, currentQuery),
+        options: { cachePolicy: FREQUENT_POLICY, enabled: enabled?.() ?? true }
       };
     });
   }
@@ -505,15 +458,12 @@ export class LiveTradeMonitoringService {
    * Query performance alerts
    */
   useAlerts(filters?: Signal<LiveTradeFiltersDto>, enabled?: Signal<boolean>) {
-    return injectQuery(() => {
+    return useAuthQuery<AlertsDto>(() => {
       const currentFilters = filters?.() ?? this.filtersSignal();
-      const isEnabled = enabled?.() ?? true;
       return {
         queryKey: queryKeys.admin.liveTradeMonitoring.alerts(currentFilters as Record<string, unknown>),
-        queryFn: () =>
-          authenticatedFetch<AlertsDto>(buildUrl(`${this.apiUrl}/alerts`, currentFilters as Record<string, unknown>)),
-        enabled: isEnabled,
-        ...FREQUENT_POLICY
+        url: buildUrl(`${this.apiUrl}/alerts`, currentFilters),
+        options: { cachePolicy: FREQUENT_POLICY, enabled: enabled?.() ?? true }
       };
     });
   }
@@ -524,19 +474,7 @@ export class LiveTradeMonitoringService {
   async downloadExport(format: ExportFormat, filters?: LiveTradeFiltersDto): Promise<void> {
     const url = buildUrl(`${this.apiUrl}/export/orders`, { ...filters, format });
 
-    const response = await fetch(url, { credentials: 'include' });
-
-    if (!response.ok) {
-      let errorDetail = response.statusText;
-      try {
-        const errorBody = await response.json();
-        errorDetail = errorBody.message || errorBody.error || errorDetail;
-      } catch {
-        // Ignore JSON parse errors
-      }
-      throw new Error(`Export failed: ${errorDetail}`);
-    }
-
+    const response = await authenticatedBlobFetch(url);
     const blob = await response.blob();
     const filename = `algorithmic-orders.${format}`;
 

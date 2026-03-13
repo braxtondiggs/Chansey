@@ -1,6 +1,5 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
 import { BehaviorSubject } from 'rxjs';
 
 import {
@@ -15,15 +14,7 @@ import {
   TickerPair,
   TrailingType
 } from '@chansey/api-interfaces';
-import {
-  authenticatedFetch,
-  FREQUENT_POLICY,
-  queryKeys,
-  STANDARD_POLICY,
-  TIME,
-  useAuthMutation,
-  useAuthQuery
-} from '@chansey/shared';
+import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 export interface OrderBookEntry {
   price: number;
@@ -65,13 +56,12 @@ export class CryptoTradingService {
    * Get available trading pairs for connected exchanges
    */
   useTradingPairs(exchangeId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<TickerPair[]>(() => {
       const exchangeValue = exchangeId();
       return {
         queryKey: queryKeys.trading.tickerPairs(exchangeValue?.toString()),
-        queryFn: () => authenticatedFetch<TickerPair[]>(`/api/exchange/${exchangeValue?.toString()}/tickers`),
-        ...STANDARD_POLICY,
-        enabled: !!exchangeValue
+        url: `/api/exchange/${exchangeValue?.toString()}/tickers`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!exchangeValue }
       };
     });
   }
@@ -96,7 +86,7 @@ export class CryptoTradingService {
    * Get order book for a trading pair
    */
   useOrderBook(symbol: Signal<string | null>, exchangeId?: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<OrderBook>(() => {
       const symbolValue = symbol();
       const exchangeIdValue = exchangeId?.();
 
@@ -106,14 +96,18 @@ export class CryptoTradingService {
 
       return {
         queryKey: queryKeys.trading.orderBook(symbolValue || ''),
-        queryFn: () => authenticatedFetch<OrderBook>(`/api/trading/orderbook?${params}`),
-        staleTime: TIME.SECONDS.s15,
-        gcTime: TIME.MINUTES.m5,
-        refetchInterval: TIME.SECONDS.s15,
-        refetchOnWindowFocus: false,
-        retry: 2,
-        retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 10000),
-        enabled: !!symbolValue
+        url: `/api/trading/orderbook?${params}`,
+        options: {
+          cachePolicy: {
+            staleTime: TIME.SECONDS.s15,
+            gcTime: TIME.MINUTES.m5,
+            refetchInterval: TIME.SECONDS.s15,
+            refetchOnWindowFocus: false,
+            retry: 2,
+            retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 10000)
+          },
+          enabled: !!symbolValue
+        }
       };
     });
   }

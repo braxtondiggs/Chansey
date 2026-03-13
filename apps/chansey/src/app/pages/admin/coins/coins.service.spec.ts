@@ -1,5 +1,4 @@
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
+import * as shared from '@chansey/shared';
 import { queryKeys, STANDARD_POLICY, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 import { CoinsService } from './coins.service';
@@ -13,13 +12,8 @@ jest.mock('@chansey/shared', () => {
   };
 });
 
-jest.mock('@tanstack/angular-query-experimental', () => ({
-  injectQuery: jest.fn()
-}));
-
 const useAuthQueryMock = useAuthQuery as unknown as jest.Mock;
 const useAuthMutationMock = useAuthMutation as unknown as jest.Mock;
-const injectQueryMock = injectQuery as unknown as jest.Mock;
 
 describe('CoinsService', () => {
   let service: CoinsService;
@@ -40,19 +34,36 @@ describe('CoinsService', () => {
     });
   });
 
-  it('builds dynamic coin query with id parameter', async () => {
-    const fetchSpy = jest.spyOn(require('@chansey/shared'), 'authenticatedFetch').mockResolvedValue({} as unknown);
+  it('builds dynamic coin query with id parameter', () => {
+    const fetchSpy = jest.spyOn(shared, 'authenticatedFetch').mockResolvedValue({} as unknown);
     const coinId = jest.fn().mockReturnValue('abc') as unknown as import('@angular/core').Signal<string | null>;
-    injectQueryMock.mockImplementation((factory: () => unknown) => factory());
+
+    // Reactive overload: useAuthQuery receives a factory function
+    useAuthQueryMock.mockImplementation((factory: () => unknown) => {
+      const config = factory() as { queryKey: unknown; url: string; options?: unknown };
+      return { ...config, queryFn: () => shared.authenticatedFetch(config.url) };
+    });
 
     const result = service.useCoin(coinId) as any;
 
-    expect(injectQueryMock).toHaveBeenCalledTimes(1);
+    expect(useAuthQueryMock).toHaveBeenCalledTimes(1);
+    expect(typeof useAuthQueryMock.mock.calls[0][0]).toBe('function');
     expect(result.queryKey).toEqual(queryKeys.coins.detail('abc'));
-    expect(result.enabled).toBe(true);
+    expect(result.options).toEqual({ cachePolicy: STANDARD_POLICY, enabled: true });
 
-    await result.queryFn();
+    result.queryFn();
     expect(fetchSpy).toHaveBeenCalledWith('/api/coin/abc');
+  });
+
+  it('disables coin query and uses empty key when id is null', () => {
+    const coinId = jest.fn().mockReturnValue(null) as unknown as import('@angular/core').Signal<string | null>;
+
+    useAuthQueryMock.mockImplementation((factory: () => unknown) => factory());
+
+    const result = service.useCoin(coinId) as any;
+
+    expect(result.queryKey).toEqual(queryKeys.coins.detail(''));
+    expect(result.options.enabled).toBe(false);
   });
 
   it('wires up create/update/delete mutations with invalidation keys', () => {

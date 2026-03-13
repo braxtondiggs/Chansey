@@ -1,9 +1,7 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { injectQuery } from '@tanstack/angular-query-experimental';
-
 import { Order } from '@chansey/api-interfaces';
-import { authenticatedFetch, FREQUENT_POLICY, queryKeys, STANDARD_POLICY, useAuthQuery } from '@chansey/shared';
+import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, useAuthQuery } from '@chansey/shared';
 
 /**
  * Service for transactions/orders data via TanStack Query
@@ -31,13 +29,12 @@ export class TransactionsService {
    * @param transactionId - Signal containing the transaction ID
    */
   useTransaction(transactionId: Signal<string | null>) {
-    return injectQuery(() => {
+    return useAuthQuery<Order>(() => {
       const id = transactionId();
       return {
         queryKey: queryKeys.transactions.detail(id || ''),
-        queryFn: () => authenticatedFetch<Order>(`${this.apiUrl}/${id}`),
-        ...STANDARD_POLICY,
-        enabled: !!id
+        url: `${this.apiUrl}/${id}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!id }
       };
     });
   }
