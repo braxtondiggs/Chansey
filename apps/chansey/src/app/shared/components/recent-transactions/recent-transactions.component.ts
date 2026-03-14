@@ -9,9 +9,10 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { Order, OrderSide, OrderStatus } from '@chansey/api-interfaces';
+import { OrderSide, OrderStatus } from '@chansey/api-interfaces';
 
 import { TransactionsService } from '../../../pages/transactions/transactions.service';
+import { formatType, isUsdQuote } from '../../utils/order-format.util';
 
 @Component({
   selector: 'app-recent-transactions',
@@ -68,19 +69,6 @@ export class RecentTransactionsComponent {
     return side === OrderSide.BUY ? 'success' : 'danger';
   }
 
-  isUsdQuote(transaction: Order): boolean {
-    const coinSymbol = transaction.quoteCoin?.symbol?.toUpperCase();
-    if (coinSymbol === 'USD' || coinSymbol === 'USDT' || coinSymbol === 'USDC' || coinSymbol === 'BUSD') {
-      return true;
-    }
-    const quote = transaction.symbol?.split('/')?.[1]?.toUpperCase();
-    return quote === 'USD' || quote === 'USDT' || quote === 'USDC' || quote === 'BUSD';
-  }
-
-  formatType(type: string): string {
-    return type
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
+  isUsdQuote = isUsdQuote;
+  formatType = formatType;
 }

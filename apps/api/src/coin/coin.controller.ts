@@ -232,7 +232,7 @@ export class CoinsController implements OnModuleInit {
       try {
         const holdings = await this.getEnrichedHoldings(user, coin);
         if (holdings) {
-          (coinDetail as any).userHoldings = holdings;
+          coinDetail.userHoldings = holdings;
         }
       } catch (error: unknown) {
         // If holdings fetch fails, just return coin detail without holdings
@@ -345,7 +345,7 @@ export class CoinsController implements OnModuleInit {
   /**
    * Get balance-based holdings enriched with order-based cost basis when available.
    */
-  private async getEnrichedHoldings(user: User, coin: any): Promise<UserHoldingsDto | null> {
+  private async getEnrichedHoldings(user: User, coin: Coin): Promise<UserHoldingsDto | null> {
     if (!this.balanceService) return null;
 
     const balanceHoldings = await this.balanceService.getHoldingsForCoin(user, coin);

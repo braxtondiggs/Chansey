@@ -1,5 +1,13 @@
 import { DatePipe, DecimalPipe, NgClass, UpperCasePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ViewChild,
+  ViewEncapsulation,
+  computed,
+  inject,
+  signal
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -20,6 +28,8 @@ import { TagModule } from 'primeng/tag';
 import { Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interfaces';
 
 import { TransactionsService } from './transactions.service';
+
+import { formatType, isUsdQuote } from '../../shared/utils/order-format.util';
 
 @Component({
   selector: 'app-transactions',
@@ -45,7 +55,16 @@ import { TransactionsService } from './transactions.service';
     UpperCasePipe
   ],
   templateUrl: './transactions.component.html',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  encapsulation: ViewEncapsulation.None,
+  styles: `
+    app-transactions td .p-avatar-image {
+      background: var(--p-datatable-row-background);
+    }
+    app-transactions .p-datatable-striped .p-datatable-tbody > tr:nth-child(even) td .p-avatar-image {
+      background: var(--p-datatable-row-striped-background);
+    }
+  `
 })
 export class TransactionsComponent {
   @ViewChild('dt') dt!: Table;
@@ -73,7 +92,7 @@ export class TransactionsComponent {
   statusOptions = Object.values(OrderStatus).map((status) => ({ label: status, value: status }));
   sideOptions = Object.values(OrderSide).map((side) => ({ label: side, value: side }));
   typeOptions = Object.values(OrderType).map((type) => ({
-    label: this.formatType(type),
+    label: formatType(type),
     value: type
   }));
 
@@ -165,23 +184,8 @@ export class TransactionsComponent {
     return side === OrderSide.BUY ? 'success' : 'danger';
   }
 
-  isUsdQuote(transaction: Order): boolean {
-    const coinSymbol = transaction.quoteCoin?.symbol?.toUpperCase();
-    if (coinSymbol === 'USD' || coinSymbol === 'USDT' || coinSymbol === 'USDC' || coinSymbol === 'BUSD') {
-      return true;
-    }
-    // Fallback: check the trading pair symbol (e.g., "BTC/USD") when quoteCoin is missing
-    const quote = transaction.symbol?.split('/')?.[1]?.toUpperCase();
-    return quote === 'USD' || quote === 'USDT' || quote === 'USDC' || quote === 'BUSD';
-  }
-
-  // Format underscore-separated type values into title case
-  formatType(type: string): string {
-    return type
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
+  isUsdQuote = isUsdQuote;
+  formatType = formatType;
 
   getFeePercentage(transaction: Order): number | null {
     const fee = transaction.fee;

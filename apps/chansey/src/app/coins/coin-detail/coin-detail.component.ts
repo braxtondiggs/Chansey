@@ -10,9 +10,9 @@ import { ToastModule } from 'primeng/toast';
 
 import { PortfolioType, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
 
-import { PriceService } from '../../pages/prices/prices.service';
 import { CounterDirective } from '../../shared/directives/counter/counter.directive';
 import { AuthService } from '../../shared/services/auth.service';
+import { CoinDataService } from '../../shared/services/coin-data.service';
 import { ExternalLinksComponent } from '../components/external-links/external-links.component';
 import { HoldingsCardComponent } from '../components/holdings-card/holdings-card.component';
 import { MarketStatsComponent } from '../components/market-stats/market-stats.component';
@@ -52,7 +52,7 @@ export class CoinDetailComponent {
   private router = inject(Router);
   private queries = inject(CoinDetailQueries);
   private authService = inject(AuthService);
-  private priceService = inject(PriceService);
+  private coinDataService = inject(CoinDataService);
   private messageService = inject(MessageService);
 
   // Route param bound via withComponentInputBinding()
@@ -64,9 +64,9 @@ export class CoinDetailComponent {
   private userQuery = this.authService.useUser();
 
   // Watchlist state
-  watchlistQuery = this.priceService.useWatchlist();
-  private addToWatchlistMutation = this.priceService.useAddToWatchlist();
-  private removeFromWatchlistMutation = this.priceService.useRemoveFromWatchlist();
+  watchlistQuery = this.coinDataService.useWatchlist();
+  private addToWatchlistMutation = this.coinDataService.useAddToWatchlist();
+  private removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchlist();
   processingWatchlist = signal(false);
 
   // Tighter card body padding on mobile for section cards
