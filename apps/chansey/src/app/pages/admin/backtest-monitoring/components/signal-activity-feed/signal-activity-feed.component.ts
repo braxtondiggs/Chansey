@@ -8,10 +8,12 @@ import { TooltipModule } from 'primeng/tooltip';
 
 import { SignalActivityFeedDto } from '@chansey/api-interfaces';
 
+import { TimeAgoPipe } from '../../../../../shared/pipes';
+
 @Component({
   selector: 'app-signal-activity-feed',
   standalone: true,
-  imports: [CommonModule, CardModule, TableModule, TagModule, TooltipModule],
+  imports: [CommonModule, CardModule, TableModule, TagModule, TimeAgoPipe, TooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Health Cards -->
@@ -21,7 +23,7 @@ import { SignalActivityFeedDto } from '@chansey/api-interfaces';
           <div class="text-sm text-gray-500">Last Signal</div>
           @if (feed?.health?.lastSignalTime) {
             <div class="text-xl font-bold" [class]="lastSignalColorClass">
-              {{ formatTimeAgo(feed?.health?.lastSignalTime) }}
+              {{ feed?.health?.lastSignalTime | timeAgo }}
             </div>
             <div class="mt-1 text-xs text-gray-400">{{ feed?.health?.lastSignalTime | date: 'short' }}</div>
           } @else {
@@ -141,19 +143,6 @@ export class SignalActivityFeedComponent {
     if (ms < 5 * 60 * 1000) return 'text-green-500'; // < 5 min
     if (ms < 30 * 60 * 1000) return 'text-yellow-500'; // < 30 min
     return 'text-red-500'; // > 30 min
-  }
-
-  formatTimeAgo(lastSignalTime?: string): string {
-    if (lastSignalTime == null) return 'Never';
-    const ms = Date.now() - new Date(lastSignalTime).getTime();
-    const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ${minutes % 60}m ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
   }
 
   getSignalTypeSeverity(type: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' {

@@ -1,13 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import { Component, computed, EventEmitter, inject, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { ChartData, ChartOptions, TooltipItem } from 'chart.js';
 import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { SkeletonModule } from 'primeng/skeleton';
 
 import { AlgorithmPerformance, TimePeriod } from '@chansey/api-interfaces';
+
+import { LayoutService } from '../../../../../shared/services/layout.service';
 
 interface PeriodOption {
   label: string;
@@ -85,8 +88,11 @@ export class PerformanceChartComponent implements OnChanges {
 
   @Output() periodChange = new EventEmitter<TimePeriod>();
 
-  chartData: any = {};
-  chartOptions: any = {};
+  private readonly layoutService = inject(LayoutService);
+  isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
+
+  chartData: ChartData<'line'> = { labels: [], datasets: [] };
+  chartOptions: ChartOptions<'line'> = {};
 
   periodOptions: PeriodOption[] = [
     { label: '24h', value: '24h' },
@@ -125,7 +131,7 @@ export class PerformanceChartComponent implements OnChanges {
 
   private updateChart(): void {
     if (!this.performanceHistory || this.performanceHistory.length === 0) {
-      this.chartData = {};
+      this.chartData = { labels: [], datasets: [] };
       return;
     }
 
@@ -174,9 +180,9 @@ export class PerformanceChartComponent implements OnChanges {
         },
         tooltip: {
           callbacks: {
-            label: (context: any) => {
+            label: (context: TooltipItem<'line'>) => {
               const label = context.dataset.label || '';
-              const value = context.parsed.y;
+              const value = context.parsed.y ?? 0;
               return `${label}: ${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
             }
           }
@@ -197,7 +203,7 @@ export class PerformanceChartComponent implements OnChanges {
             text: 'ROI (%)'
           },
           grid: {
-            color: 'rgba(0, 0, 0, 0.05)'
+            color: this.isDarkTheme() ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
           }
         },
         y1: {

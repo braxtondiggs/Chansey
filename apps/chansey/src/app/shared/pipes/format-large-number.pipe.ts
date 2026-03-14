@@ -1,8 +1,7 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
 @Pipe({
-  name: 'formatLargeNumber',
-  standalone: true
+  name: 'formatLargeNumber'
 })
 export class FormatLargeNumberPipe implements PipeTransform {
   transform(value: number | string | undefined | null, currency: string = '$', decimals: number = 2): string {
@@ -11,13 +10,13 @@ export class FormatLargeNumberPipe implements PipeTransform {
     }
 
     const numValue = Number(value);
-    
+
     if (numValue === 0) {
       return `${currency}0`;
     }
 
     const absValue = Math.abs(numValue);
-    
+
     if (absValue >= 1e12) {
       // Trillions
       return `${currency}${(numValue / 1e12).toFixed(decimals)}T`;

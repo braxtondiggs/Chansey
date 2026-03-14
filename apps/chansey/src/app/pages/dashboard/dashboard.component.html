@@ -1,19 +1,23 @@
 <div class="dashboard-container">
-  @let user = userQuery.data();
-  @if ((user?.exchanges ?? []).length > 0) {
-    <div class="grid grid-cols-12 gap-x-6 gap-y-4">
-      <div class="col-span-12">
-        <app-exchange-balance />
-      </div>
-      <div class="col-span-12 md:col-span-6">
-        <app-user-assets [limit]="10" />
-      </div>
-      <div class="col-span-12 md:col-span-6">
-        <app-recent-transactions [limit]="10" />
-      </div>
+  @if (userQuery.isPending()) {
+    <div class="flex min-h-96 items-center justify-center">
+      <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
     </div>
   } @else {
-    @if (!userQuery.isPending()) {
+    @let user = userQuery.data();
+    @if ((user?.exchanges ?? []).length > 0) {
+      <div class="grid grid-cols-12 gap-x-6 gap-y-4">
+        <div class="col-span-12">
+          <app-exchange-balance />
+        </div>
+        <div class="col-span-12 md:col-span-6">
+          <app-user-assets [limit]="10" />
+        </div>
+        <div class="col-span-12 md:col-span-6">
+          <app-recent-transactions [limit]="10" />
+        </div>
+      </div>
+    } @else {
       <p-card class="mb-4">
         <div class="flex min-h-96 flex-col items-center justify-center p-3 text-center">
           <p class="text-600 mb-8">Connect your exchanges in the settings to see your balances here.</p>

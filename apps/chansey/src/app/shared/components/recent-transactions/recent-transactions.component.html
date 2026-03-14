@@ -11,7 +11,7 @@
           iconPos="right"
           label="View All"
           class="p-button-text"
-          (click)="viewAllTransactions()"
+          routerLink="/app/transactions"
         />
       }
     </div>
@@ -28,7 +28,7 @@
         <p-skeleton width="120px" height="1.25rem"></p-skeleton>
       </div>
       <!-- Skeleton for table rows -->
-      @for (i of [1, 2, 3, 4]; track i) {
+      @for (i of skeletonRows(); track i) {
         <div class="mb-2 flex border-b border-gray-50 p-3 dark:border-neutral-700">
           <div class="mr-6 flex items-center">
             <p-skeleton shape="circle" size="2.5rem" class="mr-2"></p-skeleton>
@@ -61,10 +61,10 @@
       <p-table [value]="transactions()" [scrollable]="true" tableStyleClass="no-bottom-border transactions-table">
         <ng-template pTemplate="header">
           <tr>
-            <th style="min-width: 100px">Coin</th>
-            <th style="min-width: 80px">Side</th>
-            <th style="min-width: 100px">Amount</th>
-            <th style="min-width: 100px">Value</th>
+            <th style="min-width: 100px">Asset</th>
+            <th style="min-width: 80px">Type</th>
+            <th style="min-width: 100px">Quantity</th>
+            <th style="min-width: 100px">Total</th>
             <th style="min-width: 120px">Date</th>
           </tr>
         </ng-template>
@@ -96,7 +96,7 @@
             </td>
             <td>
               <div class="flex flex-col">
-                <span class="font-medium">${{ transaction.cost | number: '1.2-2' }} total</span>
+                <span class="font-medium">{{ transaction.cost | currency }}</span>
               </div>
             </td>
             <td>
@@ -113,8 +113,3 @@
     </div>
   }
 </p-card>
-<style>
-  :host ::ng-deep .no-bottom-border tr:last-child > td {
-    border-bottom: none !important;
-  }
-</style>

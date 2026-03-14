@@ -78,7 +78,10 @@ If the env vars are not set, ask the user for credentials before proceeding.
    the actual env var values into your context **before** passing them to Playwright MCP tools. MCP tool parameters are
    plain strings — shell variable syntax like `${VAR}` will NOT be expanded. If the env vars are not set, ask the user.
 
-3. **Open browser and navigate** to the target URL using `playwright_navigate`.
+3. **Open browser and navigate** to the target URL using `playwright_navigate`. If Playwright fails with
+   `browserType.launchPersistentContext: Failed to launch the browser process` (Chrome is already open), first try using
+   `playwright_browser_close` to close the existing Playwright browser session, then retry `playwright_navigate`. If
+   that still fails, force-quit Chrome with `pkill -f "Google Chrome"` via Bash, wait a moment, then retry navigation.
 
 4. **Check if login is needed**. Take a screenshot to check the page state:
    - **If on the login page**: Fill email/password with the resolved credentials, click submit, and wait for navigation.

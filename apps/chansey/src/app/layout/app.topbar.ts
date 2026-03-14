@@ -15,6 +15,7 @@ import { NotificationDto, NotificationSeverity } from '@chansey/api-interfaces';
 import { AppBreadcrumb } from './app.breadcrumb';
 import { NotificationFeedService } from './notification-feed.service';
 
+import { TimeAgoPipe } from '../shared/pipes';
 import { AuthService } from '../shared/services/auth.service';
 import { LayoutService } from '../shared/services/layout.service';
 import { PwaService } from '../shared/services/pwa.service';
@@ -30,14 +31,15 @@ import { PwaService } from '../shared/services/pwa.service';
     StyleClassModule,
     CommonModule,
     ButtonModule,
-    TooltipModule
+    TooltipModule,
+    TimeAgoPipe
   ],
   template: `<div class="layout-topbar">
     <div class="topbar-left">
       <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
         <i class="pi pi-chevron-left"></i>
       </a>
-      <img class="horizontal-logo" src="/layout/images/logo-white.svg" alt="diamond-layout" />
+      <img class="horizontal-logo" src="/public/icon.png" alt="Cymbit Trading Logo" />
       <span class="topbar-separator"></span>
       <app-breadcrumb></app-breadcrumb>
       <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
@@ -144,7 +146,7 @@ import { PwaService } from '../shared/services/pwa.service';
                           item.title
                         }}</span>
                         <span class="label-xsmall line-clamp-1 text-left">{{ item.body }}</span>
-                        <span class="label-xsmall text-left">{{ getRelativeTime(item.createdAt) }}</span>
+                        <span class="label-xsmall text-left">{{ item.createdAt | timeAgo }}</span>
                       </div>
                       @if (!item.read) {
                         <span class="h-2 w-2 shrink-0 rounded-full bg-blue-500"></span>
@@ -352,19 +354,6 @@ export class AppTopBar {
       default:
         return dark ? '#374151' : '#F3F4F6';
     }
-  }
-
-  getRelativeTime(dateStr: string): string {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
   }
 
   /**

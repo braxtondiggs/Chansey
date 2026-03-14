@@ -19,7 +19,7 @@
         <p-skeleton width="120px" height="1.25rem"></p-skeleton>
       </div>
       <!-- Skeleton for table rows -->
-      @for (i of [1, 2, 3, 4]; track i) {
+      @for (i of skeletonRows(); track i) {
         <div class="mb-2 flex border-b border-gray-50 p-3 dark:border-neutral-700">
           <div class="mr-6 flex items-center">
             <p-skeleton shape="circle" size="2.5rem" class="mr-2"></p-skeleton>
@@ -67,8 +67,8 @@
       <p-table
         [value]="assets()"
         [scrollable]="true"
-        [paginator]="assets().length > limit"
-        [rows]="limit"
+        [paginator]="assets().length > limit()"
+        [rows]="limit()"
         tableStyleClass="no-bottom-border assets-table"
       >
         <ng-template pTemplate="header">
@@ -94,10 +94,10 @@
                 </div>
               </a>
             </td>
-            <td class="font-medium">${{ asset.price | number: '1.2-2' }}</td>
+            <td class="font-medium">{{ asset.price | currency }}</td>
             <td>
               <div class="flex flex-col">
-                <span class="font-medium">${{ asset.usdValue | number: '1.2-2' }}</span>
+                <span class="font-medium">{{ asset.usdValue | currency }}</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">
                   {{ asset.quantity | number: '1.2-8' }} {{ asset.symbol }}
                 </span>
@@ -124,8 +124,3 @@
     </div>
   }
 </p-card>
-<style>
-  :host ::ng-deep .no-bottom-border tr:last-child > td {
-    border-bottom: none !important;
-  }
-</style>

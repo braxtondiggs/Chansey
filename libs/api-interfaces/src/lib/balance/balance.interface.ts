@@ -35,6 +35,7 @@ export interface AccountValueHistoryDto {
   history: AccountValueDataPoint[];
   currentValue: number;
   changePercentage: number;
+  changeAmount: number;
 }
 
 export interface UserAsset {

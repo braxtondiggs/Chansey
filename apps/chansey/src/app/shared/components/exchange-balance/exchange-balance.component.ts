@@ -1,6 +1,7 @@
-import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, computed, effect, inject, Input, OnDestroy, signal } from '@angular/core';
-import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
 
 import { ChartData, ChartOptions } from 'chart.js';
 import 'chartjs-adapter-date-fns';
@@ -12,69 +13,90 @@ import { SelectButtonModule } from 'primeng/selectbutton';
 import { SkeletonModule } from 'primeng/skeleton';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
+import { fromEvent } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 
-import { AccountValueDataPoint, ExchangeKey } from '@chansey/api-interfaces';
+import { AccountValueDataPoint } from '@chansey/api-interfaces';
 
 import { ExchangeBalanceService } from './exchange-balance.service';
 
 import { SettingsService } from '../../../pages/user/settings/settings.service';
 import { CounterDirective } from '../../directives/counter/counter.directive';
+import { TimeAgoPipe } from '../../pipes/time-ago.pipe';
 import { AuthService } from '../../services/auth.service';
 import { LayoutService } from '../../services/layout.service';
+import { createExternalChartTooltip } from '../../utils/chart-tooltip.util';
+
+const CHART_CONFIG = {
+  tension: 0.6,
+  borderWidth: { desktop: 1.2, mobile: 2 },
+  pointBorderWidth: 8,
+  pointRadius: 4,
+  mobileBreakpoint: 768,
+  maxTicksLimit: { desktop: 10, mobile: 5 },
+  maxRotation: { desktop: 0, mobile: 45 },
+  fontSize: { desktop: 12, mobile: 10 },
+  gridLineWidth: { desktop: 1.2, mobile: 0.8 },
+  hoverRadius: { desktop: 6, mobile: 8 },
+  hitRadius: { desktop: 20, mobile: 30 },
+  decimationSamples: { desktop: 100, mobile: 50 },
+  decimationThreshold: { desktop: 40, mobile: 20 },
+  animationDuration: 400,
+  largeDaysThreshold: 30,
+  mediumDaysThreshold: 7
+} as const;
 
 @Component({
   selector: 'app-exchange-balance',
-  standalone: true,
   imports: [
     ButtonModule,
     CardModule,
     ChartModule,
-    CommonModule,
+    CurrencyPipe,
+    DatePipe,
+    DecimalPipe,
     CounterDirective,
+    FormsModule,
     ProgressSpinnerModule,
-    ReactiveFormsModule,
     SelectButtonModule,
     SkeletonModule,
     TagModule,
+    TimeAgoPipe,
     TooltipModule
   ],
   templateUrl: './exchange-balance.component.html',
-  styleUrls: ['./exchange-balance.component.css']
+  styleUrls: ['./exchange-balance.component.css'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
-  @Input() exchange!: ExchangeKey;
-
-  chartData!: ChartData;
-  chartOptions!: ChartOptions;
-  chartPlugins!: any[];
+export class ExchangeBalanceComponent {
+  chartData: ChartData = { datasets: [] };
+  chartOptions: ChartOptions = {};
+  chartPlugins: any[] = [];
   // Track the current selected time period
-  currentDays = signal<number>(7);
-  bgColor = signal<string[] | undefined>(undefined);
-  borderColor = signal<string | undefined>(undefined);
-  isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
-  private readonly fb = inject(FormBuilder);
+  readonly currentDays = signal<number>(7);
+  private readonly bgColor = signal<string[] | undefined>(undefined);
+  private readonly borderColor = signal<string | undefined>(undefined);
+  private readonly isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
+  private readonly isMobile = signal<boolean>(window.innerWidth < 768);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly layoutService = inject(LayoutService);
   private readonly authService = inject(AuthService);
   private readonly settingsService = inject(SettingsService);
 
-  timePeriodForm: FormGroup = this.fb.group({
-    value: new FormControl(this.currentDays())
-  });
-
   // Services
-  balanceService = inject(ExchangeBalanceService);
-  lastUpdated = signal<Date | null>(null);
+  private readonly balanceService = inject(ExchangeBalanceService);
+  readonly lastUpdated = signal<Date | null>(null);
 
   // User and preferences
-  userQuery = this.authService.useUser();
-  updatePreferencesMutation = this.settingsService.useUpdateProfileMutation();
-  isBalanceHidden = computed(() => this.userQuery.data()?.hide_balance ?? false);
+  readonly userQuery = this.authService.useUser();
+  readonly updatePreferencesMutation = this.settingsService.useUpdateProfileMutation();
+  readonly isBalanceHidden = computed(() => this.userQuery.data()?.hide_balance ?? false);
 
-  balanceQuery = this.balanceService.useExchangeBalance();
-  balanceHistoryQuery = this.balanceService.useBalanceHistory(this.currentDays);
-  totalUsdValue = signal<number>(0);
+  private readonly balanceQuery = this.balanceService.useExchangeBalance();
+  readonly balanceHistoryQuery = this.balanceService.useBalanceHistory(this.currentDays);
+  readonly totalUsdValue = signal<number>(0);
 
-  timePeriods = signal([
+  readonly timePeriods = signal([
     { label: '24H', value: 1 },
     { label: '1W', value: 7 },
     { label: '1M', value: 30 },
@@ -82,21 +104,38 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     { label: 'ALL', value: 0 }
   ]);
 
-  constructor() {
-    // Effect that watches for changes in balance history data (for chart only)
-    effect(() => {
-      // This effect will re-run whenever balanceHistoryQuery.data() changes
-      const data = this.balanceHistoryQuery.data();
+  // Periodic tick to force TimeAgoPipe re-evaluation (every 30s)
+  readonly refreshTick = signal(0);
+  private tickInterval: ReturnType<typeof setInterval> | null = null;
 
-      if (data) {
-        const historyData = data.history || [];
-        this.setChart(historyData);
+  constructor() {
+    // Track when new data arrives (sets lastUpdated only on fresh data)
+    effect(() => {
+      const data = this.balanceHistoryQuery.data();
+      if (data?.history?.length) {
         this.lastUpdated.set(new Date());
       }
     });
 
-    // Add resize listener to update chart when window size changes
-    window.addEventListener('resize', this.handleResize);
+    // Consolidated chart rendering effect — reacts to data, theme, and breakpoint
+    effect(() => {
+      const data = this.balanceHistoryQuery.data();
+      this.isDarkTheme(); // track theme changes
+      this.isMobile(); // track breakpoint changes
+      if (data?.history?.length) {
+        this.setChart(data.history);
+      }
+    });
+
+    // Resize listener — only updates isMobile signal (chart re-renders via effect above)
+    fromEvent(window, 'resize')
+      .pipe(debounceTime(250), takeUntilDestroyed())
+      .subscribe(() => {
+        const nowMobile = window.innerWidth < 768;
+        if (nowMobile !== this.isMobile()) {
+          this.isMobile.set(nowMobile);
+        }
+      });
 
     // Effect to update totalUsdValue signal when balanceQuery data changes
     effect(() => {
@@ -105,12 +144,29 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
         this.totalUsdValue.set(data.totalUsdValue);
       }
     });
+
+    // Visibility-aware periodic tick for TimeAgoPipe re-evaluation
+    this.startTickInterval();
+    fromEvent(document, 'visibilitychange')
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => {
+        if (document.hidden) {
+          if (this.tickInterval) {
+            clearInterval(this.tickInterval);
+            this.tickInterval = null;
+          }
+        } else {
+          this.refreshTick.update((v) => v + 1);
+          this.startTickInterval();
+        }
+      });
+    this.destroyRef.onDestroy(() => {
+      if (this.tickInterval) clearInterval(this.tickInterval);
+    });
   }
 
-  ngAfterViewInit() {
-    this.timePeriodForm.get('value')?.valueChanges.subscribe((value: number) => {
-      this.currentDays.set(value);
-    });
+  private startTickInterval() {
+    this.tickInterval = setInterval(() => this.refreshTick.update((v) => v + 1), 30_000);
   }
 
   // Initialize chart
@@ -126,8 +182,7 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     const endDate = historyData[historyData.length - 1].datetime;
     const startDate = historyData[0].datetime;
 
-    // Determine if we're on a mobile device
-    const isMobile = window.innerWidth < 768;
+    const isMobile = this.isMobile();
 
     // Check if balance is hidden
     const balanceHidden = this.isBalanceHidden();
@@ -135,27 +190,27 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     // Determine appropriate time unit based on selected date range
     const timeUnit = this.getTimeUnit(this.currentDays());
 
+    const days = this.currentDays();
+
     this.chartData = {
       datasets: [
         {
           label: 'Account Value (USD)',
-          data: historyData.map((point) => {
-            return {
-              x: new Date(point.datetime), // Use Date object directly
-              y: point.value
-            };
-          }) as any,
+          data: historyData.map((point) => ({
+            x: new Date(point.datetime).getTime(),
+            y: point.value
+          })),
           fill: true,
           borderColor: this.borderColor() ?? (this.isDarkTheme() ? '#FAFAFA' : '#030616'),
-          tension: 0.6, // Increased from 0.3 to 0.6 for smoother curves
-          borderWidth: 1.2,
+          tension: CHART_CONFIG.tension,
+          borderWidth: CHART_CONFIG.borderWidth.desktop,
           pointBorderColor: 'rgba(0, 0, 0, 0)',
           pointBackgroundColor: 'rgba(0, 0, 0, 0)',
           pointHoverBackgroundColor: this.borderColor() ?? (this.isDarkTheme() ? surface0Color : surface950Color),
           pointHoverBorderColor: this.isDarkTheme() ? surface950Color : surface0Color,
-          pointBorderWidth: 8,
+          pointBorderWidth: CHART_CONFIG.pointBorderWidth,
           pointStyle: 'circle',
-          pointRadius: 4,
+          pointRadius: CHART_CONFIG.pointRadius,
           backgroundColor: (context: any) => {
             const defaultColor = [
               this.isDarkTheme() ? 'rgba(255, 255, 255, 0.24)' : 'rgba(3, 6, 22, 0.12)',
@@ -184,11 +239,13 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
       ]
     };
 
+    // Cache computed style values for the hover line plugin (avoid per-frame getComputedStyle)
+    const hoverLineColor = this.borderColor() ?? (this.isDarkTheme() ? surface0Color : surface950Color);
+
     this.chartPlugins = [
       {
         id: 'hoverLine',
         afterDatasetsDraw: (chart: any) => {
-          // Don't draw hover line if balance is hidden
           if (balanceHidden) return;
 
           const {
@@ -197,16 +254,13 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
             chartArea: { bottom },
             scales: { x, y }
           } = chart;
-          if (tooltip._active.length > 0) {
+          if (tooltip?._active?.length > 0) {
             const xCoor = x.getPixelForValue(tooltip.dataPoints[0].raw.x);
             const yCoor = y.getPixelForValue(tooltip.dataPoints[0].parsed.y);
             ctx.save();
             ctx.beginPath();
-            ctx.lineWidth = 1.2;
-            const rootStyles = getComputedStyle(document.documentElement);
-            const surface0Color = rootStyles.getPropertyValue('--p-surface-0');
-            const surface950Color = rootStyles.getPropertyValue('--p-surface-950');
-            ctx.strokeStyle = this.borderColor() ?? (this.isDarkTheme() ? surface0Color : surface950Color);
+            ctx.lineWidth = CHART_CONFIG.borderWidth.desktop;
+            ctx.strokeStyle = hoverLineColor;
             ctx.setLineDash([4, 2]);
             ctx.moveTo(xCoor, yCoor);
             ctx.lineTo(xCoor, bottom + 8);
@@ -221,30 +275,31 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     this.chartOptions = {
       maintainAspectRatio: false,
       responsive: true,
-      aspectRatio: 1,
       interaction: balanceHidden
-        ? {
-            intersect: false,
-            mode: 'none' as any // Disable all interactions when balance is hidden
-          }
-        : {
-            intersect: false,
-            mode: 'index',
-            axis: 'xy', // Better cross-axis tracking for mobile touch
-            includeInvisible: true // Consider invisible points on mobile scrolling
-          },
+        ? { intersect: false, mode: 'none' as any }
+        : { intersect: false, mode: 'index', axis: 'xy', includeInvisible: true },
       animation: {
-        duration: isMobile ? 0 : this.currentDays() > 30 ? 0 : 400 // Disable animation on mobile for better performance
+        duration: isMobile ? 0 : days > CHART_CONFIG.largeDaysThreshold ? 0 : CHART_CONFIG.animationDuration
       },
       elements: {
         point: {
-          radius: isMobile ? 0 : this.currentDays() > 30 ? 0 : this.currentDays() > 7 ? 1 : 2, // Hide points on mobile
-          hoverRadius: balanceHidden ? 0 : isMobile ? 8 : 6, // Disable hover when balance is hidden
-          hitRadius: balanceHidden ? 0 : isMobile ? 30 : 20 // Disable hit area when balance is hidden
+          radius: isMobile
+            ? 0
+            : days > CHART_CONFIG.largeDaysThreshold
+              ? 0
+              : days > CHART_CONFIG.mediumDaysThreshold
+                ? 1
+                : 2,
+          hoverRadius: balanceHidden
+            ? 0
+            : isMobile
+              ? CHART_CONFIG.hoverRadius.mobile
+              : CHART_CONFIG.hoverRadius.desktop,
+          hitRadius: balanceHidden ? 0 : isMobile ? CHART_CONFIG.hitRadius.mobile : CHART_CONFIG.hitRadius.desktop
         },
         line: {
-          tension: 0.6,
-          borderWidth: isMobile ? 2 : 1.2 // Thicker line on mobile for better visibility
+          tension: CHART_CONFIG.tension,
+          borderWidth: isMobile ? CHART_CONFIG.borderWidth.mobile : CHART_CONFIG.borderWidth.desktop
         }
       },
       scales: {
@@ -265,23 +320,22 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
             color: this.isDarkTheme() ? surface500Color : surface400Color,
             padding: 2,
             autoSkip: true,
-            maxTicksLimit: window.innerWidth < 768 ? 5 : 10, // Fewer ticks on mobile
-            maxRotation: window.innerWidth < 768 ? 45 : 0, // Allow slight rotation on mobile
+            maxTicksLimit: isMobile ? CHART_CONFIG.maxTicksLimit.mobile : CHART_CONFIG.maxTicksLimit.desktop,
+            maxRotation: isMobile ? CHART_CONFIG.maxRotation.mobile : CHART_CONFIG.maxRotation.desktop,
             source: 'auto',
             font: {
-              size: window.innerWidth < 768 ? 10 : 12 // Smaller font on mobile
+              size: isMobile ? CHART_CONFIG.fontSize.mobile : CHART_CONFIG.fontSize.desktop
             }
           },
           grid: {
             display: true,
-            lineWidth: window.innerWidth < 768 ? 0.8 : 1.2, // Thinner grid lines on mobile
+            lineWidth: isMobile ? CHART_CONFIG.gridLineWidth.mobile : CHART_CONFIG.gridLineWidth.desktop,
             color: this.isDarkTheme() ? surface800Color : surface200Color
           },
           border: {
             display: false,
             dash: [4, 2]
           },
-          // Use Date objects directly
           min: new Date(startDate).valueOf(),
           max: new Date(endDate).valueOf()
         },
@@ -290,103 +344,21 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
           display: false
         }
       },
-
       plugins: {
         tooltip: balanceHidden
-          ? {
-              enabled: false // Completely disable tooltip when balance is hidden
-            }
+          ? { enabled: false }
           : {
               enabled: false,
               position: 'nearest',
-              external: function (context: any) {
-                const { chart, tooltip } = context;
-                let tooltipEl = chart.canvas.parentNode.querySelector('div.chartjs-tooltip');
-                if (!tooltipEl) {
-                  tooltipEl = document.createElement('div');
-                  tooltipEl.classList.add(
-                    'chartjs-tooltip',
-                    'label-small',
-                    'px-2',
-                    'py-1',
-                    'dark:bg-surface-950',
-                    'bg-surface-0',
-                    'rounded-[8px]',
-                    'opacity-100',
-                    'flex',
-                    'items-center',
-                    'justify-center',
-                    'border',
-                    'border-surface',
-                    'pointer-events-none',
-                    'absolute',
-                    '-translate-x-1/2',
-                    'transition-all',
-                    'duration-[0.05s]',
-                    'shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)]'
-                  );
-                  chart.canvas.parentNode.appendChild(tooltipEl);
-                }
-
-                if (tooltip.opacity === 0) {
-                  tooltipEl.style.opacity = 0;
-                  return;
-                }
-
-                if (tooltip.body) {
-                  const bodyLines = tooltip.body.map((b: any) => {
-                    const strArr = b.lines[0].split(':');
-                    return {
-                      text: strArr[0].trim(),
-                      title: tooltip.title[0].trim(),
-                      value: strArr[1].trim()
-                    };
-                  });
-
-                  tooltipEl.innerHTML = '';
-                  bodyLines.forEach((body: any) => {
-                    const text = document.createElement('div');
-                    const isMobileView = window.innerWidth < 768;
-                    text.appendChild(document.createTextNode(`${body.title} $${body.value}`));
-                    text.classList.add('label-small', 'text-surface-950', 'dark:text-surface-0', 'font-medium');
-                    // Larger font size on mobile for better readability
-                    text.style.fontSize = isMobileView ? '16px' : '14px';
-                    text.style.padding = isMobileView ? '4px 2px' : '0px';
-                    tooltipEl.appendChild(text);
-                  });
-                }
-
-                const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
-                const isMobileView = window.innerWidth < 768;
-
-                tooltipEl.style.opacity = 1;
-
-                // Adjust tooltip position for mobile devices
-                if (isMobileView) {
-                  // On mobile, position tooltip centered horizontally for better visibility
-                  tooltipEl.style.left = positionX + chart.width / 2 + 'px';
-                  tooltipEl.style.top = positionY + 20 + 'px'; // Position near the top for visibility
-                  tooltipEl.style.transform = 'translateX(-50%)';
-                  tooltipEl.style.padding = '8px 12px';
-                  tooltipEl.style.fontSize = '16px'; // Larger font for mobile
-                } else {
-                  // Standard positioning on desktop
-                  tooltipEl.style.left = positionX + tooltip.caretX + 'px';
-                  tooltipEl.style.top = positionY + tooltip.caretY - 45 + 'px';
-                }
-              }
+              external: createExternalChartTooltip({ mobileBreakpoint: CHART_CONFIG.mobileBreakpoint })
             },
-        legend: {
-          display: false
-        },
-        title: {
-          display: false
-        },
+        legend: { display: false },
+        title: { display: false },
         decimation: {
           enabled: true,
           algorithm: 'lttb',
-          samples: isMobile ? 50 : 100, // Fewer samples on mobile
-          threshold: isMobile ? 20 : 40 // Lower threshold on mobile for better performance
+          samples: isMobile ? CHART_CONFIG.decimationSamples.mobile : CHART_CONFIG.decimationSamples.desktop,
+          threshold: isMobile ? CHART_CONFIG.decimationThreshold.mobile : CHART_CONFIG.decimationThreshold.desktop
         }
       }
     };
@@ -402,19 +374,6 @@ export class ExchangeBalanceComponent implements AfterViewInit, OnDestroy {
     if (days <= 30) return 'week';
     if (days <= 365) return 'month';
     return 'quarter';
-  }
-
-  // Handle resize events to redraw the chart for responsiveness
-  private readonly handleResize = () => {
-    const data = this.balanceHistoryQuery.data();
-    if (data && data.history) {
-      this.setChart(data.history);
-    }
-  };
-
-  // Cleanup event listener when component is destroyed
-  ngOnDestroy() {
-    window.removeEventListener('resize', this.handleResize);
   }
 
   // Toggle balance visibility

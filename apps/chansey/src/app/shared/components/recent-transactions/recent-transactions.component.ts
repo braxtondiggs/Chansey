@@ -1,6 +1,6 @@
-import { CommonModule } from '@angular/common';
-import { Component, Input, computed, inject } from '@angular/core';
-import { Router, RouterModule } from '@angular/router';
+import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { RouterModule } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -15,29 +15,36 @@ import { TransactionsService } from '../../../pages/transactions/transactions.se
 
 @Component({
   selector: 'app-recent-transactions',
-  standalone: true,
-  imports: [AvatarModule, ButtonModule, CardModule, CommonModule, RouterModule, SkeletonModule, TableModule, TagModule],
-  templateUrl: './recent-transactions.component.html'
+  imports: [
+    AvatarModule,
+    ButtonModule,
+    CardModule,
+    CurrencyPipe,
+    DatePipe,
+    DecimalPipe,
+    RouterModule,
+    SkeletonModule,
+    TableModule,
+    TagModule
+  ],
+  templateUrl: './recent-transactions.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RecentTransactionsComponent {
-  @Input() limit = 10;
+  readonly limit = input(10);
 
   // Services
   private readonly transactionsService = inject(TransactionsService);
-  private readonly router = inject(Router);
 
   // TanStack Query hooks
   transactionsQuery = this.transactionsService.useTransactions();
 
   // Computed properties
-  transactions = computed(() => this.transactionsQuery.data()?.slice(0, this.limit) || []);
-
-  viewAllTransactions(): void {
-    this.router.navigate(['/app/transactions']);
-  }
+  transactions = computed(() => this.transactionsQuery.data()?.slice(0, this.limit()) || []);
+  skeletonRows = computed(() => Array.from({ length: Math.min(this.limit(), 4) }, (_, i) => i));
 
   // Helper method to get appropriate severity for order status
-  getStatusSeverity(status: OrderStatus): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | 'info' {
+  getStatusSeverity(status: OrderStatus): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' {
     switch (status) {
       case OrderStatus.FILLED:
         return 'success';
@@ -57,7 +64,7 @@ export class RecentTransactionsComponent {
   }
 
   // Helper method to get appropriate severity for order side
-  getSideSeverity(side: OrderSide): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | 'info' {
+  getSideSeverity(side: OrderSide): 'success' | 'danger' {
     return side === OrderSide.BUY ? 'success' : 'danger';
   }
 }
