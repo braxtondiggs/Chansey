@@ -1,44 +1,39 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 
 import { Coin, PortfolioType } from '@chansey/api-interfaces';
 
-import { PriceService } from './prices.service';
-
 import { CryptoTableComponent, CryptoTableConfig } from '../../shared/components/crypto-table/crypto-table.component';
+import { CoinDataService } from '../../shared/services/coin-data.service';
 
 @Component({
   selector: 'app-prices',
-  standalone: true,
-  imports: [CryptoTableComponent, RouterModule, ToastModule],
+  imports: [CryptoTableComponent, ToastModule],
   providers: [MessageService],
-  templateUrl: './prices.component.html'
+  templateUrl: './prices.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PricesComponent {
-  processingCoinId = signal<string | null>(null);
-  priceService = inject(PriceService);
-  messageService = inject(MessageService);
+  readonly processingCoinId = signal<string | null>(null);
+  private readonly coinDataService = inject(CoinDataService);
+  private readonly messageService = inject(MessageService);
 
-  // Coin data and watchlist
-  coinsQuery = this.priceService.useCoins();
-  watchlistQuery = this.priceService.useWatchlist();
-  addToWatchlistMutation = this.priceService.useAddToWatchlist();
-  removeFromWatchlistMutation = this.priceService.useRemoveFromWatchlist();
+  readonly coinsQuery = this.coinDataService.useCoins();
+  readonly watchlistQuery = this.coinDataService.useWatchlist();
+  readonly addToWatchlistMutation = this.coinDataService.useAddToWatchlist();
+  readonly removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchlist();
 
-  isLoading = computed(() => this.coinsQuery.isPending());
-  coins = computed(() => this.coinsQuery.data() || []);
+  readonly isLoading = computed(() => this.coinsQuery.isPending());
+  readonly coins = computed(() => this.coinsQuery.data() || []);
 
-  // Create a set of watchlist coin IDs for quick lookup
-  watchlistCoinIds = computed(() => {
+  readonly watchlistCoinIds = computed(() => {
     const watchlistItems = this.watchlistQuery.data() || [];
     return new Set(watchlistItems.map((item) => item.coin.id));
   });
 
-  // Configuration for the crypto table
-  tableConfig: CryptoTableConfig = {
+  readonly tableConfig: CryptoTableConfig = {
     showWatchlistToggle: true,
     showRemoveAction: false,
     searchPlaceholder: 'Search coins...',
@@ -84,21 +79,15 @@ export class PricesComponent {
   }
 
   private removeFromWatchlist(coin: Coin): void {
-    // Find the portfolio item to get its ID for deletion
-    const watchlistItems = this.watchlistQuery.data() || [];
-    const portfolioItem = watchlistItems.find((item) => item.coin.id === coin.id);
+    const watchlistData = this.watchlistQuery.data() || [];
+    const portfolioItem = watchlistData.find((item) => item.coin.id === coin.id);
 
     if (!portfolioItem) {
-      this.messageService.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: 'Coin not found in watchlist'
-      });
+      this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Coin not found in watchlist' });
       return;
     }
 
     this.processingCoinId.set(coin.id);
-
     this.removeFromWatchlistMutation.mutate(portfolioItem.id, {
       onSuccess: () => {
         this.processingCoinId.set(null);
@@ -108,7 +97,7 @@ export class PricesComponent {
           detail: `${coin.name} has been removed from your watchlist`
         });
       },
-      onError: (error) => {
+      onError: (error: Error) => {
         this.processingCoinId.set(null);
         this.messageService.add({
           severity: 'error',

@@ -1,8 +1,17 @@
-import { CommonModule } from '@angular/common';
-import { Component, computed, ElementRef, EventEmitter, inject, Input, Output, signal, ViewChild } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { DecimalPipe } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild
+} from '@angular/core';
+import { Router } from '@angular/router';
 
-import { MessageService } from 'primeng/api';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -13,14 +22,13 @@ import { ProgressBarModule } from 'primeng/progressbar';
 import { SkeletonModule } from 'primeng/skeleton';
 import { Table, TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
-import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 
 import { Coin } from '@chansey/api-interfaces';
 
-import { PriceService } from '../../../pages/prices/prices.service';
 import { CounterDirective } from '../../directives/counter/counter.directive';
 import { FormatLargeNumberPipe } from '../../pipes/format-large-number.pipe';
+import { CoinDataService } from '../../services/coin-data.service';
 
 export interface CryptoTableConfig {
   showWatchlistToggle?: boolean;
@@ -32,71 +40,60 @@ export interface CryptoTableConfig {
 
 @Component({
   selector: 'app-crypto-table',
-  standalone: true,
   imports: [
     AvatarModule,
     ButtonModule,
     CardModule,
-    CommonModule,
     CounterDirective,
+    DecimalPipe,
     FormatLargeNumberPipe,
     IconFieldModule,
     InputIconModule,
     InputTextModule,
     ProgressBarModule,
-    RouterModule,
     SkeletonModule,
     TableModule,
     TagModule,
-    ToastModule,
     TooltipModule
   ],
-  providers: [MessageService],
-  templateUrl: './crypto-table.component.html'
+  templateUrl: './crypto-table.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CryptoTableComponent {
-  @ViewChild('dt') dt!: Table;
-  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
+  readonly dt = viewChild<Table>('dt');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
-  @Input() set coins(value: Coin[]) {
-    this.coinsSignal.set(value);
-  }
-  get coins(): Coin[] {
-    return this.coinsSignal();
-  }
-
-  @Input() isLoading = false;
-  @Input() config: CryptoTableConfig = {
+  readonly coins = input<Coin[]>([]);
+  readonly isLoading = input(false);
+  readonly config = input<CryptoTableConfig>({
     showWatchlistToggle: true,
     showRemoveAction: false,
     searchPlaceholder: 'Search coins...',
     emptyMessage: 'No coins found.',
     cardTitle: 'Cryptocurrency Prices'
-  };
-  @Input() watchlistCoinIds: Set<string> = new Set();
-  @Input() processingCoinId: string | null = null;
+  });
+  readonly watchlistCoinIds = input<Set<string>>(new Set());
+  readonly processingCoinId = input<string | null>(null);
 
-  @Output() toggleWatchlist = new EventEmitter<Coin>();
-  @Output() removeCoin = new EventEmitter<Coin>();
+  readonly toggleWatchlist = output<Coin>();
+  readonly removeCoin = output<Coin>();
 
-  // Internal signal to track coins array changes
-  coinsSignal = signal<Coin[]>([]);
-  searchFilter = signal<string>('');
-  currentPage = signal<number>(0);
-  rowsPerPage = signal<number>(25);
-  // Sorting state signals
-  sortField = signal<string>('');
-  sortOrder = signal<number>(0); // 0 = no sort, 1 = asc, -1 = desc
-  messageService = inject(MessageService);
-  priceService = inject(PriceService);
+  readonly searchFilter = signal<string>('');
+  readonly currentPage = signal<number>(0);
+  readonly rowsPerPage = signal<number>(25);
+  readonly sortField = signal<string>('');
+  readonly sortOrder = signal<number>(0);
 
-  // Computed signal for sorted coins that the table displays
-  sortedCoins = computed(() => {
-    const coins = this.coinsSignal();
+  private readonly coinDataService = inject(CoinDataService);
+  private readonly router = inject(Router);
+
+  protected readonly SKELETON_ROWS = Array.from({ length: 10 }, (_, i) => i);
+
+  readonly sortedCoins = computed(() => {
+    const coins = this.coins();
     const sortField = this.sortField();
     const sortOrder = this.sortOrder();
 
-    // Apply sorting if we have sort criteria
     if (sortField && sortOrder !== 0) {
       return this.applySorting([...coins], sortField, sortOrder);
     }
@@ -104,8 +101,7 @@ export class CryptoTableComponent {
     return coins;
   });
 
-  // Computed signal to get sorted and paginated coin IDs for price query
-  coinIds = computed(() => {
+  readonly coinIds = computed(() => {
     const sortedCoins = this.sortedCoins();
     const page = this.currentPage();
     const rows = this.rowsPerPage();
@@ -113,18 +109,16 @@ export class CryptoTableComponent {
     const startIndex = page * rows;
     const endIndex = startIndex + rows;
 
-    // Get coins for the current page only
     const visibleCoins = sortedCoins.slice(startIndex, endIndex);
-    const coinIds = visibleCoins
-      .filter((coin) => coin.slug) // Filter out coins without slugs
+    return visibleCoins
+      .filter((coin) => coin.slug)
       .map((coin) => coin.slug)
       .join(',');
-    return coinIds;
   });
-  priceQuery = this.priceService.usePrices(this.coinIds);
 
-  // Computed signal that provides a price lookup map
-  pricesMap = computed(() => {
+  readonly priceQuery = this.coinDataService.usePrices(this.coinIds);
+
+  readonly pricesMap = computed(() => {
     const query = this.priceQuery;
     const priceData = query?.data();
 
@@ -136,7 +130,7 @@ export class CryptoTableComponent {
     const typedPriceData = priceData as Record<string, { usd?: number }>;
 
     Object.entries(typedPriceData).forEach(([coinId, data]) => {
-      if (data.usd) {
+      if (data.usd != null) {
         pricesMap.set(coinId, data.usd);
       }
     });
@@ -144,10 +138,17 @@ export class CryptoTableComponent {
     return pricesMap;
   });
 
-  // Helper method to get price for a specific coin
-  getCoinPrice = computed(() => {
+  private readonly coinsBySlug = computed(() => {
+    const map = new Map<string, Coin>();
+    for (const coin of this.coins()) {
+      if (coin.slug) map.set(coin.slug, coin);
+    }
+    return map;
+  });
+
+  readonly getCoinPrice = computed(() => {
     const pricesMap = this.pricesMap();
-    const sortedCoins = this.sortedCoins();
+    const coinsBySlug = this.coinsBySlug();
 
     return (coinSlug: string) => {
       const priceFromService = Number(pricesMap.get(coinSlug));
@@ -155,8 +156,7 @@ export class CryptoTableComponent {
         return priceFromService;
       }
 
-      // Fall back to coin's currentPrice if price service doesn't have data
-      const coin = sortedCoins.find((c) => c.slug === coinSlug);
+      const coin = coinsBySlug.get(coinSlug);
       if (coin?.currentPrice && Number(coin.currentPrice) > 0) {
         return +coin.currentPrice;
       }
@@ -165,36 +165,26 @@ export class CryptoTableComponent {
     };
   });
 
-  // Check if we're loading price data - returns a function to check individual coins
-  isLoadingPrices = computed(() => {
+  readonly isLoadingPrices = computed(() => {
     const query = this.priceQuery;
     const pricesMap = this.pricesMap();
     const isQueryPending = query?.isPending() || false;
+    const coinsBySlug = this.coinsBySlug();
 
-    // Return a function that can check if a specific coin is loading
     return (coinSlug?: string) => {
-      // If no coin slug provided, return false (don't show loading for global checks)
       if (!coinSlug) return false;
 
-      // Find the coin to check its currentPrice
-      const coin = this.sortedCoins().find((c) => c.slug === coinSlug);
+      const coin = coinsBySlug.get(coinSlug);
 
-      // Show loading if:
-      // 1. The query is pending (we're fetching new data)
-      // 2. AND we don't have reliable price data (no currentPrice AND no service price)
       const hasCurrentPrice = coin?.currentPrice && Number(coin.currentPrice) > 0;
-      const hasServicePrice = pricesMap.get(coinSlug) && Number(pricesMap.get(coinSlug) || 0) > 0;
+      const servicePrice = pricesMap.get(coinSlug);
+      const hasServicePrice = servicePrice !== undefined && servicePrice > 0;
 
-      // Only show loading when query is pending AND we don't have any price data
       return isQueryPending && !hasCurrentPrice && !hasServicePrice;
     };
   });
 
-  /**
-   * Apply sorting to coins array without mutating the original
-   */
   private applySorting(coins: Coin[], field: string, order: number): Coin[] {
-    // Define numeric fields that need custom sorting
     const numericFields = [
       'currentPrice',
       'marketCap',
@@ -207,20 +197,16 @@ export class CryptoTableComponent {
 
     return coins.sort((a: Coin, b: Coin) => {
       if (numericFields.includes(field)) {
-        // Get the raw numeric values for comparison
         const aValue = this.getNumericValue(a, field);
         const bValue = this.getNumericValue(b, field);
 
-        // Handle null/undefined values - put them at the end
         if (aValue === null && bValue === null) return 0;
         if (aValue === null) return 1;
         if (bValue === null) return -1;
 
-        // Perform numeric comparison
         const result = aValue - bValue;
         return order === 1 ? result : -result;
       } else {
-        // For non-numeric fields, use default string sorting
         const aValue = this.getStringValue(a, field);
         const bValue = this.getStringValue(b, field);
 
@@ -230,19 +216,12 @@ export class CryptoTableComponent {
     });
   }
 
-  /**
-   * Custom sort function to handle numeric fields properly
-   * This prevents PrimeNG from sorting by formatted display values
-   */
   customSort = (event: { field: string; order: number }) => {
     const { field, order } = event;
     this.sortField.set(field);
     this.sortOrder.set(order);
   };
 
-  /**
-   * Get numeric value from coin object for sorting
-   */
   private getNumericValue(coin: Coin, field: string): number | null {
     const value = coin[field as keyof Coin];
 
@@ -250,14 +229,10 @@ export class CryptoTableComponent {
       return null;
     }
 
-    // Convert to number and handle edge cases
     const numValue = Number(value);
     return isNaN(numValue) ? null : numValue;
   }
 
-  /**
-   * Get string value from coin object for sorting
-   */
   private getStringValue(coin: Coin, field: string): string {
     const value = coin[field as keyof Coin];
     return value ? String(value).toLowerCase() : '';
@@ -265,27 +240,26 @@ export class CryptoTableComponent {
 
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;
-    // Handle empty search better by using empty string instead of null/undefined
     const safeFilterValue = filterValue?.trim() ?? '';
     this.searchFilter.set(safeFilterValue);
-    this.dt?.filterGlobal(safeFilterValue, 'contains');
+    this.dt()?.filterGlobal(safeFilterValue, 'contains');
   }
 
   clearSearch(): void {
     this.searchFilter.set('');
-    this.dt?.filterGlobal('', 'contains');
-    // Also clear the input field
-    if (this.searchInput?.nativeElement) {
-      this.searchInput.nativeElement.value = '';
+    this.dt()?.filterGlobal('', 'contains');
+    const input = this.searchInput()?.nativeElement;
+    if (input) {
+      input.value = '';
     }
   }
 
   isInWatchlist(coinId: string): boolean {
-    return this.watchlistCoinIds.has(coinId);
+    return this.watchlistCoinIds().has(coinId);
   }
 
   isCoinProcessing(coinId: string): boolean {
-    return this.processingCoinId === coinId;
+    return this.processingCoinId() === coinId;
   }
 
   onToggleWatchlist(coin: Coin): void {
@@ -304,8 +278,18 @@ export class CryptoTableComponent {
     this.rowsPerPage.set(rows);
   }
 
+  onRowClick(coin: Coin): void {
+    if (coin.slug) {
+      this.router.navigate(['/app/coins', coin.slug]);
+    }
+  }
+
   getTag(change: number | undefined): 'success' | 'danger' {
     if (change === undefined) return 'success';
     return +change >= 0 ? 'success' : 'danger';
+  }
+
+  abs(value: number | undefined): number {
+    return value != null ? Math.abs(value) : 0;
   }
 }
