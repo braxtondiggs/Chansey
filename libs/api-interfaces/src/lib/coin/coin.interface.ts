@@ -126,6 +126,11 @@ export interface CoinDetailResponseDto {
   description: string;
   links: CoinLinksDto;
 
+  // All-Time High
+  ath?: number;
+  athChangePercent?: number;
+  athDate?: Date;
+
   // User-specific (authenticated only)
   userHoldings?: UserHoldingsDto;
 

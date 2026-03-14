@@ -1,7 +1,7 @@
 import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import * as shared from '@chansey/shared';
-import { TIME, queryKeys, STANDARD_POLICY, REALTIME_POLICY, STABLE_POLICY } from '@chansey/shared';
+import { queryKeys, REALTIME_POLICY, STABLE_POLICY, STANDARD_POLICY, TIME } from '@chansey/shared';
 
 import { CoinDetailQueries } from './coin-detail.queries';
 
@@ -37,7 +37,7 @@ describe('CoinDetailQueries', () => {
     const service = new CoinDetailQueries();
     const query = service.useCoinPriceQuery('eth');
 
-    expect(query.queryKey).toEqual(queryKeys.coins.price('eth'));
+    expect(query.queryKey).toEqual(queryKeys.coins.detail('eth'));
     expect(query.staleTime).toBe(REALTIME_POLICY.staleTime);
     expect(query.enabled).toBe(true);
   });

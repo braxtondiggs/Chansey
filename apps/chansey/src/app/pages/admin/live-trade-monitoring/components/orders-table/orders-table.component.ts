@@ -61,6 +61,7 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.service';
           <ng-template #header>
             <tr>
               <th>Symbol</th>
+              <th>Time</th>
               <th>Side</th>
               <th>Type</th>
               <th>Status</th>
@@ -70,12 +71,12 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.service';
               <th class="text-right">Slippage</th>
               <th>Algorithm</th>
               <th>User</th>
-              <th>Time</th>
             </tr>
           </ng-template>
           <ng-template #body let-order>
             <tr>
               <td class="font-medium">{{ order.symbol }}</td>
+              <td>{{ order.createdAt | date: 'short' }}</td>
               <td>
                 <p-tag [severity]="order.side === 'BUY' ? 'success' : 'danger'" [value]="order.side" />
               </td>
@@ -99,7 +100,6 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.service';
               <td>
                 <span class="text-sm">{{ order.userEmail }}</span>
               </td>
-              <td>{{ order.createdAt | date: 'short' }}</td>
             </tr>
           </ng-template>
           <ng-template #emptymessage>

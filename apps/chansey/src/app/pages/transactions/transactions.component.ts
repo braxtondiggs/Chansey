@@ -1,16 +1,17 @@
-import { CommonModule } from '@angular/common';
-import { Component, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { DatePipe, DecimalPipe, NgClass, UpperCasePipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { DatePickerModule } from 'primeng/datepicker';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
 import { MultiSelectModule } from 'primeng/multiselect';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
 import { Table, TableModule } from 'primeng/table';
@@ -27,22 +28,26 @@ import { TransactionsService } from './transactions.service';
     AvatarModule,
     ButtonModule,
     CardModule,
-    CommonModule,
+    DatePipe,
+    DatePickerModule,
+    DecimalPipe,
     IconFieldModule,
     InputIconModule,
     InputTextModule,
     MultiSelectModule,
-    ProgressSpinnerModule,
+    NgClass,
     ReactiveFormsModule,
     RouterModule,
     SelectModule,
     SkeletonModule,
     TableModule,
-    TagModule
+    TagModule,
+    UpperCasePipe
   ],
-  templateUrl: './transactions.component.html'
+  templateUrl: './transactions.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class TransactionsComponent implements OnInit {
+export class TransactionsComponent {
   @ViewChild('dt') dt!: Table;
 
   // Services
@@ -50,10 +55,14 @@ export class TransactionsComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
 
   // State signals
-  transactions = signal<Order[]>([]);
-  loading = signal<boolean>(true);
   searchText = signal<string>('');
-  filterForm: FormGroup;
+
+  filterForm = this.fb.group({
+    statuses: [[] as OrderStatus[]],
+    sides: [[] as OrderSide[]],
+    types: [[] as OrderType[]],
+    dateRange: new FormControl<Date[] | null>(null)
+  });
 
   // Enum references for the template
   orderSideEnum = OrderSide;
@@ -73,35 +82,49 @@ export class TransactionsComponent implements OnInit {
 
   // Computed states
   isLoading = computed(() => this.transactionsQuery.isPending() || this.transactionsQuery.isFetching());
-  transactionsData = computed(() => this.transactionsQuery.data() || []);
-  transactionsError = computed(() => this.transactionsQuery.error);
+  private allTransactions = computed(() => this.transactionsQuery.data() ?? []);
 
-  constructor() {
-    // Initialize filter form
-    this.filterForm = this.fb.group({
-      statuses: [[]],
-      sides: [[]],
-      types: [[]]
-    });
+  private dateRangeValue = toSignal(this.filterForm.get('dateRange')!.valueChanges, { initialValue: null });
+  hasDateFilter = computed(() => {
+    const dr = this.dateRangeValue();
+    return !!(dr && dr[0] && dr[1]);
+  });
 
-    // Set up an effect to update transactions when query data changes
-    effect(() => {
-      const data = this.transactionsData();
-      if (data && Array.isArray(data)) {
-        this.transactions.set(data);
-        this.loading.set(false);
-      }
-    });
-  }
+  transactions = computed(() => {
+    const data = this.allTransactions();
+    const dr = this.dateRangeValue();
+    if (dr && dr[0] && dr[1]) {
+      const start = dr[0];
+      const end = new Date(dr[1].getTime());
+      end.setHours(23, 59, 59, 999);
+      return data.filter((t) => {
+        const d = new Date(t.transactTime);
+        return d >= start && d <= end;
+      });
+    }
+    return data;
+  });
 
-  ngOnInit(): void {
-    // Initial data load
-    this.loadInitialData();
-  }
+  tableData = computed(() => {
+    const data = this.transactions();
+    return this.isLoading() && data.length === 0 ? new Array(8).fill(null) : data;
+  });
 
-  private loadInitialData(): void {
-    this.loading.set(true);
-    this.transactionsQuery.refetch();
+  // Mobile filter toggle
+  filtersVisible = signal(false);
+  activeFilterCount = computed(() => {
+    let count = 0;
+    if (this.searchText().length > 0) count++;
+    if (this.hasDateFilter()) count++;
+    const f = this.filterForm.value;
+    if (f.statuses?.length) count++;
+    if (f.sides?.length) count++;
+    if (f.types?.length) count++;
+    return count;
+  });
+
+  toggleFilters(): void {
+    this.filtersVisible.update((v) => !v);
   }
 
   // Filter transactions based on global filter
@@ -118,7 +141,7 @@ export class TransactionsComponent implements OnInit {
   }
 
   // Helper method to get appropriate severity for order status
-  getStatusSeverity(status: OrderStatus): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | 'info' {
+  getStatusSeverity(status: OrderStatus): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' {
     switch (status) {
       case OrderStatus.FILLED:
         return 'success';
@@ -138,8 +161,18 @@ export class TransactionsComponent implements OnInit {
   }
 
   // Helper method to get appropriate severity for order side
-  getSideSeverity(side: OrderSide): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | 'info' {
+  getSideSeverity(side: OrderSide): 'success' | 'danger' {
     return side === OrderSide.BUY ? 'success' : 'danger';
+  }
+
+  isUsdQuote(transaction: Order): boolean {
+    const coinSymbol = transaction.quoteCoin?.symbol?.toUpperCase();
+    if (coinSymbol === 'USD' || coinSymbol === 'USDT' || coinSymbol === 'USDC' || coinSymbol === 'BUSD') {
+      return true;
+    }
+    // Fallback: check the trading pair symbol (e.g., "BTC/USD") when quoteCoin is missing
+    const quote = transaction.symbol?.split('/')?.[1]?.toUpperCase();
+    return quote === 'USD' || quote === 'USDT' || quote === 'USDC' || quote === 'BUSD';
   }
 
   // Format underscore-separated type values into title case
@@ -150,14 +183,23 @@ export class TransactionsComponent implements OnInit {
       .join(' ');
   }
 
+  getFeePercentage(transaction: Order): number | null {
+    const fee = transaction.fee;
+    const cost = transaction.cost;
+    if (fee != null && fee > 0 && cost != null && cost > 0) {
+      return (fee / cost) * 100;
+    }
+    return null;
+  }
+
   // Apply filters to the table
   applyFilters(): void {
     const filters = this.filterForm.value;
 
     type FilterValue = string | { value: string };
-    const statuses = filters.statuses.map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
-    const sides = filters.sides.map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
-    const types = filters.types.map((t: FilterValue) => (typeof t === 'object' && 'value' in t ? t.value : t));
+    const statuses = filters.statuses!.map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
+    const sides = filters.sides!.map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
+    const types = filters.types!.map((t: FilterValue) => (typeof t === 'object' && 'value' in t ? t.value : t));
 
     // Apply status filter
     if (statuses.length) {
@@ -186,7 +228,8 @@ export class TransactionsComponent implements OnInit {
     this.filterForm.reset({
       statuses: [],
       sides: [],
-      types: []
+      types: [],
+      dateRange: null
     });
     this.dt.clear();
   }

@@ -108,6 +108,7 @@
     "cache-manager": "^7.2.4",
     "cacheable": "^2.1.0",
     "ccxt": "^4.5.8",
+    "decimal.js": "^10.6.0",
     "chart.js": "^4.5.0",
     "chartjs-adapter-date-fns": "^3.0.0",
     "class-transformer": "^0.5.1",

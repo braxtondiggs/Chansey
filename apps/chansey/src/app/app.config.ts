@@ -1,7 +1,12 @@
 import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { ApplicationConfig } from '@angular/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { provideRouter, withEnabledBlockingInitialNavigation, withInMemoryScrolling } from '@angular/router';
+import {
+  provideRouter,
+  withComponentInputBinding,
+  withEnabledBlockingInitialNavigation,
+  withInMemoryScrolling
+} from '@angular/router';
 
 import { definePreset } from '@primeng/themes';
 import Aura from '@primeng/themes/aura';
@@ -37,9 +42,10 @@ const providers = [
     appRoutes,
     withInMemoryScrolling({
       anchorScrolling: 'enabled',
-      scrollPositionRestoration: 'enabled'
+      scrollPositionRestoration: 'top'
     }),
-    withEnabledBlockingInitialNavigation()
+    withEnabledBlockingInitialNavigation(),
+    withComponentInputBinding()
   ),
   provideHttpClient(withFetch(), withInterceptors([AuthInterceptor])),
   provideAnimationsAsync(),

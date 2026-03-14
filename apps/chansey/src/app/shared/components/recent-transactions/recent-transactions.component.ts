@@ -1,4 +1,4 @@
-import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe, UpperCasePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -9,7 +9,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { OrderSide, OrderStatus } from '@chansey/api-interfaces';
+import { Order, OrderSide, OrderStatus } from '@chansey/api-interfaces';
 
 import { TransactionsService } from '../../../pages/transactions/transactions.service';
 
@@ -19,9 +19,9 @@ import { TransactionsService } from '../../../pages/transactions/transactions.se
     AvatarModule,
     ButtonModule,
     CardModule,
-    CurrencyPipe,
     DatePipe,
     DecimalPipe,
+    UpperCasePipe,
     RouterModule,
     SkeletonModule,
     TableModule,
@@ -66,5 +66,21 @@ export class RecentTransactionsComponent {
   // Helper method to get appropriate severity for order side
   getSideSeverity(side: OrderSide): 'success' | 'danger' {
     return side === OrderSide.BUY ? 'success' : 'danger';
+  }
+
+  isUsdQuote(transaction: Order): boolean {
+    const coinSymbol = transaction.quoteCoin?.symbol?.toUpperCase();
+    if (coinSymbol === 'USD' || coinSymbol === 'USDT' || coinSymbol === 'USDC' || coinSymbol === 'BUSD') {
+      return true;
+    }
+    const quote = transaction.symbol?.split('/')?.[1]?.toUpperCase();
+    return quote === 'USD' || quote === 'USDT' || quote === 'USDC' || quote === 'BUSD';
+  }
+
+  formatType(type: string): string {
+    return type
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   }
 }

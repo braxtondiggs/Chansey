@@ -1,16 +1,16 @@
-<div class="price-chart-container">
+<div class="w-full p-4 md:p-0">
   <!-- Period Selector Tabs -->
   <div class="period-selector mb-4">
     <div class="flex gap-2">
       @for (period of periods; track period.value) {
         <button
           type="button"
-          class="period-tab"
-          [class.active]="selectedPeriod === period.value"
+          class="period-tab cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 md:px-4 md:py-2 md:text-sm"
+          [class.active]="selectedPeriod() === period.value"
           [attr.data-testid]="'period-tab'"
-          [attr.data-active]="selectedPeriod === period.value"
+          [attr.data-active]="selectedPeriod() === period.value"
           [attr.aria-label]="'Show ' + period.label + ' price chart'"
-          [attr.aria-selected]="selectedPeriod === period.value"
+          [attr.aria-selected]="selectedPeriod() === period.value"
           (click)="onPeriodChange(period.value)"
         >
           {{ period.label }}
@@ -20,8 +20,11 @@
   </div>
 
   <!-- Chart Loading State -->
-  @if (isLoading) {
-    <div class="chart-loading-container" data-testid="chart-loading">
+  @if (isLoading()) {
+    <div
+      class="chart-loading-container flex min-h-[300px] flex-col items-center justify-center p-8 text-center"
+      data-testid="chart-loading"
+    >
       <div class="loading-spinner">
         <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
         <p class="mt-2">Loading chart data...</p>
@@ -30,17 +33,24 @@
   }
 
   <!-- Chart No Data State -->
-  @else if (!chartData || !chartData.prices || chartData.prices.length === 0) {
-    <div class="no-data-container" data-testid="no-data-message">
-      <i class="pi pi-chart-line" style="font-size: 3rem; color: var(--text-color-secondary)"></i>
+  @else if (!chartData() || !chartData()!.prices || chartData()!.prices.length === 0) {
+    <div
+      class="no-data-container flex min-h-[300px] flex-col items-center justify-center p-8 text-center"
+      data-testid="no-data-message"
+    >
+      <i class="pi pi-chart-line text-5xl text-[color:var(--text-color-secondary)]"></i>
       <p class="mt-3">No data available for this period</p>
     </div>
   }
 
   <!-- Chart Display -->
   @else {
-    <div class="chart-wrapper" role="img" [attr.aria-label]="'Price chart for ' + selectedPeriod + ' period'">
-      <p-chart type="line" [data]="data" [options]="options" [style]="chartStyle"></p-chart>
+    <div
+      class="mx-auto min-h-60 w-full max-w-[1200px] py-4 md:min-h-[clamp(300px,62vw,880px)]"
+      role="img"
+      [attr.aria-label]="'Price chart for ' + selectedPeriod() + ' period'"
+    >
+      <p-chart type="line" [data]="data" [options]="options" [plugins]="chartPlugins" [style]="chartStyle"></p-chart>
     </div>
   }
 </div>

@@ -79,9 +79,20 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Watchlist' }
       },
       {
-        path: 'coins/:slug',
-        loadComponent: () => import('./coins/coin-detail/coin-detail.component').then((c) => c.CoinDetailComponent),
-        data: { breadcrumb: 'Coin Detail' }
+        path: 'coins',
+        children: [
+          { path: '', redirectTo: '/app/prices', pathMatch: 'full' },
+          {
+            path: ':slug',
+            loadComponent: () => import('./coins/coin-detail/coin-detail.component').then((c) => c.CoinDetailComponent),
+            data: {
+              breadcrumb: (route: import('@angular/router').ActivatedRouteSnapshot) => {
+                const slug = route.paramMap.get('slug') ?? 'Coin';
+                return slug.charAt(0).toUpperCase() + slug.slice(1);
+              }
+            }
+          }
+        ]
       }
     ]
   },

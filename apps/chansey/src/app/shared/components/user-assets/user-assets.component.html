@@ -84,6 +84,7 @@
             <td>
               <a
                 [routerLink]="asset.slug ? ['/app/coins', asset.slug] : null"
+                [queryParams]="{ from: 'portfolio' }"
                 [class.pointer-events-none]="!asset.slug"
                 class="flex items-center gap-1 transition-opacity hover:opacity-80"
               >

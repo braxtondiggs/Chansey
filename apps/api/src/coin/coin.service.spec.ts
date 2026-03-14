@@ -257,6 +257,15 @@ describe('CoinService', () => {
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
       expect(result).toBe(cachedChart);
     });
+
+    it('throws user-friendly error on timeout with no cache', async () => {
+      cacheManager.get.mockResolvedValue(null); // all cache lookups miss
+      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('CoinGecko API timeout'));
+
+      await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
+        'Unable to fetch chart data. Please try again later.'
+      );
+    });
   });
 
   // ===========================================================================
@@ -354,30 +363,18 @@ describe('CoinService', () => {
       expect(result.generatedAt).toBeInstanceOf(Date);
     });
 
-    it('queries coin by slug from the database', async () => {
-      coinRepository.findOne.mockResolvedValue(mockCoin());
-
-      await (service as any).getMarketChart('bitcoin', '7d');
-
-      expect(coinRepository.findOne).toHaveBeenCalledWith({ where: { slug: 'bitcoin' } });
-    });
-
     it('throws NotFoundException when slug does not exist', async () => {
       coinRepository.findOne.mockResolvedValue(null);
 
       await expect((service as any).getMarketChart('missing', '7d')).rejects.toThrow();
     });
 
-    it('falls back to mock chart data when CoinGecko fails', async () => {
+    it('propagates error when CoinGecko fails and no cache exists', async () => {
       coinRepository.findOne.mockResolvedValue(mockCoin());
       geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('API down'));
       cacheManager.get.mockResolvedValue(null); // no cache
 
-      const result = await (service as any).getMarketChart('bitcoin', '7d');
-
-      // Should still return valid chart data (mock fallback)
-      expect(result.coinSlug).toBe('bitcoin');
-      expect(result.prices.length).toBeGreaterThan(0);
+      await expect((service as any).getMarketChart('bitcoin', '7d')).rejects.toThrow();
     });
   });
 
@@ -385,18 +382,13 @@ describe('CoinService', () => {
   // getCoinBySymbol()
   // ===========================================================================
   describe('getCoinBySymbol()', () => {
-    it('returns a virtual USD coin for "usd" symbol', async () => {
-      const result = await service.getCoinBySymbol('usd');
+    it.each(['usd', 'USD', 'Usd'])('returns a virtual USD coin for "%s" (case-insensitive)', async (input) => {
+      const result = await service.getCoinBySymbol(input);
 
       expect(result.id).toBe('USD-virtual');
       expect(result.symbol).toBe('USD');
       expect(result.name).toBe('US Dollar');
       expect(coinRepository.findOne).not.toHaveBeenCalled();
-    });
-
-    it('is case-insensitive for USD', async () => {
-      const result = await service.getCoinBySymbol('USD');
-      expect(result.id).toBe('USD-virtual');
     });
 
     it('queries the database for non-USD symbols', async () => {
@@ -459,7 +451,16 @@ describe('CoinService', () => {
 
       await service.getCoinsByIds(['a', 'a', '', '  ']);
 
-      expect(coinRepository.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: expect.anything() } }));
+      const callArgs = coinRepository.find.mock.calls[0][0] as any;
+      // Should deduplicate 'a','a' → ['a'] and filter out '' and '  '
+      expect(callArgs.where.id._value).toEqual(['a']);
+    });
+
+    it('returns empty array when all IDs are invalid', async () => {
+      const result = await service.getCoinsByIds(['', '  ']);
+
+      expect(result).toEqual([]);
+      expect(coinRepository.find).not.toHaveBeenCalled();
     });
   });
 });

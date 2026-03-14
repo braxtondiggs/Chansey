@@ -1,100 +1,85 @@
-import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
-
-import { CardModule } from 'primeng/card';
+import { DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { CoinDetailResponseDto } from '@chansey/api-interfaces';
 
 import { CounterDirective } from '../../../shared/directives/counter/counter.directive';
+import { LayoutService } from '../../../shared/services/layout.service';
 
 /**
  * T026: MarketStatsComponent
  *
  * Displays key market statistics for a cryptocurrency.
  * Features:
- * - Market Cap, 24h Volume, Circulating Supply
- * - Optional: Total Supply, Max Supply, Market Cap Rank
+ * - Market Cap, 24h Volume, consolidated Supply card
+ * - Supply progress bar showing circulating vs max supply
  * - Large number formatting (B/M/K)
- * - Responsive grid layout
+ * - Responsive 3-column grid layout
  */
 @Component({
   selector: 'app-market-stats',
   standalone: true,
-  imports: [CommonModule, CardModule, CounterDirective],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DecimalPipe, CounterDirective],
   template: `
-    <div class="market-stats-grid">
+    <div class="market-stats-grid grid grid-cols-1 gap-3 py-2 md:grid-cols-3 md:gap-4 md:py-4">
       <!-- Market Cap -->
-      <div class="stat-card" data-testid="market-cap">
-        <div class="stat-label">Market Cap</div>
-        <div class="stat-value">
-          <span [appCounter]="coinDetail?.marketCap ?? 0" [formatter]="currencyFormatter"> </span>
+      <div class="stat-card rounded-lg p-4 transition-transform duration-200 md:p-6" data-testid="market-cap">
+        <div class="stat-label mb-2 text-sm font-medium">Market Cap</div>
+        <div class="stat-value flex items-baseline gap-1 text-xl font-bold md:text-2xl">
+          <span [appCounter]="coinDetail()?.marketCap ?? 0" [formatter]="currencyFormatter"> </span>
         </div>
-        @if (coinDetail?.marketCapRank) {
-          <div class="stat-rank" data-testid="market-cap-rank">Rank #{{ coinDetail!.marketCapRank }}</div>
+        @if (coinDetail()?.marketCapRank) {
+          <div class="stat-rank mt-2 text-xs font-semibold" data-testid="market-cap-rank">
+            Rank #{{ coinDetail()!.marketCapRank }}
+          </div>
         }
       </div>
 
       <!-- 24h Volume -->
-      <div class="stat-card" data-testid="volume-24h">
-        <div class="stat-label">24h Volume</div>
-        <div class="stat-value">
-          <span [appCounter]="coinDetail?.volume24h ?? 0" [formatter]="currencyFormatter"> </span>
+      <div class="stat-card rounded-lg p-4 transition-transform duration-200 md:p-6" data-testid="volume-24h">
+        <div class="stat-label mb-2 text-sm font-medium">24h Volume</div>
+        <div class="stat-value flex items-baseline gap-1 text-xl font-bold md:text-2xl">
+          <span [appCounter]="coinDetail()?.volume24h ?? 0" [formatter]="currencyFormatter"> </span>
         </div>
       </div>
 
-      <!-- Circulating Supply -->
-      <div class="stat-card" data-testid="circulating-supply">
-        <div class="stat-label">Circulating Supply</div>
-        <div class="stat-value">
-          <span [appCounter]="coinDetail?.circulatingSupply ?? 0" [formatter]="supplyFormatter"> </span>
-          <span class="stat-suffix" *ngIf="coinDetail?.symbol">{{ coinDetail?.symbol?.toUpperCase() }}</span>
+      <!-- Supply (consolidated) -->
+      <div class="stat-card rounded-lg p-4 transition-transform duration-200 md:p-6" data-testid="supply">
+        <div class="stat-label mb-2 text-sm font-medium">Circulating Supply</div>
+        <div class="stat-value flex items-baseline gap-1 text-xl font-bold md:text-2xl">
+          <span [appCounter]="coinDetail()?.circulatingSupply ?? 0" [formatter]="supplyFormatter"> </span>
+          @if (coinDetail()?.symbol) {
+            <span class="stat-suffix text-sm font-semibold tracking-wide">{{
+              coinDetail()!.symbol!.toUpperCase()
+            }}</span>
+          }
         </div>
-      </div>
 
-      <!-- Total Supply -->
-      @if (coinDetail?.totalSupply) {
-        <div class="stat-card" data-testid="total-supply">
-          <div class="stat-label">Total Supply</div>
-          <div class="stat-value">
-            <span [appCounter]="coinDetail!.totalSupply ?? 0" [formatter]="supplyFormatter"> </span>
-            <span class="stat-suffix" *ngIf="coinDetail?.symbol">{{ coinDetail?.symbol?.toUpperCase() }}</span>
-          </div>
-        </div>
-      }
-
-      <!-- Max Supply -->
-      <div class="stat-card" data-testid="max-supply">
-        <div class="stat-label">Max Supply</div>
-        @if (coinDetail?.maxSupply) {
-          <div class="stat-value">
-            <span [appCounter]="coinDetail!.maxSupply ?? 0" [formatter]="supplyFormatter" [duration]="700">
-              {{ formatSupplyNumber(coinDetail!.maxSupply) }}
-            </span>
-            <span class="stat-suffix" *ngIf="coinDetail?.symbol">{{ coinDetail?.symbol?.toUpperCase() }}</span>
+        @if (coinDetail()?.maxSupply) {
+          <div class="supply-progress-section mt-3">
+            <div class="supply-progress-bar h-1.5 overflow-hidden rounded-sm">
+              <div
+                class="supply-progress-fill h-full rounded-sm transition-all duration-[600ms]"
+                [style.width.%]="supplyPercentage()"
+              ></div>
+            </div>
+            <div class="supply-progress-label mt-1 text-xs font-medium">
+              {{ supplyPercentage() | number: '1.1-1' }}% of {{ formatSupplyNumber(coinDetail()!.maxSupply) }} max
+              supply
+            </div>
           </div>
         } @else {
-          <div class="stat-value">Unlimited</div>
+          <div class="supply-progress-label mt-1 text-xs font-medium">Max Supply: Unlimited</div>
         }
       </div>
     </div>
   `,
   styles: [
     `
-      .market-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        padding: 1rem 0;
-      }
-
       .stat-card {
-        padding: 1.5rem;
         background: var(--surface-card);
         border: 1px solid var(--surface-border);
-        border-radius: 8px;
-        transition:
-          transform 0.2s,
-          box-shadow 0.2s;
 
         &:hover {
           transform: translateY(-2px);
@@ -103,57 +88,53 @@ import { CounterDirective } from '../../../shared/directives/counter/counter.dir
       }
 
       .stat-label {
-        font-size: 0.875rem;
         color: var(--text-color-secondary);
-        margin-bottom: 0.5rem;
-        font-weight: 500;
       }
 
       .stat-value {
-        display: flex;
-        align-items: baseline;
-        gap: 0.35rem;
-        font-size: 1.5rem;
-        font-weight: 700;
         color: var(--text-color);
       }
 
-      .stat-value .stat-suffix {
-        font-size: 0.875rem;
-        font-weight: 600;
+      .stat-suffix {
         color: var(--text-color-secondary);
-        letter-spacing: 0.05em;
       }
 
       .stat-rank {
-        margin-top: 0.5rem;
-        font-size: 0.75rem;
         color: var(--primary-color);
-        font-weight: 600;
       }
 
-      @media (max-width: 768px) {
-        .market-stats-grid {
-          grid-template-columns: 1fr;
-        }
+      .supply-progress-bar {
+        background: var(--surface-border);
+      }
 
-        .stat-value {
-          font-size: 1.25rem;
-        }
+      .supply-progress-fill {
+        background: var(--primary-color);
+      }
+
+      .supply-progress-label {
+        color: var(--text-color-secondary);
       }
     `
   ]
 })
 export class MarketStatsComponent {
-  @Input() coinDetail?: CoinDetailResponseDto | null;
+  private layoutService = inject(LayoutService);
+
+  coinDetail = input<CoinDetailResponseDto | null>(null);
   readonly currencyFormatter = (value: number) => this.formatLargeNumber(value);
   readonly supplyFormatter = (value: number) => this.formatSupplyNumber(value);
+
+  supplyPercentage = computed(() => {
+    const detail = this.coinDetail();
+    if (!detail?.circulatingSupply || !detail?.maxSupply) return 0;
+    return Math.min((detail.circulatingSupply / detail.maxSupply) * 100, 100);
+  });
 
   /**
    * Format large numbers with B/M/K suffixes
    */
   formatLargeNumber(value?: number): string {
-    if (!value) return '$0';
+    if (value == null) return '$0';
 
     const absValue = Math.abs(value);
     if (absValue >= 1e12) {
@@ -170,11 +151,22 @@ export class MarketStatsComponent {
   }
 
   /**
-   * Format supply values with thousands separators
+   * Format supply values — abbreviated on mobile, full precision on desktop
    */
   formatSupplyNumber(value?: number): string {
-    if (!value) return '0';
-    const rounded = Math.round(value);
-    return rounded.toLocaleString('en-US');
+    if (value == null) return '0';
+    if (this.layoutService.isMobile()) {
+      return this.abbreviateNumber(value);
+    }
+    return Math.round(value).toLocaleString('en-US');
+  }
+
+  private abbreviateNumber(value: number): string {
+    const abs = Math.abs(value);
+    if (abs >= 1e12) return (value / 1e12).toFixed(2) + 'T';
+    if (abs >= 1e9) return (value / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return (value / 1e6).toFixed(2) + 'M';
+    if (abs >= 1e3) return (value / 1e3).toFixed(1) + 'K';
+    return Math.round(value).toLocaleString('en-US');
   }
 }

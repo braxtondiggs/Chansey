@@ -2,6 +2,15 @@
 @use './app/styles/layout/layout.scss';
 @use './app/shared/directives/counter/counter.directive.css';
 
+/* Fix skeleton contrast in dark mode */
+.app-dark .p-skeleton {
+  background: var(--p-surface-700);
+}
+
+.app-dark .p-skeleton::after {
+  background: linear-gradient(90deg, transparent, var(--p-surface-600), transparent);
+}
+
 /* Shared table utility: remove bottom border on last row */
 .no-bottom-border.no-bottom-border tr:last-child > td {
   border-bottom: none;

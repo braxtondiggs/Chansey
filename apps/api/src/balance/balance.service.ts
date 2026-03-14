@@ -1,7 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { Cache } from 'cache-manager';
+import Decimal from 'decimal.js';
 import { Repository } from 'typeorm';
+
+import { ExchangeHoldingDto, UserHoldingsDto } from '@chansey/api-interfaces';
 
 import { UsersService } from './../users/users.service';
 import {
@@ -14,6 +19,7 @@ import {
 } from './dto';
 import { HistoricalBalance } from './historical-balance.entity';
 
+import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { toErrorInfo } from '../shared/error.util';
@@ -30,7 +36,8 @@ export class BalanceService {
     private readonly coinService: CoinService,
     private readonly userService: UsersService,
     @InjectRepository(HistoricalBalance)
-    private readonly historicalBalanceRepository: Repository<HistoricalBalance>
+    private readonly historicalBalanceRepository: Repository<HistoricalBalance>,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
   ) {}
 
   /**
@@ -70,9 +77,62 @@ export class BalanceService {
   }
 
   /**
-   * Get current balances from all connected exchanges in parallel
+   * Get user holdings for a specific coin from live exchange balances.
+   * Uses balance data as source of truth for quantities/value.
+   */
+  async getHoldingsForCoin(user: User, coin: Coin): Promise<UserHoldingsDto | null> {
+    const currentBalances = await this.getCurrentBalances(user);
+    const symbol = coin.symbol.toUpperCase();
+
+    let totalAmount = new Decimal(0);
+    const exchanges: ExchangeHoldingDto[] = [];
+
+    for (const exchange of currentBalances) {
+      for (const balance of exchange.balances) {
+        if (balance.asset.toUpperCase() !== symbol) continue;
+        const qty = new Decimal(balance.free).plus(balance.locked);
+        if (qty.lte(0)) continue;
+        totalAmount = totalAmount.plus(qty);
+        exchanges.push({
+          exchangeName: exchange.name,
+          amount: qty.toNumber(),
+          lastSynced: exchange.timestamp
+        });
+      }
+    }
+
+    if (totalAmount.lte(0)) return null;
+
+    const currentPrice = new Decimal(coin.currentPrice || 0);
+    const currentValue = totalAmount.times(currentPrice);
+
+    return {
+      coinSymbol: coin.symbol,
+      totalAmount: totalAmount.toNumber(),
+      averageBuyPrice: 0,
+      currentValue: currentValue.toNumber(),
+      profitLoss: 0,
+      profitLossPercent: 0,
+      exchanges
+    };
+  }
+
+  /**
+   * Get current balances from all connected exchanges in parallel.
+   * Results are cached in Redis for 60 seconds to avoid hammering exchange APIs.
    */
   private async getCurrentBalances(user: User): Promise<ExchangeBalanceDto[]> {
+    const cacheKey = `balance:user:${user.id}:current`;
+    const CACHE_TTL = 60; // seconds
+
+    const cached = await this.cacheManager.get<ExchangeBalanceDto[]>(cacheKey);
+    if (cached) {
+      this.logger.debug(`Balance cache HIT for user ${user.id}`);
+      return cached;
+    }
+
+    this.logger.debug(`Balance cache MISS for user ${user.id}, fetching from exchanges`);
+
     const exchanges = await this.userService.getExchangeKeysForUser(user.id);
     const activeExchanges = exchanges.filter((e) => e.isActive);
 
@@ -80,12 +140,15 @@ export class BalanceService {
       activeExchanges.map((exchange) => this.fetchExchangeBalance(exchange, user))
     );
 
-    return results.map((result, i) => {
+    const balances = results.map((result, i) => {
       if (result.status === 'fulfilled') return result.value;
       const err = toErrorInfo(result.reason);
       this.logger.error(`Error getting balances from ${activeExchanges[i].name}: ${err.message}`, err.stack);
       return this.buildExchangeBalanceDto(activeExchanges[i]);
     });
+
+    await this.cacheManager.set(cacheKey, balances, CACHE_TTL);
+    return balances;
   }
 
   /**
@@ -277,16 +340,16 @@ export class BalanceService {
 
     return Promise.all(
       balances.map(async (balance): Promise<AssetBalanceDto> => {
-        const totalAmount = parseFloat(balance.free) + parseFloat(balance.locked);
+        const totalAmount = new Decimal(balance.free).plus(balance.locked);
 
         if (balance.asset === 'USDT' || balance.asset === 'USD') {
-          return { ...balance, usdValue: totalAmount };
+          return { ...balance, usdValue: totalAmount.toNumber() };
         }
 
         const symbol = `${balance.asset}/${quoteAsset}`;
         try {
           const response = await this.exchangeManagerService.getPrice(exchangeSlug, symbol);
-          return { ...balance, usdValue: totalAmount * parseFloat(response.price) };
+          return { ...balance, usdValue: totalAmount.times(response.price).toNumber() };
         } catch (priceError: unknown) {
           const err = toErrorInfo(priceError);
           this.logger.warn(`Unable to get price for ${symbol} on ${exchangeSlug}: ${err.message}`);
@@ -652,28 +715,30 @@ export class BalanceService {
 
       for (const exchange of currentBalances) {
         for (const balance of exchange.balances) {
-          const quantity = parseFloat(balance.free) + parseFloat(balance.locked);
-          if (quantity <= 0) continue;
+          const quantity = new Decimal(balance.free).plus(balance.locked);
+          if (quantity.lte(0)) continue;
 
           const symbol = balance.asset;
-          const usdValue = balance.usdValue ?? 0;
+          const usdValue = new Decimal(balance.usdValue ?? 0);
 
           const existing = assetMap.get(symbol);
           if (existing) {
-            existing.quantity += quantity;
-            existing.usdValue += usdValue;
-            existing.price = existing.quantity > 0 ? existing.usdValue / existing.quantity : 0;
+            const newQty = new Decimal(existing.quantity).plus(quantity);
+            const newUsd = new Decimal(existing.usdValue).plus(usdValue);
+            existing.quantity = newQty.toNumber();
+            existing.usdValue = newUsd.toNumber();
+            existing.price = newQty.gt(0) ? newUsd.div(newQty).toNumber() : 0;
           } else {
             const coin = coinDetailsMap.get(symbol.toUpperCase());
             assetMap.set(symbol, {
               image: coin?.image ?? undefined,
               name: coin?.name ?? symbol,
               slug: coin?.slug ?? symbol.toLowerCase(),
-              price: quantity > 0 ? usdValue / quantity : 0,
+              price: quantity.gt(0) ? usdValue.div(quantity).toNumber() : 0,
               priceChangePercentage24h: coin?.priceChangePercentage24h ?? 0,
-              quantity,
+              quantity: quantity.toNumber(),
               symbol,
-              usdValue
+              usdValue: usdValue.toNumber()
             });
           }
         }

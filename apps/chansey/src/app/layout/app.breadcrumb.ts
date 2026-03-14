@@ -10,6 +10,13 @@ interface Breadcrumb {
   url?: string;
 }
 
+const FROM_MAP: Record<string, { label: string; url: string }> = {
+  prices: { label: 'Prices', url: '/app/prices' },
+  watchlist: { label: 'Watchlist', url: '/app/watchlist' },
+  portfolio: { label: 'Portfolio', url: '/app/dashboard' },
+  transactions: { label: 'Transactions', url: '/app/transactions' }
+};
+
 @Component({
   selector: 'app-breadcrumb',
   standalone: true,
@@ -17,7 +24,13 @@ interface Breadcrumb {
   template: `<nav class="layout-breadcrumb">
     <ol>
       @for (item of breadcrumbs$ | async; track item; let last = $last) {
-        <li class="text-surface-950 dark:text-surface-0 title-h7 text-xl">{{ item.label }}</li>
+        <li class="text-surface-950 dark:text-surface-0 title-h7 text-xl">
+          @if (!last && item.url) {
+            <a [routerLink]="item.url" class="breadcrumb-link">{{ item.label }}</a>
+          } @else {
+            {{ item.label }}
+          }
+        </li>
         @if (!last) {
           <li class="layout-breadcrumb-chevron">/</li>
         }
@@ -61,8 +74,18 @@ export class AppBreadcrumb implements OnInit {
     const parentBreadcrumb = route.parent && route.parent.data ? route.parent.data['breadcrumb'] : null;
 
     if (breadcrumb && breadcrumb !== parentBreadcrumb) {
+      // Inject a parent breadcrumb from ?from= query param (e.g., "Prices / Bitcoin")
+      const from = route.queryParamMap.get('from');
+      if (from && FROM_MAP[from]) {
+        breadcrumbs.push(FROM_MAP[from]);
+      }
+
+      let label: string = breadcrumb;
+      if (typeof breadcrumb === 'function') {
+        label = breadcrumb(route);
+      }
       breadcrumbs.push({
-        label: route.data['breadcrumb'],
+        label,
         url: '/' + routeUrl.join('/')
       });
     }

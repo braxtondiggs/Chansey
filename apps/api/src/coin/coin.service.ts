@@ -7,7 +7,7 @@ import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
-import { CoinDetailResponseDto, CoinLinksDto, MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
+import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
@@ -15,6 +15,7 @@ import { CreateCoinDto, UpdateCoinDto } from './dto/';
 import { ErrorCode, ValidationException } from '../common/exceptions';
 import { CoinNotFoundException } from '../common/exceptions/resource';
 import { User } from '../users/users.entity';
+import { stripHtml } from '../utils/strip-html.util';
 import { stripNullProps } from '../utils/strip-null-props.util';
 
 interface HistoricalDataPoint {
@@ -547,6 +548,15 @@ export class CoinService {
    * @throws NotFoundException if coin not found by slug
    */
   async getCoinDetailBySlug(slug: string): Promise<CoinDetailResponseDto> {
+    const { dto } = await this.getCoinDetailWithEntity(slug);
+    return dto;
+  }
+
+  /**
+   * Get coin detail DTO and the underlying entity in a single DB query.
+   * Used by the controller to avoid a redundant getCoinBySlug() call for holdings.
+   */
+  async getCoinDetailWithEntity(slug: string): Promise<{ dto: CoinDetailResponseDto; entity: Coin }> {
     // Query coin from database
     const coin = await this.coin.findOne({ where: { slug } });
     if (!coin) {
@@ -576,14 +586,18 @@ export class CoinService {
             reposUrl: { github: geckoData.links?.repos_url?.github ?? [] }
           };
 
-          await this.coin.update(coin.id, {
-            description: geckoData.description?.en || coin.description,
-            links,
-            metadataLastUpdated: now
-          });
+          // Fire-and-forget: the in-memory coin object already has fresh data for the response.
+          // If the write fails, the next request will retry (staleness check still triggers).
+          this.coin
+            .update(coin.id, {
+              description: stripHtml(geckoData.description?.en || '') || coin.description,
+              links,
+              metadataLastUpdated: now
+            })
+            .catch((err) => this.logger.error(`Failed to persist metadata for ${slug}: ${err.message}`));
 
           // Update local coin object
-          coin.description = geckoData.description?.en || coin.description;
+          coin.description = stripHtml(geckoData.description?.en || '') || coin.description;
           coin.links = links;
           coin.metadataLastUpdated = now;
         }
@@ -596,7 +610,7 @@ export class CoinService {
     }
 
     // Merge database + CoinGecko data into DTO
-    const response: CoinDetailResponseDto = {
+    const dto: CoinDetailResponseDto = {
       id: coin.id,
       slug: coin.slug,
       name: coin.name,
@@ -611,42 +625,24 @@ export class CoinService {
       circulatingSupply: coin.circulatingSupply || 0,
       totalSupply: coin.totalSupply ?? undefined,
       maxSupply: coin.maxSupply ?? undefined,
-      description: coin.description || '',
-      links: (coin.links as CoinLinksDto) || {
-        homepage: [],
-        blockchainSite: [],
-        officialForumUrl: [],
-        repositoryUrl: []
-      },
+      description: stripHtml(coin.description || ''),
+      links: coin.links
+        ? {
+            homepage: coin.links.homepage ?? [],
+            blockchainSite: coin.links.blockchainSite ?? [],
+            officialForumUrl: coin.links.officialForumUrl ?? [],
+            subredditUrl: coin.links.subredditUrl,
+            repositoryUrl: (coin.links as any).reposUrl?.github?.filter((u: string) => u) ?? []
+          }
+        : { homepage: [], blockchainSite: [], officialForumUrl: [], repositoryUrl: [] },
+      ath: coin.ath ?? undefined,
+      athChangePercent: coin.athChange ?? undefined,
+      athDate: coin.athDate ?? undefined,
       lastUpdated: coin.updatedAt,
       metadataLastUpdated: coin.metadataLastUpdated ?? undefined
     };
 
-    return response;
-  }
-
-  /**
-   * Generate mock chart data as fallback when CoinGecko is unavailable
-   */
-  private generateMockChartData(currentPrice: number, days: number): CoinGeckoMarketChart {
-    const now = Date.now();
-    const interval = days === 1 ? 3600000 : 86400000; // 1 hour for 24h, 1 day for others
-    const points = days === 1 ? 24 : days;
-    const prices: [number, number][] = [];
-
-    // Generate realistic-looking price fluctuations
-    let price = currentPrice * 0.95; // Start slightly below current price
-    for (let i = 0; i < points; i++) {
-      const timestamp = now - (points - i) * interval;
-      const fluctuation = (Math.random() - 0.5) * 0.05 * currentPrice; // ±5% variation
-      price = Math.max(price + fluctuation, currentPrice * 0.8); // Keep within reasonable bounds
-      prices.push([timestamp, price]);
-    }
-
-    // Ensure the last point is close to current price
-    prices[prices.length - 1] = [now, currentPrice];
-
-    return { prices };
+    return { dto, entity: coin };
   }
 
   /**
@@ -676,15 +672,8 @@ export class CoinService {
       throw new ValidationException(`Invalid period: ${period}`, ErrorCode.VALIDATION_INVALID_INPUT, { period });
     }
 
-    let chartData: CoinGeckoMarketChart;
-    try {
-      // Fetch from CoinGecko with caching
-      chartData = await this.fetchMarketChart(coin.slug, days);
-    } catch (error: unknown) {
-      // If CoinGecko fails and no cached data, generate mock data
-      this.logger.warn(`Using mock chart data for ${coin.slug} due to API failure`);
-      chartData = this.generateMockChartData(coin.currentPrice || 0, days);
-    }
+    // Fetch from CoinGecko with caching — let errors propagate so the frontend shows an error state
+    const chartData = await this.fetchMarketChart(coin.slug, days);
 
     // Transform CoinGecko response to MarketChartResponseDto
     const response: MarketChartResponseDto = {

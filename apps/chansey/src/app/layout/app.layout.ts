@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, Renderer2, ViewChild, computed, inject } from '@angular/core';
+import { Component, ElementRef, OnDestroy, Renderer2, ViewChild, computed, inject } from '@angular/core';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 
 import { Subscription, filter } from 'rxjs';
@@ -30,7 +30,7 @@ import { LayoutService } from '../shared/services/layout.service';
   ],
   template: `<div class="layout-wrapper" [ngClass]="containerClass()">
     <app-sidebar></app-sidebar>
-    <div class="layout-content-wrapper">
+    <div class="layout-content-wrapper" #contentWrapper>
       <div class="layout-content-wrapper-inside">
         <app-topbar></app-topbar>
         <div class="layout-content">
@@ -58,6 +58,8 @@ export class AppLayout implements OnDestroy {
   @ViewChild(AppSidebar) appSidebar!: AppSidebar;
 
   @ViewChild(AppTopBar) appTopBar!: AppTopBar;
+
+  @ViewChild('contentWrapper') contentWrapper!: ElementRef<HTMLElement>;
 
   public layoutService: LayoutService = inject(LayoutService);
   public renderer: Renderer2 = inject(Renderer2);
@@ -93,6 +95,7 @@ export class AppLayout implements OnDestroy {
 
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe(() => {
       this.hideMenu();
+      this.contentWrapper?.nativeElement.scrollTo(0, 0);
     });
   }
 
