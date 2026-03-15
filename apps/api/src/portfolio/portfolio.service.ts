@@ -118,6 +118,11 @@ export class PortfolioService {
     return await this.portfolio.save(new Portfolio({ ...data, ...dto }));
   }
 
+  async getManualPortfolioCoinSymbols(user: User): Promise<string[]> {
+    const items = await this.getPortfolioByUser(user, [PortfolioRelations.COIN], PortfolioType.MANUAL);
+    return items.map((p) => p.coin.symbol.toUpperCase());
+  }
+
   async deletePortfolioItem(portfolioId: string, userId: string) {
     const response = await this.portfolio.delete({
       id: portfolioId,

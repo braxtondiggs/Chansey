@@ -202,6 +202,7 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
           riskLevel: createBacktestDto.riskLevel
         },
         parameters: createBacktestDto.strategyParams ?? {},
+        ...(createBacktestDto.coinSymbolFilter?.length && { coinSymbolFilter: createBacktestDto.coinSymbolFilter }),
         ...(createBacktestDto.exitConfig && { exitConfig: createBacktestDto.exitConfig })
       };
 

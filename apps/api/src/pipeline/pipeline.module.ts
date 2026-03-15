@@ -19,6 +19,7 @@ import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { OptimizationModule } from '../optimization/optimization.module';
 import { OrderModule } from '../order/order.module';
 import { PaperTradingModule } from '../order/paper-trading/paper-trading.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 
@@ -37,6 +38,7 @@ const PIPELINE_CONFIG = pipelineConfig();
     forwardRef(() => PaperTradingModule),
     forwardRef(() => ScoringModule),
     forwardRef(() => MarketRegimeModule),
+    forwardRef(() => PortfolioModule),
     ExchangeSelectionModule
   ],
   controllers: [PipelineController],

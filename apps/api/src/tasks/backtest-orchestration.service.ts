@@ -17,7 +17,6 @@ import { Repository } from 'typeorm';
 
 import {
   BACKTEST_STANDARD_CAPITAL,
-  DEFAULT_RISK_LEVEL,
   getRiskConfig,
   MIN_DATASET_INTEGRITY_SCORE,
   OrchestratedConfigSnapshot,
@@ -31,6 +30,7 @@ import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backte
 import { BacktestService } from '../order/backtest/backtest.service';
 import { CreateBacktestDto } from '../order/backtest/dto/backtest.dto';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
+import { PortfolioService } from '../portfolio/portfolio.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
@@ -48,7 +48,8 @@ export class BacktestOrchestrationService {
     private readonly marketDataSetRepository: Repository<MarketDataSet>,
     private readonly usersService: UsersService,
     private readonly algorithmService: AlgorithmService,
-    private readonly backtestService: BacktestService
+    private readonly backtestService: BacktestService,
+    private readonly portfolioService: PortfolioService
   ) {}
 
   /**
@@ -94,6 +95,19 @@ export class BacktestOrchestrationService {
 
       this.logger.log(`Orchestrating backtests for user ${userId} with risk level ${riskLevel}`);
 
+      // For level 6 (custom) users, resolve watchlist coins and validate minimum count
+      let coinSymbolFilter: string[] | undefined;
+      if (user.coinRisk?.level === 6) {
+        coinSymbolFilter = await this.portfolioService.getManualPortfolioCoinSymbols(user);
+        if (coinSymbolFilter.length < 3) {
+          this.logger.warn(
+            `User ${userId} has < 3 watchlist coins (${coinSymbolFilter.length}), skipping orchestration`
+          );
+          result.errors.push(`Insufficient watchlist coins: ${coinSymbolFilter.length} (minimum 3 required)`);
+          return result;
+        }
+      }
+
       // Get all testable algorithms (evaluate=true AND status=ACTIVE)
       const algorithms = await this.algorithmService.getAlgorithmsForTesting();
 
@@ -107,7 +121,7 @@ export class BacktestOrchestrationService {
       // Process each algorithm
       for (const algorithm of algorithms) {
         try {
-          await this.processAlgorithm(user, algorithm, riskConfig, result);
+          await this.processAlgorithm(user, algorithm, riskConfig, result, coinSymbolFilter);
         } catch (error: unknown) {
           const err = toErrorInfo(error);
           const errorMsg = `Failed to process algorithm ${algorithm.id}: ${err.message}`;
@@ -144,7 +158,8 @@ export class BacktestOrchestrationService {
     user: User,
     algorithm: Algorithm,
     riskConfig: RiskLevelConfig,
-    result: OrchestrationResult
+    result: OrchestrationResult,
+    coinSymbolFilter?: string[]
   ): Promise<void> {
     const algorithmId = algorithm.id;
     const algorithmName = algorithm.name ?? 'Unknown';
@@ -178,7 +193,8 @@ export class BacktestOrchestrationService {
       algorithm,
       riskConfig,
       BACKTEST_STANDARD_CAPITAL,
-      dataset
+      dataset,
+      coinSymbolFilter
     );
 
     result.backtestsCreated++;
@@ -260,7 +276,8 @@ export class BacktestOrchestrationService {
     algorithm: Algorithm,
     riskConfig: RiskLevelConfig,
     allocatedCapital: number,
-    dataset: MarketDataSet
+    dataset: MarketDataSet,
+    coinSymbolFilter?: string[]
   ): Promise<Backtest> {
     const algorithmName = algorithm.name ?? 'Unknown';
     const dateStr = format(new Date(), 'yyyy-MM-dd');
@@ -283,7 +300,8 @@ export class BacktestOrchestrationService {
       slippageBaseBps: riskConfig.slippageBps,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      strategyParams: algorithm.config?.parameters
+      strategyParams: algorithm.config?.parameters,
+      ...(coinSymbolFilter?.length && { coinSymbolFilter })
     };
 
     // Create the backtest via BacktestService

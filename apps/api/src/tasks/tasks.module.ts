@@ -34,6 +34,7 @@ import { MarketDataSet } from '../order/backtest/market-data-set.entity';
 import { OrderModule } from '../order/order.module';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Risk } from '../risk/risk.entity';
 import { ScoringModule } from '../scoring/scoring.module';
 import { BacktestRun } from '../strategy/entities/backtest-run.entity';
@@ -98,6 +99,7 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     forwardRef(() => UsersModule),
     forwardRef(() => BalanceModule),
     forwardRef(() => PipelineModule),
+    forwardRef(() => PortfolioModule),
     forwardRef(() => OHLCModule),
     ScoringModule,
     AuditModule,

@@ -20,6 +20,7 @@ import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
+import { PortfolioService } from '../portfolio/portfolio.service';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
@@ -129,6 +130,12 @@ describe('PipelineOrchestrationService', () => {
           provide: AlgorithmRegistry,
           useValue: {
             getStrategyForAlgorithm: jest.fn().mockResolvedValue(undefined)
+          }
+        },
+        {
+          provide: PortfolioService,
+          useValue: {
+            getManualPortfolioCoinSymbols: jest.fn().mockResolvedValue([])
           }
         }
       ]

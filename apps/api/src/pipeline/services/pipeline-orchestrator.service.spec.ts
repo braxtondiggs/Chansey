@@ -18,6 +18,7 @@ import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
+import { PortfolioService } from '../../portfolio/portfolio.service';
 import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
@@ -205,6 +206,12 @@ describe('PipelineOrchestratorService', () => {
           useValue: {
             selectForBuy: jest.fn().mockResolvedValue({ id: 'exchange-key-123', exchange: { slug: 'binance_us' } }),
             selectForSell: jest.fn().mockResolvedValue({ id: 'exchange-key-123', exchange: { slug: 'binance_us' } })
+          }
+        },
+        {
+          provide: PortfolioService,
+          useValue: {
+            getManualPortfolioCoinSymbols: jest.fn().mockResolvedValue([])
           }
         }
       ]

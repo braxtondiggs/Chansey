@@ -143,7 +143,9 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         replaySpeed: backtest.liveReplayState.replaySpeed
       });
 
-      const { coins, warnings } = await this.coinResolver.resolveCoins(dataset);
+      const { coins, warnings } = await this.coinResolver.resolveCoins(dataset, {
+        symbolFilter: backtest.configSnapshot?.coinSymbolFilter
+      });
 
       // Merge warnings from coin resolution with existing backtest warnings
       if (warnings.length) {

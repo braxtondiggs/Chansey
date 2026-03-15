@@ -124,7 +124,9 @@ describe('BacktestProcessor', () => {
       resuming: false,
       resumeIndex: undefined
     });
-    expect(coinResolver.resolveCoins).toHaveBeenCalledWith(dataset);
+    expect(coinResolver.resolveCoins).toHaveBeenCalledWith(dataset, {
+      symbolFilter: undefined
+    });
     expect(backtestEngine.executeHistoricalBacktest).toHaveBeenCalledWith(
       backtest,
       [{ id: 'BTC' }],

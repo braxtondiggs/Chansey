@@ -139,6 +139,8 @@ export interface OrchestratedConfigSnapshot {
   orchestratedAt: string;
   /** User's risk level at time of orchestration */
   riskLevel: number;
+  /** Optional coin symbol filter for custom risk level users */
+  coinSymbolFilter?: string[];
   /** Allow additional fields from base configSnapshot */
   [key: string]: any;
 }

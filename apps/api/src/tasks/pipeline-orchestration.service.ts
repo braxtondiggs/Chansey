@@ -17,11 +17,7 @@ import { In, Repository } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
 
-import {
-  DEFAULT_RISK_LEVEL,
-  PipelineOrchestrationResult,
-  buildStageConfigFromRisk
-} from './dto/pipeline-orchestration.dto';
+import { PipelineOrchestrationResult, buildStageConfigFromRisk } from './dto/pipeline-orchestration.dto';
 
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
@@ -31,6 +27,7 @@ import { buildParameterSpace } from '../optimization/utils/parameter-space-build
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
+import { PortfolioService } from '../portfolio/portfolio.service';
 import { toErrorInfo } from '../shared/error.util';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
@@ -53,7 +50,8 @@ export class PipelineOrchestrationService {
     @Inject(forwardRef(() => PipelineOrchestratorService))
     private readonly pipelineOrchestrator: PipelineOrchestratorService,
     private readonly algorithmService: AlgorithmService,
-    private readonly algorithmRegistry: AlgorithmRegistry
+    private readonly algorithmRegistry: AlgorithmRegistry,
+    private readonly portfolioService: PortfolioService
   ) {}
 
   /**
@@ -174,6 +172,18 @@ export class PipelineOrchestrationService {
       const riskLevel = user.effectiveCalculationRiskLevel;
 
       this.logger.log(`Orchestrating pipelines for user ${userId} with risk level ${riskLevel}`);
+
+      // For level 6 (custom) users, validate minimum watchlist coins
+      if (user.coinRisk?.level === 6) {
+        const watchlistSymbols = await this.portfolioService.getManualPortfolioCoinSymbols(user);
+        if (watchlistSymbols.length < 3) {
+          this.logger.warn(
+            `User ${userId} has < 3 watchlist coins (${watchlistSymbols.length}), skipping pipeline orchestration`
+          );
+          result.errors.push(`Insufficient watchlist coins: ${watchlistSymbols.length} (minimum 3 required)`);
+          return result;
+        }
+      }
 
       // Get user's exchange key
       const exchangeKey = await this.getUserExchangeKey(userId);
