@@ -101,7 +101,7 @@
   @if (!isLoading()) {
     <p-table
       #dt
-      [paginator]="true"
+      [paginator]="sortedCoins().length > 0"
       [rowHover]="true"
       [rows]="25"
       [showCurrentPageReport]="true"
@@ -116,19 +116,21 @@
       stripedRows
     >
       <ng-template #caption>
-        <div class="flex flex-col items-end">
-          <p-iconfield>
-            <p-inputicon class="pi pi-search" />
-            <input
-              pInputText
-              #searchInput
-              type="text"
-              (input)="applyGlobalFilter($event)"
-              [placeholder]="config().searchPlaceholder"
-              class="w-full md:w-auto"
-            />
-          </p-iconfield>
-        </div>
+        @if (coins().length || searchFilter()) {
+          <div class="flex flex-col items-end">
+            <p-iconfield>
+              <p-inputicon class="pi pi-search" />
+              <input
+                pInputText
+                #searchInput
+                type="text"
+                (input)="applyGlobalFilter($event)"
+                [placeholder]="config().searchPlaceholder"
+                class="w-full md:w-auto"
+              />
+            </p-iconfield>
+          </div>
+        }
       </ng-template>
       <ng-template #header>
         <tr class="whitespace-nowrap">
@@ -240,7 +242,7 @@
             [attr.colspan]="config().showWatchlistToggle || config().showRemoveAction ? 8 : 7"
             class="p-4 text-center"
           >
-            <div class="text-gray-500">
+            <div class="flex flex-col items-center justify-center py-8 text-gray-500">
               @if (searchFilter()) {
                 <i class="pi pi-search mr-2"></i>
                 No coins found matching "{{ searchFilter() }}"
@@ -255,8 +257,12 @@
                   </button>
                 </div>
               } @else {
-                <i class="pi pi-info-circle mr-2"></i>
-                {{ config().emptyMessage }}
+                <app-empty-state
+                  [message]="config().emptyMessage"
+                  [actionRoute]="config().emptyActionLink"
+                  [actionLabel]="config().emptyActionLabel || 'Browse'"
+                  actionIcon="pi pi-search"
+                />
               }
             </div>
           </td>

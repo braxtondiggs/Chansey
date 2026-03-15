@@ -151,10 +151,24 @@ git diff --name-only --diff-filter=U
 
 # Verify the branch is now up-to-date
 git rev-list --left-right --count origin/master...HEAD
-
-# Quick sanity check - does the project build?
-# (Skip if user passed --no-build)
 ```
+
+### 6.5. Build, Lint & Test
+
+Run build, lint, and test to ensure the sync didn't break anything. **All three must pass before pushing.**
+
+```bash
+# Build the project
+npx nx run-many -t build
+
+# Lint the project
+npx nx run-many -t lint
+
+# Run tests
+npx nx run-many -t test
+```
+
+**If any step fails**: Fix the issues, stage the fixes, and amend or create a new commit before proceeding to push. Do not push broken code.
 
 ### 7. Push Updated Branch
 

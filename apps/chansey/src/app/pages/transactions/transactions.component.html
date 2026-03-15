@@ -1,112 +1,4 @@
 <p-card>
-  <!-- Mobile: filter toggle button (hidden on md+) -->
-  <div class="mt-5 mr-5 mb-3 flex justify-end md:hidden">
-    <p-button
-      [label]="'Filters' + (activeFilterCount() > 0 ? ' (' + activeFilterCount() + ')' : '')"
-      icon="pi pi-filter"
-      [outlined]="true"
-      size="small"
-      [attr.aria-expanded]="filtersVisible()"
-      (onClick)="toggleFilters()"
-    />
-  </div>
-
-  <!-- Filters: always visible on md+, toggled on mobile -->
-  <form
-    [formGroup]="filterForm"
-    class="my-5 gap-3 px-5 md:px-0"
-    [ngClass]="{
-      'hidden md:grid': !filtersVisible(),
-      grid: filtersVisible()
-    }"
-    style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
-  >
-    <div>
-      <div class="p-inputgroup w-full">
-        <p-iconfield iconPosition="left" class="ml-auto">
-          <p-inputicon>
-            <i class="pi pi-search"></i>
-          </p-inputicon>
-          <input
-            #searchInput
-            pInputText
-            type="text"
-            (input)="applyGlobalFilter($event)"
-            placeholder="Search Transactions..."
-            fluid
-          />
-          @if (searchText().length > 0) {
-            <p-inputicon>
-              <i
-                class="pi pi-times"
-                role="button"
-                aria-label="Clear search"
-                (click)="clearSearchFilter(); searchInput.value = ''"
-              ></i>
-            </p-inputicon>
-          }
-        </p-iconfield>
-      </div>
-    </div>
-    <div>
-      <p-datepicker
-        formControlName="dateRange"
-        selectionMode="range"
-        [readonlyInput]="true"
-        placeholder="Date Range"
-        dateFormat="M dd, yy"
-        [showIcon]="true"
-        [showClear]="true"
-        fluid
-      />
-    </div>
-    <div>
-      <p-multiSelect
-        [options]="statusOptions"
-        placeholder="Filter by status"
-        formControlName="statuses"
-        optionLabel="label"
-        selectedItemsLabel="{0} statuses selected"
-        (onChange)="applyFilters()"
-        [showClear]="true"
-        display="chip"
-        [filter]="false"
-        [showToggleAll]="false"
-        fluid
-      />
-    </div>
-    <div>
-      <p-multiSelect
-        [options]="sideOptions"
-        placeholder="Filter by side"
-        formControlName="sides"
-        optionLabel="label"
-        selectedItemsLabel="{0} sides selected"
-        (onChange)="applyFilters()"
-        [showClear]="true"
-        display="chip"
-        [filter]="false"
-        [showToggleAll]="false"
-        fluid
-      />
-    </div>
-    <div>
-      <p-multiSelect
-        [options]="typeOptions"
-        placeholder="Filter by type"
-        formControlName="types"
-        optionLabel="label"
-        selectedItemsLabel="{0} types selected"
-        (onChange)="applyFilters()"
-        [showClear]="true"
-        display="chip"
-        [filter]="false"
-        [showToggleAll]="false"
-        fluid
-      />
-    </div>
-  </form>
-
   @if (transactionsQuery.isError()) {
     <div class="p-3 text-center">
       <p class="mb-4 text-lg text-red-500">{{ transactionsQuery.error() }}</p>
@@ -119,198 +11,323 @@
         variant="outlined"
       />
     </div>
-  }
+  } @else if (transactions().length > 0 || isLoading()) {
+    <!-- Mobile: filter toggle button (hidden on md+) -->
+    <div class="mt-5 mr-5 mb-3 flex justify-end md:hidden">
+      <p-button
+        [label]="'Filters' + (activeFilterCount() > 0 ? ' (' + activeFilterCount() + ')' : '')"
+        icon="pi pi-filter"
+        [outlined]="true"
+        size="small"
+        [attr.aria-expanded]="filtersVisible()"
+        (onClick)="toggleFilters()"
+      />
+    </div>
 
-  <p-table
-    #dt
-    [value]="tableData()"
-    [paginator]="true"
-    [rows]="25"
-    [rowHover]="true"
-    [loading]="isLoading()"
-    [rowsPerPageOptions]="[5, 10, 25, 50]"
-    [showCurrentPageReport]="true"
-    [filterDelay]="0"
-    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
-    [globalFilterFields]="[
-      'symbol',
-      'baseCoin.name',
-      'baseCoin.symbol',
-      'quoteCoin.name',
-      'quoteCoin.symbol',
-      'orderId',
-      'clientOrderId',
-      'feeCurrency',
-      'exchange.name',
-      'exchange.slug'
-    ]"
-    [scrollable]="true"
-    dataKey="id"
-    stripedRows
-    [sortField]="'transactTime'"
-    [sortOrder]="-1"
-  >
-    <ng-template pTemplate="header">
-      <tr>
-        <th style="min-width: 120px">Trading Pair</th>
-        <th style="min-width: 120px">Type</th>
-        <th pSortableColumn="transactTime" style="min-width: 160px">Date <p-sortIcon field="transactTime" /></th>
-        <th pSortableColumn="price" style="min-width: 120px" class="text-right">Price</th>
-        <th pSortableColumn="quantity" style="min-width: 120px" class="text-right">Quantity</th>
-        <th pSortableColumn="fee" style="min-width: 120px" class="text-right">Fees</th>
-        <th pSortableColumn="cost" style="min-width: 120px" class="text-right">
-          Total Value <p-sortIcon field="cost" />
-        </th>
-        <th style="min-width: 120px">Exchange</th>
-        <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status" /></th>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="loadingbody">
-      <tr>
-        <td>
-          <div class="flex items-center gap-3">
-            <div class="flex -space-x-2">
-              <p-skeleton shape="circle" size="2.5rem" />
-              <p-skeleton shape="circle" size="2.5rem" />
+    <!-- Filters: always visible on md+, toggled on mobile -->
+    <form
+      [formGroup]="filterForm"
+      class="my-5 gap-3 px-5 md:px-0"
+      [ngClass]="{
+        'hidden md:grid': !filtersVisible(),
+        grid: filtersVisible()
+      }"
+      style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
+    >
+      <div>
+        <div class="p-inputgroup w-full">
+          <p-iconfield iconPosition="left" class="ml-auto">
+            <p-inputicon>
+              <i class="pi pi-search"></i>
+            </p-inputicon>
+            <input
+              #searchInput
+              pInputText
+              type="text"
+              (input)="applyGlobalFilter($event)"
+              placeholder="Search Transactions..."
+              fluid
+            />
+            @if (searchText().length > 0) {
+              <p-inputicon>
+                <i
+                  class="pi pi-times"
+                  role="button"
+                  aria-label="Clear search"
+                  (click)="clearSearchFilter(); searchInput.value = ''"
+                ></i>
+              </p-inputicon>
+            }
+          </p-iconfield>
+        </div>
+      </div>
+      <div>
+        <p-datepicker
+          formControlName="dateRange"
+          selectionMode="range"
+          [readonlyInput]="true"
+          placeholder="Date Range"
+          dateFormat="M dd, yy"
+          [showIcon]="true"
+          [showClear]="true"
+          fluid
+        />
+      </div>
+      <div>
+        <p-multiSelect
+          [options]="statusOptions"
+          placeholder="Filter by status"
+          formControlName="statuses"
+          optionLabel="label"
+          selectedItemsLabel="{0} statuses selected"
+          (onChange)="applyFilters()"
+          [showClear]="true"
+          display="chip"
+          [filter]="false"
+          [showToggleAll]="false"
+          fluid
+        />
+      </div>
+      <div>
+        <p-multiSelect
+          [options]="sideOptions"
+          placeholder="Filter by side"
+          formControlName="sides"
+          optionLabel="label"
+          selectedItemsLabel="{0} sides selected"
+          (onChange)="applyFilters()"
+          [showClear]="true"
+          display="chip"
+          [filter]="false"
+          [showToggleAll]="false"
+          fluid
+        />
+      </div>
+      <div>
+        <p-multiSelect
+          [options]="typeOptions"
+          placeholder="Filter by type"
+          formControlName="types"
+          optionLabel="label"
+          selectedItemsLabel="{0} types selected"
+          (onChange)="applyFilters()"
+          [showClear]="true"
+          display="chip"
+          [filter]="false"
+          [showToggleAll]="false"
+          fluid
+        />
+      </div>
+    </form>
+
+    <p-table
+      #dt
+      [value]="tableData()"
+      [paginator]="true"
+      [rows]="25"
+      [rowHover]="true"
+      [loading]="isLoading()"
+      [rowsPerPageOptions]="[5, 10, 25, 50]"
+      [showCurrentPageReport]="true"
+      [filterDelay]="0"
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+      [globalFilterFields]="[
+        'symbol',
+        'baseCoin.name',
+        'baseCoin.symbol',
+        'quoteCoin.name',
+        'quoteCoin.symbol',
+        'orderId',
+        'clientOrderId',
+        'feeCurrency',
+        'exchange.name',
+        'exchange.slug'
+      ]"
+      [scrollable]="true"
+      dataKey="id"
+      stripedRows
+      [sortField]="'transactTime'"
+      [sortOrder]="-1"
+    >
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="min-width: 120px">Trading Pair</th>
+          <th style="min-width: 120px">Type</th>
+          <th pSortableColumn="transactTime" style="min-width: 160px">Date <p-sortIcon field="transactTime" /></th>
+          <th pSortableColumn="price" style="min-width: 120px" class="text-right">Price</th>
+          <th pSortableColumn="quantity" style="min-width: 120px" class="text-right">Quantity</th>
+          <th pSortableColumn="fee" style="min-width: 120px" class="text-right">Fees</th>
+          <th pSortableColumn="cost" style="min-width: 120px" class="text-right">
+            Total Value <p-sortIcon field="cost" />
+          </th>
+          <th style="min-width: 120px">Exchange</th>
+          <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status" /></th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="loadingbody">
+        <tr>
+          <td>
+            <div class="flex items-center gap-3">
+              <div class="flex -space-x-2">
+                <p-skeleton shape="circle" size="2.5rem" />
+                <p-skeleton shape="circle" size="2.5rem" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <p-skeleton width="100px" height="1.25rem" />
+                <p-skeleton width="80px" height="1rem" />
+              </div>
             </div>
+          </td>
+          <td>
+            <div class="flex flex-col gap-1">
+              <p-skeleton width="60px" height="2rem" borderRadius="16px" />
+              <p-skeleton width="50px" height="0.875rem" />
+            </div>
+          </td>
+          <td>
             <div class="flex flex-col gap-1">
               <p-skeleton width="100px" height="1.25rem" />
-              <p-skeleton width="80px" height="1rem" />
+              <p-skeleton width="60px" height="1rem" />
             </div>
-          </div>
-        </td>
-        <td>
-          <div class="flex flex-col gap-1">
-            <p-skeleton width="60px" height="2rem" borderRadius="16px" />
-            <p-skeleton width="50px" height="0.875rem" />
-          </div>
-        </td>
-        <td>
-          <div class="flex flex-col gap-1">
-            <p-skeleton width="100px" height="1.25rem" />
-            <p-skeleton width="60px" height="1rem" />
-          </div>
-        </td>
-        <td class="text-right"><p-skeleton width="90px" height="1.25rem" /></td>
-        <td class="text-right"><p-skeleton width="80px" height="1.25rem" /></td>
-        <td class="text-right"><p-skeleton width="80px" height="1.25rem" /></td>
-        <td class="text-right"><p-skeleton width="100px" height="1.25rem" /></td>
-        <td>
-          <div class="flex items-center gap-2">
-            <p-skeleton shape="circle" size="1.5rem" />
-            <p-skeleton width="70px" height="1.25rem" />
-          </div>
-        </td>
-        <td><p-skeleton width="80px" height="2rem" borderRadius="16px" /></td>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="body" let-transaction>
-      <tr>
-        <td>
-          <a
-            [routerLink]="transaction.baseCoin?.slug ? ['/app/coins', transaction.baseCoin.slug] : null"
-            [queryParams]="{ from: 'transactions' }"
-            [class.pointer-events-none]="!transaction.baseCoin?.slug"
-            class="flex items-center gap-3 transition-opacity hover:opacity-80"
-          >
-            <div class="flex -space-x-2">
-              <p-avatar
-                [image]="transaction.baseCoin?.image"
-                shape="circle"
-                size="large"
-                class="border-surface min-w-9 border-2 shadow-sm"
-              />
-              @if (transaction.quoteCoin) {
+          </td>
+          <td class="text-right"><p-skeleton width="90px" height="1.25rem" /></td>
+          <td class="text-right"><p-skeleton width="80px" height="1.25rem" /></td>
+          <td class="text-right"><p-skeleton width="80px" height="1.25rem" /></td>
+          <td class="text-right"><p-skeleton width="100px" height="1.25rem" /></td>
+          <td>
+            <div class="flex items-center gap-2">
+              <p-skeleton shape="circle" size="1.5rem" />
+              <p-skeleton width="70px" height="1.25rem" />
+            </div>
+          </td>
+          <td><p-skeleton width="80px" height="2rem" borderRadius="16px" /></td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-transaction>
+        <tr>
+          <td>
+            <a
+              [routerLink]="transaction.baseCoin?.slug ? ['/app/coins', transaction.baseCoin.slug] : null"
+              [queryParams]="{ from: 'transactions' }"
+              [class.pointer-events-none]="!transaction.baseCoin?.slug"
+              class="flex items-center gap-3 transition-opacity hover:opacity-80"
+            >
+              <div class="flex -space-x-2">
                 <p-avatar
-                  [image]="transaction.quoteCoin.image"
+                  [image]="transaction.baseCoin?.image"
                   shape="circle"
                   size="large"
                   class="border-surface min-w-9 border-2 shadow-sm"
                 />
-              }
+                @if (transaction.quoteCoin) {
+                  <p-avatar
+                    [image]="transaction.quoteCoin.image"
+                    shape="circle"
+                    size="large"
+                    class="border-surface min-w-9 border-2 shadow-sm"
+                  />
+                }
+              </div>
+              <div class="flex flex-col">
+                <span class="text-primary-500 hover:text-primary-600 text-lg font-medium">{{
+                  transaction.symbol
+                }}</span>
+                <span class="text-sm text-gray-500 dark:text-gray-400">{{ transaction.baseCoin?.name }}</span>
+              </div>
+            </a>
+          </td>
+          <td>
+            <div class="flex flex-col items-center gap-0.5">
+              <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+              <span class="text-xs text-neutral-400">{{ formatType(transaction.type) }}</span>
             </div>
-            <div class="flex flex-col">
-              <span class="text-primary-500 hover:text-primary-600 text-lg font-medium">{{ transaction.symbol }}</span>
-              <span class="text-sm text-gray-500 dark:text-gray-400">{{ transaction.baseCoin?.name }}</span>
-            </div>
-          </a>
-        </td>
-        <td>
-          <div class="flex flex-col items-center gap-0.5">
-            <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
-            <span class="text-xs text-neutral-400">{{ formatType(transaction.type) }}</span>
-          </div>
-        </td>
-        <td class="flex flex-col">
-          <span class="text-lg">{{ transaction.transactTime | date: 'mediumDate' }}</span>
-          <span class="text-sm text-neutral-400">{{ transaction.transactTime | date: 'shortTime' }}</span>
-        </td>
-        <td class="text-right">
-          {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.price | number: '1.2-8'
-          }}{{
-            !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
-              ? ' ' + (transaction.quoteCoin.symbol | uppercase)
-              : ''
-          }}
-        </td>
-        <td class="text-right">{{ transaction.quantity | number: '1.2-8' }}</td>
-        <td class="text-right">
-          @if (transaction.fee > 0) {
-            ~{{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.fee | number: '1.2-6'
+          </td>
+          <td class="flex flex-col">
+            <span class="text-lg">{{ transaction.transactTime | date: 'mediumDate' }}</span>
+            <span class="text-sm text-neutral-400">{{ transaction.transactTime | date: 'shortTime' }}</span>
+          </td>
+          <td class="text-right">
+            {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.price | number: '1.2-8'
             }}{{
-              !isUsdQuote(transaction) && (transaction.feeCurrency || transaction.quoteCoin?.symbol)
-                ? ' ' + (transaction.feeCurrency || transaction.quoteCoin?.symbol | uppercase)
+              !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
+                ? ' ' + (transaction.quoteCoin.symbol | uppercase)
                 : ''
             }}
-            @if (getFeePercentage(transaction); as feePercent) {
-              <span class="text-xs text-neutral-400"> ({{ feePercent | number: '1.1-1' }}%)</span>
+          </td>
+          <td class="text-right">{{ transaction.quantity | number: '1.2-8' }}</td>
+          <td class="text-right">
+            @if (transaction.fee > 0) {
+              ~{{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.fee | number: '1.2-6'
+              }}{{
+                !isUsdQuote(transaction) && (transaction.feeCurrency || transaction.quoteCoin?.symbol)
+                  ? ' ' + (transaction.feeCurrency || transaction.quoteCoin?.symbol | uppercase)
+                  : ''
+              }}
+              @if (getFeePercentage(transaction); as feePercent) {
+                <span class="text-xs text-neutral-400"> ({{ feePercent | number: '1.1-1' }}%)</span>
+              }
+            } @else {
+              —
             }
-          } @else {
-            —
-          }
-        </td>
-        <td class="text-right">
-          {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.cost | number: '1.2-8'
-          }}{{
-            !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
-              ? ' ' + (transaction.quoteCoin.symbol | uppercase)
-              : ''
-          }}
-        </td>
-        <td>
-          @if (transaction.exchange) {
-            <div class="flex items-center gap-2">
-              <p-avatar
-                [image]="transaction.exchange.image"
-                shape="circle"
-                size="normal"
-                class="border-surface border shadow-sm"
+          </td>
+          <td class="text-right">
+            {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.cost | number: '1.2-8'
+            }}{{
+              !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
+                ? ' ' + (transaction.quoteCoin.symbol | uppercase)
+                : ''
+            }}
+          </td>
+          <td>
+            @if (transaction.exchange) {
+              <div class="flex items-center gap-2">
+                <p-avatar
+                  [image]="transaction.exchange.image"
+                  shape="circle"
+                  size="normal"
+                  class="border-surface border shadow-sm"
+                />
+                <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
+              </div>
+            } @else {
+              <span class="text-sm text-gray-500 dark:text-gray-400">N/A</span>
+            }
+          </td>
+          <td>
+            <p-tag [value]="transaction.status" [severity]="getStatusSeverity(transaction.status)"></p-tag>
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="emptymessage">
+        <tr>
+          <td colspan="9" class="p-4">
+            @if (!isLoading()) {
+              <app-empty-state
+                icon="arrow-right-arrow-left"
+                title="No matching transactions"
+                message="Try adjusting your filters or search criteria."
+                [outlined]="true"
               />
-              <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
-            </div>
-          } @else {
-            <span class="text-sm text-gray-500 dark:text-gray-400">N/A</span>
-          }
-        </td>
-        <td>
-          <p-tag [value]="transaction.status" [severity]="getStatusSeverity(transaction.status)"></p-tag>
-        </td>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="emptymessage">
-      <tr>
-        <td colspan="9" class="p-4">
-          @if (!isLoading()) {
-            <div class="flex items-center gap-2 text-gray-500">
-              <i class="pi pi-inbox text-xl"></i>
-              <span>No transactions found</span>
-            </div>
-          }
-        </td>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="paginatorleft">
-      <div class="text-gray-500">Total Records: {{ transactions().length }}</div>
-    </ng-template>
-  </p-table>
+            }
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="paginatorleft">
+        @if (transactions().length > 0) {
+          <div class="text-gray-500">Total Records: {{ transactions().length }}</div>
+        }
+      </ng-template>
+    </p-table>
+  } @else {
+    <app-empty-state
+      icon="arrow-right-arrow-left"
+      title="No Transactions Yet"
+      message="Connect your exchanges in the settings to start tracking your trades."
+      actionLabel="Connect Exchange"
+      actionRoute="/app/settings"
+      [actionQueryParams]="{ tab: 'trading' }"
+      actionIcon="pi pi-link"
+      size="large"
+    />
+  }
 </p-card>

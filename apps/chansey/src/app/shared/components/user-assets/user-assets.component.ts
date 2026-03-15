@@ -13,6 +13,8 @@ import { TagModule } from 'primeng/tag';
 
 import { UserAssetsService } from './user-assets.service';
 
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
+
 @Component({
   selector: 'app-user-assets',
   imports: [
@@ -21,6 +23,7 @@ import { UserAssetsService } from './user-assets.service';
     CardModule,
     CurrencyPipe,
     DecimalPipe,
+    EmptyStateComponent,
     PaginatorModule,
     ProgressSpinnerModule,
     RouterModule,

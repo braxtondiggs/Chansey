@@ -2,6 +2,7 @@ export * from './auth-illustrations';
 export * from './auth-messages';
 export * from './auth-page-shell';
 export * from './crypto-table/crypto-table.component';
+export * from './empty-state/empty-state.component';
 export * from './exchange-balance/exchange-balance.component';
 export * from './image-crop/image-crop.component';
 export * from './lazy-image/lazy-image.component';

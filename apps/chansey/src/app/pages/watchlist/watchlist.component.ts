@@ -35,6 +35,8 @@ export class WatchlistComponent {
     showRemoveAction: true,
     searchPlaceholder: 'Search watchlist...',
     emptyMessage: 'Your watchlist is empty. Add coins from the prices page.',
+    emptyActionLink: '/app/prices',
+    emptyActionLabel: 'Browse Coins',
     cardTitle: 'My Watchlist'
   };
 
