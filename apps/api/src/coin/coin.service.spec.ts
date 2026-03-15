@@ -8,6 +8,8 @@ import { Repository } from 'typeorm';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 
+import { CircuitBreakerService } from '../shared';
+
 const originalSetTimeout = global.setTimeout;
 
 const createTestCoin = (overrides: Partial<Coin> & Record<string, unknown> = {}): Coin => {
@@ -69,6 +71,16 @@ describe('CoinService', () => {
             set: jest.fn().mockResolvedValue(undefined),
             del: jest.fn().mockResolvedValue(undefined)
           }
+        },
+        {
+          provide: CircuitBreakerService,
+          useValue: {
+            configure: jest.fn(),
+            isOpen: jest.fn().mockReturnValue(false),
+            checkCircuit: jest.fn(),
+            recordSuccess: jest.fn(),
+            recordFailure: jest.fn()
+          }
         }
       ]
     }).compile();
@@ -129,37 +141,6 @@ describe('CoinService', () => {
   });
 
   // ===========================================================================
-  // generateSlug()
-  // ===========================================================================
-  describe('generateSlug()', () => {
-    it.each([
-      ['Bitcoin', 'bitcoin'],
-      ['Bitcoin (BTC)', 'bitcoin-btc'],
-      ['Wrapped Bitcoin', 'wrapped-bitcoin'],
-      ['USD   Coin!!!', 'usd-coin']
-    ])('converts "%s" → "%s"', (input, expected) => {
-      expect((service as any).generateSlug(input)).toBe(expected);
-    });
-
-    it('truncates slugs longer than 100 characters', () => {
-      const longName =
-        'A Very Long Cryptocurrency Name That Should Be Truncated Properly And Keeps Going Until It Exceeds The Limit';
-      const result = (service as any).generateSlug(longName);
-      expect(result.length).toBeLessThanOrEqual(100);
-      expect(result).toMatch(/^[a-z0-9-]+$/);
-    });
-
-    it('handles empty and null input without throwing', () => {
-      expect((service as any).generateSlug('')).toBe('');
-      expect((service as any).generateSlug(null)).toBe('');
-    });
-
-    it('strips unicode characters, keeping only alphanumeric and hyphens', () => {
-      expect((service as any).generateSlug('Ethereum 以太坊')).toMatch(/^[a-z0-9-]+$/);
-    });
-  });
-
-  // ===========================================================================
   // fetchCoinDetail()
   // ===========================================================================
   describe('fetchCoinDetail()', () => {
@@ -217,7 +198,7 @@ describe('CoinService', () => {
       expect(geckoMock.coinIdMarketChart).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'bitcoin', vs_currency: 'usd', days: 7 })
       );
-      expect(cacheManager.set).toHaveBeenCalledWith('coingecko:chart:bitcoin:7d', result, 300);
+      expect(cacheManager.set).toHaveBeenCalledWith('coingecko:chart:bitcoin:7d', result, 900);
     });
 
     it('returns cached chart data on cache hit', async () => {

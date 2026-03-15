@@ -13,15 +13,15 @@ interface ExternalLink {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="py-4">
-      <h3 class="mb-4 text-xl font-semibold">External Links</h3>
+    <div>
+      <h3 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">External Links</h3>
       <div class="flex flex-col gap-1">
         @for (link of allLinks(); track link.url) {
           <a
             [href]="link.url"
             target="_blank"
             rel="noopener noreferrer"
-            class="border-surface text-primary hover:text-primary-emphasis group flex items-center justify-between border-b py-2.5 text-sm no-underline transition-colors last:border-b-0"
+            class="group flex items-center justify-between border-b border-surface py-2.5 text-sm text-primary no-underline transition-colors last:border-b-0 hover:text-primary-emphasis"
           >
             <div class="flex min-w-0 items-center gap-2.5">
               <i [class]="'pi ' + link.icon" class="text-color-secondary shrink-0 text-base"></i>

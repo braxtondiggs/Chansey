@@ -22,7 +22,7 @@
   <!-- Chart Loading State -->
   @if (isLoading()) {
     <div
-      class="chart-loading-container flex min-h-[300px] flex-col items-center justify-center p-8 text-center"
+      class="chart-loading-container flex min-h-75 flex-col items-center justify-center p-8 text-center"
       data-testid="chart-loading"
     >
       <div class="loading-spinner">
@@ -35,10 +35,10 @@
   <!-- Chart No Data State -->
   @else if (!chartData() || !chartData()!.prices || chartData()!.prices.length === 0) {
     <div
-      class="no-data-container flex min-h-[300px] flex-col items-center justify-center p-8 text-center"
+      class="no-data-container flex min-h-75 flex-col items-center justify-center p-8 text-center"
       data-testid="no-data-message"
     >
-      <i class="pi pi-chart-line text-5xl text-[color:var(--text-color-secondary)]"></i>
+      <i class="pi pi-chart-line text-5xl text-(--text-color-secondary)"></i>
       <p class="mt-3">No data available for this period</p>
     </div>
   }
@@ -46,7 +46,7 @@
   <!-- Chart Display -->
   @else {
     <div
-      class="mx-auto min-h-60 w-full max-w-[1200px] py-4 md:min-h-[clamp(300px,62vw,880px)]"
+      class="mx-auto min-h-60 w-full max-w-300 py-4 md:min-h-[clamp(250px,40vw,500px)]"
       role="img"
       [attr.aria-label]="'Price chart for ' + selectedPeriod() + ' period'"
     >

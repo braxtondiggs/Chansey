@@ -45,8 +45,7 @@ import { CoinDetailQueries } from '../services/coin-detail.queries';
     CounterDirective
   ],
   providers: [CoinDetailQueries, MessageService],
-  templateUrl: './coin-detail.component.html',
-  styleUrls: ['./coin-detail.component.scss']
+  templateUrl: './coin-detail.component.html'
 })
 export class CoinDetailComponent {
   private router = inject(Router);
@@ -116,15 +115,16 @@ export class CoinDetailComponent {
 
   formattedPriceChange = computed(() => {
     const detail = this.coinDetail();
-    if (!detail?.priceChange24hPercent) return '0.00%';
-    const value = Math.abs(detail.priceChange24hPercent);
-    const sign = detail.priceChange24hPercent >= 0 ? '+' : '-';
+    const pct = Number(detail?.priceChange24hPercent);
+    if (isNaN(pct)) return '0.00%';
+    const value = Math.abs(pct);
+    const sign = pct >= 0 ? '+' : '-';
     return `${sign}${value.toFixed(2)}%`;
   });
 
   athChangeText = computed(() => {
-    const pct = this.coinDetail()?.athChangePercent;
-    if (pct == null) return '';
+    const pct = Number(this.coinDetail()?.athChangePercent);
+    if (isNaN(pct)) return '';
     return `${pct.toFixed(1)}%`;
   });
 

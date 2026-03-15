@@ -1,43 +1,50 @@
-<div class="mx-auto max-w-[1200px] px-2 py-4 md:px-4 md:py-8">
+<div class="mx-auto max-w-300 px-2 py-4 md:px-4 md:py-8">
   <p-toast />
 
   <!-- Loading State -->
   @if (isLoading()) {
-    <div class="loading-container" data-testid="loading-skeleton">
-      <!-- Header skeleton (matches .coin-header layout) -->
+    <div data-testid="loading-skeleton">
+      <!-- Header skeleton -->
       <p-card>
-        <div class="flex items-center">
-          <p-skeleton shape="circle" size="5rem"></p-skeleton>
-          <div class="ml-4 flex-1">
-            <p-skeleton width="200px" height="2rem" class="mb-2"></p-skeleton>
-            <p-skeleton width="150px" height="1.5rem" class="mb-2"></p-skeleton>
-            <p-skeleton width="250px" height="0.875rem"></p-skeleton>
+        <div class="flex items-center gap-4 p-4 md:gap-6 md:p-0">
+          <p-skeleton shape="circle" size="3.75rem" class="shrink-0 md:size-20!"></p-skeleton>
+          <div class="min-w-0 flex-1">
+            <!-- Name + symbol -->
+            <p-skeleton width="220px" height="2rem" class="mb-2"></p-skeleton>
+            <!-- Price + change -->
+            <div class="flex items-baseline gap-3">
+              <p-skeleton width="160px" height="1.75rem"></p-skeleton>
+              <p-skeleton width="70px" height="1.25rem"></p-skeleton>
+            </div>
+            <!-- Range & ATH subtitle -->
+            <div class="mt-1 flex gap-6">
+              <p-skeleton width="200px" height="0.875rem"></p-skeleton>
+              <p-skeleton width="180px" height="0.875rem"></p-skeleton>
+            </div>
           </div>
         </div>
       </p-card>
 
-      <!-- Chart skeleton (matches chart section) -->
-      <div class="section">
-        <p-skeleton width="120px" height="1.5rem" class="mb-3"></p-skeleton>
+      <!-- Chart skeleton -->
+      <div class="mt-6 md:mt-8">
+        <p-skeleton width="120px" height="1.75rem" class="mb-2 md:mb-4"></p-skeleton>
         <p-card>
-          <div class="chart-skeleton">
-            <div class="mb-4 flex gap-2">
-              <p-skeleton width="3rem" height="2rem"></p-skeleton>
-              <p-skeleton width="3rem" height="2rem"></p-skeleton>
-              <p-skeleton width="3rem" height="2rem"></p-skeleton>
-              <p-skeleton width="3rem" height="2rem"></p-skeleton>
-            </div>
-            <p-skeleton width="100%" height="300px"></p-skeleton>
+          <div class="mb-4 flex gap-2">
+            <p-skeleton width="3rem" height="2rem" borderRadius="1rem"></p-skeleton>
+            <p-skeleton width="3rem" height="2rem" borderRadius="1rem"></p-skeleton>
+            <p-skeleton width="3rem" height="2rem" borderRadius="1rem"></p-skeleton>
+            <p-skeleton width="3rem" height="2rem" borderRadius="1rem"></p-skeleton>
           </div>
+          <p-skeleton width="100%" height="300px"></p-skeleton>
         </p-card>
       </div>
 
-      <!-- Market Stats skeleton (matches 3-column grid) -->
-      <div class="section">
-        <p-skeleton width="180px" height="1.5rem" class="mb-3"></p-skeleton>
+      <!-- Market Stats skeleton -->
+      <div class="mt-6 md:mt-8">
+        <p-skeleton width="180px" height="1.75rem" class="mb-2 md:mb-4"></p-skeleton>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           @for (i of [1, 2, 3]; track i) {
-            <div class="stat-skeleton-card rounded-lg p-6">
+            <div class="rounded-lg border border-surface bg-surface-0 p-6 dark:bg-surface-900">
               <p-skeleton width="100px" height="0.875rem" class="mb-2"></p-skeleton>
               <p-skeleton width="140px" height="1.5rem"></p-skeleton>
             </div>
@@ -46,8 +53,8 @@
       </div>
 
       <!-- About skeleton -->
-      <div class="section">
-        <p-skeleton width="160px" height="1.5rem" class="mb-3"></p-skeleton>
+      <div class="mt-6 md:mt-8">
+        <p-skeleton width="160px" height="1.75rem" class="mb-2 md:mb-4"></p-skeleton>
         <p-card>
           <p-skeleton width="100%" height="0.875rem" class="mb-2"></p-skeleton>
           <p-skeleton width="100%" height="0.875rem" class="mb-2"></p-skeleton>
@@ -64,9 +71,9 @@
         <div class="flex flex-col items-center justify-center px-8 py-12 text-center">
           <!-- T033: Different icons/messages for 404 vs other errors -->
           @if (is404()) {
-            <i class="pi pi-search text-5xl text-[color:var(--text-color-secondary)]"></i>
+            <i class="pi pi-search text-5xl text-(--text-color-secondary)"></i>
             <h3 class="mt-3 text-2xl">Coin Not Found</h3>
-            <p class="text-color-secondary mt-2 max-w-[500px]">
+            <p class="text-color-secondary mt-2 max-w-125">
               The coin "{{ slug() }}" doesn't exist or has been removed.
             </p>
             <div class="mt-4 flex gap-3">
@@ -79,9 +86,9 @@
               <p-button label="Browse All Coins" icon="pi pi-list" (click)="goToPrices()"></p-button>
             </div>
           } @else {
-            <i class="pi pi-exclamation-circle text-5xl text-[color:var(--red-500)]"></i>
+            <i class="pi pi-exclamation-circle text-5xl text-(--red-500)"></i>
             <h3 class="mt-3 text-2xl">Failed to load coin details</h3>
-            <p class="text-color-secondary mt-2 max-w-[500px]">{{ error() }}</p>
+            <p class="text-color-secondary mt-2 max-w-125">{{ error() }}</p>
             <p-button label="Retry" icon="pi pi-refresh" (click)="retry()" class="mt-4"></p-button>
           }
         </div>
@@ -93,19 +100,19 @@
   @else if (coinDetail(); as detail) {
     <div class="coin-content" data-testid="coin-content">
       <!-- Header Section -->
-      <p-card class="coin-header-card">
+      <p-card>
         <div class="coin-header flex items-center gap-4 p-4 md:gap-6 md:p-0">
           <img
             [src]="detail.imageUrl"
             [alt]="detail.name + ' logo'"
-            class="coin-logo h-15 w-15 rounded-full object-cover md:h-20 md:w-20"
+            class="h-15 w-15 rounded-full object-cover shadow-md md:h-20 md:w-20"
             data-testid="coin-logo"
           />
           <div class="coin-info flex-1">
             <div class="coin-name-row flex items-center gap-2">
-              <h1 class="coin-name m-0 text-2xl font-bold md:text-3xl" data-testid="coin-name">
+              <h1 class="m-0 text-2xl font-bold md:text-3xl" data-testid="coin-name">
                 {{ detail.name }}
-                <span class="coin-symbol ml-2 text-lg font-medium uppercase md:text-2xl" data-testid="coin-symbol"
+                <span class="ml-2 text-lg font-medium text-muted-color uppercase md:text-2xl" data-testid="coin-symbol"
                   >({{ detail.symbol }})</span
                 >
               </h1>
@@ -129,7 +136,7 @@
               aria-atomic="true"
             >
               <span
-                class="current-price text-2xl font-bold md:text-3xl"
+                class="text-2xl font-bold md:text-3xl"
                 data-testid="current-price"
                 [appCounter]="+detail.currentPrice"
               ></span>
@@ -145,7 +152,7 @@
               <!-- T032: Visual refresh indicator -->
               @if (priceQuery.isFetching()) {
                 <i
-                  class="pi pi-sync pi-spin refresh-indicator text-base opacity-70 md:ml-3"
+                  class="pi pi-sync pi-spin text-base text-primary opacity-70 md:ml-3"
                   title="Updating price..."
                   aria-label="Updating price data"
                 ></i>
@@ -153,7 +160,7 @@
             </div>
             <!-- Price range & ATH subtitle -->
             <div
-              class="price-secondary mt-1 flex flex-col items-start gap-1 text-xs md:flex-row md:items-center md:gap-6 md:text-sm"
+              class="mt-1 flex flex-col items-start gap-1 text-xs text-muted-color md:flex-row md:items-center md:gap-6 md:text-sm"
             >
               @if (periodHigh() !== null && periodLow() !== null) {
                 <span class="range-label">
@@ -187,8 +194,8 @@
       </p-card>
 
       <!-- Price Chart Section -->
-      <div class="section">
-        <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">Price Chart</h2>
+      <div class="mt-6 md:mt-8">
+        <h2 class="mb-2 text-xl font-semibold md:mb-4 md:text-2xl">Price Chart</h2>
         <p-card [pt]="sectionCardPt">
           <app-price-chart
             [chartData]="historyQuery.data() ?? null"
@@ -200,15 +207,15 @@
       </div>
 
       <!-- Market Stats Section -->
-      <div class="section">
-        <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">Market Statistics</h2>
+      <div class="mt-6 md:mt-8">
+        <h2 class="mb-2 text-xl font-semibold md:mb-4 md:text-2xl">Market Statistics</h2>
         <app-market-stats [coinDetail]="coinDetail()"></app-market-stats>
       </div>
 
       <!-- User Holdings Section (Authenticated Only) -->
       @if (isAuthenticated()) {
-        <div class="section">
-          <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">
+        <div class="mt-6 md:mt-8">
+          <h2 class="mb-2 text-xl font-semibold md:mb-4 md:text-2xl">
             Your {{ detail.symbol.toUpperCase() }} Holdings
           </h2>
           @if (holdings()) {
@@ -217,13 +224,13 @@
             <div
               class="flex flex-col items-center justify-center rounded-lg bg-gray-50/30 px-4 py-8 dark:bg-gray-800/20"
             >
-              <div class="bg-primary/10 mb-4 rounded-full p-4">
-                <i class="text-primary pi pi-wallet text-4xl!"></i>
+              <div class="mb-4 rounded-full bg-primary/10 p-4">
+                <i class="pi pi-wallet text-4xl! text-primary"></i>
               </div>
               <h3 class="mb-2 text-lg font-medium">
                 No <span class="uppercase">{{ detail.symbol }}</span> holdings
               </h3>
-              <p class="text-surface-500 max-w-md text-center">
+              <p class="max-w-md text-center text-surface-500">
                 No {{ detail.name }} holdings found across your connected exchanges.
               </p>
             </div>
@@ -232,20 +239,20 @@
       }
 
       <!-- Description Section -->
-      <div class="section">
-        <h2 class="section-title my-2 text-xl font-semibold md:mb-4 md:text-2xl">About {{ detail.name }}</h2>
+      <div class="mt-6 md:mt-8">
+        <h2 class="mb-2 text-xl font-semibold md:mb-4 md:text-2xl">About {{ detail.name }}</h2>
         <p-card [pt]="sectionCardPt">
           <!-- T034: Handle missing description -->
           @if (detail.description) {
             <p
-              class="description-text text-base leading-[1.8]"
+              class="text-base leading-[1.8]"
               [class.line-clamp-3]="!descriptionExpanded()"
               data-testid="coin-description"
             >
               {{ detail.description }}
             </p>
             <button
-              class="read-more-btn cursor-pointer border-none bg-transparent px-0 pt-2 pl-4 text-sm font-semibold hover:underline md:pl-0"
+              class="cursor-pointer border-none bg-transparent px-0 pt-2 pl-4 text-sm font-semibold text-primary hover:underline md:pl-0"
               (click)="toggleDescription()"
               data-testid="read-more-btn"
               [attr.aria-label]="descriptionExpanded() ? 'Show less description' : 'Read more description'"
@@ -254,7 +261,7 @@
             </button>
           } @else {
             <p
-              class="description-text text-color-secondary text-base leading-[1.8]"
+              class="text-base leading-[1.8] text-muted-color"
               style="font-style: italic"
               data-testid="coin-description"
             >
@@ -266,7 +273,7 @@
 
       <!-- External Links Section -->
       @if (detail.links) {
-        <div class="section">
+        <div class="mt-6 md:mt-8">
           <app-external-links [links]="detail.links"></app-external-links>
         </div>
       }
