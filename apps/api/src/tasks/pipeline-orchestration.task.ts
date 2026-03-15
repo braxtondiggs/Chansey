@@ -14,14 +14,11 @@ import { Cron } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
-import {
-  DEFAULT_RISK_LEVEL,
-  PipelineOrchestrationJobData,
-  STAGGER_INTERVAL_MS
-} from './dto/pipeline-orchestration.dto';
+import { PipelineOrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
 import { BacktestService } from '../order/backtest/backtest.service';
+import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()

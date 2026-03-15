@@ -18,6 +18,12 @@ export interface CoinResolverOptions {
    * instead of silently truncating. Use this when user confirmation is required.
    */
   requireConfirmation?: boolean;
+
+  /**
+   * Optional symbol filter for custom coin selection (e.g., level 6 users).
+   * When provided, only coins whose symbols match this list will be included.
+   */
+  symbolFilter?: string[];
 }
 
 @Injectable()
@@ -116,7 +122,7 @@ export class CoinResolverService {
     }
 
     // Build final resolved list preserving original order
-    const resolved: Coin[] = [];
+    let resolved: Coin[] = [];
     const seenCoinIds = new Set<string>();
     for (const symbol of normalizedSymbols) {
       // Try direct match first
@@ -132,6 +138,13 @@ export class CoinResolverService {
         resolved.push(coin);
         seenCoinIds.add(coin.id);
       }
+    }
+
+    // Apply symbol filter (e.g., for custom coin selection / level 6 users)
+    if (options.symbolFilter?.length) {
+      const filterSet = new Set(options.symbolFilter.map((s) => s.toUpperCase()));
+      const filtered = resolved.filter((c) => filterSet.has(c.symbol.toUpperCase()));
+      resolved = filtered;
     }
 
     // Compute unresolved instruments

@@ -6,7 +6,6 @@ import { Repository } from 'typeorm';
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import {
   BACKTEST_STANDARD_CAPITAL,
-  DEFAULT_RISK_LEVEL,
   getRiskConfig,
   MIN_DATASET_INTEGRITY_SCORE,
   RISK_CONFIG_MATRIX
@@ -18,6 +17,8 @@ import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backte
 import { BacktestService } from '../order/backtest/backtest.service';
 import { MarketDataSet, MarketDataTimeframe } from '../order/backtest/market-data-set.entity';
 import { SlippageModelType } from '../order/backtest/shared/slippage';
+import { PortfolioService } from '../portfolio/portfolio.service';
+import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
 import { Risk } from '../risk/risk.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
@@ -111,6 +112,12 @@ describe('BacktestOrchestrationService', () => {
               id: 'backtest-1',
               configSnapshot: {}
             })
+          }
+        },
+        {
+          provide: PortfolioService,
+          useValue: {
+            getManualPortfolioCoinSymbols: jest.fn().mockResolvedValue([])
           }
         }
       ]

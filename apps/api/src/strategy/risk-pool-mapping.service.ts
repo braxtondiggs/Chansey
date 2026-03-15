@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import { StrategyConfig } from './entities/strategy-config.entity';
 
+import { CUSTOM_RISK_LEVEL } from '../risk/risk.constants';
 import { Risk } from '../risk/risk.entity';
 import { User } from '../users/users.entity';
 
@@ -42,8 +43,8 @@ export class RiskPoolMappingService {
       return null;
     }
 
-    // Custom risk (level 6) uses effective calculation risk level
-    if (user.coinRisk.level === 6) {
+    // Custom risk uses effective calculation risk level
+    if (user.coinRisk.level === CUSTOM_RISK_LEVEL) {
       return await this.getRiskIdByLevel(user.effectiveCalculationRiskLevel);
     }
 

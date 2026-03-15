@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository, Not } from 'typeorm';
+import { Repository } from 'typeorm';
 
 import { CreateRiskDto, UpdateRiskDto } from './dto';
 import { Risk } from './risk.entity';
@@ -15,7 +15,6 @@ export class RiskService {
 
   async findAll(): Promise<Risk[]> {
     return this.riskRepository.find({
-      where: { level: Not(6) }, // TODO: Exclude level 6 from the results
       order: { level: 'ASC' }
     });
   }

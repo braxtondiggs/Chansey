@@ -7,6 +7,7 @@
 
 import { MarketDataTimeframe } from '../../order/backtest/market-data-set.entity';
 import { SlippageModelType } from '../../order/backtest/shared/slippage';
+import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 
 /**
  * Risk-level based backtest configuration
@@ -76,9 +77,6 @@ export const RISK_CONFIG_MATRIX: Record<number, RiskLevelConfig> = {
   }
 };
 
-/** Default risk level when user's risk level is not set */
-export const DEFAULT_RISK_LEVEL = 3;
-
 /** Standard capital for all orchestrated backtests (USD) */
 export const BACKTEST_STANDARD_CAPITAL = 10000;
 
@@ -139,6 +137,8 @@ export interface OrchestratedConfigSnapshot {
   orchestratedAt: string;
   /** User's risk level at time of orchestration */
   riskLevel: number;
+  /** Optional coin symbol filter for custom risk level users */
+  coinSymbolFilter?: string[];
   /** Allow additional fields from base configSnapshot */
   [key: string]: any;
 }

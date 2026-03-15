@@ -2,6 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -343,6 +345,19 @@ export class CreateBacktestDto {
     required: false
   })
   replaySpeed?: ReplaySpeed = ReplaySpeed.FAST_5X;
+
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Optional symbol filter for custom coin selection (level 6). Only these symbols will be traded.',
+    required: false,
+    type: [String],
+    example: ['BTC', 'ETH', 'SOL']
+  })
+  coinSymbolFilter?: string[];
 
   @IsOptional()
   @ValidateNested()

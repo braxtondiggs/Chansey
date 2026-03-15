@@ -17,6 +17,8 @@ import { buildParameterSpace } from '../../optimization/utils/parameter-space-bu
 import { BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
+import { PortfolioService } from '../../portfolio/portfolio.service';
+import { CUSTOM_RISK_LEVEL } from '../../risk/risk.constants';
 import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
@@ -72,7 +74,9 @@ export class PipelineOrchestratorService {
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
-    private readonly exchangeSelectionService: ExchangeSelectionService
+    private readonly exchangeSelectionService: ExchangeSelectionService,
+    @Inject(forwardRef(() => PortfolioService))
+    private readonly portfolioService: PortfolioService
   ) {}
 
   /**
@@ -1077,6 +1081,14 @@ export class PipelineOrchestratorService {
     return user.effectiveCalculationRiskLevel;
   }
 
+  private async resolveCoinSymbolFilter(pipeline: Pipeline): Promise<string[] | undefined> {
+    const user = pipeline.user as User;
+    if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) {
+      return this.portfolioService.getManualPortfolioCoinSymbols(user);
+    }
+    return undefined;
+  }
+
   private async executeHistoricalStage(pipeline: Pipeline): Promise<void> {
     const config = pipeline.stageConfig.historical;
     const marketDataSetId = config.marketDataSetId ?? (await this.backtestService.getDefaultDatasetId());
@@ -1087,6 +1099,8 @@ export class PipelineOrchestratorService {
     // Extract futures config from strategy config
     const marketType = pipeline.strategyConfig.marketType ?? 'spot';
     const leverage = pipeline.strategyConfig.defaultLeverage ?? 1;
+
+    const coinSymbolFilter = await this.resolveCoinSymbolFilter(pipeline);
 
     // Create historical backtest (createBacktest auto-queues execution)
     const backtest = await this.backtestService.createBacktest(pipeline.user as User, {
@@ -1099,7 +1113,8 @@ export class PipelineOrchestratorService {
       initialCapital: config.initialCapital,
       tradingFee: config.tradingFee ?? 0.001,
       strategyParams: pipeline.optimizedParameters as Record<string, any>,
-      riskLevel: this.getUserRiskLevel(pipeline)
+      riskLevel: this.getUserRiskLevel(pipeline),
+      ...(coinSymbolFilter?.length && { coinSymbolFilter })
     });
 
     // If strategy uses futures, update backtest with marketType and leverage
@@ -1126,6 +1141,8 @@ export class PipelineOrchestratorService {
     const marketType = pipeline.strategyConfig.marketType ?? 'spot';
     const leverage = pipeline.strategyConfig.defaultLeverage ?? 1;
 
+    const coinSymbolFilter = await this.resolveCoinSymbolFilter(pipeline);
+
     // Create live replay backtest (createBacktest auto-queues execution)
     const backtest = await this.backtestService.createBacktest(pipeline.user as User, {
       name: `Pipeline ${pipeline.name} - Live Replay`,
@@ -1137,7 +1154,8 @@ export class PipelineOrchestratorService {
       initialCapital: config.initialCapital,
       tradingFee: config.tradingFee ?? 0.001,
       strategyParams: pipeline.optimizedParameters as Record<string, any>,
-      riskLevel: this.getUserRiskLevel(pipeline)
+      riskLevel: this.getUserRiskLevel(pipeline),
+      ...(coinSymbolFilter?.length && { coinSymbolFilter })
     });
 
     // If strategy uses futures, update backtest with marketType and leverage

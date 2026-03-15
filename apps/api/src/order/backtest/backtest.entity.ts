@@ -23,6 +23,11 @@ import { Algorithm } from '../../algorithm/algorithm.entity';
 import { Coin } from '../../coin/coin.entity';
 import { User } from '../../users/users.entity';
 
+export interface BacktestConfigSnapshot {
+  coinSymbolFilter?: string[];
+  [key: string]: any;
+}
+
 export enum BacktestStatus {
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
@@ -154,7 +159,7 @@ export class Backtest {
       'Snapshot of configuration parameters (algorithm version, dataset, execution window). May include system-managed fields added during orchestration or recovery.',
     required: false
   })
-  configSnapshot?: Record<string, any>;
+  configSnapshot?: BacktestConfigSnapshot;
 
   @IsString()
   @IsOptional()

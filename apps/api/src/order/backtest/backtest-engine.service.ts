@@ -87,6 +87,7 @@ import { RegimeGateService } from '../../market-regime/regime-gate.service';
 import { VolatilityCalculator } from '../../market-regime/volatility.calculator';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
+import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 import { toErrorInfo } from '../../shared/error.util';
 import { ExitConfig } from '../interfaces/exit-config.interface';
 import {
@@ -477,7 +478,7 @@ export class BacktestEngine {
     coins: Coin[]
   ): { enableRegimeScaledSizing: boolean; riskLevel: number; regimeGateEnabled: boolean; btcCoin: Coin | undefined } {
     const enableRegimeScaledSizing = options.enableRegimeScaledSizing !== false;
-    const riskLevel = options.riskLevel ?? 3;
+    const riskLevel = options.riskLevel ?? DEFAULT_RISK_LEVEL;
     const regimeGateEnabled = options.enableRegimeGate ?? riskLevel <= 2;
     const btcCoin =
       regimeGateEnabled || enableRegimeScaledSizing ? coins.find((c) => c.symbol?.toUpperCase() === 'BTC') : undefined;

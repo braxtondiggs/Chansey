@@ -30,6 +30,7 @@ import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.s
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { CompositeRegimeService } from '../../market-regime/composite-regime.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 import { toErrorInfo } from '../../shared/error.util';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
@@ -250,7 +251,7 @@ export class PaperTradingEngineService {
         filteredSignals,
         {
           compositeRegime,
-          riskLevel: session.riskLevel ?? 3,
+          riskLevel: session.riskLevel ?? DEFAULT_RISK_LEVEL,
           regimeGateEnabled: true,
           regimeScaledSizingEnabled: true
         },
@@ -1001,7 +1002,7 @@ export class PaperTradingEngineService {
   }
 
   private getSessionAllocationLimits(session: PaperTradingSession) {
-    return getAllocationLimits(PipelineStage.PAPER_TRADE, session.riskLevel ?? 3);
+    return getAllocationLimits(PipelineStage.PAPER_TRADE, session.riskLevel ?? DEFAULT_RISK_LEVEL);
   }
 
   private getOrCreateThrottleState(sessionId: string): ThrottleState {
