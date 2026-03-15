@@ -18,6 +18,7 @@ import { BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
 import { PortfolioService } from '../../portfolio/portfolio.service';
+import { CUSTOM_RISK_LEVEL } from '../../risk/risk.constants';
 import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
@@ -1082,7 +1083,7 @@ export class PipelineOrchestratorService {
 
   private async resolveCoinSymbolFilter(pipeline: Pipeline): Promise<string[] | undefined> {
     const user = pipeline.user as User;
-    if (user.coinRisk?.level === 6) {
+    if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) {
       return this.portfolioService.getManualPortfolioCoinSymbols(user);
     }
     return undefined;

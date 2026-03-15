@@ -14,6 +14,7 @@ import {
   PaperTradingStageConfig,
   PipelineStageConfig
 } from '../../pipeline/interfaces';
+import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 
 /**
  * Risk-based optimization configuration
@@ -98,9 +99,6 @@ export const STOP_CONDITIONS_CONFIG: Record<number, RiskStopConditions> = {
   4: { maxDrawdown: 0.3, targetReturn: 0.75 },
   5: { maxDrawdown: 0.4, targetReturn: 1.0 } // Aggressive - wide stops
 };
-
-/** Default risk level when user's risk level is not set */
-export const DEFAULT_RISK_LEVEL = 3;
 
 /** Standard capital for all orchestrated pipelines (USD) */
 export const PIPELINE_STANDARD_CAPITAL = 10000;

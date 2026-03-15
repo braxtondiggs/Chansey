@@ -6,7 +6,6 @@ import { Repository } from 'typeorm';
 import { StrategyStatus } from '@chansey/api-interfaces';
 
 import {
-  DEFAULT_RISK_LEVEL,
   PIPELINE_STANDARD_CAPITAL,
   buildStageConfigFromRisk,
   getOptimizationConfig,
@@ -21,6 +20,7 @@ import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
