@@ -25,11 +25,13 @@ export class TitleService {
           return route;
         }),
         filter((route) => route.outlet === 'primary'),
-        mergeMap((route) => route.data)
+        mergeMap((route) => route.data.pipe(map((data) => ({ data, snapshot: route.snapshot }))))
       )
-      .subscribe((event) => {
-        if (event['breadcrumb']) {
-          this.titleService.setTitle(`${event['breadcrumb']} » ${this.APP_NAME}`);
+      .subscribe(({ data, snapshot }) => {
+        const breadcrumb = data['breadcrumb'];
+        if (breadcrumb) {
+          const label = typeof breadcrumb === 'function' ? breadcrumb(snapshot) : breadcrumb;
+          this.titleService.setTitle(`${label} » ${this.APP_NAME}`);
         } else {
           this.titleService.setTitle(this.APP_NAME);
         }

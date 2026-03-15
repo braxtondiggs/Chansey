@@ -1,19 +1,30 @@
 .layout-breadcrumb {
-    ol {
-        display: flex;
-        align-items: center;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        gap: 1rem;
+  ol {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    gap: 1rem;
 
-        li {
-            white-space: nowrap;
-        }
+    li {
+      white-space: nowrap;
     }
+  }
+}
+
+.breadcrumb-link {
+  color: var(--text-color-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+  }
 }
 
 .content-breadcrumb {
-    margin-bottom: 2rem;
-    padding: 0 0.5rem;
+  margin-bottom: 2rem;
+  padding: 0 0.5rem;
 }

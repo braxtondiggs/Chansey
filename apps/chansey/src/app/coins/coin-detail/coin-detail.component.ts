@@ -1,15 +1,18 @@
-import { CommonModule, Location } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { injectQuery } from '@tanstack/angular-query-experimental';
+import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ToastModule } from 'primeng/toast';
 
-import { CoinDetailResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
+import { PortfolioType, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
 
 import { CounterDirective } from '../../shared/directives/counter/counter.directive';
+import { AuthService } from '../../shared/services/auth.service';
+import { CoinDataService } from '../../shared/services/coin-data.service';
 import { ExternalLinksComponent } from '../components/external-links/external-links.component';
 import { HoldingsCardComponent } from '../components/holdings-card/holdings-card.component';
 import { MarketStatsComponent } from '../components/market-stats/market-stats.component';
@@ -17,8 +20,6 @@ import { PriceChartComponent } from '../components/price-chart/price-chart.compo
 import { CoinDetailQueries } from '../services/coin-detail.queries';
 
 /**
- * T029-T031: CoinDetailComponent
- *
  * Main component for the dedicated coin detail page.
  * Features:
  * - Displays comprehensive coin information
@@ -31,92 +32,146 @@ import { CoinDetailQueries } from '../services/coin-detail.queries';
 @Component({
   selector: 'app-coin-detail',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    CommonModule,
     CardModule,
     SkeletonModule,
     ButtonModule,
+    ToastModule,
     PriceChartComponent,
     MarketStatsComponent,
     HoldingsCardComponent,
     ExternalLinksComponent,
     CounterDirective
   ],
-  providers: [CoinDetailQueries],
+  providers: [CoinDetailQueries, MessageService],
   templateUrl: './coin-detail.component.html',
   styleUrls: ['./coin-detail.component.scss']
 })
 export class CoinDetailComponent {
-  private route = inject(ActivatedRoute);
   private router = inject(Router);
-  private location = inject(Location);
   private queries = inject(CoinDetailQueries);
-  private coinDetailOverride?: CoinDetailResponseDto | null;
-  private isLoadingOverride?: boolean;
-  private errorOverride?: string | null;
+  private authService = inject(AuthService);
+  private coinDataService = inject(CoinDataService);
+  private messageService = inject(MessageService);
 
-  // Extract slug from route snapshot (available immediately in constructor)
-  public slug = this.route.snapshot?.params?.['slug'] || '';
+  // Route param bound via withComponentInputBinding()
+  slug = input.required<string>();
 
   // Component state
   selectedPeriod = signal<TimePeriod>('24h');
-  isAuthenticated = false;
+  descriptionExpanded = signal(false);
+  private userQuery = this.authService.useUser();
 
-  // Initialize queries with the slug from route snapshot
-  detailQuery = injectQuery(() => this.queries.useCoinDetailQuery(this.slug));
-  priceQuery = injectQuery(() => this.queries.useCoinPriceQuery(this.slug));
+  // Watchlist state
+  watchlistQuery = this.coinDataService.useWatchlist();
+  private addToWatchlistMutation = this.coinDataService.useAddToWatchlist();
+  private removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchlist();
+  processingWatchlist = signal(false);
 
-  historyQuery = injectQuery(() => this.queries.useCoinHistoryQuery(this.slug, this.selectedPeriod()));
+  // Tighter card body padding on mobile for section cards
+  sectionCardPt = { body: 'max-md:!py-3 max-md:!px-4' };
 
-  holdingsQuery = injectQuery(() => this.queries.useUserHoldingsQuery(this.slug, this.isAuthenticated));
+  // Computed signals
+  isAuthenticated = computed(() => !!this.userQuery.data());
+
+  // Initialize queries with the slug signal
+  detailQuery = injectQuery(() => this.queries.useCoinDetailQuery(this.slug()));
+  priceQuery = injectQuery(() => this.queries.useCoinPriceQuery(this.slug()));
+  historyQuery = injectQuery(() => this.queries.useCoinHistoryQuery(this.slug(), this.selectedPeriod()));
+  holdingsQuery = injectQuery(() => this.queries.useUserHoldingsQuery(this.slug(), this.isAuthenticated()));
 
   // Computed state from queries
-  get coinDetail() {
-    if (this.coinDetailOverride !== undefined) {
-      return this.coinDetailOverride;
-    }
-    return this.detailQuery.data() ?? null;
-  }
+  coinDetail = computed(() => this.detailQuery.data() ?? null);
+  isLoading = computed(() => this.detailQuery.isLoading());
+  error = computed(() => this.detailQuery.error()?.message);
 
-  set coinDetail(value: CoinDetailResponseDto | null | undefined) {
-    if (value === undefined) {
-      this.coinDetailOverride = undefined;
+  holdings = computed<UserHoldingsDto | null>(
+    () => this.coinDetail()?.userHoldings ?? this.holdingsQuery.data() ?? null
+  );
+
+  periodHigh = computed(() => {
+    const prices = this.historyQuery.data()?.prices;
+    if (!prices?.length) return null;
+    return Math.max(...prices.map((p) => p.price));
+  });
+
+  periodLow = computed(() => {
+    const prices = this.historyQuery.data()?.prices;
+    if (!prices?.length) return null;
+    return Math.min(...prices.map((p) => p.price));
+  });
+
+  isInWatchlist = computed(() => {
+    const items = this.watchlistQuery.data() || [];
+    const detail = this.coinDetail();
+    return items.some((item) => item.coin.id === detail?.id);
+  });
+
+  priceChangeClass = computed(() => {
+    const detail = this.coinDetail();
+    if (!detail?.priceChange24hPercent) return '';
+    return detail.priceChange24hPercent >= 0 ? 'text-green-500' : 'text-red-500';
+  });
+
+  formattedPriceChange = computed(() => {
+    const detail = this.coinDetail();
+    if (!detail?.priceChange24hPercent) return '0.00%';
+    const value = Math.abs(detail.priceChange24hPercent);
+    const sign = detail.priceChange24hPercent >= 0 ? '+' : '-';
+    return `${sign}${value.toFixed(2)}%`;
+  });
+
+  athChangeText = computed(() => {
+    const pct = this.coinDetail()?.athChangePercent;
+    if (pct == null) return '';
+    return `${pct.toFixed(1)}%`;
+  });
+
+  is404 = computed(() => this.error()?.toLowerCase().includes('not found') ?? false);
+
+  toggleWatchlist(): void {
+    const detail = this.coinDetail();
+    if (!detail || this.processingWatchlist()) return;
+
+    if (this.isInWatchlist()) {
+      const item = (this.watchlistQuery.data() || []).find((i) => i.coin.id === detail.id);
+      if (!item) return;
+      this.processingWatchlist.set(true);
+      this.removeFromWatchlistMutation.mutate(item.id, {
+        onSuccess: () => {
+          this.processingWatchlist.set(false);
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Removed from Watchlist',
+            detail: `${detail.name} removed from your watchlist`
+          });
+        },
+        onError: () => {
+          this.processingWatchlist.set(false);
+          this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Failed to update watchlist' });
+        }
+      });
     } else {
-      this.coinDetailOverride = value;
+      this.processingWatchlist.set(true);
+      this.addToWatchlistMutation.mutate(
+        { coinId: detail.id, type: PortfolioType.MANUAL },
+        {
+          onSuccess: () => {
+            this.processingWatchlist.set(false);
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Added to Watchlist',
+              detail: `${detail.name} added to your watchlist`
+            });
+          },
+          onError: () => {
+            this.processingWatchlist.set(false);
+            this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Failed to update watchlist' });
+          }
+        }
+      );
     }
-  }
-
-  get isLoading() {
-    if (this.isLoadingOverride !== undefined) {
-      return this.isLoadingOverride;
-    }
-    return this.detailQuery.isLoading();
-  }
-
-  set isLoading(value: boolean | undefined) {
-    this.isLoadingOverride = value;
-  }
-
-  get error() {
-    if (this.errorOverride !== undefined) {
-      return this.errorOverride ?? undefined;
-    }
-    return this.detailQuery.error()?.message;
-  }
-
-  set error(value: string | null | undefined) {
-    if (value === undefined) {
-      this.errorOverride = undefined;
-    } else {
-      this.errorOverride = value;
-    }
-  }
-
-  get holdings(): UserHoldingsDto | null {
-    if (this.coinDetail?.userHoldings) {
-      return this.coinDetail.userHoldings;
-    }
-    return this.holdingsQuery.data() ?? null;
   }
 
   /**
@@ -124,39 +179,20 @@ export class CoinDetailComponent {
    */
   onPeriodChange(period: TimePeriod): void {
     this.selectedPeriod.set(period);
-    // The history query will automatically refetch for the selected period
+  }
+
+  /**
+   * Toggle description expand/collapse
+   */
+  toggleDescription(): void {
+    this.descriptionExpanded.update((v) => !v);
   }
 
   /**
    * Retry loading data after error
    */
   retry(): void {
-    this.queries.invalidateCoinQueries(this.slug);
-  }
-
-  /**
-   * Get price change class for styling
-   */
-  getPriceChangeClass(): string {
-    if (!this.coinDetail?.priceChange24hPercent) return '';
-    return this.coinDetail.priceChange24hPercent >= 0 ? 'text-green-500' : 'text-red-500';
-  }
-
-  /**
-   * Format price change percentage
-   */
-  formatPriceChange(): string {
-    if (!this.coinDetail?.priceChange24hPercent) return '0.00%';
-    const value = Math.abs(this.coinDetail.priceChange24hPercent);
-    const sign = this.coinDetail.priceChange24hPercent >= 0 ? '+' : '-';
-    return `${sign}${value.toFixed(2)}%`;
-  }
-
-  /**
-   * T033: Check if error is a 404 (coin not found)
-   */
-  is404Error(): boolean {
-    return this.error?.toLowerCase().includes('not found') ?? false;
+    this.queries.invalidateCoinQueries(this.slug());
   }
 
   /**
@@ -166,10 +202,13 @@ export class CoinDetailComponent {
     this.router.navigate(['/app/prices']);
   }
 
-  /**
-   * Navigate back to previous page
-   */
-  goBack(): void {
-    this.location.back();
+  formatPrice(value: number | null | undefined): string {
+    if (value == null) return '—';
+    return value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   }
 }

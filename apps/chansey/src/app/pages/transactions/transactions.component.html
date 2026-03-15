@@ -1,7 +1,24 @@
 <p-card>
+  <!-- Mobile: filter toggle button (hidden on md+) -->
+  <div class="mt-5 mr-5 mb-3 flex justify-end md:hidden">
+    <p-button
+      [label]="'Filters' + (activeFilterCount() > 0 ? ' (' + activeFilterCount() + ')' : '')"
+      icon="pi pi-filter"
+      [outlined]="true"
+      size="small"
+      [attr.aria-expanded]="filtersVisible()"
+      (onClick)="toggleFilters()"
+    />
+  </div>
+
+  <!-- Filters: always visible on md+, toggled on mobile -->
   <form
     [formGroup]="filterForm"
-    class="my-5 grid gap-3"
+    class="my-5 gap-3 px-5 md:px-0"
+    [ngClass]="{
+      'hidden md:grid': !filtersVisible(),
+      grid: filtersVisible()
+    }"
     style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))"
   >
     <div>
@@ -20,11 +37,28 @@
           />
           @if (searchText().length > 0) {
             <p-inputicon>
-              <i class="pi pi-times" (click)="clearSearchFilter(); searchInput.value = ''"></i>
+              <i
+                class="pi pi-times"
+                role="button"
+                aria-label="Clear search"
+                (click)="clearSearchFilter(); searchInput.value = ''"
+              ></i>
             </p-inputicon>
           }
         </p-iconfield>
       </div>
+    </div>
+    <div>
+      <p-datepicker
+        formControlName="dateRange"
+        selectionMode="range"
+        [readonlyInput]="true"
+        placeholder="Date Range"
+        dateFormat="M dd, yy"
+        [showIcon]="true"
+        [showClear]="true"
+        fluid
+      />
     </div>
     <div>
       <p-multiSelect
@@ -36,7 +70,7 @@
         (onChange)="applyFilters()"
         [showClear]="true"
         display="chip"
-        filter="false"
+        [filter]="false"
         [showToggleAll]="false"
         fluid
       />
@@ -51,7 +85,7 @@
         (onChange)="applyFilters()"
         [showClear]="true"
         display="chip"
-        filter="false"
+        [filter]="false"
         [showToggleAll]="false"
         fluid
       />
@@ -66,127 +100,30 @@
         (onChange)="applyFilters()"
         [showClear]="true"
         display="chip"
-        filter="false"
+        [filter]="false"
         [showToggleAll]="false"
         fluid
       />
     </div>
   </form>
 
-  <!-- PrimeNG Skeleton loader for the table -->
-  @if (isLoading()) {
-    <div class="mb-4">
-      <!-- Create a proper table structure for skeleton -->
-      <div class="overflow-auto">
-        <table class="w-full border-collapse">
-          <!-- Skeleton table header -->
-          <thead>
-            <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-              <th class="p-3 text-left" style="min-width: 120px">
-                <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 100px">
-                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 150px">
-                <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 120px">
-                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 120px">
-                <p-skeleton width="90px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 120px">
-                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 120px">
-                <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 120px">
-                <p-skeleton width="90px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 130px">
-                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-              </th>
-              <th class="p-3 text-left" style="min-width: 160px">
-                <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-              </th>
-            </tr>
-          </thead>
-          <!-- Skeleton table body -->
-          <tbody>
-            @for (i of [1, 2, 3, 4, 5, 6, 7, 8]; track i) {
-              <tr class="border-b border-gray-200 dark:border-gray-700">
-                <td class="p-3">
-                  <div class="flex items-center gap-3">
-                    <div class="flex -space-x-2">
-                      <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
-                      <p-skeleton shape="circle" size="2.5rem"></p-skeleton>
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-                      <p-skeleton width="80px" height="1rem"></p-skeleton>
-                    </div>
-                  </div>
-                </td>
-                <td class="p-3">
-                  <p-skeleton width="60px" height="2rem" class="rounded-full"></p-skeleton>
-                </td>
-                <td class="p-3">
-                  <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-                </td>
-                <td class="p-3">
-                  <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-                </td>
-                <td class="p-3">
-                  <p-skeleton width="90px" height="1.25rem"></p-skeleton>
-                </td>
-                <td class="p-3">
-                  <div class="flex flex-col gap-1">
-                    <p-skeleton width="80px" height="1.25rem"></p-skeleton>
-                    <p-skeleton width="40px" height="1rem"></p-skeleton>
-                  </div>
-                </td>
-                <td class="p-3">
-                  <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-                </td>
-                <td class="p-3">
-                  <div class="flex items-center gap-2">
-                    <p-skeleton shape="circle" size="1.5rem"></p-skeleton>
-                    <p-skeleton width="70px" height="1.25rem"></p-skeleton>
-                  </div>
-                </td>
-                <td class="p-3">
-                  <p-skeleton width="80px" height="2rem" class="rounded-full"></p-skeleton>
-                </td>
-                <td class="p-3">
-                  <div class="flex flex-col gap-1">
-                    <p-skeleton width="100px" height="1.25rem"></p-skeleton>
-                    <p-skeleton width="60px" height="1rem"></p-skeleton>
-                  </div>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-      <!-- Skeleton for pagination -->
-      <div class="flex items-center justify-between border-t border-gray-200 p-3 dark:border-gray-700">
-        <p-skeleton width="150px" height="1.25rem"></p-skeleton>
-        <div class="flex gap-1">
-          <p-skeleton width="2rem" height="2rem" class="rounded"></p-skeleton>
-          <p-skeleton width="2rem" height="2rem" class="rounded"></p-skeleton>
-          <p-skeleton width="2rem" height="2rem" class="rounded"></p-skeleton>
-          <p-skeleton width="2rem" height="2rem" class="rounded"></p-skeleton>
-        </div>
-      </div>
+  @if (transactionsQuery.isError()) {
+    <div class="p-3 text-center">
+      <p class="mb-4 text-lg text-red-500">{{ transactionsQuery.error() }}</p>
+      <p-button
+        severity="info"
+        (click)="transactionsQuery.refetch()"
+        label="Retry"
+        icon="pi pi-refresh"
+        [loading]="transactionsQuery.isFetching()"
+        variant="outlined"
+      />
     </div>
   }
 
   <p-table
     #dt
-    [value]="transactions()"
+    [value]="tableData()"
     [paginator]="true"
     [rows]="25"
     [rowHover]="true"
@@ -212,20 +149,59 @@
     stripedRows
     [sortField]="'transactTime'"
     [sortOrder]="-1"
-    [hidden]="isLoading()"
   >
     <ng-template pTemplate="header">
       <tr>
         <th style="min-width: 120px">Trading Pair</th>
-        <th style="min-width: 100px">Side</th>
-        <th style="min-width: 150px">Type</th>
-        <th pSortableColumn="price" style="min-width: 120px">Price</th>
-        <th pSortableColumn="quantity" style="min-width: 120px">Quantity</th>
-        <th pSortableColumn="fee" style="min-width: 120px">Fees</th>
-        <th pSortableColumn="cost" style="min-width: 120px">Total Value <p-sortIcon field="cost" /></th>
+        <th style="min-width: 120px">Type</th>
+        <th pSortableColumn="transactTime" style="min-width: 160px">Date <p-sortIcon field="transactTime" /></th>
+        <th pSortableColumn="price" style="min-width: 120px" class="text-right">Price</th>
+        <th pSortableColumn="quantity" style="min-width: 120px" class="text-right">Quantity</th>
+        <th pSortableColumn="fee" style="min-width: 120px" class="text-right">Fees</th>
+        <th pSortableColumn="cost" style="min-width: 120px" class="text-right">
+          Total Value <p-sortIcon field="cost" />
+        </th>
         <th style="min-width: 120px">Exchange</th>
         <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status" /></th>
-        <th pSortableColumn="transactTime" style="min-width: 160px">Date <p-sortIcon field="transactTime" /></th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="loadingbody">
+      <tr>
+        <td>
+          <div class="flex items-center gap-3">
+            <div class="flex -space-x-2">
+              <p-skeleton shape="circle" size="2.5rem" />
+              <p-skeleton shape="circle" size="2.5rem" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <p-skeleton width="100px" height="1.25rem" />
+              <p-skeleton width="80px" height="1rem" />
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="flex flex-col gap-1">
+            <p-skeleton width="60px" height="2rem" borderRadius="16px" />
+            <p-skeleton width="50px" height="0.875rem" />
+          </div>
+        </td>
+        <td>
+          <div class="flex flex-col gap-1">
+            <p-skeleton width="100px" height="1.25rem" />
+            <p-skeleton width="60px" height="1rem" />
+          </div>
+        </td>
+        <td class="text-right"><p-skeleton width="90px" height="1.25rem" /></td>
+        <td class="text-right"><p-skeleton width="80px" height="1.25rem" /></td>
+        <td class="text-right"><p-skeleton width="80px" height="1.25rem" /></td>
+        <td class="text-right"><p-skeleton width="100px" height="1.25rem" /></td>
+        <td>
+          <div class="flex items-center gap-2">
+            <p-skeleton shape="circle" size="1.5rem" />
+            <p-skeleton width="70px" height="1.25rem" />
+          </div>
+        </td>
+        <td><p-skeleton width="80px" height="2rem" borderRadius="16px" /></td>
       </tr>
     </ng-template>
     <ng-template pTemplate="body" let-transaction>
@@ -233,6 +209,7 @@
         <td>
           <a
             [routerLink]="transaction.baseCoin?.slug ? ['/app/coins', transaction.baseCoin.slug] : null"
+            [queryParams]="{ from: 'transactions' }"
             [class.pointer-events-none]="!transaction.baseCoin?.slug"
             class="flex items-center gap-3 transition-opacity hover:opacity-80"
           >
@@ -241,14 +218,14 @@
                 [image]="transaction.baseCoin?.image"
                 shape="circle"
                 size="large"
-                class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
+                class="border-surface min-w-9 border-2 shadow-sm"
               />
               @if (transaction.quoteCoin) {
                 <p-avatar
                   [image]="transaction.quoteCoin.image"
                   shape="circle"
                   size="large"
-                  class="min-w-9 border-2 border-white shadow-sm dark:border-gray-800"
+                  class="border-surface min-w-9 border-2 shadow-sm"
                 />
               }
             </div>
@@ -259,17 +236,47 @@
           </a>
         </td>
         <td>
-          <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
-        </td>
-        <td>{{ formatType(transaction.type) }}</td>
-        <td>${{ transaction.price | number: '1.2-2' }}</td>
-        <td>{{ transaction.quantity | number: '1.2-8' }}</td>
-        <td>
-          <div class="flex flex-col">
-            <span class="text-sm font-medium">${{ transaction.fee | number: '1.2-6' }}</span>
+          <div class="flex flex-col items-center gap-0.5">
+            <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+            <span class="text-xs text-neutral-400">{{ formatType(transaction.type) }}</span>
           </div>
         </td>
-        <td>${{ transaction.cost | number: '1.2-2' }} total</td>
+        <td class="flex flex-col">
+          <span class="text-lg">{{ transaction.transactTime | date: 'mediumDate' }}</span>
+          <span class="text-sm text-neutral-400">{{ transaction.transactTime | date: 'shortTime' }}</span>
+        </td>
+        <td class="text-right">
+          {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.price | number: '1.2-8'
+          }}{{
+            !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
+              ? ' ' + (transaction.quoteCoin.symbol | uppercase)
+              : ''
+          }}
+        </td>
+        <td class="text-right">{{ transaction.quantity | number: '1.2-8' }}</td>
+        <td class="text-right">
+          @if (transaction.fee > 0) {
+            ~{{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.fee | number: '1.2-6'
+            }}{{
+              !isUsdQuote(transaction) && (transaction.feeCurrency || transaction.quoteCoin?.symbol)
+                ? ' ' + (transaction.feeCurrency || transaction.quoteCoin?.symbol | uppercase)
+                : ''
+            }}
+            @if (getFeePercentage(transaction); as feePercent) {
+              <span class="text-xs text-neutral-400"> ({{ feePercent | number: '1.1-1' }}%)</span>
+            }
+          } @else {
+            —
+          }
+        </td>
+        <td class="text-right">
+          {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.cost | number: '1.2-8'
+          }}{{
+            !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
+              ? ' ' + (transaction.quoteCoin.symbol | uppercase)
+              : ''
+          }}
+        </td>
         <td>
           @if (transaction.exchange) {
             <div class="flex items-center gap-2">
@@ -277,7 +284,7 @@
                 [image]="transaction.exchange.image"
                 shape="circle"
                 size="normal"
-                class="border border-gray-200 shadow-sm dark:border-gray-700"
+                class="border-surface border shadow-sm"
               />
               <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
             </div>
@@ -288,15 +295,11 @@
         <td>
           <p-tag [value]="transaction.status" [severity]="getStatusSeverity(transaction.status)"></p-tag>
         </td>
-        <td class="flex flex-col">
-          <span class="text-lg">{{ transaction.transactTime | date: 'mediumDate' }}</span>
-          <span class="text-sm text-neutral-400">{{ transaction.transactTime | date: 'shortTime' }}</span>
-        </td>
       </tr>
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="10" class="p-4">
+        <td colspan="9" class="p-4">
           @if (!isLoading()) {
             <div class="flex items-center gap-2 text-gray-500">
               <i class="pi pi-inbox text-xl"></i>

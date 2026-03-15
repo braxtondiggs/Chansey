@@ -73,6 +73,7 @@
             <td>
               <a
                 [routerLink]="transaction.baseCoin?.slug ? ['/app/coins', transaction.baseCoin.slug] : null"
+                [queryParams]="{ from: 'portfolio' }"
                 [class.pointer-events-none]="!transaction.baseCoin?.slug"
                 class="flex items-center gap-1 transition-opacity hover:opacity-80"
               >
@@ -89,15 +90,23 @@
               </a>
             </td>
             <td>
-              <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+              <div class="flex flex-col items-center gap-0.5">
+                <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+                <span class="text-xs text-neutral-400">{{ formatType(transaction.type) }}</span>
+              </div>
             </td>
             <td>
               <span class="font-medium">{{ transaction.quantity | number: '1.2-8' }}</span>
             </td>
             <td>
-              <div class="flex flex-col">
-                <span class="font-medium">{{ transaction.cost | currency }}</span>
-              </div>
+              <span class="font-medium">
+                {{ isUsdQuote(transaction) ? '$' : '' }}{{ transaction.cost | number: '1.2-8'
+                }}{{
+                  !isUsdQuote(transaction) && transaction.quoteCoin?.symbol
+                    ? ' ' + (transaction.quoteCoin.symbol | uppercase)
+                    : ''
+                }}
+              </span>
             </td>
             <td>
               <div class="flex flex-col">

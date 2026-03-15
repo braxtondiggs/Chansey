@@ -1,16 +1,14 @@
-import { CommonModule } from '@angular/common';
-import { Component, computed, EventEmitter, inject, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output } from '@angular/core';
 
-import { ChartData, ChartDataset, ChartOptions, TooltipItem } from 'chart.js';
+import { ChartData, ChartDataset, ChartOptions } from 'chart.js';
 import { ChartModule } from 'primeng/chart';
 
 import { MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
 
 import { LayoutService } from '../../../shared/services/layout.service';
+import { createExternalChartTooltip } from '../../../shared/utils/chart-tooltip.util';
 
 /**
- * T025: PriceChartComponent
- *
  * Displays historical price data as an interactive line chart.
  * Features:
  * - Chart.js line chart via PrimeNG wrapper
@@ -22,32 +20,49 @@ import { LayoutService } from '../../../shared/services/layout.service';
 @Component({
   selector: 'app-price-chart',
   standalone: true,
-  imports: [CommonModule, ChartModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ChartModule],
   templateUrl: './price-chart.component.html',
   styleUrls: ['./price-chart.component.scss']
 })
 export class PriceChartComponent {
   private readonly layoutService = inject(LayoutService);
   private isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
-  private _chartData?: MarketChartResponseDto | null;
-  private _lastPeriod?: TimePeriod;
 
-  @Input()
-  set chartData(value: MarketChartResponseDto | null | undefined) {
-    this._chartData = value ?? null;
-    this.updateChart();
-  }
+  chartData = input<MarketChartResponseDto | null>(null);
+  isLoading = input(false);
+  selectedPeriod = input<TimePeriod>('24h');
+  periodChange = output<TimePeriod>();
 
-  get chartData(): MarketChartResponseDto | null | undefined {
-    return this._chartData;
-  }
-
-  @Input() isLoading = false;
-  @Input() selectedPeriod: TimePeriod = '24h';
-  @Output() periodChange = new EventEmitter<TimePeriod>();
-
-  // Chart.js configuration
+  // Chart.js configuration & plugins
   chartType = 'line' as const;
+  chartPlugins = [
+    {
+      id: 'hoverLine',
+      afterDatasetsDraw: (chart: any) => {
+        const {
+          ctx,
+          tooltip,
+          chartArea: { bottom }
+        } = chart;
+        if (tooltip?._active?.length > 0) {
+          const activePoint = tooltip.dataPoints[0];
+          const xCoor = activePoint.element.x;
+          const yCoor = activePoint.element.y;
+          ctx.save();
+          ctx.beginPath();
+          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = this.isDarkTheme() ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)';
+          ctx.setLineDash([4, 2]);
+          ctx.moveTo(xCoor, yCoor);
+          ctx.lineTo(xCoor, bottom);
+          ctx.stroke();
+          ctx.closePath();
+          ctx.restore();
+        }
+      }
+    }
+  ];
   data: ChartData<'line'> = {
     labels: [],
     datasets: []
@@ -63,21 +78,26 @@ export class PriceChartComponent {
     { label: '1y', value: '1y' }
   ];
 
+  constructor() {
+    effect(() => {
+      // Read signals to track them
+      const data = this.chartData();
+      const period = this.selectedPeriod();
+      this.updateChart(data, period);
+    });
+  }
+
   /**
    * Handle period tab change
    */
   onPeriodChange(period: TimePeriod): void {
-    this.selectedPeriod = period;
     this.periodChange.emit(period);
-    this.updateChart();
   }
 
   /**
    * Update chart data and configuration
    */
-  private updateChart(): void {
-    const chartData = this._chartData;
-
+  private updateChart(chartData: MarketChartResponseDto | null | undefined, period: TimePeriod): void {
     if (!chartData || !chartData.prices || chartData.prices.length === 0) {
       const emptyDataset: ChartDataset<'line'> = {
         label: 'Price (USD)',
@@ -101,9 +121,9 @@ export class PriceChartComponent {
     // Format timestamps to readable dates
     const labels = chartData.prices.map((point) => {
       const date = new Date(point.timestamp);
-      if (this.selectedPeriod === '24h') {
+      if (period === '24h') {
         return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      } else if (this.selectedPeriod === '7d') {
+      } else if (period === '7d') {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       } else {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -127,7 +147,9 @@ export class PriceChartComponent {
       tension: 0.4,
       borderWidth: 2,
       pointRadius: 0,
-      pointHoverRadius: 5
+      pointHoverRadius: 5,
+      pointHoverBackgroundColor: lineColor,
+      pointHoverBorderColor: lineColor
     };
 
     this.data = {
@@ -135,15 +157,13 @@ export class PriceChartComponent {
       datasets: [dataset]
     };
 
-    // Only recreate options when period or theme changes
-    if (this._lastPeriod !== this.selectedPeriod) {
-      this._lastPeriod = this.selectedPeriod;
-      this.options = this.createChartOptions();
-    }
+    this.options = this.createChartOptions();
   }
 
   private createChartOptions(): ChartOptions<'line'> {
     const gridColor = this.isDarkTheme() ? 'rgba(255, 255, 255, 0.1)' : 'rgba(200, 200, 200, 0.2)';
+    const currentChartData = this.chartData();
+    const currentPeriod = this.selectedPeriod();
 
     return {
       maintainAspectRatio: false,
@@ -157,13 +177,33 @@ export class PriceChartComponent {
           display: false
         },
         tooltip: {
-          enabled: true,
-          mode: 'index',
-          intersect: false,
+          enabled: false,
+          position: 'nearest',
+          external: createExternalChartTooltip({ mobileBreakpoint: 768 }),
           callbacks: {
-            label: (context: TooltipItem<'line'>) => {
+            title: (items: any[]) => {
+              if (!items.length || !currentChartData?.prices) return '';
+              const point = currentChartData.prices[items[0].dataIndex];
+              if (!point) return items[0].label;
+              const date = new Date(point.timestamp);
+              if (currentPeriod === '24h') {
+                return date.toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+              }
+              return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            },
+            label: (context: any) => {
               const parsed = context.parsed?.y ?? 0;
-              return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              return parsed.toLocaleString('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              });
             }
           }
         },

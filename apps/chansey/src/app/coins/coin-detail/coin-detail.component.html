@@ -1,44 +1,74 @@
-<div class="coin-detail-container">
-  <!-- Back Button - Always visible at top -->
-  <div class="-mt-6 mb-4">
-    <p-button
-      icon="pi pi-arrow-left"
-      [outlined]="true"
-      [rounded]="true"
-      [text]="true"
-      (click)="goBack()"
-      aria-label="Go back"
-    />
-  </div>
+<div class="mx-auto max-w-[1200px] px-2 py-4 md:px-4 md:py-8">
+  <p-toast />
 
   <!-- Loading State -->
-  @if (isLoading) {
+  @if (isLoading()) {
     <div class="loading-container" data-testid="loading-skeleton">
+      <!-- Header skeleton (matches .coin-header layout) -->
       <p-card>
-        <div class="header-skeleton">
-          <p-skeleton shape="circle" size="4rem"></p-skeleton>
+        <div class="flex items-center">
+          <p-skeleton shape="circle" size="5rem"></p-skeleton>
           <div class="ml-4 flex-1">
             <p-skeleton width="200px" height="2rem" class="mb-2"></p-skeleton>
-            <p-skeleton width="150px" height="1.5rem"></p-skeleton>
+            <p-skeleton width="150px" height="1.5rem" class="mb-2"></p-skeleton>
+            <p-skeleton width="250px" height="0.875rem"></p-skeleton>
           </div>
         </div>
       </p-card>
 
-      <p-skeleton width="100%" height="400px" class="mt-4"></p-skeleton>
-      <p-skeleton width="100%" height="300px" class="mt-4"></p-skeleton>
+      <!-- Chart skeleton (matches chart section) -->
+      <div class="section">
+        <p-skeleton width="120px" height="1.5rem" class="mb-3"></p-skeleton>
+        <p-card>
+          <div class="chart-skeleton">
+            <div class="mb-4 flex gap-2">
+              <p-skeleton width="3rem" height="2rem"></p-skeleton>
+              <p-skeleton width="3rem" height="2rem"></p-skeleton>
+              <p-skeleton width="3rem" height="2rem"></p-skeleton>
+              <p-skeleton width="3rem" height="2rem"></p-skeleton>
+            </div>
+            <p-skeleton width="100%" height="300px"></p-skeleton>
+          </div>
+        </p-card>
+      </div>
+
+      <!-- Market Stats skeleton (matches 3-column grid) -->
+      <div class="section">
+        <p-skeleton width="180px" height="1.5rem" class="mb-3"></p-skeleton>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          @for (i of [1, 2, 3]; track i) {
+            <div class="stat-skeleton-card rounded-lg p-6">
+              <p-skeleton width="100px" height="0.875rem" class="mb-2"></p-skeleton>
+              <p-skeleton width="140px" height="1.5rem"></p-skeleton>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- About skeleton -->
+      <div class="section">
+        <p-skeleton width="160px" height="1.5rem" class="mb-3"></p-skeleton>
+        <p-card>
+          <p-skeleton width="100%" height="0.875rem" class="mb-2"></p-skeleton>
+          <p-skeleton width="100%" height="0.875rem" class="mb-2"></p-skeleton>
+          <p-skeleton width="75%" height="0.875rem"></p-skeleton>
+        </p-card>
+      </div>
     </div>
   }
 
   <!-- Error State -->
-  @else if (error) {
+  @else if (error()) {
     <div class="error-container" data-testid="error-message">
       <p-card>
-        <div class="error-content">
+        <div class="flex flex-col items-center justify-center px-8 py-12 text-center">
           <!-- T033: Different icons/messages for 404 vs other errors -->
-          @if (is404Error()) {
-            <i class="pi pi-search" style="font-size: 3rem; color: var(--text-color-secondary)"></i>
-            <h3 class="mt-3">Coin Not Found</h3>
-            <p class="text-color-secondary mt-2">The coin "{{ slug }}" doesn't exist or has been removed.</p>
+          @if (is404()) {
+            <i class="pi pi-search text-5xl text-[color:var(--text-color-secondary)]"></i>
+            <h3 class="mt-3 text-2xl">Coin Not Found</h3>
+            <p class="text-color-secondary mt-2 max-w-[500px]">
+              The coin "{{ slug() }}" doesn't exist or has been removed.
+            </p>
             <div class="mt-4 flex gap-3">
               <p-button
                 label="Return to Prices"
@@ -49,9 +79,9 @@
               <p-button label="Browse All Coins" icon="pi pi-list" (click)="goToPrices()"></p-button>
             </div>
           } @else {
-            <i class="pi pi-exclamation-circle" style="font-size: 3rem; color: var(--red-500)"></i>
-            <h3 class="mt-3">Failed to load coin details</h3>
-            <p class="text-color-secondary mt-2">{{ error }}</p>
+            <i class="pi pi-exclamation-circle text-5xl text-[color:var(--red-500)]"></i>
+            <h3 class="mt-3 text-2xl">Failed to load coin details</h3>
+            <p class="text-color-secondary mt-2 max-w-[500px]">{{ error() }}</p>
             <p-button label="Retry" icon="pi pi-refresh" (click)="retry()" class="mt-4"></p-button>
           }
         </div>
@@ -60,40 +90,96 @@
   }
 
   <!-- Main Content -->
-  @else if (coinDetail) {
+  @else if (coinDetail(); as detail) {
     <div class="coin-content" data-testid="coin-content">
       <!-- Header Section -->
       <p-card class="coin-header-card">
-        <div class="coin-header">
+        <div class="coin-header flex items-center gap-4 p-4 md:gap-6 md:p-0">
           <img
-            [src]="coinDetail.imageUrl"
-            [alt]="coinDetail.name + ' logo'"
-            class="coin-logo"
+            [src]="detail.imageUrl"
+            [alt]="detail.name + ' logo'"
+            class="coin-logo h-15 w-15 rounded-full object-cover md:h-20 md:w-20"
             data-testid="coin-logo"
           />
-          <div class="coin-info">
-            <h1 class="coin-name" data-testid="coin-name">
-              {{ coinDetail.name }}
-              <span class="coin-symbol uppercase" data-testid="coin-symbol">({{ coinDetail.symbol }})</span>
-            </h1>
+          <div class="coin-info flex-1">
+            <div class="coin-name-row flex items-center gap-2">
+              <h1 class="coin-name m-0 text-2xl font-bold md:text-3xl" data-testid="coin-name">
+                {{ detail.name }}
+                <span class="coin-symbol ml-2 text-lg font-medium uppercase md:text-2xl" data-testid="coin-symbol"
+                  >({{ detail.symbol }})</span
+                >
+              </h1>
+              @if (isAuthenticated()) {
+                <p-button
+                  [icon]="isInWatchlist() ? 'pi pi-star-fill' : 'pi pi-star'"
+                  [rounded]="true"
+                  [text]="true"
+                  [loading]="processingWatchlist()"
+                  (click)="toggleWatchlist()"
+                  [attr.aria-label]="isInWatchlist() ? 'Remove from watchlist' : 'Add to watchlist'"
+                  [style]="isInWatchlist() ? { color: '#f59e0b' } : null"
+                  class="watchlist-btn shrink-0"
+                />
+              }
+            </div>
             <!-- T037: ARIA live region for price updates -->
-            <div class="price-info" aria-live="polite" aria-atomic="true">
-              <span class="current-price" data-testid="current-price" [appCounter]="+coinDetail.currentPrice"></span>
+            <div
+              class="price-info mt-2 flex flex-col items-start gap-2 md:flex-row md:items-baseline"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <span
-                class="price-change ml-3"
-                [ngClass]="getPriceChangeClass()"
+                class="current-price text-2xl font-bold md:text-3xl"
+                data-testid="current-price"
+                [appCounter]="+detail.currentPrice"
+              ></span>
+              <span
+                class="price-change text-base font-semibold md:ml-3 md:text-xl"
+                [class.text-green-500]="detail.priceChange24hPercent >= 0"
+                [class.text-red-500]="detail.priceChange24hPercent < 0"
                 data-testid="price-change-24h"
-                [attr.aria-label]="'24 hour price change: ' + formatPriceChange()"
+                [attr.aria-label]="'24 hour price change: ' + formattedPriceChange()"
               >
-                {{ formatPriceChange() }}
+                {{ formattedPriceChange() }}
               </span>
               <!-- T032: Visual refresh indicator -->
               @if (priceQuery.isFetching()) {
                 <i
-                  class="pi pi-sync pi-spin refresh-indicator ml-3"
+                  class="pi pi-sync pi-spin refresh-indicator text-base opacity-70 md:ml-3"
                   title="Updating price..."
                   aria-label="Updating price data"
                 ></i>
+              }
+            </div>
+            <!-- Price range & ATH subtitle -->
+            <div
+              class="price-secondary mt-1 flex flex-col items-start gap-1 text-xs md:flex-row md:items-center md:gap-6 md:text-sm"
+            >
+              @if (periodHigh() !== null && periodLow() !== null) {
+                <span class="range-label">
+                  <span class="mr-1 font-semibold">{{ selectedPeriod() }} Range:</span>
+                  <span class="range-values">{{ formatPrice(periodLow()) }} — {{ formatPrice(periodHigh()) }}</span>
+                </span>
+              }
+              @if (detail.ath) {
+                <span class="ath-label">
+                  <span class="mr-1 font-semibold">ATH:</span>
+                  <span class="ath-value">{{ formatPrice(detail.ath) }}</span>
+                  <span
+                    class="ml-1 text-xs"
+                    [class.text-red-500]="
+                      detail.athChangePercent !== null &&
+                      detail.athChangePercent !== undefined &&
+                      detail.athChangePercent < 0
+                    "
+                    [class.text-green-500]="
+                      detail.athChangePercent !== null &&
+                      detail.athChangePercent !== undefined &&
+                      detail.athChangePercent >= 0
+                    "
+                    >({{ athChangeText() }})</span
+                  >
+                </span>
               }
             </div>
           </div>
@@ -101,11 +187,11 @@
       </p-card>
 
       <!-- Price Chart Section -->
-      <div class="section mt-4">
-        <h2 class="section-title">Price Chart</h2>
-        <p-card>
+      <div class="section">
+        <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">Price Chart</h2>
+        <p-card [pt]="sectionCardPt">
           <app-price-chart
-            [chartData]="historyQuery.data()"
+            [chartData]="historyQuery.data() ?? null"
             [isLoading]="historyQuery.isLoading()"
             [selectedPeriod]="selectedPeriod()"
             (periodChange)="onPeriodChange($event)"
@@ -114,30 +200,64 @@
       </div>
 
       <!-- Market Stats Section -->
-      <div class="section mt-4">
-        <h2 class="section-title">Market Statistics</h2>
-        <app-market-stats [coinDetail]="coinDetail"></app-market-stats>
+      <div class="section">
+        <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">Market Statistics</h2>
+        <app-market-stats [coinDetail]="coinDetail()"></app-market-stats>
       </div>
 
       <!-- User Holdings Section (Authenticated Only) -->
-      @if (isAuthenticated && holdings) {
-        <div class="section mt-4">
-          <h2 class="section-title">Your Holdings</h2>
-          <app-holdings-card [holdings]="holdings"></app-holdings-card>
+      @if (isAuthenticated()) {
+        <div class="section">
+          <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">
+            Your {{ detail.symbol.toUpperCase() }} Holdings
+          </h2>
+          @if (holdings()) {
+            <app-holdings-card [holdings]="holdings()"></app-holdings-card>
+          } @else if (!holdingsQuery.isPending()) {
+            <div
+              class="flex flex-col items-center justify-center rounded-lg bg-gray-50/30 px-4 py-8 dark:bg-gray-800/20"
+            >
+              <div class="bg-primary/10 mb-4 rounded-full p-4">
+                <i class="text-primary pi pi-wallet text-4xl!"></i>
+              </div>
+              <h3 class="mb-2 text-lg font-medium">
+                No <span class="uppercase">{{ detail.symbol }}</span> holdings
+              </h3>
+              <p class="text-surface-500 max-w-md text-center">
+                No {{ detail.name }} holdings found across your connected exchanges.
+              </p>
+            </div>
+          }
         </div>
       }
 
       <!-- Description Section -->
-      <div class="section mt-4">
-        <h2 class="section-title">About {{ coinDetail.name }}</h2>
-        <p-card>
+      <div class="section">
+        <h2 class="section-title mb-2 text-xl font-semibold md:mb-4 md:text-2xl">About {{ detail.name }}</h2>
+        <p-card [pt]="sectionCardPt">
           <!-- T034: Handle missing description -->
-          @if (coinDetail.description) {
-            <p class="description-text" data-testid="coin-description">
-              {{ coinDetail.description }}
+          @if (detail.description) {
+            <p
+              class="description-text text-base leading-[1.8]"
+              [class.line-clamp-3]="!descriptionExpanded()"
+              data-testid="coin-description"
+            >
+              {{ detail.description }}
             </p>
+            <button
+              class="read-more-btn cursor-pointer border-none bg-transparent px-0 pt-2 pl-4 text-sm font-semibold hover:underline md:pl-0"
+              (click)="toggleDescription()"
+              data-testid="read-more-btn"
+              [attr.aria-label]="descriptionExpanded() ? 'Show less description' : 'Read more description'"
+            >
+              {{ descriptionExpanded() ? 'Show less' : 'Read more' }}
+            </button>
           } @else {
-            <p class="description-text text-color-secondary" style="font-style: italic" data-testid="coin-description">
+            <p
+              class="description-text text-color-secondary text-base leading-[1.8]"
+              style="font-style: italic"
+              data-testid="coin-description"
+            >
               No description available
             </p>
           }
@@ -145,9 +265,9 @@
       </div>
 
       <!-- External Links Section -->
-      @if (coinDetail.links) {
-        <div class="section mt-4">
-          <app-external-links [links]="coinDetail.links"></app-external-links>
+      @if (detail.links) {
+        <div class="section">
+          <app-external-links [links]="detail.links"></app-external-links>
         </div>
       }
     </div>

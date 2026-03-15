@@ -4,12 +4,14 @@ import {
   Get,
   HttpStatus,
   Logger,
+  NotFoundException,
+  OnModuleInit,
   Param,
   ParseUUIDPipe,
   Query,
-  Req,
   UseGuards
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
@@ -20,6 +22,8 @@ import { CoinResponseDto, CoinWithPriceDto } from './dto';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
+import { OptionalJwtAuthenticationGuard } from '../authentication/guard/optional-jwt-authentication.guard';
+import { BalanceService } from '../balance/balance.service';
 import { OrderService } from '../order/order.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
@@ -174,13 +178,23 @@ export class CoinController {
  */
 @ApiTags('Coins - Detail Page')
 @Controller('coins')
-export class CoinsController {
+export class CoinsController implements OnModuleInit {
   private readonly logger = new Logger(CoinsController.name);
+  private balanceService: BalanceService | null = null;
 
   constructor(
     private readonly coinService: CoinService,
-    private readonly orderService: OrderService
+    private readonly orderService: OrderService,
+    private readonly moduleRef: ModuleRef
   ) {}
+
+  onModuleInit(): void {
+    try {
+      this.balanceService = this.moduleRef.get(BalanceService, { strict: false });
+    } catch {
+      this.logger.warn('BalanceService not available — holdings enrichment will be skipped');
+    }
+  }
 
   /**
    * T020: GET /coins/:slug - Get comprehensive coin detail
@@ -208,20 +222,17 @@ export class CoinsController {
     status: HttpStatus.NOT_FOUND,
     description: 'Coin not found.'
   })
-  async getCoinDetail(@Param('slug') slug: string, @Req() req: any): Promise<CoinDetailResponseDto> {
-    // Get base coin detail
-    const coinDetail = await this.coinService.getCoinDetailBySlug(slug);
+  @UseGuards(OptionalJwtAuthenticationGuard)
+  async getCoinDetail(@Param('slug') slug: string, @GetUser() user: User | null): Promise<CoinDetailResponseDto> {
+    // Get base coin detail and entity in a single DB query
+    const { dto: coinDetail, entity: coin } = await this.coinService.getCoinDetailWithEntity(slug);
 
-    // If user is authenticated, add holdings data
-    if (req.user) {
+    // If user is authenticated, add holdings data from live balances
+    if (user) {
       try {
-        const coin = await this.coinService.getCoinBySlug(slug);
-        if (coin) {
-          const holdings = await this.orderService.getHoldingsByCoin(req.user, coin);
-          // Only add holdings if user has any
-          if (holdings.totalAmount > 0) {
-            (coinDetail as any).userHoldings = holdings;
-          }
+        const holdings = await this.getEnrichedHoldings(user, coin);
+        if (holdings) {
+          coinDetail.userHoldings = holdings;
         }
       } catch (error: unknown) {
         // If holdings fetch fails, just return coin detail without holdings
@@ -314,9 +325,45 @@ export class CoinsController {
   async getHoldings(@Param('slug') slug: string, @GetUser() user: User): Promise<UserHoldingsDto> {
     const coin = await this.coinService.getCoinBySlug(slug);
     if (!coin) {
-      throw new Error(`Coin with slug '${slug}' not found`);
+      throw new NotFoundException(`Coin with slug '${slug}' not found`);
     }
 
-    return this.orderService.getHoldingsByCoin(user, coin);
+    const holdings = await this.getEnrichedHoldings(user, coin);
+    return (
+      holdings ?? {
+        coinSymbol: coin.symbol,
+        totalAmount: 0,
+        averageBuyPrice: 0,
+        currentValue: 0,
+        profitLoss: 0,
+        profitLossPercent: 0,
+        exchanges: []
+      }
+    );
+  }
+
+  /**
+   * Get balance-based holdings enriched with order-based cost basis when available.
+   */
+  private async getEnrichedHoldings(user: User, coin: Coin): Promise<UserHoldingsDto | null> {
+    if (!this.balanceService) return null;
+
+    const balanceHoldings = await this.balanceService.getHoldingsForCoin(user, coin);
+    if (!balanceHoldings) return null;
+
+    // Enrich with order-based cost basis for P&L
+    try {
+      const orderHoldings = await this.orderService.getHoldingsByCoin(user, coin);
+      if (orderHoldings.averageBuyPrice > 0) {
+        balanceHoldings.averageBuyPrice = orderHoldings.averageBuyPrice;
+        const invested = balanceHoldings.totalAmount * orderHoldings.averageBuyPrice;
+        balanceHoldings.profitLoss = balanceHoldings.currentValue - invested;
+        balanceHoldings.profitLossPercent = invested > 0 ? (balanceHoldings.profitLoss / invested) * 100 : 0;
+      }
+    } catch (error: unknown) {
+      this.logger.debug(`No order data for ${coin.symbol} — P&L stays at 0: ${toErrorInfo(error).message}`);
+    }
+
+    return balanceHoldings;
   }
 }

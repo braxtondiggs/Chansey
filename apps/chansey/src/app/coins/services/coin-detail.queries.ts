@@ -4,14 +4,14 @@ import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
 import {
-  queryKeys,
   authenticatedFetch,
-  STANDARD_POLICY,
+  FREQUENT_POLICY,
+  mergeCachePolicy,
+  queryKeys,
   REALTIME_POLICY,
   STABLE_POLICY,
-  FREQUENT_POLICY,
+  STANDARD_POLICY,
   TIME,
-  mergeCachePolicy,
   type CachePolicy
 } from '@chansey/shared';
 
@@ -21,9 +21,7 @@ import {
  * Provides query configurations for fetching coin data with appropriate
  * caching strategies for different types of data.
  */
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable()
 export class CoinDetailQueries {
   private queryClient = injectQueryClient();
 
@@ -48,7 +46,7 @@ export class CoinDetailQueries {
    */
   useCoinPriceQuery(slug: string, options?: { enabled?: boolean }) {
     return {
-      queryKey: queryKeys.coins.price(slug),
+      queryKey: queryKeys.coins.detail(slug),
       queryFn: () => authenticatedFetch<CoinDetailResponseDto>(`/api/coins/${slug}`),
       ...REALTIME_POLICY,
       enabled: options?.enabled ?? !!slug

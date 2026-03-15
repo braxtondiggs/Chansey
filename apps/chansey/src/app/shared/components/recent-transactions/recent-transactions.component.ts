@@ -1,4 +1,4 @@
-import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe, UpperCasePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -12,6 +12,7 @@ import { TagModule } from 'primeng/tag';
 import { OrderSide, OrderStatus } from '@chansey/api-interfaces';
 
 import { TransactionsService } from '../../../pages/transactions/transactions.service';
+import { formatType, isUsdQuote } from '../../utils/order-format.util';
 
 @Component({
   selector: 'app-recent-transactions',
@@ -19,9 +20,9 @@ import { TransactionsService } from '../../../pages/transactions/transactions.se
     AvatarModule,
     ButtonModule,
     CardModule,
-    CurrencyPipe,
     DatePipe,
     DecimalPipe,
+    UpperCasePipe,
     RouterModule,
     SkeletonModule,
     TableModule,
@@ -67,4 +68,7 @@ export class RecentTransactionsComponent {
   getSideSeverity(side: OrderSide): 'success' | 'danger' {
     return side === OrderSide.BUY ? 'success' : 'danger';
   }
+
+  isUsdQuote = isUsdQuote;
+  formatType = formatType;
 }
