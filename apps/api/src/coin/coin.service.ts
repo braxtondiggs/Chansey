@@ -12,8 +12,8 @@ import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod } from '@chan
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
-import { ErrorCode, ValidationException } from '../common/exceptions';
 import { CoinNotFoundException } from '../common/exceptions/resource';
+import { CircuitBreakerService, CircuitOpenError } from '../shared';
 import { User } from '../users/users.entity';
 import { stripHtml } from '../utils/strip-html.util';
 import { stripNullProps } from '../utils/strip-null-props.util';
@@ -51,10 +51,35 @@ export class CoinService {
   private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinService.name);
 
+  private static readonly CIRCUIT_KEY = 'coingecko-chart';
+
+  private static createVirtualUsdCoin(): Coin {
+    return new Coin({
+      id: 'USD-virtual',
+      slug: 'usd',
+      name: 'US Dollar',
+      symbol: 'USD',
+      image: 'https://flagcdn.com/w80/us.png',
+      description:
+        'The United States dollar is the official currency of the United States and several other countries.',
+      totalSupply: undefined,
+      circulatingSupply: undefined,
+      maxSupply: undefined,
+      marketCap: undefined,
+      priceChangePercentage24h: undefined
+    });
+  }
+
   constructor(
     @InjectRepository(Coin) private readonly coin: Repository<Coin>,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
-  ) {}
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly circuitBreaker: CircuitBreakerService
+  ) {
+    this.circuitBreaker.configure(CoinService.CIRCUIT_KEY, {
+      failureThreshold: 3,
+      resetTimeoutMs: 60000
+    });
+  }
 
   async getCoins() {
     const coins = await this.coin.find({ order: { marketRank: 'ASC' } });
@@ -121,23 +146,7 @@ export class CoinService {
   async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin | null> {
     // Handle USD as a special case
     if (symbol.toLowerCase() === 'usd') {
-      // Create a virtual USD coin
-      const usdCoin = new Coin({
-        id: 'USD-virtual',
-        slug: 'usd',
-        name: 'US Dollar',
-        symbol: 'USD',
-        image: 'https://flagcdn.com/w80/us.png', // American flag as requested
-        description:
-          'The United States dollar is the official currency of the United States and several other countries.',
-        totalSupply: undefined,
-        circulatingSupply: undefined,
-        maxSupply: undefined,
-        marketCap: undefined,
-        priceChangePercentage24h: undefined
-        // Add other properties as needed
-      });
-      return usdCoin;
+      return CoinService.createVirtualUsdCoin();
     }
 
     // Handle other coins normally
@@ -184,21 +193,7 @@ export class CoinService {
 
     // Create a virtual USD coin when requested
     if (needsUsd) {
-      const usdCoin = new Coin({
-        id: 'USD-virtual',
-        slug: 'usd',
-        name: 'US Dollar',
-        symbol: 'USD',
-        image: 'https://flagcdn.com/w80/us.png', // American flag as requested
-        description:
-          'The United States dollar is the official currency of the United States and several other countries.',
-        totalSupply: undefined,
-        circulatingSupply: undefined,
-        maxSupply: undefined,
-        marketCap: undefined
-        // Add other properties as needed
-      });
-      coins.push(usdCoin);
+      coins.push(CoinService.createVirtualUsdCoin());
     }
 
     // No need to throw error for missing symbols, just return what we found
@@ -219,27 +214,27 @@ export class CoinService {
     });
   }
 
-  async create(Coin: CreateCoinDto): Promise<Coin> {
-    const coin = await this.coin.findOne({ where: { slug: Coin.slug } });
-    return coin ?? ((await this.coin.insert(Coin as QueryDeepPartialEntity<Coin>)).generatedMaps[0] as Coin);
+  async create(dto: CreateCoinDto): Promise<void> {
+    const existing = await this.coin.findOne({ where: { slug: dto.slug } });
+    if (!existing) {
+      await this.coin.insert(dto as QueryDeepPartialEntity<Coin>);
+    }
   }
 
-  async createMany(coins: CreateCoinDto[]): Promise<Coin[]> {
+  async createMany(coins: CreateCoinDto[]): Promise<void> {
     const existingCoins = await this.coin.find({
       where: coins.map((coin) => ({ slug: coin.slug }))
     });
 
     const newCoins = coins.filter((coin) => !existingCoins.find((existing) => existing.slug === coin.slug));
 
-    if (newCoins.length === 0) return [];
+    if (newCoins.length === 0) return;
 
-    const result = await this.coin.insert(newCoins as QueryDeepPartialEntity<Coin>[]);
-    return result.generatedMaps as Coin[];
+    await this.coin.insert(newCoins as QueryDeepPartialEntity<Coin>[]);
   }
 
   async update(coinId: string, coin: UpdateCoinDto) {
     const data = await this.getCoinById(coinId);
-    if (!data) throw new CoinNotFoundException(coinId);
     return await this.coin.save(new Coin({ ...data, ...coin }) as QueryDeepPartialEntity<Coin> & Coin);
   }
 
@@ -283,15 +278,22 @@ export class CoinService {
 
       return [];
     } catch (error: unknown) {
-      throw new CoinNotFoundException(coinId);
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        throw new CoinNotFoundException(coinId);
+      }
+      this.logger.error(
+        `Failed to fetch historical data for ${coinId}: ${error instanceof Error ? error.message : error}`
+      );
+      throw error;
     }
   }
 
   async getCoinsWithCurrentPrices() {
-    return this.coin.find({
+    const coins = await this.coin.find({
       select: ['id', 'slug', 'name', 'symbol', 'image', 'currentPrice'],
       order: { name: 'ASC' }
     });
+    return coins.map((coin) => stripNullProps(coin));
   }
 
   async getCoinBySlug(slug: string) {
@@ -299,7 +301,8 @@ export class CoinService {
   }
 
   async getCoinsByRiskLevel({ coinRisk }: User, take = 10) {
-    const { level: riskLevel } = coinRisk;
+    // Clamp to integer 1–5 to prevent SQL injection (value is interpolated in ORDER BY)
+    const riskLevel = Math.max(1, Math.min(5, Math.floor(Number(coinRisk?.level) || 3)));
 
     if (riskLevel === 1) {
       return await this.coin.find({
@@ -325,7 +328,11 @@ export class CoinService {
       });
     }
 
-    // For risk levels 2-4
+    // For risk levels 2-4 — weights derived from clamped integer, safe by construction
+    const volWeight = (5 - riskLevel) / 4;
+    const capWeight = (5 - riskLevel) / 4;
+    const rankWeight = (riskLevel - 1) / 4;
+
     return await this.coin
       .createQueryBuilder('coin')
       .where('coin.totalVolume IS NOT NULL')
@@ -333,9 +340,9 @@ export class CoinService {
       .andWhere('coin.marketCap IS NOT NULL')
       .orderBy(
         `(
-          COALESCE(LN(coin."totalVolume" + 1), 0) * ${(5 - riskLevel) / 4} +
-          COALESCE(LN(coin."marketCap" + 1), 0) * ${(5 - riskLevel) / 4} -
-          COALESCE(coin."geckoRank", 0) * ${(riskLevel - 1) / 4}
+          COALESCE(LN(coin."totalVolume" + 1), 0) * ${volWeight} +
+          COALESCE(LN(coin."marketCap" + 1), 0) * ${capWeight} -
+          COALESCE(coin."geckoRank", 0) * ${rankWeight}
         )`,
         'DESC'
       )
@@ -360,32 +367,6 @@ export class CoinService {
       },
       take: limit
     });
-  }
-
-  /**
-   * T015: Generate URL-friendly slug from coin name
-   * @param name Coin name to convert to slug
-   * @returns URL-friendly slug (lowercase, hyphenated, alphanumeric only)
-   */
-  private generateSlug(name: string): string {
-    if (!name) return '';
-
-    return (
-      name
-        .toLowerCase()
-        // Remove special characters, keep only alphanumeric and spaces
-        .replace(/[^a-z0-9\s-]/g, '')
-        // Replace multiple spaces with single space
-        .replace(/\s+/g, ' ')
-        // Trim spaces
-        .trim()
-        // Replace spaces with hyphens
-        .replace(/\s/g, '-')
-        // Remove multiple consecutive hyphens
-        .replace(/-+/g, '-')
-        // Truncate to 100 characters max
-        .slice(0, 100)
-    );
   }
 
   /**
@@ -454,7 +435,10 @@ export class CoinService {
    */
   private async fetchMarketChart(coinGeckoId: string, days: number): Promise<CoinGeckoMarketChart> {
     const cacheKey = `coingecko:chart:${coinGeckoId}:${days}d`;
-    const CACHE_TTL = 300; // 5 minutes in seconds
+    const staleCacheKey = `coingecko:chart:stale:${coinGeckoId}:${days}d`;
+    const CACHE_TTL_MAP: Record<number, number> = { 1: 300, 7: 900, 30: 1800, 365: 3600 };
+    const CACHE_TTL = CACHE_TTL_MAP[days] || 300;
+    const STALE_CACHE_TTL = 86400; // 24 hours
 
     try {
       // Try to get from cache first
@@ -466,33 +450,37 @@ export class CoinService {
 
       this.logger.debug(`CoinGecko chart cache MISS for ${coinGeckoId} (${days}d), fetching from API`);
 
+      // Check circuit breaker before calling CoinGecko
+      if (this.circuitBreaker.isOpen(CoinService.CIRCUIT_KEY)) {
+        this.logger.warn(`Circuit breaker OPEN for CoinGecko chart, skipping API call for ${coinGeckoId} (${days}d)`);
+        return this.getStaleChartData(staleCacheKey, coinGeckoId, days);
+      }
+
       // Fetch from API with timeout
       const timeoutMs = 30000; // 30 second timeout (CoinGecko can be slow)
 
-      // Build request params - interval is optional and only used for certain day ranges
       const requestParams = {
         id: coinGeckoId,
         vs_currency: 'usd',
         days
       };
 
-      // Only add interval for specific cases where CoinGecko accepts it
-      // For 1 day, we can omit interval to get automatic granularity
-      if (days > 1 && days <= 90) {
-        // For 1-90 days, data is at hourly granularity
-        // No need to specify interval, CoinGecko handles it automatically
-      }
-
       const chartDataPromise = this.gecko.coinIdMarketChart(requestParams) as Promise<CoinGeckoMarketChart>;
 
+      let timeoutId: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('CoinGecko API timeout')), timeoutMs);
+        timeoutId = setTimeout(() => reject(new Error('CoinGecko API timeout')), timeoutMs);
       });
 
-      const chartData = await Promise.race([chartDataPromise, timeoutPromise]);
+      const chartData = await Promise.race([chartDataPromise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 
-      // Cache the result
+      // Record success with circuit breaker
+      this.circuitBreaker.recordSuccess(CoinService.CIRCUIT_KEY);
+
+      // Cache the result with period-appropriate TTL
       await this.cacheManager.set(cacheKey, chartData, CACHE_TTL);
+      // Also store a long-lived stale fallback
+      await this.cacheManager.set(staleCacheKey, chartData, STALE_CACHE_TTL);
       this.logger.debug(`Cached CoinGecko chart for ${coinGeckoId} (${days}d, TTL: ${CACHE_TTL}s)`);
 
       return chartData;
@@ -500,44 +488,37 @@ export class CoinService {
       const errMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error fetching chart data for ${coinGeckoId} (${days}d): ${errMsg}`);
 
-      if (error instanceof AxiosError) {
-        // Handle rate limiting by trying to return cached data
-        if (error.response?.status === 429) {
-          this.logger.warn(
-            `CoinGecko rate limit hit for chart ${coinGeckoId} (${days}d), attempting to use cached data`
-          );
-          const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
-          if (cached) {
-            this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to rate limit`);
-            return cached;
-          }
-        }
-
-        // Handle network errors and timeouts
-        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-          this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
-          const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
-          if (cached) {
-            this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to network error`);
-            return cached;
-          }
-          throw new Error('Unable to fetch chart data. Please try again later.');
-        }
+      // Record failure with circuit breaker (skip for CircuitOpenError — already counted)
+      if (!(error instanceof CircuitOpenError)) {
+        this.circuitBreaker.recordFailure(CoinService.CIRCUIT_KEY);
       }
 
-      // Handle timeout from our own Promise.race
-      if (errMsg === 'CoinGecko API timeout') {
-        this.logger.error(`Network error fetching chart data for ${coinGeckoId}: ${errMsg}`);
-        const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
-        if (cached) {
-          this.logger.debug(`Returning stale cached chart for ${coinGeckoId} (${days}d) due to network error`);
-          return cached;
-        }
-        throw new Error('Unable to fetch chart data. Please try again later.');
+      // For any failure, try primary cache first, then stale fallback
+      const primaryCached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+      if (primaryCached) {
+        this.logger.warn(`Returning cached chart for ${coinGeckoId} (${days}d) after error: ${errMsg}`);
+        return primaryCached;
       }
 
-      throw error;
+      return this.getStaleChartData(staleCacheKey, coinGeckoId, days);
     }
+  }
+
+  /**
+   * Attempt to return stale cached chart data as a last resort.
+   * Throws if no stale data is available.
+   */
+  private async getStaleChartData(
+    staleCacheKey: string,
+    coinGeckoId: string,
+    days: number
+  ): Promise<CoinGeckoMarketChart> {
+    const stale = await this.cacheManager.get<CoinGeckoMarketChart>(staleCacheKey);
+    if (stale) {
+      this.logger.warn(`Returning 24h stale cache for ${coinGeckoId} (${days}d)`);
+      return stale;
+    }
+    throw new Error('Unable to fetch chart data. Please try again later.');
   }
 
   /**
@@ -632,7 +613,7 @@ export class CoinService {
             blockchainSite: coin.links.blockchainSite ?? [],
             officialForumUrl: coin.links.officialForumUrl ?? [],
             subredditUrl: coin.links.subredditUrl,
-            repositoryUrl: (coin.links as any).reposUrl?.github?.filter((u: string) => u) ?? []
+            repositoryUrl: coin.links.reposUrl?.github?.filter((u: string) => u) ?? []
           }
         : { homepage: [], blockchainSite: [], officialForumUrl: [], repositoryUrl: [] },
       ath: coin.ath ?? undefined,
@@ -668,9 +649,6 @@ export class CoinService {
     };
 
     const days = periodDaysMap[period];
-    if (!days) {
-      throw new ValidationException(`Invalid period: ${period}`, ErrorCode.VALIDATION_INVALID_INPUT, { period });
-    }
 
     // Fetch from CoinGecko with caching — let errors propagate so the frontend shows an error state
     const chartData = await this.fetchMarketChart(coin.slug, days);

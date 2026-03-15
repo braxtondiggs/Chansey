@@ -68,7 +68,7 @@ export class PriceChartComponent {
     datasets: []
   };
   options: ChartOptions<'line'> = this.createChartOptions();
-  chartStyle = { width: '100%', height: 'clamp(300px, 62vw, 880px)' };
+  chartStyle = { width: '100%', height: 'clamp(250px, 40vw, 500px)' };
 
   // Period options for tabs
   periods: Array<{ label: string; value: TimePeriod }> = [
