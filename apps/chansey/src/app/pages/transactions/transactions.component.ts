@@ -29,7 +29,9 @@ import { Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interface
 
 import { TransactionsService } from './transactions.service';
 
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { formatType, isUsdQuote } from '../../shared/utils/order-format.util';
+import { getSideSeverity, getStatusSeverity } from '../../shared/utils/order-severity.util';
 
 @Component({
   selector: 'app-transactions',
@@ -41,6 +43,7 @@ import { formatType, isUsdQuote } from '../../shared/utils/order-format.util';
     DatePipe,
     DatePickerModule,
     DecimalPipe,
+    EmptyStateComponent,
     IconFieldModule,
     InputIconModule,
     InputTextModule,
@@ -159,30 +162,8 @@ export class TransactionsComponent {
     this.dt?.filterGlobal('', 'contains');
   }
 
-  // Helper method to get appropriate severity for order status
-  getStatusSeverity(status: OrderStatus): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' {
-    switch (status) {
-      case OrderStatus.FILLED:
-        return 'success';
-      case OrderStatus.PARTIALLY_FILLED:
-        return 'info';
-      case OrderStatus.NEW:
-        return 'warn';
-      case OrderStatus.CANCELED:
-      case OrderStatus.EXPIRED:
-      case OrderStatus.REJECTED:
-        return 'danger';
-      case OrderStatus.PENDING_CANCEL:
-        return 'warn';
-      default:
-        return 'info';
-    }
-  }
-
-  // Helper method to get appropriate severity for order side
-  getSideSeverity(side: OrderSide): 'success' | 'danger' {
-    return side === OrderSide.BUY ? 'success' : 'danger';
-  }
+  getStatusSeverity = getStatusSeverity;
+  getSideSeverity = getSideSeverity;
 
   isUsdQuote = isUsdQuote;
   formatType = formatType;

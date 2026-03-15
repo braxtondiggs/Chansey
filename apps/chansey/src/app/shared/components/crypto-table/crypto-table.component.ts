@@ -10,7 +10,7 @@ import {
   signal,
   viewChild
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -29,12 +29,15 @@ import { Coin } from '@chansey/api-interfaces';
 import { CounterDirective } from '../../directives/counter/counter.directive';
 import { FormatLargeNumberPipe } from '../../pipes/format-large-number.pipe';
 import { CoinDataService } from '../../services/coin-data.service';
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
 
 export interface CryptoTableConfig {
   showWatchlistToggle?: boolean;
   showRemoveAction?: boolean;
   searchPlaceholder?: string;
   emptyMessage?: string;
+  emptyActionLink?: string;
+  emptyActionLabel?: string;
   cardTitle?: string;
 }
 
@@ -46,11 +49,13 @@ export interface CryptoTableConfig {
     CardModule,
     CounterDirective,
     DecimalPipe,
+    EmptyStateComponent,
     FormatLargeNumberPipe,
     IconFieldModule,
     InputIconModule,
     InputTextModule,
     ProgressBarModule,
+    RouterLink,
     SkeletonModule,
     TableModule,
     TagModule,

@@ -9,10 +9,10 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { OrderSide, OrderStatus } from '@chansey/api-interfaces';
-
 import { TransactionsService } from '../../../pages/transactions/transactions.service';
 import { formatType, isUsdQuote } from '../../utils/order-format.util';
+import { getSideSeverity, getStatusSeverity } from '../../utils/order-severity.util';
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
 
 @Component({
   selector: 'app-recent-transactions',
@@ -22,11 +22,12 @@ import { formatType, isUsdQuote } from '../../utils/order-format.util';
     CardModule,
     DatePipe,
     DecimalPipe,
-    UpperCasePipe,
+    EmptyStateComponent,
     RouterModule,
     SkeletonModule,
     TableModule,
-    TagModule
+    TagModule,
+    UpperCasePipe
   ],
   templateUrl: './recent-transactions.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -44,30 +45,8 @@ export class RecentTransactionsComponent {
   transactions = computed(() => this.transactionsQuery.data()?.slice(0, this.limit()) || []);
   skeletonRows = computed(() => Array.from({ length: Math.min(this.limit(), 4) }, (_, i) => i));
 
-  // Helper method to get appropriate severity for order status
-  getStatusSeverity(status: OrderStatus): 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' {
-    switch (status) {
-      case OrderStatus.FILLED:
-        return 'success';
-      case OrderStatus.PARTIALLY_FILLED:
-        return 'info';
-      case OrderStatus.NEW:
-        return 'warn';
-      case OrderStatus.CANCELED:
-      case OrderStatus.EXPIRED:
-      case OrderStatus.REJECTED:
-        return 'danger';
-      case OrderStatus.PENDING_CANCEL:
-        return 'warn';
-      default:
-        return 'info';
-    }
-  }
-
-  // Helper method to get appropriate severity for order side
-  getSideSeverity(side: OrderSide): 'success' | 'danger' {
-    return side === OrderSide.BUY ? 'success' : 'danger';
-  }
+  getStatusSeverity = getStatusSeverity;
+  getSideSeverity = getSideSeverity;
 
   isUsdQuote = isUsdQuote;
   formatType = formatType;
