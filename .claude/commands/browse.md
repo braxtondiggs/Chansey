@@ -26,6 +26,7 @@ Navigate to any page in the Chansey app, handling login automatically.
     - `prices` → `/app/prices`
     - `watchlist` → `/app/watchlist`
     - `coins/<slug>` → `/app/coins/<slug>` (e.g., `coins/bitcoin`)
+    - `spot-trading` → `/app/dashboard?trading=open` (opens Spot Trading drawer)
   - **Admin pages** (admin login):
     - `admin/algorithms` → `/admin/algorithms`
     - `admin/algorithms/<id>` → `/admin/algorithms/<id>` (algorithm detail)

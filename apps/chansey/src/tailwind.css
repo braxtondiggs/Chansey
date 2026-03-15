@@ -1,266 +1,110 @@
 @import 'tailwindcss';
 @import 'tailwindcss-primeui';
-@source not "../../../.claude";
+@source not '../../../.claude';
+
+@custom-variant dark (&:where([class*='app-dark'], [class*='app-dark'] *));
+
+@theme {
+  --breakpoint-sm: 576px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 992px;
+  --breakpoint-xl: 1200px;
+  --breakpoint-2xl: 1920px;
+  --font-feature-heading:
+    'cv01' on, 'cv02' on, 'cv03' on, 'cv04' on, 'cv05' on, 'cv07' on, 'cv09' on, 'cv10' on, 'cv11' on;
+  --font-feature-body: 'cv01' on, 'cv02' on, 'cv03' on, 'cv09' on, 'dlig' on, 'liga' off, 'calt' off;
+}
 
 @layer components {
   .title-h1 {
-    @apply text-surface-900 dark:text-surface-0 text-center text-7xl leading-tight font-semibold;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv01' on,
-      'cv02' on,
-      'cv03' on,
-      'cv04' on,
-      'cv07' on,
-      'cv09' on,
-      'cv05' on,
-      'cv10' on,
-      'cv11' on;
+    @apply text-center text-7xl leading-tight font-semibold text-surface-900 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-heading);
   }
   .title-h2 {
-    @apply text-surface-950 dark:text-surface-0 text-center leading-none font-semibold;
+    @apply text-center leading-none font-semibold text-surface-950 dark:text-surface-0;
     font-size: 4rem;
-    font-family: 'InterDisplay', sans-serif;
   }
   .title-h3 {
-    @apply text-surface-900 dark:text-surface-0 text-center leading-tight font-semibold;
+    @apply text-center leading-tight font-semibold text-surface-900 dark:text-surface-0;
     font-size: 3.5rem;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv07' on,
-      'cv01' on,
-      'cv02' on,
-      'cv03' on,
-      'cv04' on,
-      'cv09' on,
-      'cv05' on,
-      'cv10' on,
-      'cv11' on;
+    font-feature-settings: var(--font-feature-heading);
   }
   .title-h4 {
-    @apply text-surface-900 dark:text-surface-0 text-center leading-tight font-semibold;
+    @apply text-center leading-tight font-semibold text-surface-900 dark:text-surface-0;
     font-size: 2.85rem;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv01' on,
-      'cv02' on,
-      'cv03' on,
-      'cv04' on,
-      'cv07' on,
-      'cv09' on,
-      'cv05' on,
-      'cv10' on,
-      'cv11' on;
+    font-feature-settings: var(--font-feature-heading);
   }
   .title-h5 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-4xl leading-snug font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv01' on,
-      'cv02' on,
-      'cv03' on,
-      'cv04' on,
-      'cv07' on,
-      'cv09' on,
-      'cv05' on,
-      'cv10' on,
-      'cv11' on;
+    @apply text-center text-4xl leading-snug font-medium text-surface-950 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-heading);
   }
   .title-h6 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-3xl font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv01' on,
-      'cv02' on,
-      'cv03' on,
-      'cv04' on,
-      'cv07' on,
-      'cv09' on,
-      'cv05' on,
-      'cv10' on,
-      'cv11' on;
+    @apply text-center text-3xl font-medium text-surface-950 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-heading);
   }
   .title-h7 {
-    @apply text-surface-950 dark:text-surface-0 text-center text-2xl font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
+    @apply text-center text-2xl font-medium text-surface-950 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-body);
   }
   .body-large {
-    @apply text-surface-500 text-center text-xl;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
+    @apply text-center text-xl text-surface-500;
+    font-feature-settings: var(--font-feature-body);
   }
 
   .body-medium {
-    @apply text-surface-500 text-center text-lg;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
+    @apply text-center text-lg text-surface-500;
+    font-feature-settings: var(--font-feature-body);
   }
 
   .body-small {
-    @apply text-surface-500 text-center text-base;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
+    @apply text-center text-base text-surface-500;
+    font-feature-settings: var(--font-feature-body);
   }
   .body-xsmall {
-    @apply text-surface-500 text-center text-sm;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
+    @apply text-center text-sm text-surface-500;
+    font-feature-settings: var(--font-feature-body);
   }
   .label-large {
-    @apply text-surface-950 dark:text-surface-0 text-xl font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv01' on,
-      'cv02' on,
-      'cv05' on,
-      'cv04' on,
-      'cv03' on,
-      'cv07' on,
-      'cv09' on,
-      'cv10' on,
-      'cv11' on;
+    @apply text-xl font-medium text-surface-950 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-heading);
   }
   .label-medium {
-    @apply text-surface-950 dark:text-surface-0 text-lg font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv11' on,
-      'cv10' on,
-      'cv09' on,
-      'cv07' on,
-      'cv05' on,
-      'cv04' on,
-      'cv03' on,
-      'cv02' on,
-      'cv01' on;
+    @apply text-lg font-medium text-surface-950 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-heading);
   }
   .label-small {
-    @apply text-surface-500 text-center text-base font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv11' on,
-      'cv10' on,
-      'cv09' on,
-      'cv07' on,
-      'cv05' on,
-      'cv04' on,
-      'cv03' on,
-      'cv02' on,
-      'cv01' on;
+    @apply text-center text-base font-medium text-surface-500;
+    font-feature-settings: var(--font-feature-heading);
   }
   .label-xsmall {
-    @apply text-surface-500 text-center text-sm font-medium;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv01' on,
-      'cv02' on,
-      'cv03' on,
-      'cv04' on,
-      'cv07' on,
-      'cv11' on,
-      'cv09' on,
-      'cv10' on,
-      'cv05' on;
+    @apply text-center text-sm font-medium text-surface-500;
+    font-feature-settings: var(--font-feature-heading);
   }
   .paragraph-xsmall {
     @apply text-center text-sm;
-    font-family: 'InterDisplay', sans-serif;
     font-feature-settings:
-      'ss11' on,
       'cv09' on,
+      'ss11' on,
       'liga' off,
       'calt' off;
   }
   .badge {
-    @apply border-surface-200 text-surface-950 dark:border-surface-800 dark:text-surface-0 mx-auto w-fit rounded-full border px-3.5 py-1 text-center text-base leading-normal;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
-  }
-  .body-button {
-    @apply bg-primary-600 text-surface-0 hover:bg-primary-500 rounded-lg px-3.5 py-2 text-center font-normal transition-all;
-    width: 8.5rem;
-    font-feature-settings:
-      'cv11' on,
-      'cv10' on,
-      'cv09' on,
-      'cv07' on,
-      'cv05' on,
-      'cv04' on,
-      'cv03' on,
-      'cv02' on,
-      'cv01' on;
+    @apply mx-auto w-fit rounded-full border border-surface-200 px-3.5 py-1 text-center text-base leading-normal text-surface-950 dark:border-surface-800 dark:text-surface-0;
+    font-feature-settings: var(--font-feature-body);
   }
 
   .landing-container {
-    @apply bg-primary-50/75 dark:bg-primary-900/40 backdrop-blur-sm transition-all;
-  }
-
-  .button-button {
-    @apply border-surface-200 text-surface-700 hover:bg-surface-100 dark:border-surface-800 dark:text-surface-200 dark:hover:bg-surface-800 flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-center leading-normal font-medium transition-all;
-    font-family: 'InterDisplay', sans-serif;
-    font-feature-settings:
-      'cv08' on,
-      'cv09' on,
-      'cv03' on,
-      'cv02' on,
-      'dlig' on,
-      'cv01' on,
-      'liga' off,
-      'calt' off;
-    box-shadow: 0px 1px 2px 0px rgba(18, 18, 23, 0.05);
+    @apply bg-primary-50/75 backdrop-blur-sm transition-all dark:bg-primary-900/40;
   }
 
   /* Set PrimeNG card body padding to zero on small devices */
-  @media (max-width: 639px) {
-    :root p-card.tabs {
-      --p-card-body-padding: 0 !important;
+  @media (max-width: 575px) {
+    :root:root p-card.tabs {
+      --p-card-body-padding: 0;
     }
 
-    :root p-card {
-      --p-card-body-padding: 0 !important;
+    :root:root p-card {
+      --p-card-body-padding: 0;
     }
 
     .p-paginator-current {

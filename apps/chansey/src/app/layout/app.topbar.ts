@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, ViewChild, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
@@ -7,6 +7,7 @@ import { createAvatar } from '@dicebear/core';
 import { AvatarModule } from 'primeng/avatar';
 import { BadgeModule } from 'primeng/badge';
 import { ButtonModule } from 'primeng/button';
+import { RippleModule } from 'primeng/ripple';
 import { StyleClassModule } from 'primeng/styleclass';
 import { TooltipModule } from 'primeng/tooltip';
 
@@ -31,6 +32,7 @@ import { PwaService } from '../shared/services/pwa.service';
     StyleClassModule,
     CommonModule,
     ButtonModule,
+    RippleModule,
     TooltipModule,
     TimeAgoPipe
   ],
@@ -61,12 +63,14 @@ import { PwaService } from '../shared/services/pwa.service';
           </li>
         }
         <li class="right-sidebar-item">
-          <a class="right-sidebar-button" (click)="toggleSearchBar()">
+          <a tabindex="0" aria-label="Search" class="right-sidebar-button" (click)="toggleSearchBar()">
             <i class="pi pi-search"></i>
           </a>
         </li>
         <li class="right-sidebar-item static sm:relative">
           <a
+            tabindex="0"
+            aria-label="Notifications"
             class="right-sidebar-button relative z-50"
             pStyleClass="@next"
             enterFromClass="hidden"
@@ -81,15 +85,15 @@ import { PwaService } from '../shared/services/pwa.service';
             <i class="pi pi-bell"></i>
           </a>
           <div
-            class="border-surface bg-surface-0 dark:bg-surface-900 absolute top-auto z-50 m-0 mt-2 hidden min-w-72 origin-top list-none overflow-hidden rounded-2xl border shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)] sm:w-[22rem]"
+            class="absolute top-auto z-50 m-0 mt-2 hidden min-w-72 origin-top list-none overflow-hidden rounded-2xl border border-surface bg-surface-0 shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)] sm:w-[22rem] dark:bg-surface-900"
             style="right: -100px"
           >
-            <div class="border-surface flex items-center justify-between border-b p-4">
+            <div class="flex items-center justify-between border-b border-surface p-4">
               <span class="label-small text-surface-950 dark:text-surface-0">Notifications</span>
               @if (unreadCount() > 0) {
                 <button
                   pRipple
-                  class="text-surface-950 dark:text-surface-0 label-x-small hover:bg-emphasis border-surface rounded-lg border px-2 py-1 shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)] transition-all"
+                  class="label-x-small rounded-lg border border-surface px-2 py-1 text-surface-950 shadow-[0px_1px_2px_0px_rgba(18,18,23,0.05)] transition-all hover:bg-emphasis dark:text-surface-0"
                   (click)="markAllRead()"
                 >
                   Mark all as read
@@ -97,7 +101,7 @@ import { PwaService } from '../shared/services/pwa.service';
               }
             </div>
             <!-- Tab navigation -->
-            <div class="border-surface flex items-center border-b">
+            <div class="flex items-center border-b border-surface">
               @for (tab of notificationTabs; track tab.id) {
                 <button
                   [ngClass]="{
@@ -120,9 +124,9 @@ import { PwaService } from '../shared/services/pwa.service';
             @if (filteredNotifications().length === 0) {
               <!-- Empty state -->
               <div class="flex flex-col items-center justify-center p-8 text-center">
-                <i class="pi pi-bell-slash text-surface-400 mb-3 text-4xl"></i>
+                <i class="pi pi-bell-slash mb-3 text-4xl text-surface-400"></i>
                 <span class="label-medium text-surface-700 dark:text-surface-300">No notifications yet</span>
-                <span class="label-small text-surface-500 dark:text-surface-400 mt-1"
+                <span class="label-small mt-1 text-surface-500 dark:text-surface-400"
                   >We'll notify you when something important happens</span
                 >
               </div>
@@ -132,17 +136,17 @@ import { PwaService } from '../shared/services/pwa.service';
                 @for (item of filteredNotifications(); track item.id; let i = $index) {
                   <li>
                     <div
-                      class="hover:bg-emphasis flex cursor-pointer items-center gap-3 px-4 py-3 transition-all"
+                      class="flex cursor-pointer items-center gap-3 px-4 py-3 transition-all hover:bg-emphasis"
                       (click)="onNotificationClick(item)"
                     >
                       <div
                         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                        [style.background-color]="getSeverityBg(item.severity)"
+                        [ngClass]="getSeverityClasses(item.severity)"
                       >
-                        <i [class]="getEventIcon(item.eventType)" [style.color]="getSeverityColor(item.severity)"></i>
+                        <i [class]="getEventIcon(item.eventType)"></i>
                       </div>
                       <div class="flex flex-1 flex-col">
-                        <span class="label-small text-surface-950 dark:text-surface-0 line-clamp-1 text-left">{{
+                        <span class="label-small line-clamp-1 text-left text-surface-950 dark:text-surface-0">{{
                           item.title
                         }}</span>
                         <span class="label-xsmall line-clamp-1 text-left">{{ item.body }}</span>
@@ -171,12 +175,13 @@ import { PwaService } from '../shared/services/pwa.service';
             <p-avatar shape="square" [image]="userProfileImage()" [ariaLabel]="usersName()" />
           </a>
           <div
-            class="border-surface bg-surface-0 dark:bg-surface-900 absolute top-auto right-0 z-[999] m-0 mt-2 hidden w-52 origin-top list-none overflow-hidden rounded-2xl border p-2 shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)]"
+            #profileDropdown
+            class="absolute top-auto right-0 z-[999] m-0 mt-2 hidden w-52 origin-top list-none overflow-hidden rounded-2xl border border-surface bg-surface-0 p-2 shadow-[0px_56px_16px_0px_rgba(0,0,0,0.00),0px_36px_14px_0px_rgba(0,0,0,0.01),0px_20px_12px_0px_rgba(0,0,0,0.02),0px_9px_9px_0px_rgba(0,0,0,0.03),0px_2px_5px_0px_rgba(0,0,0,0.04)] dark:bg-surface-900"
           >
             <ul class="flex flex-col gap-1">
               <li>
                 <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                  class="label-small flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-emphasis dark:text-surface-400"
                   routerLink="/app/settings"
                   (click)="closeProfileMenu()"
                 >
@@ -186,7 +191,7 @@ import { PwaService } from '../shared/services/pwa.service';
               </li>
               <li>
                 <a
-                  class="label-small dark:text-surface-400 hover:bg-emphasis flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150"
+                  class="label-small flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-emphasis dark:text-surface-400"
                   (click)="logout()"
                 >
                   <i class="pi pi-power-off"></i>
@@ -196,11 +201,13 @@ import { PwaService } from '../shared/services/pwa.service';
             </ul>
           </div>
         </li>
-        <li class="right-sidebar-item">
-          <a tabindex="0" class="right-sidebar-button" (click)="showRightMenu()">
-            <i class="pi pi-align-right"></i>
-          </a>
-        </li>
+        @if (hasExchangeKeys()) {
+          <li class="right-sidebar-item">
+            <a tabindex="0" class="right-sidebar-button" (click)="showRightMenu()">
+              <i class="pi pi-align-right"></i>
+            </a>
+          </li>
+        }
       </ul>
     </div>
   </div>`
@@ -215,27 +222,24 @@ export class AppTopBar {
 
   user = this.authService.useUser();
   logoutMutation = this.authService.useLogoutMutation();
-  userLoading = computed(() => this.user.isPending() || this.user.isFetching());
+  hasExchangeKeys = computed(() => (this.user.data()?.exchanges?.length ?? 0) > 0);
   userProfileImage = computed(() => {
     const user = this.user.data();
     if (!user) return '';
 
-    // If the user has a picture and it's a valid URL, use it
-    if (user['picture'] && typeof user['picture'] === 'string' && user['picture'].trim() !== '') {
-      // Force image refresh by adding a cache-busting parameter if needed
-      return user['picture'] + (user['picture'].includes('?') ? '&' : '?') + 'v=' + new Date().getTime();
+    if (user.picture && typeof user.picture === 'string' && user.picture.trim() !== '') {
+      return user.picture;
     }
 
-    // Otherwise create a fallback avatar
     const avatar = createAvatar(funEmoji, {
-      seed: user['id'] || 'default'
+      seed: user.id || 'default'
     });
 
     return avatar.toDataUri();
   });
   usersName = computed(() => {
     const user = this.user.data();
-    return `${user?.['given_name'] || ''} ${user?.['family_name'] || ''}`.trim();
+    return `${user?.given_name || ''} ${user?.family_name || ''}`.trim();
   });
 
   // Notification feed
@@ -272,6 +276,7 @@ export class AppTopBar {
   });
 
   @ViewChild('menubutton') menuButton!: ElementRef;
+  profileDropdown = viewChild<ElementRef>('profileDropdown');
 
   logout() {
     this.logoutMutation.mutate(undefined, {
@@ -325,45 +330,25 @@ export class AppTopBar {
     return icons[eventType] || 'pi pi-bell';
   }
 
-  getSeverityColor(severity: NotificationSeverity): string {
+  getSeverityClasses(severity: NotificationSeverity): string {
     switch (severity) {
       case 'critical':
-        return '#DC2626';
+        return 'text-red-600 bg-red-100 dark:bg-red-900';
       case 'high':
-        return '#EA580C';
+        return 'text-orange-600 bg-orange-100 dark:bg-orange-900';
       case 'medium':
-        return '#CA8A04';
+        return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900';
       case 'low':
-        return '#2563EB';
+        return 'text-blue-600 bg-blue-100 dark:bg-blue-900';
       default:
-        return '#6B7280';
+        return 'text-gray-500 bg-gray-100 dark:bg-gray-700';
     }
   }
 
-  getSeverityBg(severity: NotificationSeverity): string {
-    const dark = this.layoutService.isDarkTheme();
-    switch (severity) {
-      case 'critical':
-        return dark ? '#7F1D1D' : '#FEE2E2';
-      case 'high':
-        return dark ? '#7C2D12' : '#FFEDD5';
-      case 'medium':
-        return dark ? '#713F12' : '#FEF9C3';
-      case 'low':
-        return dark ? '#1E3A5F' : '#DBEAFE';
-      default:
-        return dark ? '#374151' : '#F3F4F6';
-    }
-  }
-
-  /**
-   * Closes the profile dropdown menu
-   */
   closeProfileMenu() {
-    // Find and remove the active class from the profile menu
-    const profileMenuElement = document.querySelector('.profile-item div:not(.hidden)');
-    if (profileMenuElement) {
-      profileMenuElement.classList.add('hidden');
+    const dropdown = this.profileDropdown();
+    if (dropdown) {
+      dropdown.nativeElement.classList.add('hidden');
     }
   }
 }

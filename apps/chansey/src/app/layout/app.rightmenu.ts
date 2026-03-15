@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { DrawerModule } from 'primeng/drawer';
 
@@ -13,7 +14,7 @@ import { LayoutService } from '../shared/services/layout.service';
     header="Spot Trading"
     [(visible)]="rightMenuVisible"
     position="right"
-    class="layout-rightmenu !w-full sm:!w-[36rem]"
+    class="layout-rightmenu w-full! sm:w-xl!"
   >
     @if (rightMenuVisible) {
       <app-crypto-trading />
@@ -22,14 +23,27 @@ import { LayoutService } from '../shared/services/layout.service';
 })
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
-export class AppRightMenu {
-  layoutService: LayoutService = inject(LayoutService);
+export class AppRightMenu implements OnInit {
+  private layoutService = inject(LayoutService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+
+  ngOnInit() {
+    if (this.route.snapshot.queryParamMap.get('trading') === 'open') {
+      this.layoutService.updateLayoutState({ rightMenuVisible: true });
+    }
+  }
 
   get rightMenuVisible(): boolean {
     return this.layoutService.layoutState().rightMenuVisible;
   }
 
-  set rightMenuVisible(_val: boolean) {
-    this.layoutService.layoutState.update((prev) => ({ ...prev, rightMenuVisible: _val }));
+  set rightMenuVisible(val: boolean) {
+    this.layoutService.layoutState.update((prev) => ({ ...prev, rightMenuVisible: val }));
+    this.router.navigate([], {
+      queryParams: { trading: val ? 'open' : null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
   }
 }
