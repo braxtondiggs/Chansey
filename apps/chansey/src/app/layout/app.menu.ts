@@ -1,5 +1,5 @@
-import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { Component, computed, inject } from '@angular/core';
+import { IsActiveMatchOptions, RouterModule } from '@angular/router';
 
 import { Role } from '@chansey/api-interfaces';
 
@@ -7,12 +7,27 @@ import { AppMenuitem } from './app.menuitem';
 
 import { AuthService } from '../shared/services/auth.service';
 
-interface MenuItem {
+export interface MenuItem {
   label?: string;
   icon?: string;
   routerLink?: string[];
   items?: MenuItem[];
   separator?: boolean;
+  visible?: boolean;
+  url?: string;
+  class?: string;
+  target?: string;
+  fragment?: string;
+  queryParamsHandling?: 'merge' | 'preserve' | '';
+  preserveFragment?: boolean;
+  skipLocationChange?: boolean;
+  replaceUrl?: boolean;
+  state?: Record<string, unknown>;
+  queryParams?: Record<string, string>;
+  routerLinkActiveOptions?: { exact: boolean } | IsActiveMatchOptions;
+  disabled?: boolean;
+  command?: (args: { originalEvent: Event; item: MenuItem }) => void;
+  badgeClass?: string;
 }
 
 @Component({
@@ -20,7 +35,7 @@ interface MenuItem {
   standalone: true,
   imports: [AppMenuitem, RouterModule],
   template: `<ul class="layout-menu">
-    @for (item of model(); track item.label; let i = $index) {
+    @for (item of model(); track $index; let i = $index) {
       @if (!item.separator) {
         <li chansey-menuitem [item]="item" [index]="i" [root]="true"></li>
       }
@@ -31,24 +46,13 @@ interface MenuItem {
   </ul>`
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
-export class AppMenu implements OnInit {
+export class AppMenu {
   private readonly authService = inject(AuthService);
   user = this.authService.useUser();
-  isAdmin = computed(() => this.user.data()?.roles?.includes(Role.ADMIN));
-  model = signal<MenuItem[]>([]);
+  private readonly isAdmin = computed(() => this.user.data()?.roles?.includes(Role.ADMIN));
 
-  constructor() {
-    effect(() => {
-      this.updateMenu();
-    });
-  }
-
-  ngOnInit() {
-    this.updateMenu();
-  }
-
-  private updateMenu(): void {
-    const menuItems = [
+  model = computed<MenuItem[]>(() => {
+    const items: MenuItem[] = [
       {
         label: 'Portfolio Hub',
         icon: 'pi pi-fw pi-briefcase',
@@ -81,7 +85,7 @@ export class AppMenu implements OnInit {
     ];
 
     if (this.isAdmin()) {
-      menuItems.push({
+      items.push({
         label: 'Admin',
         icon: 'pi pi-cog',
         items: [
@@ -134,6 +138,6 @@ export class AppMenu implements OnInit {
       });
     }
 
-    this.model.set(menuItems);
-  }
+    return items;
+  });
 }

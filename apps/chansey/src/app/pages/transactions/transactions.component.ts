@@ -24,6 +24,7 @@ import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
 import { Table, TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
+import { EMPTY } from 'rxjs';
 
 import { Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interfaces';
 
@@ -106,7 +107,7 @@ export class TransactionsComponent {
   isLoading = computed(() => this.transactionsQuery.isPending() || this.transactionsQuery.isFetching());
   private allTransactions = computed(() => this.transactionsQuery.data() ?? []);
 
-  private dateRangeValue = toSignal(this.filterForm.get('dateRange')!.valueChanges, { initialValue: null });
+  private dateRangeValue = toSignal(this.filterForm.get('dateRange')?.valueChanges ?? EMPTY, { initialValue: null });
   hasDateFilter = computed(() => {
     const dr = this.dateRangeValue();
     return !!(dr && dr[0] && dr[1]);
@@ -182,9 +183,11 @@ export class TransactionsComponent {
     const filters = this.filterForm.value;
 
     type FilterValue = string | { value: string };
-    const statuses = filters.statuses!.map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
-    const sides = filters.sides!.map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
-    const types = filters.types!.map((t: FilterValue) => (typeof t === 'object' && 'value' in t ? t.value : t));
+    const statuses = (filters.statuses ?? []).map((s: FilterValue) =>
+      typeof s === 'object' && 'value' in s ? s.value : s
+    );
+    const sides = (filters.sides ?? []).map((s: FilterValue) => (typeof s === 'object' && 'value' in s ? s.value : s));
+    const types = (filters.types ?? []).map((t: FilterValue) => (typeof t === 'object' && 'value' in t ? t.value : t));
 
     // Apply status filter
     if (statuses.length) {

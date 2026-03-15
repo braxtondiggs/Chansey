@@ -1,7 +1,6 @@
+import { ChangeDetectionStrategy, Component, input, model, output, ViewEncapsulation } from '@angular/core';
 
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-
-import { ImageCroppedEvent, ImageCropperComponent, LoadedImage } from 'ngx-image-cropper';
+import { ImageCroppedEvent, ImageCropperComponent } from 'ngx-image-cropper';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 
@@ -23,15 +22,13 @@ import { DialogModule } from 'primeng/dialog';
         <p class="text-600 mb-3 text-sm">Please crop your image to create a square profile picture.</p>
         <div class="flex flex-1 items-center justify-center overflow-hidden">
           <image-cropper
-            [imageFile]="imageFile ?? undefined"
+            [imageFile]="imageFile() ?? undefined"
             [maintainAspectRatio]="true"
             [aspectRatio]="1 / 1"
             [roundCropper]="true"
             [canvasRotation]="canvasRotation"
             [transform]="transform"
             (imageCropped)="imageCropped($event)"
-            (imageLoaded)="imageLoaded($event)"
-            (cropperReady)="cropperReady()"
             (loadImageFailed)="loadImageFailed()"
             format="png"
             outputType="blob"
@@ -72,27 +69,28 @@ import { DialogModule } from 'primeng/dialog';
         </div>
       </div>
       <ng-template pTemplate="footer">
-        <button pButton type="button" label="Cancel" class="p-button-text" (click)="cancelCrop()"></button>
+        <button pButton type="button" label="Cancel" class="p-button-text" (click)="onCancelCrop()"></button>
         <button pButton type="button" label="Apply" (click)="applyCrop()" [disabled]="!croppedImage"></button>
       </ng-template>
     </p-dialog>
   `,
   styles: [
     `
-      :host ::ng-deep .p-button-rotate-right {
+      app-image-crop .p-button-rotate-right {
         transform: scaleX(-1);
       }
     `
-  ]
+  ],
+  encapsulation: ViewEncapsulation.None,
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ImageCropComponent {
-  @Input() visible = false;
-  @Input() imageFile: File | null = null;
+  visible = model(false);
+  imageFile = input<File | null>(null);
 
-  @Output() visibleChange = new EventEmitter<boolean>();
-  @Output() croppedImageChange = new EventEmitter<Blob>();
-  // eslint-disable-next-line @angular-eslint/no-output-native
-  @Output() cancel = new EventEmitter<void>();
+  croppedImageChange = output<Blob>();
+  cancelCrop = output<void>();
+  loadError = output<void>();
 
   croppedImage: Blob | null = null;
   canvasRotation = 0;
@@ -108,16 +106,8 @@ export class ImageCropComponent {
     }
   }
 
-  imageLoaded(image: LoadedImage) {
-    // You can perform actions when the image is loaded
-  }
-
-  cropperReady() {
-    // Cropper is ready to be interacted with
-  }
-
   loadImageFailed() {
-    // Show an error message to the user
+    this.loadError.emit();
   }
 
   rotateLeft() {
@@ -162,14 +152,13 @@ export class ImageCropComponent {
     }
   }
 
-  cancelCrop() {
-    this.cancel.emit();
+  onCancelCrop() {
+    this.cancelCrop.emit();
     this.closeDialog();
   }
 
   private closeDialog() {
-    this.visible = false;
-    this.visibleChange.emit(false);
+    this.visible.set(false);
     this.croppedImage = null;
     this.resetTransform();
   }

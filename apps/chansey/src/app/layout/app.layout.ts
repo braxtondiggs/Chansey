@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, OnDestroy, Renderer2, ViewChild, computed, inject } from '@angular/core';
+import { Component, computed, ElementRef, inject, OnDestroy, Renderer2, ViewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 
-import { Subscription, filter } from 'rxjs';
+import { filter } from 'rxjs';
 
 import { AppBreadcrumb } from './app.breadcrumb';
 import { AppConfigurator } from './app.configurator';
@@ -49,11 +50,9 @@ import { LayoutService } from '../shared/services/layout.service';
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppLayout implements OnDestroy {
-  overlayMenuOpenSubscription: Subscription;
+  menuOutsideClickListener: (() => void) | null = null;
 
-  menuOutsideClickListener: any;
-
-  menuScrollListener: any;
+  menuScrollListener: (() => void) | null = null;
 
   @ViewChild(AppSidebar) appSidebar!: AppSidebar;
 
@@ -62,11 +61,11 @@ export class AppLayout implements OnDestroy {
   @ViewChild('contentWrapper') contentWrapper!: ElementRef<HTMLElement>;
 
   public layoutService: LayoutService = inject(LayoutService);
-  public renderer: Renderer2 = inject(Renderer2);
-  public router: Router = inject(Router);
+  private readonly renderer: Renderer2 = inject(Renderer2);
+  private readonly router: Router = inject(Router);
 
   constructor() {
-    this.overlayMenuOpenSubscription = this.layoutService.overlayOpen$.subscribe(() => {
+    this.layoutService.overlayOpen$.pipe(takeUntilDestroyed()).subscribe(() => {
       if (!this.menuOutsideClickListener) {
         this.menuOutsideClickListener = this.renderer.listen('document', 'click', (event) => {
           if (this.isOutsideClicked(event)) {
@@ -78,36 +77,38 @@ export class AppLayout implements OnDestroy {
         (this.layoutService.isHorizontal() || this.layoutService.isSlim() || this.layoutService.isCompact()) &&
         !this.menuScrollListener
       ) {
-        this.menuScrollListener = this.renderer.listen(
-          this.appSidebar.menuContainer.nativeElement,
-          'scroll',
-          (event) => {
-            if (this.layoutService.isDesktop()) {
-              this.hideMenu();
-            }
+        this.menuScrollListener = this.renderer.listen(this.appSidebar.menuContainer.nativeElement, 'scroll', () => {
+          if (this.layoutService.isDesktop()) {
+            this.hideMenu();
           }
-        );
+        });
       }
       if (this.layoutService.layoutState().staticMenuMobileActive) {
         this.blockBodyScroll();
       }
     });
 
-    this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe(() => {
-      this.hideMenu();
-      this.contentWrapper?.nativeElement.scrollTo(0, 0);
-    });
+    this.router.events
+      .pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntilDestroyed()
+      )
+      .subscribe(() => {
+        this.hideMenu();
+        this.contentWrapper?.nativeElement.scrollTo(0, 0);
+      });
   }
 
-  isOutsideClicked(event: any) {
+  isOutsideClicked(event: MouseEvent) {
     const sidebarEl = document.querySelector('.layout-sidebar');
     const topbarButtonEl = document.querySelector('.menu-button');
+    const target = event.target as Node;
 
     return !(
-      sidebarEl?.isSameNode(event.target) ||
-      sidebarEl?.contains(event.target) ||
-      topbarButtonEl?.isSameNode(event.target) ||
-      topbarButtonEl?.contains(event.target)
+      sidebarEl?.isSameNode(target) ||
+      sidebarEl?.contains(target) ||
+      topbarButtonEl?.isSameNode(target) ||
+      topbarButtonEl?.contains(target)
     );
   }
 
@@ -133,22 +134,11 @@ export class AppLayout implements OnDestroy {
   }
 
   blockBodyScroll(): void {
-    if (document.body.classList) {
-      document.body.classList.add('blocked-scroll');
-    } else {
-      document.body.className += ' blocked-scroll';
-    }
+    document.body.classList.add('blocked-scroll');
   }
 
   unblockBodyScroll(): void {
-    if (document.body.classList) {
-      document.body.classList.remove('blocked-scroll');
-    } else {
-      document.body.className = document.body.className.replace(
-        new RegExp('(^|\\b)' + 'blocked-scroll'.split(' ').join('|') + '(\\b|$)', 'gi'),
-        ' '
-      );
-    }
+    document.body.classList.remove('blocked-scroll');
   }
 
   containerClass = computed(() => {
@@ -174,10 +164,6 @@ export class AppLayout implements OnDestroy {
   });
 
   ngOnDestroy() {
-    if (this.overlayMenuOpenSubscription) {
-      this.overlayMenuOpenSubscription.unsubscribe();
-    }
-
     if (this.menuOutsideClickListener) {
       this.menuOutsideClickListener();
     }

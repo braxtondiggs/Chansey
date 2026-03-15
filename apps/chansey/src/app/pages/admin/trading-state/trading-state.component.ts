@@ -127,7 +127,7 @@ export class TradingStateComponent {
 
     this.haltMutation.mutate(
       {
-        reason: formValue.reason!,
+        reason: formValue.reason ?? '',
         pauseDeployments: formValue.pauseDeployments ?? false,
         cancelOpenOrders: formValue.cancelOpenOrders ?? false
       },
