@@ -34,7 +34,7 @@
           />
           @if (isUploadingImage()) {
             <div class="absolute inset-0 flex items-center justify-center">
-              <i class="pi pi-spin pi-spinner text-primary text-4xl"></i>
+              <i class="pi pi-spin pi-spinner text-4xl text-primary"></i>
             </div>
           }
         </div>
@@ -109,9 +109,9 @@
 }
 
 <app-image-crop
-  [visible]="showImageCropper()"
-  (visibleChange)="showImageCropper.set($event)"
+  [(visible)]="showImageCropper"
   [imageFile]="selectedImageFile()"
   (croppedImageChange)="handleCroppedImage($event)"
-  (cancel)="cancelCropping()"
+  (cancelCrop)="cancelCropping()"
+  (loadError)="onImageLoadError()"
 />

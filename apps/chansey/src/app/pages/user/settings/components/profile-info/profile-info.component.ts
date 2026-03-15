@@ -13,6 +13,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 
 import { funEmoji } from '@dicebear/collection';
 import { createAvatar } from '@dicebear/core';
+import { MessageService } from 'primeng/api';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
 import { FileSelectEvent, FileUpload, FileUploadModule } from 'primeng/fileupload';
@@ -58,6 +59,7 @@ import { ImageCropComponent } from '../../../../../shared/components/image-crop/
 })
 export class ProfileInfoComponent {
   private fb = inject(FormBuilder);
+  private messageService = inject(MessageService);
 
   @ViewChild('fileUpload') fileUpload!: FileUpload;
 
@@ -165,6 +167,15 @@ export class ProfileInfoComponent {
   cancelCropping(): void {
     this.selectedImageFile.set(null);
     this.showImageCropper.set(false);
+  }
+
+  onImageLoadError(): void {
+    this.messageService.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load image. Please try a different file.'
+    });
+    this.cancelCropping();
   }
 
   openFileUpload(): void {
