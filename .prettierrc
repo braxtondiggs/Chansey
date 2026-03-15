@@ -9,8 +9,7 @@
   "arrowParens": "always",
   "proseWrap": "always",
   "plugins": ["prettier-plugin-tailwindcss"],
-  "tailwindConfig": "./apps/chansey/tailwind.config.js",
-  "tailwindFunctions": ["clsx", "tw"],
+  "tailwindStylesheet": "./apps/chansey/src/tailwind.css",
   "overrides": [
     {
       "files": "*.yml",
