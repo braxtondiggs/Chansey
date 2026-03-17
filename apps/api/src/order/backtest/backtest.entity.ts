@@ -66,13 +66,13 @@ export class Backtest {
 
   @IsEnum(BacktestType)
   @IsNotEmpty()
-  @Column({ type: 'enum', enum: BacktestType })
+  @Column({ type: 'enum', enum: BacktestType, enumName: 'backtest_type_enum' })
   @ApiProperty({ description: 'Type of backtest', enum: BacktestType })
   type: BacktestType;
 
   @IsEnum(BacktestStatus)
   @IsNotEmpty()
-  @Column({ type: 'enum', enum: BacktestStatus, default: BacktestStatus.PENDING })
+  @Column({ type: 'enum', enum: BacktestStatus, enumName: 'backtest_status_enum', default: BacktestStatus.PENDING })
   @Index()
   @ApiProperty({ description: 'Current status of the backtest', enum: BacktestStatus })
   status: BacktestStatus;
@@ -282,13 +282,13 @@ export class BacktestTrade {
 
   @IsEnum(TradeType)
   @IsNotEmpty()
-  @Column({ type: 'enum', enum: TradeType })
+  @Column({ type: 'enum', enum: TradeType, enumName: 'backtest_trade_type_enum' })
   @ApiProperty({ description: 'Type of trade', enum: TradeType })
   type: TradeType;
 
   @IsEnum(TradeStatus)
   @IsNotEmpty()
-  @Column({ type: 'enum', enum: TradeStatus, default: TradeStatus.EXECUTED })
+  @Column({ type: 'enum', enum: TradeStatus, enumName: 'backtest_trade_status_enum', default: TradeStatus.EXECUTED })
   @ApiProperty({ description: 'Status of the trade', enum: TradeStatus })
   status: TradeStatus;
 
@@ -464,7 +464,7 @@ export class BacktestSignal {
   timestamp: Date;
 
   @IsEnum(SignalType)
-  @Column({ type: 'enum', enum: SignalType })
+  @Column({ type: 'enum', enum: SignalType, enumName: 'backtest_signal_type_enum' })
   @ApiProperty({ description: 'Signal classification', enum: SignalType })
   signalType: SignalType;
 
@@ -474,7 +474,7 @@ export class BacktestSignal {
   instrument: string;
 
   @IsEnum(SignalDirection)
-  @Column({ type: 'enum', enum: SignalDirection })
+  @Column({ type: 'enum', enum: SignalDirection, enumName: 'backtest_signal_direction_enum' })
   @ApiProperty({ description: 'Directional intent of the signal', enum: SignalDirection })
   direction: SignalDirection;
 
@@ -542,12 +542,12 @@ export class SimulatedOrderFill {
   id: string;
 
   @IsEnum(SimulatedOrderType)
-  @Column({ type: 'enum', enum: SimulatedOrderType })
+  @Column({ type: 'enum', enum: SimulatedOrderType, enumName: 'simulated_order_type_enum' })
   @ApiProperty({ description: 'Simulated order type', enum: SimulatedOrderType })
   orderType: SimulatedOrderType;
 
   @IsEnum(SimulatedOrderStatus)
-  @Column({ type: 'enum', enum: SimulatedOrderStatus })
+  @Column({ type: 'enum', enum: SimulatedOrderStatus, enumName: 'simulated_order_status_enum' })
   @ApiProperty({ description: 'Fill completion status', enum: SimulatedOrderStatus })
   status: SimulatedOrderStatus;
 

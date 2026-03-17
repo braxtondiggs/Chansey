@@ -48,17 +48,27 @@ export class PaperTradingOrder {
   id: string;
 
   @IsEnum(PaperTradingOrderSide)
-  @Column({ type: 'enum', enum: PaperTradingOrderSide })
+  @Column({ type: 'enum', enum: PaperTradingOrderSide, enumName: 'paper_trading_order_side_enum' })
   @ApiProperty({ description: 'Order side', enum: PaperTradingOrderSide })
   side: PaperTradingOrderSide;
 
   @IsEnum(PaperTradingOrderType)
-  @Column({ type: 'enum', enum: PaperTradingOrderType, default: PaperTradingOrderType.MARKET })
+  @Column({
+    type: 'enum',
+    enum: PaperTradingOrderType,
+    enumName: 'paper_trading_order_type_enum',
+    default: PaperTradingOrderType.MARKET
+  })
   @ApiProperty({ description: 'Order type', enum: PaperTradingOrderType, default: 'MARKET' })
   orderType: PaperTradingOrderType;
 
   @IsEnum(PaperTradingOrderStatus)
-  @Column({ type: 'enum', enum: PaperTradingOrderStatus, default: PaperTradingOrderStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: PaperTradingOrderStatus,
+    enumName: 'paper_trading_order_status_enum',
+    default: PaperTradingOrderStatus.PENDING
+  })
   @ApiProperty({ description: 'Order status', enum: PaperTradingOrderStatus, default: 'PENDING' })
   status: PaperTradingOrderStatus;
 

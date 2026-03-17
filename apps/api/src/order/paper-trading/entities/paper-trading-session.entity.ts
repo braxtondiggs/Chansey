@@ -59,7 +59,12 @@ export class PaperTradingSession {
   description?: string;
 
   @IsEnum(PaperTradingStatus)
-  @Column({ type: 'enum', enum: PaperTradingStatus, default: PaperTradingStatus.ACTIVE })
+  @Column({
+    type: 'enum',
+    enum: PaperTradingStatus,
+    enumName: 'paper_trading_session_status_enum',
+    default: PaperTradingStatus.ACTIVE
+  })
   @ApiProperty({ description: 'Current status of the session', enum: PaperTradingStatus })
   status: PaperTradingStatus;
 

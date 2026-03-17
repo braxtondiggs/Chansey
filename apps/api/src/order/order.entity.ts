@@ -295,7 +295,8 @@ export class Order {
 
   @Column({
     type: 'enum',
-    enum: OrderStatus
+    enum: OrderStatus,
+    enumName: 'order_status_enum'
   })
   @IsEnum(OrderStatus)
   @IsNotEmpty()
@@ -308,7 +309,8 @@ export class Order {
 
   @Column({
     type: 'enum',
-    enum: OrderSide
+    enum: OrderSide,
+    enumName: 'order_side_enum'
   })
   @ApiProperty({
     description: 'Side of the order',
@@ -319,7 +321,8 @@ export class Order {
 
   @Column({
     type: 'enum',
-    enum: OrderType
+    enum: OrderType,
+    enumName: 'order_type_enum'
   })
   @ApiProperty({
     description: 'Type of the order',
@@ -446,6 +449,7 @@ export class Order {
     type: 'enum',
     name: 'trailing_type',
     enum: TrailingType,
+    enumName: 'trailing_type_enum',
     nullable: true
   })
   @IsEnum(TrailingType)
