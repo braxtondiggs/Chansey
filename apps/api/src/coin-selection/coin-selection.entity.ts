@@ -49,8 +49,7 @@ export class CoinSelection {
   @Index('coin_selection_coinId_index')
   @ManyToOne('Coin', 'coinSelections', {
     nullable: false,
-    onDelete: 'CASCADE',
-    eager: true
+    onDelete: 'CASCADE'
   })
   @ApiProperty({
     description: 'Coin associated with this selection item',

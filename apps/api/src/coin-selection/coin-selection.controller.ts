@@ -14,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CoinSelectionType } from './coin-selection-type.enum';
+import { CoinSelectionRelations } from './coin-selection.entity';
 import { CoinSelectionService } from './coin-selection.service';
 import { CoinSelectionResponseDto, CreateCoinSelectionDto, UpdateCoinSelectionDto } from './dto';
 
@@ -47,7 +48,7 @@ export class CoinSelectionController {
     type: [CoinSelectionResponseDto]
   })
   async getCoinSelections(@GetUser() user: User, @Query('type') type?: CoinSelectionType) {
-    return this.coinSelection.getCoinSelectionsByUser(user, undefined, type);
+    return this.coinSelection.getCoinSelectionsByUser(user, [CoinSelectionRelations.COIN], type);
   }
 
   @Get(':id')

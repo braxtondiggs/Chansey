@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { CoinSelectionType } from './coin-selection-type.enum';
 import { CoinSelectionController } from './coin-selection.controller';
+import { CoinSelectionRelations } from './coin-selection.entity';
 import { CoinSelectionService } from './coin-selection.service';
 
 describe('CoinSelectionController', () => {
@@ -38,7 +39,11 @@ describe('CoinSelectionController', () => {
       const result = await controller.getCoinSelections(mockUser, CoinSelectionType.MANUAL);
 
       expect(result).toEqual([{ id: 's-1' }]);
-      expect(service.getCoinSelectionsByUser).toHaveBeenCalledWith(mockUser, undefined, CoinSelectionType.MANUAL);
+      expect(service.getCoinSelectionsByUser).toHaveBeenCalledWith(
+        mockUser,
+        [CoinSelectionRelations.COIN],
+        CoinSelectionType.MANUAL
+      );
     });
 
     it('passes undefined type when no filter provided', async () => {
@@ -46,7 +51,7 @@ describe('CoinSelectionController', () => {
 
       await controller.getCoinSelections(mockUser);
 
-      expect(service.getCoinSelectionsByUser).toHaveBeenCalledWith(mockUser, undefined, undefined);
+      expect(service.getCoinSelectionsByUser).toHaveBeenCalledWith(mockUser, [CoinSelectionRelations.COIN], undefined);
     });
   });
 

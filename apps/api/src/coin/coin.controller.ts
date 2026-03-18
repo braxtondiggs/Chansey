@@ -246,11 +246,8 @@ export class CoinsController implements OnModuleInit {
     }
 
     // Get coin count from risk entity, fallback to default
-    let coinCount = DEFAULT_COIN_COUNTS[level] ?? 10;
     const risk = await this.riskService.findByLevel(level);
-    if (risk) {
-      coinCount = risk.coinCount;
-    }
+    const coinCount = risk?.coinCount ?? DEFAULT_COIN_COUNTS[level];
 
     // Use limit param if provided, otherwise use risk's coinCount
     const take = limit ? Math.max(parseInt(limit, 10) || coinCount, 1) : coinCount;
