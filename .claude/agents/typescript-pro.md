@@ -105,12 +105,7 @@ export type TimePeriod = '24h' | '7d' | '30d' | '1y';
 
 export type OrderSide = 'buy' | 'sell';
 
-export type BacktestRunStatus =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+export type BacktestRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 // Enums when values need reverse mapping
 export enum TickerPairStatus {
@@ -121,7 +116,7 @@ export enum TickerPairStatus {
 
 // Use const object for runtime-accessible values
 export const ORDER_SIDES = ['buy', 'sell'] as const;
-export type OrderSideType = typeof ORDER_SIDES[number];
+export type OrderSideType = (typeof ORDER_SIDES)[number];
 ```
 
 ## Generic Patterns
@@ -137,12 +132,9 @@ export const queryKeys = {
     all: ['coins'] as const,
     lists: () => [...queryKeys.coins.all, 'list'] as const,
     list: (filters?: { category?: string; search?: string }) =>
-      filters
-        ? ([...queryKeys.coins.lists(), filters] as const)
-        : queryKeys.coins.lists(),
+      filters ? ([...queryKeys.coins.lists(), filters] as const) : queryKeys.coins.lists(),
     detail: (slug: string) => [...queryKeys.coins.all, 'detail', slug] as const,
-    chart: (slug: string, period: string) =>
-      [...queryKeys.coins.detail(slug), 'chart', period] as const
+    chart: (slug: string, period: string) => [...queryKeys.coins.detail(slug), 'chart', period] as const
   }
 } as const;
 
@@ -240,7 +232,7 @@ export class Coin {
 
 // Type-safe relation loading
 export enum CoinRelations {
-  PORTFOLIOS = 'portfolios',
+  COIN_SELECTIONS = 'coinSelections',
   BASE_ORDERS = 'baseOrders',
   QUOTE_ORDERS = 'quoteOrders'
 }
@@ -252,15 +244,7 @@ export enum CoinRelations {
 
 ```typescript
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsString,
-  IsNumber,
-  IsOptional,
-  IsEnum,
-  Min,
-  Max,
-  IsUUID
-} from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, Min, Max, IsUUID } from 'class-validator';
 
 export class CreateOrderDto {
   @ApiProperty({ example: 'BTC/USDT' })
@@ -298,15 +282,10 @@ import { PartialType, OmitType, PickType } from '@nestjs/swagger';
 export class UpdateCoinDto extends PartialType(CreateCoinDto) {}
 
 // Partial but omit certain fields
-export class UpdateOrderDto extends PartialType(
-  OmitType(CreateOrderDto, ['exchangeId', 'side'] as const)
-) {}
+export class UpdateOrderDto extends PartialType(OmitType(CreateOrderDto, ['exchangeId', 'side'] as const)) {}
 
 // Pick specific fields
-export class ChangePriceDto extends PickType(
-  CreateOrderDto,
-  ['limitPrice'] as const
-) {}
+export class ChangePriceDto extends PickType(CreateOrderDto, ['limitPrice'] as const) {}
 ```
 
 ## TanStack Query Types
@@ -340,10 +319,10 @@ import { CreateMutationResult } from '@tanstack/angular-query-experimental';
 
 // Typed mutation
 type CreateOrderMutation = CreateMutationResult<
-  Order,           // Return type
-  Error,           // Error type
-  CreateOrderDto,  // Variables type
-  unknown          // Context type
+  Order, // Return type
+  Error, // Error type
+  CreateOrderDto, // Variables type
+  unknown // Context type
 >;
 ```
 
@@ -353,11 +332,10 @@ type CreateOrderMutation = CreateMutationResult<
 
 ```typescript
 // Extract nested property type
-type CoinPrice = Coin['currentPrice'];  // number | undefined
+type CoinPrice = Coin['currentPrice']; // number | undefined
 
 // Make specific properties required
-type RequiredCoinFields = Required<Pick<Coin, 'currentPrice' | 'marketCap'>> &
-  Omit<Coin, 'currentPrice' | 'marketCap'>;
+type RequiredCoinFields = Required<Pick<Coin, 'currentPrice' | 'marketCap'>> & Omit<Coin, 'currentPrice' | 'marketCap'>;
 
 // Nullable to optional
 type NullableToOptional<T> = {
@@ -377,7 +355,7 @@ type ApiPath = `/api/${ApiVersion}/${Resource}`;
 
 // Query key pattern enforcement
 type QueryKeyPattern<T extends string> = readonly [T, ...string[]];
-type CoinQueryKey = QueryKeyPattern<'coins'>;  // readonly ['coins', ...string[]]
+type CoinQueryKey = QueryKeyPattern<'coins'>; // readonly ['coins', ...string[]]
 ```
 
 ### Discriminated Unions
@@ -424,41 +402,35 @@ function handleResult(result: JobResult) {
 
 ## Key Files Reference
 
-| Purpose | Path |
-|---------|------|
-| Shared Interfaces | `libs/api-interfaces/src/lib/` |
-| Query Key Types | `libs/shared/src/lib/query/query-keys.ts` |
-| Cache Policies | `libs/shared/src/lib/query/cache-policies.ts` |
-| Entity Definitions | `apps/api/src/*/*.entity.ts` |
-| DTOs | `apps/api/src/*/dto/*.dto.ts` |
-| TypeScript Config | `tsconfig.base.json` |
+| Purpose            | Path                                          |
+| ------------------ | --------------------------------------------- |
+| Shared Interfaces  | `libs/api-interfaces/src/lib/`                |
+| Query Key Types    | `libs/shared/src/lib/query/query-keys.ts`     |
+| Cache Policies     | `libs/shared/src/lib/query/cache-policies.ts` |
+| Entity Definitions | `apps/api/src/*/*.entity.ts`                  |
+| DTOs               | `apps/api/src/*/dto/*.dto.ts`                 |
+| TypeScript Config  | `tsconfig.base.json`                          |
 
 ## Quick Reference
 
 ### Common Type Patterns
 
-| Pattern | Usage |
-|---------|-------|
-| `Partial<T>` | All properties optional |
-| `Required<T>` | All properties required |
-| `Pick<T, K>` | Select specific properties |
-| `Omit<T, K>` | Exclude specific properties |
+| Pattern        | Usage                                   |
+| -------------- | --------------------------------------- |
+| `Partial<T>`   | All properties optional                 |
+| `Required<T>`  | All properties required                 |
+| `Pick<T, K>`   | Select specific properties              |
+| `Omit<T, K>`   | Exclude specific properties             |
 | `Record<K, V>` | Object with key type K and value type V |
-| `readonly T[]` | Immutable array |
-| `as const` | Literal type inference |
+| `readonly T[]` | Immutable array                         |
+| `as const`     | Literal type inference                  |
 
 ### Type Guards
 
 ```typescript
 // Custom type guard
 function isCoin(value: unknown): value is Coin {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    'slug' in value &&
-    'symbol' in value
-  );
+  return typeof value === 'object' && value !== null && 'id' in value && 'slug' in value && 'symbol' in value;
 }
 
 // Usage

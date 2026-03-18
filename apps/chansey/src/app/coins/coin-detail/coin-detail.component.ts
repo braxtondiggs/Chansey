@@ -8,7 +8,7 @@ import { CardModule } from 'primeng/card';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ToastModule } from 'primeng/toast';
 
-import { PortfolioType, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
+import { CoinSelectionType, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
 
 import { CounterDirective } from '../../shared/directives/counter/counter.directive';
 import { AuthService } from '../../shared/services/auth.service';
@@ -155,7 +155,7 @@ export class CoinDetailComponent {
     } else {
       this.processingWatchlist.set(true);
       this.addToWatchlistMutation.mutate(
-        { coinId: detail.id, type: PortfolioType.MANUAL },
+        { coinId: detail.id, type: CoinSelectionType.MANUAL },
         {
           onSuccess: () => {
             this.processingWatchlist.set(false);

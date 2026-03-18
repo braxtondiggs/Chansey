@@ -31,6 +31,12 @@ export class RiskService {
     return risk;
   }
 
+  async findByLevel(level: number): Promise<Risk | null> {
+    return this.riskRepository.findOne({
+      where: { level }
+    });
+  }
+
   async create(createRiskDto: CreateRiskDto): Promise<Risk> {
     const risk = this.riskRepository.create(createRiskDto);
     return this.riskRepository.save(risk);

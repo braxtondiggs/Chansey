@@ -7,6 +7,7 @@ import { CoinService } from './coin.service';
 
 import { BalanceService } from '../balance/balance.service';
 import { OrderService } from '../order/order.service';
+import { RiskService } from '../risk/risk.service';
 
 describe('CoinsController', () => {
   let controller: CoinsController;
@@ -58,6 +59,12 @@ describe('CoinsController', () => {
           provide: BalanceService,
           useValue: {
             getHoldingsForCoin: jest.fn()
+          }
+        },
+        {
+          provide: RiskService,
+          useValue: {
+            findByLevel: jest.fn()
           }
         }
       ]

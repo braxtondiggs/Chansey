@@ -18,12 +18,12 @@ import {
   Role
 } from '@chansey/api-interfaces';
 
+import type { CoinSelection } from '../coin-selection/coin-selection.entity';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   OpportunitySellingUserConfig
 } from '../order/interfaces/opportunity-selling.interface';
 import type { Order } from '../order/order.entity';
-import type { Portfolio } from '../portfolio/portfolio.entity';
 import type { Risk } from '../risk/risk.entity';
 
 @Entity()
@@ -156,10 +156,10 @@ export class User {
   @UpdateDateColumn({ select: false, type: 'timestamptz' })
   updatedAt: Date;
 
-  @OneToMany('Portfolio', 'user', {
+  @OneToMany('CoinSelection', 'user', {
     cascade: true
   })
-  portfolios: Relation<Portfolio[]>;
+  coinSelections: Relation<CoinSelection[]>;
 
   @OneToMany('Order', 'user', { cascade: true })
   orders: Relation<Order[]>;

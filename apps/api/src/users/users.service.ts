@@ -1,22 +1,29 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { getCapitalAllocationForRisk } from '@chansey/api-interfaces';
+import { DEFAULT_COIN_COUNTS, getCapitalAllocationForRisk } from '@chansey/api-interfaces';
 
 import { UpdateFuturesEnabledDto, UpdateOpportunitySellingConfigDto, UpdateUserDto } from './dto';
 import { User } from './users.entity';
 import { UserWithExchanges } from './users.types';
 
 import { CoinService } from '../coin/coin.service';
+import { CoinSelectionType } from '../coin-selection/coin-selection-type.enum';
+import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   OpportunitySellingUserConfig
 } from '../order/interfaces/opportunity-selling.interface';
-import { PortfolioType } from '../portfolio/portfolio-type.enum';
-import { PortfolioService } from '../portfolio/portfolio.service';
+import { CUSTOM_RISK_LEVEL, DEFAULT_RISK_LEVEL, MIN_WATCHLIST_COINS } from '../risk/risk.constants';
 import { Risk } from '../risk/risk.entity';
 import { toErrorInfo } from '../shared/error.util';
 import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
@@ -30,7 +37,7 @@ export class UsersService {
     private readonly user: Repository<User>,
     @InjectRepository(Risk)
     private readonly risk: Repository<Risk>,
-    private readonly portfolio: PortfolioService,
+    private readonly coinSelection: CoinSelectionService,
     private readonly coin: CoinService,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly riskPoolMapping: RiskPoolMappingService
@@ -42,7 +49,7 @@ export class UsersService {
 
       // Set default coin risk level
       const defaultRisk = await this.risk.findOne({
-        where: { level: 3 }
+        where: { level: DEFAULT_RISK_LEVEL }
       });
 
       if (defaultRisk) {
@@ -51,7 +58,7 @@ export class UsersService {
         this.logger.warn('Default "Moderate" risk level not found');
       }
 
-      newUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(3);
+      newUser.algoCapitalAllocationPercentage = getCapitalAllocationForRisk(DEFAULT_RISK_LEVEL);
 
       const savedUser = await this.user.save(newUser);
 
@@ -69,6 +76,7 @@ export class UsersService {
       const updatedUser = await this.updateLocalProfile(updateUserDto, user);
       return this.getProfile(updatedUser);
     } catch (error: unknown) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
       const err = toErrorInfo(error);
       this.logger.error(`Failed to update user with ID: ${user.id}`, err.stack);
       throw new InternalServerErrorException('Failed to update user');
@@ -84,7 +92,7 @@ export class UsersService {
       // Handle coinRisk change
       if (coinRisk && user.coinRisk?.id !== coinRisk) {
         updatedUser.coinRisk = await this.getRiskLevel(coinRisk);
-        await this.updatePortfolioByUserRisk(updatedUser);
+        await this.updateCoinSelectionByUserRisk(updatedUser);
         riskChanged = true;
       }
 
@@ -92,6 +100,18 @@ export class UsersService {
       if (calculationRiskLevel !== undefined && user.calculationRiskLevel !== calculationRiskLevel) {
         updatedUser.calculationRiskLevel = calculationRiskLevel;
         riskChanged = true;
+      }
+
+      // Validate watchlist count for custom risk level
+      // Skip when user is SWITCHING TO custom (they're building their watchlist)
+      const isSwitchingToCustom = !!coinRisk && updatedUser.coinRisk?.level === CUSTOM_RISK_LEVEL;
+      if (updatedUser.coinRisk?.level === CUSTOM_RISK_LEVEL && !isSwitchingToCustom) {
+        const watchlistSymbols = await this.coinSelection.getManualCoinSelectionSymbols(updatedUser);
+        if (watchlistSymbols.length < MIN_WATCHLIST_COINS) {
+          throw new BadRequestException(
+            `Custom coin selection requires at least ${MIN_WATCHLIST_COINS} coins in your watchlist (currently ${watchlistSymbols.length})`
+          );
+        }
       }
 
       // Only recalculate capital allocation when risk settings change
@@ -106,6 +126,7 @@ export class UsersService {
 
       return updatedUser;
     } catch (error: unknown) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
       const err = toErrorInfo(error);
       this.logger.error(`Failed to update local profile for user ID: ${user.id}`, err.stack);
       throw new InternalServerErrorException('Failed to update local profile');
@@ -144,6 +165,22 @@ export class UsersService {
     }
   }
 
+  /**
+   * Get all users with a specific risk level for batch portfolio updates
+   */
+  async getUsersByRiskLevel(riskLevel: number): Promise<User[]> {
+    try {
+      return await this.user.find({
+        relations: ['coinRisk'],
+        where: { coinRisk: { level: riskLevel } }
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to retrieve users for risk level ${riskLevel}`, err.stack);
+      return [];
+    }
+  }
+
   async getProfile(user: User): Promise<UserWithExchanges> {
     try {
       const freshUser = await this.getById(user.id);
@@ -155,19 +192,25 @@ export class UsersService {
     }
   }
 
-  async updatePortfolioByUserRisk(user: User) {
-    const portfolio = await this.portfolio.getPortfolioByUser(user);
-    const dynamicPortfolio = portfolio.filter((p) => p.type === PortfolioType.AUTOMATIC);
+  async updateCoinSelectionByUserRisk(user: User) {
+    const selections = await this.coinSelection.getCoinSelectionsByUser(user);
+    const automaticSelections = selections.filter((s) => s.type === CoinSelectionType.AUTOMATIC);
 
-    await Promise.all(dynamicPortfolio.map((portfolio) => this.portfolio.deletePortfolioItem(portfolio.id, user.id)));
+    await Promise.all(
+      automaticSelections.map((selection) => this.coinSelection.deleteCoinSelectionItem(selection.id, user.id))
+    );
 
-    const newCoins = await this.coin.getCoinsByRiskLevel(user, 5);
+    // Custom risk users manage their own coins via watchlist
+    if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) return;
+
+    const coinCount = user.coinRisk?.coinCount ?? DEFAULT_COIN_COUNTS[user.coinRisk?.level ?? DEFAULT_RISK_LEVEL] ?? 10;
+    const newCoins = await this.coin.getCoinsByRiskLevel(user, coinCount);
     await Promise.all(
       newCoins.map((coin) =>
-        this.portfolio.createPortfolioItem(
+        this.coinSelection.createCoinSelectionItem(
           {
             coinId: coin.id,
-            type: PortfolioType.AUTOMATIC
+            type: CoinSelectionType.AUTOMATIC
           },
           user
         )

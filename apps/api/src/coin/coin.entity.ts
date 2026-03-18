@@ -12,8 +12,8 @@ import {
 
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 
+import { CoinSelection } from '../coin-selection/coin-selection.entity';
 import { Order } from '../order/order.entity';
-import { Portfolio } from '../portfolio/portfolio.entity';
 
 @Entity()
 export class Coin {
@@ -411,14 +411,14 @@ export class Coin {
   })
   quoteOrders: Relation<Order[]>;
 
-  @OneToMany('Portfolio', 'coin')
+  @OneToMany('CoinSelection', 'coin')
   @ApiProperty({
-    description: 'List of portfolios associated with the coin',
-    type: () => Portfolio,
+    description: 'List of coin selections associated with the coin',
+    type: () => CoinSelection,
     isArray: true,
     required: false
   })
-  portfolios: Relation<Portfolio[]>;
+  coinSelections: Relation<CoinSelection[]>;
 
   @OneToMany('TickerPairs', 'baseAsset')
   @ApiProperty({
@@ -444,7 +444,7 @@ export class Coin {
 }
 
 export enum CoinRelations {
-  PORTFOLIOS = 'portfolios',
+  COIN_SELECTIONS = 'coinSelections',
   BASE_ASSETS = 'baseAssetPairs',
   QUOTE_ASSETS = 'quoteAssetPairs',
   BASE_ORDERS = 'baseOrders',

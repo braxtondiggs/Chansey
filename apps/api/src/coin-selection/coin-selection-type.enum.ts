@@ -1,4 +1,4 @@
-export enum PortfolioType {
+export enum CoinSelectionType {
   MANUAL = 'MANUAL',
   AUTOMATIC = 'AUTOMATIC'
 }

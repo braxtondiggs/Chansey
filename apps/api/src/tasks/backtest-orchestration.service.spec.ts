@@ -13,11 +13,11 @@ import {
 
 import { Algorithm, AlgorithmCategory, AlgorithmStatus } from '../algorithm/algorithm.entity';
 import { AlgorithmService } from '../algorithm/algorithm.service';
+import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { MarketDataSet, MarketDataTimeframe } from '../order/backtest/market-data-set.entity';
 import { SlippageModelType } from '../order/backtest/shared/slippage';
-import { PortfolioService } from '../portfolio/portfolio.service';
 import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
 import { Risk } from '../risk/risk.entity';
 import { User } from '../users/users.entity';
@@ -115,9 +115,9 @@ describe('BacktestOrchestrationService', () => {
           }
         },
         {
-          provide: PortfolioService,
+          provide: CoinSelectionService,
           useValue: {
-            getManualPortfolioCoinSymbols: jest.fn().mockResolvedValue([])
+            getManualCoinSelectionSymbols: jest.fn().mockResolvedValue([])
           }
         }
       ]

@@ -63,7 +63,7 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - **Exchanges**: Cryptocurrency exchange configurations
 - **Exchange Keys**: User's encrypted API keys for exchanges
 - **Orders**: Trading orders synced from exchanges
-- **Portfolios**: User investment portfolios
+- **Coin Selections**: Which coins a user trades (auto-picked by risk level or manual watchlist)
 - **Coins**: Cryptocurrency information with price tracking
 - **Categories**: Asset categorization system
 - **Algorithms**: Trading algorithm configurations
@@ -75,7 +75,7 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
   - Order sync (hourly)
   - Price updates
   - Balance calculations
-  - Portfolio historical data
+  - Coin selection historical data
 
 ### Frontend Architecture
 
@@ -142,14 +142,14 @@ The order sync system (`apps/api/src/order/tasks/order-sync.task.ts`) runs hourl
 3. Identifies new/changed orders and saves to database
 4. Handles exchange-specific data mapping and fee calculations
 
-### Portfolio Management
+### Coin Selection & Portfolio
 
-Portfolio module tracks investment performance with:
+Two separate modules handle coin-related tracking:
 
-- Historical price data collection
-- Asset allocation calculations
-- Performance metrics and charts
-- Multi-exchange portfolio aggregation
+- **Coin Selection** (`apps/api/src/coin-selection/`) — Which coins a user trades. Auto-selected by risk level (1-5) or
+  manually managed (level 6). Routes: `/coin-selections`
+- **Portfolio** (`apps/api/src/portfolio/`) — Algo trading portfolio aggregation across strategies. Asset allocation,
+  P&L, and performance metrics. Routes: `/portfolio`
 
 ### Price Data & Coin Detail Pages
 

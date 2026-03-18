@@ -3,9 +3,9 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CronJob } from 'cron';
 
+import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService, PriceRange } from '../../ohlc/ohlc.service';
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Algorithm } from '../algorithm.entity';
 
 // Time period constants for volatility calculation
@@ -33,7 +33,7 @@ export class MeanReversionService {
   private readonly logger = new Logger(MeanReversionService.name);
   constructor(
     private readonly ohlcService: OHLCService,
-    private readonly portfolio: PortfolioService,
+    private readonly coinSelection: CoinSelectionService,
     private readonly schedulerRegistry: SchedulerRegistry
   ) {}
 
@@ -58,7 +58,7 @@ export class MeanReversionService {
   }
 
   private async cronJob() {
-    const coins = await this.portfolio.getPortfolioCoins();
+    const coins = await this.coinSelection.getCoinSelectionCoins();
     const coinIds = coins.map(({ id }) => id);
     const [candles, todaysCandles] = await Promise.all([
       this.ohlcService.getCandlesByDateRange(coinIds, new Date(Date.now() - PeriodMs['14d']), new Date()),

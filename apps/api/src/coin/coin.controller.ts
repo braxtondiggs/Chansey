@@ -14,7 +14,13 @@ import {
 import { ModuleRef } from '@nestjs/core';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod, UserHoldingsDto } from '@chansey/api-interfaces';
+import {
+  CoinDetailResponseDto,
+  DEFAULT_COIN_COUNTS,
+  MarketChartResponseDto,
+  TimePeriod,
+  UserHoldingsDto
+} from '@chansey/api-interfaces';
 
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
@@ -25,6 +31,7 @@ import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authenticati
 import { OptionalJwtAuthenticationGuard } from '../authentication/guard/optional-jwt-authentication.guard';
 import { BalanceService } from '../balance/balance.service';
 import { OrderService } from '../order/order.service';
+import { RiskService } from '../risk/risk.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
@@ -185,6 +192,7 @@ export class CoinsController implements OnModuleInit {
   constructor(
     private readonly coinService: CoinService,
     private readonly orderService: OrderService,
+    private readonly riskService: RiskService,
     private readonly moduleRef: ModuleRef
   ) {}
 
@@ -194,6 +202,59 @@ export class CoinsController implements OnModuleInit {
     } catch {
       this.logger.warn('BalanceService not available — holdings enrichment will be skipped');
     }
+  }
+
+  /**
+   * GET /coins/preview - Preview coins for a risk level
+   * Returns top coins that would be selected for auto-selection at a given risk level
+   */
+  @Get('preview')
+  @ApiOperation({
+    summary: 'Preview coins for risk level',
+    description:
+      'Returns a preview of coins that would be auto-selected for a given risk level (1-5). ' +
+      'Used by settings page to show users what coins they will get before saving.'
+  })
+  @ApiQuery({
+    name: 'riskLevel',
+    required: true,
+    description: 'Risk level (1=Conservative, 5=Aggressive)',
+    type: Number,
+    example: 3
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of coins to return (defaults to risk level coinCount)',
+    type: Number,
+    example: 12
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Preview coins retrieved successfully.',
+    type: [Coin]
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid risk level (must be 1-5).'
+  })
+  @UseGuards(JwtAuthenticationGuard)
+  async getPreviewCoins(@Query('riskLevel') riskLevel: string, @Query('limit') limit?: string): Promise<Coin[]> {
+    const level = parseInt(riskLevel, 10);
+    if (isNaN(level) || level < 1 || level > 5) {
+      throw new BadRequestException('Risk level must be an integer between 1 and 5');
+    }
+
+    // Get coin count from risk entity, fallback to default
+    let coinCount = DEFAULT_COIN_COUNTS[level] ?? 10;
+    const risk = await this.riskService.findByLevel(level);
+    if (risk) {
+      coinCount = risk.coinCount;
+    }
+
+    // Use limit param if provided, otherwise use risk's coinCount
+    const take = limit ? Math.max(parseInt(limit, 10) || coinCount, 1) : coinCount;
+    return this.coinService.getCoinsByRiskLevelValue(level, take);
   }
 
   /**

@@ -256,12 +256,10 @@ export interface CoinDetail extends Coin {
 - Automatic order synchronization (hourly via BullMQ)
 - Balance calculations across exchanges
 
-### Portfolio Management
+### Coin Selection & Portfolio
 
-- Historical price tracking
-- Asset allocation visualization
-- Performance metrics and charts
-- Multi-exchange aggregation
+- **Coin Selection** (`/coin-selections`): Watchlist management, risk-based auto-selection
+- **Portfolio** (`/portfolio`): Algo trading performance, asset allocation, P&L metrics
 
 ### Authentication
 

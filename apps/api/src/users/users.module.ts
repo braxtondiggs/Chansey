@@ -9,10 +9,11 @@ import { UserController } from './users.controller';
 import { User } from './users.entity';
 import { UsersService } from './users.service';
 
+import { CoinSelectionModule } from '../coin-selection/coin-selection.module';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
-import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Risk } from '../risk/risk.entity';
+import { RiskModule } from '../risk/risk.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { StorageModule } from '../storage/storage.module';
 import { StrategyModule } from '../strategy/strategy.module';
@@ -23,8 +24,9 @@ import { StrategyModule } from '../strategy/strategy.module';
     TypeOrmModule.forFeature([Coin, Risk, User]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
-    forwardRef(() => PortfolioModule),
+    forwardRef(() => CoinSelectionModule),
     forwardRef(() => StrategyModule),
+    RiskModule,
     SharedCacheModule,
     StorageModule,
     BullModule.registerQueue({ name: 'user-queue' })

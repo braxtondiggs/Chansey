@@ -20,6 +20,7 @@ import { AuthenticationModule } from './authentication/authentication.module';
 import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
+import { CoinSelectionModule } from './coin-selection/coin-selection.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { databaseConfig } from './config/database.config';
 import { validateEnv } from './config/env.validation';
@@ -116,6 +117,7 @@ import { TradingModule } from './trading/trading.module';
     BalanceModule,
     CategoryModule,
     CoinModule,
+    CoinSelectionModule,
     ExchangeModule,
     HealthModule,
     MarketRegimeModule,

@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 
-import { Coin, PortfolioType } from '@chansey/api-interfaces';
+import { Coin, CoinSelectionType } from '@chansey/api-interfaces';
 
 import { CryptoTableComponent, CryptoTableConfig } from '../../shared/components/crypto-table/crypto-table.component';
 import { CoinDataService } from '../../shared/services/coin-data.service';
@@ -55,7 +55,7 @@ export class PricesComponent {
     this.addToWatchlistMutation.mutate(
       {
         coinId: coin.id,
-        type: PortfolioType.MANUAL
+        type: CoinSelectionType.MANUAL
       },
       {
         onSuccess: () => {

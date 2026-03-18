@@ -28,6 +28,21 @@ export class Risk implements RiskInterface {
   @Column()
   level: number;
 
+  @Column({ default: 10 })
+  @ApiProperty({
+    description: 'Number of coins to auto-select for this risk level',
+    example: 12
+  })
+  coinCount: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  @ApiProperty({
+    description: 'Cron pattern for coin selection updates (null = no auto-updates)',
+    example: '0 2 * * 1',
+    nullable: true
+  })
+  selectionUpdateCron: string | null;
+
   @CreateDateColumn({
     type: 'timestamptz',
     default: () => 'CURRENT_TIMESTAMP'

@@ -18,7 +18,7 @@ export const QUEUE_NAMES = [
   'performance-ranking',
   'pipeline',
   'pipeline-orchestration',
-  'portfolio-queue',
+  'coin-selection-queue',
   'price-queue',
   'regime-check-queue',
   'strategy-evaluation-queue',

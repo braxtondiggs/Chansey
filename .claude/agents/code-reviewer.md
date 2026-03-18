@@ -60,14 +60,14 @@ import { ExchangeModule } from '../exchange/exchange.module';
 
 ### Cryptocurrency/Financial Security
 
-| Check | Why | Example |
-|-------|-----|---------|
+| Check              | Why                           | Example                                  |
+| ------------------ | ----------------------------- | ---------------------------------------- |
 | API Key Encryption | Keys stored encrypted at rest | `ExchangeKey.decryptedApiKey` via getter |
-| No Keys in Logs | Secrets never logged | Never log `apiKey`, `secretKey` |
-| Decimal Precision | Avoid floating-point errors | Use `decimal.js` or `decimal(25,8)` |
-| Input Validation | Prevent injection attacks | DTOs with class-validator |
-| Rate Limiting | Prevent abuse | `@Throttle()` on endpoints |
-| Amount Validation | Prevent negative/overflow | `@Min(0)`, max amount checks |
+| No Keys in Logs    | Secrets never logged          | Never log `apiKey`, `secretKey`          |
+| Decimal Precision  | Avoid floating-point errors   | Use `decimal.js` or `decimal(25,8)`      |
+| Input Validation   | Prevent injection attacks     | DTOs with class-validator                |
+| Rate Limiting      | Prevent abuse                 | `@Throttle()` on endpoints               |
+| Amount Validation  | Prevent negative/overflow     | `@Min(0)`, max amount checks             |
 
 ### API Key Handling
 
@@ -94,13 +94,13 @@ this.logger.log(`Connecting with key: ${apiKey}`);  // Never!
 
 ### Authentication Review
 
-| Check | Implementation |
-|-------|----------------|
-| Guards on all endpoints | `@UseGuards(JwtAuthenticationGuard)` |
-| Admin-only routes protected | `@UseGuards(RolesGuard)` + `@Roles(Role.ADMIN)` |
-| Optional auth where appropriate | `@UseGuards(OptionalAuthGuard)` |
-| HttpOnly cookies for tokens | Refresh token in HttpOnly cookie |
-| Token validation | JWT expiry checked, refresh flow works |
+| Check                           | Implementation                                  |
+| ------------------------------- | ----------------------------------------------- |
+| Guards on all endpoints         | `@UseGuards(JwtAuthenticationGuard)`            |
+| Admin-only routes protected     | `@UseGuards(RolesGuard)` + `@Roles(Role.ADMIN)` |
+| Optional auth where appropriate | `@UseGuards(OptionalAuthGuard)`                 |
+| HttpOnly cookies for tokens     | Refresh token in HttpOnly cookie                |
+| Token validation                | JWT expiry checked, refresh flow works          |
 
 ### Input Validation
 
@@ -150,12 +150,12 @@ const percentage = value / 100;  // Rounding errors!
 
 ### Price and Amount Precision
 
-| Type | Precision | Example |
-|------|-----------|---------|
-| Prices | `decimal(25,8)` | 0.00000001 BTC |
-| Amounts | `decimal(25,8)` | 0.00000001 BTC |
-| Percentages | `decimal(10,5)` | 99.99999% |
-| USD Values | `decimal(25,8)` | Large market caps |
+| Type        | Precision       | Example           |
+| ----------- | --------------- | ----------------- |
+| Prices      | `decimal(25,8)` | 0.00000001 BTC    |
+| Amounts     | `decimal(25,8)` | 0.00000001 BTC    |
+| Percentages | `decimal(10,5)` | 99.99999%         |
+| USD Values  | `decimal(25,8)` | Large market caps |
 
 ## Code Quality Checklist
 
@@ -176,9 +176,7 @@ if (!coin) {
 }
 
 if (balance < amount) {
-  throw new BadRequestException(
-    `Insufficient ${symbol} balance: need ${amount}, have ${balance}`
-  );
+  throw new BadRequestException(`Insufficient ${symbol} balance: need ${amount}, have ${balance}`);
 }
 
 // BAD: Generic errors
@@ -201,10 +199,7 @@ async function fetchData(): Promise<Data> {
 }
 
 // GOOD: Parallel when independent
-const [coins, prices] = await Promise.all([
-  this.coinService.findAll(),
-  this.priceService.getCurrentPrices()
-]);
+const [coins, prices] = await Promise.all([this.coinService.findAll(), this.priceService.getCurrentPrices()]);
 
 // BAD: Sequential when parallel possible
 const coins = await this.coinService.findAll();
@@ -219,7 +214,7 @@ async findById(id: string, relations?: CoinRelations[]): Promise<Coin>
 
 // GOOD: Use enums for type safety
 enum CoinRelations {
-  PORTFOLIOS = 'portfolios',
+  COIN_SELECTIONS = 'coinSelections',
   BASE_ORDERS = 'baseOrders'
 }
 
@@ -238,15 +233,13 @@ const coin = data as Coin;  // Verify data shape first!
 // GOOD: Use shared utilities
 import { useAuthQuery, queryKeys, REALTIME_POLICY } from '@chansey/shared';
 
-coinQuery = useAuthQuery<CoinDetail>(
-  queryKeys.coins.detail(this.slug()),
-  `/api/coins/${this.slug()}`,
-  { cachePolicy: REALTIME_POLICY }
-);
+coinQuery = useAuthQuery<CoinDetail>(queryKeys.coins.detail(this.slug()), `/api/coins/${this.slug()}`, {
+  cachePolicy: REALTIME_POLICY
+});
 
 // BAD: Hardcoded query keys
 coinQuery = injectQuery(() => ({
-  queryKey: ['coins', 'detail', this.slug()],  // Use queryKeys factory!
+  queryKey: ['coins', 'detail', this.slug()], // Use queryKeys factory!
   queryFn: () => fetch(`/api/coins/${this.slug()}`)
 }));
 ```
@@ -326,7 +319,7 @@ export class CoinController {
 
   // Override for specific endpoint
   @Get('public')
-  @Public()  // Skip auth for this endpoint
+  @Public() // Skip auth for this endpoint
   async getPublicCoins() {}
 }
 ```
@@ -368,29 +361,29 @@ Style improvements, refactoring opportunities.
 
 ## Key Files Reference
 
-| Purpose | Path |
-|---------|------|
-| ESLint Config | `.eslintrc.json` |
-| Prettier Config | `.prettierrc` |
-| TypeScript Config | `tsconfig.base.json` |
-| Exchange Key Encryption | `apps/api/src/exchange/exchange-key/` |
-| Auth Guards | `apps/api/src/authentication/guard/` |
-| Query Keys | `libs/shared/src/lib/query/query-keys.ts` |
-| Cache Policies | `libs/shared/src/lib/query/cache-policies.ts` |
+| Purpose                 | Path                                          |
+| ----------------------- | --------------------------------------------- |
+| ESLint Config           | `.eslintrc.json`                              |
+| Prettier Config         | `.prettierrc`                                 |
+| TypeScript Config       | `tsconfig.base.json`                          |
+| Exchange Key Encryption | `apps/api/src/exchange/exchange-key/`         |
+| Auth Guards             | `apps/api/src/authentication/guard/`          |
+| Query Keys              | `libs/shared/src/lib/query/query-keys.ts`     |
+| Cache Policies          | `libs/shared/src/lib/query/cache-policies.ts` |
 
 ## Quick Reference
 
 ### Common Issues
 
-| Issue | Check For |
-|-------|-----------|
-| Missing auth | `@UseGuards` not applied |
-| Floating point math | Financial calcs not using Decimal |
-| Hardcoded keys | Query keys not using `queryKeys` factory |
-| Poor error messages | Generic "Error occurred" messages |
-| Missing validation | DTOs without class-validator decorators |
-| Logging secrets | API keys/passwords in logs |
-| N+1 queries | Missing relation loading |
+| Issue               | Check For                                |
+| ------------------- | ---------------------------------------- |
+| Missing auth        | `@UseGuards` not applied                 |
+| Floating point math | Financial calcs not using Decimal        |
+| Hardcoded keys      | Query keys not using `queryKeys` factory |
+| Poor error messages | Generic "Error occurred" messages        |
+| Missing validation  | DTOs without class-validator decorators  |
+| Logging secrets     | API keys/passwords in logs               |
+| N+1 queries         | Missing relation loading                 |
 
 ### Auto-Fix Commands
 

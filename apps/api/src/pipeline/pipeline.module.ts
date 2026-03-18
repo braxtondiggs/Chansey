@@ -14,12 +14,12 @@ import { PipelineReportService } from './services/pipeline-report.service';
 
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuthenticationModule } from '../authentication/authentication.module';
+import { CoinSelectionModule } from '../coin-selection/coin-selection.module';
 import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { OptimizationModule } from '../optimization/optimization.module';
 import { OrderModule } from '../order/order.module';
 import { PaperTradingModule } from '../order/paper-trading/paper-trading.module';
-import { PortfolioModule } from '../portfolio/portfolio.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 
@@ -38,7 +38,7 @@ const PIPELINE_CONFIG = pipelineConfig();
     forwardRef(() => PaperTradingModule),
     forwardRef(() => ScoringModule),
     forwardRef(() => MarketRegimeModule),
-    forwardRef(() => PortfolioModule),
+    forwardRef(() => CoinSelectionModule),
     ExchangeSelectionModule
   ],
   controllers: [PipelineController],

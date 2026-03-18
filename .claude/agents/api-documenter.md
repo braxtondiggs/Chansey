@@ -15,6 +15,7 @@ NestJS/Swagger documentation and developer experience.
 ### Overview
 
 The Chansey API is a NestJS 11 application with:
+
 - **OpenAPI/Swagger**: Auto-generated from decorators
 - **JWT Authentication**: Bearer token and HttpOnly cookies
 - **Rate Limiting**: Per-endpoint limits with stricter auth/upload limits
@@ -22,16 +23,17 @@ The Chansey API is a NestJS 11 application with:
 
 ### Key API Domains
 
-| Domain | Base Path | Purpose |
-|--------|-----------|---------|
-| Authentication | `/auth` | Login, register, JWT refresh, OTP |
-| Coins | `/coin`, `/coins` | Coin data, prices, charts, holdings |
-| Exchanges | `/exchange` | Exchange configs and API keys |
-| Orders | `/order` | Trading orders, sync, history |
-| Portfolio | `/portfolio` | User portfolios, allocations |
-| Balance | `/balance` | Account balances, history |
-| Algorithm | `/algorithm` | Trading algorithm configs |
-| Trading | `/trading` | Order book, ticker, trading |
+| Domain         | Base Path          | Purpose                             |
+| -------------- | ------------------ | ----------------------------------- |
+| Authentication | `/auth`            | Login, register, JWT refresh, OTP   |
+| Coins          | `/coin`, `/coins`  | Coin data, prices, charts, holdings |
+| Exchanges      | `/exchange`        | Exchange configs and API keys       |
+| Orders         | `/order`           | Trading orders, sync, history       |
+| Coin Selection | `/coin-selections` | Coin watchlist & auto-selection     |
+| Portfolio      | `/portfolio`       | Algo trading performance            |
+| Balance        | `/balance`         | Account balances, history           |
+| Algorithm      | `/algorithm`       | Trading algorithm configs           |
+| Trading        | `/trading`         | Order book, ticker, trading         |
 
 ## NestJS Swagger Decorators
 
@@ -41,9 +43,9 @@ The Chansey API is a NestJS 11 application with:
 import { Controller, Get, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-@ApiTags('Coins')                                    // Groups endpoints in Swagger UI
-@ApiBearerAuth('token')                              // Indicates JWT authentication
-@UseGuards(JwtAuthenticationGuard)                   // Apply guard
+@ApiTags('Coins') // Groups endpoints in Swagger UI
+@ApiBearerAuth('token') // Indicates JWT authentication
+@UseGuards(JwtAuthenticationGuard) // Apply guard
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid credentials' })
 @Controller('coins')
 export class CoinController {
@@ -150,8 +152,8 @@ export class AuthController {
   @Post('login')
   @ApiOperation({
     summary: 'User login',
-    description: 'Authenticate user and return JWT tokens. ' +
-                 'Access token in response body, refresh token in HttpOnly cookie.'
+    description:
+      'Authenticate user and return JWT tokens. ' + 'Access token in response body, refresh token in HttpOnly cookie.'
   })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
@@ -259,13 +261,13 @@ export class ErrorResponseDto {
 
 ## Key Files Reference
 
-| Purpose | Path |
-|---------|------|
-| Controllers | `apps/api/src/*/*.controller.ts` |
-| DTOs | `apps/api/src/*/dto/*.dto.ts` |
-| Shared Interfaces | `libs/api-interfaces/src/lib/` |
+| Purpose            | Path                                  |
+| ------------------ | ------------------------------------- |
+| Controllers        | `apps/api/src/*/*.controller.ts`      |
+| DTOs               | `apps/api/src/*/dto/*.dto.ts`         |
+| Shared Interfaces  | `libs/api-interfaces/src/lib/`        |
 | Entity Definitions | `apps/api/src/*/entities/*.entity.ts` |
-| Swagger Config | `apps/api/src/main.ts` |
+| Swagger Config     | `apps/api/src/main.ts`                |
 
 ## Documentation Patterns
 
@@ -354,31 +356,31 @@ export enum TimePeriod {
 
 ### Common Decorators
 
-| Decorator | Purpose |
-|-----------|---------|
-| `@ApiTags('Name')` | Group endpoints in Swagger |
-| `@ApiOperation({ summary, description })` | Document endpoint |
-| `@ApiParam({ name, description, example })` | Document URL params |
-| `@ApiQuery({ name, type, enum })` | Document query params |
-| `@ApiBody({ type })` | Document request body |
-| `@ApiResponse({ status, description, type })` | Document response |
-| `@ApiBearerAuth('token')` | Indicate JWT required |
-| `@ApiProperty({ description, example })` | Document DTO fields |
+| Decorator                                     | Purpose                    |
+| --------------------------------------------- | -------------------------- |
+| `@ApiTags('Name')`                            | Group endpoints in Swagger |
+| `@ApiOperation({ summary, description })`     | Document endpoint          |
+| `@ApiParam({ name, description, example })`   | Document URL params        |
+| `@ApiQuery({ name, type, enum })`             | Document query params      |
+| `@ApiBody({ type })`                          | Document request body      |
+| `@ApiResponse({ status, description, type })` | Document response          |
+| `@ApiBearerAuth('token')`                     | Indicate JWT required      |
+| `@ApiProperty({ description, example })`      | Document DTO fields        |
 
 ### HTTP Status Codes
 
-| Code | Usage |
-|------|-------|
-| 200 | Successful GET/PUT/PATCH |
-| 201 | Successful POST (created) |
-| 204 | Successful DELETE |
-| 400 | Validation error |
-| 401 | Unauthorized (no/invalid token) |
-| 403 | Forbidden (insufficient permissions) |
-| 404 | Resource not found |
-| 409 | Conflict (duplicate resource) |
-| 429 | Rate limit exceeded |
-| 500 | Internal server error |
+| Code | Usage                                |
+| ---- | ------------------------------------ |
+| 200  | Successful GET/PUT/PATCH             |
+| 201  | Successful POST (created)            |
+| 204  | Successful DELETE                    |
+| 400  | Validation error                     |
+| 401  | Unauthorized (no/invalid token)      |
+| 403  | Forbidden (insufficient permissions) |
+| 404  | Resource not found                   |
+| 409  | Conflict (duplicate resource)        |
+| 429  | Rate limit exceeded                  |
+| 500  | Internal server error                |
 
 ## Output Expectations
 
