@@ -26,11 +26,11 @@ import {
 
 import { Algorithm } from '../algorithm/algorithm.entity';
 import { AlgorithmService } from '../algorithm/algorithm.service';
+import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { CreateBacktestDto } from '../order/backtest/dto/backtest.dto';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
-import { PortfolioService } from '../portfolio/portfolio.service';
 import { CUSTOM_RISK_LEVEL, MIN_WATCHLIST_COINS } from '../risk/risk.constants';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
@@ -50,7 +50,7 @@ export class BacktestOrchestrationService {
     private readonly usersService: UsersService,
     private readonly algorithmService: AlgorithmService,
     private readonly backtestService: BacktestService,
-    private readonly portfolioService: PortfolioService
+    private readonly coinSelectionService: CoinSelectionService
   ) {}
 
   /**
@@ -99,7 +99,7 @@ export class BacktestOrchestrationService {
       // For custom risk users, resolve watchlist coins and validate minimum count
       let coinSymbolFilter: string[] | undefined;
       if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) {
-        coinSymbolFilter = await this.portfolioService.getManualPortfolioCoinSymbols(user);
+        coinSymbolFilter = await this.coinSelectionService.getManualCoinSelectionSymbols(user);
         if (coinSymbolFilter.length < MIN_WATCHLIST_COINS) {
           this.logger.warn(
             `User ${userId} has < ${MIN_WATCHLIST_COINS} watchlist coins (${coinSymbolFilter.length}), skipping orchestration`

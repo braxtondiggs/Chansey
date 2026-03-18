@@ -7,8 +7,8 @@ tools: Read, Write, Edit, Bash
 model: opus
 ---
 
-You are a backend system architect for the Chansey cryptocurrency portfolio management platform, specializing in
-NestJS, TypeORM, and scalable API design.
+You are a backend system architect for the Chansey cryptocurrency portfolio management platform, specializing in NestJS,
+TypeORM, and scalable API design.
 
 ## Chansey Architecture Overview
 
@@ -22,7 +22,8 @@ apps/
 │       ├── coin/           # Coin data, prices, sync tasks
 │       ├── exchange/       # Exchange configs, API key management
 │       ├── order/          # Trading orders, backtest, paper trading
-│       ├── portfolio/      # Portfolio tracking, allocations
+│       ├── coin-selection/  # Coin watchlist & auto-selection
+│       ├── portfolio/      # Algo trading performance
 │       ├── balance/        # Account balances, history
 │       ├── algorithm/      # Trading algorithms, strategies
 │       ├── trading/        # Order book, ticker, live trading
@@ -35,15 +36,15 @@ libs/
 
 ### Technology Stack
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Framework | NestJS 11 | Modular, DI-based backend |
-| ORM | TypeORM 0.3 | PostgreSQL database access |
-| Database | PostgreSQL 15+ | Primary data store |
-| Cache | Redis | Caching, session storage |
-| Queue | BullMQ | Background job processing |
-| Exchange API | CCXT | Cryptocurrency exchange integration |
-| Price Data | CoinGecko API | Market data source |
+| Component    | Technology     | Purpose                             |
+| ------------ | -------------- | ----------------------------------- |
+| Framework    | NestJS 11      | Modular, DI-based backend           |
+| ORM          | TypeORM 0.3    | PostgreSQL database access          |
+| Database     | PostgreSQL 15+ | Primary data store                  |
+| Cache        | Redis          | Caching, session storage            |
+| Queue        | BullMQ         | Background job processing           |
+| Exchange API | CCXT           | Cryptocurrency exchange integration |
+| Price Data   | CoinGecko API  | Market data source                  |
 
 ## NestJS Module Architecture
 
@@ -81,7 +82,7 @@ import { SharedCacheModule } from '../shared-cache.module';
   ],
   controllers: [CoinController, CoinsController],
   providers: [CoinService, CoinSyncTask],
-  exports: [CoinService]  // Export for use in other modules
+  exports: [CoinService] // Export for use in other modules
 })
 export class CoinModule {}
 ```
@@ -102,7 +103,8 @@ export class CoinModule {}
          ├── OrderModule (trading orders)
          │      ├── BacktestModule (backtesting)
          │      └── PaperTradingModule (paper trading)
-         ├── PortfolioModule (user portfolios)
+         ├── CoinSelectionModule (coin watchlist & auto-selection)
+         ├── PortfolioModule (algo trading performance)
          ├── AlgorithmModule (trading algorithms)
          │      └── StrategyModule (strategy configs)
          ├── TradingModule (live trading)
@@ -164,8 +166,8 @@ export class Coin {
   @OneToMany('Order', 'baseCoin')
   baseOrders: Relation<Order[]>;
 
-  @OneToMany('Portfolio', 'coin')
-  portfolios: Relation<Portfolio[]>;
+  @OneToMany('CoinSelection', 'coin')
+  coinSelections: Relation<CoinSelection[]>;
 
   constructor(partial: Partial<Coin>) {
     Object.assign(this, partial);
@@ -174,21 +176,21 @@ export class Coin {
 
 // Relation enum for type-safe relation loading
 export enum CoinRelations {
-  PORTFOLIOS = 'portfolios',
+  COIN_SELECTIONS = 'coinSelections',
   BASE_ORDERS = 'baseOrders'
 }
 ```
 
 ### Entity Patterns
 
-| Pattern | Usage | Example |
-|---------|-------|---------|
-| UUID Primary Key | All entities | `@PrimaryGeneratedColumn('uuid')` |
-| Decimal Precision | Financial values | `precision: 25, scale: 8` |
-| JSONB | Flexible nested data | `type: 'jsonb'` |
-| Timestamptz | All timestamps | `type: 'timestamptz'` |
-| Relation Enum | Type-safe relation loading | `CoinRelations.PORTFOLIOS` |
-| Soft Delete | Audit-sensitive data | `@DeleteDateColumn()` |
+| Pattern           | Usage                      | Example                           |
+| ----------------- | -------------------------- | --------------------------------- |
+| UUID Primary Key  | All entities               | `@PrimaryGeneratedColumn('uuid')` |
+| Decimal Precision | Financial values           | `precision: 25, scale: 8`         |
+| JSONB             | Flexible nested data       | `type: 'jsonb'`                   |
+| Timestamptz       | All timestamps             | `type: 'timestamptz'`             |
+| Relation Enum     | Type-safe relation loading | `CoinRelations.PORTFOLIOS`        |
+| Soft Delete       | Audit-sensitive data       | `@DeleteDateColumn()`             |
 
 ## Service Layer Patterns
 
@@ -247,10 +249,14 @@ export class CoinService {
   async updatePrices(updates: PriceUpdate[]): Promise<void> {
     await this.coinRepo.manager.transaction(async (manager) => {
       for (const update of updates) {
-        await manager.update(Coin, { id: update.id }, {
-          currentPrice: update.price,
-          updatedAt: new Date()
-        });
+        await manager.update(
+          Coin,
+          { id: update.id },
+          {
+            currentPrice: update.price,
+            updatedAt: new Date()
+          }
+        );
       }
     });
   }
@@ -318,13 +324,17 @@ export class OrderSyncTask {
 
     for (const user of users) {
       for (const exchangeKey of user.exchangeKeys) {
-        await this.queue.add('sync', {
-          userId: user.id,
-          exchangeId: exchangeKey.exchange.id
-        }, {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 }
-        });
+        await this.queue.add(
+          'sync',
+          {
+            userId: user.id,
+            exchangeId: exchangeKey.exchange.id
+          },
+          {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 }
+          }
+        );
       }
     }
 
@@ -335,12 +345,12 @@ export class OrderSyncTask {
 
 ### Queue Configuration
 
-| Queue | Purpose | Schedule |
-|-------|---------|----------|
-| `order-queue` | Order sync, PnL calc | Hourly |
-| `coin-queue` | Price updates | Every 5 min |
-| `balance-queue` | Balance calculations | Every 15 min |
-| `ticker-pairs-queue` | Trading pair sync | Daily |
+| Queue                | Purpose              | Schedule     |
+| -------------------- | -------------------- | ------------ |
+| `order-queue`        | Order sync, PnL calc | Hourly       |
+| `coin-queue`         | Price updates        | Every 5 min  |
+| `balance-queue`      | Balance calculations | Every 15 min |
+| `ticker-pairs-queue` | Trading pair sync    | Daily        |
 
 ## Redis Caching Architecture
 
@@ -365,10 +375,10 @@ const cacheKeys = {
 
 // TTL values (seconds)
 const cacheTTL = {
-  REALTIME: 45,      // Live prices
-  FREQUENT: 300,     // 5 minutes (user data)
-  STANDARD: 600,     // 10 minutes (charts)
-  STABLE: 1800       // 30 minutes (metadata)
+  REALTIME: 45, // Live prices
+  FREQUENT: 300, // 5 minutes (user data)
+  STANDARD: 600, // 10 minutes (charts)
+  STABLE: 1800 // 30 minutes (metadata)
 };
 ```
 
@@ -410,13 +420,16 @@ import { MigrationInterface, QueryRunner, TableColumn } from 'typeorm';
 
 export class AddCoinPriceColumns1699000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.addColumn('coins', new TableColumn({
-      name: 'current_price',
-      type: 'decimal',
-      precision: 25,
-      scale: 8,
-      isNullable: true
-    }));
+    await queryRunner.addColumn(
+      'coins',
+      new TableColumn({
+        name: 'current_price',
+        type: 'decimal',
+        precision: 25,
+        scale: 8,
+        isNullable: true
+      })
+    );
 
     // Create index for price lookups
     await queryRunner.query(`
@@ -477,39 +490,39 @@ export class InsufficientBalanceException extends BadRequestException {
 
 ## Key Files Reference
 
-| Purpose | Path |
-|---------|------|
-| Module Structure | `apps/api/src/*/` |
-| Entity Definitions | `apps/api/src/*/*.entity.ts` |
-| Migrations | `apps/api/src/migrations/` |
-| Queue Processors | `apps/api/src/*/tasks/*.ts` |
-| Shared Interfaces | `libs/api-interfaces/src/lib/` |
-| Redis Cache | `apps/api/src/shared-cache.module.ts` |
+| Purpose            | Path                                  |
+| ------------------ | ------------------------------------- |
+| Module Structure   | `apps/api/src/*/`                     |
+| Entity Definitions | `apps/api/src/*/*.entity.ts`          |
+| Migrations         | `apps/api/src/migrations/`            |
+| Queue Processors   | `apps/api/src/*/tasks/*.ts`           |
+| Shared Interfaces  | `libs/api-interfaces/src/lib/`        |
+| Redis Cache        | `apps/api/src/shared-cache.module.ts` |
 
 ## Quick Reference
 
 ### NestJS Decorators
 
-| Decorator | Purpose |
-|-----------|---------|
-| `@Module()` | Define module with imports, providers, exports |
-| `@Injectable()` | Mark class for DI |
-| `@InjectRepository()` | Inject TypeORM repository |
-| `@InjectQueue()` | Inject BullMQ queue |
-| `@InjectRedis()` | Inject Redis client |
-| `@Cron()` | Schedule recurring tasks |
-| `@Processor()` | Define queue processor |
+| Decorator             | Purpose                                        |
+| --------------------- | ---------------------------------------------- |
+| `@Module()`           | Define module with imports, providers, exports |
+| `@Injectable()`       | Mark class for DI                              |
+| `@InjectRepository()` | Inject TypeORM repository                      |
+| `@InjectQueue()`      | Inject BullMQ queue                            |
+| `@InjectRedis()`      | Inject Redis client                            |
+| `@Cron()`             | Schedule recurring tasks                       |
+| `@Processor()`        | Define queue processor                         |
 
 ### TypeORM Column Types
 
-| Type | Use Case |
-|------|----------|
-| `uuid` | Primary keys |
-| `decimal(25,8)` | Financial values |
-| `jsonb` | Flexible nested data |
-| `timestamptz` | Timestamps with timezone |
-| `int` | Counts, ranks |
-| `boolean` | Flags |
+| Type            | Use Case                 |
+| --------------- | ------------------------ |
+| `uuid`          | Primary keys             |
+| `decimal(25,8)` | Financial values         |
+| `jsonb`         | Flexible nested data     |
+| `timestamptz`   | Timestamps with timezone |
+| `int`           | Counts, ranks            |
+| `boolean`       | Flags                    |
 
 ## Session Guidance
 

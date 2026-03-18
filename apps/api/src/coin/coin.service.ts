@@ -301,8 +301,17 @@ export class CoinService {
   }
 
   async getCoinsByRiskLevel({ coinRisk }: User, take = 10) {
-    // Clamp to integer 1–5 to prevent SQL injection (value is interpolated in ORDER BY)
     const riskLevel = Math.max(1, Math.min(5, Math.floor(Number(coinRisk?.level) || 3)));
+    return this.getCoinsByRiskLevelValue(riskLevel, take);
+  }
+
+  /**
+   * Preview coins for a specific risk level (1-5)
+   * Used by the settings page to show users what coins will be selected
+   */
+  async getCoinsByRiskLevelValue(level: number, take = 10) {
+    // Clamp to integer 1–5 to prevent SQL injection (value is interpolated in ORDER BY)
+    const riskLevel = Math.max(1, Math.min(5, Math.floor(Number(level) || 3)));
 
     if (riskLevel === 1) {
       return await this.coin.find({

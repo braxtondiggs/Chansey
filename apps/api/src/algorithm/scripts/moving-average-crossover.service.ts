@@ -5,9 +5,9 @@ import { ChartData } from 'chart.js';
 import { CronJob } from 'cron';
 import * as dayjs from 'dayjs';
 
+import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { PriceSummary, PriceSummaryByDay } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { Algorithm } from '../algorithm.entity';
 
 @Injectable()
@@ -18,7 +18,7 @@ export class MovingAverageCrossoverService {
   private prices: PriceSummaryByDay;
   private readonly logger = new Logger(MovingAverageCrossoverService.name);
   constructor(
-    private readonly portfolio: PortfolioService,
+    private readonly coinSelection: CoinSelectionService,
     private readonly ohlcService: OHLCService,
     private readonly schedulerRegistry: SchedulerRegistry
   ) {}
@@ -44,7 +44,7 @@ export class MovingAverageCrossoverService {
   }
 
   private async cronJob() {
-    const coins = await this.portfolio.getPortfolioCoins();
+    const coins = await this.coinSelection.getCoinSelectionCoins();
     // if prices is empty or last fetch is more than 15 minute ago
     if (!this.prices || this.lastFetch.getTime() - new Date().getTime() > 900000) {
       this.prices = await this.ohlcService.findAllByDay(coins.map(({ id }) => id));

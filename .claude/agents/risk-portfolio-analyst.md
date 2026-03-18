@@ -308,7 +308,8 @@ function checkDrawdownLimits(currentDrawdown: number, limits: DrawdownLimits): '
 ### Primary Implementation
 
 - `apps/api/src/risk/` - Risk calculation services
-- `apps/api/src/portfolio/` - Portfolio management
+- `apps/api/src/coin-selection/` - Coin selection management
+- `apps/api/src/portfolio/` - Algo trading portfolio analytics
 - `apps/api/src/balance/` - Balance and equity tracking
 
 ### Supporting Analysis

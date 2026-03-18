@@ -6,6 +6,7 @@ export * from './comparison-report-not-found.exception';
 export * from './exchange-key-not-found.exception';
 export * from './exchange-not-found.exception';
 export * from './market-data-set-not-found.exception';
+export * from './coin-selection-not-found.exception';
 export * from './portfolio-not-found.exception';
 export * from './strategy-not-found.exception';
 export * from './user-not-found.exception';

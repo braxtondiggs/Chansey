@@ -10,14 +10,14 @@ import { toErrorInfo } from '../../shared/error.util';
 interface HistoricalPriceJobData {
   coinId: string;
 }
-@Processor('portfolio-queue')
+@Processor('coin-selection-queue')
 @Injectable()
-export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModuleInit {
-  private readonly logger = new Logger(PortfolioHistoricalPriceTask.name);
+export class CoinSelectionHistoricalPriceTask extends WorkerHost implements OnModuleInit {
+  private readonly logger = new Logger(CoinSelectionHistoricalPriceTask.name);
   private readonly DAYS_TO_FETCH = 90; // Fetch 90 days of historical data
 
   constructor(
-    @InjectQueue('portfolio-queue') private readonly portfolioQueue: Queue,
+    @InjectQueue('coin-selection-queue') private readonly coinSelectionQueue: Queue,
     private readonly coin: CoinService,
     private readonly ohlcBackfill: OHLCBackfillService
   ) {
@@ -27,11 +27,11 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
   async onModuleInit() {
     // Skip scheduling jobs in local development
     if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
-      this.logger.log('Portfolio historical price jobs disabled for local development');
+      this.logger.log('Coin selection historical price jobs disabled for local development');
       return;
     }
 
-    this.logger.log('Portfolio Historical Price Task initialized');
+    this.logger.log('Coin Selection Historical Price Task initialized');
   }
 
   // BullMQ: process and route incoming jobs
@@ -52,7 +52,7 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
   }
 
   /**
-   * Handler for fetching historical price data when a portfolio item is added.
+   * Handler for fetching historical price data when a coin selection item is added.
    * Delegates to OHLCBackfillService which fetches OHLC data from exchanges.
    */
   async handleFetchHistoricalPrices(job: Job) {
@@ -132,7 +132,7 @@ export class PortfolioHistoricalPriceTask extends WorkerHost implements OnModule
       coinId
     };
 
-    const job = await this.portfolioQueue.add('fetch-historical-prices', jobData, {
+    const job = await this.coinSelectionQueue.add('fetch-historical-prices', jobData, {
       attempts: 3,
       backoff: {
         type: 'exponential',

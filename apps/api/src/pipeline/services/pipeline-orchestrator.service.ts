@@ -10,6 +10,7 @@ import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { MarketRegimeType } from '@chansey/api-interfaces';
 
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
+import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
@@ -17,7 +18,6 @@ import { buildParameterSpace } from '../../optimization/utils/parameter-space-bu
 import { BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { CUSTOM_RISK_LEVEL } from '../../risk/risk.constants';
 import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
@@ -75,8 +75,8 @@ export class PipelineOrchestratorService {
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
     private readonly exchangeSelectionService: ExchangeSelectionService,
-    @Inject(forwardRef(() => PortfolioService))
-    private readonly portfolioService: PortfolioService
+    @Inject(forwardRef(() => CoinSelectionService))
+    private readonly coinSelectionService: CoinSelectionService
   ) {}
 
   /**
@@ -1084,7 +1084,7 @@ export class PipelineOrchestratorService {
   private async resolveCoinSymbolFilter(pipeline: Pipeline): Promise<string[] | undefined> {
     const user = pipeline.user as User;
     if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) {
-      return this.portfolioService.getManualPortfolioCoinSymbols(user);
+      return this.coinSelectionService.getManualCoinSelectionSymbols(user);
     }
     return undefined;
   }

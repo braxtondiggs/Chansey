@@ -11,20 +11,22 @@ import { TickerPairSyncTask } from './ticker-pairs/tasks/ticker-pairs-sync.task'
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs/ticker-pairs.service';
 
+import { CoinSelection } from '../coin-selection/coin-selection.entity';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { OrderModule } from '../order/order.module';
-import { Portfolio } from '../portfolio/portfolio.entity';
+import { RiskModule } from '../risk/risk.module';
 import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   controllers: [CoinController, CoinsController, SimplePriceController],
   exports: [CoinService, TickerPairService, TickerPairSyncTask],
   imports: [
-    TypeOrmModule.forFeature([Coin, Portfolio, TickerPairs]),
+    TypeOrmModule.forFeature([Coin, CoinSelection, TickerPairs]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
+    RiskModule,
     SharedCacheModule,
     BullModule.registerQueue({ name: 'coin-queue' }),
     BullModule.registerQueue({ name: 'ticker-pairs-queue' })

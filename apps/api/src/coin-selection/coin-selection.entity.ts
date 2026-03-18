@@ -11,31 +11,32 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { PortfolioType } from './portfolio-type.enum';
+import { CoinSelectionType } from './coin-selection-type.enum';
 
 import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
 
-@Entity()
+@Entity('coin_selection')
 @Index(['coin', 'user', 'type'], { unique: true })
 @Index(['id', 'user'], { unique: true })
-export class Portfolio {
+export class CoinSelection {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
-    description: 'Unique identifier for the portfolio item',
+    description: 'Unique identifier for the coin selection item',
     example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
   })
   id: string;
 
   @Column({
     type: 'enum',
-    enum: PortfolioType,
-    default: PortfolioType.MANUAL
+    enum: CoinSelectionType,
+    default: CoinSelectionType.MANUAL,
+    enumName: 'coin_selection_type_enum'
   })
   @ApiProperty({
-    description: 'Type of the portfolio item',
-    example: PortfolioType.MANUAL,
-    enum: PortfolioType
+    description: 'Type of the coin selection item',
+    example: CoinSelectionType.MANUAL,
+    enum: CoinSelectionType
   })
   type: string;
 
@@ -45,36 +46,34 @@ export class Portfolio {
   @UpdateDateColumn({ type: 'timestamptz', select: false })
   updatedAt: Date;
 
-  @Index('portfolio_coinId_index')
-  @ManyToOne('Coin', 'portfolios', {
+  @Index('coin_selection_coinId_index')
+  @ManyToOne('Coin', 'coinSelections', {
     nullable: false,
-    onDelete: 'CASCADE',
-    eager: true
+    onDelete: 'CASCADE'
   })
   @ApiProperty({
-    description: 'Coin associated with this portfolio item',
+    description: 'Coin associated with this selection item',
     type: () => Coin
   })
   coin: Relation<Coin>;
 
-  @Index('portfolio_userId_index')
-  @ManyToOne('User', 'portfolios', {
+  @Index('coin_selection_userId_index')
+  @ManyToOne('User', 'coinSelections', {
     nullable: false,
-    onDelete: 'CASCADE',
-    eager: true
+    onDelete: 'CASCADE'
   })
   @ApiProperty({
-    description: 'User who owns this portfolio item',
+    description: 'User who owns this coin selection item',
     type: () => User
   })
   user: Relation<User>;
 
-  constructor(partial: Partial<Portfolio>) {
+  constructor(partial: Partial<CoinSelection>) {
     Object.assign(this, partial);
   }
 }
 
-export enum PortfolioRelations {
+export enum CoinSelectionRelations {
   COIN = 'coin',
   USER = 'user'
 }

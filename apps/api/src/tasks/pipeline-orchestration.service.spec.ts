@@ -15,11 +15,11 @@ import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
+import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
-import { PortfolioService } from '../portfolio/portfolio.service';
 import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
@@ -133,9 +133,9 @@ describe('PipelineOrchestrationService', () => {
           }
         },
         {
-          provide: PortfolioService,
+          provide: CoinSelectionService,
           useValue: {
-            getManualPortfolioCoinSymbols: jest.fn().mockResolvedValue([])
+            getManualCoinSelectionSymbols: jest.fn().mockResolvedValue([])
           }
         }
       ]

@@ -105,7 +105,8 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADING → COMPLETED
 │   │       ├── optimization/
 │   │       ├── exchange/    # CCXT integration
 │   │       ├── order/       # Order management
-│   │       ├── portfolio/   # Holdings & performance
+│   │       ├── coin-selection/ # Coin watchlist & auto-selection
+│   │       ├── portfolio/   # Algo trading performance
 │   │       └── ...
 │   ├── chansey/             # Angular frontend
 │   │   └── src/app/

@@ -1,6 +1,6 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { Coin, CreatePortfolioDto, PortfolioItem } from '@chansey/api-interfaces';
+import { Coin, CoinSelectionItem, CreateCoinSelectionDto } from '@chansey/api-interfaces';
 import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthMutation, useAuthQuery } from '@chansey/shared';
 
 @Injectable({
@@ -14,7 +14,7 @@ export class CoinDataService {
   }
 
   useWatchlist() {
-    return useAuthQuery<PortfolioItem[]>(queryKeys.coins.watchlist(), '/api/portfolio?type=MANUAL', {
+    return useAuthQuery<CoinSelectionItem[]>(queryKeys.coins.watchlist(), '/api/coin-selections?type=MANUAL', {
       cachePolicy: FREQUENT_POLICY
     });
   }
@@ -39,14 +39,32 @@ export class CoinDataService {
   }
 
   useAddToWatchlist() {
-    return useAuthMutation<{ id: string }, CreatePortfolioDto>('/api/portfolio', 'POST', {
+    return useAuthMutation<{ id: string }, CreateCoinSelectionDto>('/api/coin-selections', 'POST', {
       invalidateQueries: [queryKeys.coins.watchlist()]
     });
   }
 
   useRemoveFromWatchlist() {
-    return useAuthMutation<void, string>((portfolioId: string) => `/api/portfolio/${portfolioId}`, 'DELETE', {
+    return useAuthMutation<void, string>((selectionId: string) => `/api/coin-selections/${selectionId}`, 'DELETE', {
       invalidateQueries: [queryKeys.coins.watchlist()]
+    });
+  }
+
+  /**
+   * Preview coins for a risk level (1-5)
+   * Shows a sample of coins that will be auto-selected (limited to 5 for UI)
+   */
+  useCoinPreview(riskLevel: Signal<number | null>) {
+    return useAuthQuery<Coin[]>(() => {
+      const level = riskLevel();
+      return {
+        queryKey: ['coins', 'preview', level],
+        url: `/api/coins/preview?riskLevel=${level}&limit=5`,
+        options: {
+          cachePolicy: STANDARD_POLICY,
+          enabled: level !== null && level >= 1 && level <= 5
+        }
+      };
     });
   }
 }

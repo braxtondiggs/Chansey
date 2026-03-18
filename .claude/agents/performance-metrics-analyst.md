@@ -7,8 +7,8 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: opus
 ---
 
-You are a trading performance analysis specialist with deep expertise in quantitative metrics, statistical analysis,
-and the Chansey trading platform's performance infrastructure.
+You are a trading performance analysis specialist with deep expertise in quantitative metrics, statistical analysis, and
+the Chansey trading platform's performance infrastructure.
 
 ## Core Performance Metrics
 
@@ -28,13 +28,16 @@ function calculateReturns(equityCurve: { date: Date; value: number }[]): Returns
   const totalReturn = (final - initial) / initial;
 
   // Daily returns
-  const dailyReturns = equityCurve.slice(1).map((point, i) => (point.value - equityCurve[i].value) / equityCurve[i].value);
+  const dailyReturns = equityCurve
+    .slice(1)
+    .map((point, i) => (point.value - equityCurve[i].value) / equityCurve[i].value);
 
   // Cumulative returns
   const cumulativeReturns = equityCurve.map((point) => (point.value - initial) / initial);
 
   // Annualized return (geometric)
-  const days = (equityCurve[equityCurve.length - 1].date.getTime() - equityCurve[0].date.getTime()) / (1000 * 60 * 60 * 24);
+  const days =
+    (equityCurve[equityCurve.length - 1].date.getTime() - equityCurve[0].date.getTime()) / (1000 * 60 * 60 * 24);
   const annualizedReturn = Math.pow(1 + totalReturn, 365 / days) - 1;
 
   return { totalReturn, annualizedReturn, cumulativeReturns, dailyReturns };
@@ -43,13 +46,13 @@ function calculateReturns(equityCurve: { date: Date; value: number }[]): Returns
 
 ### Risk-Adjusted Returns
 
-| Metric | Formula | Interpretation | Good Value |
-|--------|---------|----------------|------------|
-| Sharpe Ratio | (Rp - Rf) / σp | Excess return per unit total risk | > 1.5 |
-| Sortino Ratio | (Rp - Rf) / σd | Excess return per unit downside risk | > 2.0 |
-| Calmar Ratio | Rp / MaxDD | Annual return per unit max drawdown | > 2.0 |
-| Information Ratio | (Rp - Rb) / TE | Alpha per tracking error | > 0.5 |
-| Omega Ratio | P(r>T) / P(r<T) | Probability-weighted gains vs losses | > 1.0 |
+| Metric            | Formula         | Interpretation                       | Good Value |
+| ----------------- | --------------- | ------------------------------------ | ---------- |
+| Sharpe Ratio      | (Rp - Rf) / σp  | Excess return per unit total risk    | > 1.5      |
+| Sortino Ratio     | (Rp - Rf) / σd  | Excess return per unit downside risk | > 2.0      |
+| Calmar Ratio      | Rp / MaxDD      | Annual return per unit max drawdown  | > 2.0      |
+| Information Ratio | (Rp - Rb) / TE  | Alpha per tracking error             | > 0.5      |
+| Omega Ratio       | P(r>T) / P(r<T) | Probability-weighted gains vs losses | > 1.0      |
 
 ```typescript
 interface RiskAdjustedMetrics {
@@ -246,8 +249,7 @@ function analyzeDrawdowns(equityCurve: { date: Date; value: number }[]): Drawdow
       // New peak - end current drawdown period if exists
       if (currentPeriod) {
         currentPeriod.recoveryDate = point.date;
-        currentPeriod.recovery =
-          (point.date.getTime() - currentPeriod.troughDate!.getTime()) / (1000 * 60 * 60 * 24);
+        currentPeriod.recovery = (point.date.getTime() - currentPeriod.troughDate!.getTime()) / (1000 * 60 * 60 * 24);
         drawdownPeriods.push(currentPeriod as DrawdownPeriod);
         currentPeriod = null;
       }
@@ -373,7 +375,8 @@ function tTestStrategyComparison(
   const tStatistic = (mean1 - mean2) / se;
 
   // Degrees of freedom (Welch-Satterthwaite)
-  const df = Math.pow(var1 / n1 + var2 / n2, 2) / (Math.pow(var1 / n1, 2) / (n1 - 1) + Math.pow(var2 / n2, 2) / (n2 - 1));
+  const df =
+    Math.pow(var1 / n1 + var2 / n2, 2) / (Math.pow(var1 / n1, 2) / (n1 - 1) + Math.pow(var2 / n2, 2) / (n2 - 1));
 
   // p-value (two-tailed)
   const pValue = 2 * (1 - studentTCdf(Math.abs(tStatistic), df));
@@ -385,11 +388,7 @@ function tTestStrategyComparison(
 ### Minimum Sample Size
 
 ```typescript
-function minimumTradesRequired(
-  expectedWinRate: number,
-  confidenceLevel = 0.95,
-  marginOfError = 0.05
-): number {
+function minimumTradesRequired(expectedWinRate: number, confidenceLevel = 0.95, marginOfError = 0.05): number {
   // For proportion estimation: n = (Z^2 * p * (1-p)) / E^2
   const zScores: Record<number, number> = { 0.9: 1.645, 0.95: 1.96, 0.99: 2.576 };
   const z = zScores[confidenceLevel] || 1.96;
@@ -475,20 +474,20 @@ function generateMonthlyReturns(equityCurve: { date: Date; value: number }[]): M
 ### Supporting Analysis
 
 - `apps/api/src/order/backtest/` - Backtest metrics
-- `apps/api/src/portfolio/` - Portfolio analytics
+- `apps/api/src/portfolio/` - Algo trading portfolio analytics
 
 ## Quick Reference
 
 ### Metric Interpretation Guide
 
-| Metric | Poor | Average | Good | Excellent |
-|--------|------|---------|------|-----------|
-| Sharpe Ratio | < 0 | 0 - 1 | 1 - 2 | > 2 |
-| Sortino Ratio | < 0 | 0 - 1.5 | 1.5 - 3 | > 3 |
-| Max Drawdown | > 40% | 20-40% | 10-20% | < 10% |
-| Win Rate | < 30% | 30-45% | 45-60% | > 60% |
-| Profit Factor | < 1 | 1 - 1.5 | 1.5 - 2 | > 2 |
-| Expectancy | < 0 | 0 - $10 | $10 - $50 | > $50 |
+| Metric        | Poor  | Average | Good      | Excellent |
+| ------------- | ----- | ------- | --------- | --------- |
+| Sharpe Ratio  | < 0   | 0 - 1   | 1 - 2     | > 2       |
+| Sortino Ratio | < 0   | 0 - 1.5 | 1.5 - 3   | > 3       |
+| Max Drawdown  | > 40% | 20-40%  | 10-20%    | < 10%     |
+| Win Rate      | < 30% | 30-45%  | 45-60%    | > 60%     |
+| Profit Factor | < 1   | 1 - 1.5 | 1.5 - 2   | > 2       |
+| Expectancy    | < 0   | 0 - $10 | $10 - $50 | > $50     |
 
 ### Red Flags
 

@@ -11,7 +11,7 @@ export * from './lib/coin/ticker-pair-status.enum';
 export * from './lib/coin/ticker-pair.interface';
 export * from './lib/exchange/exchange.interface';
 export * from './lib/order';
-export * from './lib/portfolio';
+export * from './lib/coin-selection';
 export * from './lib/risk';
 export * from './lib/strategy/strategy-config.interface';
 export * from './lib/user';

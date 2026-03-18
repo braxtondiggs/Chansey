@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { OHLCService } from '../../ohlc/ohlc.service';
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm } from '../algorithm.entity';
 import { AlgorithmContext } from '../interfaces';
@@ -15,7 +15,7 @@ export class AlgorithmContextBuilder {
   private readonly logger = new Logger(AlgorithmContextBuilder.name);
 
   constructor(
-    private readonly portfolioService: PortfolioService,
+    private readonly coinSelectionService: CoinSelectionService,
     private readonly ohlcService: OHLCService
   ) {}
 
@@ -36,7 +36,7 @@ export class AlgorithmContextBuilder {
       this.logger.debug(`Building context for algorithm: ${algorithm.name}`);
 
       // Get portfolio coins
-      const coins = await this.portfolioService.getPortfolioCoins();
+      const coins = await this.coinSelectionService.getCoinSelectionCoins();
 
       // Get price data if requested
       let priceData = {};
@@ -47,7 +47,7 @@ export class AlgorithmContextBuilder {
       // Get current positions if requested - simplified
       let positions = undefined;
       if (includePositions) {
-        const portfolio = await this.portfolioService.getPortfolio();
+        const portfolio = await this.coinSelectionService.getCoinSelections();
         positions = portfolio.reduce(
           (acc, item) => {
             if (item.coin?.id) {

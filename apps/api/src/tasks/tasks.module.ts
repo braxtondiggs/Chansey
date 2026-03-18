@@ -23,6 +23,7 @@ import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { BalanceModule } from '../balance/balance.module';
 import { CoinModule } from '../coin/coin.module';
+import { CoinSelectionModule } from '../coin-selection/coin-selection.module';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
@@ -34,7 +35,6 @@ import { MarketDataSet } from '../order/backtest/market-data-set.entity';
 import { OrderModule } from '../order/order.module';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineModule } from '../pipeline/pipeline.module';
-import { PortfolioModule } from '../portfolio/portfolio.module';
 import { Risk } from '../risk/risk.entity';
 import { ScoringModule } from '../scoring/scoring.module';
 import { BacktestRun } from '../strategy/entities/backtest-run.entity';
@@ -99,7 +99,7 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     forwardRef(() => UsersModule),
     forwardRef(() => BalanceModule),
     forwardRef(() => PipelineModule),
-    forwardRef(() => PortfolioModule),
+    forwardRef(() => CoinSelectionModule),
     forwardRef(() => OHLCModule),
     ScoringModule,
     AuditModule,

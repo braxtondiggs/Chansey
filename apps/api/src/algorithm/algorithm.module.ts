@@ -33,12 +33,12 @@ import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
+import { CoinSelectionModule } from '../coin-selection/coin-selection.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 import { Backtest } from '../order/backtest/backtest.entity';
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
-import { PortfolioModule } from '../portfolio/portfolio.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { UsersModule } from '../users/users.module';
 
@@ -59,7 +59,7 @@ import { UsersModule } from '../users/users.module';
     forwardRef(() => ExchangeModule),
     forwardRef(() => OrderModule),
     forwardRef(() => UsersModule),
-    forwardRef(() => PortfolioModule),
+    forwardRef(() => CoinSelectionModule),
     forwardRef(() => OHLCModule)
   ],
   controllers: [AlgorithmController, AlgorithmPerformanceController],

@@ -13,12 +13,12 @@ import { StrategyGrade } from '@chansey/api-interfaces';
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
 
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
+import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
-import { PortfolioService } from '../../portfolio/portfolio.service';
 import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
@@ -209,9 +209,9 @@ describe('PipelineOrchestratorService', () => {
           }
         },
         {
-          provide: PortfolioService,
+          provide: CoinSelectionService,
           useValue: {
-            getManualPortfolioCoinSymbols: jest.fn().mockResolvedValue([])
+            getManualCoinSelectionSymbols: jest.fn().mockResolvedValue([])
           }
         }
       ]

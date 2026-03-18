@@ -2,8 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { CreateCoinDto } from './create-coin.dto';
 
+import { CoinSelectionResponseDto } from '../../coin-selection/dto/coin-selection-response.dto';
 import { OrderResponseDto } from '../../order/dto';
-import { PortfolioResponseDto } from '../../portfolio/dto/portfolio-response.dto';
 
 export class CoinResponseDto {
   @ApiProperty({
@@ -224,12 +224,12 @@ export class CoinResponseDto {
   orders: OrderResponseDto[];
 
   @ApiProperty({
-    description: 'List of portfolios associated with the coin',
-    type: () => PortfolioResponseDto,
+    description: 'List of coin selections associated with the coin',
+    type: () => CoinSelectionResponseDto,
     isArray: true,
     required: false
   })
-  portfolios: PortfolioResponseDto[];
+  coinSelections: CoinSelectionResponseDto[];
 
   constructor(coin: Partial<CreateCoinDto>) {
     Object.assign(this, coin);
