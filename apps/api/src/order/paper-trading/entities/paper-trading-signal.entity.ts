@@ -40,12 +40,12 @@ export class PaperTradingSignal {
   id: string;
 
   @IsEnum(PaperTradingSignalType)
-  @Column({ type: 'enum', enum: PaperTradingSignalType })
+  @Column({ type: 'enum', enum: PaperTradingSignalType, enumName: 'paper_trading_signal_type_enum' })
   @ApiProperty({ description: 'Type of signal', enum: PaperTradingSignalType })
   signalType: PaperTradingSignalType;
 
   @IsEnum(PaperTradingSignalDirection)
-  @Column({ type: 'enum', enum: PaperTradingSignalDirection })
+  @Column({ type: 'enum', enum: PaperTradingSignalDirection, enumName: 'paper_trading_signal_direction_enum' })
   @ApiProperty({ description: 'Direction of the signal', enum: PaperTradingSignalDirection })
   direction: PaperTradingSignalDirection;
 

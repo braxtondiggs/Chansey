@@ -38,7 +38,7 @@ export class OrderStatusHistory {
   @Column({
     type: 'enum',
     enum: OrderStatus,
-    enumName: 'order_status_enum',
+    enumName: 'order_history_from_status_enum',
     nullable: true,
     comment: 'Previous status (null for initial creation)'
   })
@@ -47,7 +47,7 @@ export class OrderStatusHistory {
   @Column({
     type: 'enum',
     enum: OrderStatus,
-    enumName: 'order_status_enum',
+    enumName: 'order_history_to_status_enum',
     comment: 'New status after transition'
   })
   toStatus: OrderStatus;
@@ -61,6 +61,7 @@ export class OrderStatusHistory {
   @Column({
     type: 'enum',
     enum: OrderTransitionReason,
+    enumName: 'order_transition_reason_enum',
     comment: 'Reason code for the status change'
   })
   reason: OrderTransitionReason;
