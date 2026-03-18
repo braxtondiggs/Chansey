@@ -43,7 +43,7 @@ export class MarketDataSet {
   label: string;
 
   @IsEnum(MarketDataSource)
-  @Column({ type: 'enum', enum: MarketDataSource })
+  @Column({ type: 'enum', enum: MarketDataSource, enumName: 'market_data_source_enum' })
   @ApiProperty({ description: 'Origin of the dataset', enum: MarketDataSource })
   source: MarketDataSource;
 
@@ -52,7 +52,7 @@ export class MarketDataSet {
   instrumentUniverse: string[];
 
   @IsEnum(MarketDataTimeframe)
-  @Column({ type: 'enum', enum: MarketDataTimeframe })
+  @Column({ type: 'enum', enum: MarketDataTimeframe, enumName: 'market_data_timeframe_enum' })
   @ApiProperty({ description: 'Granularity of the dataset', enum: MarketDataTimeframe })
   timeframe: MarketDataTimeframe;
 

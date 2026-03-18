@@ -17,6 +17,8 @@ export const databaseConfig = registerAs(
     migrations: [join(__dirname, '../migrations/*.{ts,js}')],
     migrationsTableName: 'migration',
     migrationsRun: process.env.NODE_ENV === 'production',
+    // DEVELOPMENT ONLY - auto-sync schema changes (entities must use unique enumName per table)
+    // For production: Use migrations: npx nx g @nx/nest:migration --project=api --name=<name>
     synchronize: process.env.NODE_ENV !== 'production',
     logging: process.env.NODE_ENV !== 'production',
     uuidExtension: 'pgcrypto',
