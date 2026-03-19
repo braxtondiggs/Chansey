@@ -5,6 +5,7 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -47,7 +48,10 @@ export class CoinSelectionController {
     description: 'List of coin selection items retrieved successfully.',
     type: [CoinSelectionResponseDto]
   })
-  async getCoinSelections(@GetUser() user: User, @Query('type') type?: CoinSelectionType) {
+  async getCoinSelections(
+    @GetUser() user: User,
+    @Query('type', new ParseEnumPipe(CoinSelectionType, { optional: true })) type?: CoinSelectionType
+  ) {
     return this.coinSelection.getCoinSelectionsByUser(user, [CoinSelectionRelations.COIN], type);
   }
 

@@ -8,8 +8,7 @@
   "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
     "source.addMissingImports": "explicit",
-    "source.organizeImports": "always",
-    "source.fixAll": "explicit"
+    "source.fixAll.eslint": "always"
   },
   "vsicons.presets.angular": true,
   "tailwindCSS.experimental.classRegex": [["className=\"([^\"\\\\]*)\"", "\"([^\"]*)\""]],

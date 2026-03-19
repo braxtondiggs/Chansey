@@ -96,8 +96,8 @@ export const DEFAULT_RISK_LEVEL = 3;
 /** Risk level indicating custom/user-defined coin selection */
 export const CUSTOM_RISK_LEVEL = 6;
 
-/** Minimum coins required in watchlist for custom risk level users */
-export const MIN_WATCHLIST_COINS = 3;
+/** Minimum coins required for trading for custom risk level users */
+export const MIN_TRADING_COINS = 3;
 
 export function getEffectiveCalculationRisk(
   coinRiskLevel: number | undefined | null,

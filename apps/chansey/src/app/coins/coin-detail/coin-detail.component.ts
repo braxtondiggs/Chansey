@@ -63,9 +63,9 @@ export class CoinDetailComponent {
   private userQuery = this.authService.useUser();
 
   // Watchlist state
-  watchlistQuery = this.coinDataService.useWatchlist();
-  private addToWatchlistMutation = this.coinDataService.useAddToWatchlist();
-  private removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchlist();
+  watchlistQuery = this.coinDataService.useWatchedCoins();
+  private addToWatchedMutation = this.coinDataService.useAddToWatchedCoins();
+  private removeFromWatchedMutation = this.coinDataService.useRemoveFromWatchedCoins();
   processingWatchlist = signal(false);
 
   // Tighter card body padding on mobile for section cards
@@ -138,7 +138,7 @@ export class CoinDetailComponent {
       const item = (this.watchlistQuery.data() || []).find((i) => i.coin.id === detail.id);
       if (!item) return;
       this.processingWatchlist.set(true);
-      this.removeFromWatchlistMutation.mutate(item.id, {
+      this.removeFromWatchedMutation.mutate(item.id, {
         onSuccess: () => {
           this.processingWatchlist.set(false);
           this.messageService.add({
@@ -154,8 +154,8 @@ export class CoinDetailComponent {
       });
     } else {
       this.processingWatchlist.set(true);
-      this.addToWatchlistMutation.mutate(
-        { coinId: detail.id, type: CoinSelectionType.MANUAL },
+      this.addToWatchedMutation.mutate(
+        { coinId: detail.id, type: CoinSelectionType.WATCHED },
         {
           onSuccess: () => {
             this.processingWatchlist.set(false);

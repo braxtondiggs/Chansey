@@ -12,9 +12,9 @@ Create a GitHub issue: $ARGUMENTS
 
 - Remote URL: !`git remote get-url origin 2>/dev/null || echo "not a git repo"`
 - Current branch: !`git branch --show-current 2>/dev/null || echo "unknown"`
-- Available labels: !`gh label list --json name --jq '.[].name' 2>/dev/null | tr '\n' ', ' | sed 's/,$//'`
+- Available labels: !`gh label list --json name --jq '[.[].name] | join(", ")' 2>/dev/null`
 - Available projects:
-  !`gh project list --owner braxtondiggs --format json --jq '.projects[] | "\(.number): \(.title)"' 2>/dev/null | tr '\n' ', ' | sed 's/,$//'`
+  !`gh project list --owner braxtondiggs --format json --jq '[.projects[] | "\(.number): \(.title)"] | join(", ")' 2>/dev/null`
 
 ## Task Overview
 

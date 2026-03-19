@@ -76,14 +76,6 @@ export class UsersTaskService extends WorkerHost implements OnModuleInit {
       this.logger.log(`Removed outdated selection update job for risk ${risk.level} (was: ${existingJob.pattern})`);
     }
 
-    // Also clean up any legacy portfolio-update jobs
-    const legacyJobName = `portfolio-update-risk-${risk.level}`;
-    const legacyJob = existingJobs.find((job) => job.name === legacyJobName);
-    if (legacyJob) {
-      await this.userQueue.removeRepeatableByKey(legacyJob.key);
-      this.logger.log(`Removed legacy portfolio update job for risk ${risk.level}`);
-    }
-
     // Schedule new job
     await this.userQueue.add(
       jobName,

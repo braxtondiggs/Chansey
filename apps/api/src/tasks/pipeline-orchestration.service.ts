@@ -28,7 +28,7 @@ import { buildParameterSpace } from '../optimization/utils/parameter-space-build
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
-import { CUSTOM_RISK_LEVEL, MIN_WATCHLIST_COINS } from '../risk/risk.constants';
+import { CUSTOM_RISK_LEVEL, MIN_TRADING_COINS } from '../risk/risk.constants';
 import { toErrorInfo } from '../shared/error.util';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
@@ -174,15 +174,15 @@ export class PipelineOrchestrationService {
 
       this.logger.log(`Orchestrating pipelines for user ${userId} with risk level ${riskLevel}`);
 
-      // For custom risk users, validate minimum watchlist coins
+      // For custom risk users, validate minimum trading coins
       if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) {
-        const watchlistSymbols = await this.coinSelectionService.getManualCoinSelectionSymbols(user);
-        if (watchlistSymbols.length < MIN_WATCHLIST_COINS) {
+        const tradingCoinSymbols = await this.coinSelectionService.getManualCoinSelectionSymbols(user);
+        if (tradingCoinSymbols.length < MIN_TRADING_COINS) {
           this.logger.warn(
-            `User ${userId} has < ${MIN_WATCHLIST_COINS} watchlist coins (${watchlistSymbols.length}), skipping pipeline orchestration`
+            `User ${userId} has < ${MIN_TRADING_COINS} trading coins (${tradingCoinSymbols.length}), skipping pipeline orchestration`
           );
           result.errors.push(
-            `Insufficient watchlist coins: ${watchlistSymbols.length} (minimum ${MIN_WATCHLIST_COINS} required)`
+            `Insufficient trading coins: ${tradingCoinSymbols.length} (minimum ${MIN_TRADING_COINS} required)`
           );
           return result;
         }

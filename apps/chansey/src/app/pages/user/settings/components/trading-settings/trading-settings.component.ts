@@ -1,28 +1,45 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { AutoCompleteModule } from 'primeng/autocomplete';
 import { ButtonModule } from 'primeng/button';
+import { ChipModule } from 'primeng/chip';
 import { FloatLabel } from 'primeng/floatlabel';
+import { MessageModule } from 'primeng/message';
 import { PanelModule } from 'primeng/panel';
 import { ProgressBar } from 'primeng/progressbar';
 import { SelectModule } from 'primeng/select';
+import { SelectButtonModule } from 'primeng/selectbutton';
 import { SkeletonModule } from 'primeng/skeleton';
 import { SliderModule } from 'primeng/slider';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
 import {
   Coin,
+  CoinSelectionType,
+  CUSTOM_RISK_LEVEL,
   Exchange,
   ExchangeKey,
+  MIN_TRADING_COINS,
   Risk,
   TRADING_STYLE_PROFILES,
   TradingStyleProfile
 } from '@chansey/api-interfaces';
 
+/** Human-readable descriptions of coin selection criteria per risk level */
+const RISK_CRITERIA: Record<number, string> = {
+  1: 'High-volume, established coins with stable track records',
+  2: 'Balanced selection favoring stability over growth',
+  3: 'Mix of established and emerging coins',
+  4: 'Growth-oriented coins with higher potential',
+  5: 'Top-ranked trending coins for maximum growth'
+};
+
 import { AuthService } from '../../../../../shared/services/auth.service';
+import { CoinDataService } from '../../../../../shared/services/coin-data.service';
 import { ExchangeService } from '../../../../../shared/services/exchange.service';
 import { RisksService } from '../../../../admin/risks/risks.service';
 import { SettingsService } from '../../settings.service';
@@ -37,20 +54,42 @@ import { SaveStatusIndicatorComponent } from '../save-status-indicator/save-stat
   imports: [
     AutoCompleteModule,
     ButtonModule,
+    ChipModule,
     ExchangeIntegrationsComponent,
     FloatLabel,
     FormsModule,
+    MessageModule,
     PanelModule,
     ProgressBar,
     ReactiveFormsModule,
+    RouterLink,
     SaveStatusIndicatorComponent,
+    SelectButtonModule,
     SelectModule,
     SkeletonModule,
     SliderModule,
     ToggleSwitchModule
   ],
   templateUrl: './trading-settings.component.html',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: `
+    ::ng-deep .coin-selection-toggle .p-togglebutton-checked {
+      background: var(--p-primary-color) !important;
+      border-color: var(--p-primary-color) !important;
+    }
+    ::ng-deep .coin-selection-toggle .p-togglebutton-checked .p-togglebutton-content {
+      background: transparent !important;
+      color: var(--p-primary-contrast-color) !important;
+    }
+    ::ng-deep .trading-coins-autocomplete .p-autocomplete-chip {
+      background: var(--p-primary-color) !important;
+      border-color: var(--p-primary-color) !important;
+    }
+    ::ng-deep .trading-coins-autocomplete .p-autocomplete-chip .p-chip-label,
+    ::ng-deep .trading-coins-autocomplete .p-autocomplete-chip .p-chip-remove-icon {
+      color: var(--p-primary-contrast-color) !important;
+    }
+  `
 })
 export class TradingSettingsComponent {
   private fb = inject(FormBuilder);
@@ -58,6 +97,7 @@ export class TradingSettingsComponent {
   private confirmationService = inject(ConfirmationService);
   private settingsService = inject(SettingsService);
   private authService = inject(AuthService);
+  private coinDataService = inject(CoinDataService);
   private riskService = inject(RisksService);
   private exchangeService = inject(ExchangeService);
 
@@ -67,6 +107,11 @@ export class TradingSettingsComponent {
   readonly updateOpportunitySellingMutation = this.settingsService.useUpdateOpportunitySellingMutation();
   readonly futuresTradingQuery = this.settingsService.useFuturesTradingQuery();
   readonly updateFuturesTradingMutation = this.settingsService.useUpdateFuturesTradingMutation();
+
+  // Trading coins
+  readonly tradingCoinsQuery = this.coinDataService.useTradingCoins();
+  readonly addToTradingMutation = this.coinDataService.useAddToTradingCoins();
+  readonly removeFromTradingMutation = this.coinDataService.useRemoveFromTradingCoins();
 
   // Risk profile
   readonly risksQuery = this.riskService.useRisks();
@@ -78,6 +123,59 @@ export class TradingSettingsComponent {
   readonly deleteExchangeKeyMutation = this.settingsService.useDeleteExchangeKeyMutation();
 
   user = computed(() => this.userQuery.data());
+
+  // Coin selection mode
+  coinSelectionMode = signal<'auto' | 'manual'>('auto');
+  readonly coinSelectionOptions = [
+    { label: 'Pick for me', value: 'auto' },
+    { label: "I'll choose my own", value: 'manual' }
+  ];
+
+  level6Risk = computed(() => this.risksQuery.data()?.find((r) => r.level === CUSTOM_RISK_LEVEL) ?? null);
+  autoRisks = computed(() => this.risksQuery.data()?.filter((r) => r.level >= 1 && r.level <= 5) ?? []);
+
+  /** Track selected auto-risk level for preview (null when in manual mode) */
+  previewRiskLevel = signal<number | null>(null);
+  readonly coinPreviewQuery = this.coinDataService.useCoinPreview(this.previewRiskLevel);
+  previewCoins = computed(() => (this.coinSelectionMode() === 'auto' ? (this.coinPreviewQuery.data() ?? []) : []));
+  tradingCoinItems = computed(() => this.tradingCoinsQuery.data() ?? []);
+  /** Tracks pending add/remove coin IDs to handle race between mutation settlement and query refetch */
+  private pendingTradingAdds = signal<Set<string>>(new Set());
+  private pendingTradingRemoves = signal<Set<string>>(new Set());
+  /** Count includes pending adds not yet in query data, excludes pending removes still in query data */
+  tradingCoinCount = computed(() => {
+    const queryData = this.tradingCoinsQuery.data() ?? [];
+    const actualIds = new Set(queryData.map((w) => w.coin.id));
+    const pendingAddsNotInData = [...this.pendingTradingAdds()].filter((id) => !actualIds.has(id)).length;
+    const pendingRemovesStillInData = [...this.pendingTradingRemoves()].filter((id) => actualIds.has(id)).length;
+    return queryData.length + pendingAddsNotInData - pendingRemovesStillInData;
+  });
+
+  tradingCoinObjects = computed(() => this.tradingCoinItems().map((w) => w.coin));
+  tradingCoinSuggestions: Coin[] = [];
+
+  readonly MIN_TRADING_COINS = MIN_TRADING_COINS;
+
+  /** True when form values differ from saved user data */
+  hasRiskChanges = computed(() => {
+    const userData = this.user();
+    if (!userData) return false;
+    const coinRiskId = this.selectedCoinRiskId();
+    const calcLevel = this.selectedCalcRiskLevel();
+    const savedCoinRiskId = userData.coinRisk?.id || '';
+    const savedCalcLevel = userData.calculationRiskLevel ?? userData.coinRisk?.level ?? null;
+    const savedMode = userData.coinRisk?.level === CUSTOM_RISK_LEVEL ? 'manual' : 'auto';
+    const modeChanged = this.coinSelectionMode() !== savedMode;
+    return modeChanged || coinRiskId !== savedCoinRiskId || calcLevel !== savedCalcLevel;
+  });
+
+  /** True when manual mode is selected but trading coins fewer than required */
+  manualModeBlocked = computed(
+    () => this.coinSelectionMode() === 'manual' && this.tradingCoinCount() < MIN_TRADING_COINS
+  );
+
+  /** How many more coins the user needs to add */
+  coinsNeeded = computed(() => Math.max(0, MIN_TRADING_COINS - this.tradingCoinCount()));
 
   readonly futuresAutoSave = createAutoSave(() => this.doSaveFutures());
   readonly opportunityToggleAutoSave = createAutoSave(() => this.doSaveOpportunityToggle());
@@ -115,11 +213,11 @@ export class TradingSettingsComponent {
   });
 
   calculationRiskOptions = [
-    { label: 'Ultra Conservative', value: 1 },
-    { label: 'Conservative', value: 2 },
-    { label: 'Moderate', value: 3 },
-    { label: 'Growth', value: 4 },
-    { label: 'Aggressive', value: 5 }
+    { label: 'Conservative', value: 1, description: 'Minimal risk, smaller positions, tight loss limits' },
+    { label: 'Moderately Conservative', value: 2, description: 'Low risk with slightly larger allocations' },
+    { label: 'Moderate', value: 3, description: 'Balanced risk and position sizing' },
+    { label: 'Moderately Aggressive', value: 4, description: 'Higher allocations, wider loss tolerance' },
+    { label: 'Aggressive', value: 5, description: 'Maximum allocations, highest risk tolerance' }
   ];
 
   selectedCoinRiskId = signal<string | null>(null);
@@ -130,14 +228,20 @@ export class TradingSettingsComponent {
 
   tradingStyleProfile = computed<TradingStyleProfile | null>(() => {
     const calcRisk = this.selectedCalcRiskLevel();
+    if (calcRisk) return TRADING_STYLE_PROFILES[calcRisk] ?? TRADING_STYLE_PROFILES[3];
+    // Fallback: derive from coin risk level
     const risks = this.risksQuery.data();
     const selectedId = this.selectedCoinRiskId();
     if (!risks || !selectedId) return null;
     const selected = risks.find((r: Risk) => r.id === selectedId);
     if (!selected) return null;
-    const level = calcRisk ?? selected.level;
-    return TRADING_STYLE_PROFILES[level] ?? TRADING_STYLE_PROFILES[3];
+    return TRADING_STYLE_PROFILES[selected.level] ?? TRADING_STYLE_PROFILES[3];
   });
+
+  /** Get human-readable criteria description for a risk level */
+  getCriteriaDescription(level: number): string {
+    return RISK_CRITERIA[level] ?? '';
+  }
 
   // Exchange forms
   exchangeForms = signal<Record<string, ExchangeFormState>>({});
@@ -158,7 +262,16 @@ export class TradingSettingsComponent {
     this.riskForm
       .get('calculationRiskLevel')
       ?.valueChanges.pipe(takeUntilDestroyed())
-      .subscribe((v) => this.selectedCalcRiskLevel.set(v));
+      .subscribe((v) => {
+        this.selectedCalcRiskLevel.set(v);
+        // In auto mode, keep Auto-Select Coins in sync with Trading Style
+        if (this.coinSelectionMode() === 'auto' && v >= 1 && v <= 5) {
+          const matchingRisk = this.autoRisks().find((r) => r.level === v);
+          if (matchingRisk && this.riskForm.get('coinRisk')?.value !== matchingRisk.id) {
+            this.riskForm.get('coinRisk')?.setValue(matchingRisk.id);
+          }
+        }
+      });
 
     // Populate risk form from user data
     effect(() => {
@@ -166,12 +279,38 @@ export class TradingSettingsComponent {
       if (userData && !this.riskForm.dirty) {
         const coinRiskObj = userData.coinRisk;
         const calcLevel = userData.calculationRiskLevel ?? coinRiskObj?.level ?? null;
-        this.riskForm.patchValue({
-          coinRisk: coinRiskObj?.id || '',
-          calculationRiskLevel: calcLevel
-        });
+        this.riskForm.patchValue(
+          {
+            coinRisk: coinRiskObj?.id || '',
+            calculationRiskLevel: calcLevel
+          },
+          { emitEvent: false }
+        );
         this.selectedCoinRiskId.set(coinRiskObj?.id || null);
         this.selectedCalcRiskLevel.set(calcLevel);
+
+        // Detect coin selection mode from saved risk level
+        this.coinSelectionMode.set(coinRiskObj?.level === CUSTOM_RISK_LEVEL ? 'manual' : 'auto');
+
+        // Set preview level for auto mode
+        if (coinRiskObj?.level !== CUSTOM_RISK_LEVEL && coinRiskObj?.level) {
+          this.previewRiskLevel.set(coinRiskObj.level);
+        }
+      }
+    });
+
+    // Sync preview risk level when selection changes
+    effect(() => {
+      const selectedId = this.selectedCoinRiskId();
+      const risks = this.risksQuery.data();
+      const mode = this.coinSelectionMode();
+      if (mode === 'auto' && selectedId && risks) {
+        const risk = risks.find((r: Risk) => r.id === selectedId);
+        if (risk && risk.level >= 1 && risk.level <= 5) {
+          this.previewRiskLevel.set(risk.level);
+        }
+      } else if (mode === 'manual') {
+        this.previewRiskLevel.set(null);
       }
     });
 
@@ -258,6 +397,81 @@ export class TradingSettingsComponent {
         return updated;
       });
     });
+  }
+
+  // --- Coin Selection Mode ---
+
+  onModeChange(mode: 'auto' | 'manual'): void {
+    this.coinSelectionMode.set(mode);
+    this.riskForm.markAsDirty(); // prevent user-data effect from overwriting
+    if (mode === 'manual') {
+      const level6 = this.level6Risk();
+      if (level6) {
+        this.riskForm.get('coinRisk')?.setValue(level6.id);
+      }
+    } else {
+      const userData = this.user();
+      const savedRisk = userData?.coinRisk;
+      const savedCalcLevel = userData?.calculationRiskLevel;
+      // In auto mode, both dropdowns must match — use calculationRiskLevel to pick the auto risk
+      const matchingRisk = savedCalcLevel ? this.autoRisks().find((r) => r.level === savedCalcLevel) : null;
+      const fallback = savedRisk?.level !== CUSTOM_RISK_LEVEL ? savedRisk : null;
+      const restoreRisk = matchingRisk ?? fallback ?? this.autoRisks().find((r) => r.level === 3);
+      if (restoreRisk) {
+        this.riskForm.get('coinRisk')?.setValue(restoreRisk.id);
+        // Subscription will auto-sync calculationRiskLevel to match
+      }
+    }
+  }
+
+  searchTradingCoins(event: { query: string }): void {
+    const coins = this.coinsQuery.data();
+    if (!coins) {
+      this.tradingCoinSuggestions = [];
+      return;
+    }
+    const query = event.query.toLowerCase();
+    const tradingSlugs = new Set(this.tradingCoinItems().map((w) => w.coin.slug));
+    this.tradingCoinSuggestions = coins
+      .filter(
+        (c) =>
+          !tradingSlugs.has(c.slug) && (c.name.toLowerCase().includes(query) || c.symbol.toLowerCase().includes(query))
+      )
+      .slice(0, 10);
+  }
+
+  onTradingCoinSelect(event: { value: Coin }): void {
+    const coin = event.value;
+    if (!coin?.id) return;
+    this.pendingTradingAdds.update((set) => new Set([...set, coin.id]));
+    this.addToTradingMutation.mutate(
+      { coinId: coin.id, type: CoinSelectionType.MANUAL },
+      {
+        onSettled: () =>
+          this.pendingTradingAdds.update((set) => {
+            const newSet = new Set(set);
+            newSet.delete(coin.id);
+            return newSet;
+          })
+      }
+    );
+  }
+
+  onTradingCoinUnselect(event: { value: Coin }): void {
+    const coin = event.value;
+    if (!coin?.id) return;
+    this.pendingTradingRemoves.update((set) => new Set([...set, coin.id]));
+    const item = this.tradingCoinItems().find((w) => w.coin.id === coin.id);
+    if (item) {
+      this.removeFromTradingMutation.mutate(item.id, {
+        onSettled: () =>
+          this.pendingTradingRemoves.update((set) => {
+            const newSet = new Set(set);
+            newSet.delete(coin.id);
+            return newSet;
+          })
+      });
+    }
   }
 
   // --- Opportunity Selling ---
@@ -378,7 +592,7 @@ export class TradingSettingsComponent {
   // --- Risk Profile ---
 
   saveRiskProfile(): void {
-    if (!this.riskForm.valid || !this.riskForm.dirty) return;
+    if (!this.riskForm.valid || !this.hasRiskChanges() || this.manualModeBlocked()) return;
 
     const formData = this.riskForm.getRawValue();
     const userData = this.user();
@@ -386,7 +600,13 @@ export class TradingSettingsComponent {
 
     if (userData) {
       const coinRiskObj = userData.coinRisk;
-      if (formData.coinRisk !== (coinRiskObj?.id || '')) {
+      // If switching to manual mode, ensure we send the level-6 risk ID
+      if (this.coinSelectionMode() === 'manual') {
+        const level6 = this.level6Risk();
+        if (level6 && level6.id !== (coinRiskObj?.id || '')) {
+          updatedFields['coinRisk'] = level6.id;
+        }
+      } else if (formData.coinRisk !== (coinRiskObj?.id || '')) {
         updatedFields['coinRisk'] = formData.coinRisk;
       }
       const currentCalcLevel = userData.calculationRiskLevel ?? coinRiskObj?.level ?? null;

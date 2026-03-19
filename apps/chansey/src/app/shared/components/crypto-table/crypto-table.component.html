@@ -180,7 +180,7 @@
                   severity="danger"
                   (click)="onRemoveCoin(coin); $event.stopPropagation()"
                   [disabled]="isCoinProcessing(coin.id)"
-                  pTooltip="Remove from watchlist"
+                  pTooltip="{{ config().removeTooltip || 'Remove' }}"
                   tooltipPosition="top"
                 />
               }
@@ -191,7 +191,7 @@
             <div class="flex items-center gap-3 transition-opacity hover:opacity-80">
               <p-avatar [image]="coin.image" shape="circle" size="large" class="min-w-10 shadow-sm" />
               <div class="flex flex-col">
-                <span class="text-primary-500 hover:text-primary-600 text-lg font-medium">{{ coin.name }}</span>
+                <span class="text-lg font-medium text-primary-500 hover:text-primary-600">{{ coin.name }}</span>
                 <span class="text-sm text-gray-500 uppercase dark:text-gray-400">{{ coin.symbol }}</span>
               </div>
             </div>
@@ -250,7 +250,7 @@
                   Try adjusting your search terms or
                   <button
                     type="button"
-                    class="text-primary-500 hover:text-primary-600 underline"
+                    class="text-primary-500 underline hover:text-primary-600"
                     (click)="clearSearch()"
                   >
                     clear the search

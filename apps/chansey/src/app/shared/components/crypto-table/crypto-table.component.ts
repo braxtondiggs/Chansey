@@ -10,7 +10,7 @@ import {
   signal,
   viewChild
 } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -34,6 +34,7 @@ import { EmptyStateComponent } from '../empty-state/empty-state.component';
 export interface CryptoTableConfig {
   showWatchlistToggle?: boolean;
   showRemoveAction?: boolean;
+  removeTooltip?: string;
   searchPlaceholder?: string;
   emptyMessage?: string;
   emptyActionLink?: string;
@@ -55,7 +56,6 @@ export interface CryptoTableConfig {
     InputIconModule,
     InputTextModule,
     ProgressBarModule,
-    RouterLink,
     SkeletonModule,
     TableModule,
     TagModule,
