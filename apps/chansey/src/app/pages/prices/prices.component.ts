@@ -21,16 +21,16 @@ export class PricesComponent {
   private readonly messageService = inject(MessageService);
 
   readonly coinsQuery = this.coinDataService.useCoins();
-  readonly watchlistQuery = this.coinDataService.useWatchlist();
-  readonly addToWatchlistMutation = this.coinDataService.useAddToWatchlist();
-  readonly removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchlist();
+  readonly watchedCoinsQuery = this.coinDataService.useWatchedCoins();
+  readonly addToWatchedMutation = this.coinDataService.useAddToWatchedCoins();
+  readonly removeFromWatchedMutation = this.coinDataService.useRemoveFromWatchedCoins();
 
   readonly isLoading = computed(() => this.coinsQuery.isPending());
   readonly coins = computed(() => this.coinsQuery.data() || []);
 
   readonly watchlistCoinIds = computed(() => {
-    const watchlistItems = this.watchlistQuery.data() || [];
-    return new Set(watchlistItems.map((item) => item.coin.id));
+    const watchedItems = this.watchedCoinsQuery.data() || [];
+    return new Set(watchedItems.map((item) => item.coin.id));
   });
 
   readonly tableConfig: CryptoTableConfig = {
@@ -52,11 +52,8 @@ export class PricesComponent {
 
   private addToWatchlist(coin: Coin): void {
     this.processingCoinId.set(coin.id);
-    this.addToWatchlistMutation.mutate(
-      {
-        coinId: coin.id,
-        type: CoinSelectionType.MANUAL
-      },
+    this.addToWatchedMutation.mutate(
+      { coinId: coin.id, type: CoinSelectionType.WATCHED },
       {
         onSuccess: () => {
           this.processingCoinId.set(null);
@@ -66,7 +63,7 @@ export class PricesComponent {
             detail: `${coin.name} has been added to your watchlist`
           });
         },
-        onError: (error) => {
+        onError: (error: Error) => {
           this.processingCoinId.set(null);
           this.messageService.add({
             severity: 'error',
@@ -79,16 +76,16 @@ export class PricesComponent {
   }
 
   private removeFromWatchlist(coin: Coin): void {
-    const watchlistData = this.watchlistQuery.data() || [];
-    const portfolioItem = watchlistData.find((item) => item.coin.id === coin.id);
+    const watchedData = this.watchedCoinsQuery.data() || [];
+    const watchedItem = watchedData.find((item) => item.coin.id === coin.id);
 
-    if (!portfolioItem) {
+    if (!watchedItem) {
       this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Coin not found in watchlist' });
       return;
     }
 
     this.processingCoinId.set(coin.id);
-    this.removeFromWatchlistMutation.mutate(portfolioItem.id, {
+    this.removeFromWatchedMutation.mutate(watchedItem.id, {
       onSuccess: () => {
         this.processingCoinId.set(null);
         this.messageService.add({

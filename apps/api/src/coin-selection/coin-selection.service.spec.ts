@@ -99,7 +99,8 @@ describe('CoinSelectionService', () => {
       expect(result).toEqual([{ id: 'selection-1' }]);
       expect(selectionRepo.find).toHaveBeenCalledWith({
         where: { user: { id: mockUser.id }, type: CoinSelectionType.MANUAL },
-        relations: ['coin']
+        relations: ['coin'],
+        order: { coin: { name: 'ASC' } }
       });
     });
   });

@@ -44,11 +44,14 @@ export const queryKeys = {
     lists: () => [...queryKeys.coins.all, 'list'] as const,
     list: (filters?: { category?: string; search?: string }) =>
       filters ? ([...queryKeys.coins.lists(), filters] as const) : queryKeys.coins.lists(),
-    watchlist: () => [...queryKeys.coins.all, 'watchlist'] as const,
+    watchedCoins: () => [...queryKeys.coins.all, 'watched-coins'] as const,
+    tradingCoins: () => [...queryKeys.coins.all, 'trading-coins'] as const,
+    autoSelectedCoins: () => [...queryKeys.coins.all, 'auto-selected-coins'] as const,
     detail: (slug: string) => [...queryKeys.coins.all, 'detail', slug] as const,
     price: (slug: string) => [...queryKeys.coins.detail(slug), 'price'] as const,
     chart: (slug: string, period: string) => [...queryKeys.coins.detail(slug), 'chart', period] as const,
-    holdings: (slug: string) => [...queryKeys.coins.detail(slug), 'holdings'] as const
+    holdings: (slug: string) => [...queryKeys.coins.detail(slug), 'holdings'] as const,
+    preview: (level: number | null) => [...queryKeys.coins.all, 'preview', level] as const
   },
 
   // --------------------------------------------------------------------------

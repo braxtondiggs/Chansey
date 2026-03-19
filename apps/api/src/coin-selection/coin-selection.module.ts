@@ -9,15 +9,13 @@ import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-histori
 
 import { CoinModule } from '../coin/coin.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
-import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CoinSelection]),
     BullModule.registerQueue({ name: 'coin-selection-queue' }),
     forwardRef(() => CoinModule),
-    forwardRef(() => OHLCModule),
-    SharedCacheModule
+    forwardRef(() => OHLCModule)
   ],
   controllers: [CoinSelectionController],
   providers: [CoinSelectionService, CoinSelectionHistoricalPriceTask],

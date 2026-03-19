@@ -13,10 +13,26 @@ export class CoinDataService {
     });
   }
 
-  useWatchlist() {
-    return useAuthQuery<CoinSelectionItem[]>(queryKeys.coins.watchlist(), '/api/coin-selections?type=MANUAL', {
+  useWatchedCoins() {
+    return useAuthQuery<CoinSelectionItem[]>(queryKeys.coins.watchedCoins(), '/api/coin-selections?type=WATCHED', {
       cachePolicy: FREQUENT_POLICY
     });
+  }
+
+  useTradingCoins() {
+    return useAuthQuery<CoinSelectionItem[]>(queryKeys.coins.tradingCoins(), '/api/coin-selections?type=MANUAL', {
+      cachePolicy: FREQUENT_POLICY
+    });
+  }
+
+  useAutoSelectedCoins() {
+    return useAuthQuery<CoinSelectionItem[]>(
+      queryKeys.coins.autoSelectedCoins(),
+      '/api/coin-selections?type=AUTOMATIC',
+      {
+        cachePolicy: FREQUENT_POLICY
+      }
+    );
   }
 
   usePrices(coins: Signal<string>) {
@@ -38,15 +54,27 @@ export class CoinDataService {
     });
   }
 
-  useAddToWatchlist() {
+  useAddToWatchedCoins() {
     return useAuthMutation<{ id: string }, CreateCoinSelectionDto>('/api/coin-selections', 'POST', {
-      invalidateQueries: [queryKeys.coins.watchlist()]
+      invalidateQueries: [queryKeys.coins.watchedCoins()]
     });
   }
 
-  useRemoveFromWatchlist() {
+  useRemoveFromWatchedCoins() {
     return useAuthMutation<void, string>((selectionId: string) => `/api/coin-selections/${selectionId}`, 'DELETE', {
-      invalidateQueries: [queryKeys.coins.watchlist()]
+      invalidateQueries: [queryKeys.coins.watchedCoins()]
+    });
+  }
+
+  useAddToTradingCoins() {
+    return useAuthMutation<{ id: string }, CreateCoinSelectionDto>('/api/coin-selections', 'POST', {
+      invalidateQueries: [queryKeys.coins.tradingCoins()]
+    });
+  }
+
+  useRemoveFromTradingCoins() {
+    return useAuthMutation<void, string>((selectionId: string) => `/api/coin-selections/${selectionId}`, 'DELETE', {
+      invalidateQueries: [queryKeys.coins.tradingCoins()]
     });
   }
 
@@ -58,7 +86,7 @@ export class CoinDataService {
     return useAuthQuery<Coin[]>(() => {
       const level = riskLevel();
       return {
-        queryKey: ['coins', 'preview', level],
+        queryKey: queryKeys.coins.preview(level),
         url: `/api/coins/preview?riskLevel=${level}&limit=5`,
         options: {
           cachePolicy: STANDARD_POLICY,

@@ -72,6 +72,20 @@ export class CoinController {
     return this.coin.getCoinsWithCurrentPrices();
   }
 
+  @Get('suggested')
+  @ApiOperation({
+    summary: 'Get suggested coins',
+    description: 'Retrieves the suggested coins for the authenticated user based on their risk profile.'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of suggested coins retrieved successfully.',
+    type: [Coin]
+  })
+  suggestedCoins(@GetUser() user: User) {
+    return this.coin.getCoinsByRiskLevel(user);
+  }
+
   @Get(':id')
   @ApiParam({
     name: 'id',
@@ -161,20 +175,6 @@ export class CoinController {
   })
   getCoinHistoricalData(@Param('id', new ParseUUIDPipe()) id: string): Promise<any> {
     return this.coin.getCoinHistoricalData(id);
-  }
-
-  @Get('suggested')
-  @ApiOperation({
-    summary: 'Get suggested coins',
-    description: 'Retrieves the suggested coins for the authenticated user based on their risk profile.'
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'List of suggested coins retrieved successfully.',
-    type: [Coin]
-  })
-  suggestedCoins(@GetUser() user: User) {
-    return this.coin.getCoinsByRiskLevel(user);
   }
 }
 

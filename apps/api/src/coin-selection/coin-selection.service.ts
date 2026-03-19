@@ -23,6 +23,10 @@ export class CoinSelectionService {
     @Inject(forwardRef(() => OHLCService)) private readonly ohlcService: OHLCService
   ) {}
 
+  /**
+   * Returns all coin selections across all users. Internal/system-use only.
+   * Used by AlgorithmContextBuilder for background algorithm execution.
+   */
   async getCoinSelections(): Promise<CoinSelection[]> {
     return await this.coinSelection.find({
       relations: ['coin']
@@ -61,7 +65,8 @@ export class CoinSelectionService {
 
     const selections = await this.coinSelection.find({
       where: whereConditions,
-      relations
+      relations,
+      order: relations?.includes(CoinSelectionRelations.COIN) ? { coin: { name: 'ASC' } } : { createdAt: 'ASC' }
     });
     return selections;
   }
@@ -128,6 +133,13 @@ export class CoinSelectionService {
   async getManualCoinSelectionSymbols(user: User): Promise<string[]> {
     const items = await this.getCoinSelectionsByUser(user, [CoinSelectionRelations.COIN], CoinSelectionType.MANUAL);
     return items.map((p) => p.coin.symbol.toUpperCase());
+  }
+
+  async bulkDeleteAutomaticSelections(userId: string) {
+    return this.coinSelection.delete({
+      user: { id: userId },
+      type: CoinSelectionType.AUTOMATIC
+    });
   }
 
   async deleteCoinSelectionItem(selectionId: string, userId: string) {
