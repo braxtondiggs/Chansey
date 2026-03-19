@@ -1,7 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { CreateCoinSelectionDto } from './create-coin-selection.dto';
-
 import { CoinResponseDto } from '../../coin/dto/coin-response.dto';
 import { UserResponseDto } from '../../users/dto';
 import { CoinSelectionType } from '../coin-selection-type.enum';
@@ -18,7 +16,7 @@ export class CoinSelectionResponseDto {
     example: CoinSelectionType.MANUAL,
     enum: CoinSelectionType
   })
-  type: string;
+  type: CoinSelectionType;
 
   @ApiProperty({
     description: 'Coin associated with this selection item',
@@ -44,7 +42,7 @@ export class CoinSelectionResponseDto {
   })
   updatedAt: Date;
 
-  constructor(partial: Partial<CreateCoinSelectionDto>) {
+  constructor(partial: Partial<CoinSelectionResponseDto>) {
     Object.assign(this, partial);
   }
 }

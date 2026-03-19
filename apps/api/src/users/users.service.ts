@@ -23,7 +23,7 @@ import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   OpportunitySellingUserConfig
 } from '../order/interfaces/opportunity-selling.interface';
-import { CUSTOM_RISK_LEVEL, DEFAULT_RISK_LEVEL, MIN_WATCHLIST_COINS } from '../risk/risk.constants';
+import { CUSTOM_RISK_LEVEL, DEFAULT_RISK_LEVEL, MIN_TRADING_COINS } from '../risk/risk.constants';
 import { Risk } from '../risk/risk.entity';
 import { toErrorInfo } from '../shared/error.util';
 import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
@@ -102,14 +102,14 @@ export class UsersService {
         riskChanged = true;
       }
 
-      // Validate watchlist count for custom risk level
-      // Skip when user is SWITCHING TO custom (they're building their watchlist)
+      // Validate trading coin count for custom risk level
+      // Skip when user is SWITCHING TO custom (they're building their trading coins)
       const isSwitchingToCustom = !!coinRisk && updatedUser.coinRisk?.level === CUSTOM_RISK_LEVEL;
       if (updatedUser.coinRisk?.level === CUSTOM_RISK_LEVEL && !isSwitchingToCustom) {
-        const watchlistSymbols = await this.coinSelection.getManualCoinSelectionSymbols(updatedUser);
-        if (watchlistSymbols.length < MIN_WATCHLIST_COINS) {
+        const tradingCoinSymbols = await this.coinSelection.getManualCoinSelectionSymbols(updatedUser);
+        if (tradingCoinSymbols.length < MIN_TRADING_COINS) {
           throw new BadRequestException(
-            `Custom coin selection requires at least ${MIN_WATCHLIST_COINS} coins in your watchlist (currently ${watchlistSymbols.length})`
+            `Custom coin selection requires at least ${MIN_TRADING_COINS} trading coins (currently ${tradingCoinSymbols.length})`
           );
         }
       }
@@ -193,14 +193,9 @@ export class UsersService {
   }
 
   async updateCoinSelectionByUserRisk(user: User) {
-    const selections = await this.coinSelection.getCoinSelectionsByUser(user);
-    const automaticSelections = selections.filter((s) => s.type === CoinSelectionType.AUTOMATIC);
+    await this.coinSelection.bulkDeleteAutomaticSelections(user.id);
 
-    await Promise.all(
-      automaticSelections.map((selection) => this.coinSelection.deleteCoinSelectionItem(selection.id, user.id))
-    );
-
-    // Custom risk users manage their own coins via watchlist
+    // Custom risk users manage their own trading coins manually
     if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) return;
 
     const coinCount = user.coinRisk?.coinCount ?? DEFAULT_COIN_COUNTS[user.coinRisk?.level ?? DEFAULT_RISK_LEVEL] ?? 10;

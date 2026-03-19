@@ -79,6 +79,11 @@ export const appRoutes: Route[] = [
         data: { breadcrumb: 'Watchlist' }
       },
       {
+        path: 'trading-coins',
+        loadComponent: () => import('./pages/trading-coins').then((c) => c.TradingCoinsComponent),
+        data: { breadcrumb: 'Trading Coins' }
+      },
+      {
         path: 'coins',
         children: [
           { path: '', redirectTo: '/app/prices', pathMatch: 'full' },

@@ -54,8 +54,8 @@ export class AppMenu {
   model = computed<MenuItem[]>(() => {
     const items: MenuItem[] = [
       {
-        label: 'Portfolio Hub',
-        icon: 'pi pi-fw pi-briefcase',
+        label: 'Trading',
+        icon: 'pi pi-fw pi-chart-line',
         items: [
           {
             label: 'Dashboard',
@@ -76,6 +76,11 @@ export class AppMenu {
             label: 'Watchlist',
             icon: 'pi pi-fw pi-star',
             routerLink: ['/app/watchlist']
+          },
+          {
+            label: 'Trading Coins',
+            icon: 'pi pi-fw pi-chart-bar',
+            routerLink: ['/app/trading-coins']
           }
         ]
       },

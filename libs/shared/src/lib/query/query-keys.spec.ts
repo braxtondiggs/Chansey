@@ -6,7 +6,9 @@ describe('query-keys', () => {
     expect(queryKeys.coins.lists()).toEqual(['coins', 'list']);
     expect(queryKeys.coins.list({ category: 'defi' })).toEqual(['coins', 'list', { category: 'defi' }]);
     expect(queryKeys.coins.list()).toEqual(queryKeys.coins.lists());
-    expect(queryKeys.coins.watchlist()).toEqual(['coins', 'watchlist']);
+    expect(queryKeys.coins.watchedCoins()).toEqual(['coins', 'watched-coins']);
+    expect(queryKeys.coins.tradingCoins()).toEqual(['coins', 'trading-coins']);
+    expect(queryKeys.coins.autoSelectedCoins()).toEqual(['coins', 'auto-selected-coins']);
     expect(queryKeys.coins.detail('btc')).toEqual(['coins', 'detail', 'btc']);
     expect(queryKeys.coins.chart('eth', '24h')).toEqual(['coins', 'detail', 'eth', 'chart', '24h']);
     expect(queryKeys.coins.holdings('ada')).toEqual(['coins', 'detail', 'ada', 'holdings']);

@@ -31,7 +31,7 @@ import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backte
 import { BacktestService } from '../order/backtest/backtest.service';
 import { CreateBacktestDto } from '../order/backtest/dto/backtest.dto';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
-import { CUSTOM_RISK_LEVEL, MIN_WATCHLIST_COINS } from '../risk/risk.constants';
+import { CUSTOM_RISK_LEVEL, MIN_TRADING_COINS } from '../risk/risk.constants';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
@@ -96,16 +96,16 @@ export class BacktestOrchestrationService {
 
       this.logger.log(`Orchestrating backtests for user ${userId} with risk level ${riskLevel}`);
 
-      // For custom risk users, resolve watchlist coins and validate minimum count
+      // For custom risk users, resolve trading coins and validate minimum count
       let coinSymbolFilter: string[] | undefined;
       if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) {
         coinSymbolFilter = await this.coinSelectionService.getManualCoinSelectionSymbols(user);
-        if (coinSymbolFilter.length < MIN_WATCHLIST_COINS) {
+        if (coinSymbolFilter.length < MIN_TRADING_COINS) {
           this.logger.warn(
-            `User ${userId} has < ${MIN_WATCHLIST_COINS} watchlist coins (${coinSymbolFilter.length}), skipping orchestration`
+            `User ${userId} has < ${MIN_TRADING_COINS} trading coins (${coinSymbolFilter.length}), skipping orchestration`
           );
           result.errors.push(
-            `Insufficient watchlist coins: ${coinSymbolFilter.length} (minimum ${MIN_WATCHLIST_COINS} required)`
+            `Insufficient trading coins: ${coinSymbolFilter.length} (minimum ${MIN_TRADING_COINS} required)`
           );
           return result;
         }

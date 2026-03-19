@@ -1,0 +1,53 @@
+<p-toast />
+<p-confirmDialog />
+
+@if (!isCustomCoinSelection()) {
+  <p-message severity="info" class="mb-4 block">
+    <ng-template #container let-closable="closable">
+      <div class="flex w-full items-center justify-between gap-3 p-3">
+        <div class="flex items-center gap-2">
+          <i class="pi pi-info-circle"></i>
+          <span>
+            Your trading coins are auto-selected based on your risk level
+            @if (userRiskLevel(); as level) {
+              (Level {{ level }})
+            }
+            .
+          </span>
+        </div>
+        <p-button
+          label="Settings"
+          icon="pi pi-cog"
+          routerLink="/app/settings"
+          [queryParams]="{ tab: 'trading' }"
+          severity="info"
+          [outlined]="true"
+          size="large"
+        />
+      </div>
+    </ng-template>
+  </p-message>
+}
+
+@if (isCustomCoinSelection() && showInsufficientCoinsWarning()) {
+  <p-message severity="warn" class="mb-4 block">
+    <ng-template #container let-closable="closable">
+      <div class="flex flex-wrap items-center gap-2 p-3">
+        <i class="pi pi-exclamation-triangle"></i>
+        <span>
+          <strong>Trading Paused</strong> - Add {{ coinsNeeded() }} more coin(s) to resume trading. Custom coin
+          selection requires at least {{ MIN_TRADING_COINS }} coins.
+        </span>
+        <a routerLink="/app/prices" class="font-semibold text-primary hover:underline">Browse Coins</a>
+      </div>
+    </ng-template>
+  </p-message>
+}
+
+<app-crypto-table
+  [coins]="tradingCoins()"
+  [isLoading]="isLoading()"
+  [config]="isCustomCoinSelection() ? customTableConfig : autoTableConfig"
+  [processingCoinId]="processingCoinId()"
+  (removeCoin)="onRemoveCoin($event)"
+/>

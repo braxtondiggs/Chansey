@@ -5,6 +5,7 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -39,7 +40,7 @@ export class CoinSelectionController {
     name: 'type',
     required: false,
     enum: CoinSelectionType,
-    description: 'Filter coin selection items by type (MANUAL or AUTOMATIC)',
+    description: 'Filter coin selection items by type (MANUAL, AUTOMATIC, or WATCHED)',
     example: CoinSelectionType.MANUAL
   })
   @ApiResponse({
@@ -47,7 +48,10 @@ export class CoinSelectionController {
     description: 'List of coin selection items retrieved successfully.',
     type: [CoinSelectionResponseDto]
   })
-  async getCoinSelections(@GetUser() user: User, @Query('type') type?: CoinSelectionType) {
+  async getCoinSelections(
+    @GetUser() user: User,
+    @Query('type', new ParseEnumPipe(CoinSelectionType, { optional: true })) type?: CoinSelectionType
+  ) {
     return this.coinSelection.getCoinSelectionsByUser(user, [CoinSelectionRelations.COIN], type);
   }
 

@@ -38,7 +38,7 @@ export class CoinSelection {
     example: CoinSelectionType.MANUAL,
     enum: CoinSelectionType
   })
-  type: string;
+  type: CoinSelectionType;
 
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;

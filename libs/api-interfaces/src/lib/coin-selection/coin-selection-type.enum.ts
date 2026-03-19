@@ -1,4 +1,5 @@
 export enum CoinSelectionType {
   MANUAL = 'MANUAL',
-  AUTOMATIC = 'AUTOMATIC'
+  AUTOMATIC = 'AUTOMATIC',
+  WATCHED = 'WATCHED'
 }

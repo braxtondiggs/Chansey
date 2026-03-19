@@ -20,8 +20,8 @@ export class WatchlistComponent {
   private readonly coinDataService = inject(CoinDataService);
   private readonly messageService = inject(MessageService);
 
-  readonly watchlistQuery = this.coinDataService.useWatchlist();
-  readonly removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchlist();
+  readonly watchlistQuery = this.coinDataService.useWatchedCoins();
+  readonly removeFromWatchlistMutation = this.coinDataService.useRemoveFromWatchedCoins();
 
   readonly isLoading = computed(() => this.watchlistQuery.isPending());
 
@@ -33,8 +33,9 @@ export class WatchlistComponent {
   readonly tableConfig: CryptoTableConfig = {
     showWatchlistToggle: false,
     showRemoveAction: true,
+    removeTooltip: 'Remove from watchlist',
     searchPlaceholder: 'Search watchlist...',
-    emptyMessage: 'Your watchlist is empty. Add coins from the prices page.',
+    emptyMessage: 'Your watchlist is empty. Star coins on the prices page to track them here.',
     emptyActionLink: '/app/prices',
     emptyActionLabel: 'Browse Coins',
     cardTitle: 'My Watchlist'
@@ -42,15 +43,15 @@ export class WatchlistComponent {
 
   onRemoveCoin(coin: Coin): void {
     const watchlistData = this.watchlistQuery.data() || [];
-    const portfolioItem = watchlistData.find((item) => item.coin.id === coin.id);
+    const selectionItem = watchlistData.find((item) => item.coin.id === coin.id);
 
-    if (!portfolioItem) {
+    if (!selectionItem) {
       this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Coin not found in watchlist' });
       return;
     }
 
     this.processingCoinId.set(coin.id);
-    this.removeFromWatchlistMutation.mutate(portfolioItem.id, {
+    this.removeFromWatchlistMutation.mutate(selectionItem.id, {
       onSuccess: () => {
         this.processingCoinId.set(null);
         this.messageService.add({
