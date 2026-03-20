@@ -29,6 +29,7 @@ import { RisksService } from '../../../pages/admin/risks/risks.service';
 import { SettingsService } from '../../../pages/user/settings/settings.service';
 import { AuthService } from '../../services/auth.service';
 import { CoinDataService } from '../../services/coin-data.service';
+import { filterCoinSuggestions } from '../../utils/coin-filter.util';
 
 /** Human-readable descriptions of coin selection criteria per risk level */
 const RISK_CRITERIA: Record<number, string> = {
@@ -287,17 +288,8 @@ export class RiskProfileFormComponent {
       this.tradingCoinSuggestions.set([]);
       return;
     }
-    const query = event.query.toLowerCase();
     const tradingSlugs = new Set(this.tradingCoinItems().map((w) => w.coin.slug));
-    this.tradingCoinSuggestions.set(
-      coins
-        .filter(
-          (c) =>
-            !tradingSlugs.has(c.slug) &&
-            (c.name.toLowerCase().includes(query) || c.symbol.toLowerCase().includes(query))
-        )
-        .slice(0, 10)
-    );
+    this.tradingCoinSuggestions.set(filterCoinSuggestions(coins, event.query, tradingSlugs));
   }
 
   onTradingCoinSelect(event: { value: Coin }): void {

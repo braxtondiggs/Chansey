@@ -16,6 +16,7 @@ import { RiskProfileFormComponent } from '../../../../../shared/components/risk-
 import { AuthService } from '../../../../../shared/services/auth.service';
 import { ExchangeService } from '../../../../../shared/services/exchange.service';
 import { ExchangeFormState } from '../../../../../shared/types/exchange-form.types';
+import { filterCoinSuggestions } from '../../../../../shared/utils/coin-filter.util';
 import { SettingsService } from '../../settings.service';
 import { createAutoSave } from '../../utils/auto-save';
 import { createPanelState } from '../../utils/panel-state';
@@ -163,18 +164,9 @@ export class TradingSettingsComponent {
       this.protectedCoinSuggestions.set([]);
       return;
     }
-    const query = event.query.toLowerCase();
     const selected: Coin[] = this.opportunitySellingForm.get('protectedCoins')?.value ?? [];
     const selectedSlugs = new Set(selected.map((c) => c.slug));
-    this.protectedCoinSuggestions.set(
-      coins
-        .filter(
-          (c) =>
-            !selectedSlugs.has(c.slug) &&
-            (c.name.toLowerCase().includes(query) || c.symbol.toLowerCase().includes(query))
-        )
-        .slice(0, 10)
-    );
+    this.protectedCoinSuggestions.set(filterCoinSuggestions(coins, event.query, selectedSlugs));
   }
 
   toggleFuturesTrading(event: { checked: boolean }): void {
