@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { NotificationEventType } from '@chansey/api-interfaces';
+import { APP_NAME, NotificationEventType } from '@chansey/api-interfaces';
 
 import { EmailService } from '../../email/email.service';
 import { escapeHtml } from '../../utils/sanitize.util';
@@ -53,7 +53,7 @@ export class EmailNotificationService {
       </head>
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #4F46E5; margin: 0;">Cymbit Trading</h1>
+          <h1 style="color: #4F46E5; margin: 0;">${APP_NAME}</h1>
         </div>
         <div style="background-color: ${severityColor}15; border-left: 4px solid ${severityColor}; padding: 12px 16px; margin-bottom: 20px; border-radius: 0 4px 4px 0;">
           <strong style="color: ${severityColor};">${escapeHtml(job.title)}</strong>

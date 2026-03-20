@@ -12,13 +12,14 @@ import { SliderModule } from 'primeng/slider';
 import { StepperModule } from 'primeng/stepper';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
-import { Coin, Exchange, ExchangeKey, OpportunitySellingUserConfig } from '@chansey/api-interfaces';
+import { APP_NAME, Coin, Exchange, ExchangeKey, OpportunitySellingUserConfig } from '@chansey/api-interfaces';
 
 import { ExchangeIntegrationsComponent } from '../../../pages/user/settings/components/exchange-integrations/exchange-integrations.component';
 import { SettingsService } from '../../../pages/user/settings/settings.service';
 import { AuthService } from '../../services/auth.service';
 import { ExchangeService } from '../../services/exchange.service';
 import { ExchangeFormState } from '../../types/exchange-form.types';
+import { filterCoinSuggestions } from '../../utils/coin-filter.util';
 import { RiskProfileFormComponent } from '../risk-profile-form/risk-profile-form.component';
 
 @Component({
@@ -42,6 +43,7 @@ import { RiskProfileFormComponent } from '../risk-profile-form/risk-profile-form
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GettingStartedComponent {
+  readonly appName = APP_NAME;
   private confirmationService = inject(ConfirmationService);
   private messageService = inject(MessageService);
   private authService = inject(AuthService);
@@ -171,17 +173,8 @@ export class GettingStartedComponent {
       this.protectedCoinSuggestions.set([]);
       return;
     }
-    const query = event.query.toLowerCase();
     const selectedSlugs = new Set(this.protectedCoins().map((c) => c.slug));
-    this.protectedCoinSuggestions.set(
-      coins
-        .filter(
-          (c) =>
-            !selectedSlugs.has(c.slug) &&
-            (c.name.toLowerCase().includes(query) || c.symbol.toLowerCase().includes(query))
-        )
-        .slice(0, 10)
-    );
+    this.protectedCoinSuggestions.set(filterCoinSuggestions(coins, event.query, selectedSlugs));
   }
 
   saveOpportunitySelling(): void {

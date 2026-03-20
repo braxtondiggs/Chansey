@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { Resend } from 'resend';
 
+import { APP_NAME } from '@chansey/api-interfaces';
+
 import { toErrorInfo } from '../shared/error.util';
 import { escapeHtml } from '../utils/sanitize.util';
 
@@ -29,7 +31,7 @@ export class EmailService {
   async sendEmail(options: EmailOptions): Promise<boolean> {
     try {
       const { data, error } = await this.resend.emails.send({
-        from: `Cymbit Trading <${this.fromEmail}>`,
+        from: `${APP_NAME} <${this.fromEmail}>`,
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -55,7 +57,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Verify your Cymbit Trading account',
+      subject: `Verify your ${APP_NAME} account`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -65,7 +67,7 @@ export class EmailService {
         </head>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #4F46E5; margin: 0;">Welcome to Cymbit Trading!</h1>
+            <h1 style="color: #4F46E5; margin: 0;">Welcome to ${APP_NAME}!</h1>
           </div>
           <p>Hi ${escapeHtml(name)},</p>
           <p>Thank you for signing up! Please verify your email address by clicking the button below:</p>
@@ -78,7 +80,7 @@ export class EmailService {
           <p style="color: #4F46E5; font-size: 14px; word-break: break-all;">${verificationUrl}</p>
           <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-          <p style="color: #999; font-size: 12px;">If you didn't create an account with Cymbit Trading, you can safely ignore this email.</p>
+          <p style="color: #999; font-size: 12px;">If you didn't create an account with ${APP_NAME}, you can safely ignore this email.</p>
         </body>
         </html>
       `
@@ -88,7 +90,7 @@ export class EmailService {
   async sendOtpEmail(email: string, otp: string, name: string): Promise<boolean> {
     return this.sendEmail({
       to: email,
-      subject: 'Your Cymbit Trading verification code',
+      subject: `Your ${APP_NAME} verification code`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -121,7 +123,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Reset your Cymbit Trading password',
+      subject: `Reset your ${APP_NAME} password`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -156,7 +158,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Welcome to Cymbit Trading!',
+      subject: `Welcome to ${APP_NAME}!`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -166,7 +168,7 @@ export class EmailService {
         </head>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #4F46E5; margin: 0;">Welcome to Cymbit Trading!</h1>
+            <h1 style="color: #4F46E5; margin: 0;">Welcome to ${APP_NAME}!</h1>
           </div>
           <p>Hi ${escapeHtml(name)},</p>
           <p>Your email has been verified and your account is now active. You're all set to start trading!</p>

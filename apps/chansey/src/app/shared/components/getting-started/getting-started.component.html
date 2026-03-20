@@ -1,7 +1,7 @@
 <p-card>
   <ng-template #header>
     <div class="p-4 pb-0">
-      <h2 class="mt-0 mb-1 text-2xl font-bold">Welcome to Cymbit Trading!</h2>
+      <h2 class="mt-0 mb-1 text-2xl font-bold">Welcome to {{ appName }}!</h2>
       <p class="mt-0 text-muted-color">Complete these steps to get started trading.</p>
     </div>
   </ng-template>
@@ -22,8 +22,8 @@
         <ng-template #content let-activateCallback="activateCallback">
           <div class="px-2 py-4 sm:px-0">
             <p class="mt-0 mb-6 text-muted-color">
-              Connecting your exchange lets Cymbit read your portfolio, track your orders, and manage trades on your
-              behalf. We only need API key permissions, and your funds always stay on the exchange.
+              Connecting your exchange lets {{ appName }} read your portfolio, track your orders, and manage trades on
+              your behalf. We only need API key permissions, and your funds always stay on the exchange.
             </p>
             <app-exchange-integrations
               [exchanges]="supportedExchangesQuery.data() || []"
@@ -55,8 +55,8 @@
             <p class="mt-0 mb-6 text-muted-color">
               Your risk profile tells us how aggressively to trade, from conservative strategies that prioritize capital
               preservation to aggressive ones that chase higher returns. Together with your exchange connection, this
-              lets Cymbit automatically monitor the market, identify opportunities, and manage your positions without
-              you having to watch charts all day.
+              lets {{ appName }} automatically monitor the market, identify opportunities, and manage your positions
+              without you having to watch charts all day.
             </p>
             <p-panel>
               <app-risk-profile-form

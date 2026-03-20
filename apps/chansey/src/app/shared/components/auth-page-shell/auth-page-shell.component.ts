@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { APP_NAME } from '@chansey/api-interfaces';
+
 import {
   ForgotIllustrationComponent,
   LoginIllustrationComponent,
@@ -21,7 +23,7 @@ import { LazyImageComponent } from '../lazy-image/lazy-image.component';
   ],
   template: `
     <section
-      class="animate-fadein animate-duration-300 animate-ease-in mx-auto flex min-h-screen items-center justify-center lg:items-start"
+      class="mx-auto flex min-h-screen animate-fadein items-center justify-center animate-duration-300 animate-ease-in lg:items-start"
     >
       <div class="flex h-full w-full gap-12 lg:gap-0">
         <div class="flex w-full flex-col p-20 lg:w-1/2 lg:min-w-160">
@@ -29,11 +31,11 @@ import { LazyImageComponent } from '../lazy-image/lazy-image.component';
             <app-lazy-image
               className="object-contain object-left w-auto h-24 -translate-y-3"
               src="/public/icon.png"
-              alt="Cymbit Trading logo"
+              [alt]="appName + ' logo'"
               [width]="114"
               [height]="96"
             />
-            <h5 class="title-h5 font-normal whitespace-nowrap">Cymbit Trading</h5>
+            <h5 class="title-h5 font-normal whitespace-nowrap">{{ appName }}</h5>
           </a>
           <div class="flex grow flex-col justify-center">
             <div class="mx-auto w-full max-w-md">
@@ -61,5 +63,6 @@ import { LazyImageComponent } from '../lazy-image/lazy-image.component';
   `
 })
 export class AuthPageShellComponent {
+  readonly appName = APP_NAME;
   illustration = input<'login' | 'register' | 'forgot'>('login');
 }

@@ -4,11 +4,13 @@ import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
 import { filter, map, mergeMap } from 'rxjs/operators';
 
+import { APP_NAME } from '@chansey/api-interfaces';
+
 @Injectable({
   providedIn: 'root'
 })
 export class TitleService {
-  private readonly APP_NAME = 'Cymbit Trading';
+  private readonly APP_NAME = APP_NAME;
   private readonly titleService = inject(Title);
   private readonly router = inject(Router);
   private readonly activatedRoute = inject(ActivatedRoute);
