@@ -104,6 +104,8 @@ export class LayoutService {
 
   transitionComplete = signal<boolean>(false);
 
+  hideBreadcrumb = signal(false);
+
   isSidebarStateChanged = computed(() => {
     const layoutConfig = this.layoutConfig();
     return (

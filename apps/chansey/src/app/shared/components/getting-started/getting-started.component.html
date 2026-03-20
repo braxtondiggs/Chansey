@@ -1,0 +1,170 @@
+<p-card>
+  <ng-template #header>
+    <div class="p-4 pb-0">
+      <h2 class="mt-0 mb-1 text-2xl font-bold">Welcome to Cymbit Trading!</h2>
+      <p class="mt-0 text-muted-color">Complete these steps to get started trading.</p>
+    </div>
+  </ng-template>
+
+  <p-stepper [(value)]="activeStep" [linear]="true">
+    <p-step-list>
+      <p-step [value]="1"
+        ><span class="hidden sm:inline">Connect Exchange</span><span class="sm:hidden">Exchange</span></p-step
+      >
+      <p-step [value]="2"><span class="hidden sm:inline">Risk Profile</span><span class="sm:hidden">Risk</span></p-step>
+      <p-step [value]="3"
+        ><span class="hidden sm:inline">Opportunity Selling</span><span class="sm:hidden">Selling</span></p-step
+      >
+    </p-step-list>
+    <p-step-panels>
+      <!-- Step 1: Connect Exchange -->
+      <p-step-panel [value]="1">
+        <ng-template #content let-activateCallback="activateCallback">
+          <div class="px-2 py-4 sm:px-0">
+            <p class="mt-0 mb-6 text-muted-color">
+              Connecting your exchange lets Cymbit read your portfolio, track your orders, and manage trades on your
+              behalf. We only need API key permissions, and your funds always stay on the exchange.
+            </p>
+            <app-exchange-integrations
+              [exchanges]="supportedExchangesQuery.data() || []"
+              [exchangeForms]="exchangeForms()"
+              [isLoading]="supportedExchangesQuery.isLoading()"
+              [user]="userQuery.data()"
+              [collapsible]="false"
+              [showHeader]="false"
+              [hideKeyActions]="true"
+              (saveKeys)="onSaveExchangeKeys($event)"
+            />
+            <div class="flex justify-end pt-4">
+              <p-button
+                label="Next"
+                icon="pi pi-arrow-right"
+                iconPos="right"
+                [disabled]="!exchangeComplete()"
+                (onClick)="onNextFromExchange(activateCallback)"
+              />
+            </div>
+          </div>
+        </ng-template>
+      </p-step-panel>
+
+      <!-- Step 2: Risk Profile -->
+      <p-step-panel [value]="2">
+        <ng-template #content let-activateCallback="activateCallback">
+          <div class="px-2 py-4 sm:px-0">
+            <p class="mt-0 mb-6 text-muted-color">
+              Your risk profile tells us how aggressively to trade, from conservative strategies that prioritize capital
+              preservation to aggressive ones that chase higher returns. Together with your exchange connection, this
+              lets Cymbit automatically monitor the market, identify opportunities, and manage your positions without
+              you having to watch charts all day.
+            </p>
+            <p-panel>
+              <app-risk-profile-form
+                [showTradingCoins]="true"
+                [collapsible]="false"
+                [alwaysAllowSave]="true"
+                saveButtonLabel="Save & Continue"
+                (saved)="onRiskSaved()"
+              >
+                <p-button
+                  slot="actions-left"
+                  label="Back"
+                  icon="pi pi-arrow-left"
+                  severity="secondary"
+                  [text]="true"
+                  (onClick)="activateCallback(1)"
+                />
+              </app-risk-profile-form>
+            </p-panel>
+          </div>
+        </ng-template>
+      </p-step-panel>
+
+      <!-- Step 3: Opportunity Selling (optional) -->
+      <p-step-panel [value]="3">
+        <ng-template #content let-activateCallback="activateCallback">
+          <div class="px-2 py-4 sm:px-0">
+            <p class="mt-0 mb-6 text-muted-color">
+              Opportunity selling automatically sells weak positions to fund stronger buy opportunities. This step is
+              optional and can be configured later in settings.
+            </p>
+            <p-panel>
+              <div class="flex flex-col gap-6">
+                <!-- Enable Toggle -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="mb-1 text-lg font-semibold">Enable Opportunity Selling</div>
+                    <div class="text-sm text-muted-color">
+                      Auto-sell weak positions to fund strong buy opportunities
+                    </div>
+                  </div>
+                  <p-toggleswitch [(ngModel)]="opportunitySellingEnabled" />
+                </div>
+
+                @if (opportunitySellingEnabled()) {
+                  <!-- Protected Coins -->
+                  <div class="flex flex-col gap-2">
+                    <label class="font-semibold">Never Sell These Coins</label>
+                    <p-autocomplete
+                      [(ngModel)]="protectedCoins"
+                      [multiple]="true"
+                      [suggestions]="protectedCoinSuggestions()"
+                      (completeMethod)="searchProtectedCoins($event)"
+                      optionLabel="name"
+                      placeholder="Search for a coin..."
+                      class="w-full"
+                    >
+                      <ng-template #item let-coin>
+                        <div class="flex items-center gap-2">
+                          @if (coin.image) {
+                            <img [src]="coin.image" [alt]="coin.name" class="h-5 w-5 rounded-full" />
+                          }
+                          <span>{{ coin.name }}</span>
+                          <span class="text-xs text-surface-500 uppercase">{{ coin.symbol }}</span>
+                        </div>
+                      </ng-template>
+                    </p-autocomplete>
+                    <span class="text-xs text-muted-color"
+                      >These coins will never be sold, even if they are underperforming</span
+                    >
+                  </div>
+
+                  <!-- Max Sell Limit -->
+                  <div class="flex flex-col gap-2">
+                    <div class="flex items-center justify-between">
+                      <label class="font-semibold">Max Sell Limit</label>
+                      <span class="font-semibold text-primary">{{ maxLiquidationPercent() }}%</span>
+                    </div>
+                    <p-slider [(ngModel)]="maxLiquidationPercent" [min]="1" [max]="100" [step]="1" />
+                    <span class="text-xs text-muted-color"
+                      >The most of your portfolio that can be sold at once to fund a new opportunity</span
+                    >
+                  </div>
+                }
+
+                <!-- Actions -->
+                <div class="flex justify-between pt-2">
+                  <p-button
+                    label="Back"
+                    icon="pi pi-arrow-left"
+                    severity="secondary"
+                    [text]="true"
+                    (onClick)="activateCallback(2)"
+                  />
+                  <p-button
+                    label="Save & Finish"
+                    icon="pi pi-check"
+                    [loading]="updateOpportunitySellingMutation.isPending()"
+                    (onClick)="saveOpportunitySelling()"
+                  />
+                </div>
+              </div>
+            </p-panel>
+          </div>
+        </ng-template>
+      </p-step-panel>
+    </p-step-panels>
+  </p-stepper>
+</p-card>
+
+<p-confirmDialog [style]="{ 'max-width': '28rem' }" />

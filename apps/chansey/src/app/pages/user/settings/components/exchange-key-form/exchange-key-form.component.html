@@ -68,7 +68,7 @@
         }
       </div>
       <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-        @if (state.connected && !state.editMode) {
+        @if (state.connected && !state.editMode && !hideKeyActions()) {
           <p-button
             type="button"
             label="Edit Keys"
@@ -99,7 +99,7 @@
             (click)="cancelEdit.emit()"
           />
         }
-        @if (!state.connected || state.editMode) {
+        @if (!state.connected || state.editMode || hideKeyActions()) {
           <p-button
             type="submit"
             label="Save Keys"

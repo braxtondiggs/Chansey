@@ -5,6 +5,8 @@ import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule } from '@an
 
 import { BehaviorSubject, filter } from 'rxjs';
 
+import { LayoutService } from '../shared/services/layout.service';
+
 interface Breadcrumb {
   label: string;
   url?: string;
@@ -21,22 +23,24 @@ const FROM_MAP: Record<string, { label: string; url: string }> = {
   selector: 'app-breadcrumb',
   standalone: true,
   imports: [CommonModule, RouterModule],
-  template: `<nav class="layout-breadcrumb">
-    <ol>
-      @for (item of breadcrumbs$ | async; track item; let last = $last) {
-        <li class="text-surface-950 dark:text-surface-0 title-h7 text-xl">
-          @if (!last && item.url) {
-            <a [routerLink]="item.url" class="breadcrumb-link">{{ item.label }}</a>
-          } @else {
-            {{ item.label }}
+  template: `@if (!hideBreadcrumb()) {
+    <nav class="layout-breadcrumb">
+      <ol>
+        @for (item of breadcrumbs$ | async; track item.label; let last = $last) {
+          <li class="title-h7 text-xl text-surface-950 dark:text-surface-0">
+            @if (!last && item.url) {
+              <a [routerLink]="item.url" class="breadcrumb-link">{{ item.label }}</a>
+            } @else {
+              {{ item.label }}
+            }
+          </li>
+          @if (!last) {
+            <li class="layout-breadcrumb-chevron">/</li>
           }
-        </li>
-        @if (!last) {
-          <li class="layout-breadcrumb-chevron">/</li>
         }
-      }
-    </ol>
-  </nav>`
+      </ol>
+    </nav>
+  }`
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppBreadcrumb implements OnInit {
@@ -46,6 +50,9 @@ export class AppBreadcrumb implements OnInit {
 
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly layoutService = inject(LayoutService);
+
+  readonly hideBreadcrumb = this.layoutService.hideBreadcrumb;
 
   ngOnInit(): void {
     // Build breadcrumbs from current route (handles page refresh)

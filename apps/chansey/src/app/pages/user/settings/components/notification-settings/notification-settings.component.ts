@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { MessageService } from 'primeng/api';
@@ -29,6 +29,7 @@ export class NotificationSettingsComponent {
   readonly updateNotifPrefsMutation = this.notificationSettingsService.useUpdatePreferencesMutation();
   readonly hours = HOURS;
   readonly autoSave = createAutoSave(() => this.doSave());
+  readonly activeSavePanel = signal<'channels' | 'events' | 'quietHours' | null>(null);
 
   prefChannelEmail = true;
   prefChannelPush = false;
@@ -57,11 +58,13 @@ export class NotificationSettingsComponent {
     });
   }
 
-  saveNotificationPreferences(): void {
+  saveNotificationPreferences(panel: 'channels' | 'quietHours'): void {
+    this.activeSavePanel.set(panel);
     this.autoSave.trigger();
   }
 
   saveEventPreference(): void {
+    this.activeSavePanel.set('events');
     this.autoSave.trigger();
   }
 
@@ -71,6 +74,7 @@ export class NotificationSettingsComponent {
         Notification.requestPermission().then((permission) => {
           if (permission === 'granted') {
             this.prefChannelPush = true;
+            this.activeSavePanel.set('channels');
             this.autoSave.trigger();
           } else {
             this.prefChannelPush = false;
@@ -91,6 +95,7 @@ export class NotificationSettingsComponent {
       }
     } else {
       this.prefChannelPush = false;
+      this.activeSavePanel.set('channels');
       this.autoSave.trigger();
     }
   }

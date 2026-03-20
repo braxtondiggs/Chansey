@@ -32,6 +32,7 @@ export class ExchangeKeyFormComponent {
   exchangeId = input.required<string>();
   exchangeSlug = input<string>('');
   exchangeImage = input<string>();
+  hideKeyActions = input(false);
   isActive = input(false);
   connectedAt = input<Date>();
 
