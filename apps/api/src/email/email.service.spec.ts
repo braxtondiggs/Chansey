@@ -2,6 +2,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { Resend } from 'resend';
 
+import { APP_NAME } from '@chansey/api-interfaces';
+
 import { EmailService } from './email.service';
 
 jest.mock('resend', () => ({
@@ -55,7 +57,7 @@ describe('EmailService', () => {
     expect(result).toBe(true);
     expect(sendMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: 'Cymbit Trading <noreply@test.com>',
+        from: `${APP_NAME} <noreply@test.com>`,
         to: 'user@example.com',
         subject: 'Hello',
         html: '<p>Test</p>',
@@ -96,7 +98,7 @@ describe('EmailService', () => {
     expect(sendEmailSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'user@example.com',
-        subject: 'Verify your Cymbit Trading account',
+        subject: `Verify your ${APP_NAME} account`,
         html: expect.stringContaining('https://frontend.test/auth/verify-email?token=token-123')
       })
     );
@@ -109,7 +111,7 @@ describe('EmailService', () => {
 
     expect(sendEmailSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        subject: 'Your Cymbit Trading verification code',
+        subject: `Your ${APP_NAME} verification code`,
         html: expect.stringContaining('123456')
       })
     );

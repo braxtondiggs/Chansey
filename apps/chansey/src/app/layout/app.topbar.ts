@@ -11,7 +11,7 @@ import { RippleModule } from 'primeng/ripple';
 import { StyleClassModule } from 'primeng/styleclass';
 import { TooltipModule } from 'primeng/tooltip';
 
-import { NotificationDto, NotificationSeverity } from '@chansey/api-interfaces';
+import { APP_NAME, NotificationDto, NotificationSeverity } from '@chansey/api-interfaces';
 
 import { AppBreadcrumb } from './app.breadcrumb';
 import { NotificationFeedService } from './notification-feed.service';
@@ -41,10 +41,10 @@ import { PwaService } from '../shared/services/pwa.service';
       <a tabindex="0" #menubutton type="button" class="menu-button" (click)="onMenuButtonClick()">
         <i class="pi pi-chevron-left"></i>
       </a>
-      <img class="horizontal-logo" src="/public/icon.png" alt="Cymbit Trading Logo" />
+      <img class="horizontal-logo" src="/public/icon.png" [alt]="appName + ' Logo'" />
       <span class="topbar-separator"></span>
       <app-breadcrumb></app-breadcrumb>
-      <img class="mobile-logo" src="/public/icon.png" alt="cymbit trading icon" />
+      <img class="mobile-logo" src="/public/icon.png" [alt]="appName + ' icon'" />
     </div>
 
     <div class="topbar-right">
@@ -215,6 +215,7 @@ import { PwaService } from '../shared/services/pwa.service';
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppTopBar {
+  readonly appName = APP_NAME;
   layoutService = inject(LayoutService);
   authService = inject(AuthService);
   pwaService = inject(PwaService);

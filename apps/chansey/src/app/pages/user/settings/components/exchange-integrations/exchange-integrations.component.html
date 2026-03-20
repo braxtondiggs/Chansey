@@ -1,10 +1,16 @@
-<p-panel [toggleable]="true" [collapsed]="panelCollapsed" (onAfterToggle)="onPanelToggle($event)">
-  <ng-template #header>
-    <span class="flex items-center gap-2">
-      <i class="pi pi-link"></i>
-      <span class="font-semibold">Exchange Integrations</span>
-    </span>
-  </ng-template>
+<p-panel
+  [toggleable]="collapsible()"
+  [collapsed]="collapsible() && panelCollapsed"
+  (onAfterToggle)="onPanelToggle($event)"
+>
+  @if (showHeader()) {
+    <ng-template #header>
+      <span class="flex items-center gap-2">
+        <i class="pi pi-link"></i>
+        <span class="font-semibold">Exchange Integrations</span>
+      </span>
+    </ng-template>
+  }
   <p-message class="mb-8 p-4" severity="warn">
     <div class="flex items-start gap-2">
       <i class="pi pi-info-circle mt-1 text-2xl text-yellow-500"></i>
@@ -26,6 +32,7 @@
         [exchangeId]="exchange.id"
         [exchangeSlug]="exchange.slug"
         [exchangeImage]="exchange.image"
+        [hideKeyActions]="hideKeyActions()"
         [isActive]="isExchangeActive(exchange.id)"
         [connectedAt]="state.connectedAt"
         (save)="saveKeys.emit(exchange.slug)"
@@ -77,14 +84,14 @@
               <div class="flex items-center gap-2">
                 <p-avatar [image]="exchange.image" shape="circle" />
                 {{ exchange.name }}
-                @if (isConnected(exchange.slug)) {
+                @if (isConnected(exchange.slug) && isExchangeActive(exchange.id)) {
                   <span class="ml-1 inline-block h-2.5 w-2.5 rounded-full bg-green-500" title="Connected"></span>
                 }
               </div>
             </p-tab>
           }
         </p-tablist>
-        <p-tabpanels>
+        <p-tabpanels class="pb-0!">
           @for (exchange of exchangeList; track exchange.id) {
             <p-tabpanel [value]="exchange.slug">
               <ng-container *ngTemplateOutlet="exchangeKeyFormTpl; context: { $implicit: exchange }"></ng-container>
@@ -99,7 +106,7 @@
           <div class="flex items-center gap-2 px-2">
             <p-avatar [image]="exchange.image" shape="circle" />
             {{ exchange.name }}
-            @if (isConnected(exchange.slug)) {
+            @if (isConnected(exchange.slug) && isExchangeActive(exchange.id)) {
               <span class="ml-1 inline-block h-2.5 w-2.5 rounded-full bg-green-500" title="Connected"></span>
             }
           </div>

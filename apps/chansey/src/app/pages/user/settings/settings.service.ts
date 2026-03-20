@@ -3,7 +3,6 @@ import { Injectable } from '@angular/core';
 import {
   ChangePasswordRequest,
   Coin,
-  ExchangeKey,
   IUser,
   IUserProfileUpdate,
   OpportunitySellingStatusResponse,
@@ -65,18 +64,6 @@ export class SettingsService {
 
   useChangePasswordMutation() {
     return useAuthMutation<{ message: string }, ChangePasswordRequest>('/api/auth/change-password', 'POST');
-  }
-
-  useSaveExchangeKeysMutation() {
-    return useAuthMutation<ExchangeKey, Record<string, unknown>>('/api/exchange-keys', 'POST', {
-      invalidateQueries: [queryKeys.auth.user(), queryKeys.profile.exchangeKeys()]
-    });
-  }
-
-  useDeleteExchangeKeyMutation() {
-    return useAuthMutation<ExchangeKey, string>((id: string) => `/api/exchange-keys/${id}`, 'DELETE', {
-      invalidateQueries: [queryKeys.auth.user(), queryKeys.profile.exchangeKeys()]
-    });
   }
 
   useUploadProfileImageMutation() {

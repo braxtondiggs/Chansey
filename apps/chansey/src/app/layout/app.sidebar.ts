@@ -1,6 +1,8 @@
 import { Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
+import { APP_NAME } from '@chansey/api-interfaces';
+
 import { AppMenu } from './app.menu';
 import { AppTopBar } from './app.topbar';
 
@@ -13,8 +15,8 @@ import { LayoutService } from '../shared/services/layout.service';
   template: `<div class="layout-sidebar" (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
     <div class="sidebar-header">
       <a class="logo flex items-center" [routerLink]="['/app/dashboard']">
-        <img class="logo-image" src="/public/icon.png" alt="Cymbit Trading Logo" />
-        <span class="app-name title-h7">Cymbit Trading</span>
+        <img class="logo-image" src="/public/icon.png" [alt]="appName + ' Logo'" />
+        <span class="app-name title-h7">{{ appName }}</span>
       </a>
       <button class="layout-sidebar-anchor z-2" type="button" (click)="anchor()"></button>
     </div>
@@ -30,6 +32,7 @@ import { LayoutService } from '../shared/services/layout.service';
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppSidebar {
+  readonly appName = APP_NAME;
   private readonly layoutService = inject(LayoutService);
   private readonly el = inject(ElementRef);
   isHorizontal = computed(() => this.layoutService.isHorizontal());

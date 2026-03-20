@@ -36,8 +36,11 @@ import { ExchangeKeyFormComponent } from '../exchange-key-form/exchange-key-form
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ExchangeIntegrationsComponent {
+  collapsible = input(true);
+  showHeader = input(true);
   exchanges = input<Exchange[]>([]);
   exchangeForms = input<Record<string, ExchangeFormState>>({});
+  hideKeyActions = input(false);
   isLoading = input(false);
   isError = input(false);
   user = input<IUser | undefined>();

@@ -1,11 +1,14 @@
 <div class="dashboard-container">
   @if (userQuery.isPending()) {
-    <div class="flex items-center justify-center min-h-64 sm:min-h-96">
+    <div class="flex min-h-64 items-center justify-center sm:min-h-96">
       <p-progressSpinner [style]="{ width: '50px', height: '50px' }" strokeWidth="4" />
     </div>
   } @else {
-    @let user = userQuery.data();
-    @if ((user?.exchanges ?? []).length > 0) {
+    @if (showWizard()) {
+      <div class="mx-auto max-w-3xl">
+        <app-getting-started (completed)="onWizardComplete()" />
+      </div>
+    } @else {
       <div class="grid grid-cols-12 gap-x-6 gap-y-4">
         <div class="col-span-12">
           <app-exchange-balance />
@@ -17,18 +20,6 @@
           <app-recent-transactions [limit]="10" />
         </div>
       </div>
-    } @else {
-      <p-card class="mb-4">
-        <app-empty-state
-          icon="link"
-          message="Connect your exchanges in the settings to see your balances here."
-          actionLabel="Connect Exchange"
-          actionRoute="/app/settings"
-          [actionQueryParams]="{ tab: 'trading' }"
-          actionIcon="pi pi-link"
-          size="large"
-        />
-      </p-card>
     }
   }
 </div>
