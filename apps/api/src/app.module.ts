@@ -9,6 +9,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { FastifyAdapter } from '@bull-board/fastify';
 import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQOtel } from 'bullmq-otel';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AdminModule } from './admin/admin.module';
@@ -83,7 +84,10 @@ import { TradingModule } from './trading/trading.module';
             maxRetriesPerRequest: null,
             enableReadyCheck: false,
             retryStrategy: (times: number) => Math.min(Math.exp(times), 3000)
-          }
+          },
+          telemetry: process.env.TEMPO_ENDPOINT
+            ? new BullMQOtel(process.env.OTEL_SERVICE_NAME || 'chansey-api')
+            : undefined
         };
       }
     }),
