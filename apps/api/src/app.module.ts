@@ -85,8 +85,8 @@ import { TradingModule } from './trading/trading.module';
             enableReadyCheck: false,
             retryStrategy: (times: number) => Math.min(Math.exp(times), 3000)
           },
-          telemetry: process.env.TEMPO_ENDPOINT
-            ? new BullMQOtel(process.env.OTEL_SERVICE_NAME || 'chansey-api')
+          telemetry: configService.get('TEMPO_ENDPOINT')
+            ? new BullMQOtel(configService.get('OTEL_SERVICE_NAME'))
             : undefined
         };
       }

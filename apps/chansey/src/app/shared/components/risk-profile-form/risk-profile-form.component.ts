@@ -376,7 +376,7 @@ export class RiskProfileFormComponent {
         });
         this.saved.emit();
       },
-      onError: (error: Error & { message?: string }) => {
+      onError: (error: Error) => {
         this.messageService.add({
           severity: 'error',
           summary: 'Update Failed',
