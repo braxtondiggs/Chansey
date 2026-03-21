@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { In, Repository } from 'typeorm';
@@ -9,6 +9,7 @@ import { AuditEventType, AuditTrailQuery, CreateAuditLogDto } from '@chansey/api
 
 import { AuditLog } from './entities/audit-log.entity';
 
+import { RequestContext } from '../common/cls/request-context.service';
 import { CryptoService } from '../common/crypto.service';
 
 /**
@@ -22,7 +23,8 @@ export class AuditService {
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditLogRepository: Repository<AuditLog>,
-    private readonly cryptoService: CryptoService
+    private readonly cryptoService: CryptoService,
+    @Optional() private readonly requestContext?: RequestContext
   ) {}
 
   /**
@@ -32,11 +34,17 @@ export class AuditService {
   async createAuditLog(dto: CreateAuditLogDto): Promise<AuditLog> {
     const timestamp = new Date();
 
-    // Generate integrity hash
+    // Fallback to CLS values when dto fields are not provided
+    const effectiveUserId = dto.userId ?? this.requestContext?.userId;
+    const effectiveIpAddress = dto.ipAddress ?? this.requestContext?.ipAddress;
+    const effectiveUserAgent = dto.userAgent ?? this.requestContext?.userAgent;
+
+    // Generate integrity hash (includes userId for non-repudiation)
     const integrity = this.cryptoService.generateAuditIntegrityHash({
       eventType: dto.eventType,
       entityType: dto.entityType,
       entityId: dto.entityId,
+      userId: effectiveUserId,
       timestamp,
       beforeState: dto.beforeState,
       afterState: dto.afterState,
@@ -44,21 +52,21 @@ export class AuditService {
     });
 
     // Hash IP address for privacy
-    const hashedIpAddress = dto.ipAddress ? this.cryptoService.hashSensitiveData(dto.ipAddress) : null;
+    const hashedIpAddress = effectiveIpAddress ? this.cryptoService.hashSensitiveData(effectiveIpAddress) : null;
 
     const auditLog = this.auditLogRepository.create({
       eventType: dto.eventType,
       entityType: dto.entityType,
       entityId: dto.entityId,
-      userId: dto.userId,
+      userId: effectiveUserId,
       timestamp,
       beforeState: dto.beforeState,
       afterState: dto.afterState,
       metadata: dto.metadata,
-      correlationId: dto.correlationId || randomUUID(),
+      correlationId: dto.correlationId ?? this.requestContext?.requestId ?? randomUUID(),
       integrity,
       ipAddress: hashedIpAddress,
-      userAgent: dto.userAgent
+      userAgent: effectiveUserAgent
     });
 
     // Save first to get the ID, then generate and update chain hash
@@ -158,6 +166,7 @@ export class AuditService {
       eventType: auditLog.eventType,
       entityType: auditLog.entityType,
       entityId: auditLog.entityId,
+      userId: auditLog.userId,
       timestamp: auditLog.timestamp,
       beforeState: auditLog.beforeState,
       afterState: auditLog.afterState,

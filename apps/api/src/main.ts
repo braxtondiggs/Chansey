@@ -22,6 +22,8 @@ async function bootstrap(): Promise<void> {
     new FastifyAdapter({
       // Disable Fastify's built-in logger since we're using Pino via nestjs-pino
       logger: false,
+      // Trust Railway's reverse proxy so req.ip returns the real client IP
+      trustProxy: true,
       // Router options moved here to comply with Fastify v6 (fixes FSTDEP022 warning)
       routerOptions: {
         ignoreTrailingSlash: true
