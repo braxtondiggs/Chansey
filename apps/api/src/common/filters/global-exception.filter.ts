@@ -1,8 +1,9 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { MESSAGES } from '@nestjs/core/constants';
 
 import { FastifyReply, FastifyRequest } from 'fastify';
 
+import { RequestContext } from '../cls/request-context.service';
 import { AppException, ErrorCode } from '../exceptions';
 
 /**
@@ -24,6 +25,8 @@ export interface ErrorResponse {
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
+
+  constructor(@Optional() private readonly requestContext?: RequestContext) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -132,11 +135,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
    * Logs errors with appropriate severity based on status code.
    */
   private logError(errorResponse: ErrorResponse, exception: unknown): void {
-    const logContext = {
+    const logContext: Record<string, unknown> = {
       code: errorResponse.code,
       statusCode: errorResponse.statusCode,
       path: errorResponse.path,
-      context: errorResponse.context
+      context: errorResponse.context,
+      requestId: this.requestContext?.requestId,
+      userId: this.requestContext?.userId
     };
 
     // Log 5xx errors as errors, 4xx as warnings

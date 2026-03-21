@@ -1,7 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -22,6 +22,7 @@ import { BalanceModule } from './balance/balance.module';
 import { CategoryModule } from './category/category.module';
 import { CoinModule } from './coin/coin.module';
 import { CoinSelectionModule } from './coin-selection/coin-selection.module';
+import { ClsContextModule } from './common/cls/cls-context.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { databaseConfig } from './config/database.config';
 import { validateEnv } from './config/env.validation';
@@ -59,6 +60,7 @@ import { TradingModule } from './trading/trading.module';
       load: [databaseConfig, redisConfig]
     }),
     LoggerModule.forRoot(createLoggerConfig()),
+    ClsContextModule,
     StorageModule,
 
     // TypeORM with ConfigService
@@ -146,7 +148,7 @@ import { TradingModule } from './trading/trading.module';
   providers: [
     AppService,
     {
-      provide: 'APP_FILTER',
+      provide: APP_FILTER,
       useClass: GlobalExceptionFilter
     },
     {

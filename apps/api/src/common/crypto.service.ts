@@ -35,6 +35,7 @@ export class CryptoService {
     eventType: string;
     entityType: string;
     entityId: string;
+    userId?: string | null;
     timestamp: Date;
     beforeState?: any;
     afterState?: any;
@@ -44,6 +45,7 @@ export class CryptoService {
       eventType: auditEntry.eventType,
       entityType: auditEntry.entityType,
       entityId: auditEntry.entityId,
+      userId: auditEntry.userId || null,
       timestamp: auditEntry.timestamp.toISOString(),
       beforeState: auditEntry.beforeState || null,
       afterState: auditEntry.afterState || null,
@@ -60,6 +62,7 @@ export class CryptoService {
     eventType: string;
     entityType: string;
     entityId: string;
+    userId?: string | null;
     timestamp: Date;
     beforeState?: any;
     afterState?: any;
