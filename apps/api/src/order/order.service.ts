@@ -28,6 +28,7 @@ import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.servic
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
+import { mapCcxtError } from '../shared/ccxt-error-mapper.util';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
@@ -71,12 +72,14 @@ export class OrderService {
   async createOrder(orderDto: OrderDto, user: User): Promise<Order> {
     this.logger.log(`Creating ${orderDto.side} order for user: ${user.id} on exchange: ${orderDto.exchangeId}`);
 
+    // Resolve exchange slug before try so it's available in catch for error mapping
+    const { slug: exchangeSlug } = await this.exchangeService.getExchangeById(orderDto.exchangeId);
+
     try {
       // 1. Validate and get coins
       const { baseCoin, quoteCoin } = await this.validateAndGetCoins(orderDto);
 
       // 2. Get exchange client
-      const { slug: exchangeSlug } = await this.exchangeService.getExchangeById(orderDto.exchangeId);
       const exchange = await this.exchangeManager.getExchangeClient(exchangeSlug, user);
 
       // 3. Build and format trading symbol using the exchange manager's formatSymbol method
@@ -107,7 +110,7 @@ export class OrderService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Order creation failed: ${err.message}`, err.stack);
-      throw new BadRequestException(`Failed to create order: ${err.message}`);
+      throw mapCcxtError(error, exchangeSlug);
     }
   }
 
@@ -316,7 +319,7 @@ export class OrderService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Exchange order failed: ${err.message}`);
-      throw new BadRequestException(`Exchange error: ${err.message}`);
+      throw mapCcxtError(error, exchange.id);
     }
   }
 
@@ -898,7 +901,7 @@ export class OrderService {
       }
 
       this.logger.error(`Manual order placement failed: ${err.message}`, err.stack);
-      throw new BadRequestException(`Failed to place order: ${err.message}`);
+      throw mapCcxtError(error, exchangeSlug);
     } finally {
       await queryRunner.release();
     }
@@ -1046,7 +1049,7 @@ export class OrderService {
       }
 
       this.logger.error(`OCO order creation failed: ${err.message}`, err.stack);
-      throw new BadRequestException(`Failed to create OCO order: ${err.message}`);
+      throw mapCcxtError(error, exchange.id);
     } finally {
       await queryRunner.release();
     }
@@ -1106,7 +1109,7 @@ export class OrderService {
         if (err.message?.includes('filled') || err.message?.includes('closed')) {
           throw new BadRequestException('Order was filled before cancellation');
         }
-        throw new BadRequestException(`Exchange cancellation failed: ${err.message}`);
+        throw mapCcxtError(error, exchangeKey.exchange.slug);
       }
 
       // Update order status
@@ -1257,13 +1260,13 @@ export class OrderService {
       `Placing algorithmic ${signal.action} order for user ${userId}, strategy ${strategyConfigId}, symbol ${signal.symbol}`
     );
 
-    try {
-      const user = { id: userId } as User;
-      const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, userId);
-      if (!exchangeKey || !exchangeKey.exchange) {
-        throw new NotFoundException('Exchange key not found');
-      }
+    const user = { id: userId } as User;
+    const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, userId);
+    if (!exchangeKey || !exchangeKey.exchange) {
+      throw new NotFoundException('Exchange key not found');
+    }
 
+    try {
       const exchange = await this.exchangeManager.getExchangeClient(exchangeKey.exchange.slug, user);
       await exchange.loadMarkets();
 
@@ -1325,7 +1328,7 @@ export class OrderService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Algorithmic order failed: ${err.message}`, err.stack);
-      throw new BadRequestException(`Failed to place algorithmic order: ${err.message}`);
+      throw mapCcxtError(error, exchangeKey.exchange.slug);
     }
   }
 }
