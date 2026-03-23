@@ -1,5 +1,18 @@
 import { HttpException } from '@nestjs/common';
 
+import {
+  AccountSuspended,
+  AuthenticationError,
+  DDoSProtection,
+  ExchangeNotAvailable,
+  InsufficientFunds,
+  InvalidOrder,
+  NetworkError,
+  PermissionDenied,
+  RateLimitExceeded,
+  RequestTimeout
+} from 'ccxt';
+
 import { AppException } from '../common/exceptions/base/app.exception';
 import {
   ExchangeAuthFailedException,
@@ -16,7 +29,7 @@ import { InsufficientBalanceException } from '../common/exceptions/order';
  */
 export function cleanExchangeMessage(raw: string): string {
   // Try to extract "msg" from JSON-like payloads: {"code":-2015,"msg":"..."}
-  const msgMatch = raw.match(/"msg"\s*:\s*"([^"]+)"/);
+  const msgMatch = raw.match(/"msg"\s*:\s*"((?:\\.|[^"\\])*)"/);
   if (msgMatch) return msgMatch[1];
 
   // Strip leading exchange name prefix only when followed by JSON (e.g. "binanceus {...}")
@@ -56,48 +69,36 @@ export function mapCcxtError(error: unknown, exchangeName?: string): never {
     throw new ExchangeErrorException(String(error), exchangeName);
   }
 
-  const className = error.constructor.name;
   const message = error.message || '';
 
-  switch (className) {
-    case 'PermissionDenied':
-      throw new ExchangePermissionDeniedException(exchangeName);
-
-    case 'AuthenticationError':
-      throw new ExchangeAuthFailedException(undefined, exchangeName);
-
-    case 'AccountSuspended':
-      throw new ExchangeAuthFailedException(
-        exchangeName
-          ? `Your ${exchangeName} account has been suspended. Please contact ${exchangeName} support.`
-          : 'Your exchange account has been suspended. Please contact exchange support.',
-        exchangeName
-      );
-
-    case 'InsufficientFunds': {
-      // Try to parse currency from message like "Account has insufficient balance for requested action."
-      // or "Insufficient balance: 0 BTC available"
-      const currencyMatch = message.match(/(\d[\d.]*)\s+(\w+)\s+available/i);
-      if (currencyMatch) {
-        throw new InsufficientBalanceException(currencyMatch[2], currencyMatch[1], 'unknown');
-      }
-      // Always throw InsufficientBalanceException — even when we can't parse specifics
-      throw new InsufficientBalanceException('unknown', 'unknown', 'unknown');
+  if (error instanceof PermissionDenied) {
+    throw new ExchangePermissionDeniedException(exchangeName);
+  } else if (error instanceof AccountSuspended) {
+    throw new ExchangeAuthFailedException(
+      exchangeName
+        ? `Your ${exchangeName} account has been suspended. Please contact ${exchangeName} support.`
+        : 'Your exchange account has been suspended. Please contact exchange support.',
+      exchangeName
+    );
+  } else if (error instanceof AuthenticationError) {
+    throw new ExchangeAuthFailedException(undefined, exchangeName);
+  } else if (error instanceof InsufficientFunds) {
+    const currencyMatch = message.match(/(\d[\d.]*)\s+(\w+)\s+available/i);
+    if (currencyMatch) {
+      throw new InsufficientBalanceException(currencyMatch[2], currencyMatch[1], 'unknown');
     }
-
-    case 'InvalidOrder':
-      throw new ExchangeErrorException(cleanExchangeMessage(message) || 'Invalid order', exchangeName);
-
-    case 'RateLimitExceeded':
-    case 'DDoSProtection':
-      throw new ExchangeRateLimitedException(exchangeName);
-
-    case 'ExchangeNotAvailable':
-    case 'NetworkError':
-    case 'RequestTimeout':
-      throw new ExchangeUnavailableException(exchangeName);
-
-    default:
-      throw new ExchangeErrorException(cleanExchangeMessage(message) || 'Unknown exchange error', exchangeName);
+    throw new InsufficientBalanceException('unknown', 'unknown', 'unknown');
+  } else if (error instanceof InvalidOrder) {
+    throw new ExchangeErrorException(cleanExchangeMessage(message) || 'Invalid order', exchangeName);
+  } else if (error instanceof RateLimitExceeded || error instanceof DDoSProtection) {
+    throw new ExchangeRateLimitedException(exchangeName);
+  } else if (
+    error instanceof ExchangeNotAvailable ||
+    error instanceof NetworkError ||
+    error instanceof RequestTimeout
+  ) {
+    throw new ExchangeUnavailableException(exchangeName);
+  } else {
+    throw new ExchangeErrorException(cleanExchangeMessage(message) || 'Unknown exchange error', exchangeName);
   }
 }

@@ -1,3 +1,17 @@
+import {
+  AccountSuspended,
+  AuthenticationError,
+  DDoSProtection,
+  ExchangeError,
+  ExchangeNotAvailable,
+  InsufficientFunds,
+  InvalidOrder,
+  NetworkError,
+  PermissionDenied,
+  RateLimitExceeded,
+  RequestTimeout
+} from 'ccxt';
+
 import { cleanExchangeMessage, mapCcxtError } from './ccxt-error-mapper.util';
 
 import {
@@ -8,15 +22,6 @@ import {
   ExchangeUnavailableException
 } from '../common/exceptions/external';
 import { InsufficientBalanceException } from '../common/exceptions/order';
-
-/** Helper to create a mock CCXT error with a specific class name */
-function makeCcxtError(className: string, message = 'test error'): Error {
-  const err = new Error(message);
-  Object.defineProperty(err, 'constructor', {
-    value: { name: className }
-  });
-  return err;
-}
 
 describe('mapCcxtError', () => {
   it('should pass through AppException instances without wrapping', () => {
@@ -31,17 +36,17 @@ describe('mapCcxtError', () => {
   });
 
   it('should map PermissionDenied to ExchangePermissionDeniedException', () => {
-    const err = makeCcxtError('PermissionDenied', 'binanceus {"code":-2015,"msg":"Invalid API-key"}');
+    const err = new PermissionDenied('binanceus {"code":-2015,"msg":"Invalid API-key"}');
     expect(() => mapCcxtError(err, 'binanceus')).toThrow(ExchangePermissionDeniedException);
   });
 
   it('should map AuthenticationError to ExchangeAuthFailedException', () => {
-    const err = makeCcxtError('AuthenticationError', 'Invalid API key');
+    const err = new AuthenticationError('Invalid API key');
     expect(() => mapCcxtError(err, 'coinbase')).toThrow(ExchangeAuthFailedException);
   });
 
   it('should map AccountSuspended with exchange name to ExchangeAuthFailedException', () => {
-    const err = makeCcxtError('AccountSuspended', 'account suspended');
+    const err = new AccountSuspended('account suspended');
     expect(() => mapCcxtError(err, 'binance')).toThrow(
       expect.objectContaining({
         message: expect.stringContaining('binance')
@@ -51,7 +56,7 @@ describe('mapCcxtError', () => {
   });
 
   it('should map AccountSuspended without exchange name to generic suspension message', () => {
-    const err = makeCcxtError('AccountSuspended', 'account suspended');
+    const err = new AccountSuspended('account suspended');
     expect(() => mapCcxtError(err)).toThrow(
       expect.objectContaining({
         message: expect.stringContaining('exchange support')
@@ -61,17 +66,17 @@ describe('mapCcxtError', () => {
   });
 
   it('should map InsufficientFunds with parseable currency to InsufficientBalanceException', () => {
-    const err = makeCcxtError('InsufficientFunds', 'Insufficient balance: 0.5 BTC available');
+    const err = new InsufficientFunds('Insufficient balance: 0.5 BTC available');
     expect(() => mapCcxtError(err, 'binance')).toThrow(InsufficientBalanceException);
   });
 
   it('should map InsufficientFunds without parseable currency to InsufficientBalanceException', () => {
-    const err = makeCcxtError('InsufficientFunds', 'Account has insufficient balance');
+    const err = new InsufficientFunds('Account has insufficient balance');
     expect(() => mapCcxtError(err, 'binance')).toThrow(InsufficientBalanceException);
   });
 
   it('should map InvalidOrder to ExchangeErrorException with cleaned message', () => {
-    const err = makeCcxtError('InvalidOrder', 'binanceus {"code":-1013,"msg":"Invalid quantity."}');
+    const err = new InvalidOrder('binanceus {"code":-1013,"msg":"Invalid quantity."}');
     expect(() => mapCcxtError(err, 'binanceus')).toThrow(
       expect.objectContaining({
         message: expect.stringContaining('Invalid quantity.')
@@ -80,24 +85,24 @@ describe('mapCcxtError', () => {
   });
 
   it.each([
-    ['RateLimitExceeded', 'Too many requests'],
-    ['DDoSProtection', 'DDoS protection triggered']
-  ])('should map %s to ExchangeRateLimitedException', (className, message) => {
-    const err = makeCcxtError(className, message);
+    ['RateLimitExceeded', RateLimitExceeded, 'Too many requests'],
+    ['DDoSProtection', DDoSProtection, 'DDoS protection triggered']
+  ] as const)('should map %s to ExchangeRateLimitedException', (_name, ErrorClass, message) => {
+    const err = new ErrorClass(message);
     expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeRateLimitedException);
   });
 
   it.each([
-    ['ExchangeNotAvailable', 'Exchange is down'],
-    ['NetworkError', 'ECONNREFUSED'],
-    ['RequestTimeout', 'timeout']
-  ])('should map %s to ExchangeUnavailableException', (className, message) => {
-    const err = makeCcxtError(className, message);
+    ['ExchangeNotAvailable', ExchangeNotAvailable, 'Exchange is down'],
+    ['NetworkError', NetworkError, 'ECONNREFUSED'],
+    ['RequestTimeout', RequestTimeout, 'timeout']
+  ] as const)('should map %s to ExchangeUnavailableException', (_name, ErrorClass, message) => {
+    const err = new ErrorClass(message);
     expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeUnavailableException);
   });
 
   it('should map unknown CCXT errors to ExchangeErrorException', () => {
-    const err = makeCcxtError('SomeOtherError', 'something broke');
+    const err = new ExchangeError('something broke');
     expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeErrorException);
   });
 
@@ -106,7 +111,7 @@ describe('mapCcxtError', () => {
   });
 
   it('should include exchange name in PermissionDenied message when provided', () => {
-    const err = makeCcxtError('PermissionDenied', 'no perms');
+    const err = new PermissionDenied('no perms');
     expect(() => mapCcxtError(err, 'binanceus')).toThrow(ExchangePermissionDeniedException);
     expect(() => mapCcxtError(err)).toThrow(ExchangePermissionDeniedException);
   });
@@ -137,5 +142,11 @@ describe('cleanExchangeMessage', () => {
 
   it('should preserve multi-word messages without JSON', () => {
     expect(cleanExchangeMessage('Unauthorized access denied')).toBe('Unauthorized access denied');
+  });
+
+  it('should handle escaped quotes in msg field', () => {
+    expect(cleanExchangeMessage('{"code":-1,"msg":"Invalid symbol: \\"BTC/USD\\""}')).toBe(
+      'Invalid symbol: \\"BTC/USD\\"'
+    );
   });
 });
