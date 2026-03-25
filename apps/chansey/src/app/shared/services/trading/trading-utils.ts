@@ -102,25 +102,25 @@ export function buildOrderRequest(
   };
 
   // Add conditional fields based on order type
-  if (options?.price !== undefined) {
+  if (options?.price != null) {
     request.price = options.price;
   }
-  if (options?.stopPrice !== undefined) {
+  if (options?.stopPrice != null) {
     request.stopPrice = options.stopPrice;
   }
-  if (options?.trailingAmount !== undefined) {
+  if (options?.trailingAmount != null) {
     request.trailingAmount = options.trailingAmount;
   }
-  if (options?.trailingType !== undefined) {
+  if (options?.trailingType != null) {
     request.trailingType = options.trailingType;
   }
-  if (options?.takeProfitPrice !== undefined) {
+  if (options?.takeProfitPrice != null) {
     request.takeProfitPrice = options.takeProfitPrice;
   }
-  if (options?.stopLossPrice !== undefined) {
+  if (options?.stopLossPrice != null) {
     request.stopLossPrice = options.stopLossPrice;
   }
-  if (options?.timeInForce !== undefined) {
+  if (options?.timeInForce != null) {
     request.timeInForce = options.timeInForce;
   }
 

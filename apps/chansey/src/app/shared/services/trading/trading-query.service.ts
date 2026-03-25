@@ -36,7 +36,7 @@ export class TradingQueryService {
       const exchangeValue = exchangeId?.();
       const params = exchangeValue ? `?exchangeId=${exchangeValue}` : '';
       return {
-        queryKey: queryKeys.trading.balances(),
+        queryKey: queryKeys.trading.balances(exchangeValue ?? undefined),
         url: `/api/trading/balances${params}`,
         options: {
           cachePolicy: {
@@ -64,7 +64,7 @@ export class TradingQueryService {
       if (exchangeIdValue) params.append('exchangeId', exchangeIdValue);
 
       return {
-        queryKey: queryKeys.trading.orderBook(symbolValue || ''),
+        queryKey: queryKeys.trading.orderBook(symbolValue || '', exchangeIdValue ?? undefined),
         url: `/api/trading/orderbook?${params}`,
         options: {
           cachePolicy: {
@@ -120,7 +120,7 @@ export class TradingQueryService {
     params.append('symbol', symbol);
     if (exchangeId) params.append('exchangeId', exchangeId);
 
-    return useAuthQuery<TickerPair>(queryKeys.trading.ticker(symbol), `/api/trading/ticker?${params}`, {
+    return useAuthQuery<TickerPair>(queryKeys.trading.ticker(symbol, exchangeId), `/api/trading/ticker?${params}`, {
       cachePolicy: {
         ...FREQUENT_POLICY,
         staleTime: TIME.SECONDS.s30,

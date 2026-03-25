@@ -83,6 +83,19 @@ describe('buildOrderRequest', () => {
     );
   });
 
+  it('excludes null options from the request', () => {
+    const result = buildOrderRequest('key-1', 'BTC/USDT', OrderSide.BUY, OrderType.LIMIT, 1, {
+      price: null as unknown as number,
+      stopPrice: null as unknown as number,
+      trailingAmount: null as unknown as number,
+      timeInForce: null as unknown as TimeInForce
+    });
+    expect(result).not.toHaveProperty('price');
+    expect(result).not.toHaveProperty('stopPrice');
+    expect(result).not.toHaveProperty('trailingAmount');
+    expect(result).not.toHaveProperty('timeInForce');
+  });
+
   it('includes option fields with falsy value 0 (not undefined)', () => {
     const result = buildOrderRequest('key-1', 'BTC/USDT', OrderSide.SELL, OrderType.LIMIT, 1, {
       price: 0,

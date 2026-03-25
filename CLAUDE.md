@@ -103,6 +103,8 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - Prettier for consistent code formatting with 120 character line length
 - Pre-commit hooks automatically fix linting issues and format code
 - Import order: Angular → NestJS → third-party → internal → relative
+- **Lint warnings are NOT acceptable for the chansey (frontend) project** — all warnings must be resolved before
+  committing
 
 ### Testing
 
