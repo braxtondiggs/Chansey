@@ -5,7 +5,7 @@ import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { LiveTradeOverviewDto } from '../../live-trade-monitoring.service';
+import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
 
 @Component({
   selector: 'app-overview-cards',
@@ -68,17 +68,17 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.service';
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
       <p-card styleClass="!rounded-b-none bg-surface-50 dark:bg-surface-800">
         <div class="mb-4 flex items-center gap-2">
-          <i class="pi pi-history text-primary text-xl"></i>
+          <i class="pi pi-history text-xl text-primary"></i>
           <span class="font-semibold">Recent Activity</span>
         </div>
         <div class="flex items-center justify-around">
           <div class="flex flex-col items-center">
-            <span class="text-primary text-2xl font-bold">{{ overview?.summary?.orders24h || 0 }}</span>
-            <span class="text-surface-500 text-xs">Last 24h</span>
+            <span class="text-2xl font-bold text-primary">{{ overview?.summary?.orders24h || 0 }}</span>
+            <span class="text-xs text-surface-500">Last 24h</span>
           </div>
           <div class="flex flex-col items-center">
             <span class="text-2xl font-bold text-blue-400">{{ overview?.summary?.orders7d || 0 }}</span>
-            <span class="text-surface-500 text-xs">Last 7 days</span>
+            <span class="text-xs text-surface-500">Last 7 days</span>
           </div>
         </div>
       </p-card>
@@ -91,15 +91,15 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.service';
         <div class="flex items-center justify-around">
           <div class="flex flex-col items-center">
             <span class="text-2xl font-bold text-red-500">{{ overview?.alertsSummary?.critical || 0 }}</span>
-            <span class="text-surface-500 text-xs">Critical</span>
+            <span class="text-xs text-surface-500">Critical</span>
           </div>
           <div class="flex flex-col items-center">
             <span class="text-2xl font-bold text-yellow-500">{{ overview?.alertsSummary?.warning || 0 }}</span>
-            <span class="text-surface-500 text-xs">Warning</span>
+            <span class="text-xs text-surface-500">Warning</span>
           </div>
           <div class="flex flex-col items-center">
             <span class="text-2xl font-bold text-blue-500">{{ overview?.alertsSummary?.info || 0 }}</span>
-            <span class="text-surface-500 text-xs">Info</span>
+            <span class="text-xs text-surface-500">Info</span>
           </div>
         </div>
       </p-card>
@@ -146,7 +146,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.service';
       <p-card>
         <ng-template #header>
           <div class="flex items-center gap-2 p-3">
-            <i class="pi pi-list text-primary text-xl"></i>
+            <i class="pi pi-list text-xl text-primary"></i>
             <span class="font-semibold">Recent Orders</span>
           </div>
         </ng-template>

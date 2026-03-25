@@ -25,23 +25,13 @@ import {
   TradingStyleProfile
 } from '@chansey/api-interfaces';
 
+import { BEAR_MARKET_CAPITAL_SCALE, DAILY_LOSS_LIMIT_SCALE, RISK_CRITERIA } from './risk-profile.constants';
+
 import { RisksService } from '../../../pages/admin/risks/risks.service';
 import { SettingsService } from '../../../pages/user/settings/settings.service';
 import { AuthService } from '../../services/auth.service';
 import { CoinDataService } from '../../services/coin-data.service';
 import { filterCoinSuggestions } from '../../utils/coin-filter.util';
-
-/** Human-readable descriptions of coin selection criteria per risk level */
-const RISK_CRITERIA: Record<number, string> = {
-  1: 'High-volume, established coins with stable track records',
-  2: 'Balanced selection favoring stability over growth',
-  3: 'Mix of established and emerging coins',
-  4: 'Growth-oriented coins with higher potential',
-  5: 'Top-ranked trending coins for maximum growth'
-};
-
-const DAILY_LOSS_LIMIT_SCALE = 5;
-const BEAR_MARKET_CAPITAL_SCALE = 4;
 
 @Component({
   selector: 'app-risk-profile-form',

@@ -7,7 +7,7 @@ import { RippleModule } from 'primeng/ripple';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { PaginatedUserActivityDto } from '../../live-trade-monitoring.service';
+import { PaginatedUserActivityDto } from '../../live-trade-monitoring.types';
 
 @Component({
   selector: 'app-user-activity-panel',
@@ -29,7 +29,7 @@ import { PaginatedUserActivityDto } from '../../live-trade-monitoring.service';
       <p-card>
         <ng-template #header>
           <div class="flex items-center gap-2 p-3">
-            <i class="pi pi-users text-primary text-xl"></i>
+            <i class="pi pi-users text-xl text-primary"></i>
             <span class="font-semibold">Users with Active Algorithms</span>
           </div>
         </ng-template>

@@ -7,3 +7,4 @@
 
 export * from './live-trade-monitoring.component';
 export * from './live-trade-monitoring.service';
+export * from './live-trade-monitoring.types';

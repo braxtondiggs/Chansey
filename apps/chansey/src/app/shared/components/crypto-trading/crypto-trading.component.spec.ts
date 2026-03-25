@@ -9,6 +9,18 @@ import { of } from 'rxjs';
 import { OrderSide, OrderStatus, OrderType, TrailingType } from '@chansey/api-interfaces';
 
 import { CryptoTradingComponent } from './crypto-trading.component';
+import {
+  calculateBuyOrderTotalWithFees,
+  calculateMaxBuyQuantity,
+  calculateOrderFees,
+  calculateOrderTotal,
+  calculateSellOrderNetAmount,
+  findBalance,
+  getAvailableBuyBalance,
+  getAvailableSellBalance,
+  getFeeRate,
+  getStatusClass
+} from './crypto-trading.utils';
 
 import { AuthService, LayoutService } from '../../services';
 import { ExchangeService } from '../../services/exchange.service';
@@ -176,13 +188,13 @@ describe('CryptoTradingComponent', () => {
     });
   });
 
-  describe('calculateOrderTotal', () => {
+  describe('calculateOrderTotal (utility)', () => {
     beforeEach(() => {
       component.ngOnInit();
     });
 
     it('should return 0 when no pair is selected and no preview', () => {
-      expect(component.calculateOrderTotal('BUY')).toBe(0);
+      expect(calculateOrderTotal(component.buyOrderForm, null, null)).toBe(0);
     });
 
     it('should calculate total from quantity and market price', () => {
@@ -190,7 +202,7 @@ describe('CryptoTradingComponent', () => {
       component.buyOrderForm.get('quantity')?.setValue(2);
       component.buyOrderForm.get('type')?.setValue(OrderType.MARKET);
 
-      expect(component.calculateOrderTotal('BUY')).toBe(100000);
+      expect(calculateOrderTotal(component.buyOrderForm, component.selectedPair(), null)).toBe(100000);
     });
 
     it('should use limit price for limit orders', () => {
@@ -199,26 +211,27 @@ describe('CryptoTradingComponent', () => {
       component.buyOrderForm.get('type')?.setValue(OrderType.LIMIT);
       component.buyOrderForm.get('price')?.setValue(45000);
 
-      expect(component.calculateOrderTotal('BUY')).toBe(45000);
+      expect(calculateOrderTotal(component.buyOrderForm, component.selectedPair(), null)).toBe(45000);
     });
 
     it('should prefer preview estimatedCost over calculated value', () => {
       selectPair(component);
-      component.buyOrderPreview.set({ estimatedCost: 99500, estimatedFee: 100, totalRequired: 99600 } as any);
+      const preview = { estimatedCost: 99500, estimatedFee: 100, totalRequired: 99600 } as any;
+      component.buyOrderPreview.set(preview);
       component.buyOrderForm.get('quantity')?.setValue(2);
 
-      expect(component.calculateOrderTotal('BUY')).toBe(99500);
+      expect(calculateOrderTotal(component.buyOrderForm, component.selectedPair(), preview)).toBe(99500);
     });
   });
 
-  describe('calculateOrderFees', () => {
+  describe('calculateOrderFees (utility)', () => {
     beforeEach(() => {
       component.ngOnInit();
     });
 
     it('should return preview fee when preview exists', () => {
-      component.buyOrderPreview.set({ estimatedCost: 100000, estimatedFee: 150, totalRequired: 100150 } as any);
-      expect(component.calculateOrderFees('BUY')).toBe(150);
+      const preview = { estimatedCost: 100000, estimatedFee: 150, totalRequired: 100150 } as any;
+      expect(calculateOrderFees(component.buyOrderForm, null, preview)).toBe(150);
     });
 
     it('should fallback to DEFAULT_FEE_RATE * total when no preview', () => {
@@ -226,18 +239,20 @@ describe('CryptoTradingComponent', () => {
       component.buyOrderForm.get('quantity')?.setValue(2);
       component.buyOrderForm.get('type')?.setValue(OrderType.MARKET);
 
-      expect(component.calculateOrderFees('BUY')).toBe(100000 * DEFAULT_FEE_RATE);
+      expect(calculateOrderFees(component.buyOrderForm, component.selectedPair(), null)).toBe(
+        100000 * DEFAULT_FEE_RATE
+      );
     });
   });
 
-  describe('calculateBuyOrderTotalWithFees', () => {
+  describe('calculateBuyOrderTotalWithFees (utility)', () => {
     beforeEach(() => {
       component.ngOnInit();
     });
 
     it('should return preview totalRequired when preview exists', () => {
-      component.buyOrderPreview.set({ estimatedCost: 100000, estimatedFee: 100, totalRequired: 100100 } as any);
-      expect(component.calculateBuyOrderTotalWithFees()).toBe(100100);
+      const preview = { estimatedCost: 100000, estimatedFee: 100, totalRequired: 100100 } as any;
+      expect(calculateBuyOrderTotalWithFees(component.buyOrderForm, null, preview)).toBe(100100);
     });
 
     it('should fallback to total + fees when no preview', () => {
@@ -245,20 +260,21 @@ describe('CryptoTradingComponent', () => {
       component.buyOrderForm.get('quantity')?.setValue(1);
       component.buyOrderForm.get('type')?.setValue(OrderType.MARKET);
 
-      const total = component.calculateOrderTotal('BUY');
-      const fees = component.calculateOrderFees('BUY');
-      expect(component.calculateBuyOrderTotalWithFees()).toBe(total + fees);
+      const pair = component.selectedPair();
+      const total = calculateOrderTotal(component.buyOrderForm, pair, null);
+      const fees = calculateOrderFees(component.buyOrderForm, pair, null);
+      expect(calculateBuyOrderTotalWithFees(component.buyOrderForm, pair, null)).toBe(total + fees);
     });
   });
 
-  describe('calculateSellOrderNetAmount', () => {
+  describe('calculateSellOrderNetAmount (utility)', () => {
     beforeEach(() => {
       component.ngOnInit();
     });
 
     it('should return estimatedCost minus fee when preview exists', () => {
-      component.sellOrderPreview.set({ estimatedCost: 90000, estimatedFee: 90, totalRequired: 0 } as any);
-      expect(component.calculateSellOrderNetAmount()).toBe(89910);
+      const preview = { estimatedCost: 90000, estimatedFee: 90, totalRequired: 0 } as any;
+      expect(calculateSellOrderNetAmount(component.sellOrderForm, null, preview)).toBe(89910);
     });
 
     it('should fallback to total - fees when no preview', () => {
@@ -266,9 +282,10 @@ describe('CryptoTradingComponent', () => {
       component.sellOrderForm.get('quantity')?.setValue(1);
       component.sellOrderForm.get('type')?.setValue(OrderType.MARKET);
 
-      const total = component.calculateOrderTotal('SELL');
-      const fees = component.calculateOrderFees('SELL');
-      expect(component.calculateSellOrderNetAmount()).toBe(total - fees);
+      const pair = component.selectedPair();
+      const total = calculateOrderTotal(component.sellOrderForm, pair, null);
+      const fees = calculateOrderFees(component.sellOrderForm, pair, null);
+      expect(calculateSellOrderNetAmount(component.sellOrderForm, pair, null)).toBe(total - fees);
     });
   });
 
@@ -446,7 +463,7 @@ describe('CryptoTradingComponent', () => {
     });
   });
 
-  describe('getStatusClass', () => {
+  describe('getStatusClass (utility)', () => {
     it.each([
       [OrderStatus.NEW, 'bg-blue-100'],
       [OrderStatus.FILLED, 'bg-green-100'],
@@ -454,73 +471,80 @@ describe('CryptoTradingComponent', () => {
       [OrderStatus.PARTIALLY_FILLED, 'bg-yellow-100'],
       [OrderStatus.EXPIRED, 'bg-gray-100']
     ])('should return correct class for %s', (status, expected) => {
-      expect(component.getStatusClass(status)).toContain(expected);
+      expect(getStatusClass(status)).toContain(expected);
     });
 
     it('should return default class for unknown status', () => {
-      expect(component.getStatusClass('UNKNOWN' as any)).toBe('bg-gray-100 text-gray-800');
+      expect(getStatusClass('UNKNOWN' as any)).toBe('bg-gray-100 text-gray-800');
     });
   });
 
-  describe('balance helpers', () => {
+  describe('balance helpers (utility)', () => {
     beforeEach(() => {
       selectPair(component);
     });
 
-    it('getBuyBalance should find quote asset balance', () => {
-      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
-      expect(component.getBuyBalance()).toEqual({ coin: { id: 'usd-id' }, available: 10000 });
+    it('findBalance should find quote asset balance (BUY)', () => {
+      const balances = [{ coin: { id: 'usd-id' }, available: 10000 }] as any;
+      expect(findBalance(balances, component.selectedPair(), 'BUY')).toEqual({
+        coin: { id: 'usd-id' },
+        available: 10000
+      });
     });
 
-    it('getSellBalance should find base asset balance', () => {
-      balancesResult.data.set([{ coin: { id: 'btc-id' }, available: 2.5 }]);
-      expect(component.getSellBalance()).toEqual({ coin: { id: 'btc-id' }, available: 2.5 });
+    it('findBalance should find base asset balance (SELL)', () => {
+      const balances = [{ coin: { id: 'btc-id' }, available: 2.5 }] as any;
+      expect(findBalance(balances, component.selectedPair(), 'SELL')).toEqual({
+        coin: { id: 'btc-id' },
+        available: 2.5
+      });
     });
 
-    it('getBuyBalance should return undefined when no matching balance', () => {
-      balancesResult.data.set([{ coin: { id: 'other' }, available: 100 }]);
-      expect(component.getBuyBalance()).toBeUndefined();
+    it('findBalance should return undefined when no matching balance', () => {
+      const balances = [{ coin: { id: 'other' }, available: 100 }] as any;
+      expect(findBalance(balances, component.selectedPair(), 'BUY')).toBeUndefined();
     });
 
     it('getAvailableBuyBalance should deduct fee rate from available balance', () => {
-      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
-      const feeRate = component.getFeeRate('BUY');
-      expect(component.getAvailableBuyBalance()).toBe(10000 * (1 - feeRate));
+      const balances = [{ coin: { id: 'usd-id' }, available: 10000 }] as any;
+      const feeRate = getFeeRate(null);
+      expect(getAvailableBuyBalance(balances, component.selectedPair(), null)).toBe(10000 * (1 - feeRate));
     });
 
     it('getAvailableSellBalance should return full available balance', () => {
-      balancesResult.data.set([{ coin: { id: 'btc-id' }, available: 2.5 }]);
-      expect(component.getAvailableSellBalance()).toBe(2.5);
+      const balances = [{ coin: { id: 'btc-id' }, available: 2.5 }] as any;
+      expect(getAvailableSellBalance(balances, component.selectedPair())).toBe(2.5);
     });
 
     it('getAvailableBuyBalance should return 0 when no balance exists', () => {
-      expect(component.getAvailableBuyBalance()).toBe(0);
+      expect(getAvailableBuyBalance(undefined, component.selectedPair(), null)).toBe(0);
     });
   });
 
-  describe('calculateMaxBuyQuantity', () => {
+  describe('calculateMaxBuyQuantity (utility)', () => {
     beforeEach(() => {
       selectPair(component);
     });
 
     it('should return available balance divided by price', () => {
-      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
-      const available = component.getAvailableBuyBalance();
-      expect(component.calculateMaxBuyQuantity()).toBe(available / 50000);
+      const balances = [{ coin: { id: 'usd-id' }, available: 10000 }] as any;
+      const pair = component.selectedPair();
+      const available = getAvailableBuyBalance(balances, pair, null);
+      expect(calculateMaxBuyQuantity(balances, pair, null)).toBe(available / 50000);
     });
 
     it('should return 0 when no balance', () => {
-      expect(component.calculateMaxBuyQuantity()).toBe(0);
+      expect(calculateMaxBuyQuantity(undefined, component.selectedPair(), null)).toBe(0);
     });
 
     it('should return 0 when price is 0', () => {
       tradingPairsResult.data.set([{ ...MOCK_PAIR, currentPrice: 0 }]);
-      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
-      expect(component.calculateMaxBuyQuantity()).toBe(0);
+      const balances = [{ coin: { id: 'usd-id' }, available: 10000 }] as any;
+      expect(calculateMaxBuyQuantity(balances, component.selectedPair(), null)).toBe(0);
     });
   });
 
-  describe('setQuantityPercentage', () => {
+  describe('setQuantityPercentage (via onBuyPercentageChange/onSellPercentageChange)', () => {
     beforeEach(() => {
       component.ngOnInit();
       selectPair(component);
@@ -528,7 +552,7 @@ describe('CryptoTradingComponent', () => {
 
     it('should set buy quantity based on percentage of available balance', () => {
       balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
-      component.setQuantityPercentage('BUY', 50);
+      component.onBuyPercentageChange(50);
 
       expect(component.selectedBuyPercentage()).toBe(50);
       const qty = component.buyOrderForm.get('quantity')?.value;
@@ -537,7 +561,7 @@ describe('CryptoTradingComponent', () => {
 
     it('should set sell quantity based on percentage of available balance', () => {
       balancesResult.data.set([{ coin: { id: 'btc-id' }, available: 2 }]);
-      component.setQuantityPercentage('SELL', 100);
+      component.onSellPercentageChange(100);
 
       expect(component.selectedSellPercentage()).toBe(100);
       expect(component.sellOrderForm.get('quantity')?.value).toBe(2);
@@ -545,7 +569,7 @@ describe('CryptoTradingComponent', () => {
 
     it('should not set quantity when no pair is selected', () => {
       component.selectedPairValue.set(null);
-      component.setQuantityPercentage('BUY', 50);
+      component.onBuyPercentageChange(50);
 
       expect(component.buyOrderForm.get('quantity')?.value).toBeNull();
     });
@@ -588,29 +612,24 @@ describe('CryptoTradingComponent', () => {
     });
   });
 
-  describe('order book helpers', () => {
-    it.each([
-      ['getTopBids', 'bids', (c: CryptoTradingComponent) => c.getTopBids()],
-      ['getTopAsks', 'asks', (c: CryptoTradingComponent) => c.getTopAsks()]
-    ] as const)('%s should return first 5 entries and empty array when no data', (_name, key, getter) => {
-      // No data case
-      expect(getter(component)).toEqual([]);
+  describe('order book data', () => {
+    it('should expose orderBookQuery data for child component', () => {
+      expect(component.orderBookQuery.data()).toBeNull();
 
-      // With data case
       const entries = Array.from({ length: 10 }, (_, i) => ({ price: 50000 + i * 100, amount: 1 }));
-      orderBookResult.data.set({ bids: key === 'bids' ? entries : [], asks: key === 'asks' ? entries : [] });
-      expect(getter(component)).toHaveLength(5);
+      orderBookResult.data.set({ bids: entries, asks: entries });
+      expect(component.orderBookQuery.data()?.bids).toHaveLength(10);
     });
   });
 
-  describe('hasSufficientBalance', () => {
+  describe('hasSufficientBalance (computed signal)', () => {
     it('should return true when no preview exists (optimistic default)', () => {
-      expect(component.hasSufficientBalance('BUY')).toBe(true);
+      expect(component.buyHasSufficientBalance()).toBe(true);
     });
 
     it('should return false when preview indicates insufficient balance', () => {
       component.buyOrderPreview.set({ hasSufficientBalance: false } as any);
-      expect(component.hasSufficientBalance('BUY')).toBe(false);
+      expect(component.buyHasSufficientBalance()).toBe(false);
     });
   });
 
@@ -798,14 +817,14 @@ describe('CryptoTradingComponent', () => {
     });
   });
 
-  describe('calculateMaxBuyQuantity with preview fallback', () => {
+  describe('calculateMaxBuyQuantity with preview fallback (utility)', () => {
     it('should use preview marketPrice when pair currentPrice is null', () => {
       const pairNoPrice = { ...MOCK_PAIR, currentPrice: null as any };
       selectPair(component, pairNoPrice);
-      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
-      component.buyOrderPreview.set({ marketPrice: 50000 } as any);
+      const balances = [{ coin: { id: 'usd-id' }, available: 10000 }] as any;
+      const preview = { marketPrice: 50000 } as any;
 
-      expect(component.calculateMaxBuyQuantity()).toBeGreaterThan(0);
+      expect(calculateMaxBuyQuantity(balances, component.selectedPair(), preview)).toBeGreaterThan(0);
     });
   });
 });

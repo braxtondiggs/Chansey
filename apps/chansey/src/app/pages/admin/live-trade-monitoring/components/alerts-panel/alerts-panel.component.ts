@@ -5,7 +5,7 @@ import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.service';
+import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.types';
 
 @Component({
   selector: 'app-alerts-panel',
@@ -119,7 +119,7 @@ import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.service';
       <p-card class="mt-4">
         <ng-template #header>
           <div class="flex items-center gap-2 p-3">
-            <i class="pi pi-info-circle text-primary text-xl"></i>
+            <i class="pi pi-info-circle text-xl text-primary"></i>
             <span class="font-semibold">Alert Thresholds Reference</span>
           </div>
         </ng-template>

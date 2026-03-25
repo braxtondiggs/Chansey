@@ -1,0 +1,71 @@
+@if (orderBookData()) {
+  <div class="mt-6 rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800">
+    @if (isVisible()) {
+      <div class="font-display px-4 pt-3 pb-1 text-sm font-bold tracking-tight text-surface-700 dark:text-surface-200">
+        Order Book
+      </div>
+      <div class="grid grid-cols-2 gap-4 px-4 pb-4">
+        <!-- Asks (Sell orders) -->
+        <div>
+          <div class="mb-1 text-[11px] font-bold tracking-wider text-red-500 uppercase dark:text-red-400">
+            Sell Orders
+          </div>
+          <div class="mb-2 flex justify-between text-[11px] font-semibold text-surface-400">
+            <span>Price</span>
+            <span>Amount</span>
+          </div>
+          <div class="space-y-0.5">
+            @for (ask of topAsks(); track trackByPrice($index, ask)) {
+              <div
+                class="flex justify-between rounded-md px-2 py-1 text-xs tabular-nums odd:bg-surface-100 dark:odd:bg-surface-700/50"
+              >
+                <span class="font-medium text-red-600 dark:text-red-400">{{ ask.price | number: '1.2-6' }}</span>
+                <span class="text-surface-500 dark:text-surface-400">{{ ask.quantity | number: '1.2-4' }}</span>
+              </div>
+            }
+          </div>
+        </div>
+        <!-- Bids (Buy orders) -->
+        <div>
+          <div class="mb-1 text-[11px] font-bold tracking-wider text-green-500 uppercase dark:text-green-400">
+            Buy Orders
+          </div>
+          <div class="mb-2 flex justify-between text-[11px] font-semibold text-surface-400">
+            <span>Price</span>
+            <span>Amount</span>
+          </div>
+          <div class="space-y-0.5">
+            @for (bid of topBids(); track trackByPrice($index, bid)) {
+              <div
+                class="flex justify-between rounded-md px-2 py-1 text-xs tabular-nums odd:bg-surface-100 dark:odd:bg-surface-700/50"
+              >
+                <span class="font-medium text-green-600 dark:text-green-400">{{ bid.price | number: '1.2-6' }}</span>
+                <span class="text-surface-500 dark:text-surface-400">{{ bid.quantity | number: '1.2-4' }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+}
+<!-- Order Book Loading -->
+@if (!orderBookData() && isLoading()) {
+  <div class="mt-6 rounded-xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800">
+    <div class="font-display mb-3 text-sm font-bold tracking-tight text-surface-700 dark:text-surface-200">
+      Order Book
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div class="space-y-1.5">
+        @for (_ of [1, 2, 3, 4, 5]; track $index) {
+          <p-skeleton height="1.25rem" />
+        }
+      </div>
+      <div class="space-y-1.5">
+        @for (_ of [1, 2, 3, 4, 5]; track $index) {
+          <p-skeleton height="1.25rem" />
+        }
+      </div>
+    </div>
+  </div>
+}
