@@ -232,8 +232,8 @@
               [orderPreview]="buyOrderPreview()"
               [selectedPercentage]="selectedBuyPercentage()"
               [isSubmitting]="createOrderMutation.isPending()"
-              [hasSufficientBalance]="hasSufficientBalance('BUY')"
-              [fallbackTotal]="calculateBuyOrderTotalWithFees()"
+              [hasSufficientBalance]="buyHasSufficientBalance()"
+              [fallbackTotal]="buyTotalWithFees()"
               [fallbackNet]="0"
               (submitOrder)="onSubmitOrder('BUY')"
               (percentageChange)="onBuyPercentageChange($event)"
@@ -251,9 +251,9 @@
               [orderPreview]="sellOrderPreview()"
               [selectedPercentage]="selectedSellPercentage()"
               [isSubmitting]="createOrderMutation.isPending()"
-              [hasSufficientBalance]="hasSufficientBalance('SELL')"
+              [hasSufficientBalance]="sellHasSufficientBalance()"
               [fallbackTotal]="0"
-              [fallbackNet]="calculateSellOrderNetAmount()"
+              [fallbackNet]="sellNetAmount()"
               (submitOrder)="onSubmitOrder('SELL')"
               (percentageChange)="onSellPercentageChange($event)"
             />
@@ -264,165 +264,21 @@
   </div>
 
   <!-- Order Book -->
-  @if (selectedPair() && orderBookQuery.data()) {
-    <div class="mt-6 rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800">
-      <button
-        type="button"
-        (click)="showOrderBook.set(!showOrderBook())"
-        class="flex min-h-[44px] w-full items-center justify-between rounded-xl px-4 py-3 text-surface-700 transition-colors hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700/50"
-      >
-        <span class="font-display text-sm font-bold tracking-tight">Order Book</span>
-        <i
-          class="pi text-xs text-surface-400 transition-transform duration-200"
-          [class.pi-chevron-down]="showOrderBook()"
-          [class.pi-chevron-right]="!showOrderBook()"
-        ></i>
-      </button>
-      @if (showOrderBook()) {
-        <div class="grid grid-cols-2 gap-4 px-4 pb-4">
-          <!-- Asks (Sell orders) -->
-          <div>
-            <div class="mb-1 text-[11px] font-bold tracking-wider text-red-500 uppercase dark:text-red-400">
-              Sell Orders
-            </div>
-            <div class="mb-2 flex justify-between text-[11px] font-semibold text-surface-400">
-              <span>Price</span>
-              <span>Amount</span>
-            </div>
-            <div class="space-y-0.5">
-              @for (ask of getTopAsks(); track trackByPrice($index, ask)) {
-                <div
-                  class="flex justify-between rounded-md px-2 py-1 text-xs tabular-nums odd:bg-surface-100 dark:odd:bg-surface-700/50"
-                >
-                  <span class="font-medium text-red-600 dark:text-red-400">{{ ask.price | number: '1.2-6' }}</span>
-                  <span class="text-surface-500 dark:text-surface-400">{{ ask.quantity | number: '1.2-4' }}</span>
-                </div>
-              }
-            </div>
-          </div>
-          <!-- Bids (Buy orders) -->
-          <div>
-            <div class="mb-1 text-[11px] font-bold tracking-wider text-green-500 uppercase dark:text-green-400">
-              Buy Orders
-            </div>
-            <div class="mb-2 flex justify-between text-[11px] font-semibold text-surface-400">
-              <span>Price</span>
-              <span>Amount</span>
-            </div>
-            <div class="space-y-0.5">
-              @for (bid of getTopBids(); track trackByPrice($index, bid)) {
-                <div
-                  class="flex justify-between rounded-md px-2 py-1 text-xs tabular-nums odd:bg-surface-100 dark:odd:bg-surface-700/50"
-                >
-                  <span class="font-medium text-green-600 dark:text-green-400">{{ bid.price | number: '1.2-6' }}</span>
-                  <span class="text-surface-500 dark:text-surface-400">{{ bid.quantity | number: '1.2-4' }}</span>
-                </div>
-              }
-            </div>
-          </div>
-        </div>
-      }
-    </div>
-  }
-  <!-- Order Book Loading -->
-  @if (selectedPair() && orderBookQuery.isPending()) {
-    <div
-      class="mt-6 rounded-xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800"
-    >
-      <div class="font-display mb-3 text-sm font-bold tracking-tight text-surface-700 dark:text-surface-200">
-        Order Book
-      </div>
-      <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1.5">
-          @for (_ of [1, 2, 3, 4, 5]; track $index) {
-            <p-skeleton height="1.25rem" />
-          }
-        </div>
-        <div class="space-y-1.5">
-          @for (_ of [1, 2, 3, 4, 5]; track $index) {
-            <p-skeleton height="1.25rem" />
-          }
-        </div>
-      </div>
-    </div>
+  @if (selectedPair()) {
+    <app-order-book
+      [orderBookData]="orderBookQuery.data()"
+      [isLoading]="orderBookQuery.isPending()"
+      [isVisible]="showOrderBook()"
+    />
   }
 
   <!-- Active Orders -->
-  @if (activeOrdersQuery.data() && (activeOrdersQuery.data() || []).length > 0) {
-    <div class="mt-5 rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800">
-      <button
-        type="button"
-        (click)="showActiveOrders.set(!showActiveOrders())"
-        class="flex min-h-[44px] w-full items-center justify-between rounded-xl px-4 py-3 text-surface-700 transition-colors hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700/50"
-      >
-        <span class="font-display text-sm font-bold tracking-tight">Active Orders</span>
-        <div class="flex items-center gap-2.5">
-          <span
-            class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-bold text-primary-700 dark:bg-primary-800 dark:text-primary-200"
-          >
-            {{ (activeOrdersQuery.data() || []).length }}
-          </span>
-          <i
-            class="pi text-xs text-surface-400 transition-transform duration-200"
-            [class.pi-chevron-down]="showActiveOrders()"
-            [class.pi-chevron-right]="!showActiveOrders()"
-          ></i>
-        </div>
-      </button>
-      @if (showActiveOrders()) {
-        <div class="space-y-2.5 px-4 pb-4">
-          @for (order of activeOrdersQuery.data() || []; track trackByOrderId($index, order)) {
-            <div class="rounded-xl border border-surface-200 bg-white p-3 dark:border-surface-600 dark:bg-surface-700">
-              <!-- Header: Symbol + Side + Status -->
-              <div class="mb-2 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-bold text-surface-900 dark:text-surface-50">{{ order.symbol }}</span>
-                  <span
-                    class="rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase"
-                    [ngClass]="{
-                      'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300': order.side === 'BUY',
-                      'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300': order.side === 'SELL'
-                    }"
-                  >
-                    {{ order.side }}
-                  </span>
-                </div>
-                <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" [class]="getStatusClass(order.status)">
-                  {{ order.status }}
-                </span>
-              </div>
-              <!-- Details -->
-              <div class="mb-3 grid grid-cols-2 gap-x-4 text-xs">
-                <div class="flex justify-between">
-                  <span class="text-surface-500 dark:text-surface-400">Qty</span>
-                  <span class="font-medium text-surface-700 tabular-nums dark:text-surface-200">{{
-                    order.quantity | number: '1.2-4'
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-surface-500 dark:text-surface-400">Price</span>
-                  <span class="font-medium text-surface-700 tabular-nums dark:text-surface-200">{{
-                    order.price | number: '1.2-4'
-                  }}</span>
-                </div>
-              </div>
-              <!-- Cancel -->
-              <p-button
-                icon="pi pi-times"
-                label="Cancel Order"
-                severity="danger"
-                [text]="true"
-                size="small"
-                (click)="cancelOrder(order.id)"
-                [disabled]="cancelOrderMutation.isPending()"
-                styleClass="w-full"
-              />
-            </div>
-          }
-        </div>
-      }
-    </div>
-  }
+  <app-active-orders
+    [orders]="activeOrdersQuery.data() || []"
+    [isVisible]="showActiveOrders()"
+    [isCancelling]="cancelOrderMutation.isPending()"
+    (cancelOrder)="cancelOrder($event)"
+  />
 
   <p-confirmDialog />
   <p-toast />

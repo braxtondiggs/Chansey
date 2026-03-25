@@ -3,7 +3,6 @@ import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '
 import { FormBuilder, FormGroup, FormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
-import { Decimal } from 'decimal.js';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -15,19 +14,38 @@ import { ToastModule } from 'primeng/toast';
 import { debounceTime, Subject, takeUntil } from 'rxjs';
 
 import {
-  Balance,
   Exchange,
   ExchangeKey,
   Order,
   OrderPreview,
   OrderSide,
-  OrderStatus,
   OrderType,
   PlaceOrderRequest,
   TickerPair,
   TrailingType
 } from '@chansey/api-interfaces';
 
+import { ActiveOrdersComponent } from './active-orders/active-orders.component';
+import {
+  BUY_ACTIVE_CLASSES,
+  ENHANCED_ORDER_TYPE_OPTIONS,
+  QUICK_AMOUNT_OPTIONS,
+  SELL_ACTIVE_CLASSES,
+  TAB_INACTIVE_CLASSES,
+  TAB_LIST_PT,
+  TAB_PANELS_PT,
+  TRAILING_TYPE_OPTIONS
+} from './crypto-trading.constants';
+import {
+  calculateBuyOrderTotalWithFees,
+  calculateSellOrderNetAmount,
+  getAvailableBuyBalance,
+  getAvailableSellBalance,
+  getFeeRate,
+  getPreviewWarnings,
+  hasSufficientBalance
+} from './crypto-trading.utils';
+import { OrderBookComponent } from './order-book/order-book.component';
 import { OrderFormComponent } from './order-form/order-form.component';
 
 import { AuthService, LayoutService } from '../../services';
@@ -35,7 +53,6 @@ import { ExchangeService } from '../../services/exchange.service';
 import {
   buildOrderRequest,
   DEFAULT_FEE_RATE,
-  OrderBookEntry,
   TradingMutationService,
   TradingQueryService,
   TradingStateService
@@ -47,9 +64,11 @@ import {
   imports: [
     CommonModule,
     FormsModule,
+    ActiveOrdersComponent,
     AvatarModule,
     ButtonModule,
     ConfirmDialogModule,
+    OrderBookComponent,
     OrderFormComponent,
     SelectModule,
     SkeletonModule,
@@ -79,36 +98,17 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   selectedExchangeId = signal<string | null>(null);
   activeOrderTab = signal<string>('buy');
 
-  // PrimeNG Pass Through (PT) for tabs
-  tabListPt = {
-    root: 'bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl p-1 overflow-hidden',
-    tabList: 'bg-transparent !border-none gap-1 w-full flex',
-    content: '!border-none',
-    activeBar: '!hidden'
-  };
+  // PT & classes from constants
+  tabListPt = TAB_LIST_PT;
+  tabPanelsPt = TAB_PANELS_PT;
 
-  tabPanelsPt = {
-    root: '!p-0 bg-transparent'
-  };
+  buyTabPt = computed(() => ({
+    root: this.activeOrderTab() === 'buy' ? BUY_ACTIVE_CLASSES : TAB_INACTIVE_CLASSES
+  }));
 
-  private readonly tabInactiveClasses =
-    'flex-1 flex justify-center items-center !py-1.5 !px-3 !border-none !bg-transparent m-0 rounded-lg font-semibold text-sm transition-all duration-200 !text-surface-600 dark:!text-surface-300 hover:!bg-surface-200/60 dark:hover:!bg-surface-700/60 hover:!text-surface-800 dark:hover:!text-surface-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50';
-
-  private readonly buyActiveClasses =
-    'flex-1 flex justify-center items-center !py-1.5 !px-3 !border-none m-0 rounded-lg font-semibold text-md transition-all duration-200 !bg-green-500 !text-white hover:!bg-green-600 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500/50';
-
-  private readonly sellActiveClasses =
-    'flex-1 flex justify-center items-center !py-1.5 !px-3 !border-none m-0 rounded-lg font-semibold text-md transition-all duration-200 !bg-red-500 !text-white hover:!bg-red-600 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50';
-
-  buyTabPt = computed(() => {
-    const classes = this.activeOrderTab() === 'buy' ? this.buyActiveClasses : this.tabInactiveClasses;
-    return { root: classes };
-  });
-
-  sellTabPt = computed(() => {
-    const classes = this.activeOrderTab() === 'sell' ? this.sellActiveClasses : this.tabInactiveClasses;
-    return { root: classes };
-  });
+  sellTabPt = computed(() => ({
+    root: this.activeOrderTab() === 'sell' ? SELL_ACTIVE_CLASSES : TAB_INACTIVE_CLASSES
+  }));
 
   showActiveOrders = signal<boolean>(false);
   showOrderBook = signal<boolean>(false);
@@ -132,19 +132,11 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   selectedPair = computed(() => {
     const pairSymbol = this.selectedPairValue();
     const pairs = this.tradingPairsQuery.data();
-
-    if (!pairSymbol || !pairs) {
-      return null;
-    }
-
-    // Find pair by comparing uppercase symbols since tradingPairOptions uses toUpperCase()
-    const foundPair = pairs.find((pair) => pair.symbol.toUpperCase() === pairSymbol.toUpperCase());
-    return foundPair || null;
+    if (!pairSymbol || !pairs) return null;
+    return pairs.find((pair) => pair.symbol.toUpperCase() === pairSymbol.toUpperCase()) || null;
   });
 
-  // Derived from selectedPair (L4 fix: no duplicate .find() logic)
   selectedSymbol = computed(() => this.selectedPair()?.symbol.toUpperCase() || null);
-
   orderBookQuery = this.tradingQueryService.useOrderBook(this.selectedSymbol, this.selectedExchangeId);
 
   // Mutations
@@ -152,13 +144,10 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   previewOrderMutation = this.tradingMutationService.usePreviewOrder();
   cancelOrderMutation = this.tradingMutationService.useCancelOrder();
 
-  // Get the exchange key ID for the selected exchange
   selectedExchangeKeyId = computed(() => {
     const exchangeId = this.selectedExchangeId();
     const userExchanges = this.userQuery.data()?.exchanges;
-
     if (!exchangeId || !userExchanges) return null;
-
     const userExchange = userExchanges.find((ue: ExchangeKey) => ue.exchangeId === exchangeId);
     return userExchange?.id || null;
   });
@@ -166,17 +155,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   exchangeOptions = computed(() => {
     const supportedExchanges = this.exchangeQuery.data();
     const userExchanges = this.userQuery.data()?.exchanges;
-
     return supportedExchanges?.map((exchange: Exchange) => {
-      // Find matching user exchange to check if it's active
       const userExchange = userExchanges?.find((ue: ExchangeKey) => ue.exchangeId === exchange.id);
-      const isActive = userExchange?.isActive || false;
-
       return {
         label: exchange.name,
         value: exchange.id,
         image: exchange.image,
-        status: isActive ? 'connected' : 'disconnected',
+        status: userExchange?.isActive ? 'connected' : 'disconnected',
         pairCount: exchange.tickerPairsCount || 0
       };
     });
@@ -185,7 +170,6 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   tradingPairOptions = computed(() => {
     const pairs = this.tradingPairsQuery.data() || [];
     const selectedExchange = this.selectedExchangeId();
-
     return pairs.map((pair: TickerPair) => ({
       label: `${pair.baseAsset?.symbol}/${pair.quoteAsset?.symbol}`.toUpperCase(),
       value: pair.symbol.toUpperCase(),
@@ -195,93 +179,42 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     }));
   });
 
-  // Supported order types (will be updated from preview response)
   supportedOrderTypes = signal<OrderType[]>([OrderType.MARKET, OrderType.LIMIT]);
 
   orderTypeOptions = computed(() => {
     const supported = this.supportedOrderTypes();
-    return this.enhancedOrderTypeOptions.filter((opt) => supported.includes(opt.value));
+    return ENHANCED_ORDER_TYPE_OPTIONS.filter((opt) => supported.includes(opt.value));
   });
 
-  enhancedOrderTypeOptions = [
-    {
-      label: 'Market',
-      value: OrderType.MARKET,
-      icon: 'pi pi-bolt',
-      description: 'Execute immediately at current market price'
-    },
-    {
-      label: 'Limit',
-      value: OrderType.LIMIT,
-      icon: 'pi pi-list',
-      description: 'Execute only at your specified price or better'
-    },
-    {
-      label: 'Stop Loss',
-      value: OrderType.STOP_LOSS,
-      icon: 'pi pi-shield',
-      description: 'Market order triggered when price hits stop price'
-    },
-    {
-      label: 'Stop Limit',
-      value: OrderType.STOP_LIMIT,
-      icon: 'pi pi-cog',
-      description: 'Limit order triggered when price hits stop price'
-    },
-    {
-      label: 'Trailing Stop',
-      value: OrderType.TRAILING_STOP,
-      icon: 'pi pi-chart-line',
-      description: 'Stop order that automatically adjusts with favorable price movements'
-    },
-    {
-      label: 'Take Profit',
-      value: OrderType.TAKE_PROFIT,
-      icon: 'pi pi-check-circle',
-      description: 'Limit order to close position when target profit is reached'
-    },
-    {
-      label: 'OCO',
-      value: OrderType.OCO,
-      icon: 'pi pi-arrows-h',
-      description: 'One-Cancels-Other: Take profit and stop loss pair'
-    }
-  ];
-
-  quickAmountOptions = [
-    { label: '25%', value: 25 },
-    { label: '50%', value: 50 },
-    { label: '75%', value: 75 },
-    { label: 'Max', value: 100 }
-  ];
-
-  trailingTypeOptions = [
-    { label: 'Amount', value: TrailingType.AMOUNT },
-    { label: 'Percentage', value: TrailingType.PERCENTAGE }
-  ];
+  quickAmountOptions = QUICK_AMOUNT_OPTIONS;
+  trailingTypeOptions = TRAILING_TYPE_OPTIONS;
 
   isExchangeDisconnected = computed(() => {
     const exchangeId = this.selectedExchangeId();
     if (!exchangeId) return false;
-    const option = this.exchangeOptions()?.find((ex) => ex.value === exchangeId);
-    return option?.status !== 'connected';
+    return this.exchangeOptions()?.find((ex) => ex.value === exchangeId)?.status !== 'connected';
   });
 
-  // Auto-select the first connected exchange when available
   private shouldAutoSelect = computed(() => {
     const exchanges = this.exchangeOptions();
     const currentSelection = this.selectedExchangeId();
-
-    if (!exchanges || exchanges.length === 0 || currentSelection) {
-      return null;
-    }
-
-    const connectedExchanges = exchanges.filter((ex) => ex.status === 'connected');
-    return connectedExchanges.length > 0 ? connectedExchanges[0] : null;
+    if (!exchanges || exchanges.length === 0 || currentSelection) return null;
+    const connected = exchanges.filter((ex) => ex.status === 'connected');
+    return connected.length > 0 ? connected[0] : null;
   });
 
+  // Computed balance/fee data for template
+  buyTotalWithFees = computed(() =>
+    calculateBuyOrderTotalWithFees(this.buyOrderForm, this.selectedPair(), this.buyOrderPreview())
+  );
+  sellNetAmount = computed(() =>
+    calculateSellOrderNetAmount(this.sellOrderForm, this.selectedPair(), this.sellOrderPreview())
+  );
+  buyHasSufficientBalance = computed(() => hasSufficientBalance(this.buyOrderPreview()));
+  sellHasSufficientBalance = computed(() => hasSufficientBalance(this.sellOrderPreview()));
+  tradingFeeRate = computed(() => (getFeeRate(this.buyOrderPreview()) || DEFAULT_FEE_RATE) * 100);
+
   constructor() {
-    // Watch for auto-selection opportunities
     effect(() => {
       const exchangeToSelect = this.shouldAutoSelect();
       if (exchangeToSelect) {
@@ -289,7 +222,6 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Auto-open order book when a pair is first selected
     effect(() => {
       const pair = this.selectedPair();
       if (pair) {
@@ -304,159 +236,35 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     this.setupPreviewDebounce();
   }
 
-  private setupPreviewDebounce() {
-    this.buyPreviewSubject$
-      .pipe(debounceTime(300), takeUntil(this.destroy$))
-      .subscribe(() => this.executePreview('BUY'));
-
-    this.sellPreviewSubject$
-      .pipe(debounceTime(300), takeUntil(this.destroy$))
-      .subscribe(() => this.executePreview('SELL'));
-  }
-
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
   }
 
-  private initializeForms() {
-    this.buyOrderForm = this.fb.group({
-      type: [OrderType.MARKET, Validators.required],
-      quantity: [null, [Validators.required, Validators.min(0.00000001)]],
-      price: [null],
-      stopPrice: [null],
-      trailingAmount: [null],
-      trailingType: [TrailingType.AMOUNT],
-      takeProfitPrice: [null],
-      stopLossPrice: [null]
-    });
-
-    this.sellOrderForm = this.fb.group({
-      type: [OrderType.MARKET, Validators.required],
-      quantity: [null, [Validators.required, Validators.min(0.00000001)]],
-      price: [null],
-      stopPrice: [null],
-      trailingAmount: [null],
-      trailingType: [TrailingType.AMOUNT],
-      takeProfitPrice: [null],
-      stopLossPrice: [null]
-    });
-  }
-
-  private setupFormSubscriptions() {
-    // Update validators when order type changes for buy form
-    this.buyOrderForm
-      .get('type')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
-      .subscribe((type) => {
-        this.updateFormValidators(this.buyOrderForm, type);
-        this.triggerPreview('BUY');
-      });
-
-    // Update validators when order type changes for sell form
-    this.sellOrderForm
-      .get('type')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
-      .subscribe((type) => {
-        this.updateFormValidators(this.sellOrderForm, type);
-        this.triggerPreview('SELL');
-      });
-
-    // Preview order when quantity changes
-    this.buyOrderForm
-      .get('quantity')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.triggerPreview('BUY'));
-
-    this.sellOrderForm
-      .get('quantity')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.triggerPreview('SELL'));
-
-    // Preview order when price changes (for limit orders)
-    this.buyOrderForm
-      .get('price')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.triggerPreview('BUY'));
-
-    this.sellOrderForm
-      .get('price')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.triggerPreview('SELL'));
-  }
-
-  private updateFormValidators(form: FormGroup, type: OrderType) {
-    const controls = ['price', 'stopPrice', 'trailingAmount', 'takeProfitPrice', 'stopLossPrice'];
-    controls.forEach((ctrl) => {
-      form.get(ctrl)?.clearValidators();
-    });
-
-    if (type === OrderType.LIMIT || type === OrderType.STOP_LIMIT) {
-      form.get('price')?.setValidators([Validators.required, Validators.min(0.00000001)]);
-    }
-    if (type === OrderType.STOP_LOSS || type === OrderType.STOP_LIMIT) {
-      form.get('stopPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
-    }
-    if (type === OrderType.TRAILING_STOP) {
-      form.get('trailingAmount')?.setValidators([Validators.required, Validators.min(0.00000001)]);
-    }
-    if (type === OrderType.TAKE_PROFIT) {
-      form.get('takeProfitPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
-    }
-    if (type === OrderType.OCO) {
-      form.get('takeProfitPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
-      form.get('stopLossPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
-    }
-
-    controls.forEach((ctrl) => form.get(ctrl)?.updateValueAndValidity());
+  onTabChange(value: string): void {
+    this.activeOrderTab.set(value);
   }
 
   onPairChange(event: { value: string }) {
     const symbol = event.value;
     this.selectedPairValue.set(symbol);
-
     const pair = this.tradingPairsQuery.data()?.find((p) => p.symbol.toUpperCase() === symbol.toUpperCase());
     if (pair) {
       this.tradingStateService.setSelectedPair(pair);
-      // Trigger preview to get supported order types
       this.triggerPreview('BUY');
     }
   }
 
-  /**
-   * Typed tab change handler (fix M4: removes $any() cast)
-   */
-  onTabChange(value: string): void {
-    this.activeOrderTab.set(value);
-  }
-
-  /**
-   * Build a PlaceOrderRequest from form data using the shared utility
-   */
-  private buildPlaceOrderRequest(side: 'BUY' | 'SELL'): PlaceOrderRequest | null {
-    const form = side === 'BUY' ? this.buyOrderForm : this.sellOrderForm;
-    const pair = this.selectedPair();
-    const exchangeKeyId = this.selectedExchangeKeyId();
-
-    if (!pair || !exchangeKeyId) return null;
-
-    const formValue = form.value;
-
-    return buildOrderRequest(
-      exchangeKeyId,
-      pair.symbol.toUpperCase(),
-      side === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
-      formValue.type,
-      formValue.quantity || 0,
-      {
-        price: formValue.price,
-        stopPrice: formValue.stopPrice,
-        trailingAmount: formValue.trailingAmount,
-        trailingType: formValue.trailingType,
-        takeProfitPrice: formValue.takeProfitPrice,
-        stopLossPrice: formValue.stopLossPrice
-      }
-    );
+  onExchangeChange(event: { value: string }) {
+    this.selectedExchangeId.set(event.value);
+    this.selectedPairValue.set(null);
+    this.buyOrderPreview.set(null);
+    this.sellOrderPreview.set(null);
+    this.messageService.add({
+      severity: 'info',
+      summary: 'Exchange Selected',
+      detail: `Switched to ${this.getSelectedExchangeName()}`
+    });
   }
 
   onSubmitOrder(side: 'BUY' | 'SELL') {
@@ -504,6 +312,150 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     });
   }
 
+  cancelOrder(orderId: string) {
+    this.cancelOrderMutation.mutate(orderId, {
+      onSuccess: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Order Cancelled',
+          detail: 'Order cancelled successfully'
+        });
+      },
+      onError: (error: Error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Cancellation Failed',
+          detail: error.message || 'Failed to cancel order'
+        });
+      }
+    });
+  }
+
+  refreshActiveOrders() {
+    this.activeOrdersQuery.refetch();
+  }
+
+  onBuyPercentageChange(percentage: number | null) {
+    if (percentage !== null) this.setQuantityPercentage('BUY', percentage);
+  }
+
+  onSellPercentageChange(percentage: number | null) {
+    if (percentage !== null) this.setQuantityPercentage('SELL', percentage);
+  }
+
+  navigateToExchangeSetup(): void {
+    this.layoutService.updateLayoutState({ rightMenuVisible: false });
+    const exchangeSlug = this.exchangeQuery.data()?.find((e) => e.id === this.selectedExchangeId())?.slug;
+    this.router.navigate(['/app/settings'], {
+      queryParams: { tab: 'trading', ...(exchangeSlug && { exchange: exchangeSlug }) },
+      fragment: 'exchanges'
+    });
+  }
+
+  getSelectedExchangeName(): string {
+    const exchangeId = this.selectedExchangeId();
+    return this.exchangeOptions()?.find((ex) => ex.value === exchangeId)?.label || 'No Exchange';
+  }
+
+  getPreviewWarnings(side: 'BUY' | 'SELL'): string[] {
+    return getPreviewWarnings(side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview());
+  }
+
+  // --- Private methods ---
+
+  private setupPreviewDebounce() {
+    this.buyPreviewSubject$
+      .pipe(debounceTime(300), takeUntil(this.destroy$))
+      .subscribe(() => this.executePreview('BUY'));
+    this.sellPreviewSubject$
+      .pipe(debounceTime(300), takeUntil(this.destroy$))
+      .subscribe(() => this.executePreview('SELL'));
+  }
+
+  private initializeForms() {
+    const formConfig = {
+      type: [OrderType.MARKET, Validators.required],
+      quantity: [null, [Validators.required, Validators.min(0.00000001)]],
+      price: [null],
+      stopPrice: [null],
+      trailingAmount: [null],
+      trailingType: [TrailingType.AMOUNT],
+      takeProfitPrice: [null],
+      stopLossPrice: [null]
+    };
+    this.buyOrderForm = this.fb.group(formConfig);
+    this.sellOrderForm = this.fb.group({ ...formConfig });
+  }
+
+  private setupFormSubscriptions() {
+    const subscribe = (form: FormGroup, side: 'BUY' | 'SELL') => {
+      form
+        .get('type')
+        ?.valueChanges.pipe(takeUntil(this.destroy$))
+        .subscribe((type) => {
+          this.updateFormValidators(form, type);
+          this.triggerPreview(side);
+        });
+      form
+        .get('quantity')
+        ?.valueChanges.pipe(takeUntil(this.destroy$))
+        .subscribe(() => this.triggerPreview(side));
+      form
+        .get('price')
+        ?.valueChanges.pipe(takeUntil(this.destroy$))
+        .subscribe(() => this.triggerPreview(side));
+    };
+    subscribe(this.buyOrderForm, 'BUY');
+    subscribe(this.sellOrderForm, 'SELL');
+  }
+
+  private updateFormValidators(form: FormGroup, type: OrderType) {
+    const controls = ['price', 'stopPrice', 'trailingAmount', 'takeProfitPrice', 'stopLossPrice'];
+    controls.forEach((ctrl) => form.get(ctrl)?.clearValidators());
+
+    if (type === OrderType.LIMIT || type === OrderType.STOP_LIMIT) {
+      form.get('price')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+    }
+    if (type === OrderType.STOP_LOSS || type === OrderType.STOP_LIMIT) {
+      form.get('stopPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+    }
+    if (type === OrderType.TRAILING_STOP) {
+      form.get('trailingAmount')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+    }
+    if (type === OrderType.TAKE_PROFIT) {
+      form.get('takeProfitPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+    }
+    if (type === OrderType.OCO) {
+      form.get('takeProfitPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+      form.get('stopLossPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+    }
+
+    controls.forEach((ctrl) => form.get(ctrl)?.updateValueAndValidity());
+  }
+
+  private buildPlaceOrderRequest(side: 'BUY' | 'SELL'): PlaceOrderRequest | null {
+    const form = side === 'BUY' ? this.buyOrderForm : this.sellOrderForm;
+    const pair = this.selectedPair();
+    const exchangeKeyId = this.selectedExchangeKeyId();
+    if (!pair || !exchangeKeyId) return null;
+    const formValue = form.value;
+    return buildOrderRequest(
+      exchangeKeyId,
+      pair.symbol.toUpperCase(),
+      side === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
+      formValue.type,
+      formValue.quantity || 0,
+      {
+        price: formValue.price,
+        stopPrice: formValue.stopPrice,
+        trailingAmount: formValue.trailingAmount,
+        trailingType: formValue.trailingType,
+        takeProfitPrice: formValue.takeProfitPrice,
+        stopLossPrice: formValue.stopLossPrice
+      }
+    );
+  }
+
   private executeOrder(side: 'BUY' | 'SELL', form: FormGroup, orderRequest: PlaceOrderRequest) {
     this.createOrderMutation.mutate(orderRequest, {
       onSuccess: () => {
@@ -531,48 +483,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     });
   }
 
-  cancelOrder(orderId: string) {
-    this.cancelOrderMutation.mutate(orderId, {
-      onSuccess: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Order Cancelled',
-          detail: 'Order cancelled successfully'
-        });
-      },
-      onError: (error: Error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Cancellation Failed',
-          detail: error.message || 'Failed to cancel order'
-        });
-      }
-    });
-  }
-
-  refreshActiveOrders() {
-    this.activeOrdersQuery.refetch();
-  }
-
-  /**
-   * Trigger order preview with debouncing (300ms)
-   */
   private triggerPreview(side: 'BUY' | 'SELL'): void {
-    if (side === 'BUY') {
-      this.buyPreviewSubject$.next();
-    } else {
-      this.sellPreviewSubject$.next();
-    }
+    (side === 'BUY' ? this.buyPreviewSubject$ : this.sellPreviewSubject$).next();
   }
 
-  /**
-   * Execute the actual preview API call (called after debounce)
-   */
   private executePreview(side: 'BUY' | 'SELL'): void {
     const form = side === 'BUY' ? this.buyOrderForm : this.sellOrderForm;
     const quantity = form.get('quantity')?.value;
-
-    // Only preview if we have a valid quantity
     if (!quantity || quantity <= 0) return;
 
     const orderRequest = this.buildPlaceOrderRequest(side);
@@ -580,220 +497,34 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     this.previewOrderMutation.mutate(orderRequest, {
       onSuccess: (preview) => {
-        if (side === 'BUY') {
-          this.buyOrderPreview.set(preview);
-        } else {
-          this.sellOrderPreview.set(preview);
-        }
-
-        // Update supported order types if provided
+        (side === 'BUY' ? this.buyOrderPreview : this.sellOrderPreview).set(preview);
         if (preview.supportedOrderTypes) {
           this.supportedOrderTypes.set(preview.supportedOrderTypes);
         }
       },
       onError: () => {
-        // Preview failures are non-critical; silently ignore
+        /* Preview failures are non-critical */
       }
     });
   }
 
-  /**
-   * Get order total from preview or calculate fallback
-   */
-  calculateOrderTotal(side: 'BUY' | 'SELL'): number {
+  private setQuantityPercentage(side: 'BUY' | 'SELL', percentage: number) {
     const form = side === 'BUY' ? this.buyOrderForm : this.sellOrderForm;
     const pair = this.selectedPair();
-    const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-
-    // Prefer preview's estimatedCost when available
-    if (preview?.estimatedCost !== undefined) return preview.estimatedCost;
-
-    if (!pair) return 0;
-
-    const quantity = form.get('quantity')?.value || 0;
-    const orderType = form.get('type')?.value;
-    // Use preview's marketPrice as fallback when pair.currentPrice is null
-    const marketPrice = pair.currentPrice || preview?.marketPrice || 0;
-    const price = orderType === OrderType.MARKET ? marketPrice : form.get('price')?.value || marketPrice;
-
-    return new Decimal(quantity).times(new Decimal(price)).toNumber();
-  }
-
-  calculateOrderFees(side: 'BUY' | 'SELL'): number {
-    const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-    if (preview) return preview.estimatedFee;
-
-    // Fallback: estimate using default fee rate
-    return new Decimal(this.calculateOrderTotal(side)).times(new Decimal(DEFAULT_FEE_RATE)).toNumber();
-  }
-
-  /**
-   * Get fee rate from preview or default
-   */
-  getFeeRate(side: 'BUY' | 'SELL'): number {
-    const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-    return preview?.feeRate || DEFAULT_FEE_RATE;
-  }
-
-  calculateBuyOrderTotalWithFees(): number {
-    const preview = this.buyOrderPreview();
-    if (preview) return preview.totalRequired;
-    return new Decimal(this.calculateOrderTotal('BUY')).plus(new Decimal(this.calculateOrderFees('BUY'))).toNumber();
-  }
-
-  calculateSellOrderNetAmount(): number {
-    const preview = this.sellOrderPreview();
-    if (preview) return new Decimal(preview.estimatedCost).minus(new Decimal(preview.estimatedFee)).toNumber();
-    return new Decimal(this.calculateOrderTotal('SELL')).minus(new Decimal(this.calculateOrderFees('SELL'))).toNumber();
-  }
-
-  getBuyBalance(): Balance | undefined {
-    const pair = this.selectedPair();
-    const balances = this.balancesQuery.data();
-    if (!pair || !balances) return undefined;
-    return balances.find((b) => b.coin.id === pair.quoteAsset?.id);
-  }
-
-  getSellBalance(): Balance | undefined {
-    const pair = this.selectedPair();
-    const balances = this.balancesQuery.data();
-    if (!pair || !balances) return undefined;
-    return balances.find((b) => b.coin.id === pair.baseAsset?.id);
-  }
-
-  getAvailableBuyBalance(): number {
-    const balance = this.getBuyBalance();
-    if (!balance) return 0;
-
-    const feeRate = this.getFeeRate('BUY');
-    return new Decimal(balance.available).times(new Decimal(1).minus(new Decimal(feeRate))).toNumber();
-  }
-
-  getAvailableSellBalance(): number {
-    const balance = this.getSellBalance();
-    return balance?.available || 0;
-  }
-
-  calculateMaxBuyQuantity(): number {
-    const availableBalance = this.getAvailableBuyBalance();
-    const pair = this.selectedPair();
-    const preview = this.buyOrderPreview();
-
-    if (!pair || availableBalance <= 0) return 0;
-
-    // Use preview's marketPrice as fallback when pair.currentPrice is null
-    const price = pair.currentPrice || preview?.marketPrice || 0;
-    if (price <= 0) return 0;
-
-    return new Decimal(availableBalance).div(new Decimal(price)).toNumber();
-  }
-
-  getTopBids() {
-    return this.orderBookQuery.data()?.bids.slice(0, 5) || [];
-  }
-
-  getTopAsks() {
-    return this.orderBookQuery.data()?.asks.slice(0, 5) || [];
-  }
-
-  getStatusClass(status: OrderStatus): string {
-    const classes: Record<OrderStatus, string> = {
-      [OrderStatus.NEW]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-      [OrderStatus.PARTIALLY_FILLED]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-      [OrderStatus.FILLED]: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      [OrderStatus.CANCELED]: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-      [OrderStatus.PENDING_CANCEL]: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-      [OrderStatus.REJECTED]: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-      [OrderStatus.EXPIRED]: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
-    };
-    return classes[status] || 'bg-gray-100 text-gray-800';
-  }
-
-  trackByPrice(_index: number, item: OrderBookEntry) {
-    return item.price;
-  }
-
-  trackByOrderId(_index: number, order: Order) {
-    return order.id;
-  }
-
-  setQuantityPercentage(side: 'BUY' | 'SELL', percentage: number) {
-    const form = side === 'BUY' ? this.buyOrderForm : this.sellOrderForm;
-    const pair = this.selectedPair();
-
     if (!pair) return;
 
-    // Get price from pair or fallback to preview's market price
     const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
     const price = pair.currentPrice || preview?.marketPrice || 0;
 
     if (side === 'BUY') {
       this.selectedBuyPercentage.set(percentage);
-      const availableBalance = this.getAvailableBuyBalance();
-      const amountToSpend = availableBalance * (percentage / 100);
-      const quantity = price > 0 ? amountToSpend / price : 0;
-      form.get('quantity')?.setValue(quantity);
+      const available = getAvailableBuyBalance(this.balancesQuery.data(), pair, preview);
+      const amountToSpend = available * (percentage / 100);
+      form.get('quantity')?.setValue(price > 0 ? amountToSpend / price : 0);
     } else {
       this.selectedSellPercentage.set(percentage);
-      const quantity = this.getAvailableSellBalance() * (percentage / 100);
+      const quantity = getAvailableSellBalance(this.balancesQuery.data(), pair) * (percentage / 100);
       form.get('quantity')?.setValue(quantity);
     }
-  }
-
-  onBuyPercentageChange(percentage: number | null) {
-    if (percentage !== null) this.setQuantityPercentage('BUY', percentage);
-  }
-
-  onSellPercentageChange(percentage: number | null) {
-    if (percentage !== null) this.setQuantityPercentage('SELL', percentage);
-  }
-
-  getTradingFeeRate(): number {
-    return (this.getFeeRate('BUY') || DEFAULT_FEE_RATE) * 100; // Return as percentage
-  }
-
-  onExchangeChange(event: { value: string }) {
-    const exchangeId = event.value;
-    this.selectedExchangeId.set(exchangeId);
-    this.selectedPairValue.set(null);
-    this.buyOrderPreview.set(null);
-    this.sellOrderPreview.set(null);
-
-    this.messageService.add({
-      severity: 'info',
-      summary: 'Exchange Selected',
-      detail: `Switched to ${this.getSelectedExchangeName()}`
-    });
-  }
-
-  navigateToExchangeSetup(): void {
-    this.layoutService.updateLayoutState({ rightMenuVisible: false });
-    const exchangeSlug = this.exchangeQuery.data()?.find((e) => e.id === this.selectedExchangeId())?.slug;
-    this.router.navigate(['/app/settings'], {
-      queryParams: { tab: 'trading', ...(exchangeSlug && { exchange: exchangeSlug }) },
-      fragment: 'exchanges'
-    });
-  }
-
-  getSelectedExchangeName(): string {
-    const exchangeId = this.selectedExchangeId();
-    const exchange = this.exchangeOptions()?.find((ex) => ex.value === exchangeId);
-    return exchange?.label || 'No Exchange';
-  }
-
-  /**
-   * Get preview warnings if any
-   */
-  getPreviewWarnings(side: 'BUY' | 'SELL'): string[] {
-    const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-    return preview?.warnings || [];
-  }
-
-  /**
-   * Check if order has sufficient balance
-   */
-  hasSufficientBalance(side: 'BUY' | 'SELL'): boolean {
-    const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-    return preview?.hasSufficientBalance ?? true;
   }
 }
