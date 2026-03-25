@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 
 import { SelectModule } from 'primeng/select';
 
-import { PaginatedAlgorithmListDto } from '../../live-trade-monitoring.service';
+import { PaginatedAlgorithmListDto } from '../../live-trade-monitoring.types';
 
 @Component({
   selector: 'app-algorithm-selector',

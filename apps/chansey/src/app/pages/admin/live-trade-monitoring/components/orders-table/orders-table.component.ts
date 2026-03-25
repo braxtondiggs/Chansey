@@ -6,7 +6,7 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { PaginatedOrderListDto } from '../../live-trade-monitoring.service';
+import { PaginatedOrderListDto } from '../../live-trade-monitoring.types';
 
 @Component({
   selector: 'app-orders-table',
@@ -27,7 +27,7 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.service';
       <ng-template #header>
         <div class="flex items-center justify-between p-3">
           <div class="flex items-center gap-2">
-            <i class="pi pi-list text-primary text-xl"></i>
+            <i class="pi pi-list text-xl text-primary"></i>
             <span class="font-semibold">Algorithmic Orders</span>
           </div>
           @if (orders) {

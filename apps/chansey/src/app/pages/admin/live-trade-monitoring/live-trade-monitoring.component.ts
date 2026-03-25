@@ -19,17 +19,17 @@ import { OrdersTableComponent } from './components/orders-table/orders-table.com
 import { OverviewCardsComponent } from './components/overview-cards/overview-cards.component';
 import { SlippageComparisonPanelComponent } from './components/slippage-comparison-panel/slippage-comparison-panel.component';
 import { UserActivityPanelComponent } from './components/user-activity-panel/user-activity-panel.component';
+import { LiveTradeMonitoringService } from './live-trade-monitoring.service';
 import {
   AlertsDto,
   ComparisonDto,
   LiveTradeFiltersDto,
-  LiveTradeMonitoringService,
   LiveTradeOverviewDto,
   PaginatedAlgorithmListDto,
   PaginatedOrderListDto,
   PaginatedUserActivityDto,
   SlippageAnalysisDto
-} from './live-trade-monitoring.service';
+} from './live-trade-monitoring.types';
 
 @Component({
   selector: 'app-live-trade-monitoring',
@@ -55,154 +55,7 @@ import {
     AlgorithmSelectorComponent
   ],
   providers: [MessageService],
-  template: `
-    <div class="live-trade-monitoring-page">
-      <p-toast />
-
-      <!-- Header -->
-      <div class="page-header mb-4">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="m-0 text-2xl font-bold">Live Trade Monitoring</h1>
-            <p class="mt-1 text-gray-500">Monitor live trading activity and compare against backtest predictions</p>
-          </div>
-
-          <!-- Filters -->
-          <div class="flex flex-wrap items-center gap-3">
-            <p-datepicker
-              [(ngModel)]="dateRange"
-              selectionMode="range"
-              [readonlyInput]="true"
-              placeholder="Date Range"
-              dateFormat="yy-mm-dd"
-              [showIcon]="true"
-              (onSelect)="onDateRangeChange()"
-            />
-
-            <p-button
-              icon="pi pi-refresh"
-              [rounded]="true"
-              [text]="true"
-              severity="secondary"
-              (onClick)="refresh()"
-              pTooltip="Refresh data"
-            />
-
-            <p-button
-              icon="pi pi-download"
-              label="Export"
-              severity="secondary"
-              [outlined]="true"
-              (onClick)="onExport()"
-            />
-          </div>
-        </div>
-      </div>
-
-      @if (isLoading()) {
-        <div class="flex items-center justify-center py-8">
-          <p-progress-spinner strokeWidth="4" />
-        </div>
-      } @else {
-        <!-- Overview Cards -->
-        <app-overview-cards [overview]="overview()" class="mb-4" />
-
-        <!-- Tabs -->
-        <p-tabs [value]="activeTab()" (valueChange)="onTabChange($event)">
-          <p-tablist>
-            <p-tab value="overview">Overview</p-tab>
-            <p-tab value="comparison">Backtest vs Live</p-tab>
-            <p-tab value="slippage">Slippage Analysis</p-tab>
-            <p-tab value="alerts">
-              Alerts
-              @if (alertsSummary().critical > 0) {
-                <span class="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">
-                  {{ alertsSummary().critical }}
-                </span>
-              }
-            </p-tab>
-            <p-tab value="users">User Activity</p-tab>
-          </p-tablist>
-          <p-tabpanels>
-            <!-- Overview Tab -->
-            <p-tabpanel value="overview">
-              <div class="mt-4">
-                <app-orders-table
-                  [orders]="orders()"
-                  [isLoading]="ordersQuery.isPending()"
-                  (pageChange)="onOrdersPageChange($event)"
-                />
-              </div>
-            </p-tabpanel>
-
-            <!-- Backtest vs Live Tab -->
-            <p-tabpanel value="comparison">
-              <div class="mt-4">
-                <app-algorithm-selector
-                  [algorithms]="algorithms()"
-                  [selectedAlgorithmId]="selectedAlgorithmId()"
-                  (selectionChange)="onAlgorithmSelect($event)"
-                  class="mb-4"
-                />
-                @if (selectedAlgorithmId()) {
-                  @if (comparisonQuery.isPending()) {
-                    <div class="flex items-center justify-center py-8">
-                      <p-progress-spinner strokeWidth="4" />
-                    </div>
-                  } @else {
-                    <app-backtest-comparison-panel [comparison]="comparison()" />
-                  }
-                } @else {
-                  <p-card>
-                    <div class="py-8 text-center text-gray-500">
-                      <i class="pi pi-chart-line mb-4 text-4xl"></i>
-                      <p>Select an algorithm to view backtest vs live comparison</p>
-                    </div>
-                  </p-card>
-                }
-              </div>
-            </p-tabpanel>
-
-            <!-- Slippage Analysis Tab -->
-            <p-tabpanel value="slippage">
-              @if (slippageQuery.isPending()) {
-                <div class="flex items-center justify-center py-8">
-                  <p-progress-spinner strokeWidth="4" />
-                </div>
-              } @else {
-                <app-slippage-comparison-panel [slippageAnalysis]="slippageAnalysis()" />
-              }
-            </p-tabpanel>
-
-            <!-- Alerts Tab -->
-            <p-tabpanel value="alerts">
-              @if (alertsQuery.isPending()) {
-                <div class="flex items-center justify-center py-8">
-                  <p-progress-spinner strokeWidth="4" />
-                </div>
-              } @else {
-                <app-alerts-panel [alerts]="alerts()" />
-              }
-            </p-tabpanel>
-
-            <!-- User Activity Tab -->
-            <p-tabpanel value="users">
-              @if (userActivityQuery.isPending()) {
-                <div class="flex items-center justify-center py-8">
-                  <p-progress-spinner strokeWidth="4" />
-                </div>
-              } @else {
-                <app-user-activity-panel
-                  [userActivity]="userActivity()"
-                  (pageChange)="onUserActivityPageChange($event)"
-                />
-              }
-            </p-tabpanel>
-          </p-tabpanels>
-        </p-tabs>
-      }
-    </div>
-  `
+  templateUrl: './live-trade-monitoring.component.html'
 })
 export class LiveTradeMonitoringComponent {
   private monitoringService = inject(LiveTradeMonitoringService);

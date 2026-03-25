@@ -5,7 +5,7 @@ import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 
-import { ComparisonDto } from '../../live-trade-monitoring.service';
+import { ComparisonDto } from '../../live-trade-monitoring.types';
 
 interface MetricRow {
   name: string;
@@ -53,7 +53,7 @@ interface MetricRow {
       <p-card>
         <ng-template #header>
           <div class="flex items-center gap-2 p-3">
-            <i class="pi pi-chart-bar text-primary text-xl"></i>
+            <i class="pi pi-chart-bar text-xl text-primary"></i>
             <span class="font-semibold">Performance Comparison</span>
           </div>
         </ng-template>

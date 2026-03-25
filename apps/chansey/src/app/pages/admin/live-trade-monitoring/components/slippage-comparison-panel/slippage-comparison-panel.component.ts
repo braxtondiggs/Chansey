@@ -6,7 +6,7 @@ import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { TableModule } from 'primeng/table';
 
-import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
+import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
 
 @Component({
   selector: 'app-slippage-comparison-panel',
@@ -52,7 +52,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
         <p-card>
           <ng-template #header>
             <div class="flex items-center gap-2 p-3">
-              <i class="pi pi-clock text-primary text-xl"></i>
+              <i class="pi pi-clock text-xl text-primary"></i>
               <span class="font-semibold">Slippage by Time of Day</span>
             </div>
           </ng-template>
@@ -67,7 +67,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
         <p-card>
           <ng-template #header>
             <div class="flex items-center gap-2 p-3">
-              <i class="pi pi-dollar text-primary text-xl"></i>
+              <i class="pi pi-dollar text-xl text-primary"></i>
               <span class="font-semibold">Slippage by Order Size</span>
             </div>
           </ng-template>
@@ -85,7 +85,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
         <p-card>
           <ng-template #header>
             <div class="flex items-center gap-2 p-3">
-              <i class="pi pi-cog text-primary text-xl"></i>
+              <i class="pi pi-cog text-xl text-primary"></i>
               <span class="font-semibold">Slippage by Algorithm</span>
             </div>
           </ng-template>
@@ -131,7 +131,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.service';
         <p-card>
           <ng-template #header>
             <div class="flex items-center gap-2 p-3">
-              <i class="pi pi-bitcoin text-primary text-xl"></i>
+              <i class="pi pi-bitcoin text-xl text-primary"></i>
               <span class="font-semibold">Slippage by Symbol</span>
             </div>
           </ng-template>
