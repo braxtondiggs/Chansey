@@ -77,7 +77,7 @@
   } @else {
     @let exchangeList = exchanges();
     @if (exchangeList.length > 1) {
-      <p-tabs value="{{ exchangeList[0].slug }}" lazy scrollable>
+      <p-tabs [value]="defaultTab()" lazy scrollable>
         <p-tablist>
           @for (exchange of exchangeList; track exchange.id) {
             <p-tab [value]="exchange.slug">

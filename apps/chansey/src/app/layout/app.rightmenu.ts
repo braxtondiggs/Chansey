@@ -1,6 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { ConfirmationService } from 'primeng/api';
 import { DrawerModule } from 'primeng/drawer';
 
 import { CryptoTradingComponent } from '../shared/components/crypto-trading/crypto-trading.component';
@@ -10,6 +11,7 @@ import { LayoutService } from '../shared/services/layout.service';
   selector: 'app-rightmenu',
   standalone: true,
   imports: [DrawerModule, CryptoTradingComponent],
+  providers: [ConfirmationService],
   template: ` <p-drawer
     header="Spot Trading"
     [(visible)]="rightMenuVisible"

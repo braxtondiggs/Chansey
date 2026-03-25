@@ -72,8 +72,9 @@ export class OrderService {
   async createOrder(orderDto: OrderDto, user: User): Promise<Order> {
     this.logger.log(`Creating ${orderDto.side} order for user: ${user.id} on exchange: ${orderDto.exchangeId}`);
 
-    // Resolve exchange slug before try so it's available in catch for error mapping
-    const { slug: exchangeSlug } = await this.exchangeService.getExchangeById(orderDto.exchangeId);
+    // Resolve exchange entity before try so it's available in catch for error mapping
+    const exchangeEntity = await this.exchangeService.getExchangeById(orderDto.exchangeId);
+    const { slug: exchangeSlug, name: exchangeName } = exchangeEntity;
 
     try {
       // 1. Validate and get coins
@@ -95,7 +96,6 @@ export class OrderService {
       const exchangeOrder = await this.executeOrderOnExchange(exchange, symbol, orderDto);
 
       // 6. Save order to database with exchange reference
-      const exchangeEntity = await this.exchangeService.getExchangeById(orderDto.exchangeId);
       const savedOrder = await this.saveOrderToDatabase(
         exchangeOrder,
         orderDto,
@@ -110,7 +110,7 @@ export class OrderService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Order creation failed: ${err.message}`, err.stack);
-      throw mapCcxtError(error, exchangeSlug);
+      throw mapCcxtError(error, exchangeName);
     }
   }
 
@@ -319,7 +319,7 @@ export class OrderService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Exchange order failed: ${err.message}`);
-      throw mapCcxtError(error, exchange.id);
+      throw mapCcxtError(error, exchange.name);
     }
   }
 
@@ -901,7 +901,7 @@ export class OrderService {
       }
 
       this.logger.error(`Manual order placement failed: ${err.message}`, err.stack);
-      throw mapCcxtError(error, exchangeSlug);
+      throw mapCcxtError(error, exchangeKey.exchange.name);
     } finally {
       await queryRunner.release();
     }
@@ -1049,7 +1049,7 @@ export class OrderService {
       }
 
       this.logger.error(`OCO order creation failed: ${err.message}`, err.stack);
-      throw mapCcxtError(error, exchange.id);
+      throw mapCcxtError(error, exchangeKey.exchange.name);
     } finally {
       await queryRunner.release();
     }
@@ -1109,7 +1109,7 @@ export class OrderService {
         if (err.message?.includes('filled') || err.message?.includes('closed')) {
           throw new BadRequestException('Order was filled before cancellation');
         }
-        throw mapCcxtError(error, exchangeKey.exchange.slug);
+        throw mapCcxtError(error, exchangeKey.exchange.name);
       }
 
       // Update order status
@@ -1328,7 +1328,7 @@ export class OrderService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Algorithmic order failed: ${err.message}`, err.stack);
-      throw mapCcxtError(error, exchangeKey.exchange.slug);
+      throw mapCcxtError(error, exchangeKey.exchange.name);
     }
   }
 }

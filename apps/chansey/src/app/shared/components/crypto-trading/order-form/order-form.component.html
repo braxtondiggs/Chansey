@@ -1,0 +1,321 @@
+<form
+  [formGroup]="form()"
+  (ngSubmit)="onSubmit()"
+  class="space-y-4"
+  [attr.aria-label]="(isBuy() ? 'Buy' : 'Sell') + ' order form'"
+>
+  <!-- Order Type Select -->
+  <div>
+    <p-floatlabel variant="on">
+      <p-select
+        [inputId]="side() + 'OrderType'"
+        formControlName="type"
+        [options]="orderTypeOptions()"
+        placeholder="Select order type"
+        class="w-full"
+        optionLabel="label"
+        optionValue="value"
+        appendTo="body"
+      >
+        <ng-template pTemplate="selectedItem" let-option>
+          <div class="flex items-center gap-2">
+            <i [class]="option.icon" class="text-sm"></i>
+            <span>{{ option.label }}</span>
+          </div>
+        </ng-template>
+        <ng-template pTemplate="item" let-option>
+          <div class="flex items-center gap-2">
+            <i [class]="option.icon" class="text-sm"></i>
+            <div>
+              <div class="font-medium">{{ option.label }}</div>
+              <div class="text-xs text-surface-600 dark:text-surface-400">{{ option.description }}</div>
+            </div>
+          </div>
+        </ng-template>
+      </p-select>
+      <label [for]="side() + 'OrderType'">Order Type</label>
+    </p-floatlabel>
+  </div>
+
+  <!-- Quantity -->
+  <div class="space-y-2">
+    <p-floatlabel variant="on">
+      <p-inputnumber
+        [inputId]="side() + 'Quantity'"
+        formControlName="quantity"
+        mode="decimal"
+        [minFractionDigits]="2"
+        [maxFractionDigits]="8"
+        class="w-full"
+        [class.ng-invalid]="isFieldInvalid('quantity')"
+        [class.ng-dirty]="isFieldInvalid('quantity')"
+      />
+      <label [for]="side() + 'Quantity'">
+        Quantity
+        @if (selectedPair()?.baseAsset?.symbol) {
+          <span>({{ selectedPair()?.baseAsset?.symbol | uppercase }})</span>
+        }
+      </label>
+    </p-floatlabel>
+    @if (isFieldInvalid('quantity')) {
+      <small class="p-error" role="alert">{{ getFieldError('quantity') }}</small>
+    }
+    <!-- Percentage Buttons -->
+    <div>
+      <p-selectbutton
+        [options]="quickAmountOptions()"
+        [ngModel]="selectedPercentage()"
+        (ngModelChange)="onPercentageChange($event)"
+        [ngModelOptions]="{ standalone: true }"
+        optionLabel="label"
+        optionValue="value"
+        [disabled]="!selectedPair()"
+        [fluid]="true"
+        [attr.aria-label]="'Quick amount percentage'"
+      />
+    </div>
+  </div>
+
+  <!-- Price Input (for Limit/Stop orders) -->
+  @if (shouldShowPriceField()) {
+    <div class="space-y-2">
+      <p-floatlabel variant="on">
+        <p-inputnumber
+          [inputId]="side() + 'Price'"
+          formControlName="price"
+          mode="decimal"
+          [minFractionDigits]="2"
+          [maxFractionDigits]="8"
+          class="w-full"
+          [class.ng-invalid]="isFieldInvalid('price')"
+          [class.ng-dirty]="isFieldInvalid('price')"
+        />
+        <label [for]="side() + 'Price'">
+          Price
+          @if (selectedPair()?.quoteAsset?.symbol) {
+            <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
+          }
+        </label>
+      </p-floatlabel>
+      @if (isFieldInvalid('price')) {
+        <small class="p-error" role="alert">{{ getFieldError('price') }}</small>
+      }
+    </div>
+  }
+
+  <!-- Stop Price (for Stop orders) -->
+  @if (shouldShowStopPriceField()) {
+    <div class="space-y-2">
+      <p-floatlabel variant="on">
+        <p-inputnumber
+          [inputId]="side() + 'StopPrice'"
+          formControlName="stopPrice"
+          mode="decimal"
+          [minFractionDigits]="2"
+          [maxFractionDigits]="8"
+          class="w-full"
+          [class.ng-invalid]="isFieldInvalid('stopPrice')"
+          [class.ng-dirty]="isFieldInvalid('stopPrice')"
+        />
+        <label [for]="side() + 'StopPrice'">
+          Stop Price
+          @if (selectedPair()?.quoteAsset?.symbol) {
+            <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
+          }
+        </label>
+      </p-floatlabel>
+      @if (isFieldInvalid('stopPrice')) {
+        <small class="p-error" role="alert">{{ getFieldError('stopPrice') }}</small>
+      }
+      <p-message severity="warn" size="small">
+        Order executes when price
+        {{ form().get('type')?.value === 'STOP_LOSS' ? 'drops to' : 'reaches' }} this level
+      </p-message>
+    </div>
+  }
+
+  <!-- Trailing Stop Fields -->
+  @if (shouldShowTrailingFields()) {
+    <div class="space-y-2">
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <p-floatlabel variant="on">
+            <p-inputnumber
+              [inputId]="side() + 'TrailingAmount'"
+              formControlName="trailingAmount"
+              mode="decimal"
+              [minFractionDigits]="2"
+              [maxFractionDigits]="8"
+              class="w-full"
+              [class.ng-invalid]="isFieldInvalid('trailingAmount')"
+              [class.ng-dirty]="isFieldInvalid('trailingAmount')"
+            />
+            <label [for]="side() + 'TrailingAmount'">Trailing Amount</label>
+          </p-floatlabel>
+          @if (isFieldInvalid('trailingAmount')) {
+            <small class="p-error" role="alert">{{ getFieldError('trailingAmount') }}</small>
+          }
+        </div>
+        <p-floatlabel variant="on">
+          <p-select
+            [inputId]="side() + 'TrailingType'"
+            formControlName="trailingType"
+            [options]="trailingTypeOptions()"
+            placeholder="Select type"
+            class="w-full"
+            optionLabel="label"
+            optionValue="value"
+            appendTo="body"
+          />
+          <label [for]="side() + 'TrailingType'">Type</label>
+        </p-floatlabel>
+      </div>
+      <p-message severity="info" size="small"> Stop price adjusts as market moves in your favor </p-message>
+    </div>
+  }
+
+  <!-- Take Profit Price -->
+  @if (shouldShowTakeProfitField()) {
+    <div class="space-y-2">
+      <p-floatlabel variant="on">
+        <p-inputnumber
+          [inputId]="side() + 'TakeProfitPrice'"
+          formControlName="takeProfitPrice"
+          mode="decimal"
+          [minFractionDigits]="2"
+          [maxFractionDigits]="8"
+          class="w-full"
+          [class.ng-invalid]="isFieldInvalid('takeProfitPrice')"
+          [class.ng-dirty]="isFieldInvalid('takeProfitPrice')"
+        />
+        <label [for]="side() + 'TakeProfitPrice'">
+          Take Profit
+          @if (selectedPair()?.quoteAsset?.symbol) {
+            <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
+          }
+        </label>
+      </p-floatlabel>
+      @if (isFieldInvalid('takeProfitPrice')) {
+        <small class="p-error" role="alert">{{ getFieldError('takeProfitPrice') }}</small>
+      }
+    </div>
+  }
+
+  <!-- Stop Loss Price (for OCO) -->
+  @if (shouldShowStopLossField()) {
+    <div class="space-y-2">
+      <p-floatlabel variant="on">
+        <p-inputnumber
+          [inputId]="side() + 'StopLossPrice'"
+          formControlName="stopLossPrice"
+          mode="decimal"
+          [minFractionDigits]="2"
+          [maxFractionDigits]="8"
+          class="w-full"
+          [class.ng-invalid]="isFieldInvalid('stopLossPrice')"
+          [class.ng-dirty]="isFieldInvalid('stopLossPrice')"
+        />
+        <label [for]="side() + 'StopLossPrice'">
+          Stop Loss
+          @if (selectedPair()?.quoteAsset?.symbol) {
+            <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
+          }
+        </label>
+      </p-floatlabel>
+      @if (isFieldInvalid('stopLossPrice')) {
+        <small class="p-error" role="alert">{{ getFieldError('stopLossPrice') }}</small>
+      }
+      <p-message severity="info" size="small"> OCO: When one order executes, the other cancels </p-message>
+    </div>
+  }
+
+  <!-- Order Summary -->
+  <div
+    class="rounded-lg border p-3"
+    [class]="summaryBorderClass() + ' ' + summaryBgClass()"
+    role="region"
+    [attr.aria-label]="summaryHeaderLabel()"
+  >
+    <div class="mb-2 flex items-center gap-1.5 text-xs font-semibold" [class]="summaryTitleClass()">
+      <i [class]="summaryIcon()" class="text-[10px]" aria-hidden="true"></i>
+      <span>{{ summaryHeaderLabel() }}</span>
+    </div>
+    @if (orderPreview()) {
+      <div class="space-y-1.5 text-sm">
+        <div class="flex justify-between">
+          <span [class]="labelClass()">Value</span>
+          <span class="font-medium tabular-nums" [class]="valueClass()">
+            {{ orderPreview()?.estimatedCost | number: '1.2-6' }}
+            {{ orderPreview()?.balanceCurrency?.toUpperCase() }}
+          </span>
+        </div>
+        <div class="flex justify-between">
+          <span [class]="labelClass()">Fee</span>
+          <span class="tabular-nums" [class]="feeClass()">
+            {{ orderPreview()?.estimatedFee | number: '1.2-6' }}
+            {{ orderPreview()?.feeCurrency?.toUpperCase() }}
+          </span>
+        </div>
+        <div class="border-t pt-1.5" [class]="dividerClass()">
+          <div class="flex justify-between font-semibold">
+            <span [class]="labelClass()">{{ summaryTotalLabel() }}</span>
+            <span class="tabular-nums" [class]="valueClass()">
+              @if (isBuy()) {
+                {{ orderPreview()?.totalRequired | number: '1.2-6' }}
+              } @else {
+                {{ (orderPreview()?.estimatedCost || 0) - (orderPreview()?.estimatedFee || 0) | number: '1.2-6' }}
+              }
+              {{ orderPreview()?.balanceCurrency?.toUpperCase() }}
+            </span>
+          </div>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span [class]="balanceLabelClass()">Balance</span>
+          <span
+            class="tabular-nums"
+            [class.text-green-600]="orderPreview()?.hasSufficientBalance"
+            [class.text-red-600]="!orderPreview()?.hasSufficientBalance"
+          >
+            {{ orderPreview()?.availableBalance | number: '1.2-6' }}
+            {{ orderPreview()?.balanceCurrency?.toUpperCase() }}
+          </span>
+        </div>
+        @if (!orderPreview()?.hasSufficientBalance) {
+          <div role="alert" class="mt-1 flex items-center gap-1 text-xs text-red-600">
+            <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+            <span>Insufficient balance</span>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="space-y-1.5 text-sm">
+        <div class="flex justify-between">
+          <span [class]="labelClass()">
+            @if (isBuy()) {
+              Est. Total
+            } @else {
+              Est. Net
+            }
+          </span>
+          <span class="font-medium tabular-nums" [class]="valueClass()">
+            @if (isBuy()) {
+              {{ fallbackTotal() | currency: 'USD' : 'symbol' : '1.2-6' }}
+            } @else {
+              {{ fallbackNet() | currency: 'USD' : 'symbol' : '1.2-6' }}
+            }
+          </span>
+        </div>
+      </div>
+    }
+  </div>
+
+  <p-button
+    type="submit"
+    [label]="buttonLabel()"
+    [icon]="buttonIcon()"
+    [severity]="buttonSeverity()"
+    styleClass="w-full"
+    [disabled]="form().invalid || isSubmitting() || !selectedPair() || (orderPreview() && !hasSufficientBalance())"
+    [loading]="isSubmitting()"
+  />
+</form>

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -43,6 +43,8 @@ import { SaveStatusIndicatorComponent } from '../save-status-indicator/save-stat
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TradingSettingsComponent {
+  exchangeSlug = input<string | null>(null);
+
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
   private settingsService = inject(SettingsService);

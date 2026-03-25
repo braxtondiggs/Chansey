@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -32,15 +32,26 @@ const VALID_TABS = ['account', 'trading', 'notification', 'security', 'appearanc
   templateUrl: './settings.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SettingsComponent {
+export class SettingsComponent implements AfterViewInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
   activeTab: string;
+  exchangeSlug: string | null;
 
   constructor() {
     const tab = this.route.snapshot.queryParamMap.get('tab');
     this.activeTab = tab && VALID_TABS.includes(tab as (typeof VALID_TABS)[number]) ? tab : 'account';
+    this.exchangeSlug = this.route.snapshot.queryParamMap.get('exchange');
+  }
+
+  ngAfterViewInit(): void {
+    const fragment = this.route.snapshot.fragment;
+    if (fragment) {
+      setTimeout(() => {
+        document.getElementById(fragment)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
   }
 
   onTabChange(tab: string | number | undefined): void {

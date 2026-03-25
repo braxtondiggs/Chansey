@@ -1,24 +1,24 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
-import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, FormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 
-import { MessageService } from 'primeng/api';
+import { Decimal } from 'decimal.js';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
-import { FloatLabel } from 'primeng/floatlabel';
-import { InputNumberModule } from 'primeng/inputnumber';
+import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { SelectModule } from 'primeng/select';
-import { SelectButtonModule } from 'primeng/selectbutton';
-import { TableModule } from 'primeng/table';
+import { SkeletonModule } from 'primeng/skeleton';
 import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
-import { TooltipModule } from 'primeng/tooltip';
 import { debounceTime, Subject, takeUntil } from 'rxjs';
 
 import {
   Balance,
   Exchange,
+  ExchangeKey,
+  Order,
   OrderPreview,
   OrderSide,
   OrderStatus,
@@ -28,64 +28,94 @@ import {
   TrailingType
 } from '@chansey/api-interfaces';
 
-import { AuthService } from '../../services';
-import { CryptoTradingService } from '../../services/crypto-trading.service';
+import { OrderFormComponent } from './order-form/order-form.component';
+
+import { AuthService, LayoutService } from '../../services';
 import { ExchangeService } from '../../services/exchange.service';
+import {
+  buildOrderRequest,
+  DEFAULT_FEE_RATE,
+  OrderBookEntry,
+  TradingMutationService,
+  TradingQueryService,
+  TradingStateService
+} from '../../services/trading';
 
 @Component({
   selector: 'app-crypto-trading',
   standalone: true,
   imports: [
     CommonModule,
-    FloatLabel,
     FormsModule,
-    ReactiveFormsModule,
     AvatarModule,
     ButtonModule,
-    CardModule,
-    InputNumberModule,
+    ConfirmDialogModule,
+    OrderFormComponent,
     SelectModule,
-    SelectButtonModule,
+    SkeletonModule,
     TabsModule,
-    TableModule,
-    ToastModule,
-    TooltipModule
+    ToastModule
   ],
   templateUrl: './crypto-trading.component.html',
-  styleUrls: ['./crypto-trading.component.scss']
+  host: { class: 'block' }
 })
 export class CryptoTradingComponent implements OnInit, OnDestroy {
   private readonly authService = inject(AuthService);
-  private readonly tradingService = inject(CryptoTradingService);
+  private readonly tradingQueryService = inject(TradingQueryService);
+  private readonly tradingMutationService = inject(TradingMutationService);
+  private readonly tradingStateService = inject(TradingStateService);
   private readonly exchangeService = inject(ExchangeService);
+  private readonly layoutService = inject(LayoutService);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
   private readonly messageService = inject(MessageService);
+  private readonly confirmationService = inject(ConfirmationService);
   private readonly destroy$ = new Subject<void>();
-  private readonly previewSubject$ = new Subject<'BUY' | 'SELL'>();
+  private readonly buyPreviewSubject$ = new Subject<void>();
+  private readonly sellPreviewSubject$ = new Subject<void>();
 
   // Reactive state
   selectedPairValue = signal<string | null>(null);
   selectedExchangeId = signal<string | null>(null);
   activeOrderTab = signal<string>('buy');
+
+  // PrimeNG Pass Through (PT) for tabs
+  tabListPt = {
+    root: 'bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl p-1 overflow-hidden',
+    tabList: 'bg-transparent !border-none gap-1 w-full flex',
+    content: '!border-none',
+    activeBar: '!hidden'
+  };
+
+  tabPanelsPt = {
+    root: '!p-0 bg-transparent'
+  };
+
+  private readonly tabInactiveClasses =
+    'flex-1 flex justify-center items-center !py-1.5 !px-3 !border-none !bg-transparent m-0 rounded-lg font-semibold text-sm transition-all duration-200 !text-surface-600 dark:!text-surface-300 hover:!bg-surface-200/60 dark:hover:!bg-surface-700/60 hover:!text-surface-800 dark:hover:!text-surface-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50';
+
+  private readonly buyActiveClasses =
+    'flex-1 flex justify-center items-center !py-1.5 !px-3 !border-none m-0 rounded-lg font-semibold text-md transition-all duration-200 !bg-green-500 !text-white hover:!bg-green-600 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500/50';
+
+  private readonly sellActiveClasses =
+    'flex-1 flex justify-center items-center !py-1.5 !px-3 !border-none m-0 rounded-lg font-semibold text-md transition-all duration-200 !bg-red-500 !text-white hover:!bg-red-600 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50';
+
+  buyTabPt = computed(() => {
+    const classes = this.activeOrderTab() === 'buy' ? this.buyActiveClasses : this.tabInactiveClasses;
+    return { root: classes };
+  });
+
+  sellTabPt = computed(() => {
+    const classes = this.activeOrderTab() === 'sell' ? this.sellActiveClasses : this.tabInactiveClasses;
+    return { root: classes };
+  });
+
   showActiveOrders = signal<boolean>(false);
   showOrderBook = signal<boolean>(false);
   selectedBuyPercentage = signal<number | null>(null);
   selectedSellPercentage = signal<number | null>(null);
   buyOrderPreview = signal<OrderPreview | null>(null);
   sellOrderPreview = signal<OrderPreview | null>(null);
-
-  // Computed symbol for order book query (uppercase for CCXT compatibility)
-  selectedSymbol = computed(() => {
-    const pairSymbol = this.selectedPairValue();
-    const pairs = this.tradingPairsQuery.data();
-
-    if (!pairSymbol || !pairs) {
-      return null;
-    }
-
-    const foundPair = pairs.find((pair) => pair.symbol.toUpperCase() === pairSymbol.toUpperCase());
-    return foundPair?.symbol.toUpperCase() || null;
-  });
 
   // Forms
   buyOrderForm!: FormGroup;
@@ -94,15 +124,9 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   // Query hooks
   userQuery = this.authService.useUser();
   exchangeQuery = this.exchangeService.useSupportedExchanges();
-  tradingPairsQuery = this.tradingService.useTradingPairs(this.selectedExchangeId);
-  balancesQuery = this.tradingService.useBalances();
-  activeOrdersQuery = this.tradingService.useActiveOrders();
-  orderBookQuery = this.tradingService.useOrderBook(this.selectedSymbol, this.selectedExchangeId);
-
-  // Mutations
-  createOrderMutation = this.tradingService.useCreateOrder();
-  previewOrderMutation = this.tradingService.usePreviewOrder();
-  cancelOrderMutation = this.tradingService.useCancelOrder();
+  tradingPairsQuery = this.tradingQueryService.useTradingPairs(this.selectedExchangeId);
+  balancesQuery = this.tradingQueryService.useBalances();
+  activeOrdersQuery = this.tradingQueryService.useActiveOrders();
 
   // Computed values
   selectedPair = computed(() => {
@@ -118,6 +142,16 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     return foundPair || null;
   });
 
+  // Derived from selectedPair (L4 fix: no duplicate .find() logic)
+  selectedSymbol = computed(() => this.selectedPair()?.symbol.toUpperCase() || null);
+
+  orderBookQuery = this.tradingQueryService.useOrderBook(this.selectedSymbol, this.selectedExchangeId);
+
+  // Mutations
+  createOrderMutation = this.tradingMutationService.useCreateOrder();
+  previewOrderMutation = this.tradingMutationService.usePreviewOrder();
+  cancelOrderMutation = this.tradingMutationService.useCancelOrder();
+
   // Get the exchange key ID for the selected exchange
   selectedExchangeKeyId = computed(() => {
     const exchangeId = this.selectedExchangeId();
@@ -125,7 +159,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     if (!exchangeId || !userExchanges) return null;
 
-    const userExchange = userExchanges.find((ue: any) => ue.exchangeId === exchangeId);
+    const userExchange = userExchanges.find((ue: ExchangeKey) => ue.exchangeId === exchangeId);
     return userExchange?.id || null;
   });
 
@@ -135,7 +169,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     return supportedExchanges?.map((exchange: Exchange) => {
       // Find matching user exchange to check if it's active
-      const userExchange = userExchanges?.find((ue: any) => ue.exchangeId === exchange.id);
+      const userExchange = userExchanges?.find((ue: ExchangeKey) => ue.exchangeId === exchange.id);
       const isActive = userExchange?.isActive || false;
 
       return {
@@ -226,6 +260,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     { label: 'Percentage', value: TrailingType.PERCENTAGE }
   ];
 
+  isExchangeDisconnected = computed(() => {
+    const exchangeId = this.selectedExchangeId();
+    if (!exchangeId) return false;
+    const option = this.exchangeOptions()?.find((ex) => ex.value === exchangeId);
+    return option?.status !== 'connected';
+  });
+
   // Auto-select the first connected exchange when available
   private shouldAutoSelect = computed(() => {
     const exchanges = this.exchangeOptions();
@@ -247,6 +288,14 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
         this.selectedExchangeId.set(exchangeToSelect.value);
       }
     });
+
+    // Auto-open order book when a pair is first selected
+    effect(() => {
+      const pair = this.selectedPair();
+      if (pair) {
+        this.showOrderBook.set(true);
+      }
+    });
   }
 
   ngOnInit() {
@@ -256,9 +305,13 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   }
 
   private setupPreviewDebounce() {
-    this.previewSubject$
+    this.buyPreviewSubject$
       .pipe(debounceTime(300), takeUntil(this.destroy$))
-      .subscribe((side) => this.executePreview(side));
+      .subscribe(() => this.executePreview('BUY'));
+
+    this.sellPreviewSubject$
+      .pipe(debounceTime(300), takeUntil(this.destroy$))
+      .subscribe(() => this.executePreview('SELL'));
   }
 
   ngOnDestroy() {
@@ -364,16 +417,23 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     const pair = this.tradingPairsQuery.data()?.find((p) => p.symbol.toUpperCase() === symbol.toUpperCase());
     if (pair) {
-      this.tradingService.setSelectedPair(pair);
+      this.tradingStateService.setSelectedPair(pair);
       // Trigger preview to get supported order types
       this.triggerPreview('BUY');
     }
   }
 
   /**
-   * Build a PlaceOrderRequest from form data
+   * Typed tab change handler (fix M4: removes $any() cast)
    */
-  private buildOrderRequest(side: 'BUY' | 'SELL'): PlaceOrderRequest | null {
+  onTabChange(value: string): void {
+    this.activeOrderTab.set(value);
+  }
+
+  /**
+   * Build a PlaceOrderRequest from form data using the shared utility
+   */
+  private buildPlaceOrderRequest(side: 'BUY' | 'SELL'): PlaceOrderRequest | null {
     const form = side === 'BUY' ? this.buyOrderForm : this.sellOrderForm;
     const pair = this.selectedPair();
     const exchangeKeyId = this.selectedExchangeKeyId();
@@ -382,25 +442,21 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     const formValue = form.value;
 
-    const request: PlaceOrderRequest = {
+    return buildOrderRequest(
       exchangeKeyId,
-      symbol: pair.symbol.toUpperCase(),
-      side: side === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
-      orderType: formValue.type,
-      quantity: formValue.quantity || 0
-    };
-
-    // Add conditional fields based on order type
-    if (formValue.price) request.price = formValue.price;
-    if (formValue.stopPrice) request.stopPrice = formValue.stopPrice;
-    if (formValue.trailingAmount) {
-      request.trailingAmount = formValue.trailingAmount;
-      request.trailingType = formValue.trailingType;
-    }
-    if (formValue.takeProfitPrice) request.takeProfitPrice = formValue.takeProfitPrice;
-    if (formValue.stopLossPrice) request.stopLossPrice = formValue.stopLossPrice;
-
-    return request;
+      pair.symbol.toUpperCase(),
+      side === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
+      formValue.type,
+      formValue.quantity || 0,
+      {
+        price: formValue.price,
+        stopPrice: formValue.stopPrice,
+        trailingAmount: formValue.trailingAmount,
+        trailingType: formValue.trailingType,
+        takeProfitPrice: formValue.takeProfitPrice,
+        stopLossPrice: formValue.stopLossPrice
+      }
+    );
   }
 
   onSubmitOrder(side: 'BUY' | 'SELL') {
@@ -415,7 +471,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const orderRequest = this.buildOrderRequest(side);
+    const orderRequest = this.buildPlaceOrderRequest(side);
     if (!orderRequest) {
       this.messageService.add({
         severity: 'error',
@@ -425,6 +481,30 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const pair = this.selectedPair();
+    const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
+    const quantity = form.get('quantity')?.value || 0;
+    const orderType = form.get('type')?.value || 'MARKET';
+    const symbol = pair?.baseAsset?.symbol?.toUpperCase() || '';
+    const priceDisplay =
+      orderType === OrderType.MARKET ? 'Market Price' : `${form.get('price')?.value || preview?.marketPrice || 0}`;
+
+    this.confirmationService.confirm({
+      header: `Confirm ${side} Order`,
+      message:
+        `${side} ${quantity} ${symbol} at ${priceDisplay}` +
+        (preview
+          ? ` — Est. ${side === 'BUY' ? 'total' : 'net'}: ${preview.estimatedCost?.toFixed(6)} ${preview.balanceCurrency?.toUpperCase() || ''}`
+          : ''),
+      icon: side === 'BUY' ? 'pi pi-arrow-up' : 'pi pi-arrow-down',
+      acceptLabel: `Place ${side} Order`,
+      rejectLabel: 'Cancel',
+      acceptButtonStyleClass: side === 'BUY' ? 'p-button-success' : 'p-button-danger',
+      accept: () => this.executeOrder(side, form, orderRequest)
+    });
+  }
+
+  private executeOrder(side: 'BUY' | 'SELL', form: FormGroup, orderRequest: PlaceOrderRequest) {
     this.createOrderMutation.mutate(orderRequest, {
       onSuccess: () => {
         this.messageService.add({
@@ -460,7 +540,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
           detail: 'Order cancelled successfully'
         });
       },
-      onError: (error: any) => {
+      onError: (error: Error) => {
         this.messageService.add({
           severity: 'error',
           summary: 'Cancellation Failed',
@@ -471,14 +551,18 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   }
 
   refreshActiveOrders() {
-    // Trigger refetch of active orders
+    this.activeOrdersQuery.refetch();
   }
 
   /**
    * Trigger order preview with debouncing (300ms)
    */
   private triggerPreview(side: 'BUY' | 'SELL'): void {
-    this.previewSubject$.next(side);
+    if (side === 'BUY') {
+      this.buyPreviewSubject$.next();
+    } else {
+      this.sellPreviewSubject$.next();
+    }
   }
 
   /**
@@ -491,7 +575,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     // Only preview if we have a valid quantity
     if (!quantity || quantity <= 0) return;
 
-    const orderRequest = this.buildOrderRequest(side);
+    const orderRequest = this.buildPlaceOrderRequest(side);
     if (!orderRequest) return;
 
     this.previewOrderMutation.mutate(orderRequest, {
@@ -507,8 +591,8 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
           this.supportedOrderTypes.set(preview.supportedOrderTypes);
         }
       },
-      onError: (error: any) => {
-        console.warn('Order preview failed:', error.message);
+      onError: () => {
+        // Preview failures are non-critical; silently ignore
       }
     });
   }
@@ -532,15 +616,15 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     const marketPrice = pair.currentPrice || preview?.marketPrice || 0;
     const price = orderType === OrderType.MARKET ? marketPrice : form.get('price')?.value || marketPrice;
 
-    return quantity * price;
+    return new Decimal(quantity).times(new Decimal(price)).toNumber();
   }
 
   calculateOrderFees(side: 'BUY' | 'SELL'): number {
     const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
     if (preview) return preview.estimatedFee;
 
-    // Fallback: estimate 0.1% fee
-    return this.calculateOrderTotal(side) * 0.001;
+    // Fallback: estimate using default fee rate
+    return new Decimal(this.calculateOrderTotal(side)).times(new Decimal(DEFAULT_FEE_RATE)).toNumber();
   }
 
   /**
@@ -548,19 +632,19 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
    */
   getFeeRate(side: 'BUY' | 'SELL'): number {
     const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-    return preview?.feeRate || 0.001;
+    return preview?.feeRate || DEFAULT_FEE_RATE;
   }
 
   calculateBuyOrderTotalWithFees(): number {
     const preview = this.buyOrderPreview();
     if (preview) return preview.totalRequired;
-    return this.calculateOrderTotal('BUY') + this.calculateOrderFees('BUY');
+    return new Decimal(this.calculateOrderTotal('BUY')).plus(new Decimal(this.calculateOrderFees('BUY'))).toNumber();
   }
 
   calculateSellOrderNetAmount(): number {
     const preview = this.sellOrderPreview();
-    if (preview) return preview.estimatedCost - preview.estimatedFee;
-    return this.calculateOrderTotal('SELL') - this.calculateOrderFees('SELL');
+    if (preview) return new Decimal(preview.estimatedCost).minus(new Decimal(preview.estimatedFee)).toNumber();
+    return new Decimal(this.calculateOrderTotal('SELL')).minus(new Decimal(this.calculateOrderFees('SELL'))).toNumber();
   }
 
   getBuyBalance(): Balance | undefined {
@@ -582,7 +666,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     if (!balance) return 0;
 
     const feeRate = this.getFeeRate('BUY');
-    return balance.available * (1 - feeRate);
+    return new Decimal(balance.available).times(new Decimal(1).minus(new Decimal(feeRate))).toNumber();
   }
 
   getAvailableSellBalance(): number {
@@ -601,7 +685,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     const price = pair.currentPrice || preview?.marketPrice || 0;
     if (price <= 0) return 0;
 
-    return availableBalance / price;
+    return new Decimal(availableBalance).div(new Decimal(price)).toNumber();
   }
 
   getTopBids() {
@@ -610,11 +694,6 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
   getTopAsks() {
     return this.orderBookQuery.data()?.asks.slice(0, 5) || [];
-  }
-
-  priceChangeClass(): string {
-    const change = this.selectedPair()?.spreadPercentage || 0;
-    return change >= 0 ? 'text-green-600' : 'text-red-600';
   }
 
   getStatusClass(status: OrderStatus): string {
@@ -630,11 +709,11 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     return classes[status] || 'bg-gray-100 text-gray-800';
   }
 
-  trackByPrice(_index: number, item: any) {
+  trackByPrice(_index: number, item: OrderBookEntry) {
     return item.price;
   }
 
-  trackByOrderId(_index: number, order: any) {
+  trackByOrderId(_index: number, order: Order) {
     return order.id;
   }
 
@@ -670,7 +749,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   }
 
   getTradingFeeRate(): number {
-    return (this.getFeeRate('BUY') || 0.001) * 100; // Return as percentage
+    return (this.getFeeRate('BUY') || DEFAULT_FEE_RATE) * 100; // Return as percentage
   }
 
   onExchangeChange(event: { value: string }) {
@@ -687,61 +766,19 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     });
   }
 
+  navigateToExchangeSetup(): void {
+    this.layoutService.updateLayoutState({ rightMenuVisible: false });
+    const exchangeSlug = this.exchangeQuery.data()?.find((e) => e.id === this.selectedExchangeId())?.slug;
+    this.router.navigate(['/app/settings'], {
+      queryParams: { tab: 'trading', ...(exchangeSlug && { exchange: exchangeSlug }) },
+      fragment: 'exchanges'
+    });
+  }
+
   getSelectedExchangeName(): string {
     const exchangeId = this.selectedExchangeId();
-    const exchange = this.exchangeOptions()?.find((ex: any) => ex.value === exchangeId);
+    const exchange = this.exchangeOptions()?.find((ex) => ex.value === exchangeId);
     return exchange?.label || 'No Exchange';
-  }
-
-  getExchangeStatusClass(status: string): string {
-    return status === 'connected' ? 'bg-green-500' : 'bg-red-500';
-  }
-
-  getExchangeStatusTextClass(status: string): string {
-    return status === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
-  }
-
-  // Order type field visibility helpers
-  shouldShowPriceField(form: FormGroup): boolean {
-    const type = form.get('type')?.value;
-    return type === OrderType.LIMIT || type === OrderType.STOP_LIMIT;
-  }
-
-  shouldShowStopPriceField(form: FormGroup): boolean {
-    const type = form.get('type')?.value;
-    return type === OrderType.STOP_LOSS || type === OrderType.STOP_LIMIT;
-  }
-
-  shouldShowTrailingFields(form: FormGroup): boolean {
-    return form.get('type')?.value === OrderType.TRAILING_STOP;
-  }
-
-  shouldShowTakeProfitField(form: FormGroup): boolean {
-    const type = form.get('type')?.value;
-    return type === OrderType.TAKE_PROFIT || type === OrderType.OCO;
-  }
-
-  shouldShowStopLossField(form: FormGroup): boolean {
-    return form.get('type')?.value === OrderType.OCO;
-  }
-
-  isFieldInvalid(form: FormGroup, fieldName: string): boolean {
-    const field = form.get(fieldName);
-    return !!field && field.invalid && (field.dirty || field.touched);
-  }
-
-  getFieldError(form: FormGroup, fieldName: string): string {
-    const field = form.get(fieldName);
-    if (!field?.errors) return '';
-
-    if (field.errors['required']) return 'This field is required';
-    if (field.errors['min']) {
-      const minValue = field.errors['min'].min;
-      // Format small numbers to avoid scientific notation
-      const formatted = minValue < 0.0001 ? minValue.toFixed(8) : minValue;
-      return `Minimum value is ${formatted}`;
-    }
-    return 'Invalid value';
   }
 
   /**

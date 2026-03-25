@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -40,6 +40,7 @@ export class ExchangeIntegrationsComponent {
   showHeader = input(true);
   exchanges = input<Exchange[]>([]);
   exchangeForms = input<Record<string, ExchangeFormState>>({});
+  initialExchange = input<string | null>(null);
   hideKeyActions = input(false);
   isLoading = input(false);
   isError = input(false);
@@ -52,6 +53,15 @@ export class ExchangeIntegrationsComponent {
 
   showBinanceHelp = signal(false);
   showCoinbaseHelp = signal(false);
+
+  defaultTab = computed(() => {
+    const initial = this.initialExchange();
+    const exchangeList = this.exchanges();
+    if (initial && exchangeList.some((e) => e.slug === initial)) {
+      return initial;
+    }
+    return exchangeList[0]?.slug ?? '';
+  });
 
   private panelState = createSinglePanelState('trading.exchangeIntegrations');
   get panelCollapsed() {

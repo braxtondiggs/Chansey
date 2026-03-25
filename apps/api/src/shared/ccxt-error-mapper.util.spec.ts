@@ -25,34 +25,34 @@ import { InsufficientBalanceException } from '../common/exceptions/order';
 
 describe('mapCcxtError', () => {
   it('should pass through AppException instances without wrapping', () => {
-    const original = new ExchangeErrorException('already mapped', 'binance');
-    expect(() => mapCcxtError(original, 'binance')).toThrow(original);
+    const original = new ExchangeErrorException('already mapped', 'Binance');
+    expect(() => mapCcxtError(original, 'Binance')).toThrow(original);
   });
 
   it('should pass through HttpException instances without wrapping', () => {
     const { BadRequestException } = jest.requireActual('@nestjs/common');
     const original = new BadRequestException('validation failed');
-    expect(() => mapCcxtError(original, 'binance')).toThrow(original);
+    expect(() => mapCcxtError(original, 'Binance')).toThrow(original);
   });
 
   it('should map PermissionDenied to ExchangePermissionDeniedException', () => {
     const err = new PermissionDenied('binanceus {"code":-2015,"msg":"Invalid API-key"}');
-    expect(() => mapCcxtError(err, 'binanceus')).toThrow(ExchangePermissionDeniedException);
+    expect(() => mapCcxtError(err, 'Binance US')).toThrow(ExchangePermissionDeniedException);
   });
 
   it('should map AuthenticationError to ExchangeAuthFailedException', () => {
     const err = new AuthenticationError('Invalid API key');
-    expect(() => mapCcxtError(err, 'coinbase')).toThrow(ExchangeAuthFailedException);
+    expect(() => mapCcxtError(err, 'Coinbase')).toThrow(ExchangeAuthFailedException);
   });
 
   it('should map AccountSuspended with exchange name to ExchangeAuthFailedException', () => {
     const err = new AccountSuspended('account suspended');
-    expect(() => mapCcxtError(err, 'binance')).toThrow(
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(
       expect.objectContaining({
-        message: expect.stringContaining('binance')
+        message: expect.stringContaining('Binance')
       })
     );
-    expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeAuthFailedException);
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(ExchangeAuthFailedException);
   });
 
   it('should map AccountSuspended without exchange name to generic suspension message', () => {
@@ -67,29 +67,36 @@ describe('mapCcxtError', () => {
 
   it('should map InsufficientFunds with parseable currency to InsufficientBalanceException', () => {
     const err = new InsufficientFunds('Insufficient balance: 0.5 BTC available');
-    expect(() => mapCcxtError(err, 'binance')).toThrow(InsufficientBalanceException);
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(InsufficientBalanceException);
   });
 
   it('should map InsufficientFunds without parseable currency to InsufficientBalanceException', () => {
     const err = new InsufficientFunds('Account has insufficient balance');
-    expect(() => mapCcxtError(err, 'binance')).toThrow(InsufficientBalanceException);
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(InsufficientBalanceException);
   });
 
   it('should map InvalidOrder to ExchangeErrorException with cleaned message', () => {
     const err = new InvalidOrder('binanceus {"code":-1013,"msg":"Invalid quantity."}');
-    expect(() => mapCcxtError(err, 'binanceus')).toThrow(
+    expect(() => mapCcxtError(err, 'Binance US')).toThrow(
       expect.objectContaining({
         message: expect.stringContaining('Invalid quantity.')
       })
     );
   });
 
-  it.each([
-    ['RateLimitExceeded', RateLimitExceeded, 'Too many requests'],
-    ['DDoSProtection', DDoSProtection, 'DDoS protection triggered']
-  ] as const)('should map %s to ExchangeRateLimitedException', (_name, ErrorClass, message) => {
-    const err = new ErrorClass(message);
-    expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeRateLimitedException);
+  it('should map RateLimitExceeded to ExchangeRateLimitedException', () => {
+    const err = new RateLimitExceeded('Too many requests');
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(ExchangeRateLimitedException);
+  });
+
+  it('should map DDoSProtection without permission message to ExchangeRateLimitedException', () => {
+    const err = new DDoSProtection('Rate limit triggered');
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(ExchangeRateLimitedException);
+  });
+
+  it('should map DDoSProtection with permission message to ExchangePermissionDeniedException', () => {
+    const err = new DDoSProtection('binanceus {"code":-2015,"msg":"Invalid API-key, IP, or permissions for action."}');
+    expect(() => mapCcxtError(err, 'Binance US')).toThrow(ExchangePermissionDeniedException);
   });
 
   it.each([
@@ -98,21 +105,21 @@ describe('mapCcxtError', () => {
     ['RequestTimeout', RequestTimeout, 'timeout']
   ] as const)('should map %s to ExchangeUnavailableException', (_name, ErrorClass, message) => {
     const err = new ErrorClass(message);
-    expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeUnavailableException);
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(ExchangeUnavailableException);
   });
 
   it('should map unknown CCXT errors to ExchangeErrorException', () => {
     const err = new ExchangeError('something broke');
-    expect(() => mapCcxtError(err, 'binance')).toThrow(ExchangeErrorException);
+    expect(() => mapCcxtError(err, 'Binance')).toThrow(ExchangeErrorException);
   });
 
   it('should handle non-Error values', () => {
-    expect(() => mapCcxtError('raw string error', 'binance')).toThrow(ExchangeErrorException);
+    expect(() => mapCcxtError('raw string error', 'Binance')).toThrow(ExchangeErrorException);
   });
 
   it('should include exchange name in PermissionDenied message when provided', () => {
     const err = new PermissionDenied('no perms');
-    expect(() => mapCcxtError(err, 'binanceus')).toThrow(ExchangePermissionDeniedException);
+    expect(() => mapCcxtError(err, 'Binance US')).toThrow(ExchangePermissionDeniedException);
     expect(() => mapCcxtError(err)).toThrow(ExchangePermissionDeniedException);
   });
 });

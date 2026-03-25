@@ -1,0 +1,131 @@
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+
+import { ButtonModule } from 'primeng/button';
+import { FloatLabel } from 'primeng/floatlabel';
+import { InputNumberModule } from 'primeng/inputnumber';
+import { MessageModule } from 'primeng/message';
+import { SelectModule } from 'primeng/select';
+import { SelectButtonModule } from 'primeng/selectbutton';
+
+import { OrderPreview, OrderType, TickerPair, TrailingType } from '@chansey/api-interfaces';
+
+@Component({
+  selector: 'app-order-form',
+  standalone: true,
+  imports: [
+    CommonModule,
+    FormsModule,
+    ReactiveFormsModule,
+    ButtonModule,
+    FloatLabel,
+    InputNumberModule,
+    MessageModule,
+    SelectModule,
+    SelectButtonModule
+  ],
+  templateUrl: './order-form.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class OrderFormComponent {
+  // Required inputs
+  side = input.required<'BUY' | 'SELL'>();
+  form = input.required<FormGroup>();
+  selectedPair = input.required<TickerPair | null>();
+  orderTypeOptions = input.required<{ label: string; value: OrderType; icon: string; description: string }[]>();
+  quickAmountOptions = input.required<{ label: string; value: number }[]>();
+  trailingTypeOptions = input.required<{ label: string; value: TrailingType }[]>();
+  orderPreview = input.required<OrderPreview | null>();
+  selectedPercentage = input.required<number | null>();
+  isSubmitting = input.required<boolean>();
+  hasSufficientBalance = input.required<boolean>();
+  fallbackTotal = input.required<number>();
+  fallbackNet = input.required<number>();
+
+  // Outputs
+  submitOrder = output<void>();
+  percentageChange = output<number | null>();
+
+  // Derived from side
+  isBuy = computed(() => this.side() === 'BUY');
+
+  // Color theme classes derived from side
+  summaryBorderClass = computed(() =>
+    this.isBuy() ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'
+  );
+  summaryBgClass = computed(() => (this.isBuy() ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'));
+  summaryTitleClass = computed(() =>
+    this.isBuy() ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'
+  );
+  labelClass = computed(() => (this.isBuy() ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'));
+  valueClass = computed(() => (this.isBuy() ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'));
+  feeClass = computed(() => (this.isBuy() ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'));
+  dividerClass = computed(() =>
+    this.isBuy() ? 'border-green-200 dark:border-green-700' : 'border-red-200 dark:border-red-700'
+  );
+  balanceLabelClass = computed(() =>
+    this.isBuy() ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  );
+
+  buttonLabel = computed(() => {
+    const pair = this.selectedPair();
+    const sideLabel = this.isBuy() ? 'Buy' : 'Sell';
+    return pair ? `${sideLabel} ${pair.baseAsset?.symbol?.toUpperCase()}` : sideLabel;
+  });
+
+  buttonIcon = computed(() => (this.isBuy() ? 'pi pi-arrow-up' : 'pi pi-arrow-down'));
+  buttonSeverity = computed(() => (this.isBuy() ? 'success' : 'danger'));
+  summaryTotalLabel = computed(() => (this.isBuy() ? 'Total' : 'Net'));
+  summaryHeaderLabel = computed(() => (this.isBuy() ? 'Buy Order Summary' : 'Sell Order Summary'));
+  summaryIcon = computed(() => (this.isBuy() ? 'pi pi-arrow-up' : 'pi pi-arrow-down'));
+
+  // Template helper methods
+  shouldShowPriceField(): boolean {
+    const type = this.form().get('type')?.value;
+    return type === OrderType.LIMIT || type === OrderType.STOP_LIMIT;
+  }
+
+  shouldShowStopPriceField(): boolean {
+    const type = this.form().get('type')?.value;
+    return type === OrderType.STOP_LOSS || type === OrderType.STOP_LIMIT;
+  }
+
+  shouldShowTrailingFields(): boolean {
+    return this.form().get('type')?.value === OrderType.TRAILING_STOP;
+  }
+
+  shouldShowTakeProfitField(): boolean {
+    const type = this.form().get('type')?.value;
+    return type === OrderType.TAKE_PROFIT || type === OrderType.OCO;
+  }
+
+  shouldShowStopLossField(): boolean {
+    return this.form().get('type')?.value === OrderType.OCO;
+  }
+
+  isFieldInvalid(fieldName: string): boolean {
+    const field = this.form().get(fieldName);
+    return !!field && field.invalid && (field.dirty || field.touched);
+  }
+
+  getFieldError(fieldName: string): string {
+    const field = this.form().get(fieldName);
+    if (!field?.errors) return '';
+    if (field.errors['required']) return 'This field is required';
+    if (field.errors['min']) {
+      const minValue = field.errors['min'].min;
+      const formatted = minValue < 0.0001 ? minValue.toFixed(8) : minValue;
+      return `Minimum value is ${formatted}`;
+    }
+    return 'Invalid value';
+  }
+
+  onSubmit(): void {
+    this.submitOrder.emit();
+  }
+
+  onPercentageChange(value: number | null): void {
+    this.percentageChange.emit(value);
+  }
+}
