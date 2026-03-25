@@ -1,0 +1,155 @@
+<div class="p-3 md:p-6">
+  <p-toast />
+
+  <!-- Header -->
+  <div class="page-header mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h1 class="m-0 text-2xl font-bold">Backtest Monitoring</h1>
+        <p class="mt-1 text-gray-500">Analytics and performance metrics for backtests</p>
+      </div>
+
+      <!-- Filters -->
+      <div class="flex flex-wrap items-center gap-3">
+        <p-datepicker
+          [(ngModel)]="dateRange"
+          selectionMode="range"
+          [readonlyInput]="true"
+          placeholder="Date Range"
+          dateFormat="yy-mm-dd"
+          [showIcon]="true"
+          (onSelect)="onDateRangeChange()"
+        />
+
+        <p-select
+          [(ngModel)]="selectedStatus"
+          [options]="statusOptions"
+          placeholder="All Statuses"
+          [showClear]="true"
+          (onChange)="onFilterChange()"
+        />
+
+        <p-select
+          [(ngModel)]="selectedView"
+          [options]="viewOptions"
+          placeholder="All Stages"
+          [showClear]="true"
+          (onChange)="onViewChange()"
+        />
+
+        <p-button
+          icon="pi pi-bolt"
+          [rounded]="true"
+          [text]="activeTab() !== 'signal-feed'"
+          [severity]="activeTab() === 'signal-feed' ? 'warn' : 'secondary'"
+          (onClick)="toggleSignalFeed()"
+          pTooltip="Signal Activity Feed"
+        />
+
+        <p-button
+          icon="pi pi-refresh"
+          [rounded]="true"
+          [text]="true"
+          severity="secondary"
+          (onClick)="refresh()"
+          pTooltip="Refresh data"
+        />
+      </div>
+    </div>
+  </div>
+
+  @if (isLoading()) {
+    <div class="flex items-center justify-center py-8">
+      <p-progress-spinner strokeWidth="4" />
+    </div>
+  } @else {
+    <!-- Overview Cards -->
+    <app-overview-cards [overview]="overview()" [pipelineStageCounts]="pipelineStageCounts()" class="mb-4" />
+
+    <!-- Global Signal Activity Feed (all pipeline stages) -->
+    @if (activeTab() === 'signal-feed') {
+      @if (signalFeedQuery.isPending()) {
+        <div class="flex items-center justify-center py-8">
+          <p-progress-spinner strokeWidth="4" />
+        </div>
+      } @else {
+        <app-signal-activity-feed [feed]="signalFeed()" />
+      }
+    } @else if (selectedView === 'optimization') {
+      @if (optimizationQuery.isPending()) {
+        <div class="flex items-center justify-center py-8">
+          <p-progress-spinner strokeWidth="4" />
+        </div>
+      } @else {
+        <app-optimization-panel
+          [analytics]="optimizationAnalytics()"
+          [runs]="optimizationRuns()"
+          (pageChange)="onOptimizationRunsPageChange($event)"
+        />
+      }
+    } @else if (selectedView === 'paper-trading') {
+      @if (paperTradingQuery.isPending()) {
+        <div class="flex items-center justify-center py-8">
+          <p-progress-spinner strokeWidth="4" />
+        </div>
+      } @else {
+        <app-paper-trading-panel
+          [analytics]="paperTradingAnalytics()"
+          [sessions]="paperTradingSessions()"
+          (pageChange)="onPaperTradingSessionsPageChange($event)"
+        />
+      }
+    } @else if (selectedView === 'live-replay') {
+      @if (liveReplayRunsQuery.isPending()) {
+        <div class="flex items-center justify-center py-8">
+          <p-progress-spinner strokeWidth="4" />
+        </div>
+      } @else {
+        <app-live-replay-panel
+          [overview]="overview()"
+          [runs]="liveReplayRuns()"
+          (pageChange)="onLiveReplayRunsPageChange($event)"
+        />
+      }
+    } @else {
+      <!-- Backtest tabs (overview, signals, trades, export) -->
+      <p-tabs [value]="activeTab()" (valueChange)="activeTab.set($any($event))">
+        <p-tablist>
+          <p-tab value="overview">Overview</p-tab>
+          <p-tab value="signals">Signal Quality</p-tab>
+          <p-tab value="trades">Trade Analytics</p-tab>
+          <p-tab value="export">Export</p-tab>
+        </p-tablist>
+        <p-tabpanels>
+          <p-tabpanel value="overview">
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <app-top-algorithms [algorithms]="overview()?.topAlgorithms || []" />
+              <app-backtests-table [backtests]="backtests()" (pageChange)="onPageChange($event)" />
+            </div>
+          </p-tabpanel>
+          <p-tabpanel value="signals">
+            @if (signalAnalyticsQuery.isPending()) {
+              <div class="flex items-center justify-center py-8">
+                <p-progress-spinner strokeWidth="4" />
+              </div>
+            } @else {
+              <app-signal-quality-panel [analytics]="signalAnalytics()" />
+            }
+          </p-tabpanel>
+          <p-tabpanel value="trades">
+            @if (tradeAnalyticsQuery.isPending()) {
+              <div class="flex items-center justify-center py-8">
+                <p-progress-spinner strokeWidth="4" />
+              </div>
+            } @else {
+              <app-trade-analytics-panel [analytics]="tradeAnalytics()" />
+            }
+          </p-tabpanel>
+          <p-tabpanel value="export">
+            <app-export-panel [filters]="currentFilters()" (exportRequest)="onExport($event)" />
+          </p-tabpanel>
+        </p-tabpanels>
+      </p-tabs>
+    }
+  }
+</div>
