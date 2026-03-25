@@ -394,7 +394,7 @@ describe('query-utils', () => {
     ])('prefetches queries with $label', async ({ staleTime, expected }) => {
       const prefetch = usePrefetchQuery();
 
-      await prefetch(['prefetch'], () => Promise.resolve('data'), staleTime!);
+      await prefetch(['prefetch'], () => Promise.resolve('data'), staleTime);
       expect(queryClientMock.prefetchQuery).toHaveBeenCalledWith({
         queryFn: expect.any(Function),
         queryKey: ['prefetch'],

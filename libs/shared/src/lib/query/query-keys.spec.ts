@@ -36,11 +36,14 @@ describe('query-keys', () => {
     expect(queryKeys.trading.tickerPairs()).toEqual(['trading', 'ticker-pair', 'all']);
     expect(queryKeys.trading.tickerPairs('binance')).toEqual(['trading', 'ticker-pair', 'binance']);
     expect(queryKeys.trading.orderBook('BTC/USDT')).toEqual(['trading', 'orderBook', 'BTC/USDT']);
+    expect(queryKeys.trading.orderBook('BTC/USDT', 'binance')).toEqual(['trading', 'orderBook', 'BTC/USDT', 'binance']);
     expect(queryKeys.trading.orders()).toEqual(['trading', 'orders']);
     expect(queryKeys.trading.activeOrders()).toEqual(['trading', 'orders', 'active']);
     expect(queryKeys.trading.orderHistory()).toEqual(['trading', 'orders', 'history']);
     expect(queryKeys.trading.balances()).toEqual(['trading', 'balances']);
+    expect(queryKeys.trading.balances('binance')).toEqual(['trading', 'balances', 'binance']);
     expect(queryKeys.trading.ticker('SOL/USD')).toEqual(['trading', 'ticker', 'SOL/USD']);
+    expect(queryKeys.trading.ticker('SOL/USD', 'kraken')).toEqual(['trading', 'ticker', 'SOL/USD', 'kraken']);
     expect(queryKeys.trading.estimate()).toEqual(['trading', 'estimate']);
 
     expect(queryKeys.balances.current()).toEqual(['balances', 'current']);

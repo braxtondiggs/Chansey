@@ -5,6 +5,7 @@
 @custom-variant dark (&:where([class*='app-dark'], [class*='app-dark'] *));
 
 @theme {
+  --font-family-display: 'InterDisplay', sans-serif;
   --breakpoint-sm: 576px;
   --breakpoint-md: 768px;
   --breakpoint-lg: 992px;

@@ -2,7 +2,7 @@ import { Injectable, computed, effect, signal } from '@angular/core';
 
 import { Subject } from 'rxjs';
 
-export interface layoutConfig {
+export interface LayoutConfig {
   preset: string;
   primary: string;
   surface: string | undefined | null;
@@ -23,6 +23,7 @@ interface LayoutState {
   overlaySubmenuActive: boolean;
   rightMenuVisible: boolean;
   searchBarActive: boolean;
+  profileSidebarVisible: boolean;
 }
 
 interface MenuChangeEvent {
@@ -36,7 +37,7 @@ const CONFIG_STORAGE_KEY = 'chanseyAppConfig';
   providedIn: 'root'
 })
 export class LayoutService {
-  _config: layoutConfig = {
+  private _config: LayoutConfig = {
     preset: 'Aura',
     primary: 'blue',
     surface: null,
@@ -46,7 +47,7 @@ export class LayoutService {
     cardStyle: 'transparent'
   };
 
-  _state: LayoutState = {
+  private _state: LayoutState = {
     staticMenuDesktopInactive: false,
     overlayMenuActive: false,
     rightMenuVisible: false,
@@ -56,16 +57,17 @@ export class LayoutService {
     searchBarActive: false,
     sidebarActive: false,
     anchored: false,
-    overlaySubmenuActive: false
+    overlaySubmenuActive: false,
+    profileSidebarVisible: false
   };
 
-  layoutConfig = signal<layoutConfig>(this._config);
+  layoutConfig = signal<LayoutConfig>(this._config);
 
   layoutState = signal<LayoutState>(this._state);
 
-  private configUpdate = new Subject<layoutConfig>();
+  private configUpdate = new Subject<LayoutConfig>();
 
-  private overlayOpen = new Subject<any>();
+  private overlayOpen = new Subject<null>();
 
   private menuSource = new Subject<MenuChangeEvent>();
 
@@ -172,7 +174,7 @@ export class LayoutService {
     }
   }
 
-  private handleDarkModeTransition(config: layoutConfig): void {
+  private handleDarkModeTransition(config: LayoutConfig): void {
     const supportsViewTransition = 'startViewTransition' in document;
 
     if (supportsViewTransition) {
@@ -183,7 +185,7 @@ export class LayoutService {
     }
   }
 
-  private startViewTransition(config: layoutConfig): void {
+  private startViewTransition(config: LayoutConfig): void {
     const transition = (document as any).startViewTransition(() => {
       this.toggleDarkMode(config);
     });
@@ -197,7 +199,7 @@ export class LayoutService {
       });
   }
 
-  toggleDarkMode(config?: layoutConfig): void {
+  toggleDarkMode(config?: LayoutConfig): void {
     const _config = config || this.layoutConfig();
     if (_config.darkTheme) {
       document.documentElement.classList.add('app-dark');
@@ -228,7 +230,7 @@ export class LayoutService {
     });
   }
 
-  updateLayoutState(newState: Partial<any>) {
+  updateLayoutState(newState: Partial<LayoutState>) {
     this.layoutState.update((prev) => ({
       ...prev,
       ...newState

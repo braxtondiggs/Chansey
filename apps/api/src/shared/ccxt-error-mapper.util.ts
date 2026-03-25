@@ -91,6 +91,15 @@ export function mapCcxtError(error: unknown, exchangeName?: string): never {
   } else if (error instanceof InvalidOrder) {
     throw new ExchangeErrorException(cleanExchangeMessage(message) || 'Invalid order', exchangeName);
   } else if (error instanceof RateLimitExceeded || error instanceof DDoSProtection) {
+    // CCXT's Binance driver misclassifies permission errors as DDoSProtection
+    // when hasAlreadyAuthenticatedSuccessfully is true (e.g., read-only key placing orders).
+    // The error message contains "permission" or "API-key" — detect and reclassify.
+    if (error instanceof DDoSProtection) {
+      const lowerMsg = message.toLowerCase();
+      if (lowerMsg.includes('permission') || lowerMsg.includes('api-key') || lowerMsg.includes('api key')) {
+        throw new ExchangePermissionDeniedException(exchangeName);
+      }
+    }
     throw new ExchangeRateLimitedException(exchangeName);
   } else if (
     error instanceof ExchangeNotAvailable ||

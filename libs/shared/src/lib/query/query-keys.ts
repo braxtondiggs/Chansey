@@ -180,13 +180,22 @@ export const queryKeys = {
       exchangeId
         ? ([...queryKeys.trading.all, 'ticker-pair', exchangeId] as const)
         : ([...queryKeys.trading.all, 'ticker-pair', 'all'] as const),
-    balances: () => [...queryKeys.trading.all, 'balances'] as const,
-    orderBook: (symbol: string) => [...queryKeys.trading.all, 'orderBook', symbol] as const,
+    balances: (exchangeId?: string) =>
+      exchangeId
+        ? ([...queryKeys.trading.all, 'balances', exchangeId] as const)
+        : ([...queryKeys.trading.all, 'balances'] as const),
+    orderBook: (symbol: string, exchangeId?: string) =>
+      exchangeId
+        ? ([...queryKeys.trading.all, 'orderBook', symbol, exchangeId] as const)
+        : ([...queryKeys.trading.all, 'orderBook', symbol] as const),
     orders: () => [...queryKeys.trading.all, 'orders'] as const,
     activeOrders: () => [...queryKeys.trading.orders(), 'active'] as const,
     orderHistory: () => [...queryKeys.trading.orders(), 'history'] as const,
     estimate: () => [...queryKeys.trading.all, 'estimate'] as const,
-    ticker: (symbol: string) => [...queryKeys.trading.all, 'ticker', symbol] as const
+    ticker: (symbol: string, exchangeId?: string) =>
+      exchangeId
+        ? ([...queryKeys.trading.all, 'ticker', symbol, exchangeId] as const)
+        : ([...queryKeys.trading.all, 'ticker', symbol] as const)
   },
 
   // --------------------------------------------------------------------------

@@ -103,6 +103,8 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - Prettier for consistent code formatting with 120 character line length
 - Pre-commit hooks automatically fix linting issues and format code
 - Import order: Angular → NestJS → third-party → internal → relative
+- **Lint warnings are NOT acceptable for the chansey (frontend) project** — all warnings must be resolved before
+  committing
 
 ### Testing
 
@@ -260,3 +262,34 @@ cascade delete. Users cannot see each other's results - all queries filter by `u
 
 - 005-auto-backtest-orchestration: Added TypeScript 5.x with Node.js 22+ + NestJS 11, TypeORM 0.3, BullMQ, PostgreSQL
   15+, Redis, TanStack Query (frontend)
+
+## Design Context
+
+### Users
+
+Beginners exploring cryptocurrency trading. New to crypto, need guidance, simplicity, and reassurance. Looking for a
+low-friction way to start investing without feeling overwhelmed. The interface should make them feel safe, informed, and
+in control.
+
+### Brand Personality
+
+**Modern, approachable, empowering.** Cymbit Trading sits in the Acorns-for-crypto space — making cryptocurrency
+investing feel as natural and low-stress as saving spare change. Friendly and encouraging without being patronizing.
+
+### Aesthetic Direction
+
+- **Visual tone**: Clean, warm, approachable — inspired by Acorns and Coinbase/Robinhood. Generous whitespace, rounded
+  forms, clear hierarchy. Premium but not cold.
+- **References**: Acorns (simplicity, guided investing), Coinbase (clean crypto UI), Robinhood (accessible finance)
+- **Anti-references**: NOT Binance/KuCoin (cluttered). NOT generic corporate SaaS. NOT intimidating.
+- **Theme**: User-configurable. Three PrimeNG presets (Aura, Lara, Nora) with full primary/surface color control. Design
+  must work across all combinations and both light/dark modes.
+- **Typography**: InterDisplay (headings), Lato (body). Full weight range (100-900).
+
+### Design Principles
+
+1. **Simplicity over density** — Breathable screens. Progressive disclosure over showing everything at once.
+2. **Guide, don't gate** — Clear labels, tooltips, contextual education. Teach as it goes without blocking.
+3. **Theme-resilient design** — Must look excellent across all presets, colors, and modes. Use design tokens only.
+4. **Confidence through clarity** — Consistent patterns, predictable interactions, clear feedback for financial trust.
+5. **Mobile-first, PWA-ready** — Phone-first user. Touch targets, responsive layouts, offline-capable patterns.
