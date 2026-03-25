@@ -96,6 +96,7 @@ describe('buildOrderRequest', () => {
     expect(result).not.toHaveProperty('timeInForce');
   });
 
+
   it('includes option fields with falsy value 0 (not undefined)', () => {
     const result = buildOrderRequest('key-1', 'BTC/USDT', OrderSide.SELL, OrderType.LIMIT, 1, {
       price: 0,
