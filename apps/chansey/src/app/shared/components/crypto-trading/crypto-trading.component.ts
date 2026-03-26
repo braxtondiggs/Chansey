@@ -16,7 +16,6 @@ import { debounceTime, Subject, takeUntil } from 'rxjs';
 import {
   Exchange,
   ExchangeKey,
-  Order,
   OrderPreview,
   OrderSide,
   OrderType,
@@ -326,6 +325,27 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
           severity: 'error',
           summary: 'Cancellation Failed',
           detail: error.message || 'Failed to cancel order'
+        });
+      }
+    });
+  }
+
+  cancelOcoPair(orderIds: string[]) {
+    if (orderIds.length === 0) return;
+    // Cancel first order only — exchange automatically cancels the linked OCO order
+    this.cancelOrderMutation.mutate(orderIds[0], {
+      onSuccess: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'OCO Pair Cancelled',
+          detail: 'Both linked OCO orders cancelled successfully'
+        });
+      },
+      onError: (error: Error) => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Cancellation Failed',
+          detail: error.message || 'Failed to cancel OCO orders'
         });
       }
     });

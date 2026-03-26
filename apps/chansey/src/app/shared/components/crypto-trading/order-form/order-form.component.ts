@@ -95,13 +95,20 @@ export class OrderFormComponent {
     return this.form().get('type')?.value === OrderType.TRAILING_STOP;
   }
 
+  isOcoOrder(): boolean {
+    return this.form().get('type')?.value === OrderType.OCO;
+  }
+
+  isTakeProfitOnly(): boolean {
+    return this.form().get('type')?.value === OrderType.TAKE_PROFIT;
+  }
+
   shouldShowTakeProfitField(): boolean {
-    const type = this.form().get('type')?.value;
-    return type === OrderType.TAKE_PROFIT || type === OrderType.OCO;
+    return this.isTakeProfitOnly() || this.isOcoOrder();
   }
 
   shouldShowStopLossField(): boolean {
-    return this.form().get('type')?.value === OrderType.OCO;
+    return this.isOcoOrder();
   }
 
   isFieldInvalid(fieldName: string): boolean {

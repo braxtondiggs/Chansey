@@ -463,6 +463,42 @@ describe('CryptoTradingComponent', () => {
     });
   });
 
+  describe('cancelOcoPair', () => {
+    it('should call mutation with only the first order ID', () => {
+      component.cancelOcoPair(['order-1', 'order-2']);
+
+      expect(cancelOrderResult.mutate).toHaveBeenCalledTimes(1);
+      expect(cancelOrderResult.mutate).toHaveBeenCalledWith('order-1', expect.any(Object));
+    });
+
+    it('should show success toast on success', () => {
+      component.cancelOcoPair(['order-1', 'order-2']);
+
+      const callbacks = cancelOrderResult.mutate.mock.calls[0][1];
+      callbacks.onSuccess();
+
+      expect(mockMessageService.add).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'success', summary: 'OCO Pair Cancelled' })
+      );
+    });
+
+    it('should show error toast on failure', () => {
+      component.cancelOcoPair(['order-1', 'order-2']);
+
+      const callbacks = cancelOrderResult.mutate.mock.calls[0][1];
+      callbacks.onError(new Error('Exchange unavailable'));
+
+      expect(mockMessageService.add).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error', detail: 'Exchange unavailable' })
+      );
+    });
+
+    it('should do nothing for empty array', () => {
+      component.cancelOcoPair([]);
+      expect(cancelOrderResult.mutate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getStatusClass (utility)', () => {
     it.each([
       [OrderStatus.NEW, 'bg-blue-100'],

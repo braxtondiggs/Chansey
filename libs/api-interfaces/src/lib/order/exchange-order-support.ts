@@ -1,24 +1,35 @@
 import { ExchangeOrderTypeSupport, OrderType, TimeInForce } from './order.interface';
 
+/** Shared config for Binance US variants */
+const BINANCE_US_CONFIG = {
+  supportedTypes: [
+    OrderType.MARKET,
+    OrderType.LIMIT,
+    OrderType.STOP_LOSS,
+    OrderType.STOP_LIMIT,
+    OrderType.TAKE_PROFIT,
+    OrderType.OCO
+  ],
+  supportedTimeInForce: [TimeInForce.GTC, TimeInForce.IOC, TimeInForce.FOK],
+  hasOcoSupport: true,
+  hasTrailingStopSupport: false
+};
+
+/** Shared config for Coinbase Pro variants (coinbasepro, gdax, coinbaseexchange) */
+const COINBASE_PRO_CONFIG = {
+  supportedTypes: [OrderType.MARKET, OrderType.LIMIT, OrderType.STOP_LOSS],
+  supportedTimeInForce: [TimeInForce.GTC, TimeInForce.IOC],
+  hasOcoSupport: false,
+  hasTrailingStopSupport: false
+};
+
 /**
  * Exchange-specific order type support configuration
  * This is the single source of truth for what order types each exchange supports
  */
 export const EXCHANGE_ORDER_TYPE_SUPPORT: Record<string, ExchangeOrderTypeSupport> = {
-  binanceus: {
-    exchangeSlug: 'binanceus',
-    supportedTypes: [
-      OrderType.MARKET,
-      OrderType.LIMIT,
-      OrderType.STOP_LOSS,
-      OrderType.STOP_LIMIT,
-      OrderType.TAKE_PROFIT,
-      OrderType.OCO
-    ],
-    supportedTimeInForce: [TimeInForce.GTC, TimeInForce.IOC, TimeInForce.FOK],
-    hasOcoSupport: true,
-    hasTrailingStopSupport: false
-  },
+  binanceus: { exchangeSlug: 'binanceus', ...BINANCE_US_CONFIG },
+  binance_us: { exchangeSlug: 'binance_us', ...BINANCE_US_CONFIG },
   binance: {
     exchangeSlug: 'binance',
     supportedTypes: [
@@ -34,27 +45,10 @@ export const EXCHANGE_ORDER_TYPE_SUPPORT: Record<string, ExchangeOrderTypeSuppor
     hasOcoSupport: true,
     hasTrailingStopSupport: true
   },
-  coinbase: {
-    exchangeSlug: 'coinbase',
-    supportedTypes: [OrderType.MARKET, OrderType.LIMIT, OrderType.STOP_LOSS],
-    supportedTimeInForce: [TimeInForce.GTC, TimeInForce.IOC],
-    hasOcoSupport: false,
-    hasTrailingStopSupport: false
-  },
-  coinbasepro: {
-    exchangeSlug: 'coinbasepro',
-    supportedTypes: [OrderType.MARKET, OrderType.LIMIT, OrderType.STOP_LOSS],
-    supportedTimeInForce: [TimeInForce.GTC, TimeInForce.IOC],
-    hasOcoSupport: false,
-    hasTrailingStopSupport: false
-  },
-  coinbaseexchange: {
-    exchangeSlug: 'coinbaseexchange',
-    supportedTypes: [OrderType.MARKET, OrderType.LIMIT, OrderType.STOP_LOSS],
-    supportedTimeInForce: [TimeInForce.GTC, TimeInForce.IOC],
-    hasOcoSupport: false,
-    hasTrailingStopSupport: false
-  },
+  coinbase: { exchangeSlug: 'coinbase', ...COINBASE_PRO_CONFIG },
+  coinbasepro: { exchangeSlug: 'coinbasepro', ...COINBASE_PRO_CONFIG },
+  gdax: { exchangeSlug: 'gdax', ...COINBASE_PRO_CONFIG },
+  coinbaseexchange: { exchangeSlug: 'coinbaseexchange', ...COINBASE_PRO_CONFIG },
   kraken: {
     exchangeSlug: 'kraken',
     supportedTypes: [
