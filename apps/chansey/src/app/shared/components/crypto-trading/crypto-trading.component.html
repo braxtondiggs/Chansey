@@ -271,6 +271,8 @@
       [orderBookData]="orderBookQuery.data()"
       [isLoading]="orderBookQuery.isPending()"
       [isVisible]="showOrderBook()"
+      [isRefreshing]="orderBookQuery.isFetching()"
+      (refresh)="orderBookQuery.refetch()"
     />
   }
 
@@ -279,8 +281,10 @@
     [orders]="activeOrdersQuery.data() || []"
     [isVisible]="showActiveOrders()"
     [isCancelling]="cancelOrderMutation.isPending()"
+    [isRefreshing]="activeOrdersQuery.isFetching()"
     (cancelOrder)="cancelOrder($event)"
     (cancelOcoPair)="cancelOcoPair($event)"
+    (refresh)="refreshActiveOrders()"
   />
 
   <p-confirmDialog />

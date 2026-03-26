@@ -19,7 +19,9 @@ import {
   getAvailableBuyBalance,
   getAvailableSellBalance,
   getFeeRate,
-  getStatusClass
+  getFeeRateForOrderType,
+  getStatusClass,
+  MAX_ORDER_SAFETY_MARGIN
 } from './crypto-trading.utils';
 
 import { AuthService, LayoutService } from '../../services';
@@ -547,7 +549,7 @@ describe('CryptoTradingComponent', () => {
     it('getAvailableBuyBalance should deduct fee rate from available balance', () => {
       const balances = [{ coin: { id: 'usd-id' }, available: 10000 }] as any;
       const feeRate = getFeeRate(null);
-      expect(getAvailableBuyBalance(balances, component.selectedPair(), null)).toBe(10000 * (1 - feeRate));
+      expect(getAvailableBuyBalance(balances, component.selectedPair(), null)).toBe(10000 / (1 + feeRate));
     });
 
     it('getAvailableSellBalance should return full available balance', () => {
@@ -603,7 +605,9 @@ describe('CryptoTradingComponent', () => {
       component.onSellPercentageChange(100);
 
       expect(component.selectedSellPercentage()).toBe(100);
-      expect(component.sellOrderForm.get('quantity')?.value).toBe(2);
+      // 100% sell applies safety margin: 2 * (1 - 0.001) = 1.998
+      const qty = component.sellOrderForm.get('quantity')?.value;
+      expect(qty).toBeCloseTo(2 * (1 - MAX_ORDER_SAFETY_MARGIN), 6);
     });
 
     it('should not set quantity when no pair is selected', () => {
@@ -611,6 +615,91 @@ describe('CryptoTradingComponent', () => {
       component.onBuyPercentageChange(50);
 
       expect(component.buyOrderForm.get('quantity')?.value).toBeNull();
+    });
+
+    it('should apply safety margin only at 100% for buy', () => {
+      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
+
+      component.onBuyPercentageChange(50);
+      const qty50 = component.buyOrderForm.get('quantity')?.value;
+
+      component.onBuyPercentageChange(100);
+      const qty100 = component.buyOrderForm.get('quantity')?.value;
+
+      // 100% should be less than 2x of 50% due to safety margin
+      expect(qty100).toBeLessThan(qty50 * 2);
+    });
+
+    it('should apply safety margin only at 100% for sell', () => {
+      balancesResult.data.set([{ coin: { id: 'btc-id' }, available: 2 }]);
+
+      component.onSellPercentageChange(50);
+      const qty50 = component.sellOrderForm.get('quantity')?.value;
+      // 50% should be exactly half, no safety margin
+      expect(qty50).toBe(1);
+
+      component.onSellPercentageChange(100);
+      const qty100 = component.sellOrderForm.get('quantity')?.value;
+      // 100% should be less than 2x of 50% due to safety margin
+      expect(qty100).toBeLessThan(2);
+    });
+
+    it('should use limit price for LIMIT buy orders', () => {
+      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
+      component.buyOrderForm.get('type')?.setValue(OrderType.LIMIT);
+      component.buyOrderForm.get('price')?.setValue(40000); // lower than market (50000)
+
+      component.onBuyPercentageChange(50);
+      const qtyLimit = component.buyOrderForm.get('quantity')?.value;
+
+      // With lower limit price, should get more quantity than market price would give
+      component.buyOrderForm.get('type')?.setValue(OrderType.MARKET);
+      component.onBuyPercentageChange(50);
+      const qtyMarket = component.buyOrderForm.get('quantity')?.value;
+
+      expect(qtyLimit).toBeGreaterThan(qtyMarket);
+    });
+
+    it('should use correct fee rate matching the order type', () => {
+      balancesResult.data.set([{ coin: { id: 'usd-id' }, available: 10000 }]);
+      // Set a preview with a different order type than what the form has
+      component.buyOrderPreview.set({
+        orderType: OrderType.MARKET,
+        feeRate: 0.006 // taker rate
+      } as any);
+      component.buyOrderForm.get('type')?.setValue(OrderType.LIMIT);
+
+      component.onBuyPercentageChange(100);
+      const qtyWithDefault = component.buyOrderForm.get('quantity')?.value;
+
+      // Should use DEFAULT_FEE_RATE (preview orderType doesn't match form)
+      // not the preview's 0.6% taker rate
+      component.buyOrderPreview.set({
+        orderType: OrderType.LIMIT,
+        feeRate: 0.006
+      } as any);
+
+      component.onBuyPercentageChange(100);
+      const qtyWithPreview = component.buyOrderForm.get('quantity')?.value;
+
+      // With higher preview fee (0.6%), quantity should be different
+      expect(qtyWithDefault).not.toEqual(qtyWithPreview);
+    });
+  });
+
+  describe('getFeeRateForOrderType (utility)', () => {
+    it('should use preview feeRate when order types match', () => {
+      const preview = { orderType: OrderType.MARKET, feeRate: 0.006 } as any;
+      expect(getFeeRateForOrderType(OrderType.MARKET, preview)).toBe(0.006);
+    });
+
+    it('should fall back to DEFAULT_FEE_RATE when order types differ', () => {
+      const preview = { orderType: OrderType.MARKET, feeRate: 0.006 } as any;
+      expect(getFeeRateForOrderType(OrderType.LIMIT, preview)).toBe(DEFAULT_FEE_RATE);
+    });
+
+    it('should fall back to DEFAULT_FEE_RATE when no preview', () => {
+      expect(getFeeRateForOrderType(OrderType.MARKET, null)).toBe(DEFAULT_FEE_RATE);
     });
   });
 

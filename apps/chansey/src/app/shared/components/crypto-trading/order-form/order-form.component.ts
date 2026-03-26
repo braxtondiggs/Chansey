@@ -165,6 +165,18 @@ export class OrderFormComponent {
       }
       return `Maximum value is ${maxValue}`;
     }
+    if (field.errors['stepSize']) {
+      const step = field.errors['stepSize'].requiredStep;
+      if (fieldName === 'quantity') {
+        const symbol = this.selectedPair()?.baseAsset?.symbol?.toUpperCase() || '';
+        return `Must be in increments of ${step} ${symbol}`;
+      }
+      if (fieldName === 'price') {
+        const symbol = this.selectedPair()?.quoteAsset?.symbol?.toUpperCase() || '';
+        return `Must be in increments of ${step} ${symbol}`;
+      }
+      return `Must be in increments of ${step}`;
+    }
     return 'Invalid value';
   }
 

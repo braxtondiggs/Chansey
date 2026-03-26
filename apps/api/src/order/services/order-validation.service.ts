@@ -272,8 +272,11 @@ export class OrderValidationService {
 
   private calculateMaxQuantity(quantity: number, stepSize: string): number {
     const precision = this.getPrecisionFromStepSize(stepSize);
+    const multiplier = Math.pow(10, precision);
     const step = parseFloat(stepSize);
-    const maxSteps = Math.floor(quantity / step);
+    const scaledValue = quantity * multiplier;
+    const scaledStep = step * multiplier;
+    const maxSteps = Math.floor(scaledValue / scaledStep + Number.EPSILON);
     return Number((maxSteps * step).toFixed(precision));
   }
 
