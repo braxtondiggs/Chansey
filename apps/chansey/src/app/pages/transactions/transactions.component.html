@@ -217,19 +217,19 @@
                   [image]="transaction.baseCoin?.image"
                   shape="circle"
                   size="large"
-                  class="border-surface min-w-9 border-2 shadow-sm"
+                  class="min-w-9 border-2 border-surface shadow-sm"
                 />
                 @if (transaction.quoteCoin) {
                   <p-avatar
                     [image]="transaction.quoteCoin.image"
                     shape="circle"
                     size="large"
-                    class="border-surface min-w-9 border-2 shadow-sm"
+                    class="min-w-9 border-2 border-surface shadow-sm"
                   />
                 }
               </div>
               <div class="flex flex-col">
-                <span class="text-primary-500 hover:text-primary-600 text-lg font-medium">{{
+                <span class="text-lg font-medium text-primary-500 hover:text-primary-600">{{
                   transaction.symbol
                 }}</span>
                 <span class="text-sm text-gray-500 dark:text-gray-400">{{ transaction.baseCoin?.name }}</span>
@@ -238,7 +238,19 @@
           </td>
           <td>
             <div class="flex flex-col items-center gap-0.5">
-              <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+              <div class="flex items-center gap-1">
+                <p-tag [value]="transaction.side" [severity]="getSideSeverity(transaction.side)"></p-tag>
+                @if (transaction.ocoLinkedOrderId) {
+                  <i
+                    class="pi pi-link text-xs text-blue-500 dark:text-blue-400"
+                    pTooltip="Linked OCO order — when one fills, the other cancels"
+                    tooltipPosition="top"
+                    aria-label="Linked OCO order"
+                    tabindex="0"
+                    role="img"
+                  ></i>
+                }
+              </div>
               <span class="text-xs text-neutral-400">{{ formatType(transaction.type) }}</span>
             </div>
           </td>
@@ -285,7 +297,7 @@
                   [image]="transaction.exchange.image"
                   shape="circle"
                   size="normal"
-                  class="border-surface border shadow-sm"
+                  class="border border-surface shadow-sm"
                 />
                 <span class="text-sm font-medium">{{ transaction.exchange.name }}</span>
               </div>

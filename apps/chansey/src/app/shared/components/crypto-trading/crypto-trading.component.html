@@ -151,7 +151,7 @@
     <div
       class="mb-5 flex items-center justify-between rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 dark:border-surface-700 dark:bg-surface-800"
     >
-      <span class="text-sm font-bold text-surface-800 dark:text-surface-100">
+      <span class="text-sm font-bold text-surface-800 uppercase dark:text-surface-100">
         {{ selectedPair()?.baseAsset?.symbol }}/{{ selectedPair()?.quoteAsset?.symbol }}
       </span>
       <div class="flex items-center gap-2.5">
@@ -278,6 +278,7 @@
     [isVisible]="showActiveOrders()"
     [isCancelling]="cancelOrderMutation.isPending()"
     (cancelOrder)="cancelOrder($event)"
+    (cancelOcoPair)="cancelOcoPair($event)"
   />
 
   <p-confirmDialog />

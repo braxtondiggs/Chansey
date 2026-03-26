@@ -24,6 +24,7 @@ import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
 import { Table, TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
+import { TooltipModule } from 'primeng/tooltip';
 import { EMPTY } from 'rxjs';
 
 import { Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interfaces';
@@ -56,6 +57,7 @@ import { getSideSeverity, getStatusSeverity } from '../../shared/utils/order-sev
     SkeletonModule,
     TableModule,
     TagModule,
+    TooltipModule,
     UpperCasePipe
   ],
   templateUrl: './transactions.component.html',

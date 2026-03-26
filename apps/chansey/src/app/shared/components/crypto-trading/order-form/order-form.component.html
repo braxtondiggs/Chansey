@@ -174,8 +174,91 @@
     </div>
   }
 
-  <!-- Take Profit Price -->
-  @if (shouldShowTakeProfitField()) {
+  <!-- OCO Linked Orders Panel -->
+  @if (isOcoOrder()) {
+    <div
+      class="space-y-3 rounded-lg border border-primary-200 bg-primary-50/50 p-3 dark:border-primary-800 dark:bg-primary-900/20"
+    >
+      <div class="flex items-center gap-2 text-sm font-semibold text-primary-800 dark:text-primary-200">
+        <i class="pi pi-link text-xs" aria-hidden="true"></i>
+        <span>Linked Orders (OCO)</span>
+      </div>
+      <p class="text-xs leading-relaxed text-primary-700 dark:text-primary-300">
+        Set a take-profit price above and a stop-loss price below the current price. When one triggers, the other
+        automatically cancels.
+      </p>
+      <!-- Mini price diagram -->
+      <div
+        class="flex flex-col items-center gap-0.5 rounded-md border border-dashed border-primary-300 bg-white/60 px-3 py-2 text-xs dark:border-primary-700 dark:bg-surface-800/60"
+      >
+        <div class="flex items-center gap-1.5 font-medium text-green-600 dark:text-green-400">
+          <i class="pi pi-arrow-up text-[10px]" aria-hidden="true"></i>
+          <span>Take Profit</span>
+        </div>
+        <div class="h-3 border-l border-dashed border-surface-300 dark:border-surface-600"></div>
+        <div class="flex items-center gap-1.5 font-semibold text-surface-600 dark:text-surface-300">
+          <i class="pi pi-minus text-[10px]" aria-hidden="true"></i>
+          <span>Current Price</span>
+        </div>
+        <div class="h-3 border-l border-dashed border-surface-300 dark:border-surface-600"></div>
+        <div class="flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400">
+          <i class="pi pi-arrow-down text-[10px]" aria-hidden="true"></i>
+          <span>Stop Loss</span>
+        </div>
+      </div>
+      <!-- Take Profit input -->
+      <div class="space-y-2">
+        <p-floatlabel variant="on">
+          <p-inputnumber
+            [inputId]="side() + 'TakeProfitPrice'"
+            formControlName="takeProfitPrice"
+            mode="decimal"
+            [minFractionDigits]="2"
+            [maxFractionDigits]="8"
+            class="w-full"
+            [class.ng-invalid]="isFieldInvalid('takeProfitPrice')"
+            [class.ng-dirty]="isFieldInvalid('takeProfitPrice')"
+          />
+          <label [for]="side() + 'TakeProfitPrice'">
+            Take Profit
+            @if (selectedPair()?.quoteAsset?.symbol) {
+              <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
+            }
+          </label>
+        </p-floatlabel>
+        @if (isFieldInvalid('takeProfitPrice')) {
+          <small class="p-error" role="alert">{{ getFieldError('takeProfitPrice') }}</small>
+        }
+      </div>
+      <!-- Stop Loss input -->
+      <div class="space-y-2">
+        <p-floatlabel variant="on">
+          <p-inputnumber
+            [inputId]="side() + 'StopLossPrice'"
+            formControlName="stopLossPrice"
+            mode="decimal"
+            [minFractionDigits]="2"
+            [maxFractionDigits]="8"
+            class="w-full"
+            [class.ng-invalid]="isFieldInvalid('stopLossPrice')"
+            [class.ng-dirty]="isFieldInvalid('stopLossPrice')"
+          />
+          <label [for]="side() + 'StopLossPrice'">
+            Stop Loss
+            @if (selectedPair()?.quoteAsset?.symbol) {
+              <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
+            }
+          </label>
+        </p-floatlabel>
+        @if (isFieldInvalid('stopLossPrice')) {
+          <small class="p-error" role="alert">{{ getFieldError('stopLossPrice') }}</small>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Take Profit Price (standalone, non-OCO) -->
+  @if (isTakeProfitOnly()) {
     <div class="space-y-2">
       <p-floatlabel variant="on">
         <p-inputnumber
@@ -198,34 +281,6 @@
       @if (isFieldInvalid('takeProfitPrice')) {
         <small class="p-error" role="alert">{{ getFieldError('takeProfitPrice') }}</small>
       }
-    </div>
-  }
-
-  <!-- Stop Loss Price (for OCO) -->
-  @if (shouldShowStopLossField()) {
-    <div class="space-y-2">
-      <p-floatlabel variant="on">
-        <p-inputnumber
-          [inputId]="side() + 'StopLossPrice'"
-          formControlName="stopLossPrice"
-          mode="decimal"
-          [minFractionDigits]="2"
-          [maxFractionDigits]="8"
-          class="w-full"
-          [class.ng-invalid]="isFieldInvalid('stopLossPrice')"
-          [class.ng-dirty]="isFieldInvalid('stopLossPrice')"
-        />
-        <label [for]="side() + 'StopLossPrice'">
-          Stop Loss
-          @if (selectedPair()?.quoteAsset?.symbol) {
-            <span>({{ selectedPair()?.quoteAsset?.symbol | uppercase }})</span>
-          }
-        </label>
-      </p-floatlabel>
-      @if (isFieldInvalid('stopLossPrice')) {
-        <small class="p-error" role="alert">{{ getFieldError('stopLossPrice') }}</small>
-      }
-      <p-message severity="info" size="small"> OCO: When one order executes, the other cancels </p-message>
     </div>
   }
 

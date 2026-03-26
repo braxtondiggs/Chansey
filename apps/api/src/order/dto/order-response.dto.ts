@@ -261,6 +261,13 @@ export class OrderResponseDto {
   })
   info?: Record<string, unknown>;
 
+  @ApiProperty({
+    description: 'ID of the linked OCO order (one-cancels-other). When one order fills, the linked order cancels.',
+    example: 'b4cc290f-9bf0-4999-8813-bde5e7654003',
+    required: false
+  })
+  ocoLinkedOrderId?: string;
+
   constructor(order: Partial<OrderDto>) {
     Object.assign(this, order);
   }
