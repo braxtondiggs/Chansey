@@ -45,7 +45,8 @@
         formControlName="quantity"
         mode="decimal"
         [minFractionDigits]="2"
-        [maxFractionDigits]="8"
+        [maxFractionDigits]="marketLimits()?.quantityStep ? countDecimals(marketLimits()!.quantityStep) : 8"
+        [step]="marketLimits()?.quantityStep && marketLimits()!.quantityStep > 0 ? marketLimits()!.quantityStep : 1"
         class="w-full"
         [class.ng-invalid]="isFieldInvalid('quantity')"
         [class.ng-dirty]="isFieldInvalid('quantity')"
@@ -59,6 +60,20 @@
     </p-floatlabel>
     @if (isFieldInvalid('quantity')) {
       <small class="p-error" role="alert">{{ getFieldError('quantity') }}</small>
+    }
+    @if (marketLimits()?.minQuantity || marketLimits()?.minCost) {
+      <div class="mt-1 text-xs text-surface-400">
+        @if (marketLimits()?.minQuantity) {
+          Min: {{ marketLimits()?.minQuantity }} {{ selectedPair()?.baseAsset?.symbol | uppercase }}
+        }
+        @if (marketLimits()?.minQuantity && marketLimits()?.minCost) {
+          &middot;
+        }
+        @if (marketLimits()?.minCost) {
+          Min value: {{ marketLimits()?.minCost | number: '1.2-2' }}
+          {{ selectedPair()?.quoteAsset?.symbol | uppercase }}
+        }
+      </div>
     }
     <!-- Percentage Buttons -->
     <div>
@@ -85,7 +100,8 @@
           formControlName="price"
           mode="decimal"
           [minFractionDigits]="2"
-          [maxFractionDigits]="8"
+          [maxFractionDigits]="marketLimits()?.priceStep ? countDecimals(marketLimits()!.priceStep) : 8"
+          [step]="marketLimits()?.priceStep && marketLimits()!.priceStep > 0 ? marketLimits()!.priceStep : 1"
           class="w-full"
           [class.ng-invalid]="isFieldInvalid('price')"
           [class.ng-dirty]="isFieldInvalid('price')"
@@ -364,13 +380,26 @@
     }
   </div>
 
+  @if (isBelowMinCost()) {
+    <p-message severity="warn" size="small">
+      Order value is below the minimum of {{ marketLimits()?.minCost }}
+      {{ selectedPair()?.quoteAsset?.symbol | uppercase }}
+    </p-message>
+  }
+
   <p-button
     type="submit"
     [label]="buttonLabel()"
     [icon]="buttonIcon()"
     [severity]="buttonSeverity()"
     styleClass="w-full"
-    [disabled]="form().invalid || isSubmitting() || !selectedPair() || (orderPreview() && !hasSufficientBalance())"
+    [disabled]="
+      form().invalid ||
+      isSubmitting() ||
+      !selectedPair() ||
+      (orderPreview() && !hasSufficientBalance()) ||
+      isBelowMinCost()
+    "
     [loading]="isSubmitting()"
   />
 </form>

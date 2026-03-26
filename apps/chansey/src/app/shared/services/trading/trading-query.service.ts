@@ -1,6 +1,6 @@
 import { Injectable, Signal } from '@angular/core';
 
-import { Balance, Order, OrderStatus, TickerPair } from '@chansey/api-interfaces';
+import { Balance, MarketLimits, Order, OrderStatus, TickerPair } from '@chansey/api-interfaces';
 import { FREQUENT_POLICY, queryKeys, STANDARD_POLICY, TIME, useAuthQuery } from '@chansey/shared';
 
 import { OrderBook } from './trading.types';
@@ -109,6 +109,21 @@ export class TradingQueryService {
         refetchOnWindowFocus: false,
         retry: 2
       }
+    });
+  }
+
+  /**
+   * Get market limits for a trading pair on a specific exchange
+   */
+  useMarketLimits(symbol: Signal<string | null>, exchangeKeyId: Signal<string | null>) {
+    return useAuthQuery<MarketLimits>(() => {
+      const sym = symbol();
+      const keyId = exchangeKeyId();
+      return {
+        queryKey: queryKeys.trading.marketLimits(sym, keyId),
+        url: `/api/trading/market-limits?symbol=${encodeURIComponent(sym || '')}&exchangeKeyId=${keyId}`,
+        options: { cachePolicy: STANDARD_POLICY, enabled: !!sym && !!keyId }
+      };
     });
   }
 

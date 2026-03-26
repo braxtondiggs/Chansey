@@ -30,6 +30,7 @@ import { Exchange } from '../exchange/exchange.entity';
 import { ExchangeService } from '../exchange/exchange.service';
 import { mapCcxtError } from '../shared/ccxt-error-mapper.util';
 import { toErrorInfo } from '../shared/error.util';
+import { extractMarketLimits } from '../shared/precision.util';
 import { User } from '../users/users.entity';
 
 /** CCXT order creation parameters */
@@ -559,6 +560,13 @@ export class OrderService {
       const estimatedFee = estimatedCost * feeRate;
       const totalRequired = dto.side === OrderSide.BUY ? estimatedCost + estimatedFee : estimatedCost;
 
+      // Extract market limits
+      const extracted = extractMarketLimits(market, exchange.precisionMode);
+      const limits = {
+        ...extracted,
+        maxQuantity: market?.limits?.amount?.max ?? Infinity
+      };
+
       // Get user balance
       const balances = await exchange.fetchBalance();
       const [baseCurrency, quoteCurrency] = dto.symbol.split('/');
@@ -587,6 +595,21 @@ export class OrderService {
         warnings.push(
           `Insufficient ${balanceCurrency} balance. Available: ${availableBalance.toFixed(8)}, Required: ${required.toFixed(8)}`
         );
+      }
+
+      // Minimum quantity warning
+      if (limits.minQuantity > 0 && dto.quantity < limits.minQuantity) {
+        warnings.push(`Minimum quantity is ${limits.minQuantity} ${baseCurrency}`);
+      }
+
+      // Maximum quantity warning
+      if (limits.maxQuantity < Infinity && dto.quantity > limits.maxQuantity) {
+        warnings.push(`Maximum quantity is ${limits.maxQuantity} ${baseCurrency}`);
+      }
+
+      // Minimum notional (order value) warning
+      if (limits.minCost > 0 && estimatedCost < limits.minCost) {
+        warnings.push(`Minimum order value is ${limits.minCost} ${quoteCurrency}`);
       }
 
       // Calculate slippage for market orders
@@ -628,7 +651,12 @@ export class OrderService {
         estimatedSlippage,
         warnings,
         exchange: exchangeKey.exchange.name,
-        supportedOrderTypes
+        supportedOrderTypes,
+        minQuantity: limits.minQuantity > 0 ? limits.minQuantity : undefined,
+        maxQuantity: limits.maxQuantity < Infinity ? limits.maxQuantity : undefined,
+        minCost: limits.minCost > 0 ? limits.minCost : undefined,
+        quantityStep: limits.quantityStep > 0 ? limits.quantityStep : undefined,
+        priceStep: limits.priceStep > 0 ? limits.priceStep : undefined
       };
 
       return preview;

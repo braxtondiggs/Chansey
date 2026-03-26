@@ -235,6 +235,7 @@
               [hasSufficientBalance]="buyHasSufficientBalance()"
               [fallbackTotal]="buyTotalWithFees()"
               [fallbackNet]="0"
+              [marketLimits]="marketLimits()"
               (submitOrder)="onSubmitOrder('BUY')"
               (percentageChange)="onBuyPercentageChange($event)"
             />
@@ -254,6 +255,7 @@
               [hasSufficientBalance]="sellHasSufficientBalance()"
               [fallbackTotal]="0"
               [fallbackNet]="sellNetAmount()"
+              [marketLimits]="marketLimits()"
               (submitOrder)="onSubmitOrder('SELL')"
               (percentageChange)="onSellPercentageChange($event)"
             />
