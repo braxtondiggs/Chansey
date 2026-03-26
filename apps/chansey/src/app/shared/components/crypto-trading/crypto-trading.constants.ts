@@ -1,4 +1,11 @@
-import { OrderType, TrailingType } from '@chansey/api-interfaces';
+import {
+  ExitTrailingType,
+  OrderType,
+  StopLossType,
+  TakeProfitType,
+  TrailingActivationType,
+  TrailingType
+} from '@chansey/api-interfaces';
 
 /** PrimeNG Pass Through (PT) for buy/sell tabs */
 export const TAB_LIST_PT = {
@@ -77,3 +84,32 @@ export const TRAILING_TYPE_OPTIONS = [
   { label: 'Amount', value: TrailingType.AMOUNT },
   { label: 'Percentage', value: TrailingType.PERCENTAGE }
 ];
+
+export const STOP_LOSS_TYPE_OPTIONS = [
+  { label: 'Percentage', value: StopLossType.PERCENTAGE },
+  { label: 'Fixed Price', value: StopLossType.FIXED }
+];
+
+export const TAKE_PROFIT_TYPE_OPTIONS = [
+  { label: 'Percentage', value: TakeProfitType.PERCENTAGE },
+  { label: 'Fixed Price', value: TakeProfitType.FIXED },
+  { label: 'Risk:Reward', value: TakeProfitType.RISK_REWARD }
+];
+
+export const EXIT_TRAILING_TYPE_OPTIONS = [
+  { label: 'Percentage', value: ExitTrailingType.PERCENTAGE },
+  { label: 'Amount', value: ExitTrailingType.AMOUNT }
+];
+
+export const TRAILING_ACTIVATION_OPTIONS = [
+  { label: 'Immediately', value: TrailingActivationType.IMMEDIATE },
+  { label: 'At Price', value: TrailingActivationType.PRICE },
+  { label: 'At % Gain', value: TrailingActivationType.PERCENTAGE }
+];
+
+export const EXIT_CONFIG_LIMITS = {
+  STOP_LOSS_MAX: 10_000_000,
+  TAKE_PROFIT_MAX: 100_000_000,
+  TRAILING_VALUE_MAX: 10_000_000,
+  TRAILING_ACTIVATION_MAX: 100_000_000
+} as const;

@@ -1,6 +1,7 @@
 import { Decimal } from 'decimal.js';
 
 import {
+  ExitConfigRequest,
   getExchangeOrderTypeSupport,
   OrderSide,
   OrderType,
@@ -91,6 +92,7 @@ export function buildOrderRequest(
     takeProfitPrice?: number;
     stopLossPrice?: number;
     timeInForce?: TimeInForce;
+    exitConfig?: ExitConfigRequest;
   }
 ): PlaceOrderRequest {
   const request: PlaceOrderRequest = {
@@ -122,6 +124,9 @@ export function buildOrderRequest(
   }
   if (options?.timeInForce != null) {
     request.timeInForce = options.timeInForce;
+  }
+  if (options?.exitConfig != null) {
+    request.exitConfig = options.exitConfig;
   }
 
   return request;

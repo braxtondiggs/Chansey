@@ -300,6 +300,11 @@
     </div>
   }
 
+  <!-- Exit Strategy -->
+  @if (shouldShowExitConfig() && exitConfigFormGroup()) {
+    <app-exit-config [form]="exitConfigFormGroup()" [side]="side()" [selectedPair]="selectedPair()" />
+  }
+
   <!-- Order Summary -->
   <div
     class="rounded-lg border p-3"

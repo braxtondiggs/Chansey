@@ -1,4 +1,14 @@
-import { OrderSide, OrderType, TimeInForce, TrailingType } from '@chansey/api-interfaces';
+import {
+  ExitConfigRequest,
+  ExitTrailingType,
+  OrderSide,
+  OrderType,
+  StopLossType,
+  TakeProfitType,
+  TimeInForce,
+  TrailingActivationType,
+  TrailingType
+} from '@chansey/api-interfaces';
 
 import { buildOrderRequest, calculatePositionSize, calculateSlippage, calculateSpread } from './trading-utils';
 
@@ -96,7 +106,6 @@ describe('buildOrderRequest', () => {
     expect(result).not.toHaveProperty('timeInForce');
   });
 
-
   it('includes option fields with falsy value 0 (not undefined)', () => {
     const result = buildOrderRequest('key-1', 'BTC/USDT', OrderSide.SELL, OrderType.LIMIT, 1, {
       price: 0,
@@ -104,5 +113,30 @@ describe('buildOrderRequest', () => {
     });
     expect(result.price).toBe(0);
     expect(result.stopPrice).toBe(0);
+  });
+
+  it('includes exitConfig when provided', () => {
+    const exitConfig: ExitConfigRequest = {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: 2.0,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: 5.0,
+      enableTrailingStop: false,
+      trailingType: ExitTrailingType.PERCENTAGE,
+      trailingValue: 1.0,
+      trailingActivation: TrailingActivationType.IMMEDIATE,
+      useOco: true
+    };
+    const result = buildOrderRequest('key-1', 'BTC/USDT', OrderSide.BUY, OrderType.MARKET, 0.5, { exitConfig });
+    expect(result.exitConfig).toEqual(exitConfig);
+  });
+
+  it('omits exitConfig when undefined', () => {
+    const result = buildOrderRequest('key-1', 'BTC/USDT', OrderSide.BUY, OrderType.MARKET, 0.5, {
+      exitConfig: undefined
+    });
+    expect(result).not.toHaveProperty('exitConfig');
   });
 });

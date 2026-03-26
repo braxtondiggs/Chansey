@@ -11,6 +11,8 @@ import { SelectButtonModule } from 'primeng/selectbutton';
 
 import { MarketLimits, OrderPreview, OrderType, TickerPair, TrailingType } from '@chansey/api-interfaces';
 
+import { ExitConfigComponent } from './exit-config/exit-config.component';
+
 @Component({
   selector: 'app-order-form',
   standalone: true,
@@ -23,7 +25,8 @@ import { MarketLimits, OrderPreview, OrderType, TickerPair, TrailingType } from 
     InputNumberModule,
     MessageModule,
     SelectModule,
-    SelectButtonModule
+    SelectButtonModule,
+    ExitConfigComponent
   ],
   templateUrl: './order-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -95,6 +98,15 @@ export class OrderFormComponent {
   summaryTotalLabel = computed(() => (this.isBuy() ? 'Total' : 'Net'));
   summaryHeaderLabel = computed(() => (this.isBuy() ? 'Buy Order Summary' : 'Sell Order Summary'));
   summaryIcon = computed(() => (this.isBuy() ? 'pi pi-arrow-up' : 'pi pi-arrow-down'));
+
+  shouldShowExitConfig = computed(() => {
+    const type = this.form().get('type')?.value;
+    return type === OrderType.MARKET || type === OrderType.LIMIT;
+  });
+
+  exitConfigFormGroup = computed(() => {
+    return this.form().get('exitConfig') as FormGroup;
+  });
 
   // Template helper methods
   shouldShowPriceField(): boolean {
