@@ -195,7 +195,9 @@ export const queryKeys = {
     ticker: (symbol: string, exchangeId?: string) =>
       exchangeId
         ? ([...queryKeys.trading.all, 'ticker', symbol, exchangeId] as const)
-        : ([...queryKeys.trading.all, 'ticker', symbol] as const)
+        : ([...queryKeys.trading.all, 'ticker', symbol] as const),
+    marketLimits: (symbol?: string | null, exchangeKeyId?: string | null) =>
+      [...queryKeys.trading.all, 'market-limits', symbol ?? '', exchangeKeyId ?? ''] as const
   },
 
   // --------------------------------------------------------------------------

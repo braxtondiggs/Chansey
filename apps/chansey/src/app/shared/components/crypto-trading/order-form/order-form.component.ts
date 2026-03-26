@@ -9,7 +9,7 @@ import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
 import { SelectButtonModule } from 'primeng/selectbutton';
 
-import { OrderPreview, OrderType, TickerPair, TrailingType } from '@chansey/api-interfaces';
+import { MarketLimits, OrderPreview, OrderType, TickerPair, TrailingType } from '@chansey/api-interfaces';
 
 @Component({
   selector: 'app-order-form',
@@ -42,6 +42,7 @@ export class OrderFormComponent {
   hasSufficientBalance = input.required<boolean>();
   fallbackTotal = input.required<number>();
   fallbackNet = input.required<number>();
+  marketLimits = input<MarketLimits | null>(null);
 
   // Outputs
   submitOrder = output<void>();
@@ -49,6 +50,21 @@ export class OrderFormComponent {
 
   // Derived from side
   isBuy = computed(() => this.side() === 'BUY');
+
+  isBelowMinCost = computed(() => {
+    const limits = this.marketLimits();
+    const pair = this.selectedPair();
+    const quantity = this.form().get('quantity')?.value;
+    if (!limits?.minCost || !quantity) return false;
+
+    const orderType = this.form().get('type')?.value;
+    const customPrice = this.form().get('price')?.value;
+    const useLimitPrice = (orderType === OrderType.LIMIT || orderType === OrderType.STOP_LIMIT) && customPrice > 0;
+    const price = useLimitPrice ? customPrice : pair?.currentPrice;
+    if (!price) return false;
+
+    return quantity * price < limits.minCost;
+  });
 
   // Color theme classes derived from side
   summaryBorderClass = computed(() =>
@@ -122,10 +138,31 @@ export class OrderFormComponent {
     if (field.errors['required']) return 'This field is required';
     if (field.errors['min']) {
       const minValue = field.errors['min'].min;
+      if (fieldName === 'quantity' && this.marketLimits()?.minQuantity) {
+        const symbol = this.selectedPair()?.baseAsset?.symbol?.toUpperCase() || '';
+        return `Minimum is ${minValue} ${symbol}`;
+      }
       const formatted = minValue < 0.0001 ? minValue.toFixed(8) : minValue;
       return `Minimum value is ${formatted}`;
     }
+    if (field.errors['max']) {
+      const maxValue = field.errors['max'].max;
+      if (fieldName === 'quantity' && this.marketLimits()?.maxQuantity) {
+        const symbol = this.selectedPair()?.baseAsset?.symbol?.toUpperCase() || '';
+        return `Maximum is ${maxValue} ${symbol}`;
+      }
+      return `Maximum value is ${maxValue}`;
+    }
     return 'Invalid value';
+  }
+
+  countDecimals(value: number): number {
+    if (Math.floor(value) === value || !isFinite(value)) return 0;
+    const s = String(value);
+    if (s.includes('e-')) {
+      return parseInt(s.split('e-')[1], 10);
+    }
+    return s.split('.')[1]?.length || 0;
   }
 
   onSubmit(): void {

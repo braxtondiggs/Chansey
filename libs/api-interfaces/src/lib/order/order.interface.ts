@@ -188,6 +188,14 @@ export interface OrderSyncStatus {
   hasActiveExchangeKeys: boolean;
 }
 
+export interface MarketLimits {
+  minQuantity: number;
+  maxQuantity: number;
+  minCost: number;
+  quantityStep: number;
+  priceStep: number;
+}
+
 export interface OrderPreview {
   symbol: string;
   side: OrderSide;
@@ -211,6 +219,11 @@ export interface OrderPreview {
   warnings: string[];
   exchange: string;
   supportedOrderTypes?: OrderType[];
+  minQuantity?: number;
+  maxQuantity?: number;
+  minCost?: number;
+  quantityStep?: number;
+  priceStep?: number;
 }
 
 /**

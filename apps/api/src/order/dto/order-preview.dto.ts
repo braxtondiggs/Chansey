@@ -148,4 +148,19 @@ export class OrderPreviewDto {
     required: false
   })
   supportedOrderTypes?: OrderType[];
+
+  @ApiProperty({ description: 'Minimum order quantity', required: false })
+  minQuantity?: number;
+
+  @ApiProperty({ description: 'Maximum order quantity', required: false })
+  maxQuantity?: number;
+
+  @ApiProperty({ description: 'Minimum order value in quote currency', required: false })
+  minCost?: number;
+
+  @ApiProperty({ description: 'Quantity step size (precision)', required: false })
+  quantityStep?: number;
+
+  @ApiProperty({ description: 'Price step size (precision)', required: false })
+  priceStep?: number;
 }

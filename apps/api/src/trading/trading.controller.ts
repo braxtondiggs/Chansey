@@ -1,7 +1,7 @@
-import { Controller, Get, HttpStatus, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpStatus, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
+import { MarketLimitsDto, OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
 import { TradingService } from './trading.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -89,5 +89,36 @@ export class TradingController {
   })
   async getTicker(@Query('symbol') symbol: string, @Query('exchangeId') exchangeId?: string): Promise<TickerDto> {
     return this.tradingService.getTicker(symbol, exchangeId);
+  }
+
+  @Get('market-limits')
+  @ApiOperation({
+    summary: 'Get market limits for a trading pair',
+    description:
+      'Returns minimum/maximum quantity, minimum notional value, and precision for a trading pair on a specific exchange'
+  })
+  @ApiQuery({
+    name: 'symbol',
+    description: 'Trading pair symbol (e.g., BTC/USDT)',
+    required: true,
+    type: String
+  })
+  @ApiQuery({
+    name: 'exchangeKeyId',
+    description: 'Exchange key ID for the user',
+    required: true,
+    type: String
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Successfully retrieved market limits',
+    type: MarketLimitsDto
+  })
+  async getMarketLimits(
+    @GetUser() user: User,
+    @Query('symbol') symbol: string,
+    @Query('exchangeKeyId', new ParseUUIDPipe()) exchangeKeyId: string
+  ): Promise<MarketLimitsDto> {
+    return this.tradingService.getMarketLimits(symbol, exchangeKeyId, user);
   }
 }

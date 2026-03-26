@@ -68,11 +68,14 @@ const createOrderResult = createMockMutationResult();
 const previewOrderResult = createMockMutationResult();
 const cancelOrderResult = createMockMutationResult();
 
+const marketLimitsResult = createMockQueryResult<any>(null);
+
 const mockTradingQueryService = {
   useTradingPairs: jest.fn(() => tradingPairsResult),
   useBalances: jest.fn(() => balancesResult),
   useActiveOrders: jest.fn(() => activeOrdersResult),
-  useOrderBook: jest.fn(() => orderBookResult)
+  useOrderBook: jest.fn(() => orderBookResult),
+  useMarketLimits: jest.fn(() => marketLimitsResult)
 };
 
 const mockTradingMutationService = {

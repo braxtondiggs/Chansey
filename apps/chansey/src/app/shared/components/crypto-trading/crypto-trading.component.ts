@@ -16,6 +16,7 @@ import { debounceTime, Subject, takeUntil } from 'rxjs';
 import {
   Exchange,
   ExchangeKey,
+  MarketLimits,
   OrderPreview,
   OrderSide,
   OrderType,
@@ -151,6 +152,9 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     return userExchange?.id || null;
   });
 
+  marketLimitsQuery = this.tradingQueryService.useMarketLimits(this.selectedSymbol, this.selectedExchangeKeyId);
+  marketLimits = computed<MarketLimits | null>(() => this.marketLimitsQuery.data() ?? null);
+
   exchangeOptions = computed(() => {
     const supportedExchanges = this.exchangeQuery.data();
     const userExchanges = this.userQuery.data()?.exchanges;
@@ -227,6 +231,14 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
         this.showOrderBook.set(true);
       }
     });
+
+    effect(() => {
+      const limits = this.marketLimits();
+      if (limits && this.buyOrderForm && this.sellOrderForm) {
+        this.applyMarketLimitsValidators(this.buyOrderForm, limits);
+        this.applyMarketLimitsValidators(this.sellOrderForm, limits);
+      }
+    });
   }
 
   ngOnInit() {
@@ -247,7 +259,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
   onPairChange(event: { value: string }) {
     const symbol = event.value;
     this.selectedPairValue.set(symbol);
-    const pair = this.tradingPairsQuery.data()?.find((p) => p.symbol.toUpperCase() === symbol.toUpperCase());
+    const pair = this.tradingPairsQuery.data()?.find((p) => p.symbol?.toUpperCase() === symbol?.toUpperCase());
     if (pair) {
       this.tradingStateService.setSelectedPair(pair);
       this.triggerPreview('BUY');
@@ -526,6 +538,18 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
         /* Preview failures are non-critical */
       }
     });
+  }
+
+  private applyMarketLimitsValidators(form: FormGroup, limits: MarketLimits) {
+    const quantityControl = form.get('quantity');
+    if (!quantityControl) return;
+
+    const validators = [Validators.required, Validators.min(limits.minQuantity > 0 ? limits.minQuantity : 0.00000001)];
+    if (limits.maxQuantity > 0) {
+      validators.push(Validators.max(limits.maxQuantity));
+    }
+    quantityControl.setValidators(validators);
+    quantityControl.updateValueAndValidity({ emitEvent: false });
   }
 
   private setQuantityPercentage(side: 'BUY' | 'SELL', percentage: number) {

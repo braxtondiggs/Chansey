@@ -2,15 +2,17 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 
 import * as ccxt from 'ccxt';
 
-import { OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
+import { MarketLimitsDto, OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
 
 import { BalanceService } from '../balance/balance.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { CCXT_BALANCE_META_KEYS } from '../exchange/ccxt-balance.util';
+import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { toErrorInfo } from '../shared/error.util';
+import { extractMarketLimits } from '../shared/precision.util';
 import { withRateLimitRetryThrow } from '../shared/retry.util';
 import { User } from '../users/users.entity';
 
@@ -22,6 +24,7 @@ export class TradingService {
   constructor(
     private readonly balanceService: BalanceService,
     private readonly coinService: CoinService,
+    private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeService: ExchangeService,
     private readonly exchangeManagerService: ExchangeManagerService
   ) {}
@@ -124,6 +127,32 @@ export class TradingService {
     }
   }
 
+  async getMarketLimits(symbol: string, exchangeKeyId: string, user: User): Promise<MarketLimitsDto> {
+    this.validateSymbol(symbol);
+
+    const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, user.id);
+    if (!exchangeKey?.exchange) {
+      throw new NotFoundException('Exchange key not found');
+    }
+
+    const service = this.exchangeManagerService.getExchangeService(exchangeKey.exchange.slug);
+    const client = await service.getClient(user);
+
+    if (!client.markets) {
+      await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        logger: this.logger,
+        operationName: 'loadMarkets'
+      });
+    }
+
+    const market = client.markets[symbol];
+    if (!market) {
+      throw new BadRequestException(`Trading pair ${symbol} is not available on ${exchangeKey.exchange.name}`);
+    }
+
+    return extractMarketLimits(market, client.precisionMode);
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -143,7 +172,7 @@ export class TradingService {
         const exchange = await this.exchangeService.findOne(exchangeId);
         const service = this.exchangeManagerService.getExchangeService(exchange.slug);
         return { client: await service.getClient(), name: exchange.name };
-      } catch (error: unknown) {
+      } catch (_error: unknown) {
         this.logger.warn(`Failed to get exchange client for ${exchangeId}, falling back to public client`);
       }
     }
