@@ -1,3 +1,5 @@
+import { ExitConfigRequest } from './exit-config.interface';
+
 import { Coin } from '../coin/coin.interface';
 import { Exchange } from '../exchange/exchange.interface';
 import { IUser } from '../user/user.interface';
@@ -124,6 +126,7 @@ export interface PlaceOrderRequest {
 
   // Optional fields
   timeInForce?: TimeInForce;
+  exitConfig?: ExitConfigRequest;
 }
 
 /**

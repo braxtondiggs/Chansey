@@ -14,14 +14,17 @@ import { ToastModule } from 'primeng/toast';
 import { debounceTime, Subject, takeUntil } from 'rxjs';
 
 import {
+  DEFAULT_EXIT_CONFIG,
   Exchange,
   ExchangeKey,
+  ExitConfigRequest,
   MarketLimits,
   OrderPreview,
   OrderSide,
   OrderType,
   PlaceOrderRequest,
   TickerPair,
+  TrailingActivationType,
   TrailingType
 } from '@chansey/api-interfaces';
 
@@ -308,10 +311,20 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     const priceDisplay =
       orderType === OrderType.MARKET ? 'Market Price' : `${form.get('price')?.value || preview?.marketPrice || 0}`;
 
+    const exitConfig = this.buildExitConfig(form.get('exitConfig') as FormGroup);
+    let exitSummary = '';
+    if (exitConfig) {
+      const parts: string[] = [];
+      if (exitConfig.enableStopLoss) parts.push(`${exitConfig.stopLossValue}% stop-loss`);
+      if (exitConfig.enableTakeProfit) parts.push(`${exitConfig.takeProfitValue}% take-profit`);
+      if (exitConfig.enableTrailingStop) parts.push(`${exitConfig.trailingValue}% trailing stop`);
+      if (parts.length > 0) exitSummary = ` with ${parts.join(' and ')}`;
+    }
+
     this.confirmationService.confirm({
       header: `Confirm ${side} Order`,
       message:
-        `${side} ${quantity} ${symbol} at ${priceDisplay}` +
+        `${side} ${quantity} ${symbol} at ${priceDisplay}${exitSummary}` +
         (preview
           ? ` — Est. ${side === 'BUY' ? 'total' : 'net'}: ${preview.estimatedCost?.toFixed(6)} ${preview.balanceCurrency?.toUpperCase() || ''}`
           : ''),
@@ -417,6 +430,25 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     };
     this.buyOrderForm = this.fb.group(formConfig);
     this.sellOrderForm = this.fb.group({ ...formConfig });
+    this.buyOrderForm.addControl('exitConfig', this.createExitConfigFormGroup());
+    this.sellOrderForm.addControl('exitConfig', this.createExitConfigFormGroup());
+  }
+
+  private createExitConfigFormGroup(): FormGroup {
+    return this.fb.group({
+      enableStopLoss: [DEFAULT_EXIT_CONFIG.enableStopLoss],
+      stopLossType: [DEFAULT_EXIT_CONFIG.stopLossType],
+      stopLossValue: [DEFAULT_EXIT_CONFIG.stopLossValue],
+      enableTakeProfit: [DEFAULT_EXIT_CONFIG.enableTakeProfit],
+      takeProfitType: [DEFAULT_EXIT_CONFIG.takeProfitType],
+      takeProfitValue: [DEFAULT_EXIT_CONFIG.takeProfitValue],
+      enableTrailingStop: [DEFAULT_EXIT_CONFIG.enableTrailingStop],
+      trailingType: [DEFAULT_EXIT_CONFIG.trailingType],
+      trailingValue: [DEFAULT_EXIT_CONFIG.trailingValue],
+      trailingActivation: [DEFAULT_EXIT_CONFIG.trailingActivation],
+      trailingActivationValue: [null],
+      useOco: [DEFAULT_EXIT_CONFIG.useOco]
+    });
   }
 
   private setupFormSubscriptions() {
@@ -471,6 +503,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     const exchangeKeyId = this.selectedExchangeKeyId();
     if (!pair || !exchangeKeyId) return null;
     const formValue = form.value;
+    const exitConfig = this.buildExitConfig(form.get('exitConfig') as FormGroup);
     return buildOrderRequest(
       exchangeKeyId,
       pair.symbol.toUpperCase(),
@@ -483,9 +516,36 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
         trailingAmount: formValue.trailingAmount,
         trailingType: formValue.trailingType,
         takeProfitPrice: formValue.takeProfitPrice,
-        stopLossPrice: formValue.stopLossPrice
+        stopLossPrice: formValue.stopLossPrice,
+        exitConfig
       }
     );
+  }
+
+  private buildExitConfig(exitForm: FormGroup): ExitConfigRequest | undefined {
+    if (!exitForm) return undefined;
+    const v = exitForm.value;
+    if (!v.enableStopLoss && !v.enableTakeProfit && !v.enableTrailingStop) return undefined;
+
+    const config: ExitConfigRequest = {
+      enableStopLoss: v.enableStopLoss,
+      stopLossType: v.stopLossType,
+      stopLossValue: v.stopLossValue ?? 0,
+      enableTakeProfit: v.enableTakeProfit,
+      takeProfitType: v.takeProfitType,
+      takeProfitValue: v.takeProfitValue ?? 0,
+      enableTrailingStop: v.enableTrailingStop,
+      trailingType: v.trailingType,
+      trailingValue: v.trailingValue ?? 0,
+      trailingActivation: v.trailingActivation,
+      useOco: v.enableStopLoss && v.enableTakeProfit ? v.useOco : false
+    };
+
+    if (v.trailingActivation !== TrailingActivationType.IMMEDIATE && v.trailingActivationValue != null) {
+      config.trailingActivationValue = v.trailingActivationValue;
+    }
+
+    return config;
   }
 
   private executeOrder(side: 'BUY' | 'SELL', form: FormGroup, orderRequest: PlaceOrderRequest) {
@@ -497,6 +557,10 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
           detail: `${side} order placed successfully`
         });
         form.reset({ type: OrderType.MARKET, trailingType: TrailingType.AMOUNT });
+        (form.get('exitConfig') as FormGroup)?.reset({
+          ...DEFAULT_EXIT_CONFIG,
+          trailingActivationValue: null
+        });
         if (side === 'BUY') {
           this.buyOrderPreview.set(null);
           this.selectedBuyPercentage.set(null);
