@@ -314,10 +314,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     const exitConfig = this.buildExitConfig(form.get('exitConfig') as FormGroup);
     let exitSummary = '';
     if (exitConfig) {
-      const parts: string[] = [];
-      if (exitConfig.enableStopLoss) parts.push(`${exitConfig.stopLossValue}% stop-loss`);
-      if (exitConfig.enableTakeProfit) parts.push(`${exitConfig.takeProfitValue}% take-profit`);
-      if (exitConfig.enableTrailingStop) parts.push(`${exitConfig.trailingValue}% trailing stop`);
+      const parts = this.buildExitSummaryParts(exitConfig);
       if (parts.length > 0) exitSummary = ` with ${parts.join(' and ')}`;
     }
 
@@ -541,11 +538,32 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       useOco: v.enableStopLoss && v.enableTakeProfit ? v.useOco : false
     };
 
-    if (v.trailingActivation !== TrailingActivationType.IMMEDIATE && v.trailingActivationValue != null) {
+    if (
+      v.enableTrailingStop &&
+      v.trailingActivation !== TrailingActivationType.IMMEDIATE &&
+      v.trailingActivationValue != null
+    ) {
       config.trailingActivationValue = v.trailingActivationValue;
     }
 
     return config;
+  }
+
+  private buildExitSummaryParts(config: ExitConfigRequest): string[] {
+    const parts: string[] = [];
+    const quote = this.selectedPair()?.quoteAsset?.symbol?.toUpperCase() || '';
+    const suffix = (type: string) => (type === 'percentage' ? '%' : type === 'risk_reward' ? ':1' : ` ${quote}`);
+
+    if (config.enableStopLoss) {
+      parts.push(`${config.stopLossValue}${suffix(config.stopLossType)} stop-loss`);
+    }
+    if (config.enableTakeProfit) {
+      parts.push(`${config.takeProfitValue}${suffix(config.takeProfitType)} take-profit`);
+    }
+    if (config.enableTrailingStop) {
+      parts.push(`${config.trailingValue}${suffix(config.trailingType)} trailing stop`);
+    }
+    return parts;
   }
 
   private executeOrder(side: 'BUY' | 'SELL', form: FormGroup, orderRequest: PlaceOrderRequest) {

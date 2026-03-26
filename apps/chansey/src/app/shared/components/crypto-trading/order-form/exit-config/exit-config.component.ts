@@ -7,6 +7,7 @@ import { InputNumberModule } from 'primeng/inputnumber';
 import { SelectModule } from 'primeng/select';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { TooltipModule } from 'primeng/tooltip';
+import { startWith } from 'rxjs';
 
 import { StopLossType, TakeProfitType, TickerPair, TrailingActivationType } from '@chansey/api-interfaces';
 
@@ -104,7 +105,10 @@ export class ExitConfigComponent implements OnInit {
   ngOnInit(): void {
     this.watchToggle('enableStopLoss', [{ name: 'stopLossValue', max: EXIT_CONFIG_LIMITS.STOP_LOSS_MAX }]);
     this.watchToggle('enableTakeProfit', [{ name: 'takeProfitValue', max: EXIT_CONFIG_LIMITS.TAKE_PROFIT_MAX }]);
-    this.watchToggle('enableTrailingStop', [{ name: 'trailingValue', max: EXIT_CONFIG_LIMITS.TRAILING_VALUE_MAX }]);
+    this.watchToggle('enableTrailingStop', [
+      { name: 'trailingValue', max: EXIT_CONFIG_LIMITS.TRAILING_VALUE_MAX },
+      { name: 'trailingActivationValue', max: EXIT_CONFIG_LIMITS.TRAILING_ACTIVATION_MAX }
+    ]);
     this.watchTrailingActivation();
     this.watchTakeProfitRiskReward();
   }
@@ -112,7 +116,7 @@ export class ExitConfigComponent implements OnInit {
   private watchToggle(toggleField: string, valueFields: { name: string; max: number }[]): void {
     this.form()
       .get(toggleField)
-      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      ?.valueChanges.pipe(startWith(this.form().get(toggleField)?.value), takeUntilDestroyed(this.destroyRef))
       .subscribe((enabled: boolean) => {
         valueFields.forEach(({ name, max }) => {
           const control = this.form().get(name);
@@ -129,7 +133,7 @@ export class ExitConfigComponent implements OnInit {
   private watchTrailingActivation(): void {
     this.form()
       .get('trailingActivation')
-      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      ?.valueChanges.pipe(startWith(this.form().get('trailingActivation')?.value), takeUntilDestroyed(this.destroyRef))
       .subscribe((activation: TrailingActivationType) => {
         const control = this.form().get('trailingActivationValue');
         if (activation !== TrailingActivationType.IMMEDIATE && this.form().get('enableTrailingStop')?.value) {
@@ -148,7 +152,7 @@ export class ExitConfigComponent implements OnInit {
   private watchTakeProfitRiskReward(): void {
     this.form()
       .get('enableStopLoss')
-      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      ?.valueChanges.pipe(startWith(this.form().get('enableStopLoss')?.value), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         // When SL is disabled and TP type is RISK_REWARD, switch to PERCENTAGE
         const slEnabled = this.form().get('enableStopLoss')?.value;
