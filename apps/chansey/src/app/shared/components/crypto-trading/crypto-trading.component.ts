@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
-import { FormBuilder, FormGroup, FormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, FormsModule, ValidatorFn, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
+import { Decimal } from 'decimal.js';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -18,6 +19,7 @@ import {
   Exchange,
   ExchangeKey,
   ExitConfigRequest,
+  getSupportedOrderTypes,
   MarketLimits,
   OrderPreview,
   OrderSide,
@@ -42,15 +44,18 @@ import {
 import {
   calculateBuyOrderTotalWithFees,
   calculateSellOrderNetAmount,
-  getAvailableBuyBalance,
+  findBalance,
   getAvailableSellBalance,
   getFeeRate,
+  getFeeRateForOrderType,
   getPreviewWarnings,
-  hasSufficientBalance
+  hasSufficientBalance,
+  MAX_ORDER_SAFETY_MARGIN
 } from './crypto-trading.utils';
 import { OrderBookComponent } from './order-book/order-book.component';
 import { OrderFormComponent } from './order-form/order-form.component';
 
+import { snapToStep, stepSizeValidator } from '../../../validators';
 import { AuthService, LayoutService } from '../../services';
 import { ExchangeService } from '../../services/exchange.service';
 import {
@@ -274,6 +279,24 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     this.selectedPairValue.set(null);
     this.buyOrderPreview.set(null);
     this.sellOrderPreview.set(null);
+
+    // Immediately update supported order types from shared config to avoid stale types
+    const exchangeSlug = this.exchangeQuery.data()?.find((e) => e.id === event.value)?.slug;
+    if (exchangeSlug) {
+      const supported = getSupportedOrderTypes(exchangeSlug);
+      this.supportedOrderTypes.set(supported);
+
+      // Reset order type to MARKET if current selection is no longer supported
+      const buyType = this.buyOrderForm.get('type')?.value;
+      if (buyType && !supported.includes(buyType)) {
+        this.buyOrderForm.patchValue({ type: OrderType.MARKET });
+      }
+      const sellType = this.sellOrderForm.get('type')?.value;
+      if (sellType && !supported.includes(sellType)) {
+        this.sellOrderForm.patchValue({ type: OrderType.MARKET });
+      }
+    }
+
     this.messageService.add({
       severity: 'info',
       summary: 'Exchange Selected',
@@ -455,6 +478,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
         ?.valueChanges.pipe(takeUntil(this.destroy$))
         .subscribe((type) => {
           this.updateFormValidators(form, type);
+          this.prefillPriceFields(form, type);
           this.triggerPreview(side);
         });
       form
@@ -468,6 +492,22 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     };
     subscribe(this.buyOrderForm, 'BUY');
     subscribe(this.sellOrderForm, 'SELL');
+  }
+
+  private prefillPriceFields(form: FormGroup, type: OrderType) {
+    const pair = this.selectedPair();
+    const marketPrice = pair?.currentPrice || 0;
+    if (marketPrice <= 0) return;
+
+    if ((type === OrderType.LIMIT || type === OrderType.STOP_LIMIT) && !form.get('price')?.value) {
+      form.get('price')?.setValue(marketPrice);
+    }
+    if ((type === OrderType.STOP_LOSS || type === OrderType.STOP_LIMIT) && !form.get('stopPrice')?.value) {
+      form.get('stopPrice')?.setValue(marketPrice);
+    }
+    if (type === OrderType.TAKE_PROFIT && !form.get('takeProfitPrice')?.value) {
+      form.get('takeProfitPrice')?.setValue(marketPrice);
+    }
   }
 
   private updateFormValidators(form: FormGroup, type: OrderType) {
@@ -489,6 +529,12 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     if (type === OrderType.OCO) {
       form.get('takeProfitPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
       form.get('stopLossPrice')?.setValidators([Validators.required, Validators.min(0.00000001)]);
+    }
+
+    // Re-apply step-size validation from market limits after clearing
+    const limits = this.marketLimits();
+    if (limits?.priceStep && limits.priceStep > 0) {
+      this.applyPriceStepValidator(form, limits.priceStep);
     }
 
     controls.forEach((ctrl) => form.get(ctrl)?.updateValueAndValidity());
@@ -626,12 +672,34 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     const quantityControl = form.get('quantity');
     if (!quantityControl) return;
 
-    const validators = [Validators.required, Validators.min(limits.minQuantity > 0 ? limits.minQuantity : 0.00000001)];
+    const quantityValidators = [
+      Validators.required,
+      Validators.min(limits.minQuantity > 0 ? limits.minQuantity : 0.00000001)
+    ];
     if (limits.maxQuantity > 0) {
-      validators.push(Validators.max(limits.maxQuantity));
+      quantityValidators.push(Validators.max(limits.maxQuantity));
     }
-    quantityControl.setValidators(validators);
+    if (limits.quantityStep > 0) {
+      quantityValidators.push(stepSizeValidator(limits.quantityStep));
+    }
+    quantityControl.setValidators(quantityValidators);
     quantityControl.updateValueAndValidity({ emitEvent: false });
+
+    if (limits.priceStep > 0) {
+      this.applyPriceStepValidator(form, limits.priceStep);
+      form.get('price')?.updateValueAndValidity({ emitEvent: false });
+    }
+  }
+
+  private applyPriceStepValidator(form: FormGroup, priceStep: number): void {
+    const priceControl = form.get('price');
+    if (!priceControl || priceStep <= 0) return;
+    const validators: ValidatorFn[] = [];
+    if (priceControl.hasValidator(Validators.required)) {
+      validators.push(Validators.required, Validators.min(0.00000001));
+    }
+    validators.push(stepSizeValidator(priceStep));
+    priceControl.setValidators(validators);
   }
 
   private setQuantityPercentage(side: 'BUY' | 'SELL', percentage: number) {
@@ -640,17 +708,50 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
     if (!pair) return;
 
     const preview = side === 'BUY' ? this.buyOrderPreview() : this.sellOrderPreview();
-    const price = pair.currentPrice || preview?.marketPrice || 0;
+    const orderType: OrderType = form.get('type')?.value || OrderType.MARKET;
+    const limits = this.marketLimitsQuery.data();
+    const step = limits?.quantityStep ?? 0;
+    const isMax = percentage === 100;
 
     if (side === 'BUY') {
       this.selectedBuyPercentage.set(percentage);
-      const available = getAvailableBuyBalance(this.balancesQuery.data(), pair, preview);
-      const amountToSpend = available * (percentage / 100);
-      form.get('quantity')?.setValue(price > 0 ? amountToSpend / price : 0);
+
+      // Use limit price for LIMIT/STOP_LIMIT orders, market price otherwise
+      const price =
+        orderType === OrderType.LIMIT || orderType === OrderType.STOP_LIMIT
+          ? form.get('price')?.value || pair.currentPrice || preview?.marketPrice || 0
+          : pair.currentPrice || preview?.marketPrice || 0;
+      if (price <= 0) return;
+
+      const balance = findBalance(this.balancesQuery.data(), pair, 'BUY');
+      if (!balance || balance.available <= 0) return;
+
+      const feeRate = getFeeRateForOrderType(orderType, preview);
+      const spendable = new Decimal(balance.available)
+        .div(new Decimal(1).plus(new Decimal(feeRate)))
+        .times(new Decimal(percentage).div(100));
+      let rawQuantity = spendable.div(new Decimal(price));
+
+      // Apply safety margin at 100% to prevent failures from price movement
+      if (isMax) {
+        rawQuantity = rawQuantity.times(new Decimal(1).minus(new Decimal(MAX_ORDER_SAFETY_MARGIN)));
+      }
+
+      const qty = rawQuantity.toNumber();
+      form.get('quantity')?.setValue(step > 0 ? snapToStep(qty, step) : qty);
     } else {
       this.selectedSellPercentage.set(percentage);
-      const quantity = getAvailableSellBalance(this.balancesQuery.data(), pair) * (percentage / 100);
-      form.get('quantity')?.setValue(quantity);
+
+      const available = new Decimal(getAvailableSellBalance(this.balancesQuery.data(), pair));
+      let rawQuantity = available.times(new Decimal(percentage).div(100));
+
+      // Apply safety margin at 100% to prevent rounding/timing failures
+      if (isMax) {
+        rawQuantity = rawQuantity.times(new Decimal(1).minus(new Decimal(MAX_ORDER_SAFETY_MARGIN)));
+      }
+
+      const qty = rawQuantity.toNumber();
+      form.get('quantity')?.setValue(step > 0 ? snapToStep(qty, step) : qty);
     }
   }
 }

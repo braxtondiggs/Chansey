@@ -25,8 +25,11 @@ export class ActiveOrdersComponent {
   isVisible = input(false);
   isCancelling = input(false);
 
+  isRefreshing = input(false);
+
   cancelOrder = output<string>();
   cancelOcoPair = output<string[]>();
+  refresh = output();
 
   readonly getStatusClass = getStatusClass;
 

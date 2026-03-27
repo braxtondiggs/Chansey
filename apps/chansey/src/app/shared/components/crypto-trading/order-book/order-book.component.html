@@ -1,8 +1,18 @@
 @if (orderBookData()) {
   <div class="mt-6 rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800">
     @if (isVisible()) {
-      <div class="font-display px-4 pt-3 pb-1 text-sm font-bold tracking-tight text-surface-700 dark:text-surface-200">
-        Order Book
+      <div class="flex items-center justify-between px-4 pt-3 pb-1">
+        <span class="font-display text-sm font-bold tracking-tight text-surface-700 dark:text-surface-200">
+          Order Book
+        </span>
+        <p-button
+          icon="pi pi-refresh"
+          [text]="true"
+          severity="secondary"
+          size="small"
+          (click)="refresh.emit()"
+          [loading]="isRefreshing()"
+        />
       </div>
       <div class="grid grid-cols-2 gap-4 px-4 pb-4">
         <!-- Asks (Sell orders) -->

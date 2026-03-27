@@ -6,6 +6,9 @@ import { Balance, OrderPreview, OrderStatus, OrderType, TickerPair } from '@chan
 
 import { DEFAULT_FEE_RATE, OrderBookEntry } from '../../services/trading';
 
+/** 0.1% safety margin to prevent 100% orders from failing due to price movement */
+export const MAX_ORDER_SAFETY_MARGIN = 0.001;
+
 /**
  * Get order total from preview or calculate fallback
  */
@@ -28,6 +31,16 @@ export function calculateOrderFees(form: FormGroup, pair: TickerPair | null, pre
 
 export function getFeeRate(preview: OrderPreview | null): number {
   return preview?.feeRate || DEFAULT_FEE_RATE;
+}
+
+/**
+ * Get fee rate appropriate for the given order type.
+ * Only uses the preview's feeRate if the preview was generated for the same order type,
+ * otherwise falls back to DEFAULT_FEE_RATE to avoid using a stale taker/maker rate.
+ */
+export function getFeeRateForOrderType(orderType: OrderType, preview: OrderPreview | null): number {
+  if (preview && preview.orderType === orderType) return preview.feeRate;
+  return DEFAULT_FEE_RATE;
 }
 
 export function calculateBuyOrderTotalWithFees(
@@ -70,7 +83,7 @@ export function getAvailableBuyBalance(
   const balance = findBalance(balances, pair, 'BUY');
   if (!balance) return 0;
   const feeRate = getFeeRate(preview);
-  return new Decimal(balance.available).times(new Decimal(1).minus(new Decimal(feeRate))).toNumber();
+  return new Decimal(balance.available).div(new Decimal(1).plus(new Decimal(feeRate))).toNumber();
 }
 
 export function getAvailableSellBalance(balances: Balance[] | undefined, pair: TickerPair | null): number {
