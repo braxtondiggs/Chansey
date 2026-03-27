@@ -122,6 +122,9 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - Entities use decorators for database mapping
 - **NEVER use `uuid_generate_v4()`** in migrations — it requires the `uuid-ossp` extension which is not available.
   **Always use `gen_random_uuid()`** instead (built into PostgreSQL 13+ natively)
+- **Migration timestamps must be chronologically ordered.** Use `Date.now()` (13-digit Unix epoch in ms) when creating
+  migrations. Never use a timestamp older than the latest existing migration file. Check `ls apps/api/src/migrations/`
+  to find the latest timestamp before naming your file.
 
 ### Queue Management
 

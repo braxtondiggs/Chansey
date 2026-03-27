@@ -72,6 +72,7 @@ import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 import { SharedCacheModule } from '../shared-cache.module';
+import { ShutdownModule } from '../shutdown/shutdown.module';
 import { StorageModule } from '../storage/storage.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { UserStrategyPosition } from '../strategy/entities/user-strategy-position.entity';
@@ -145,7 +146,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     MetricsModule,
     StorageModule,
     BacktestSharedModule,
-    PaperTradingModule
+    PaperTradingModule,
+    ShutdownModule
   ],
   providers: [
     AlgorithmService,

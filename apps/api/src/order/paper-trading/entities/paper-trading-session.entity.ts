@@ -23,6 +23,7 @@ import { Algorithm } from '../../../algorithm/algorithm.entity';
 import { ExchangeKey } from '../../../exchange/exchange-key/exchange-key.entity';
 import { User } from '../../../users/users.entity';
 import { ColumnNumericTransformer } from '../../../utils/transformers';
+import { SerializableThrottleState } from '../../backtest/shared';
 
 export enum PaperTradingStatus {
   ACTIVE = 'ACTIVE',
@@ -162,6 +163,10 @@ export class PaperTradingSession {
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Algorithm configuration/optimized parameters', required: false })
   algorithmConfig?: Record<string, any>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: 'Persisted signal throttle state for restart resilience', required: false })
+  throttleState?: SerializableThrottleState;
 
   @IsString()
   @IsOptional()

@@ -34,6 +34,9 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
+/** Delay between processing each strategy config to avoid rate-limiting external APIs */
+const STRATEGY_STAGGER_DELAY_MS = 30_000;
+
 @Injectable()
 export class PipelineOrchestrationService {
   private readonly logger = new Logger(PipelineOrchestrationService.name);
@@ -206,8 +209,12 @@ export class PipelineOrchestrationService {
 
       this.logger.log(`Found ${strategyConfigs.length} eligible strategy configs for user ${userId}`);
 
-      // Process each strategy config
-      for (const strategyConfig of strategyConfigs) {
+      // Process each strategy config with stagger delay to avoid rate-limiting external APIs
+      for (let idx = 0; idx < strategyConfigs.length; idx++) {
+        const strategyConfig = strategyConfigs[idx];
+        if (idx > 0) {
+          await new Promise((r) => setTimeout(r, STRATEGY_STAGGER_DELAY_MS));
+        }
         try {
           await this.processStrategyConfig(user, strategyConfig, riskLevel, result);
         } catch (error: unknown) {

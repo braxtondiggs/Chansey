@@ -18,11 +18,14 @@ const createQueueMocks = (overrides?: Partial<Record<(typeof QUEUE_NAMES)[number
     } as QueueMock;
   }
 
-  const service = new ShutdownService(
-    ...(QUEUE_NAMES.map((name) => queues[name]) as unknown as ConstructorParameters<typeof ShutdownService>)
-  );
+  const shutdownSignal = { trigger: jest.fn(), signal: new AbortController().signal, isShuttingDown: false };
 
-  return { queues, service };
+  const args = [shutdownSignal, ...QUEUE_NAMES.map((name) => queues[name])] as unknown as ConstructorParameters<
+    typeof ShutdownService
+  >;
+  const service = new ShutdownService(...args);
+
+  return { queues, service, shutdownSignal };
 };
 
 describe('ShutdownService', () => {
@@ -31,12 +34,13 @@ describe('ShutdownService', () => {
     jest.useRealTimers();
   });
 
-  it('pauses queues and waits for active jobs on shutdown', async () => {
-    const { queues, service } = createQueueMocks();
+  it('triggers shutdown signal, pauses all queues, and drains active jobs', async () => {
+    const { queues, service, shutdownSignal } = createQueueMocks();
     const logSpy = jest.spyOn(service['logger'] as Logger, 'log');
 
     await service.onApplicationShutdown('SIGTERM');
 
+    expect(shutdownSignal.trigger).toHaveBeenCalled();
     for (const name of QUEUE_NAMES) {
       expect(queues[name].pause).toHaveBeenCalled();
       expect(queues[name].getActiveCount).toHaveBeenCalled();
@@ -45,7 +49,16 @@ describe('ShutdownService', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Graceful shutdown complete'));
   });
 
-  it('logs progress while waiting for active jobs to finish', async () => {
+  it('logs "unknown" when no signal name is provided', async () => {
+    const { service } = createQueueMocks();
+    const logSpy = jest.spyOn(service['logger'] as Logger, 'log');
+
+    await service.onApplicationShutdown();
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Shutdown signal received: unknown'));
+  });
+
+  it('polls active jobs and logs progress until all complete', async () => {
     const { service } = createQueueMocks({
       'order-queue': {
         getActiveCount: jest.fn().mockResolvedValueOnce(2).mockResolvedValue(0)
@@ -80,10 +93,12 @@ describe('ShutdownService', () => {
     await jest.advanceTimersByTimeAsync(2000);
     await waitPromise;
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Shutdown timeout reached. Remaining active jobs:'));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Shutdown timeout reached. Remaining active jobs: order-queue: 1')
+    );
   });
 
-  it('continues when pausing a queue fails', async () => {
+  it('continues pausing remaining queues when one fails', async () => {
     const { queues, service } = createQueueMocks({
       'price-queue': {
         pause: jest.fn().mockRejectedValue(new Error('pause failure'))

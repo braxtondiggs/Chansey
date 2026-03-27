@@ -230,6 +230,8 @@ export class PaperTradingProcessor extends WorkerHost {
       return;
     }
 
+    this.restoreThrottleStateIfNeeded(sessionId, session);
+
     const endTimer = this.metricsService.startBacktestTimer('paper-trading');
 
     try {
@@ -249,6 +251,12 @@ export class PaperTradingProcessor extends WorkerHost {
 
         await this.streamService.publishLog(sessionId, 'warn', `Tick processing failed: ${result.errors.join('; ')}`);
         return;
+      }
+
+      // Persist throttle state to DB for restart resilience
+      const serializedThrottle = this.engineService.getSerializedThrottleState(sessionId);
+      if (serializedThrottle) {
+        session.throttleState = serializedThrottle;
       }
 
       // Apply successful tick result (reset counters, update metrics, save)
@@ -496,9 +504,15 @@ export class PaperTradingProcessor extends WorkerHost {
     return currentDrawdown;
   }
 
-  /**
-   * Handle retry tick - attempt a single tick after backoff delay
-   */
+  /** Restore throttle state from DB if not already in memory */
+  private restoreThrottleStateIfNeeded(sessionId: string, session: PaperTradingSession): void {
+    if (session.throttleState && !this.engineService.hasThrottleState(sessionId)) {
+      this.engineService.restoreThrottleState(sessionId, session.throttleState);
+      this.logger.log(`Restored throttle state from DB for session ${sessionId}`);
+    }
+  }
+
+  /** Handle retry tick - attempt a single tick after backoff delay */
   private async handleRetryTick(data: RetryTickJobData): Promise<void> {
     const { sessionId, retryAttempt } = data;
 
@@ -518,6 +532,8 @@ export class PaperTradingProcessor extends WorkerHost {
     }
 
     this.logger.log(`Retry tick ${retryAttempt}/${this.maxRetryAttempts} for session ${sessionId}`);
+
+    this.restoreThrottleStateIfNeeded(sessionId, session);
 
     const endTimer = this.metricsService.startBacktestTimer('paper-trading');
 

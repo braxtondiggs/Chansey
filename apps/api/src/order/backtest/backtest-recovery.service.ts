@@ -16,7 +16,7 @@ import { forceRemoveJob } from '../../shared/queue.util';
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
 /** Maximum number of automatic recovery attempts before permanently failing a backtest */
-const MAX_AUTO_RESUME_COUNT = 3;
+const MAX_AUTO_RESUME_COUNT = 10;
 
 @Injectable()
 export class BacktestRecoveryService implements OnApplicationBootstrap {

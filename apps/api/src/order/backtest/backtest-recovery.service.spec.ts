@@ -183,7 +183,7 @@ describe('BacktestRecoveryService', () => {
 
   it('marks FAILED when max auto-resume count exceeded', async () => {
     const backtest = makeBacktest({
-      configSnapshot: { autoResumeCount: 3 }
+      configSnapshot: { autoResumeCount: 10 }
     });
     backtestRepository.find.mockResolvedValue([backtest]);
 
