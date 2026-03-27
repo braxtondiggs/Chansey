@@ -133,7 +133,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     }
 
     // Fetch user's free balance from exchange
-    const balances = await this.balanceService.getUserBalances(user, false);
+    let balances = await this.balanceService.getUserBalances(user, false);
     const totalFreeUsdValue = this.calculateFreeUsdValue(balances.current);
 
     if (totalFreeUsdValue <= 0 && !user.enableOpportunitySelling) {
@@ -177,7 +177,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();
     // Build asset allocations for concentration gate (reuse fetched balances)
-    const assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
+    let assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
 
     let gateBlockedCount = 0;
     let drawdownBlockedCount = 0;
@@ -292,6 +292,10 @@ export class LiveTradingService implements OnApplicationShutdown {
                 );
                 continue;
               }
+
+              // Refresh balances so subsequent strategies see updated cash and concentrations
+              balances = updatedBalances;
+              assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
             }
           }
 
@@ -541,7 +545,15 @@ export class LiveTradingService implements OnApplicationShutdown {
     // Build positions map: coinId -> { averagePrice, quantity, entryDate }
     // Filter to long positions only — short positions aren't eligible for opportunity selling (Fix #5)
     const longPositions = positions.filter((p) => p.positionSide === 'long');
-    const positionsMap = new Map<string, { averagePrice: number; quantity: number; entryDate?: Date }>();
+    const positionsMap = new Map<
+      string,
+      {
+        averagePrice: number;
+        quantity: number;
+        entryDate?: Date;
+        sourcePositions: Array<{ strategyConfigId: string; quantity: number; symbol: string }>;
+      }
+    >();
     for (const pos of longPositions) {
       const coinId = this.extractCoinIdFromSymbol(pos.symbol);
       const existing = positionsMap.get(coinId);
@@ -551,11 +563,22 @@ export class LiveTradingService implements OnApplicationShutdown {
         existing.averagePrice =
           (existing.averagePrice * existing.quantity + Number(pos.avgEntryPrice) * Number(pos.quantity)) / totalQty;
         existing.quantity = totalQty;
+        if (pos.createdAt && (!existing.entryDate || pos.createdAt < existing.entryDate)) {
+          existing.entryDate = pos.createdAt;
+        }
+        existing.sourcePositions.push({
+          strategyConfigId: pos.strategyConfigId,
+          quantity: Number(pos.quantity),
+          symbol: pos.symbol
+        });
       } else {
         positionsMap.set(coinId, {
           averagePrice: Number(pos.avgEntryPrice),
           quantity: Number(pos.quantity),
-          entryDate: pos.createdAt
+          entryDate: pos.createdAt,
+          sourcePositions: [
+            { strategyConfigId: pos.strategyConfigId, quantity: Number(pos.quantity), symbol: pos.symbol }
+          ]
         });
       }
     }
@@ -614,9 +637,13 @@ export class LiveTradingService implements OnApplicationShutdown {
           return false;
         }
 
+        // Look up source positions for this coin to use correct strategyConfigIds
+        const coinSourcePositions = positionsMap.get(sellOrder.coinId)?.sourcePositions ?? [];
+        const primaryStrategyConfigId = coinSourcePositions[0]?.strategyConfigId ?? strategyConfigId;
+
         let exchangeKey;
         try {
-          exchangeKey = await this.exchangeSelectionService.selectForSell(user.id, sellSymbol, strategyConfigId);
+          exchangeKey = await this.exchangeSelectionService.selectForSell(user.id, sellSymbol, primaryStrategyConfigId);
         } catch {
           this.logger.error(`No exchange key for opportunity sell: user=${user.id}, symbol=${sellSymbol}`);
           await this.cleanupOrphanedSells(user.id, executedSells);
@@ -628,7 +655,7 @@ export class LiveTradingService implements OnApplicationShutdown {
           user.id,
           sellSymbol,
           'SELL',
-          `opportunity-sell:${strategyConfigId}`
+          `opportunity-sell:${primaryStrategyConfigId}`
         );
         if (!cooldownCheck.allowed) {
           this.logger.warn(`Opportunity sell cooldown blocked for ${sellSymbol}, aborting remaining sells`);
@@ -639,7 +666,7 @@ export class LiveTradingService implements OnApplicationShutdown {
         try {
           const order = await this.orderService.placeAlgorithmicOrder(
             user.id,
-            strategyConfigId,
+            primaryStrategyConfigId,
             {
               action: 'sell',
               symbol: sellSymbol,
@@ -663,16 +690,36 @@ export class LiveTradingService implements OnApplicationShutdown {
               `(Order ID: ${order.id})`
           );
 
-          // Update position tracking
-          await this.positionTracking.updatePosition(
-            user.id,
-            strategyConfigId,
-            sellSymbol,
-            sellOrder.quantity,
-            sellOrder.currentPrice,
-            'sell',
-            'long'
-          );
+          // Update position tracking: split across source positions proportionally
+          let remainingSellQty = sellOrder.quantity;
+          for (const srcPos of coinSourcePositions) {
+            if (remainingSellQty <= 0) break;
+            const decrementQty = Math.min(srcPos.quantity, remainingSellQty);
+            await this.positionTracking.updatePosition(
+              user.id,
+              srcPos.strategyConfigId,
+              sellSymbol,
+              decrementQty,
+              sellOrder.currentPrice,
+              'sell',
+              'long'
+            );
+            srcPos.quantity -= decrementQty;
+            remainingSellQty -= decrementQty;
+          }
+
+          // Fallback: if no source positions matched, update with the primary strategy
+          if (coinSourcePositions.length === 0) {
+            await this.positionTracking.updatePosition(
+              user.id,
+              primaryStrategyConfigId,
+              sellSymbol,
+              sellOrder.quantity,
+              sellOrder.currentPrice,
+              'sell',
+              'long'
+            );
+          }
         } catch (error: unknown) {
           const err = toErrorInfo(error);
           await this.tradeCooldownService.clearCooldown(user.id, sellSymbol, 'SELL');

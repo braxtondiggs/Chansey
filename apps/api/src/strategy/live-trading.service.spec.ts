@@ -43,6 +43,22 @@ const createUser = (overrides: Record<string, unknown> = {}): User =>
     ...overrides
   }) as User;
 
+/** Helper to build OpportunitySellService.evaluateAndPersist result with sensible defaults */
+const createOppSellResult = (overrides: Record<string, unknown> = {}) => ({
+  decision: OpportunitySellDecision.APPROVED,
+  sellOrders: [{ coinId: 'ETH', quantity: 0.5, currentPrice: 2000, estimatedProceeds: 1000, score: {} as any }],
+  reason: 'Selling 1 position(s)',
+  projectedProceeds: 1000,
+  buySignalCoinId: 'BTC',
+  buySignalConfidence: 0.8,
+  shortfall: 200,
+  availableCash: 100,
+  portfolioValue: 5000,
+  evaluatedPositions: [],
+  liquidationPercent: 20,
+  ...overrides
+});
+
 describe('LiveTradingService', () => {
   let service: LiveTradingService;
   let userRepo: MockRepo<User>;
@@ -531,6 +547,67 @@ describe('LiveTradingService', () => {
     expect(lockService.release).not.toHaveBeenCalled();
   });
 
+  it('skips user with zero capital allocation percentage', async () => {
+    setupSignalPath({ user: { algoCapitalAllocationPercentage: 0 } });
+
+    await service.executeLiveTrading();
+
+    expect(riskPoolMapping.getActiveStrategiesForUser).not.toHaveBeenCalled();
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+  });
+
+  it('skips order when no exchange key is found for user', async () => {
+    setupSignalPath();
+    const exchangeSelectionService = (service as any).exchangeSelectionService;
+    exchangeSelectionService.selectForBuy.mockRejectedValue(new Error('No suitable exchange key'));
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+    await service.executeLiveTrading();
+
+    expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
+  });
+
+  it('continues processing remaining strategies when one throws', async () => {
+    const strategies = [{ id: 'strategy-1' } as any, { id: 'strategy-2' } as any];
+    setupSignalPath({ strategies });
+    capitalAllocation.allocateCapitalByKelly.mockResolvedValue(
+      new Map([
+        ['strategy-1', 25],
+        ['strategy-2', 25]
+      ])
+    );
+
+    // First strategy throws, second produces a valid signal
+    strategyExecutor.executeStrategy
+      .mockRejectedValueOnce(new Error('Strategy 1 blew up'))
+      .mockResolvedValueOnce({ action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+    orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+    await service.executeLiveTrading();
+
+    // Strategy 2 should still have been executed and placed an order
+    expect(strategyExecutor.executeStrategy).toHaveBeenCalledTimes(2);
+    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not block sell signals when daily loss limit is breached', async () => {
+    setupSignalPath();
+    dailyLossLimitGate.isEntryBlocked.mockResolvedValue({ blocked: true, reason: 'daily loss exceeded' } as any);
+
+    const signal: TradingSignal = { action: 'sell', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+    orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+    await service.executeLiveTrading();
+
+    expect(orderService.placeAlgorithmicOrder).toHaveBeenCalled();
+  });
+
   describe('opportunity selling', () => {
     it('does not trigger opportunity selling when BUY has sufficient funds', async () => {
       setupSignalPath({
@@ -589,19 +666,7 @@ describe('LiveTradingService', () => {
         { symbol: 'ETH/USDT', price: 2000, timestamp: new Date() }
       ]);
 
-      opportunitySellService.evaluateAndPersist.mockResolvedValue({
-        decision: OpportunitySellDecision.APPROVED,
-        sellOrders: [{ coinId: 'ETH', quantity: 0.5, currentPrice: 2000, estimatedProceeds: 1000, score: {} as any }],
-        reason: 'Selling 1 position(s)',
-        projectedProceeds: 1000,
-        buySignalCoinId: 'BTC',
-        buySignalConfidence: 0.8,
-        shortfall: 200,
-        availableCash: 100,
-        portfolioValue: 5000,
-        evaluatedPositions: [],
-        liquidationPercent: 20
-      });
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(createOppSellResult());
 
       // First call: initial balance (low cash triggers opp selling), Second call: after sells (sufficient)
       balanceService.getUserBalances
@@ -649,19 +714,16 @@ describe('LiveTradingService', () => {
         user: { enableOpportunitySelling: true, opportunitySellingConfig: DEFAULT_OPPORTUNITY_SELLING_CONFIG }
       });
 
-      opportunitySellService.evaluateAndPersist.mockResolvedValue({
-        decision: OpportunitySellDecision.REJECTED_LOW_CONFIDENCE,
-        sellOrders: [],
-        reason: 'Buy signal confidence too low',
-        projectedProceeds: 0,
-        buySignalCoinId: 'BTC',
-        buySignalConfidence: 0.3,
-        shortfall: 200,
-        availableCash: 100,
-        portfolioValue: 5000,
-        evaluatedPositions: [],
-        liquidationPercent: 0
-      });
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(
+        createOppSellResult({
+          decision: OpportunitySellDecision.REJECTED_LOW_CONFIDENCE,
+          sellOrders: [],
+          reason: 'Buy signal confidence too low',
+          projectedProceeds: 0,
+          buySignalConfidence: 0.3,
+          liquidationPercent: 0
+        })
+      );
 
       const signal: TradingSignal = {
         action: 'buy',
@@ -773,19 +835,7 @@ describe('LiveTradingService', () => {
         { symbol: 'ETH/USDT', price: 2000, timestamp: new Date() }
       ]);
 
-      opportunitySellService.evaluateAndPersist.mockResolvedValue({
-        decision: OpportunitySellDecision.APPROVED,
-        sellOrders: [{ coinId: 'ETH', quantity: 0.5, currentPrice: 2000, estimatedProceeds: 1000, score: {} as any }],
-        reason: 'Selling 1 position(s)',
-        projectedProceeds: 1000,
-        buySignalCoinId: 'BTC',
-        buySignalConfidence: 0.8,
-        shortfall: 200,
-        availableCash: 100,
-        portfolioValue: 5000,
-        evaluatedPositions: [],
-        liquidationPercent: 20
-      });
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(createOppSellResult());
 
       // Sell order succeeds
       orderService.placeAlgorithmicOrder.mockResolvedValueOnce({ id: 'sell-order-1' } as any);
@@ -897,22 +947,16 @@ describe('LiveTradingService', () => {
         { symbol: 'SOL/USDT', price: 100, timestamp: new Date() }
       ]);
 
-      opportunitySellService.evaluateAndPersist.mockResolvedValue({
-        decision: OpportunitySellDecision.APPROVED,
-        sellOrders: [
-          { coinId: 'ETH', quantity: 0.5, currentPrice: 2000, estimatedProceeds: 1000, score: {} as any },
-          { coinId: 'SOL', quantity: 5, currentPrice: 100, estimatedProceeds: 500, score: {} as any }
-        ],
-        reason: 'Selling 2 position(s)',
-        projectedProceeds: 1500,
-        buySignalCoinId: 'BTC',
-        buySignalConfidence: 0.8,
-        shortfall: 200,
-        availableCash: 100,
-        portfolioValue: 5000,
-        evaluatedPositions: [],
-        liquidationPercent: 20
-      });
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(
+        createOppSellResult({
+          sellOrders: [
+            { coinId: 'ETH', quantity: 0.5, currentPrice: 2000, estimatedProceeds: 1000, score: {} as any },
+            { coinId: 'SOL', quantity: 5, currentPrice: 100, estimatedProceeds: 500, score: {} as any }
+          ],
+          reason: 'Selling 2 position(s)',
+          projectedProceeds: 1500
+        })
+      );
 
       // First sell succeeds, second fails
       orderService.placeAlgorithmicOrder
@@ -939,6 +983,199 @@ describe('LiveTradingService', () => {
       expect(orderService.placeAlgorithmicOrder).toHaveBeenCalledTimes(2); // 2 sell attempts only
     });
 
+    it('keeps earliest entryDate when merging positions for same coin', async () => {
+      setupSignalPath({
+        user: { enableOpportunitySelling: true, opportunitySellingConfig: DEFAULT_OPPORTUNITY_SELLING_CONFIG }
+      });
+      jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([
+        { symbol: 'BTC/USDT', price: 30000, timestamp: new Date() },
+        { symbol: 'ETH/USDT', price: 2000, timestamp: new Date() }
+      ]);
+
+      const earlierDate = new Date('2025-01-01');
+      const laterDate = new Date('2025-06-01');
+
+      positionTracking.getPositions.mockResolvedValue([
+        {
+          id: 'pos-1',
+          symbol: 'ETH/USDT',
+          positionSide: 'long',
+          quantity: '1.0',
+          avgEntryPrice: '1800',
+          strategyConfigId: 'strategy-1',
+          createdAt: laterDate
+        } as any,
+        {
+          id: 'pos-2',
+          symbol: 'ETH/USDT',
+          positionSide: 'long',
+          quantity: '0.5',
+          avgEntryPrice: '2000',
+          strategyConfigId: 'strategy-1',
+          createdAt: earlierDate
+        } as any
+      ]);
+
+      const signal: TradingSignal = {
+        action: 'buy',
+        symbol: 'BTC/USDT',
+        quantity: 0.01,
+        price: 30000,
+        confidence: 0.8
+      };
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+      await service.executeLiveTrading();
+
+      expect(opportunitySellService.evaluateAndPersist).toHaveBeenCalled();
+      const callArgs = opportunitySellService.evaluateAndPersist.mock.calls[0][0];
+      const posMap = callArgs.positions as Map<string, any>;
+      expect(posMap.get('ETH')?.entryDate).toEqual(earlierDate);
+    });
+
+    it('uses source position strategyConfigId for position tracking', async () => {
+      const strategies = [{ id: 'strategy-A' } as any, { id: 'strategy-B' } as any];
+      setupSignalPath({
+        user: { enableOpportunitySelling: true, opportunitySellingConfig: DEFAULT_OPPORTUNITY_SELLING_CONFIG },
+        strategies
+      });
+      capitalAllocation.allocateCapitalByKelly.mockResolvedValue(
+        new Map([
+          ['strategy-A', 25],
+          ['strategy-B', 25]
+        ])
+      );
+      jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([
+        { symbol: 'BTC/USDT', price: 30000, timestamp: new Date() },
+        { symbol: 'ETH/USDT', price: 2000, timestamp: new Date() }
+      ]);
+
+      // Position belongs to strategy-A
+      positionTracking.getPositions.mockResolvedValue([
+        {
+          id: 'pos-1',
+          symbol: 'ETH/USDT',
+          positionSide: 'long',
+          quantity: '1.0',
+          avgEntryPrice: '1800',
+          strategyConfigId: 'strategy-A',
+          createdAt: new Date()
+        } as any
+      ]);
+
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(createOppSellResult());
+
+      // Buy signal comes from strategy-B
+      const signal: TradingSignal = {
+        action: 'buy',
+        symbol: 'BTC/USDT',
+        quantity: 0.01,
+        price: 30000,
+        confidence: 0.8
+      };
+      // strategy-A returns hold, strategy-B returns the buy signal
+      strategyExecutor.executeStrategy
+        .mockResolvedValueOnce({ action: 'hold', symbol: 'ETH/USDT', quantity: 0, price: 2000 } as any)
+        .mockResolvedValueOnce(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+      orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+      balanceService.getUserBalances
+        .mockReset()
+        .mockResolvedValueOnce({
+          current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
+        } as any)
+        .mockResolvedValueOnce({
+          current: [{ balances: [{ free: '1100', locked: '0', usdValue: 1100 }] }]
+        } as any);
+
+      await service.executeLiveTrading();
+
+      // Position tracking for the sell should use strategy-A (the source), not strategy-B (the buyer)
+      expect(positionTracking.updatePosition).toHaveBeenCalledWith(
+        'user-1',
+        'strategy-A',
+        'ETH/USDT',
+        0.5,
+        2000,
+        'sell',
+        'long'
+      );
+    });
+
+    it('refreshes balances for subsequent strategies after opportunity sells', async () => {
+      const strategies = [{ id: 'strategy-1' } as any, { id: 'strategy-2' } as any];
+      setupSignalPath({
+        user: { enableOpportunitySelling: true, opportunitySellingConfig: DEFAULT_OPPORTUNITY_SELLING_CONFIG },
+        strategies
+      });
+      capitalAllocation.allocateCapitalByKelly.mockResolvedValue(
+        new Map([
+          ['strategy-1', 25],
+          ['strategy-2', 25]
+        ])
+      );
+      jest.spyOn<any, any>(service as any, 'fetchMarketData').mockResolvedValue([
+        { symbol: 'BTC/USDT', price: 30000, timestamp: new Date() },
+        { symbol: 'ETH/USDT', price: 2000, timestamp: new Date() }
+      ]);
+
+      positionTracking.getPositions.mockResolvedValue([
+        {
+          id: 'pos-1',
+          symbol: 'ETH/USDT',
+          positionSide: 'long',
+          quantity: '1.0',
+          avgEntryPrice: '1800',
+          strategyConfigId: 'strategy-1',
+          createdAt: new Date()
+        } as any
+      ]);
+
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(createOppSellResult());
+
+      const concentrationGateService = (service as any).concentrationGate;
+
+      // Strategy 1 triggers opportunity sell, strategy 2 also triggers buy
+      const signal1: TradingSignal = {
+        action: 'buy',
+        symbol: 'BTC/USDT',
+        quantity: 0.01,
+        price: 30000,
+        confidence: 0.8
+      };
+      const signal2: TradingSignal = {
+        action: 'buy',
+        symbol: 'ETH/USDT',
+        quantity: 0.1,
+        price: 2000,
+        confidence: 0.7
+      };
+      strategyExecutor.executeStrategy.mockResolvedValueOnce(signal1).mockResolvedValueOnce(signal2);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+      orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+      // First call: initial balance, second: after sells (refreshed), third: for strategy-2 opp selling check
+      balanceService.getUserBalances
+        .mockReset()
+        .mockResolvedValueOnce({
+          current: [{ balances: [{ free: '100', locked: '0', usdValue: 100 }] }]
+        } as any)
+        .mockResolvedValueOnce({
+          current: [{ balances: [{ free: '1100', locked: '0', usdValue: 1100 }] }]
+        } as any);
+
+      await service.executeLiveTrading();
+
+      // buildAssetAllocations should have been called at least twice:
+      // once at init, once after opportunity sells refreshed balances
+      expect(concentrationGateService.buildAssetAllocations).toHaveBeenCalledTimes(2);
+      // The second call should use the refreshed balances
+      const secondCallArg = concentrationGateService.buildAssetAllocations.mock.calls[1][0];
+      expect(secondCallArg).toEqual([{ balances: [{ free: '1100', locked: '0', usdValue: 1100 }] }]);
+    });
+
     it('skips BUY when opportunity sell order execution fails', async () => {
       setupSignalPath({
         user: { enableOpportunitySelling: true, opportunitySellingConfig: DEFAULT_OPPORTUNITY_SELLING_CONFIG }
@@ -948,19 +1185,7 @@ describe('LiveTradingService', () => {
         { symbol: 'ETH/USDT', price: 2000, timestamp: new Date() }
       ]);
 
-      opportunitySellService.evaluateAndPersist.mockResolvedValue({
-        decision: OpportunitySellDecision.APPROVED,
-        sellOrders: [{ coinId: 'ETH', quantity: 0.5, currentPrice: 2000, estimatedProceeds: 1000, score: {} as any }],
-        reason: 'Selling 1 position(s)',
-        projectedProceeds: 1000,
-        buySignalCoinId: 'BTC',
-        buySignalConfidence: 0.8,
-        shortfall: 200,
-        availableCash: 100,
-        portfolioValue: 5000,
-        evaluatedPositions: [],
-        liquidationPercent: 20
-      });
+      opportunitySellService.evaluateAndPersist.mockResolvedValue(createOppSellResult());
 
       // First call is the opportunity sell (will fail), second would be the BUY
       orderService.placeAlgorithmicOrder.mockRejectedValueOnce(new Error('Exchange error'));
