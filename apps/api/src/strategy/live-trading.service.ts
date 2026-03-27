@@ -10,6 +10,7 @@ import { CapitalAllocationService } from './capital-allocation.service';
 import { ConcentrationGateService } from './concentration-gate.service';
 import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { StrategyConfig } from './entities/strategy-config.entity';
+import { UserStrategyPosition } from './entities/user-strategy-position.entity';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
@@ -24,7 +25,9 @@ import { ExchangeSelectionService } from '../exchange/exchange-selection/exchang
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { OpportunitySellDecision } from '../order/interfaces/opportunity-selling.interface';
 import { OrderService } from '../order/order.service';
+import { OpportunitySellService } from '../order/services/opportunity-sell.service';
 import { TradeExecutionService, TradeSignalWithExit } from '../order/services/trade-execution.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
@@ -66,7 +69,8 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly tradeExecutionService: TradeExecutionService,
     private readonly tradeCooldownService: TradeCooldownService,
     private readonly metricsService: MetricsService,
-    private readonly exchangeSelectionService: ExchangeSelectionService
+    private readonly exchangeSelectionService: ExchangeSelectionService,
+    private readonly opportunitySellService: OpportunitySellService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -129,16 +133,21 @@ export class LiveTradingService implements OnApplicationShutdown {
     }
 
     // Fetch user's free balance from exchange
-    const balances = await this.balanceService.getUserBalances(user, false);
+    let balances = await this.balanceService.getUserBalances(user, false);
     const totalFreeUsdValue = this.calculateFreeUsdValue(balances.current);
 
-    if (totalFreeUsdValue <= 0) {
+    if (totalFreeUsdValue <= 0 && !user.enableOpportunitySelling) {
       this.logger.warn(`User ${user.id} has no free balance available`);
       return;
     }
 
-    // Calculate actual capital from percentage
-    const actualCapital = (totalFreeUsdValue * Number(user.algoCapitalAllocationPercentage)) / 100;
+    // When fully invested with opportunity selling enabled, use a nominal capital
+    // so strategies can still generate signals (actual capital comes from selling)
+    const effectiveFreeValue = totalFreeUsdValue > 0 ? totalFreeUsdValue : 0;
+    const actualCapital =
+      effectiveFreeValue > 0
+        ? (effectiveFreeValue * Number(user.algoCapitalAllocationPercentage)) / 100
+        : this.estimatePortfolioCapital(balances.current);
 
     this.logger.debug(
       `User ${user.id}: Free balance $${totalFreeUsdValue.toFixed(2)}, ` +
@@ -168,7 +177,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();
     // Build asset allocations for concentration gate (reuse fetched balances)
-    const assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
+    let assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
 
     let gateBlockedCount = 0;
     let drawdownBlockedCount = 0;
@@ -252,6 +261,41 @@ export class LiveTradingService implements OnApplicationShutdown {
             if (concCheck.adjustedQuantity != null && concCheck.adjustedQuantity < 1) {
               signal.quantity *= concCheck.adjustedQuantity;
               concentrationReducedCount++;
+            }
+          }
+
+          // Proactive opportunity selling: check if BUY needs capital freed up
+          if ((action === 'buy' || action === 'short_entry') && user.enableOpportunitySelling) {
+            const buyAmount = signal.quantity * signal.price;
+            const availableCash = this.calculateFreeUsdValue(balances.current);
+
+            if (buyAmount > availableCash) {
+              const freed = await this.attemptOpportunitySelling(
+                user,
+                signal,
+                strategy.id,
+                compositeRegime,
+                userPositions,
+                marketData,
+                buyAmount,
+                availableCash
+              );
+              if (!freed) continue;
+
+              // Re-verify available cash after opportunity sells (Fix #2)
+              const updatedBalances = await this.balanceService.getUserBalances(user, false);
+              const newAvailableCash = this.calculateFreeUsdValue(updatedBalances.current);
+              if (newAvailableCash < buyAmount * 0.95) {
+                this.logger.warn(
+                  `Insufficient funds after opportunity sells: needed $${buyAmount.toFixed(2)}, ` +
+                    `available $${newAvailableCash.toFixed(2)} — skipping buy`
+                );
+                continue;
+              }
+
+              // Refresh balances so subsequent strategies see updated cash and concentrations
+              balances = updatedBalances;
+              assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
             }
           }
 
@@ -469,6 +513,284 @@ export class LiveTradingService implements OnApplicationShutdown {
         this.logger.error(`Unknown signal action "${action}" for position tracking`);
         throw new Error(`Unknown signal action for position tracking: ${action}`);
     }
+  }
+
+  /**
+   * Attempt to free up capital by selling underperforming positions.
+   * Returns true if enough capital was freed, false otherwise.
+   */
+  private async attemptOpportunitySelling(
+    user: User,
+    buySignal: TradingSignal,
+    strategyConfigId: string,
+    compositeRegime: string,
+    positions: UserStrategyPosition[],
+    marketData: MarketData[],
+    requiredBuyAmount: number,
+    availableCash: number
+  ): Promise<boolean> {
+    // Regime guard — selling in extreme/bear conditions is counterproductive
+    const regime = compositeRegime.toLowerCase();
+    if (regime === 'extreme' || regime === 'bear') {
+      this.logger.log(
+        `Skipping opportunity selling for user ${user.id}: regime=${compositeRegime} is too risky for liquidation`
+      );
+      return false;
+    }
+
+    // Re-fetch market data for fresh prices (Fix #3)
+    const freshMarketData = await this.fetchMarketData();
+    const effectiveMarketData = freshMarketData.length > 0 ? freshMarketData : marketData;
+
+    // Build positions map: coinId -> { averagePrice, quantity, entryDate }
+    // Filter to long positions only — short positions aren't eligible for opportunity selling (Fix #5)
+    const longPositions = positions.filter((p) => p.positionSide === 'long');
+    const positionsMap = new Map<
+      string,
+      {
+        averagePrice: number;
+        quantity: number;
+        entryDate?: Date;
+        sourcePositions: Array<{ strategyConfigId: string; quantity: number; symbol: string }>;
+      }
+    >();
+    for (const pos of longPositions) {
+      const coinId = this.extractCoinIdFromSymbol(pos.symbol);
+      const existing = positionsMap.get(coinId);
+      if (existing) {
+        // Merge positions for the same coin
+        const totalQty = existing.quantity + Number(pos.quantity);
+        existing.averagePrice =
+          (existing.averagePrice * existing.quantity + Number(pos.avgEntryPrice) * Number(pos.quantity)) / totalQty;
+        existing.quantity = totalQty;
+        if (pos.createdAt && (!existing.entryDate || pos.createdAt < existing.entryDate)) {
+          existing.entryDate = pos.createdAt;
+        }
+        existing.sourcePositions.push({
+          strategyConfigId: pos.strategyConfigId,
+          quantity: Number(pos.quantity),
+          symbol: pos.symbol
+        });
+      } else {
+        positionsMap.set(coinId, {
+          averagePrice: Number(pos.avgEntryPrice),
+          quantity: Number(pos.quantity),
+          entryDate: pos.createdAt,
+          sourcePositions: [
+            { strategyConfigId: pos.strategyConfigId, quantity: Number(pos.quantity), symbol: pos.symbol }
+          ]
+        });
+      }
+    }
+
+    // Build price map from market data
+    const priceMap = new Map<string, number>();
+    for (const md of effectiveMarketData) {
+      const coinId = this.extractCoinIdFromSymbol(md.symbol);
+      priceMap.set(coinId, md.price);
+    }
+
+    // Calculate portfolio value
+    let portfolioValue = availableCash;
+    for (const [coinId, pos] of positionsMap) {
+      const price = priceMap.get(coinId);
+      if (price) portfolioValue += pos.quantity * price;
+    }
+
+    const buySignalCoinId = this.extractCoinIdFromSymbol(buySignal.symbol);
+
+    const plan = await this.opportunitySellService.evaluateAndPersist(
+      {
+        buySignalCoinId,
+        buySignalConfidence: buySignal.confidence ?? 0.7,
+        requiredBuyAmount,
+        availableCash,
+        portfolioValue,
+        positions: positionsMap,
+        currentPrices: priceMap,
+        config: user.opportunitySellingConfig,
+        enabled: user.enableOpportunitySelling
+      },
+      user.id,
+      false
+    );
+
+    if (plan.decision !== OpportunitySellDecision.APPROVED || plan.sellOrders.length === 0) {
+      this.logger.log(`Opportunity selling rejected for user ${user.id}, coin=${buySignalCoinId}: ${plan.reason}`);
+      return false;
+    }
+
+    // Execute sell orders sequentially
+    this.logger.log(
+      `Executing ${plan.sellOrders.length} opportunity sell(s) for user ${user.id} ` +
+        `to fund ${buySignalCoinId} buy ($${requiredBuyAmount.toFixed(2)} needed)`
+    );
+
+    const executedSells: Array<{ symbol: string; quantity: number; proceeds: number }> = [];
+
+    for (const sellOrder of plan.sellOrders) {
+      try {
+        const sellSymbol = this.findSymbolForCoinId(sellOrder.coinId, effectiveMarketData);
+        if (!sellSymbol) {
+          this.logger.error(`No market symbol found for coinId ${sellOrder.coinId}, aborting opportunity sells`);
+          await this.cleanupOrphanedSells(user.id, executedSells);
+          return false;
+        }
+
+        // Look up source positions for this coin to use correct strategyConfigIds
+        const coinSourcePositions = positionsMap.get(sellOrder.coinId)?.sourcePositions ?? [];
+        const primaryStrategyConfigId = coinSourcePositions[0]?.strategyConfigId ?? strategyConfigId;
+
+        let exchangeKey;
+        try {
+          exchangeKey = await this.exchangeSelectionService.selectForSell(user.id, sellSymbol, primaryStrategyConfigId);
+        } catch {
+          this.logger.error(`No exchange key for opportunity sell: user=${user.id}, symbol=${sellSymbol}`);
+          await this.cleanupOrphanedSells(user.id, executedSells);
+          return false;
+        }
+
+        // Trade cooldown check
+        const cooldownCheck = await this.tradeCooldownService.checkAndClaim(
+          user.id,
+          sellSymbol,
+          'SELL',
+          `opportunity-sell:${primaryStrategyConfigId}`
+        );
+        if (!cooldownCheck.allowed) {
+          this.logger.warn(`Opportunity sell cooldown blocked for ${sellSymbol}, aborting remaining sells`);
+          await this.cleanupOrphanedSells(user.id, executedSells);
+          return false;
+        }
+
+        try {
+          const order = await this.orderService.placeAlgorithmicOrder(
+            user.id,
+            primaryStrategyConfigId,
+            {
+              action: 'sell',
+              symbol: sellSymbol,
+              quantity: sellOrder.quantity,
+              price: sellOrder.currentPrice
+            },
+            exchangeKey.id
+          );
+
+          this.metricsService.recordLiveOrderPlaced('spot', 'sell');
+
+          executedSells.push({
+            symbol: sellSymbol,
+            quantity: sellOrder.quantity,
+            proceeds: sellOrder.estimatedProceeds
+          });
+
+          this.logger.log(
+            `Opportunity sell executed: user=${user.id}, ${sellOrder.quantity} ${sellSymbol} ` +
+              `@ $${sellOrder.currentPrice.toFixed(2)} = $${sellOrder.estimatedProceeds.toFixed(2)} ` +
+              `(Order ID: ${order.id})`
+          );
+
+          // Update position tracking: split across source positions proportionally
+          let remainingSellQty = sellOrder.quantity;
+          for (const srcPos of coinSourcePositions) {
+            if (remainingSellQty <= 0) break;
+            const decrementQty = Math.min(srcPos.quantity, remainingSellQty);
+            await this.positionTracking.updatePosition(
+              user.id,
+              srcPos.strategyConfigId,
+              sellSymbol,
+              decrementQty,
+              sellOrder.currentPrice,
+              'sell',
+              'long'
+            );
+            srcPos.quantity -= decrementQty;
+            remainingSellQty -= decrementQty;
+          }
+
+          // Fallback: if no source positions matched, update with the primary strategy
+          if (coinSourcePositions.length === 0) {
+            await this.positionTracking.updatePosition(
+              user.id,
+              primaryStrategyConfigId,
+              sellSymbol,
+              sellOrder.quantity,
+              sellOrder.currentPrice,
+              'sell',
+              'long'
+            );
+          }
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          await this.tradeCooldownService.clearCooldown(user.id, sellSymbol, 'SELL');
+          this.logger.error(`Opportunity sell failed for ${sellSymbol}, aborting: ${err.message}`);
+          await this.cleanupOrphanedSells(user.id, executedSells);
+          return false;
+        }
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Unexpected error during opportunity sell for coinId ${sellOrder.coinId}: ${err.message}`);
+        await this.cleanupOrphanedSells(user.id, executedSells);
+        return false;
+      }
+    }
+
+    this.logger.log(
+      `All opportunity sells completed for user ${user.id}: ` +
+        `freed $${plan.projectedProceeds.toFixed(2)} to fund ${buySignalCoinId} buy`
+    );
+    return true;
+  }
+
+  /**
+   * Extract the base coin ID (e.g., "BTC") from a trading pair symbol (e.g., "BTC/USDT").
+   */
+  private extractCoinIdFromSymbol(symbol: string): string {
+    if (!symbol.includes('/')) {
+      this.logger.warn(`Unexpected symbol format (no separator): "${symbol}" — using as-is`);
+      return symbol;
+    }
+    return symbol.split('/')[0];
+  }
+
+  /**
+   * Clean up orphaned sells by clearing cooldowns when a sell sequence is aborted.
+   */
+  private async cleanupOrphanedSells(
+    userId: string,
+    executedSells: Array<{ symbol: string; quantity: number; proceeds: number }>
+  ): Promise<void> {
+    if (executedSells.length === 0) return;
+
+    this.logger.warn(
+      `Opportunity sell sequence aborted after ${executedSells.length} successful sell(s) — ` +
+        `these sells are orphaned (capital freed but buy will not proceed)`
+    );
+    for (const executed of executedSells) {
+      await this.tradeCooldownService.clearCooldown(userId, executed.symbol, 'SELL');
+    }
+  }
+
+  /**
+   * Estimate total portfolio capital from exchange balances (positions + cash).
+   * Used as a fallback when free cash is zero but opportunity selling is enabled.
+   */
+  private estimatePortfolioCapital(exchanges: ExchangeBalanceDto[]): number {
+    let total = 0;
+    for (const exchange of exchanges) {
+      for (const balance of exchange.balances || []) {
+        total += balance.usdValue || 0;
+      }
+    }
+    return total > 0 ? total : 1; // Minimum $1 to avoid zero-division in Kelly allocation
+  }
+
+  /**
+   * Find the full trading pair symbol for a given coin ID from available market data.
+   */
+  private findSymbolForCoinId(coinId: string, marketData: MarketData[]): string | null {
+    const entry = marketData.find((m) => this.extractCoinIdFromSymbol(m.symbol) === coinId);
+    return entry?.symbol ?? null;
   }
 
   /**
