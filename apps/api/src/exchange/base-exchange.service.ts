@@ -147,7 +147,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     }
 
     // No fallback - if we reach here, user keys are not available
-    this.logger.error(`No valid exchange keys found for user ${user.id} on ${this.exchangeSlug}`);
+    this.logger.warn(`No valid exchange keys found for user ${user.id} on ${this.exchangeSlug}`);
     throw new InternalServerErrorException(`No valid exchange keys found for ${this.exchangeSlug}`);
   }
 
@@ -253,7 +253,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       return assetBalances;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
-      this.logger.error(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
+      this.logger.warn(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
     }
   }

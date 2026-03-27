@@ -180,7 +180,7 @@ export class BalanceService {
       balances = await Promise.race([exchangeService.getBalance(user), timeoutPromise]);
     } catch (timeoutError: unknown) {
       const err = toErrorInfo(timeoutError);
-      this.logger.error(`Timeout or error getting balances from ${exchange.name}: ${err.message}`);
+      this.logger.warn(`Timeout or error getting balances from ${exchange.name}: ${err.message}`);
       return this.buildExchangeBalanceDto(exchange);
     } finally {
       clearTimeout(timeoutId);

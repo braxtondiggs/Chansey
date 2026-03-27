@@ -603,10 +603,13 @@ export class OrderSyncService {
 
       let totalNewOrders = 0;
 
-      // Get available exchanges from the centralized manager
-      const availableExchanges = await this.exchangeService.getExchanges({ supported: true });
+      // Get available exchanges filtered to only those the user has keys for
+      const userExchangeSlugs = new Set(exchangeKeys.map((k) => k.slug));
+      const availableExchanges = (await this.exchangeService.getExchanges({ supported: true })).filter((e) =>
+        userExchangeSlugs.has(e.slug)
+      );
 
-      this.logger.log(`Available exchanges for user ${user.id}: ${availableExchanges.map((e) => e.name).join(', ')}`);
+      this.logger.log(`Syncing exchanges for user ${user.id}: ${availableExchanges.map((e) => e.name).join(', ')}`);
       // Process each exchange
       for (const exchange of availableExchanges) {
         try {
