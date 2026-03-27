@@ -2,10 +2,11 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 
 import { Order } from '@chansey/api-interfaces';
 
-import { getStatusClass } from '../crypto-trading.utils';
+import { formatOrderType, formatStatus, getStatusClass } from '../crypto-trading.utils';
 
 export interface GroupedOrder {
   type: 'oco-pair' | 'standalone';
@@ -16,7 +17,7 @@ export interface GroupedOrder {
 @Component({
   selector: 'app-active-orders',
   standalone: true,
-  imports: [CommonModule, ButtonModule],
+  imports: [CommonModule, ButtonModule, TooltipModule],
   templateUrl: './active-orders.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -32,6 +33,8 @@ export class ActiveOrdersComponent {
   refresh = output();
 
   readonly getStatusClass = getStatusClass;
+  readonly formatOrderType = formatOrderType;
+  readonly formatStatus = formatStatus;
 
   groupedOrders = computed<GroupedOrder[]>(() => {
     const orders = this.orders();

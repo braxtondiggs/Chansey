@@ -1,68 +1,80 @@
 <!-- Exit Strategy Collapsible Panel -->
-<div class="rounded-lg border border-surface-200 dark:border-surface-700" [formGroup]="form()">
+<div
+  class="mb-4 rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800"
+  [formGroup]="form()"
+>
   <!-- Header Toggle -->
   <button
     type="button"
-    class="flex w-full items-center justify-between px-3 py-2 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-800"
+    class="flex min-h-[44px] w-full items-center justify-between rounded-t-xl px-4 py-2.5 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-100 focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:outline-none dark:text-surface-200 dark:hover:bg-surface-800"
     (click)="toggleExpanded()"
     [attr.aria-expanded]="isExpanded()"
     aria-controls="exitConfigPanel"
   >
     <div class="flex items-center gap-2">
       <i class="pi pi-shield text-xs" aria-hidden="true"></i>
-      <span>Exit Strategy</span>
-      @if (
-        form().get('enableStopLoss')?.value ||
-        form().get('enableTakeProfit')?.value ||
-        form().get('enableTrailingStop')?.value
-      ) {
+      <span class="font-display tracking-tight">Exit Strategy</span>
+      @if (activeStrategyCount(); as count) {
         <span
-          class="rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+          class="rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-700 dark:bg-primary-800 dark:text-primary-200"
         >
-          Active
+          {{ count }} Active
         </span>
       }
     </div>
     <i
-      class="pi text-xs transition-transform duration-200"
-      [class.pi-chevron-down]="!isExpanded()"
-      [class.pi-chevron-up]="isExpanded()"
+      class="pi pi-chevron-down text-xs transition-transform duration-200"
+      [class.rotate-180]="isExpanded()"
       aria-hidden="true"
     ></i>
   </button>
 
   <!-- Expanded Content -->
   @if (isExpanded()) {
-    <div id="exitConfigPanel" class="space-y-3 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
+    <div
+      @slideDown
+      id="exitConfigPanel"
+      class="space-y-3 border-t border-surface-200 px-4 py-3 dark:border-surface-700"
+      role="region"
+      aria-label="Exit strategy configuration"
+    >
       <!-- Stop Loss Section -->
-      <div class="space-y-2">
+      <div
+        class="space-y-2 transition-all duration-200"
+        [class.border-l-2]="form().get('enableStopLoss')?.value"
+        [class.border-l-red-500]="form().get('enableStopLoss')?.value"
+        [class.pl-3]="form().get('enableStopLoss')?.value"
+      >
         <div class="flex items-center justify-between">
           <label class="flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300">
             <i class="pi pi-arrow-down text-[10px] text-red-500" aria-hidden="true"></i>
             Stop Loss
           </label>
-          <p-toggleswitch formControlName="enableStopLoss" />
+          <p-toggleswitch formControlName="enableStopLoss" ariaLabel="Enable stop loss" />
         </div>
         @if (form().get('enableStopLoss')?.value) {
-          <div class="grid grid-cols-2 gap-2">
-            <p-select
-              formControlName="stopLossType"
-              [options]="stopLossTypeOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-              appendTo="body"
-            />
-            <p-inputnumber
-              formControlName="stopLossValue"
-              mode="decimal"
-              [min]="0"
-              [max]="limits.STOP_LOSS_MAX"
-              [minFractionDigits]="2"
-              [maxFractionDigits]="4"
-              [suffix]="' ' + stopLossValueSuffix()"
-              class="w-full"
-            />
+          <div @slideDown>
+            <p-inputgroup>
+              <p-inputnumber
+                formControlName="stopLossValue"
+                mode="decimal"
+                [min]="0"
+                [max]="limits.STOP_LOSS_MAX"
+                [minFractionDigits]="2"
+                [maxFractionDigits]="4"
+                class="w-full"
+              />
+              <p-inputgroup-addon class="!p-0">
+                <button
+                  type="button"
+                  class="cursor-pointer px-2 py-1 text-xs font-semibold text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100"
+                  (click)="stopLossMenu.toggle($event)"
+                >
+                  {{ stopLossButtonLabel() }}
+                </button>
+              </p-inputgroup-addon>
+            </p-inputgroup>
+            <p-menu #stopLossMenu [model]="stopLossMenuItems" [popup]="true" appendTo="body" styleClass="!min-w-fit" />
           </div>
           @if (stopLossHelperText()) {
             <p class="text-xs text-surface-500 dark:text-surface-400">{{ stopLossHelperText() }}</p>
@@ -71,43 +83,47 @@
       </div>
 
       <!-- Take Profit Section -->
-      <div class="space-y-2">
+      <div
+        class="space-y-2 transition-all duration-200"
+        [class.border-l-2]="form().get('enableTakeProfit')?.value"
+        [class.border-l-green-500]="form().get('enableTakeProfit')?.value"
+        [class.pl-3]="form().get('enableTakeProfit')?.value"
+      >
         <div class="flex items-center justify-between">
           <label class="flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300">
             <i class="pi pi-arrow-up text-[10px] text-green-500" aria-hidden="true"></i>
             Take Profit
           </label>
-          <p-toggleswitch formControlName="enableTakeProfit" />
+          <p-toggleswitch formControlName="enableTakeProfit" ariaLabel="Enable take profit" />
         </div>
         @if (form().get('enableTakeProfit')?.value) {
-          <div class="grid grid-cols-2 gap-2">
-            <p-select
-              formControlName="takeProfitType"
-              [options]="getTakeProfitTypeOptions()"
-              optionLabel="label"
-              optionValue="value"
-              optionDisabled="disabled"
-              class="w-full"
+          <div @slideDown>
+            <p-inputgroup>
+              <p-inputnumber
+                formControlName="takeProfitValue"
+                mode="decimal"
+                [min]="0"
+                [max]="limits.TAKE_PROFIT_MAX"
+                [minFractionDigits]="2"
+                [maxFractionDigits]="4"
+                class="w-full"
+              />
+              <p-inputgroup-addon class="!p-0">
+                <button
+                  type="button"
+                  class="cursor-pointer px-2 py-1 text-xs font-semibold text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100"
+                  (click)="takeProfitMenu.toggle($event)"
+                >
+                  {{ takeProfitButtonLabel() }}
+                </button>
+              </p-inputgroup-addon>
+            </p-inputgroup>
+            <p-menu
+              #takeProfitMenu
+              [model]="takeProfitMenuItems"
+              [popup]="true"
               appendTo="body"
-            >
-              <ng-template pTemplate="item" let-option>
-                <div [class.opacity-40]="option.value === 'risk_reward' && isRiskRewardDisabled()">
-                  {{ option.label }}
-                  @if (option.value === 'risk_reward' && isRiskRewardDisabled()) {
-                    <span class="text-[10px]">(enable SL)</span>
-                  }
-                </div>
-              </ng-template>
-            </p-select>
-            <p-inputnumber
-              formControlName="takeProfitValue"
-              mode="decimal"
-              [min]="0"
-              [max]="limits.TAKE_PROFIT_MAX"
-              [minFractionDigits]="2"
-              [maxFractionDigits]="4"
-              [suffix]="' ' + takeProfitValueSuffix()"
-              class="w-full"
+              styleClass="!min-w-fit"
             />
           </div>
           @if (takeProfitHelperText()) {
@@ -117,75 +133,113 @@
       </div>
 
       <!-- Trailing Stop Section -->
-      <div class="space-y-2">
+      <div
+        class="space-y-2 transition-all duration-200"
+        [class.border-l-2]="form().get('enableTrailingStop')?.value"
+        [class.border-l-primary-500]="form().get('enableTrailingStop')?.value"
+        [class.pl-3]="form().get('enableTrailingStop')?.value"
+      >
         <div class="flex items-center justify-between">
           <label class="flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300">
             <i class="pi pi-chart-line text-[10px] text-primary-500" aria-hidden="true"></i>
             Trailing Stop
           </label>
-          <p-toggleswitch formControlName="enableTrailingStop" />
+          <p-toggleswitch formControlName="enableTrailingStop" ariaLabel="Enable trailing stop" />
         </div>
         @if (form().get('enableTrailingStop')?.value) {
-          <div class="grid grid-cols-2 gap-2">
-            <p-select
-              formControlName="trailingType"
-              [options]="exitTrailingTypeOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-              appendTo="body"
-            />
-            <p-inputnumber
-              formControlName="trailingValue"
-              mode="decimal"
-              [min]="0"
-              [max]="limits.TRAILING_VALUE_MAX"
-              [minFractionDigits]="2"
-              [maxFractionDigits]="4"
-              class="w-full"
-            />
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <p-select
-              formControlName="trailingActivation"
-              [options]="trailingActivationOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full"
-              appendTo="body"
-            />
-            @if (!isTrailingActivationImmediate()) {
+          <div @slideDown class="space-y-2">
+            <!-- Trailing value row -->
+            <p-inputgroup>
               <p-inputnumber
-                formControlName="trailingActivationValue"
+                formControlName="trailingValue"
                 mode="decimal"
                 [min]="0"
-                [max]="limits.TRAILING_ACTIVATION_MAX"
+                [max]="limits.TRAILING_VALUE_MAX"
                 [minFractionDigits]="2"
                 [maxFractionDigits]="4"
                 class="w-full"
-                [placeholder]="form().get('trailingActivation')?.value === 'price' ? 'Price' : '% Gain'"
               />
+              <p-inputgroup-addon class="!p-0">
+                <button
+                  type="button"
+                  class="cursor-pointer px-2 py-1 text-xs font-semibold text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100"
+                  (click)="trailingValueMenu.toggle($event)"
+                >
+                  {{ trailingValueButtonLabel() }}
+                </button>
+              </p-inputgroup-addon>
+            </p-inputgroup>
+            <p-menu
+              #trailingValueMenu
+              [model]="trailingValueMenuItems"
+              [popup]="true"
+              appendTo="body"
+              styleClass="!min-w-fit"
+            />
+
+            <!-- Trailing activation row -->
+            @if (isTrailingActivationImmediate()) {
+              <button
+                type="button"
+                class="flex w-full cursor-pointer items-center justify-between rounded-md border border-surface-300 px-3 py-2 text-xs font-medium text-surface-600 hover:bg-surface-100 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700"
+                (click)="trailingActivationMenu.toggle($event)"
+              >
+                Immediately
+                <i class="pi pi-chevron-down text-[10px]" aria-hidden="true"></i>
+              </button>
+            } @else {
+              <p-inputgroup>
+                <p-inputnumber
+                  formControlName="trailingActivationValue"
+                  mode="decimal"
+                  [min]="0"
+                  [max]="limits.TRAILING_ACTIVATION_MAX"
+                  [minFractionDigits]="2"
+                  [maxFractionDigits]="4"
+                  class="w-full"
+                  [placeholder]="form().get('trailingActivation')?.value === 'price' ? 'Price' : '% Gain'"
+                />
+                <p-inputgroup-addon class="!p-0">
+                  <button
+                    type="button"
+                    class="cursor-pointer px-2 py-1 text-xs font-semibold text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100"
+                    (click)="trailingActivationMenu.toggle($event)"
+                  >
+                    {{ trailingActivationButtonLabel() }}
+                  </button>
+                </p-inputgroup-addon>
+              </p-inputgroup>
             }
+            <p-menu
+              #trailingActivationMenu
+              [model]="trailingActivationMenuItems"
+              [popup]="true"
+              appendTo="body"
+              styleClass="!min-w-fit"
+            />
+
+            <p class="text-xs text-surface-500 dark:text-surface-400">
+              Stop price automatically adjusts as the market moves in your favor
+            </p>
           </div>
-          <p class="text-xs text-surface-500 dark:text-surface-400">
-            Stop price automatically adjusts as the market moves in your favor
-          </p>
         }
       </div>
 
       <!-- OCO Toggle -->
       @if (showOcoToggle()) {
-        <div class="flex items-center justify-between rounded-md bg-surface-50 px-3 py-2 dark:bg-surface-800">
-          <label
-            class="flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300"
-            pTooltip="When one order fills, the other is automatically cancelled"
-            tooltipPosition="top"
-          >
+        <div class="flex items-center justify-between rounded-md bg-surface-50 px-3 py-2.5 dark:bg-surface-800">
+          <label class="flex items-center gap-1.5 text-xs font-medium text-surface-600 dark:text-surface-300">
             <i class="pi pi-link text-[10px]" aria-hidden="true"></i>
             Link as OCO
-            <i class="pi pi-info-circle text-[10px] text-surface-400" aria-hidden="true"></i>
+            <i
+              class="pi pi-info-circle text-[10px] text-surface-400"
+              pTooltip="When one order fills, the other is automatically cancelled"
+              tooltipPosition="top"
+              tabindex="0"
+              aria-label="OCO info: When one order fills, the other is automatically cancelled"
+            ></i>
           </label>
-          <p-toggleswitch formControlName="useOco" />
+          <p-toggleswitch formControlName="useOco" ariaLabel="Link as OCO pair" />
         </div>
       }
     </div>

@@ -13,7 +13,7 @@ export function stepSizeValidator(stepSize: number): ValidatorFn {
     const multiplier = Math.pow(10, precision);
     const remainder = Math.abs((value * multiplier) % (stepSize * multiplier));
 
-    if (remainder > Number.EPSILON) {
+    if (remainder > 1e-9 && remainder < stepSize * multiplier - 1e-9) {
       return { stepSize: { requiredStep: stepSize, actualValue: value } };
     }
 
@@ -25,7 +25,7 @@ export function stepSizeValidator(stepSize: number): ValidatorFn {
  * Rounds a value down to the nearest valid step (mirrors backend's `calculateMaxQuantity`).
  */
 export function snapToStep(value: number, stepSize: number): number {
-  if (stepSize <= 0) return value;
+  if (stepSize <= 0 || value < 0) return value;
   const precision = getPrecisionFromStep(stepSize);
   const multiplier = Math.pow(10, precision);
   const scaledValue = value * multiplier;
