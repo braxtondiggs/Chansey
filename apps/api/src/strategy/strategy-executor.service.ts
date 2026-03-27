@@ -21,6 +21,8 @@ export interface TradingSignal {
   quantity: number;
   price: number;
   reason?: string;
+  /** Signal confidence (0-1), passed through from the algorithm */
+  confidence?: number;
   /** Strategy-provided exit configuration (per-signal > result-level) */
   exitConfig?: Partial<ExitConfig>;
 }
@@ -315,6 +317,7 @@ export class StrategyExecutorService {
       quantity,
       price,
       reason: signal.reason,
+      confidence: signal.confidence,
       exitConfig
     };
   }
