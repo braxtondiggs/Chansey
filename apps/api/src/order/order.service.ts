@@ -878,8 +878,8 @@ export class OrderService {
         stopLossPrice: dto.stopLossPrice,
         timeInForce: dto.timeInForce,
         user,
-        baseCoin: baseCoin || undefined,
-        quoteCoin: quoteCoin || undefined,
+        baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
+        quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
         exchange: exchangeKey.exchange,
         trades: ccxtOrder.trades,
         info: ccxtOrder.info
@@ -1018,8 +1018,8 @@ export class OrderService {
         exchangeKeyId: dto.exchangeKeyId,
         takeProfitPrice: dto.takeProfitPrice,
         user,
-        baseCoin: baseCoin || undefined,
-        quoteCoin: quoteCoin || undefined,
+        baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
+        quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
         exchange: exchangeKey.exchange,
         info: takeProfitExchangeOrder.info
       });
@@ -1044,8 +1044,8 @@ export class OrderService {
         stopLossPrice: dto.stopLossPrice,
         ocoLinkedOrderId: savedTpOrder.id,
         user,
-        baseCoin: baseCoin || undefined,
-        quoteCoin: quoteCoin || undefined,
+        baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
+        quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
         exchange: exchangeKey.exchange,
         info: stopLossExchangeOrder.info
       });
@@ -1343,8 +1343,8 @@ export class OrderService {
         strategyConfigId,
         exchangeKeyId,
         user,
-        baseCoin: baseCoin || undefined,
-        quoteCoin: quoteCoin || undefined,
+        baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
+        quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
         exchange: exchangeKey.exchange,
         trades: ccxtOrder.trades,
         info: ccxtOrder.info

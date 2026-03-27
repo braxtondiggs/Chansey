@@ -40,7 +40,7 @@ export class QuoteCurrencyResolverService {
       // Pass fail=false to avoid throwing when coin not found
       const coin = await this.coinService.getCoinBySymbol(symbol, undefined, false);
 
-      if (coin && !this.isVirtualCoin(coin)) {
+      if (coin && !CoinService.isVirtualCoin(coin)) {
         if (symbol !== preferredCurrency.toUpperCase()) {
           this.logger.warn(`Preferred quote currency '${preferredCurrency}' not found, using fallback '${symbol}'`);
           this.metricsService?.recordQuoteCurrencyFallback(preferredCurrency.toUpperCase(), symbol);
@@ -50,13 +50,5 @@ export class QuoteCurrencyResolverService {
     }
 
     throw new QuoteCurrencyNotFoundException(candidates);
-  }
-
-  /**
-   * Checks if a coin is a virtual/synthetic coin that cannot be persisted.
-   * Virtual coins have IDs containing 'virtual' or starting with 'USD-'.
-   */
-  private isVirtualCoin(coin: Coin): boolean {
-    return coin.id?.includes('virtual') || coin.id?.startsWith('USD-');
   }
 }

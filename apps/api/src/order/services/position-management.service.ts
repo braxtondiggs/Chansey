@@ -929,7 +929,10 @@ export class PositionManagementService {
       this.logger.warn(`Could not lookup coins for symbol ${symbol}: ${err.message}`);
     }
 
-    return { baseCoin, quoteCoin };
+    return {
+      baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : null,
+      quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : null
+    };
   }
 
   /**

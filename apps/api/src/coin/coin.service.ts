@@ -53,6 +53,10 @@ export class CoinService {
 
   private static readonly CIRCUIT_KEY = 'coingecko-chart';
 
+  static isVirtualCoin(coin: Coin): boolean {
+    return coin.id?.includes('virtual') ?? false;
+  }
+
   private static createVirtualUsdCoin(): Coin {
     return new Coin({
       id: 'USD-virtual',
