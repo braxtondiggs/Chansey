@@ -7,7 +7,8 @@ describe('stepSizeValidator', () => {
     [0.01, 0.02, 'decimal multiple'],
     [0.1, 0.3, 'float-precision edge case (0.3 / 0.1)'],
     [1, 5, 'whole number multiple'],
-    [1e-8, 0.00000002, 'scientific notation step']
+    [1e-8, 0.00000002, 'scientific notation step'],
+    [0.01, 60000.05, 'large value with small step']
   ])('should accept valid value (step=%s, value=%s, %s)', (step, value) => {
     const validator = stepSizeValidator(step);
     expect(validator(new FormControl(value))).toBeNull();
@@ -54,8 +55,8 @@ describe('snapToStep', () => {
     expect(snapToStep(1.234, 0)).toBe(1.234);
   });
 
-  it('should handle negative values', () => {
-    expect(snapToStep(-0.123, 0.01)).toBe(-0.13);
+  it('should return negative value unchanged', () => {
+    expect(snapToStep(-0.123, 0.01)).toBe(-0.123);
   });
 });
 

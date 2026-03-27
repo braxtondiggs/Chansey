@@ -1,30 +1,55 @@
+import { animate, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
+import { MenuItem } from 'primeng/api';
+import { InputGroupModule } from 'primeng/inputgroup';
+import { InputGroupAddonModule } from 'primeng/inputgroupaddon';
 import { InputNumberModule } from 'primeng/inputnumber';
-import { SelectModule } from 'primeng/select';
+import { MenuModule } from 'primeng/menu';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { TooltipModule } from 'primeng/tooltip';
 import { startWith } from 'rxjs';
 
-import { StopLossType, TakeProfitType, TickerPair, TrailingActivationType } from '@chansey/api-interfaces';
-
 import {
-  EXIT_CONFIG_LIMITS,
-  EXIT_TRAILING_TYPE_OPTIONS,
-  STOP_LOSS_TYPE_OPTIONS,
-  TAKE_PROFIT_TYPE_OPTIONS,
-  TRAILING_ACTIVATION_OPTIONS
-} from '../../crypto-trading.constants';
+  ExitTrailingType,
+  StopLossType,
+  TakeProfitType,
+  TickerPair,
+  TrailingActivationType
+} from '@chansey/api-interfaces';
+
+import { EXIT_CONFIG_LIMITS } from '../../crypto-trading.constants';
 
 @Component({
   selector: 'app-exit-config',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, InputNumberModule, SelectModule, ToggleSwitchModule, TooltipModule],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    InputGroupModule,
+    InputGroupAddonModule,
+    InputNumberModule,
+    MenuModule,
+    ToggleSwitchModule,
+    TooltipModule
+  ],
   templateUrl: './exit-config.component.html',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  animations: [
+    trigger('slideDown', [
+      transition(':enter', [
+        style({ height: '0', opacity: 0, overflow: 'hidden' }),
+        animate('200ms ease-out', style({ height: '*', opacity: 1 }))
+      ]),
+      transition(':leave', [
+        style({ height: '*', opacity: 1, overflow: 'hidden' }),
+        animate('150ms ease-in', style({ height: '0', opacity: 0 }))
+      ])
+    ])
+  ]
 })
 export class ExitConfigComponent implements OnInit {
   form = input.required<FormGroup>();
@@ -33,13 +58,72 @@ export class ExitConfigComponent implements OnInit {
 
   isExpanded = signal(false);
 
-  stopLossTypeOptions = STOP_LOSS_TYPE_OPTIONS;
-  exitTrailingTypeOptions = EXIT_TRAILING_TYPE_OPTIONS;
-  trailingActivationOptions = TRAILING_ACTIVATION_OPTIONS;
-
   readonly limits = EXIT_CONFIG_LIMITS;
 
+  // Stable menu item arrays — built once, mutated in place to avoid reference churn
+  readonly stopLossMenuItems: MenuItem[] = [
+    {
+      label: 'Percentage',
+      command: () => this.form().get('stopLossType')?.setValue(StopLossType.PERCENTAGE)
+    },
+    {
+      label: 'Fixed Price',
+      command: () => this.form().get('stopLossType')?.setValue(StopLossType.FIXED)
+    }
+  ];
+
+  readonly takeProfitMenuItems: MenuItem[] = [
+    {
+      label: 'Percentage',
+      command: () => this.form().get('takeProfitType')?.setValue(TakeProfitType.PERCENTAGE)
+    },
+    {
+      label: 'Fixed Price',
+      command: () => this.form().get('takeProfitType')?.setValue(TakeProfitType.FIXED)
+    },
+    {
+      label: 'Risk:Reward',
+      disabled: true,
+      command: () => this.form().get('takeProfitType')?.setValue(TakeProfitType.RISK_REWARD)
+    }
+  ];
+
+  readonly trailingValueMenuItems: MenuItem[] = [
+    {
+      label: 'Percentage',
+      command: () => this.form().get('trailingType')?.setValue(ExitTrailingType.PERCENTAGE)
+    },
+    {
+      label: 'Amount',
+      command: () => this.form().get('trailingType')?.setValue(ExitTrailingType.AMOUNT)
+    }
+  ];
+
+  readonly trailingActivationMenuItems: MenuItem[] = [
+    {
+      label: 'Immediately',
+      command: () => this.form().get('trailingActivation')?.setValue(TrailingActivationType.IMMEDIATE)
+    },
+    {
+      label: 'At Price',
+      command: () => this.form().get('trailingActivation')?.setValue(TrailingActivationType.PRICE)
+    },
+    {
+      label: 'At % Gain',
+      command: () => this.form().get('trailingActivation')?.setValue(TrailingActivationType.PERCENTAGE)
+    }
+  ];
+
   private readonly destroyRef = inject(DestroyRef);
+
+  activeStrategyCount(): number {
+    const f = this.form();
+    let count = 0;
+    if (f.get('enableStopLoss')?.value) count++;
+    if (f.get('enableTakeProfit')?.value) count++;
+    if (f.get('enableTrailingStop')?.value) count++;
+    return count;
+  }
 
   showOcoToggle(): boolean {
     const f = this.form();
@@ -50,17 +134,25 @@ export class ExitConfigComponent implements OnInit {
     return this.form().get('trailingActivation')?.value === TrailingActivationType.IMMEDIATE;
   }
 
-  stopLossValueSuffix(): string {
-    return this.form().get('stopLossType')?.value === StopLossType.PERCENTAGE
-      ? '%'
-      : this.selectedPair()?.quoteAsset?.symbol?.toUpperCase() || '';
+  stopLossButtonLabel(): string {
+    return this.form().get('stopLossType')?.value === StopLossType.PERCENTAGE ? '%' : this.quoteSymbol() || '$';
   }
 
-  takeProfitValueSuffix(): string {
+  takeProfitButtonLabel(): string {
     const type = this.form().get('takeProfitType')?.value;
     if (type === TakeProfitType.PERCENTAGE) return '%';
-    if (type === TakeProfitType.RISK_REWARD) return ':1';
-    return this.selectedPair()?.quoteAsset?.symbol?.toUpperCase() || '';
+    if (type === TakeProfitType.RISK_REWARD) return 'R:R';
+    return this.quoteSymbol() || '$';
+  }
+
+  trailingValueButtonLabel(): string {
+    return this.form().get('trailingType')?.value === ExitTrailingType.PERCENTAGE ? '%' : this.quoteSymbol() || '$';
+  }
+
+  trailingActivationButtonLabel(): string {
+    return this.form().get('trailingActivation')?.value === TrailingActivationType.PERCENTAGE
+      ? '%'
+      : this.quoteSymbol() || '$';
   }
 
   stopLossHelperText(): string {
@@ -69,10 +161,14 @@ export class ExitConfigComponent implements OnInit {
     if (!value) return '';
     if (type === StopLossType.PERCENTAGE) {
       return this.side() === 'BUY'
-        ? `Sells if price drops ${value}% below your entry`
+        ? `Automatically sells if price falls ${value}% from your buy price`
         : `Buys back if price rises ${value}% above your entry`;
     }
-    return this.side() === 'BUY' ? `Sells if price drops to ${value}` : `Buys back if price rises to ${value}`;
+    const symbol = this.quoteSymbol();
+    const suffix = symbol ? ` ${symbol}` : '';
+    return this.side() === 'BUY'
+      ? `Sells if price drops to ${value}${suffix}`
+      : `Buys back if price rises to ${value}${suffix}`;
   }
 
   takeProfitHelperText(): string {
@@ -85,17 +181,13 @@ export class ExitConfigComponent implements OnInit {
         : `Buys back when price drops ${value}% below your entry`;
     }
     if (type === TakeProfitType.RISK_REWARD) {
-      return `Targets ${value}:1 reward relative to your stop loss distance`;
+      return `Aims for ${value}x the gain compared to your stop loss risk`;
     }
-    return this.side() === 'BUY' ? `Sells when price reaches ${value}` : `Buys back when price drops to ${value}`;
-  }
-
-  getTakeProfitTypeOptions() {
-    const slEnabled = !!this.form().get('enableStopLoss')?.value;
-    return TAKE_PROFIT_TYPE_OPTIONS.map((opt) => ({
-      ...opt,
-      disabled: opt.value === TakeProfitType.RISK_REWARD && !slEnabled
-    }));
+    const symbol = this.quoteSymbol();
+    const suffix = symbol ? ` ${symbol}` : '';
+    return this.side() === 'BUY'
+      ? `Sells when price reaches ${value}${suffix}`
+      : `Buys back when price drops to ${value}${suffix}`;
   }
 
   toggleExpanded(): void {
@@ -111,6 +203,10 @@ export class ExitConfigComponent implements OnInit {
     ]);
     this.watchTrailingActivation();
     this.watchTakeProfitRiskReward();
+  }
+
+  private quoteSymbol(): string {
+    return (this.selectedPair()?.quoteAsset?.symbol?.toUpperCase() || '').slice(0, 6);
   }
 
   private watchToggle(toggleField: string, valueFields: { name: string; max: number }[]): void {
@@ -154,16 +250,14 @@ export class ExitConfigComponent implements OnInit {
       .get('enableStopLoss')
       ?.valueChanges.pipe(startWith(this.form().get('enableStopLoss')?.value), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
-        // When SL is disabled and TP type is RISK_REWARD, switch to PERCENTAGE
         const slEnabled = this.form().get('enableStopLoss')?.value;
+        // Update Risk:Reward disabled state in the stable menu items array
+        const rrItem = this.takeProfitMenuItems.find((i) => i.label === 'Risk:Reward');
+        if (rrItem) rrItem.disabled = !slEnabled;
         const tpType = this.form().get('takeProfitType')?.value;
         if (!slEnabled && tpType === TakeProfitType.RISK_REWARD) {
           this.form().get('takeProfitType')?.setValue(TakeProfitType.PERCENTAGE);
         }
       });
-  }
-
-  isRiskRewardDisabled(): boolean {
-    return !this.form().get('enableStopLoss')?.value;
   }
 }

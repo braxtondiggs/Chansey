@@ -85,12 +85,21 @@ describe('ExitConfigComponent', () => {
     });
   });
 
-  describe('isRiskRewardDisabled', () => {
-    it('should return true when SL is disabled, false when enabled', () => {
-      expect(component.isRiskRewardDisabled()).toBe(true);
+  describe('stopLossButtonLabel', () => {
+    it('should return % for PERCENTAGE type', () => {
+      form.get('stopLossType')?.setValue(StopLossType.PERCENTAGE);
+      expect(component.stopLossButtonLabel()).toBe('%');
+    });
 
-      form.get('enableStopLoss')?.setValue(true);
-      expect(component.isRiskRewardDisabled()).toBe(false);
+    it('should return quote symbol for FIXED type with selected pair', () => {
+      fixture.componentRef.setInput('selectedPair', mockPair);
+      form.get('stopLossType')?.setValue(StopLossType.FIXED);
+      expect(component.stopLossButtonLabel()).toBe('USDT');
+    });
+
+    it('should return $ for FIXED type without selected pair', () => {
+      form.get('stopLossType')?.setValue(StopLossType.FIXED);
+      expect(component.stopLossButtonLabel()).toBe('$');
     });
   });
 
@@ -246,60 +255,58 @@ describe('ExitConfigComponent', () => {
     });
   });
 
-  describe('getTakeProfitTypeOptions', () => {
-    it('should return Risk:Reward as disabled when SL is off', () => {
+  describe('takeProfitMenuItems', () => {
+    it('should have Risk:Reward disabled when SL is off', () => {
       form.get('enableStopLoss')?.setValue(false);
-      const options = component.getTakeProfitTypeOptions();
-      const rr = options.find((o) => o.value === TakeProfitType.RISK_REWARD);
+      const rr = component.takeProfitMenuItems.find((i) => i.label === 'Risk:Reward');
       expect(rr?.disabled).toBe(true);
     });
 
-    it('should return Risk:Reward as enabled when SL is on', () => {
+    it('should have Risk:Reward enabled when SL is on', () => {
       form.get('enableStopLoss')?.setValue(true);
-      const options = component.getTakeProfitTypeOptions();
-      const rr = options.find((o) => o.value === TakeProfitType.RISK_REWARD);
+      const rr = component.takeProfitMenuItems.find((i) => i.label === 'Risk:Reward');
       expect(rr?.disabled).toBe(false);
     });
   });
 
-  describe('stopLossValueSuffix', () => {
+  describe('takeProfitButtonLabel', () => {
     it('should return % for PERCENTAGE type', () => {
-      form.get('stopLossType')?.setValue(StopLossType.PERCENTAGE);
-      expect(component.stopLossValueSuffix()).toBe('%');
+      form.get('takeProfitType')?.setValue(TakeProfitType.PERCENTAGE);
+      expect(component.takeProfitButtonLabel()).toBe('%');
     });
 
-    it('should return quote asset symbol for FIXED type with a selected pair', () => {
+    it('should return R:R for RISK_REWARD type', () => {
+      form.get('takeProfitType')?.setValue(TakeProfitType.RISK_REWARD);
+      expect(component.takeProfitButtonLabel()).toBe('R:R');
+    });
+
+    it('should return quote symbol for FIXED type with selected pair', () => {
       fixture.componentRef.setInput('selectedPair', mockPair);
-      form.get('stopLossType')?.setValue(StopLossType.FIXED);
-      expect(component.stopLossValueSuffix()).toBe('USDT');
+      form.get('takeProfitType')?.setValue(TakeProfitType.FIXED);
+      expect(component.takeProfitButtonLabel()).toBe('USDT');
     });
 
-    it('should return empty string for FIXED type without a selected pair', () => {
-      form.get('stopLossType')?.setValue(StopLossType.FIXED);
-      expect(component.stopLossValueSuffix()).toBe('');
+    it('should return $ for FIXED type without selected pair', () => {
+      form.get('takeProfitType')?.setValue(TakeProfitType.FIXED);
+      expect(component.takeProfitButtonLabel()).toBe('$');
     });
   });
 
-  describe('takeProfitValueSuffix', () => {
+  describe('trailingValueButtonLabel', () => {
     it('should return % for PERCENTAGE type', () => {
-      form.get('takeProfitType')?.setValue(TakeProfitType.PERCENTAGE);
-      expect(component.takeProfitValueSuffix()).toBe('%');
+      form.get('trailingType')?.setValue(ExitTrailingType.PERCENTAGE);
+      expect(component.trailingValueButtonLabel()).toBe('%');
     });
 
-    it('should return :1 for RISK_REWARD type', () => {
-      form.get('takeProfitType')?.setValue(TakeProfitType.RISK_REWARD);
-      expect(component.takeProfitValueSuffix()).toBe(':1');
-    });
-
-    it('should return quote asset symbol for FIXED type with a selected pair', () => {
+    it('should return quote symbol for AMOUNT type with selected pair', () => {
       fixture.componentRef.setInput('selectedPair', mockPair);
-      form.get('takeProfitType')?.setValue(TakeProfitType.FIXED);
-      expect(component.takeProfitValueSuffix()).toBe('USDT');
+      form.get('trailingType')?.setValue(ExitTrailingType.AMOUNT);
+      expect(component.trailingValueButtonLabel()).toBe('USDT');
     });
 
-    it('should return empty string for FIXED type without a selected pair', () => {
-      form.get('takeProfitType')?.setValue(TakeProfitType.FIXED);
-      expect(component.takeProfitValueSuffix()).toBe('');
+    it('should return $ for AMOUNT type without selected pair', () => {
+      form.get('trailingType')?.setValue(ExitTrailingType.AMOUNT);
+      expect(component.trailingValueButtonLabel()).toBe('$');
     });
   });
 
@@ -311,7 +318,7 @@ describe('ExitConfigComponent', () => {
     });
 
     it.each([
-      { side: 'BUY' as const, expected: 'Sells if price drops 2% below your entry' },
+      { side: 'BUY' as const, expected: 'Automatically sells if price falls 2% from your buy price' },
       { side: 'SELL' as const, expected: 'Buys back if price rises 2% above your entry' }
     ])('should return percentage text for $side side', ({ side, expected }) => {
       fixture.componentRef.setInput('side', side);
@@ -351,7 +358,7 @@ describe('ExitConfigComponent', () => {
     it('should return risk reward text', () => {
       form.get('takeProfitType')?.setValue(TakeProfitType.RISK_REWARD);
       form.get('takeProfitValue')?.setValue(3);
-      expect(component.takeProfitHelperText()).toBe('Targets 3:1 reward relative to your stop loss distance');
+      expect(component.takeProfitHelperText()).toBe('Aims for 3x the gain compared to your stop loss risk');
     });
 
     it.each([

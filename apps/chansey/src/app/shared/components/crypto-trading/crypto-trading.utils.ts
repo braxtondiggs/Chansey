@@ -78,11 +78,12 @@ export function findBalance(
 export function getAvailableBuyBalance(
   balances: Balance[] | undefined,
   pair: TickerPair | null,
-  preview: OrderPreview | null
+  preview: OrderPreview | null,
+  orderType?: OrderType
 ): number {
   const balance = findBalance(balances, pair, 'BUY');
   if (!balance) return 0;
-  const feeRate = getFeeRate(preview);
+  const feeRate = orderType ? getFeeRateForOrderType(orderType, preview) : getFeeRate(preview);
   return new Decimal(balance.available).div(new Decimal(1).plus(new Decimal(feeRate))).toNumber();
 }
 
@@ -124,6 +125,32 @@ export function getStatusClass(status: OrderStatus): string {
     [OrderStatus.EXPIRED]: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
   };
   return classes[status] || 'bg-gray-100 text-gray-800';
+}
+
+export function formatOrderType(type: OrderType): string {
+  const labels: Record<OrderType, string> = {
+    [OrderType.MARKET]: 'Market',
+    [OrderType.LIMIT]: 'Limit',
+    [OrderType.STOP_LOSS]: 'Stop Loss',
+    [OrderType.STOP_LIMIT]: 'Stop Limit',
+    [OrderType.TRAILING_STOP]: 'Trailing Stop',
+    [OrderType.TAKE_PROFIT]: 'Take Profit',
+    [OrderType.OCO]: 'OCO'
+  };
+  return labels[type] || type;
+}
+
+export function formatStatus(status: OrderStatus): string {
+  const labels: Record<OrderStatus, string> = {
+    [OrderStatus.NEW]: 'New',
+    [OrderStatus.PARTIALLY_FILLED]: 'Partial Fill',
+    [OrderStatus.FILLED]: 'Filled',
+    [OrderStatus.CANCELED]: 'Canceled',
+    [OrderStatus.PENDING_CANCEL]: 'Canceling',
+    [OrderStatus.REJECTED]: 'Rejected',
+    [OrderStatus.EXPIRED]: 'Expired'
+  };
+  return labels[status] || status;
 }
 
 export function trackByPrice(_index: number, item: OrderBookEntry) {

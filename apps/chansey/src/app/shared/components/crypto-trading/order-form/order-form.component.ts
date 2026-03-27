@@ -8,6 +8,7 @@ import { InputNumberModule } from 'primeng/inputnumber';
 import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
 import { SelectButtonModule } from 'primeng/selectbutton';
+import { TooltipModule } from 'primeng/tooltip';
 
 import { MarketLimits, OrderPreview, OrderType, TickerPair, TrailingType } from '@chansey/api-interfaces';
 
@@ -26,6 +27,7 @@ import { ExitConfigComponent } from './exit-config/exit-config.component';
     MessageModule,
     SelectModule,
     SelectButtonModule,
+    TooltipModule,
     ExitConfigComponent
   ],
   templateUrl: './order-form.component.html',
@@ -98,6 +100,14 @@ export class OrderFormComponent {
   summaryTotalLabel = computed(() => (this.isBuy() ? 'Total' : 'Net'));
   summaryHeaderLabel = computed(() => (this.isBuy() ? 'Buy Order Summary' : 'Sell Order Summary'));
   summaryIcon = computed(() => (this.isBuy() ? 'pi pi-arrow-up' : 'pi pi-arrow-down'));
+
+  buttonDisabledReason = computed(() => {
+    if (!this.selectedPair()) return 'Select a trading pair first';
+    if (this.form().invalid) return 'Please fill in all required fields';
+    if (this.isBelowMinCost()) return 'Order value is below the minimum';
+    if (this.orderPreview() && !this.hasSufficientBalance()) return 'Insufficient balance';
+    return '';
+  });
 
   shouldShowExitConfig = computed(() => {
     const type = this.form().get('type')?.value;

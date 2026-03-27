@@ -687,19 +687,22 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
 
     if (limits.priceStep > 0) {
       this.applyPriceStepValidator(form, limits.priceStep);
-      form.get('price')?.updateValueAndValidity({ emitEvent: false });
     }
   }
 
   private applyPriceStepValidator(form: FormGroup, priceStep: number): void {
-    const priceControl = form.get('price');
-    if (!priceControl || priceStep <= 0) return;
-    const validators: ValidatorFn[] = [];
-    if (priceControl.hasValidator(Validators.required)) {
-      validators.push(Validators.required, Validators.min(0.00000001));
+    if (priceStep <= 0) return;
+    const priceControls = ['price', 'stopPrice', 'takeProfitPrice', 'stopLossPrice'];
+    for (const name of priceControls) {
+      const control = form.get(name);
+      if (!control) continue;
+      const validators: ValidatorFn[] = [Validators.min(0.00000001), stepSizeValidator(priceStep)];
+      if (control.hasValidator(Validators.required)) {
+        validators.unshift(Validators.required);
+      }
+      control.setValidators(validators);
+      control.updateValueAndValidity({ emitEvent: false });
     }
-    validators.push(stepSizeValidator(priceStep));
-    priceControl.setValidators(validators);
   }
 
   private setQuantityPercentage(side: 'BUY' | 'SELL', percentage: number) {

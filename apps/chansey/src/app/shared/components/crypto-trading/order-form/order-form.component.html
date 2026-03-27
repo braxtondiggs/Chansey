@@ -59,10 +59,10 @@
       </label>
     </p-floatlabel>
     @if (isFieldInvalid('quantity')) {
-      <small class="p-error" role="alert">{{ getFieldError('quantity') }}</small>
+      <small class="p-error" aria-live="polite">{{ getFieldError('quantity') }}</small>
     }
     @if (marketLimits()?.minQuantity || marketLimits()?.minCost) {
-      <div class="mt-1 text-xs text-surface-400">
+      <div class="mt-1 text-xs text-surface-500 dark:text-surface-400">
         @if (marketLimits()?.minQuantity) {
           Min: {{ marketLimits()?.minQuantity }} {{ selectedPair()?.baseAsset?.symbol | uppercase }}
         }
@@ -114,7 +114,7 @@
         </label>
       </p-floatlabel>
       @if (isFieldInvalid('price')) {
-        <small class="p-error" role="alert">{{ getFieldError('price') }}</small>
+        <small class="p-error" aria-live="polite">{{ getFieldError('price') }}</small>
       }
     </div>
   }
@@ -128,7 +128,8 @@
           formControlName="stopPrice"
           mode="decimal"
           [minFractionDigits]="2"
-          [maxFractionDigits]="8"
+          [maxFractionDigits]="marketLimits()?.priceStep ? countDecimals(marketLimits()!.priceStep) : 8"
+          [step]="marketLimits()?.priceStep && marketLimits()!.priceStep > 0 ? marketLimits()!.priceStep : 1"
           class="w-full"
           [class.ng-invalid]="isFieldInvalid('stopPrice')"
           [class.ng-dirty]="isFieldInvalid('stopPrice')"
@@ -141,7 +142,7 @@
         </label>
       </p-floatlabel>
       @if (isFieldInvalid('stopPrice')) {
-        <small class="p-error" role="alert">{{ getFieldError('stopPrice') }}</small>
+        <small class="p-error" aria-live="polite">{{ getFieldError('stopPrice') }}</small>
       }
       <p-message severity="warn" size="small">
         Order executes when price
@@ -169,7 +170,7 @@
             <label [for]="side() + 'TrailingAmount'">Trailing Amount</label>
           </p-floatlabel>
           @if (isFieldInvalid('trailingAmount')) {
-            <small class="p-error" role="alert">{{ getFieldError('trailingAmount') }}</small>
+            <small class="p-error" aria-live="polite">{{ getFieldError('trailingAmount') }}</small>
           }
         </div>
         <p-floatlabel variant="on">
@@ -205,7 +206,7 @@
       </p>
       <!-- Mini price diagram -->
       <div
-        class="flex flex-col items-center gap-0.5 rounded-md border border-dashed border-primary-300 bg-white/60 px-3 py-2 text-xs dark:border-primary-700 dark:bg-surface-800/60"
+        class="flex flex-col items-center gap-0.5 rounded-md border border-dashed border-primary-300 bg-surface-0/60 px-3 py-2 text-xs dark:border-primary-700 dark:bg-surface-800/60"
       >
         <div class="flex items-center gap-1.5 font-medium text-green-600 dark:text-green-400">
           <i class="pi pi-arrow-up text-[10px]" aria-hidden="true"></i>
@@ -230,7 +231,8 @@
             formControlName="takeProfitPrice"
             mode="decimal"
             [minFractionDigits]="2"
-            [maxFractionDigits]="8"
+            [maxFractionDigits]="marketLimits()?.priceStep ? countDecimals(marketLimits()!.priceStep) : 8"
+            [step]="marketLimits()?.priceStep && marketLimits()!.priceStep > 0 ? marketLimits()!.priceStep : 1"
             class="w-full"
             [class.ng-invalid]="isFieldInvalid('takeProfitPrice')"
             [class.ng-dirty]="isFieldInvalid('takeProfitPrice')"
@@ -243,7 +245,7 @@
           </label>
         </p-floatlabel>
         @if (isFieldInvalid('takeProfitPrice')) {
-          <small class="p-error" role="alert">{{ getFieldError('takeProfitPrice') }}</small>
+          <small class="p-error" aria-live="polite">{{ getFieldError('takeProfitPrice') }}</small>
         }
       </div>
       <!-- Stop Loss input -->
@@ -254,7 +256,8 @@
             formControlName="stopLossPrice"
             mode="decimal"
             [minFractionDigits]="2"
-            [maxFractionDigits]="8"
+            [maxFractionDigits]="marketLimits()?.priceStep ? countDecimals(marketLimits()!.priceStep) : 8"
+            [step]="marketLimits()?.priceStep && marketLimits()!.priceStep > 0 ? marketLimits()!.priceStep : 1"
             class="w-full"
             [class.ng-invalid]="isFieldInvalid('stopLossPrice')"
             [class.ng-dirty]="isFieldInvalid('stopLossPrice')"
@@ -267,7 +270,7 @@
           </label>
         </p-floatlabel>
         @if (isFieldInvalid('stopLossPrice')) {
-          <small class="p-error" role="alert">{{ getFieldError('stopLossPrice') }}</small>
+          <small class="p-error" aria-live="polite">{{ getFieldError('stopLossPrice') }}</small>
         }
       </div>
     </div>
@@ -282,7 +285,8 @@
           formControlName="takeProfitPrice"
           mode="decimal"
           [minFractionDigits]="2"
-          [maxFractionDigits]="8"
+          [maxFractionDigits]="marketLimits()?.priceStep ? countDecimals(marketLimits()!.priceStep) : 8"
+          [step]="marketLimits()?.priceStep && marketLimits()!.priceStep > 0 ? marketLimits()!.priceStep : 1"
           class="w-full"
           [class.ng-invalid]="isFieldInvalid('takeProfitPrice')"
           [class.ng-dirty]="isFieldInvalid('takeProfitPrice')"
@@ -295,7 +299,7 @@
         </label>
       </p-floatlabel>
       @if (isFieldInvalid('takeProfitPrice')) {
-        <small class="p-error" role="alert">{{ getFieldError('takeProfitPrice') }}</small>
+        <small class="p-error" aria-live="polite">{{ getFieldError('takeProfitPrice') }}</small>
       }
     </div>
   }
@@ -350,14 +354,16 @@
           <span
             class="tabular-nums"
             [class.text-green-600]="orderPreview()?.hasSufficientBalance"
+            [class.dark:text-green-400]="orderPreview()?.hasSufficientBalance"
             [class.text-red-600]="!orderPreview()?.hasSufficientBalance"
+            [class.dark:text-red-400]="!orderPreview()?.hasSufficientBalance"
           >
             {{ orderPreview()?.availableBalance | number: '1.2-6' }}
             {{ orderPreview()?.balanceCurrency?.toUpperCase() }}
           </span>
         </div>
         @if (!orderPreview()?.hasSufficientBalance) {
-          <div role="alert" class="mt-1 flex items-center gap-1 text-xs text-red-600">
+          <div role="alert" class="mt-1 flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
             <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
             <span>Insufficient balance</span>
           </div>
@@ -392,19 +398,21 @@
     </p-message>
   }
 
-  <p-button
-    type="submit"
-    [label]="buttonLabel()"
-    [icon]="buttonIcon()"
-    [severity]="buttonSeverity()"
-    styleClass="w-full"
-    [disabled]="
-      form().invalid ||
-      isSubmitting() ||
-      !selectedPair() ||
-      (orderPreview() && !hasSufficientBalance()) ||
-      isBelowMinCost()
-    "
-    [loading]="isSubmitting()"
-  />
+  <span [pTooltip]="buttonDisabledReason()" tooltipPosition="top" class="inline-block w-full">
+    <p-button
+      type="submit"
+      [label]="buttonLabel()"
+      [icon]="buttonIcon()"
+      [severity]="buttonSeverity()"
+      styleClass="w-full"
+      [disabled]="
+        form().invalid ||
+        isSubmitting() ||
+        !selectedPair() ||
+        (orderPreview() && !hasSufficientBalance()) ||
+        isBelowMinCost()
+      "
+      [loading]="isSubmitting()"
+    />
+  </span>
 </form>
