@@ -376,8 +376,8 @@ export class OrderSyncService {
 
       const newOrder = this.orderRepository.create({
         clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id.toString(),
-        baseCoin: baseCoin ?? undefined,
-        quoteCoin: quoteCoin ?? undefined,
+        baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
+        quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
         executedQuantity: exchangeOrder.filled || 0,
         orderId: exchangeOrder.id.toString(),
         price: price || 0,

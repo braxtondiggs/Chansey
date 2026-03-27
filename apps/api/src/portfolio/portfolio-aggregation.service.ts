@@ -64,7 +64,7 @@ export class PortfolioAggregationService {
       const baseToCoins = new Map(coins.map((c) => [c.symbol.toLowerCase(), c]));
 
       // Collect coin IDs for realtime price fetch
-      const coinIds = coins.filter((c) => c.id).map((c) => c.id);
+      const coinIds = coins.filter((c) => c.id && !CoinService.isVirtualCoin(c)).map((c) => c.id);
       const tickerPrices = coinIds.length > 0 ? await this.realtimeTickerService.getPrices(coinIds) : new Map();
 
       // Map prices back to original trading pair symbols

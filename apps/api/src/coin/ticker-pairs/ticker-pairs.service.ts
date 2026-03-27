@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
@@ -37,8 +37,8 @@ export class TickerPairService {
   }
 
   async getBasePairsBySymbol(symbol: string): Promise<TickerPairs[]> {
-    const coin = await this.coin.getCoinBySymbol(symbol);
-    if (!coin) throw new NotFoundException(`Coin with symbol ${symbol} not found`);
+    const coin = await this.coin.getCoinBySymbol(symbol, undefined, false);
+    if (!coin || CoinService.isVirtualCoin(coin)) return [];
 
     return this.pairs.find({
       where: { baseAsset: coin },
@@ -47,8 +47,8 @@ export class TickerPairService {
   }
 
   async getQuotePairsBySymbol(symbol: string): Promise<TickerPairs[]> {
-    const coin = await this.coin.getCoinBySymbol(symbol);
-    if (!coin) throw new NotFoundException(`Coin with symbol ${symbol} not found`);
+    const coin = await this.coin.getCoinBySymbol(symbol, undefined, false);
+    if (!coin || CoinService.isVirtualCoin(coin)) return [];
 
     return this.pairs.find({
       where: { quoteAsset: coin },
