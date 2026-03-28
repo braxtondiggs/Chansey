@@ -17,8 +17,8 @@ import { BalanceService } from '../balance/balance.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
-import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { SignalFilterChainService } from '../order/backtest/shared/filters';
 import {
   OpportunitySellDecision,
   DEFAULT_OPPORTUNITY_SELLING_CONFIG
@@ -70,7 +70,7 @@ describe('LiveTradingService', () => {
   let orderService: jest.Mocked<OrderService>;
   let balanceService: jest.Mocked<BalanceService>;
   let tradingStateService: jest.Mocked<TradingStateService>;
-  let regimeGateService: jest.Mocked<RegimeGateService>;
+  let signalFilterChain: jest.Mocked<SignalFilterChainService>;
   let preTradeRiskGate: jest.Mocked<PreTradeRiskGateService>;
   let dailyLossLimitGate: jest.Mocked<DailyLossLimitGateService>;
   let tradeExecutionService: jest.Mocked<TradeExecutionService>;
@@ -120,9 +120,15 @@ describe('LiveTradingService', () => {
       isTradingEnabled: jest.fn().mockReturnValue(true)
     } as unknown as jest.Mocked<TradingStateService>;
 
-    regimeGateService = {
-      filterLiveSignal: jest.fn().mockReturnValue({ allowed: true })
-    } as unknown as jest.Mocked<RegimeGateService>;
+    signalFilterChain = {
+      apply: jest.fn().mockReturnValue({
+        signals: [{ action: 'buy', originalType: undefined }],
+        maxAllocation: 1,
+        minAllocation: 0,
+        regimeGateBlockedCount: 0,
+        regimeMultiplier: 1
+      })
+    } as unknown as jest.Mocked<SignalFilterChainService>;
 
     preTradeRiskGate = {
       checkDrawdown: jest.fn().mockResolvedValue({ allowed: true })
@@ -173,7 +179,7 @@ describe('LiveTradingService', () => {
             isOverrideActive: jest.fn().mockReturnValue(false)
           }
         },
-        { provide: RegimeGateService, useValue: regimeGateService },
+        { provide: SignalFilterChainService, useValue: signalFilterChain },
         { provide: PreTradeRiskGateService, useValue: preTradeRiskGate },
         { provide: DailyLossLimitGateService, useValue: dailyLossLimitGate },
         {
@@ -476,10 +482,13 @@ describe('LiveTradingService', () => {
 
   it('blocks signal when regime gate rejects', async () => {
     setupSignalPath();
-    regimeGateService.filterLiveSignal.mockReturnValue({
-      allowed: false,
-      reason: 'BEAR regime — BUY signals blocked'
-    } as any);
+    signalFilterChain.apply.mockReturnValue({
+      signals: [],
+      maxAllocation: 1,
+      minAllocation: 0,
+      regimeGateBlockedCount: 1,
+      regimeMultiplier: 1
+    });
 
     const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
     strategyExecutor.executeStrategy.mockResolvedValue(signal);
@@ -489,6 +498,49 @@ describe('LiveTradingService', () => {
 
     expect(orderService.placeAlgorithmicOrder).not.toHaveBeenCalled();
     expect(tradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+  });
+
+  it('passes override flag through to signal filter chain', async () => {
+    setupSignalPath();
+    const compositeRegimeService = (service as any).compositeRegimeService;
+    compositeRegimeService.isOverrideActive.mockReturnValue(true);
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+    orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+    await service.executeLiveTrading();
+
+    expect(signalFilterChain.apply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tradingContext: 'live',
+        overrideActive: true,
+        regimeGateEnabled: true
+      }),
+      expect.anything()
+    );
+  });
+
+  it('passes risk level through to signal filter chain', async () => {
+    setupSignalPath({ user: { effectiveCalculationRiskLevel: 5, coinRisk: { level: 5 } as any } });
+
+    const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+    strategyExecutor.executeStrategy.mockResolvedValue(signal);
+    strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+    orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+    await service.executeLiveTrading();
+
+    expect(signalFilterChain.apply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tradingContext: 'live',
+        riskLevel: 5
+      }),
+      expect.anything()
+    );
   });
 
   it('blocks signal when drawdown gate rejects', async () => {

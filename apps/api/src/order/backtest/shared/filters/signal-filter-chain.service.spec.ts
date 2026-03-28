@@ -3,7 +3,11 @@ import { CompositeRegimeType } from '@chansey/api-interfaces';
 import { FilterableSignal, SignalFilterContext } from './signal-filter-chain.interface';
 import { SignalFilterChainService } from './signal-filter-chain.service';
 
-const makeSignal = (action: string, originalType?: string): FilterableSignal => ({ action, originalType });
+const makeSignal = (action: string, originalType?: string, coinId?: string): FilterableSignal => ({
+  action,
+  originalType,
+  coinId
+});
 
 const makeContext = (overrides: Partial<SignalFilterContext> = {}): SignalFilterContext => ({
   compositeRegime: CompositeRegimeType.BULL,
@@ -147,6 +151,301 @@ describe('SignalFilterChainService', () => {
       expect(result.maxAllocation).toBe(DEFAULT_ALLOCATION.maxAllocation);
       expect(result.minAllocation).toBe(DEFAULT_ALLOCATION.minAllocation);
     });
+  });
+
+  describe('Context-aware gate policy', () => {
+    it.each([CompositeRegimeType.BEAR, CompositeRegimeType.EXTREME])(
+      'paper trading allows BUY in %s regime',
+      (regime) => {
+        const result = service.apply(
+          [makeSignal('BUY')],
+          makeContext({ compositeRegime: regime, tradingContext: 'paper', riskLevel: 1 }),
+          DEFAULT_ALLOCATION
+        );
+
+        expect(result.signals).toHaveLength(1);
+        expect(result.regimeGateBlockedCount).toBe(0);
+      }
+    );
+
+    it.each([
+      { riskLevel: 1, regime: CompositeRegimeType.BEAR },
+      { riskLevel: 1, regime: CompositeRegimeType.EXTREME },
+      { riskLevel: 2, regime: CompositeRegimeType.BEAR },
+      { riskLevel: 2, regime: CompositeRegimeType.EXTREME }
+    ])('live risk $riskLevel blocks BUY in $regime regime', ({ riskLevel, regime }) => {
+      const result = service.apply(
+        [makeSignal('BUY')],
+        makeContext({ compositeRegime: regime, tradingContext: 'live', riskLevel }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(0);
+      expect(result.regimeGateBlockedCount).toBe(1);
+    });
+
+    it.each([
+      { riskLevel: 3, regime: CompositeRegimeType.BEAR, expectedLength: 1, expectedBlocked: 0 },
+      { riskLevel: 3, regime: CompositeRegimeType.EXTREME, expectedLength: 0, expectedBlocked: 1 },
+      { riskLevel: 5, regime: CompositeRegimeType.BEAR, expectedLength: 1, expectedBlocked: 0 },
+      { riskLevel: 5, regime: CompositeRegimeType.EXTREME, expectedLength: 0, expectedBlocked: 1 }
+    ])(
+      'live risk $riskLevel in $regime regime → $expectedLength signals',
+      ({ riskLevel, regime, expectedLength, expectedBlocked }) => {
+        const result = service.apply(
+          [makeSignal('BUY')],
+          makeContext({ compositeRegime: regime, tradingContext: 'live', riskLevel }),
+          DEFAULT_ALLOCATION
+        );
+
+        expect(result.signals).toHaveLength(expectedLength);
+        expect(result.regimeGateBlockedCount).toBe(expectedBlocked);
+      }
+    );
+
+    it('backtest falls through to regimeGateEnabled boolean', () => {
+      const blocked = service.apply(
+        [makeSignal('BUY')],
+        makeContext({ compositeRegime: CompositeRegimeType.BEAR, tradingContext: 'backtest', regimeGateEnabled: true }),
+        DEFAULT_ALLOCATION
+      );
+      expect(blocked.signals).toHaveLength(0);
+
+      const allowed = service.apply(
+        [makeSignal('BUY')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BEAR,
+          tradingContext: 'backtest',
+          regimeGateEnabled: false
+        }),
+        DEFAULT_ALLOCATION
+      );
+      expect(allowed.signals).toHaveLength(1);
+    });
+
+    it('no tradingContext falls through to regimeGateEnabled boolean (backward compat)', () => {
+      const blocked = service.apply(
+        [makeSignal('BUY')],
+        makeContext({ compositeRegime: CompositeRegimeType.BEAR, regimeGateEnabled: true }),
+        DEFAULT_ALLOCATION
+      );
+      expect(blocked.signals).toHaveLength(0);
+
+      const allowed = service.apply(
+        [makeSignal('BUY')],
+        makeContext({ compositeRegime: CompositeRegimeType.BEAR, regimeGateEnabled: false }),
+        DEFAULT_ALLOCATION
+      );
+      expect(allowed.signals).toHaveLength(1);
+    });
+
+    it('paper trading BUY passes gate but allocation is multiplier-reduced in BEAR', () => {
+      const result = service.apply(
+        [makeSignal('BUY')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BEAR,
+          tradingContext: 'paper',
+          riskLevel: 1,
+          regimeScaledSizingEnabled: true
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.regimeGateBlockedCount).toBe(0);
+      expect(result.regimeMultiplier).toBeCloseTo(0.05);
+      expect(result.maxAllocation).toBeCloseTo(0.1 * 0.05);
+    });
+  });
+
+  describe('Concentration filter', () => {
+    const makeConcentrationContext = (
+      positions: Record<string, { quantity: number; averagePrice: number }>,
+      totalValue: number,
+      currentPrices?: Record<string, number>
+    ) => ({
+      portfolioPositions: new Map(Object.entries(positions)),
+      portfolioTotalValue: totalValue,
+      currentPrices: currentPrices ? new Map(Object.entries(currentPrices)) : undefined
+    });
+
+    it('passes through when no concentrationContext is provided', () => {
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'btc')],
+        makeContext({ compositeRegime: CompositeRegimeType.BULL, regimeGateEnabled: false }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.maxAllocation).toBe(DEFAULT_ALLOCATION.maxAllocation);
+    });
+
+    it('blocks BUY when asset concentration exceeds hard limit', () => {
+      // Risk 3: hard=0.35. BTC at 36% concentration → blocked
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'btc'), makeSignal('SELL', undefined, 'eth')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BULL,
+          regimeGateEnabled: false,
+          riskLevel: 3,
+          concentrationContext: makeConcentrationContext({ btc: { quantity: 3.6, averagePrice: 100 } }, 1000)
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].action).toBe('SELL');
+    });
+
+    it('reduces maxAllocation when position exceeds soft limit', () => {
+      // Risk 3: soft=0.30, hard=0.35. BTC at 32% → above soft, cap = hard - concentration = 0.03
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'eth')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BULL,
+          regimeGateEnabled: false,
+          riskLevel: 3,
+          concentrationContext: makeConcentrationContext({ btc: { quantity: 3.2, averagePrice: 100 } }, 1000)
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.maxAllocation).toBeCloseTo(0.03);
+    });
+
+    it('allows BUY when asset has no existing position', () => {
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'eth')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BULL,
+          regimeGateEnabled: false,
+          riskLevel: 3,
+          concentrationContext: makeConcentrationContext({ btc: { quantity: 1, averagePrice: 100 } }, 1000)
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+    });
+
+    it('allows BUY for signals without coinId', () => {
+      const result = service.apply(
+        [makeSignal('BUY')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BULL,
+          regimeGateEnabled: false,
+          riskLevel: 3,
+          concentrationContext: makeConcentrationContext({ btc: { quantity: 5, averagePrice: 100 } }, 1000)
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+    });
+
+    it('uses currentPrices when available instead of averagePrice', () => {
+      // Risk 3: hard=0.35. BTC qty=1, avgPrice=100, but currentPrice=400 → 40% concentration → blocked
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'btc')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BULL,
+          regimeGateEnabled: false,
+          riskLevel: 3,
+          concentrationContext: makeConcentrationContext({ btc: { quantity: 1, averagePrice: 100 } }, 1000, {
+            btc: 400
+          })
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('passes through when portfolioTotalValue is zero', () => {
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'btc')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BULL,
+          regimeGateEnabled: false,
+          riskLevel: 3,
+          concentrationContext: makeConcentrationContext({ btc: { quantity: 1, averagePrice: 100 } }, 0)
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.maxAllocation).toBe(DEFAULT_ALLOCATION.maxAllocation);
+    });
+  });
+
+  describe('Chain integration: regime + concentration', () => {
+    it('regime gate blocks BUY before concentration filter runs', () => {
+      const result = service.apply(
+        [makeSignal('BUY', undefined, 'btc'), makeSignal('SELL', undefined, 'eth')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.BEAR,
+          regimeGateEnabled: true,
+          riskLevel: 3,
+          concentrationContext: {
+            portfolioPositions: new Map([['btc', { quantity: 1, averagePrice: 100 }]]),
+            portfolioTotalValue: 1000
+          }
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      // BUY blocked by regime gate, SELL passes through
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].action).toBe('SELL');
+      expect(result.regimeGateBlockedCount).toBe(1);
+    });
+  });
+
+  describe('Override bypass', () => {
+    it.each([CompositeRegimeType.BEAR, CompositeRegimeType.EXTREME])(
+      'overrideActive bypasses gate in %s regime',
+      (regime) => {
+        const result = service.apply(
+          [makeSignal('BUY')],
+          makeContext({ compositeRegime: regime, overrideActive: true }),
+          DEFAULT_ALLOCATION
+        );
+
+        expect(result.signals).toHaveLength(1);
+        expect(result.regimeGateBlockedCount).toBe(0);
+      }
+    );
+
+    it('overrideActive bypasses gate with live tradingContext', () => {
+      const result = service.apply(
+        [makeSignal('BUY')],
+        makeContext({
+          compositeRegime: CompositeRegimeType.EXTREME,
+          tradingContext: 'live',
+          riskLevel: 1,
+          overrideActive: true
+        }),
+        DEFAULT_ALLOCATION
+      );
+
+      expect(result.signals).toHaveLength(1);
+      expect(result.regimeGateBlockedCount).toBe(0);
+    });
+
+    it.each([CompositeRegimeType.BULL, CompositeRegimeType.NEUTRAL])(
+      'live tradingContext allows BUY in %s regime (regression guard)',
+      (regime) => {
+        const result = service.apply(
+          [makeSignal('BUY')],
+          makeContext({ compositeRegime: regime, tradingContext: 'live', riskLevel: 1 }),
+          DEFAULT_ALLOCATION
+        );
+
+        expect(result.signals).toHaveLength(1);
+        expect(result.regimeGateBlockedCount).toBe(0);
+      }
+    );
   });
 
   describe('Edge cases', () => {

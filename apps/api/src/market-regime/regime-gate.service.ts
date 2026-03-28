@@ -1,15 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
-import {
-  classifyCompositeRegime,
-  CompositeRegimeType,
-  MarketRegimeType,
-  RegimeGateDecision
-} from '@chansey/api-interfaces';
+import { classifyCompositeRegime, CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 
 /**
  * Stateless signal filter based on composite regime.
- * Reusable by both live trading and backtest paths.
+ * Used by backtest paths for simple regime gating.
+ *
+ * For live trading, use SignalFilterChainService with tradingContext: 'live'
+ * which provides risk-level-aware gating.
  *
  * Gate policy:
  *  - BULL / NEUTRAL: all signals allowed
@@ -17,48 +15,6 @@ import {
  */
 @Injectable()
 export class RegimeGateService {
-  /**
-   * Filter a single live trading signal.
-   * @param signalAction  'buy' | 'sell' | 'hold' (live path uses lowercase)
-   * @param compositeRegime current composite regime
-   * @param overrideActive  whether admin override is enabled
-   * @param volatilityRegime actual volatility regime from composite service
-   * @param trendAboveSma actual BTC trend flag from composite service
-   */
-  filterLiveSignal(
-    signalAction: string,
-    compositeRegime: CompositeRegimeType,
-    overrideActive: boolean,
-    volatilityRegime: MarketRegimeType,
-    trendAboveSma: boolean
-  ): RegimeGateDecision {
-    const now = new Date();
-
-    if (overrideActive) {
-      return {
-        allowed: true,
-        compositeRegime,
-        volatilityRegime,
-        trendAboveSma,
-        signalAction,
-        reason: 'Manual override active — all signals allowed',
-        timestamp: now
-      };
-    }
-
-    const blocked = this.isBuyBlocked(compositeRegime, signalAction);
-
-    return {
-      allowed: !blocked,
-      compositeRegime,
-      volatilityRegime,
-      trendAboveSma,
-      signalAction,
-      reason: blocked ? `BUY blocked in ${compositeRegime} regime` : `Signal allowed in ${compositeRegime} regime`,
-      timestamp: now
-    };
-  }
-
   /**
    * Filter an array of backtest signals in-place.
    * Returns only the signals that pass the gate.
