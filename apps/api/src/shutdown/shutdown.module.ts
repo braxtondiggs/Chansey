@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
 import { QUEUE_NAMES } from './queue-names.constant';
+import { ShutdownSignalService } from './shutdown-signal.service';
 import { ShutdownService } from './shutdown.service';
 
 /**
@@ -10,6 +11,7 @@ import { ShutdownService } from './shutdown.service';
  */
 @Module({
   imports: [BullModule.registerQueue(...QUEUE_NAMES.map((name) => ({ name })))],
-  providers: [ShutdownService]
+  providers: [ShutdownSignalService, ShutdownService],
+  exports: [ShutdownSignalService]
 })
 export class ShutdownModule {}

@@ -128,6 +128,9 @@ export interface LiveReplayExecuteOptions {
 
   /** Exit configuration for SL/TP/trailing stop simulation (overrides legacy hard stop-loss) */
   exitConfig?: ExitConfig;
+
+  /** AbortSignal from ShutdownSignalService — checked at yield points to trigger emergency checkpoint */
+  abortSignal?: AbortSignal;
 }
 
 /**

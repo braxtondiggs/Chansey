@@ -42,6 +42,7 @@ import {
   PositionAnalysisService,
   PositionManagerService,
   SignalFilterChainService,
+  SerializableThrottleState,
   SignalThrottleService,
   ThrottleState,
   TimeframeType
@@ -1017,6 +1018,25 @@ export class PaperTradingEngineService {
   /** Clean up throttle state when session ends */
   clearThrottleState(sessionId: string): void {
     this.throttleStates.delete(sessionId);
+  }
+
+  /** Check if in-memory throttle state exists for a session */
+  hasThrottleState(sessionId: string): boolean {
+    return this.throttleStates.has(sessionId);
+  }
+
+  /** Restore throttle state from a previously serialized form (e.g. from DB) */
+  restoreThrottleState(sessionId: string, serializedState: SerializableThrottleState): void {
+    if (this.throttleStates.has(sessionId)) return;
+    const state = this.signalThrottle.deserialize(serializedState);
+    this.throttleStates.set(sessionId, state);
+  }
+
+  /** Serialize current throttle state for DB persistence */
+  getSerializedThrottleState(sessionId: string): SerializableThrottleState | undefined {
+    const state = this.throttleStates.get(sessionId);
+    if (!state) return undefined;
+    return this.signalThrottle.serialize(state);
   }
 
   private resolveMinHoldMs(algorithmConfig?: Record<string, any>): number {

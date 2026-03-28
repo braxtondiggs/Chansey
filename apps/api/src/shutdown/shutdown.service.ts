@@ -3,6 +3,8 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 
 import { Queue } from 'bullmq';
 
+import { ShutdownSignalService } from './shutdown-signal.service';
+
 import { toErrorInfo } from '../shared/error.util';
 
 /**
@@ -21,6 +23,7 @@ export class ShutdownService implements OnApplicationShutdown {
   private readonly POLL_INTERVAL = 1000; // Check every second
 
   constructor(
+    private readonly shutdownSignal: ShutdownSignalService,
     @InjectQueue('balance-queue') private readonly balanceQueue: Queue,
     @InjectQueue('backtest-historical') private readonly backtestHistoricalQueue: Queue,
     @InjectQueue('backtest-orchestration') private readonly backtestOrchestrationQueue: Queue,
@@ -74,6 +77,9 @@ export class ShutdownService implements OnApplicationShutdown {
 
   async onApplicationShutdown(signal?: string): Promise<void> {
     this.logger.log(`Shutdown signal received: ${signal || 'unknown'}. Starting graceful job shutdown...`);
+
+    // Step 0: Signal engine loops to abort and write emergency checkpoints
+    this.shutdownSignal.trigger();
 
     // Step 1: Pause all queues to stop workers from picking up new jobs
     await this.pauseAllQueues();

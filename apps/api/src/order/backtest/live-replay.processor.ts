@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { BacktestAbortedError } from './backtest-aborted.error';
 import { BacktestCheckpointState } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
 import { CheckpointResults, DEFAULT_LIVE_REPLAY_CHECKPOINT_INTERVAL, ReplaySpeed } from './backtest-pacing.interface';
@@ -21,6 +22,7 @@ import { MarketDataSet } from './market-data-set.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { ShutdownSignalService } from '../../shutdown/shutdown-signal.service';
 import { ExitConfig } from '../interfaces/exit-config.interface';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
@@ -28,8 +30,8 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
 @Injectable()
 @Processor(BACKTEST_QUEUE_NAMES.replayQueue, {
   lockDuration: 7_200_000,
-  stalledInterval: 7_200_000,
-  maxStalledCount: 1
+  stalledInterval: 300_000,
+  maxStalledCount: 2
 })
 export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(LiveReplayProcessor.name);
@@ -43,6 +45,7 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
     private readonly backtestService: BacktestService,
     private readonly metricsService: MetricsService,
     private readonly configService: ConfigService,
+    private readonly shutdownSignal: ShutdownSignalService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
   ) {
@@ -240,7 +243,8 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         exitConfig: backtest.configSnapshot?.exitConfig as ExitConfig | undefined,
         enableRegimeGate: regimeConfig?.enableRegimeGate,
         enableRegimeScaledSizing: regimeConfig?.enableRegimeScaledSizing,
-        riskLevel: regimeConfig?.riskLevel
+        riskLevel: regimeConfig?.riskLevel,
+        abortSignal: this.shutdownSignal.signal
       });
 
       // Handle paused state (don't mark as completed)
@@ -265,6 +269,12 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         tradeCount: results.finalMetrics.totalTrades
       });
     } catch (error: unknown) {
+      // Graceful shutdown abort — leave as RUNNING for recovery on next boot
+      if (error instanceof BacktestAbortedError) {
+        this.logger.log(`Live replay backtest ${backtestId} aborted due to shutdown, checkpoint saved for recovery`);
+        return;
+      }
+
       const err = toErrorInfo(error);
       this.logger.error(`Live replay backtest ${backtestId} failed: ${err.message}`, err.stack);
 

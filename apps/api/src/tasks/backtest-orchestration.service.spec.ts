@@ -560,6 +560,8 @@ describe('BacktestOrchestrationService', () => {
     });
 
     it('should process all testable algorithms for a user', async () => {
+      // Use fake timers to skip the 15s stagger delay between algorithms
+      jest.useFakeTimers();
       const mockAlgorithm2: Partial<Algorithm> = {
         id: 'algo-2',
         name: 'Test Algorithm 2',
@@ -606,11 +608,15 @@ describe('BacktestOrchestrationService', () => {
         .mockResolvedValueOnce({ id: 'backtest-1' } as any)
         .mockResolvedValueOnce({ id: 'backtest-2' } as any);
 
-      const result = await service.orchestrateForUser('user-123');
+      const resultPromise = service.orchestrateForUser('user-123');
+      await jest.advanceTimersByTimeAsync(15_000);
+      const result = await resultPromise;
 
       expect(result.backtestsCreated).toBe(2);
       expect(result.backtestIds).toContain('backtest-1');
       expect(result.backtestIds).toContain('backtest-2');
+
+      jest.useRealTimers();
     });
   });
 

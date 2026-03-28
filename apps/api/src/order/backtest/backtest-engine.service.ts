@@ -16,6 +16,7 @@ import {
 } from '@chansey/api-interfaces';
 
 import { AlgorithmWatchdog } from './algorithm-watchdog';
+import { BacktestAbortedError } from './backtest-aborted.error';
 import {
   BacktestCheckpointState,
   CheckpointPortfolio,
@@ -172,6 +173,9 @@ interface ExecuteOptions {
   marketType?: string;
   /** Leverage multiplier for futures trading (default: 1) */
   leverage?: number;
+
+  /** AbortSignal from ShutdownSignalService — checked at yield points to trigger emergency checkpoint */
+  abortSignal?: AbortSignal;
 }
 
 interface MetricsAccumulator {
@@ -200,6 +204,29 @@ interface ResolveExitTrackerOptions {
   enableHardStopLoss?: boolean;
   hardStopLossPercent?: number;
   resumeExitTrackerState?: import('./shared/exits/backtest-exit-tracker').SerializableExitTrackerState;
+}
+
+interface EmergencyCheckpointParams {
+  backtestId: string;
+  onCheckpoint:
+    | ((state: BacktestCheckpointState, results: CheckpointResults, count: number) => Promise<void>)
+    | undefined;
+  currentIndex: number;
+  timestamp: Date;
+  portfolio: Portfolio;
+  peakValue: number;
+  maxDrawdown: number;
+  rng: SeededRandom;
+  trades: Partial<BacktestTrade>[];
+  signals: Partial<BacktestSignal>[];
+  simulatedFills: Partial<SimulatedOrderFill>[];
+  snapshots: Partial<BacktestPerformanceSnapshot>[];
+  totalPersistedCounts: { trades: number; signals: number; fills: number; snapshots: number };
+  lastCheckpointCounts: { trades: number; signals: number; fills: number; snapshots: number };
+  metricsAcc: MetricsAccumulator;
+  throttleState: ThrottleState;
+  exitTracker: BacktestExitTracker | null | undefined;
+  tradingTimestampCount: number;
 }
 
 interface ProcessExitSignalsOptions {
@@ -1142,6 +1169,30 @@ export class BacktestEngine {
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
 
+      // Emergency checkpoint on SIGTERM: write state and abort so recovery picks it up
+      if (options.abortSignal?.aborted) {
+        await this.writeEmergencyCheckpointAndAbort({
+          backtestId: backtest.id,
+          onCheckpoint: options.onCheckpoint,
+          currentIndex: i,
+          timestamp,
+          portfolio,
+          peakValue,
+          maxDrawdown,
+          rng,
+          trades,
+          signals,
+          simulatedFills,
+          snapshots,
+          totalPersistedCounts,
+          lastCheckpointCounts,
+          metricsAcc,
+          throttleState,
+          exitTracker,
+          tradingTimestampCount
+        });
+      }
+
       // Checkpoint callback: save state periodically for resume capability
       const timeSinceLastCheckpoint = i - lastCheckpointIndex;
       if (options.onCheckpoint && timeSinceLastCheckpoint >= checkpointInterval) {
@@ -1235,6 +1286,67 @@ export class BacktestEngine {
     );
 
     return { trades, signals, simulatedFills, snapshots, finalMetrics };
+  }
+
+  /**
+   * Write an emergency checkpoint (if callback available) and throw BacktestAbortedError.
+   * Used at SIGTERM yield points so the backtest can be recovered on next boot.
+   */
+  private async writeEmergencyCheckpointAndAbort(params: EmergencyCheckpointParams): Promise<never> {
+    const {
+      backtestId,
+      onCheckpoint,
+      currentIndex,
+      timestamp,
+      portfolio,
+      peakValue,
+      maxDrawdown,
+      rng,
+      trades,
+      signals,
+      simulatedFills,
+      snapshots,
+      totalPersistedCounts,
+      lastCheckpointCounts,
+      metricsAcc,
+      throttleState,
+      exitTracker,
+      tradingTimestampCount
+    } = params;
+
+    if (onCheckpoint) {
+      const currentSells = this.countSells(trades);
+      const emergencyState = this.buildCheckpointState(
+        currentIndex,
+        timestamp.toISOString(),
+        portfolio,
+        peakValue,
+        maxDrawdown,
+        rng.getState(),
+        totalPersistedCounts.trades + trades.length,
+        totalPersistedCounts.signals + signals.length,
+        totalPersistedCounts.fills + simulatedFills.length,
+        totalPersistedCounts.snapshots + snapshots.length,
+        metricsAcc.totalSellCount + currentSells.sells,
+        metricsAcc.totalWinningSellCount + currentSells.winningSells,
+        this.signalThrottle.serialize(throttleState),
+        metricsAcc.grossProfit + currentSells.grossProfit,
+        metricsAcc.grossLoss + currentSells.grossLoss,
+        exitTracker?.serialize()
+      );
+      const emergencyResults: CheckpointResults = {
+        trades: trades.slice(lastCheckpointCounts.trades),
+        signals: signals.slice(lastCheckpointCounts.signals),
+        simulatedFills: simulatedFills.slice(lastCheckpointCounts.fills),
+        snapshots: snapshots.slice(lastCheckpointCounts.snapshots)
+      };
+      await onCheckpoint(emergencyState, emergencyResults, tradingTimestampCount);
+    } else {
+      this.logger.warn(
+        `Backtest ${backtestId} aborted but no checkpoint callback available — state may not be recoverable`
+      );
+    }
+    throw new BacktestAbortedError(backtestId);
   }
 
   /**
@@ -1912,6 +2024,30 @@ export class BacktestEngine {
       // BullMQ lock renewals, and concurrent workers to make progress.
       if (i % 100 === 0) {
         await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
+      // Emergency checkpoint on SIGTERM: write state and abort so recovery picks it up
+      if (options.abortSignal?.aborted) {
+        await this.writeEmergencyCheckpointAndAbort({
+          backtestId: backtest.id,
+          onCheckpoint: options.onCheckpoint,
+          currentIndex: i,
+          timestamp,
+          portfolio,
+          peakValue,
+          maxDrawdown,
+          rng,
+          trades,
+          signals,
+          simulatedFills,
+          snapshots,
+          totalPersistedCounts,
+          lastCheckpointCounts,
+          metricsAcc,
+          throttleState,
+          exitTracker,
+          tradingTimestampCount
+        });
       }
 
       // Checkpoint callback: save state periodically for resume capability

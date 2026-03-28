@@ -36,6 +36,9 @@ import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 
+/** Delay between processing each algorithm to avoid rate-limiting external APIs */
+const ALGORITHM_STAGGER_DELAY_MS = 15_000;
+
 @Injectable()
 export class BacktestOrchestrationService {
   private readonly logger = new Logger(BacktestOrchestrationService.name);
@@ -121,8 +124,12 @@ export class BacktestOrchestrationService {
 
       this.logger.log(`Found ${algorithms.length} testable algorithms for user ${userId}`);
 
-      // Process each algorithm
-      for (const algorithm of algorithms) {
+      // Process each algorithm with stagger delay to avoid rate-limiting external APIs
+      for (let idx = 0; idx < algorithms.length; idx++) {
+        const algorithm = algorithms[idx];
+        if (idx > 0) {
+          await new Promise((r) => setTimeout(r, ALGORITHM_STAGGER_DELAY_MS));
+        }
         try {
           await this.processAlgorithm(user, algorithm, riskConfig, result, coinSymbolFilter);
         } catch (error: unknown) {

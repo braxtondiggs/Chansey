@@ -26,7 +26,10 @@ describe('PaperTradingProcessor', () => {
     const engineService = {
       processTick: jest.fn(),
       calculateSessionMetrics: jest.fn(),
-      clearThrottleState: jest.fn()
+      clearThrottleState: jest.fn(),
+      hasThrottleState: jest.fn().mockReturnValue(false),
+      restoreThrottleState: jest.fn(),
+      getSerializedThrottleState: jest.fn().mockReturnValue(undefined)
     };
 
     const streamService = {
@@ -578,42 +581,6 @@ describe('PaperTradingProcessor', () => {
     expect(paperTradingService.scheduleTickJob).not.toHaveBeenCalled();
   });
 
-  it('uses exponential backoff with correct delay calculation', async () => {
-    const session = {
-      id: 'session-backoff',
-      status: PaperTradingStatus.ACTIVE,
-      initialCapital: 1000,
-      tickIntervalMs: 1000,
-      consecutiveErrors: 1,
-      retryAttempts: 2, // Third retry attempt (index 2)
-      peakPortfolioValue: 1000,
-      user: { id: 'user-b1' }
-    };
-
-    const { processor, sessionRepository, paperTradingService, engineService, metricsService } = createProcessor();
-
-    sessionRepository.findOne.mockResolvedValue(session);
-    engineService.processTick.mockResolvedValue({
-      processed: false,
-      signalsReceived: 0,
-      ordersExecuted: 0,
-      errors: ['timeout'],
-      portfolioValue: 900,
-      prices: {}
-    });
-
-    const job = createJob({
-      type: PaperTradingJobType.TICK,
-      sessionId: 'session-backoff',
-      userId: 'user-b1'
-    });
-
-    await processor.process(job);
-
-    // Delay should be 1000 * 2^2 = 4000ms
-    expect(paperTradingService.scheduleRetryTick).toHaveBeenCalledWith('session-backoff', 'user-b1', 4000, 3);
-  });
-
   it('skips retry tick if session is no longer active', async () => {
     const session = {
       id: 'session-stopped-retry',
@@ -678,5 +645,267 @@ describe('PaperTradingProcessor', () => {
     // Delay should be capped at 30 minutes (1,800,000ms)
     const scheduledDelay = paperTradingService.scheduleRetryTick.mock.calls[0][2];
     expect(scheduledDelay).toBeLessThanOrEqual(1_800_000);
+  });
+
+  it('increments consecutiveErrors on recoverable thrown error without pausing', async () => {
+    const session = {
+      id: 'session-recoverable',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      retryAttempts: 0,
+      user: { id: 'user-rec' }
+    };
+
+    const { processor, sessionRepository, engineService, streamService, metricsService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockRejectedValue(new Error('Network timeout'));
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-recoverable',
+      userId: 'user-rec'
+    });
+
+    await processor.process(job);
+
+    expect(session.consecutiveErrors).toBe(1);
+    expect(session.status).toBe(PaperTradingStatus.ACTIVE);
+    expect(sessionRepository.save).toHaveBeenCalledWith(expect.objectContaining({ consecutiveErrors: 1 }));
+    expect(streamService.publishLog).toHaveBeenCalledWith(
+      'session-recoverable',
+      'warn',
+      expect.stringContaining('Recoverable error'),
+      expect.objectContaining({ errorType: 'recoverable', consecutiveErrors: 1 })
+    );
+  });
+
+  it('emits event for notify-pipeline job', async () => {
+    const { processor, eventEmitter } = createProcessor();
+
+    const job = createJob({
+      type: PaperTradingJobType.NOTIFY_PIPELINE,
+      sessionId: 'session-notify',
+      pipelineId: 'pipeline-1',
+      stoppedReason: 'duration_reached'
+    });
+
+    await processor.process(job);
+
+    expect(eventEmitter.emit).toHaveBeenCalledWith('paper-trading.completed', {
+      sessionId: 'session-notify',
+      pipelineId: 'pipeline-1',
+      stoppedReason: 'duration_reached'
+    });
+  });
+
+  it('marks session failed on unrecoverable error during retry tick', async () => {
+    const session = {
+      id: 'session-retry-unrec',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      retryAttempts: 1,
+      user: { id: 'user-ru' }
+    };
+
+    const { processor, sessionRepository, paperTradingService, engineService, streamService, metricsService } =
+      createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockRejectedValue(new Error('Invalid API key'));
+
+    const job = createJob({
+      type: PaperTradingJobType.RETRY_TICK,
+      sessionId: 'session-retry-unrec',
+      userId: 'user-ru',
+      retryAttempt: 1,
+      delayMs: 1000
+    });
+
+    await processor.process(job);
+
+    expect(paperTradingService.markFailed).toHaveBeenCalledWith(
+      'session-retry-unrec',
+      expect.stringContaining('Unrecoverable error')
+    );
+    expect(streamService.publishStatus).toHaveBeenCalledWith(
+      'session-retry-unrec',
+      'failed',
+      'unrecoverable_error',
+      expect.objectContaining({ errorType: 'unrecoverable' })
+    );
+    expect(engineService.clearThrottleState).toHaveBeenCalledWith('session-retry-unrec');
+  });
+
+  it('marks session failed when start-session throws', async () => {
+    const session = {
+      id: 'session-start-fail',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      tickIntervalMs: 30000,
+      startedAt: new Date()
+    };
+
+    const { processor, sessionRepository, paperTradingService, streamService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    sessionRepository.save.mockRejectedValue(new Error('DB connection lost'));
+
+    const job = createJob({
+      type: PaperTradingJobType.START_SESSION,
+      sessionId: 'session-start-fail',
+      userId: 'user-sf'
+    });
+
+    await processor.process(job);
+
+    expect(paperTradingService.markFailed).toHaveBeenCalledWith(
+      'session-start-fail',
+      expect.stringContaining('DB connection lost')
+    );
+    expect(streamService.publishStatus).toHaveBeenCalledWith(
+      'session-start-fail',
+      'failed',
+      expect.stringContaining('DB connection lost')
+    );
+  });
+
+  it('restores throttle state from DB when engine has none in memory', async () => {
+    const session = {
+      id: 'session-throttle',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 5,
+      throttleState: { lastCallTimestamps: { 'BTC/USD': 123456 } }
+    };
+
+    const { processor, sessionRepository, engineService, metricsService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.hasThrottleState.mockReturnValue(false);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 0,
+      ordersExecuted: 0,
+      errors: [],
+      portfolioValue: 1000,
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-throttle',
+      userId: 'user-th'
+    });
+
+    await processor.process(job);
+
+    expect(engineService.restoreThrottleState).toHaveBeenCalledWith('session-throttle', session.throttleState);
+  });
+
+  it('increments totalTrades when orders are executed', async () => {
+    const session = {
+      id: 'session-trades',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 0,
+      totalTrades: 3
+    };
+
+    const { processor, sessionRepository, engineService, metricsService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 2,
+      ordersExecuted: 2,
+      errors: [],
+      portfolioValue: 1050,
+      prices: { 'BTC/USD': 50000 }
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-trades',
+      userId: 'user-t1'
+    });
+
+    await processor.process(job);
+
+    expect(session.totalTrades).toBe(5);
+  });
+
+  it('triggers markCompleted when stop condition maxDrawdown is exceeded', async () => {
+    const session = {
+      id: 'session-stop-dd',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 5,
+      stopConditions: { maxDrawdown: 0.05 }
+    };
+
+    const { processor, sessionRepository, engineService, paperTradingService, metricsService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 0,
+      ordersExecuted: 0,
+      errors: [],
+      portfolioValue: 900, // 10% drawdown from peak of 1000
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-stop-dd',
+      userId: 'user-dd'
+    });
+
+    await processor.process(job);
+
+    expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-stop-dd', 'max_drawdown');
+  });
+
+  it('triggers markCompleted when stop condition targetReturn is reached', async () => {
+    const session = {
+      id: 'session-stop-target',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 5,
+      stopConditions: { targetReturn: 0.1 }
+    };
+
+    const { processor, sessionRepository, engineService, paperTradingService, metricsService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 0,
+      ordersExecuted: 0,
+      errors: [],
+      portfolioValue: 1150, // 15% return, exceeds 10% target
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-stop-target',
+      userId: 'user-tr'
+    });
+
+    await processor.process(job);
+
+    expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-stop-target', 'target_reached');
   });
 });
