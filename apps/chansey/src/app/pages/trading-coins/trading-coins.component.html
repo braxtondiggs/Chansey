@@ -9,8 +9,8 @@
           <i class="pi pi-info-circle"></i>
           <span>
             Your trading coins are auto-selected based on your risk level
-            @if (userRiskLevel(); as level) {
-              (Level {{ level }})
+            @if (userRiskName(); as name) {
+              ({{ name }})
             }
             .
           </span>

@@ -345,9 +345,7 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       header: `Confirm ${side} Order`,
       message:
         `${side} ${quantity} ${symbol} at ${priceDisplay}${exitSummary}` +
-        (preview
-          ? ` — Est. ${side === 'BUY' ? 'total' : 'net'}: ${preview.estimatedCost?.toFixed(6)} ${preview.balanceCurrency?.toUpperCase() || ''}`
-          : ''),
+        (preview ? this.formatEstimate(side, preview) : ''),
       icon: side === 'BUY' ? 'pi pi-arrow-up' : 'pi pi-arrow-down',
       acceptLabel: `Place ${side} Order`,
       rejectLabel: 'Cancel',
@@ -610,6 +608,17 @@ export class CryptoTradingComponent implements OnInit, OnDestroy {
       parts.push(`${config.trailingValue}${suffix(config.trailingType)} trailing stop`);
     }
     return parts;
+  }
+
+  private formatEstimate(side: 'BUY' | 'SELL', preview: OrderPreview): string {
+    const amount = side === 'BUY' ? preview.totalRequired : preview.estimatedCost - preview.estimatedFee;
+    const currency = (preview.costCurrency || preview.feeCurrency)?.toUpperCase() || '';
+    const label = side === 'BUY' ? 'total' : 'net';
+    const formatted = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6
+    }).format(amount);
+    return ` — Est. ${label}: ${formatted} ${currency}`;
   }
 
   private executeOrder(side: 'BUY' | 'SELL', form: FormGroup, orderRequest: PlaceOrderRequest) {

@@ -48,6 +48,7 @@ export class TradingCoinsComponent {
   });
 
   readonly userRiskLevel = computed(() => this.userQuery.data()?.coinRisk?.level ?? null);
+  readonly userRiskName = computed(() => this.userQuery.data()?.coinRisk?.name ?? null);
 
   /** Level 3 (Moderate) risk for auto-demote fallback */
   readonly level3Risk = computed(() => this.risksQuery.data()?.find((r) => r.level === 3) ?? null);
