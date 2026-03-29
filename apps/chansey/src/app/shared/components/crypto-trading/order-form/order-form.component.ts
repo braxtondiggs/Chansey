@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { ButtonModule } from 'primeng/button';
@@ -9,6 +10,7 @@ import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { TooltipModule } from 'primeng/tooltip';
+import { startWith, switchMap } from 'rxjs';
 
 import { MarketLimits, OrderPreview, OrderType, TickerPair, TrailingType } from '@chansey/api-interfaces';
 
@@ -101,9 +103,16 @@ export class OrderFormComponent {
   summaryHeaderLabel = computed(() => (this.isBuy() ? 'Buy Order Summary' : 'Sell Order Summary'));
   summaryIcon = computed(() => (this.isBuy() ? 'pi pi-arrow-up' : 'pi pi-arrow-down'));
 
+  // Bridge form status into signal system so computed re-evaluates on validity changes
+  private formStatus = toSignal(
+    toObservable(this.form).pipe(switchMap((f) => f.statusChanges.pipe(startWith(f.status)))),
+    { initialValue: 'INVALID' }
+  );
+
   buttonDisabledReason = computed(() => {
+    const status = this.formStatus();
     if (!this.selectedPair()) return 'Select a trading pair first';
-    if (this.form().invalid) return 'Please fill in all required fields';
+    if (status === 'INVALID') return 'Please fill in all required fields';
     if (this.isBelowMinCost()) return 'Order value is below the minimum';
     if (this.orderPreview() && !this.hasSufficientBalance()) return 'Insufficient balance';
     return '';

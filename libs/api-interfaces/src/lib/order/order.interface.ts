@@ -212,6 +212,7 @@ export interface OrderPreview {
   estimatedFee: number;
   feeRate: number;
   feeCurrency: string;
+  costCurrency: string;
   totalRequired: number;
   marketPrice?: number;
   availableBalance: number;

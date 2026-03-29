@@ -41,7 +41,7 @@ export interface IUser {
   futuresEnabled?: boolean;
   enableOpportunitySelling?: boolean;
   opportunitySellingConfig?: OpportunitySellingUserConfig;
-  coinRisk?: { id: string; level: number } | null;
+  coinRisk?: { id: string; level: number; name: string } | null;
 }
 
 export interface IUserProfileUpdate {

@@ -82,6 +82,12 @@ export class OrderPreviewDto {
   feeCurrency: string;
 
   @ApiProperty({
+    description: 'Currency of the estimated cost (always quote currency)',
+    example: 'USDT'
+  })
+  costCurrency: string;
+
+  @ApiProperty({
     description: 'Total required (cost + fees for BUY, cost for SELL)',
     example: 5005.0
   })

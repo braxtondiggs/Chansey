@@ -326,7 +326,7 @@
           <span [class]="labelClass()">Value</span>
           <span class="font-medium tabular-nums" [class]="valueClass()">
             {{ orderPreview()?.estimatedCost | number: '1.2-6' }}
-            {{ orderPreview()?.balanceCurrency?.toUpperCase() }}
+            {{ (orderPreview()?.costCurrency || orderPreview()?.feeCurrency)?.toUpperCase() }}
           </span>
         </div>
         <div class="flex justify-between">
@@ -345,7 +345,7 @@
               } @else {
                 {{ (orderPreview()?.estimatedCost || 0) - (orderPreview()?.estimatedFee || 0) | number: '1.2-6' }}
               }
-              {{ orderPreview()?.balanceCurrency?.toUpperCase() }}
+              {{ (orderPreview()?.costCurrency || orderPreview()?.feeCurrency)?.toUpperCase() }}
             </span>
           </div>
         </div>

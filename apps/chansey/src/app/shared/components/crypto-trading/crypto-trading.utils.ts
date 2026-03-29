@@ -71,8 +71,14 @@ export function findBalance(
   side: 'BUY' | 'SELL'
 ): Balance | undefined {
   if (!pair || !balances) return undefined;
-  const assetId = side === 'BUY' ? pair.quoteAsset?.id : pair.baseAsset?.id;
-  return balances.find((b) => b.coin.id === assetId);
+  const asset = side === 'BUY' ? pair.quoteAsset : pair.baseAsset;
+  if (!asset) return undefined;
+  // Match by id first; fall back to case-insensitive symbol match for fiat pairs where id is null
+  if (asset.id) {
+    return balances.find((b) => b.coin.id === asset.id);
+  }
+  const sym = asset.symbol?.toLowerCase();
+  return balances.find((b) => b.coin.symbol?.toLowerCase() === sym);
 }
 
 export function getAvailableBuyBalance(

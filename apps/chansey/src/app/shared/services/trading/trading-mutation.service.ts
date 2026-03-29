@@ -5,6 +5,15 @@ import { queryKeys, useAuthMutation } from '@chansey/shared';
 
 import { TradeEstimate } from './trading.types';
 
+/** Query keys invalidated after any order mutation (create/cancel) */
+const ORDER_MUTATION_INVALIDATIONS = [
+  queryKeys.trading.orders(),
+  queryKeys.trading.activeOrders(),
+  queryKeys.trading.balances(),
+  queryKeys.balances.all,
+  queryKeys.coins.lists()
+];
+
 /**
  * Service for crypto trading mutation operations via TanStack Query
  *
@@ -36,7 +45,7 @@ export class TradingMutationService {
    */
   useCreateOrder() {
     return useAuthMutation<Order, PlaceOrderRequest>('/api/order/manual', 'POST', {
-      invalidateQueries: [queryKeys.trading.orders(), queryKeys.trading.activeOrders(), queryKeys.trading.balances()]
+      invalidateQueries: ORDER_MUTATION_INVALIDATIONS
     });
   }
 
@@ -53,7 +62,7 @@ export class TradingMutationService {
    */
   useCancelOrder() {
     return useAuthMutation<void, string>((orderId: string) => `/api/order/${orderId}`, 'DELETE', {
-      invalidateQueries: [queryKeys.trading.orders(), queryKeys.trading.activeOrders(), queryKeys.trading.balances()]
+      invalidateQueries: ORDER_MUTATION_INVALIDATIONS
     });
   }
 }
