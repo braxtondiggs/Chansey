@@ -14,6 +14,7 @@ import { PipelineOrchestrationProcessor } from './pipeline-orchestration.process
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 import { PipelineOrchestrationTask } from './pipeline-orchestration.task';
 import { PromotionTask } from './promotion.task';
+import { RedisMaintenanceTask } from './redis-maintenance.task';
 import { RiskMonitoringTask } from './risk-monitoring.task';
 import { StrategyEvaluationProcessor } from './strategy-evaluation.processor';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
@@ -62,6 +63,7 @@ import { UsersModule } from '../users/users.module';
  * - PerformanceCalcTask: Daily at 1 AM - Calculate daily performance metrics
  * - PipelineOrchestrationTask: Daily at 2 AM - Orchestrate full validation pipelines for algo-enabled users
  * - BacktestOrchestrationTask: Twice daily at 3 AM/3 PM UTC - Orchestrate automatic backtests for algo-enabled users
+ * - RedisMaintenanceTask: Daily at 4 AM UTC - Trim stale BullMQ job data and orphaned keys
  */
 const BACKTEST_QUEUE_NAMES = backtestConfig();
 
@@ -120,7 +122,8 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     BacktestOrchestrationService,
     PipelineOrchestrationTask,
     PipelineOrchestrationProcessor,
-    PipelineOrchestrationService
+    PipelineOrchestrationService,
+    RedisMaintenanceTask
   ],
   exports: [
     StrategyEvaluationTask,
@@ -130,7 +133,8 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     DriftDetectionTask,
     PerformanceCalcTask,
     BacktestOrchestrationTask,
-    PipelineOrchestrationTask
+    PipelineOrchestrationTask,
+    RedisMaintenanceTask
   ]
 })
 export class TasksModule {}

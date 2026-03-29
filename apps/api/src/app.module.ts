@@ -85,7 +85,11 @@ import { TradingModule } from './trading/trading.module';
             tls: redis.tls ? {} : undefined,
             maxRetriesPerRequest: null,
             enableReadyCheck: false,
-            retryStrategy: (times: number) => Math.min(Math.exp(times), 3000)
+            retryStrategy: (times: number) => Math.min(2 ** times * 100, 3000)
+          },
+          defaultJobOptions: {
+            removeOnComplete: { count: 100 },
+            removeOnFail: { count: 50 }
           },
           telemetry: configService.get('TEMPO_ENDPOINT')
             ? new BullMQOtel(configService.get('OTEL_SERVICE_NAME'))

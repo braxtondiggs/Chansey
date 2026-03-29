@@ -46,6 +46,7 @@
     "prepare": "husky",
     "analyze:site": "nx analyze chansey",
     "redis:flush": "node tools/redis-flush.js",
+    "redis:cleanup": "node tools/redis-cleanup.js",
     "typeorm": "npm run build:api && tsc typeorm.config.ts --outDir dist --esModuleInterop --module commonjs && npx typeorm -d dist/typeorm.config.js",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:show": "npm run typeorm -- migration:show",
