@@ -2,6 +2,7 @@
  * Central registry of all BullMQ queue names used in the application.
  * This ensures consistency across queue registration, injection, and monitoring.
  */
+// IMPORTANT: Keep in sync with tools/redis-cleanup.js
 export const QUEUE_NAMES = [
   'balance-queue',
   'backtest-historical',
