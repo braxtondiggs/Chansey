@@ -17,6 +17,8 @@ import {
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'crypto';
 import { promisify } from 'util';
 
+import type { ExchangeKeyErrorCategory, ExchangeKeyHealthStatus } from '@chansey/api-interfaces';
+
 import type { User } from '../../users/users.entity';
 import type { Exchange } from '../exchange.entity';
 
@@ -65,7 +67,7 @@ export class ExchangeKey {
   isActive: boolean;
 
   @Column({ type: 'varchar', length: 20, default: 'unknown' })
-  healthStatus: string;
+  healthStatus: ExchangeKeyHealthStatus;
 
   @Column({ type: 'timestamptz', nullable: true })
   lastHealthCheckAt: Date | null;
@@ -74,7 +76,7 @@ export class ExchangeKey {
   consecutiveFailures: number;
 
   @Column({ type: 'varchar', length: 30, nullable: true })
-  lastErrorCategory: string | null;
+  lastErrorCategory: ExchangeKeyErrorCategory | null;
 
   @Column({ type: 'text', nullable: true })
   lastErrorMessage: string | null;

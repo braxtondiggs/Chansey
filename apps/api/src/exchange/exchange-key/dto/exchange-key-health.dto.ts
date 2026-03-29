@@ -3,6 +3,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
+import type { ExchangeKeyErrorCategory, ExchangeKeyHealthStatus } from '@chansey/api-interfaces';
+
 export class HealthHistoryQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -29,7 +31,7 @@ export class ExchangeKeyHealthSummaryDto {
   exchange: { id: string; name: string; slug: string };
 
   @ApiProperty({ description: 'Current health status', example: 'healthy' })
-  healthStatus: string;
+  healthStatus: ExchangeKeyHealthStatus;
 
   @ApiPropertyOptional({ description: 'Last health check timestamp' })
   lastHealthCheckAt: Date | null;
@@ -38,7 +40,7 @@ export class ExchangeKeyHealthSummaryDto {
   consecutiveFailures: number;
 
   @ApiPropertyOptional({ description: 'Last error category', example: 'authentication' })
-  lastErrorCategory: string | null;
+  lastErrorCategory: ExchangeKeyErrorCategory | null;
 
   @ApiPropertyOptional({ description: 'Last error message' })
   lastErrorMessage: string | null;
@@ -55,10 +57,10 @@ export class ExchangeKeyHealthLogDto {
   id: string;
 
   @ApiProperty({ description: 'Health check status', example: 'healthy' })
-  status: string;
+  status: ExchangeKeyHealthStatus;
 
   @ApiPropertyOptional({ description: 'Error category' })
-  errorCategory: string | null;
+  errorCategory: ExchangeKeyErrorCategory | null;
 
   @ApiPropertyOptional({ description: 'Error message' })
   errorMessage: string | null;

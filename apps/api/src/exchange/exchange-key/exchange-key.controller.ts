@@ -14,6 +14,7 @@ import {
   UseInterceptors
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   CreateExchangeKeyDto,
@@ -70,6 +71,25 @@ export class ExchangeKeyController {
   async findAll(@GetUser() user: User): Promise<ExchangeKeyResponseDto[]> {
     const keys = await this.exchangeKeyService.findAll(user.id);
     return keys.map((key) => this.transformToResponse(key));
+  }
+
+  @Throttle({ default: { limit: 2, ttl: 60000 } })
+  @Post(':id/recheck')
+  @ApiOperation({ summary: 'Recheck health of an exchange key (reactivates if deactivated by health check)' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns updated health status after recheck',
+    type: ExchangeKeyHealthSummaryDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Exchange key not found'
+  })
+  async recheckKey(
+    @GetUser() user: User,
+    @Param('id', new ParseUUIDPipe()) id: string
+  ): Promise<ExchangeKeyHealthSummaryDto> {
+    return this.exchangeKeyHealthService.recheckKey(id, user.id);
   }
 
   @Get('health')
