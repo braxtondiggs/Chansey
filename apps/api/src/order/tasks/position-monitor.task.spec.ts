@@ -10,6 +10,7 @@ import { PositionMonitorTask } from './position-monitor.task';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
   DEFAULT_EXIT_CONFIG,
@@ -123,7 +124,8 @@ describe('PositionMonitorTask', () => {
         { provide: PositionManagementService, useValue: mockPositionManagementService },
         { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
         { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
-        { provide: DataSource, useValue: mockDataSource }
+        { provide: DataSource, useValue: mockDataSource },
+        { provide: FailedJobService, useValue: { recordFailure: jest.fn() } }
       ]
     }).compile();
 

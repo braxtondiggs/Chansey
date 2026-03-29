@@ -1,8 +1,9 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { LiquidationMonitorService } from '../services/liquidation-monitor.service';
 
@@ -23,7 +24,8 @@ export class LiquidationMonitorTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('liquidation-monitor') private readonly liquidationQueue: Queue,
-    private readonly liquidationMonitorService: LiquidationMonitorService
+    private readonly liquidationMonitorService: LiquidationMonitorService,
+    private readonly failedJobService: FailedJobService
   ) {
     super();
   }
@@ -96,6 +98,24 @@ export class LiquidationMonitorTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    }
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job, error: Error): Promise<void> {
+    try {
+      await this.failedJobService.recordFailure({
+        queueName: 'liquidation-monitor',
+        jobId: String(job.id),
+        jobName: job.name,
+        jobData: job.data,
+        errorMessage: error.message,
+        stackTrace: error.stack,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.opts?.attempts ?? 0
+      });
+    } catch {
+      // fail-safe
     }
   }
 

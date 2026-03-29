@@ -15,6 +15,7 @@ import { AlgorithmContextBuilder } from '../../algorithm/services/algorithm-cont
 import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
 import { ConcentrationGateService } from '../../strategy/concentration-gate.service';
@@ -207,7 +208,8 @@ describe('TradeExecutionTask', () => {
           }
         },
         { provide: MetricsService, useValue: mockMetricsService },
-        { provide: ExchangeSelectionService, useValue: mockExchangeSelectionService }
+        { provide: ExchangeSelectionService, useValue: mockExchangeSelectionService },
+        { provide: FailedJobService, useValue: { recordFailure: jest.fn() } }
       ]
     }).compile();
 

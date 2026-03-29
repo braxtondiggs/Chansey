@@ -1,4 +1,4 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,6 +18,7 @@ import { BalanceService } from '../../balance/balance.service';
 import { CoinService } from '../../coin/coin.service';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
@@ -72,7 +73,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     private readonly dailyLossLimitGate: DailyLossLimitGateService,
     private readonly concentrationGate: ConcentrationGateService,
     private readonly metricsService: MetricsService,
-    private readonly exchangeSelectionService: ExchangeSelectionService
+    private readonly exchangeSelectionService: ExchangeSelectionService,
+    private readonly failedJobService: FailedJobService
   ) {
     super();
   }
@@ -153,6 +155,24 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    }
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job, error: Error): Promise<void> {
+    try {
+      await this.failedJobService.recordFailure({
+        queueName: 'trade-execution',
+        jobId: String(job.id),
+        jobName: job.name,
+        jobData: job.data,
+        errorMessage: error.message,
+        stackTrace: error.stack,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.opts?.attempts ?? 0
+      });
+    } catch {
+      // fail-safe
     }
   }
 
@@ -254,6 +274,23 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
                 const err = toErrorInfo(error);
                 this.logger.error(`Activation ${activation.id} processing failed: ${err.message}`, err.stack);
                 groupCounts.fail++;
+
+                try {
+                  await this.failedJobService.recordFailure({
+                    queueName: 'trade-execution',
+                    jobId: `activation:${activation.id}`,
+                    jobName: 'processActivation',
+                    jobData: {
+                      userId: activation.userId,
+                      activationId: activation.id,
+                      algorithmId: activation.algorithmId
+                    },
+                    errorMessage: err.message,
+                    stackTrace: err.stack
+                  });
+                } catch {
+                  // fail-safe
+                }
               }
             }
             return groupCounts;

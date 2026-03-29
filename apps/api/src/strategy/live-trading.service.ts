@@ -22,6 +22,7 @@ import { ExchangeBalanceDto } from '../balance/dto';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../exchange/constants';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { MetricsService } from '../metrics/metrics.service';
@@ -70,7 +71,8 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly tradeCooldownService: TradeCooldownService,
     private readonly metricsService: MetricsService,
     private readonly exchangeSelectionService: ExchangeSelectionService,
-    private readonly opportunitySellService: OpportunitySellService
+    private readonly opportunitySellService: OpportunitySellService,
+    private readonly failedJobService: FailedJobService
   ) {}
 
   @Cron('*/2 * * * *')
@@ -115,6 +117,19 @@ export class LiveTradingService implements OnApplicationShutdown {
           const err = toErrorInfo(error);
           this.logger.error(`Failed to execute strategies for user ${user.id}: ${err.message}`);
           await this.handleUserError(user, error);
+
+          try {
+            await this.failedJobService.recordFailure({
+              queueName: 'live-trading-cron',
+              jobId: `user:${user.id}`,
+              jobName: 'executeUserStrategies',
+              jobData: { userId: user.id },
+              errorMessage: err.message,
+              stackTrace: err.stack
+            });
+          } catch {
+            // fail-safe
+          }
         }
       }
     } catch (error: unknown) {
@@ -304,6 +319,19 @@ export class LiveTradingService implements OnApplicationShutdown {
       } catch (error: unknown) {
         const err = toErrorInfo(error);
         this.logger.error(`Strategy ${strategy.id} execution failed for user ${user.id}: ${err.message}`);
+
+        try {
+          await this.failedJobService.recordFailure({
+            queueName: 'live-trading-cron',
+            jobId: `strategy:${strategy.id}:user:${user.id}`,
+            jobName: 'executeStrategy',
+            jobData: { userId: user.id, strategyId: strategy.id },
+            errorMessage: err.message,
+            stackTrace: err.stack
+          });
+        } catch {
+          // fail-safe
+        }
       }
     }
 
