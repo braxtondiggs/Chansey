@@ -1,5 +1,7 @@
 import { CompositeRegimeType } from '@chansey/api-interfaces';
 
+export type TradingContext = 'paper' | 'backtest' | 'live';
+
 /**
  * Minimal signal shape satisfied by both backtest and paper trading engines.
  */
@@ -18,6 +20,8 @@ export interface SignalFilterContext {
   riskLevel: number;
   regimeGateEnabled: boolean;
   regimeScaledSizingEnabled: boolean;
+  tradingContext?: TradingContext;
+  overrideActive?: boolean;
   concentrationContext?: {
     portfolioPositions: Map<string, { quantity: number; averagePrice: number }>;
     portfolioTotalValue: number;

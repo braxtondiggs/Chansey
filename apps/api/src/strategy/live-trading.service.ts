@@ -23,8 +23,8 @@ import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../exchange/con
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
-import { RegimeGateService } from '../market-regime/regime-gate.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { SignalFilterChainService } from '../order/backtest/shared/filters';
 import { OpportunitySellDecision } from '../order/interfaces/opportunity-selling.interface';
 import { OrderService } from '../order/order.service';
 import { OpportunitySellService } from '../order/services/opportunity-sell.service';
@@ -62,7 +62,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     private readonly exchangeManager: ExchangeManagerService,
     private readonly tradingStateService: TradingStateService,
     private readonly compositeRegimeService: CompositeRegimeService,
-    private readonly regimeGateService: RegimeGateService,
+    private readonly signalFilterChain: SignalFilterChainService,
     private readonly preTradeRiskGate: PreTradeRiskGateService,
     private readonly dailyLossLimitGate: DailyLossLimitGateService,
     private readonly concentrationGate: ConcentrationGateService,
@@ -173,8 +173,6 @@ export class LiveTradingService implements OnApplicationShutdown {
 
     const marketData = await this.fetchMarketData();
 
-    const volatilityRegime = this.compositeRegimeService.getVolatilityRegime();
-    const trendAboveSma = this.compositeRegimeService.getTrendAboveSma();
     const overrideActive = this.compositeRegimeService.isOverrideActive();
     // Build asset allocations for concentration gate (reuse fetched balances)
     let assetAllocations = this.concentrationGate.buildAssetAllocations(balances.current);
@@ -221,15 +219,20 @@ export class LiveTradingService implements OnApplicationShutdown {
             continue;
           }
 
-          // Regime gate: block BUY signals in bear/extreme regimes
-          const gateDecision = this.regimeGateService.filterLiveSignal(
-            action,
-            compositeRegime,
-            overrideActive,
-            volatilityRegime,
-            trendAboveSma
+          // Regime gate: context-aware policy via filter chain
+          const gateResult = this.signalFilterChain.apply(
+            [{ action, originalType: undefined }],
+            {
+              compositeRegime,
+              riskLevel: user.effectiveCalculationRiskLevel,
+              regimeGateEnabled: true,
+              regimeScaledSizingEnabled: false,
+              tradingContext: 'live',
+              overrideActive
+            },
+            { maxAllocation: 1, minAllocation: 0 }
           );
-          if (!gateDecision.allowed) {
+          if (gateResult.signals.length === 0) {
             this.metricsService.recordRegimeGateBlock(compositeRegime);
             gateBlockedCount++;
             continue;

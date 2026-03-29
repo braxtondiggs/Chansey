@@ -254,7 +254,8 @@ export class PaperTradingEngineService {
           compositeRegime,
           riskLevel: session.riskLevel ?? DEFAULT_RISK_LEVEL,
           regimeGateEnabled: true,
-          regimeScaledSizingEnabled: true
+          regimeScaledSizingEnabled: true,
+          tradingContext: 'paper'
         },
         { maxAllocation, minAllocation }
       );

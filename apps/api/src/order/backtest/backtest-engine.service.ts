@@ -581,6 +581,7 @@ export class BacktestEngine {
         riskLevel: regimeConfig.riskLevel,
         regimeGateEnabled: regimeConfig.regimeGateEnabled,
         regimeScaledSizingEnabled: regimeConfig.enableRegimeScaledSizing,
+        tradingContext: 'backtest',
         concentrationContext: regimeConfig.concentrationContext
       },
       allocationLimits
