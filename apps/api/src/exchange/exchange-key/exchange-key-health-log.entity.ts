@@ -1,5 +1,7 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Relation } from 'typeorm';
 
+import type { ExchangeKeyErrorCategory, ExchangeKeyHealthStatus } from '@chansey/api-interfaces';
+
 import { ExchangeKey } from './exchange-key.entity';
 
 @Entity()
@@ -15,10 +17,10 @@ export class ExchangeKeyHealthLog {
   exchangeKeyId: string;
 
   @Column({ type: 'varchar', length: 20 })
-  status: string;
+  status: ExchangeKeyHealthStatus;
 
   @Column({ type: 'varchar', length: 30, nullable: true })
-  errorCategory: string | null;
+  errorCategory: ExchangeKeyErrorCategory | null;
 
   @Column({ type: 'text', nullable: true })
   errorMessage: string | null;

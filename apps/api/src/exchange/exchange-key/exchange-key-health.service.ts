@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as ccxt from 'ccxt';
 import { LessThan, Repository } from 'typeorm';
 
+import type { ExchangeKeyErrorCategory, ExchangeKeyHealthStatus } from '@chansey/api-interfaces';
+
 import {
   ExchangeKeyHealthHistoryResponseDto,
   ExchangeKeyHealthLogDto,
@@ -19,9 +21,7 @@ import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
 import { ExchangeManagerService } from '../exchange-manager.service';
 
-type ErrorCategory = 'authentication' | 'permission' | 'nonce' | 'exchange_down' | 'network' | 'rate_limit' | 'unknown';
-
-const DEACTIVATION_ELIGIBLE_CATEGORIES = new Set<ErrorCategory>(['authentication', 'permission']);
+const DEACTIVATION_ELIGIBLE_CATEGORIES = new Set<ExchangeKeyErrorCategory>(['authentication', 'permission']);
 const WARNING_THRESHOLD = 3;
 const DEACTIVATION_THRESHOLD = 5;
 
@@ -46,7 +46,7 @@ export class ExchangeKeyHealthService implements OnModuleInit {
     this.usersService = this.moduleRef.get(UsersService, { strict: false });
   }
 
-  classifyError(error: unknown): ErrorCategory {
+  classifyError(error: unknown): ExchangeKeyErrorCategory {
     // PermissionDenied extends AuthenticationError in CCXT, so check it first
     if (error instanceof ccxt.PermissionDenied) return 'permission';
     if (error instanceof ccxt.AuthenticationError) return 'authentication';
@@ -59,8 +59,8 @@ export class ExchangeKeyHealthService implements OnModuleInit {
 
   async checkKeyHealth(exchangeKey: ExchangeKey): Promise<void> {
     const startTime = Date.now();
-    let status: string;
-    let errorCategory: ErrorCategory | null = null;
+    let status: ExchangeKeyHealthStatus;
+    let errorCategory: ExchangeKeyErrorCategory | null = null;
     let errorMessage: string | null = null;
 
     try {
@@ -199,26 +199,48 @@ export class ExchangeKeyHealthService implements OnModuleInit {
     return { total: keys.length, healthy, unhealthy, deactivated };
   }
 
+  async recheckKey(exchangeKeyId: string, userId: string): Promise<ExchangeKeyHealthSummaryDto> {
+    const key = await this.exchangeKeyRepo.findOne({
+      where: { id: exchangeKeyId, userId },
+      relations: ['exchange']
+    });
+
+    if (!key) {
+      throw new NotFoundException('Exchange key not found');
+    }
+
+    // Reactivate if it was deactivated by health check
+    if (key.deactivatedByHealthCheck) {
+      key.isActive = true;
+      key.deactivatedByHealthCheck = false;
+      key.consecutiveFailures = 0;
+      await this.exchangeKeyRepo.save(key);
+    }
+
+    // Reload entity so checkKeyHealth works with fresh DB state
+    const freshKey = await this.exchangeKeyRepo.findOne({
+      where: { id: exchangeKeyId, userId },
+      relations: ['exchange']
+    });
+
+    await this.checkKeyHealth(freshKey!);
+
+    // Reload to get updated state after health check
+    const updated = await this.exchangeKeyRepo.findOne({
+      where: { id: exchangeKeyId },
+      relations: ['exchange']
+    });
+
+    return this.toHealthSummaryDto(updated ?? freshKey!);
+  }
+
   async getHealthSummary(userId: string): Promise<ExchangeKeyHealthSummaryDto[]> {
     const keys = await this.exchangeKeyRepo.find({
       where: { userId },
       relations: ['exchange']
     });
 
-    return keys.map((key) => ({
-      id: key.id,
-      exchangeId: key.exchangeId,
-      exchange: key.exchange
-        ? { id: key.exchange.id, name: key.exchange.name, slug: key.exchange.slug }
-        : { id: key.exchangeId, name: '', slug: '' },
-      healthStatus: key.healthStatus,
-      lastHealthCheckAt: key.lastHealthCheckAt,
-      consecutiveFailures: key.consecutiveFailures,
-      lastErrorCategory: key.lastErrorCategory,
-      lastErrorMessage: key.lastErrorMessage,
-      deactivatedByHealthCheck: key.deactivatedByHealthCheck,
-      isActive: key.isActive
-    }));
+    return keys.map((key) => this.toHealthSummaryDto(key));
   }
 
   async getHealthHistory(
@@ -266,6 +288,23 @@ export class ExchangeKeyHealthService implements OnModuleInit {
     const deleted = result.affected ?? 0;
     this.logger.log(`Cleaned up ${deleted} health log entries older than ${retentionDays} days`);
     return deleted;
+  }
+
+  private toHealthSummaryDto(key: ExchangeKey): ExchangeKeyHealthSummaryDto {
+    return {
+      id: key.id,
+      exchangeId: key.exchangeId,
+      exchange: key.exchange
+        ? { id: key.exchange.id, name: key.exchange.name, slug: key.exchange.slug }
+        : { id: key.exchangeId, name: '', slug: '' },
+      healthStatus: key.healthStatus,
+      lastHealthCheckAt: key.lastHealthCheckAt,
+      consecutiveFailures: key.consecutiveFailures,
+      lastErrorCategory: key.lastErrorCategory,
+      lastErrorMessage: key.lastErrorMessage,
+      deactivatedByHealthCheck: key.deactivatedByHealthCheck,
+      isActive: key.isActive
+    };
   }
 
   private async notifyWarning(exchangeKey: ExchangeKey, user: User): Promise<void> {

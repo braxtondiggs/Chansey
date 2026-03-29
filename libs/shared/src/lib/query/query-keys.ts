@@ -75,7 +75,8 @@ export const queryKeys = {
     lists: () => [...queryKeys.exchanges.all, 'list'] as const,
     supported: () => [...queryKeys.exchanges.lists(), 'supported'] as const,
     detail: (id: string) => [...queryKeys.exchanges.all, 'detail', id] as const,
-    sync: () => [...queryKeys.exchanges.all, 'sync'] as const
+    sync: () => [...queryKeys.exchanges.all, 'sync'] as const,
+    health: () => [...queryKeys.exchanges.all, 'health'] as const
   },
 
   // --------------------------------------------------------------------------

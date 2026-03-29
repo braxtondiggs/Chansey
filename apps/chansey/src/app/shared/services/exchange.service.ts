@@ -3,8 +3,8 @@ import { FormControl, FormGroup, Validators } from '@angular/forms';
 
 import { MessageService } from 'primeng/api';
 
-import { Exchange, ExchangeKey } from '@chansey/api-interfaces';
-import { queryKeys, useAuthMutation, useAuthQuery, STATIC_POLICY } from '@chansey/shared';
+import { Exchange, ExchangeKey, ExchangeKeyHealthSummary } from '@chansey/api-interfaces';
+import { queryKeys, useAuthMutation, useAuthQuery, FREQUENT_POLICY, STATIC_POLICY } from '@chansey/shared';
 
 import { ExchangeFormState } from '../types/exchange-form.types';
 
@@ -28,6 +28,22 @@ export class ExchangeService {
     return useAuthQuery<Exchange[]>(queryKeys.exchanges.supported(), '/api/exchange?supported=true', {
       cachePolicy: STATIC_POLICY
     });
+  }
+
+  useExchangeHealth() {
+    return useAuthQuery<ExchangeKeyHealthSummary[]>(queryKeys.exchanges.health(), '/api/exchange-keys/health', {
+      cachePolicy: FREQUENT_POLICY
+    });
+  }
+
+  useRecheckKeyMutation() {
+    return useAuthMutation<ExchangeKeyHealthSummary, string>(
+      (id: string) => `/api/exchange-keys/${id}/recheck`,
+      'POST',
+      {
+        invalidateQueries: [queryKeys.exchanges.health()]
+      }
+    );
   }
 
   useSaveExchangeKeysMutation() {
