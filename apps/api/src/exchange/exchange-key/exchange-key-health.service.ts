@@ -88,6 +88,7 @@ export class ExchangeKeyHealthService implements OnModuleInit {
       errorCategory = this.classifyError(error);
       errorMessage = err.message;
 
+
       exchangeKey.lastErrorCategory = errorCategory;
       exchangeKey.lastErrorMessage = errorMessage;
 
