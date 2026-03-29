@@ -11,6 +11,7 @@ export const QUEUE_NAMES = [
   'category-queue',
   'coin-queue',
   'drift-detection-queue',
+  'exchange-health-queue',
   'exchange-queue',
   'notification',
   'optimization',

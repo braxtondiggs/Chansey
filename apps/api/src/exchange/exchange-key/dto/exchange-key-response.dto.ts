@@ -66,6 +66,44 @@ export class ExchangeKeyResponseDto {
   label?: string;
 
   @ApiProperty({
+    description: 'Current health status of the exchange key',
+    example: 'healthy'
+  })
+  healthStatus: string;
+
+  @ApiProperty({
+    description: 'When the last health check was performed',
+    example: '2023-01-01T00:00:00.000Z',
+    nullable: true
+  })
+  lastHealthCheckAt: Date | null;
+
+  @ApiProperty({
+    description: 'Number of consecutive health check failures',
+    example: 0
+  })
+  consecutiveFailures: number;
+
+  @ApiProperty({
+    description: 'Category of the last error',
+    example: 'authentication',
+    nullable: true
+  })
+  lastErrorCategory: string | null;
+
+  @ApiProperty({
+    description: 'Message of the last error',
+    nullable: true
+  })
+  lastErrorMessage: string | null;
+
+  @ApiProperty({
+    description: 'Whether this key was auto-deactivated by health check',
+    example: false
+  })
+  deactivatedByHealthCheck: boolean;
+
+  @ApiProperty({
     description: 'When the exchange key was created',
     example: '2023-01-01T00:00:00.000Z'
   })
