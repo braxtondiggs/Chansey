@@ -64,6 +64,24 @@ export class ExchangeKey {
   })
   isActive: boolean;
 
+  @Column({ type: 'varchar', length: 20, default: 'unknown' })
+  healthStatus: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastHealthCheckAt: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  consecutiveFailures: number;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  lastErrorCategory: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  lastErrorMessage: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  deactivatedByHealthCheck: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

@@ -7,13 +7,22 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
+  Query,
   Post,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { CreateExchangeKeyDto, ExchangeKeyResponseDto } from './dto';
+import {
+  CreateExchangeKeyDto,
+  ExchangeKeyHealthHistoryResponseDto,
+  ExchangeKeyHealthSummaryDto,
+  ExchangeKeyResponseDto,
+  HealthHistoryQueryDto
+} from './dto';
+import { ExchangeKeyHealthService } from './exchange-key-health.service';
 import { ExchangeKey } from './exchange-key.entity';
 import { ExchangeKeyService } from './exchange-key.service';
 
@@ -27,7 +36,10 @@ import { User } from '../../users/users.entity';
 @ApiBearerAuth('token')
 @UseInterceptors(ClassSerializerInterceptor)
 export class ExchangeKeyController {
-  constructor(private readonly exchangeKeyService: ExchangeKeyService) {}
+  constructor(
+    private readonly exchangeKeyService: ExchangeKeyService,
+    private readonly exchangeKeyHealthService: ExchangeKeyHealthService
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new exchange key (only one set of keys per exchange is allowed)' })
@@ -60,6 +72,34 @@ export class ExchangeKeyController {
     return keys.map((key) => this.transformToResponse(key));
   }
 
+  @Get('health')
+  @ApiOperation({ summary: 'Get health status summary for all exchange keys' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns health status for all user exchange keys',
+    type: [ExchangeKeyHealthSummaryDto]
+  })
+  async getHealthSummary(@GetUser() user: User): Promise<ExchangeKeyHealthSummaryDto[]> {
+    return this.exchangeKeyHealthService.getHealthSummary(user.id);
+  }
+
+  @Get(':id/health/history')
+  @ApiOperation({ summary: 'Get health check history for an exchange key' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns paginated health check history',
+    type: ExchangeKeyHealthHistoryResponseDto
+  })
+  async getHealthHistory(
+    @GetUser() user: User,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query() query: HealthHistoryQueryDto
+  ): Promise<ExchangeKeyHealthHistoryResponseDto> {
+    return this.exchangeKeyHealthService.getHealthHistory(id, user.id, query.page ?? 1, query.limit ?? 20);
+  }
+
   @Get('exchange/:exchangeId')
   @ApiOperation({ summary: 'Get the exchange key for a specific exchange' })
   @ApiResponse({
@@ -88,7 +128,7 @@ export class ExchangeKeyController {
     status: HttpStatus.NOT_FOUND,
     description: 'Exchange key not found'
   })
-  async findOne(@GetUser() user: User, @Param('id') id: string): Promise<ExchangeKeyResponseDto> {
+  async findOne(@GetUser() user: User, @Param('id', new ParseUUIDPipe()) id: string): Promise<ExchangeKeyResponseDto> {
     const key = await this.exchangeKeyService.findOne(id, user.id);
     return this.transformToResponse(key);
   }
@@ -104,7 +144,7 @@ export class ExchangeKeyController {
     description: 'Exchange key not found'
   })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@GetUser() user: User, @Param('id') id: string): Promise<void> {
+  async remove(@GetUser() user: User, @Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.exchangeKeyService.remove(id, user.id);
   }
 
@@ -118,6 +158,13 @@ export class ExchangeKeyController {
     response.updatedAt = exchangeKey.updatedAt;
     response.hasApiKey = !!exchangeKey.apiKey;
     response.hasSecretKey = !!exchangeKey.secretKey;
+
+    response.healthStatus = exchangeKey.healthStatus ?? 'unknown';
+    response.lastHealthCheckAt = exchangeKey.lastHealthCheckAt ?? null;
+    response.consecutiveFailures = exchangeKey.consecutiveFailures ?? 0;
+    response.lastErrorCategory = exchangeKey.lastErrorCategory ?? null;
+    response.lastErrorMessage = exchangeKey.lastErrorMessage ?? null;
+    response.deactivatedByHealthCheck = exchangeKey.deactivatedByHealthCheck ?? false;
 
     if (exchangeKey.exchange) {
       response.exchange = {
