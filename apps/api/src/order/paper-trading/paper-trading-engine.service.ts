@@ -27,6 +27,7 @@ import {
   TradingSignal as StrategySignal
 } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
+import { getQuoteCurrency as getQuoteCurrencyUtil } from '../../exchange/constants';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { CompositeRegimeService } from '../../market-regime/composite-regime.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
@@ -169,8 +170,8 @@ export class PaperTradingEngineService {
         where: { session: { id: session.id } }
       });
 
-      const portfolio = this.buildPortfolioFromAccounts(accounts);
       const quoteCurrency = this.getQuoteCurrency(accounts);
+      const portfolio = this.buildPortfolioFromAccounts(accounts, quoteCurrency);
 
       // 2. Determine which symbols to fetch prices for
       const holdingSymbols = accounts
@@ -311,7 +312,7 @@ export class PaperTradingEngineService {
                 const retryAccounts = await this.accountRepository.find({
                   where: { session: { id: session.id } }
                 });
-                const retryPortfolio = this.buildPortfolioFromAccounts(retryAccounts);
+                const retryPortfolio = this.buildPortfolioFromAccounts(retryAccounts, quoteCurrency);
                 const updatedRetryPortfolio = this.updatePortfolioWithPrices(retryPortfolio, priceMap, quoteCurrency);
 
                 result = await this.executeOrder(
@@ -336,7 +337,7 @@ export class PaperTradingEngineService {
                 where: { session: { id: session.id } }
               });
               currentPortfolio = this.updatePortfolioWithPrices(
-                this.buildPortfolioFromAccounts(refreshedAccounts),
+                this.buildPortfolioFromAccounts(refreshedAccounts, quoteCurrency),
                 priceMap,
                 quoteCurrency
               );
@@ -358,7 +359,7 @@ export class PaperTradingEngineService {
       const finalAccounts = await this.accountRepository.find({
         where: { session: { id: session.id } }
       });
-      const finalPortfolio = this.buildPortfolioFromAccounts(finalAccounts);
+      const finalPortfolio = this.buildPortfolioFromAccounts(finalAccounts, quoteCurrency);
       const finalPortfolioValue = this.calculatePortfolioValue(finalPortfolio, priceMap, quoteCurrency);
 
       // 8. Take snapshot (periodically)
@@ -855,8 +856,7 @@ export class PaperTradingEngineService {
   /**
    * Helper: Build portfolio from account entities
    */
-  private buildPortfolioFromAccounts(accounts: PaperTradingAccount[]): Portfolio {
-    const quoteCurrency = this.getQuoteCurrency(accounts);
+  private buildPortfolioFromAccounts(accounts: PaperTradingAccount[], quoteCurrency: string): Portfolio {
     const quoteAccount = accounts.find((a) => a.currency === quoteCurrency);
 
     const positions = new Map<string, { coinId: string; quantity: number; averagePrice: number; totalValue: number }>();
@@ -884,10 +884,7 @@ export class PaperTradingEngineService {
    * Supports common quote currencies including fiat and crypto bases
    */
   private getQuoteCurrency(accounts: PaperTradingAccount[]): string {
-    // Ordered by priority - fiat first, then stable coins, then crypto bases
-    const quoteCurrencies = ['USD', 'EUR', 'GBP', 'USDT', 'USDC', 'BUSD', 'DAI', 'BTC', 'ETH'];
-    const quoteAccount = accounts.find((a) => quoteCurrencies.includes(a.currency));
-    return quoteAccount?.currency ?? 'USD';
+    return getQuoteCurrencyUtil(accounts.map((a) => a.currency));
   }
 
   /**
@@ -1072,7 +1069,7 @@ export class PaperTradingEngineService {
     const accounts = await this.accountRepository.find({
       where: { session: { id: session.id } }
     });
-    const portfolio = this.buildPortfolioFromAccounts(accounts);
+    const portfolio = this.buildPortfolioFromAccounts(accounts, quoteCurrency);
     const updatedPortfolio = this.updatePortfolioWithPrices(portfolio, priceMap, quoteCurrency);
 
     // Estimate the required buy amount
@@ -1166,7 +1163,7 @@ export class PaperTradingEngineService {
         const freshAccounts = await this.accountRepository.find({
           where: { session: { id: session.id } }
         });
-        const freshPortfolio = this.buildPortfolioFromAccounts(freshAccounts);
+        const freshPortfolio = this.buildPortfolioFromAccounts(freshAccounts, quoteCurrency);
         const updatedFreshPortfolio = this.updatePortfolioWithPrices(freshPortfolio, priceMap, quoteCurrency);
 
         const result = await this.executeOrder(

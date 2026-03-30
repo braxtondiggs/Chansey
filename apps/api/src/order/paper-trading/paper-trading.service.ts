@@ -34,7 +34,7 @@ import {
 } from './paper-trading.job-data';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
-import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
+import { DEFAULT_QUOTE_CURRENCY, getQuoteCurrency } from '../../exchange/constants';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { forceRemoveJob } from '../../shared/queue.util';
 import { User } from '../../users/users.entity';
@@ -482,10 +482,7 @@ export class PaperTradingService {
       where: { session: { id: sessionId } }
     });
 
-    // Find quote currency (configurable: USD, USDT, USDC, EUR, etc.)
-    const quoteCurrencies = ['USD', 'USDT', 'USDC', 'EUR', 'BTC', 'ETH'];
-    const quoteAccount = accounts.find((a) => quoteCurrencies.includes(a.currency));
-    const quoteCurrency = quoteAccount?.currency ?? 'USD';
+    const quoteCurrency = getQuoteCurrency(accounts.map((a) => a.currency));
 
     // Filter to only holding accounts with positive balances
     const holdingAccounts = accounts.filter((a) => a.currency !== quoteCurrency && a.total > 0);
