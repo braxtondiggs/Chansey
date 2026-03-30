@@ -48,34 +48,11 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - **External APIs**: CCXT (cryptocurrency exchanges), CoinGecko
 - **Infrastructure**: Railway deployment, Minio (file storage)
 
-### Core Business Logic
+### Core Domain
 
-#### Exchange Integration
-
-- Supports multiple cryptocurrency exchanges (Binance, Coinbase)
-- Uses CCXT library for standardized exchange API interactions
-- Exchange keys stored securely with user authentication
-- Automated order synchronization via scheduled tasks
-
-#### Key Entities
-
-- **Users**: Authentication with JWT, role-based access
-- **Exchanges**: Cryptocurrency exchange configurations
-- **Exchange Keys**: User's encrypted API keys for exchanges
-- **Orders**: Trading orders synced from exchanges
-- **Coin Selections**: Which coins a user trades (auto-picked by risk level or manual watchlist)
-- **Coins**: Cryptocurrency information with price tracking
-- **Categories**: Asset categorization system
-- **Algorithms**: Trading algorithm configurations
-
-#### Background Processing
-
-- Uses BullMQ for job queues with Redis backend
-- Scheduled tasks for data synchronization:
-  - Order sync (hourly)
-  - Price updates
-  - Balance calculations
-  - Coin selection historical data
+- Cryptocurrency exchange integration (Binance, Coinbase) via CCXT with encrypted API keys
+- BullMQ background jobs for order sync, price updates, balance tracking, and algo trading pipeline
+- Module-specific details are in `.claude/rules/` files (loaded automatically by path)
 
 ### Frontend Architecture
 
@@ -84,16 +61,6 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - PrimeNG component library with custom theming
 - Responsive design with mobile-first approach
 - PWA capabilities with service worker
-
-### Authentication & Security
-
-- JWT-based authentication with refresh token implementation
-- Role-based access control (admin/user)
-- API key encryption for exchange credentials
-- CSRF protection and security headers
-- Rate limiting on all endpoints with stricter limits for auth/upload
-- Secure HttpOnly cookies for token storage
-- File upload validation and restrictions
 
 ## Development Workflow
 
@@ -135,97 +102,6 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 
 - Swagger/OpenAPI documentation available when running API
 - Bruno collection provides comprehensive API testing examples
-
-## Important Implementation Notes
-
-### Order Synchronization
-
-The order sync system (`apps/api/src/order/tasks/order-sync.task.ts`) runs hourly and:
-
-1. Fetches orders from connected exchanges using CCXT
-2. Processes multiple exchanges in parallel
-3. Identifies new/changed orders and saves to database
-4. Handles exchange-specific data mapping and fee calculations
-
-### Coin Selection & Portfolio
-
-Two separate modules handle coin-related tracking:
-
-- **Coin Selection** (`apps/api/src/coin-selection/`) — Which coins a user trades. Auto-selected by risk level (1-5) or
-  manually managed (level 6). Routes: `/coin-selections`
-- **Portfolio** (`apps/api/src/portfolio/`) — Algo trading portfolio aggregation across strategies. Asset allocation,
-  P&L, and performance metrics. Routes: `/portfolio`
-
-### Price Data & Coin Detail Pages
-
-- Real-time price feeds from CoinGecko API
-- Historical price storage for charting
-- Redis caching layer to minimize API calls (5-minute TTL)
-- Dedicated coin detail pages at `/app/coins/:slug` with:
-  - Comprehensive market statistics and price charts
-  - Auto-refreshing price data (45-second intervals)
-  - User holdings display (authenticated users only)
-  - Multiple chart time periods (24h, 7d, 30d, 1y)
-  - External resource links (website, blockchain explorers, GitHub, Reddit)
-
-**Coin Detail API Endpoints:**
-
-- `GET /coins/:slug` - Comprehensive coin detail (optional auth for holdings)
-- `GET /coins/:slug/chart?period={24h|7d|30d|1y}` - Market chart data
-- `GET /coins/:slug/holdings` - User holdings (requires auth)
-
-**Key Implementation Details:**
-
-- Uses TanStack Query for client-side state management and caching
-- Frontend components in `apps/chansey/src/app/coins/`
-- Backend services in `apps/api/src/coin/coin.service.ts` (see T015-T022 methods)
-- Redis caching in `fetchCoinDetail()` and `fetchMarketChart()` methods
-- Hybrid data model: Public CoinGecko data + private user holdings from exchange orders
-
-When working with this codebase, prioritize understanding the exchange integration patterns and background job
-processing, as these are core to the application's functionality.
-
-### Pipeline & Backtest Architecture
-
-**User Isolation Model**: Pipelines and backtests are **strictly user-specific**. Each has a mandatory `user` FK with
-cascade delete. Users cannot see each other's results - all queries filter by `user.id`.
-
-**What Makes Each Run Unique**:
-
-| Factor             | Description                                           |
-| ------------------ | ----------------------------------------------------- |
-| User               | Each run belongs to one user                          |
-| Algorithm          | Which trading algorithm to use                        |
-| Strategy Params    | User-specific parameter overrides (e.g., MA periods)  |
-| Market Data Set    | Which historical data to backtest against             |
-| Date Range         | Start/end dates for the backtest period               |
-| Initial Capital    | Starting portfolio value                              |
-| Trading Fee        | Commission percentage                                 |
-| Slippage Model     | How to simulate execution slippage                    |
-| Risk Level (1-5)   | User's risk profile drives all pipeline stage configs |
-| Exchange Key       | User's specific exchange credentials                  |
-| Deterministic Seed | For reproducibility                                   |
-
-**Shared vs User-Specific Resources**:
-
-| Shared (Global)  | User-Specific                      |
-| ---------------- | ---------------------------------- |
-| Algorithms       | Strategy Configs (param overrides) |
-| Market Data Sets | Exchange Keys                      |
-|                  | Backtests & Pipelines              |
-|                  | Risk Profile                       |
-
-**Risk-Based Configuration** (determines pipeline stage behavior):
-
-| Risk Level        | Min Trades | Time Cap | Training Period | Max Drawdown | Target Return |
-| ----------------- | ---------- | -------- | --------------- | ------------ | ------------- |
-| 1 (Conservative)  | 50         | 30 days  | 180 days        | 15%          | 25%           |
-| 2 (Low-Moderate)  | 45         | 30 days  | 120 days        | 20%          | 40%           |
-| 3 (Moderate)      | 40         | 30 days  | 90 days         | 25%          | 50%           |
-| 4 (Moderate-High) | 35         | 30 days  | 60 days         | 35%          | 75%           |
-| 5 (Aggressive)    | 30         | 30 days  | 30 days         | 40%          | 100%          |
-
-**Pipeline Stage Flow**: `OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADING → COMPLETED`
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
