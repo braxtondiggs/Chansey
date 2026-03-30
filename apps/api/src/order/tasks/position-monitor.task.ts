@@ -1,4 +1,4 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -8,6 +8,7 @@ import { DataSource, Repository } from 'typeorm';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
@@ -44,7 +45,8 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
     private readonly positionManagementService: PositionManagementService,
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly exchangeKeyService: ExchangeKeyService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly failedJobService: FailedJobService
   ) {
     super();
   }
@@ -120,6 +122,24 @@ export class PositionMonitorTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    }
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job, error: Error): Promise<void> {
+    try {
+      await this.failedJobService.recordFailure({
+        queueName: 'position-monitor',
+        jobId: String(job.id),
+        jobName: job.name,
+        jobData: job.data,
+        errorMessage: error.message,
+        stackTrace: error.stack,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.opts?.attempts ?? 0
+      });
+    } catch {
+      // fail-safe
     }
   }
 

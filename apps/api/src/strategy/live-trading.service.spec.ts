@@ -16,6 +16,7 @@ import { TradingStateService } from '../admin/trading-state/trading-state.servic
 import { BalanceService } from '../balance/balance.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SignalFilterChainService } from '../order/backtest/shared/filters';
@@ -211,7 +212,8 @@ describe('LiveTradingService', () => {
             recordConcentrationGateBlock: jest.fn(),
             recordLiveOrderPlaced: jest.fn()
           }
-        }
+        },
+        { provide: FailedJobService, useValue: { recordFailure: jest.fn() } }
       ]
     }).compile();
 

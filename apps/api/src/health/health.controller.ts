@@ -63,8 +63,8 @@ export class HealthController {
           }
         }),
 
-      // Memory usage check (fails if heap > 512MB)
-      () => this.memory.checkHeap('memory_heap', 512 * 1024 * 1024),
+      // Memory usage check (fails if heap > 2GB)
+      () => this.memory.checkHeap('memory_heap', 2048 * 1024 * 1024),
 
       // Disk space check (fails if > 90% full)
       () =>

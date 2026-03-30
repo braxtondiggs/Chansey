@@ -127,7 +127,7 @@ describe('HealthController', () => {
     );
 
     await checks[5]();
-    expect(memory.checkHeap).toHaveBeenCalledWith('memory_heap', 512 * 1024 * 1024);
+    expect(memory.checkHeap).toHaveBeenCalledWith('memory_heap', 2048 * 1024 * 1024);
 
     await checks[6]();
     expect(disk.checkStorage).toHaveBeenCalledWith('disk_storage', {

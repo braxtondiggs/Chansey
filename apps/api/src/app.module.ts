@@ -29,6 +29,7 @@ import { validateEnv } from './config/env.validation';
 import { createLoggerConfig } from './config/logger.config';
 import { redisConfig, RedisConfig } from './config/redis.config';
 import { ExchangeModule } from './exchange/exchange.module';
+import { FailedJobModule } from './failed-jobs/failed-job.module';
 import { HealthModule } from './health/health.module';
 import { MarketRegimeModule } from './market-regime/market-regime.module';
 import { MetricsModule } from './metrics/metrics.module';
@@ -129,6 +130,7 @@ import { TradingModule } from './trading/trading.module';
     CoinModule,
     CoinSelectionModule,
     ExchangeModule,
+    FailedJobModule,
     HealthModule,
     MarketRegimeModule,
     MetricsModule,
