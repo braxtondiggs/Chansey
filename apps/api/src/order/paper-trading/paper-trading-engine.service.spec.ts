@@ -2406,4 +2406,99 @@ describe('PaperTradingEngineService', () => {
       expect(positionAnalysis.calculatePositionSellScore).not.toHaveBeenCalled();
     });
   });
+
+  describe('getQuoteCurrency priority', () => {
+    it('selects USDT over BTC/ETH regardless of account array order', async () => {
+      const { service, accountRepository, marketDataService, algorithmRegistry, snapshotRepository, orderRepository } =
+        createService();
+
+      // Accounts in DB order: BTC first, then ETH, then USDT — bug would pick BTC
+      const accounts = [
+        { currency: 'BTC', available: 0.5, total: 0.5, averageCost: 60000 },
+        { currency: 'ETH', available: 2, total: 2, averageCost: 3000 },
+        { currency: 'USDT', available: 9729, total: 9729 }
+      ];
+
+      accountRepository.find
+        .mockResolvedValueOnce(accounts) // initial fetch
+        .mockResolvedValueOnce(accounts); // final fetch
+
+      marketDataService.getPrices.mockResolvedValue(
+        new Map([
+          ['BTC/USDT', { price: 62000 }],
+          ['ETH/USDT', { price: 3200 }]
+        ])
+      );
+
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      orderRepository.createQueryBuilder.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+      });
+
+      snapshotRepository.create.mockReturnValue({});
+      snapshotRepository.save.mockResolvedValue({});
+
+      const session = {
+        id: 'session-quote-priority',
+        initialCapital: 10000,
+        tickCount: 10,
+        user: { id: 'user-1' }
+      } as any;
+      const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+      const result = await service.processTick(session, exchangeKey);
+
+      // Should request BTC/USDT and ETH/USDT (not BTC/BTC or ETH/BTC)
+      expect(marketDataService.getPrices).toHaveBeenCalledWith(
+        'binance',
+        expect.arrayContaining(['BTC/USDT', 'ETH/USDT'])
+      );
+      // Portfolio value should include USDT cash + positions, not near-zero
+      expect(result.portfolioValue).toBeGreaterThan(9000);
+      expect(result.processed).toBe(true);
+    });
+
+    it('selects USD over USDT when both present', async () => {
+      const { service, accountRepository, marketDataService, algorithmRegistry, snapshotRepository, orderRepository } =
+        createService();
+
+      const accounts = [
+        { currency: 'USDT', available: 500, total: 500 },
+        { currency: 'USD', available: 9500, total: 9500 }
+      ];
+
+      accountRepository.find.mockResolvedValueOnce(accounts).mockResolvedValueOnce(accounts);
+
+      marketDataService.getPrices.mockResolvedValue(new Map([['USDT/USD', { price: 1 }]]));
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      orderRepository.createQueryBuilder.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+      });
+
+      snapshotRepository.create.mockReturnValue({});
+      snapshotRepository.save.mockResolvedValue({});
+
+      const session = {
+        id: 'session-usd-priority',
+        initialCapital: 10000,
+        tickCount: 10,
+        user: { id: 'user-1' }
+      } as any;
+      const exchangeKey = { exchange: { slug: 'coinbase' } } as any;
+
+      const result = await service.processTick(session, exchangeKey);
+
+      // Should use USD as quote, so USDT becomes a position priced as USDT/USD
+      expect(marketDataService.getPrices).toHaveBeenCalledWith('coinbase', expect.arrayContaining(['USDT/USD']));
+      expect(result.processed).toBe(true);
+    });
+  });
 });

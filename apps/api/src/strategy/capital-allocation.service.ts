@@ -3,7 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { In, Repository } from 'typeorm';
 
-import { AuditEventType, CompositeRegimeType, getRegimeMultiplier } from '@chansey/api-interfaces';
+import {
+  AuditEventType,
+  CompositeRegimeType,
+  getMinCapitalPerStrategy,
+  getRegimeMultiplier
+} from '@chansey/api-interfaces';
 
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { StrategyScore } from './entities/strategy-score.entity';
@@ -32,7 +37,6 @@ export class CapitalAllocationService {
   private readonly logger = new Logger(CapitalAllocationService.name);
 
   // Allocation constraints
-  private readonly MIN_ALLOCATION_PER_STRATEGY = 50; // Minimum $50 per strategy
   private readonly MAX_ALLOCATION_PERCENTAGE = 0.15; // No strategy gets more than 15%
   private readonly MIN_SCORE_THRESHOLD = 50; // Exclude strategies with score < 50
 
@@ -108,14 +112,18 @@ export class CapitalAllocationService {
   /**
    * Calculate minimum capital required based on strategy count and minimum per strategy.
    */
-  calculateMinimumCapitalRequired(strategyCount: number): number {
-    return strategyCount * this.MIN_ALLOCATION_PER_STRATEGY;
+  calculateMinimumCapitalRequired(strategyCount: number, riskLevel = 3): number {
+    return strategyCount * getMinCapitalPerStrategy(riskLevel);
   }
 
   /**
    * Validate if user has enough capital for allocation.
    */
-  validateCapitalAllocation(userCapital: number, strategies: StrategyConfig[]): { valid: boolean; reason?: string } {
+  validateCapitalAllocation(
+    userCapital: number,
+    strategies: StrategyConfig[],
+    riskLevel = 3
+  ): { valid: boolean; reason?: string } {
     if (userCapital <= 0) {
       return { valid: false, reason: 'Capital must be greater than 0' };
     }
@@ -124,11 +132,12 @@ export class CapitalAllocationService {
       return { valid: false, reason: 'No strategies available for allocation' };
     }
 
-    const minRequired = this.calculateMinimumCapitalRequired(strategies.length);
+    const minPerStrategy = getMinCapitalPerStrategy(riskLevel);
+    const minRequired = this.calculateMinimumCapitalRequired(strategies.length, riskLevel);
     if (userCapital < minRequired) {
       return {
         valid: false,
-        reason: `Minimum capital required: $${minRequired} (${strategies.length} strategies × $${this.MIN_ALLOCATION_PER_STRATEGY})`
+        reason: `Minimum capital required: $${minRequired} (${strategies.length} strategies × $${minPerStrategy})`
       };
     }
 
@@ -310,9 +319,10 @@ export class CapitalAllocationService {
       }
     }
 
-    // Apply MIN_ALLOCATION_PER_STRATEGY filter
+    // Apply risk-aware minimum allocation filter
+    const minAllocationPerStrategy = getMinCapitalPerStrategy(regimeContext?.riskLevel ?? 3);
     for (const [strategyId, capitalAmount] of lockedAllocations.entries()) {
-      if (capitalAmount < this.MIN_ALLOCATION_PER_STRATEGY) {
+      if (capitalAmount < minAllocationPerStrategy) {
         this.logger.debug(
           `Strategy ${strategyId} Kelly allocation $${capitalAmount.toFixed(2)} below minimum, excluding`
         );

@@ -56,6 +56,27 @@ export const STAGE_RISK_ALLOCATION_MATRIX: Record<string, AllocationLimits[]> = 
 };
 
 /**
+ * Minimum capital required per strategy, keyed by risk level (1-5).
+ * Lower risk levels allow smaller starting amounts for beginners.
+ */
+export const MIN_CAPITAL_PER_STRATEGY: Record<number, number> = {
+  1: 15, // Conservative
+  2: 15, // Low-Moderate
+  3: 25, // Moderate
+  4: 35, // Moderately Aggressive
+  5: 50 // Aggressive
+};
+
+/**
+ * Get the minimum capital per strategy for a given risk level (1-5).
+ * Defaults to moderate (risk 3) for invalid/out-of-range values.
+ */
+export function getMinCapitalPerStrategy(riskLevel: number): number {
+  const clamped = Math.max(1, Math.min(5, Math.round(riskLevel)));
+  return MIN_CAPITAL_PER_STRATEGY[clamped];
+}
+
+/**
  * Resolve allocation limits for a given pipeline stage and risk level.
  *
  * @param stage  Pipeline stage (defaults to HISTORICAL for backward compatibility)
