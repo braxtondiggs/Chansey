@@ -452,7 +452,40 @@ export interface PipelineStageCountsDto {
 
 export enum SignalSource {
   BACKTEST = 'BACKTEST',
-  PAPER_TRADING = 'PAPER_TRADING'
+  PAPER_TRADING = 'PAPER_TRADING',
+  LIVE_TRADING = 'LIVE_TRADING'
+}
+
+export enum SignalStatus {
+  RECORDED = 'RECORDED',
+  PENDING = 'PENDING',
+  PROCESSED = 'PROCESSED',
+  PLACED = 'PLACED',
+  BLOCKED = 'BLOCKED',
+  FAILED = 'FAILED'
+}
+
+export enum SignalReasonCode {
+  SIGNAL_VALIDATION_FAILED = 'SIGNAL_VALIDATION_FAILED',
+  DAILY_LOSS_LIMIT = 'DAILY_LOSS_LIMIT',
+  REGIME_GATE = 'REGIME_GATE',
+  DRAWDOWN_GATE = 'DRAWDOWN_GATE',
+  CONCENTRATION_LIMIT = 'CONCENTRATION_LIMIT',
+  CONCENTRATION_REDUCED = 'CONCENTRATION_REDUCED',
+  OPPORTUNITY_SELLING_REJECTED = 'OPPORTUNITY_SELLING_REJECTED',
+  INSUFFICIENT_FUNDS = 'INSUFFICIENT_FUNDS',
+  EXCHANGE_SELECTION_FAILED = 'EXCHANGE_SELECTION_FAILED',
+  TRADE_COOLDOWN = 'TRADE_COOLDOWN',
+  ORDER_EXECUTION_FAILED = 'ORDER_EXECUTION_FAILED',
+  SIGNAL_THROTTLED = 'SIGNAL_THROTTLED',
+  SYMBOL_RESOLUTION_FAILED = 'SYMBOL_RESOLUTION_FAILED'
+}
+
+export enum LiveTradingSignalAction {
+  BUY = 'buy',
+  SELL = 'sell',
+  SHORT_ENTRY = 'short_entry',
+  SHORT_EXIT = 'short_exit'
 }
 
 export interface SignalFeedItemDto {
@@ -464,6 +497,8 @@ export interface SignalFeedItemDto {
   quantity: number;
   price?: number;
   confidence?: number;
+  status: SignalStatus;
+  reasonCode?: SignalReasonCode;
   reason?: string;
   source: SignalSource;
   sourceId: string;

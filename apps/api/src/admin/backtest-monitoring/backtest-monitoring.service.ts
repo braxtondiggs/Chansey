@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Decimal } from 'decimal.js';
 import { Between, In, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 
+import { SignalSource, SignalStatus } from '@chansey/api-interfaces';
+
 import {
   BacktestListItemDto,
   BacktestListQueryDto,
@@ -35,12 +37,7 @@ import {
   PipelineStageCountsDto,
   StageCountWithStatusDto
 } from './dto/paper-trading-analytics.dto';
-import {
-  SignalActivityFeedDto,
-  SignalFeedItemDto,
-  SignalHealthSummaryDto,
-  SignalSource
-} from './dto/signal-activity-feed.dto';
+import { SignalActivityFeedDto, SignalFeedItemDto, SignalHealthSummaryDto } from './dto/signal-activity-feed.dto';
 import {
   ConfidenceBucketDto,
   SignalAnalyticsDto,
@@ -85,6 +82,7 @@ import {
   PaperTradingSignalDirection,
   PaperTradingSignalType
 } from '../../order/paper-trading/entities/paper-trading-signal.entity';
+import { LiveTradingSignal } from '../../strategy/entities/live-trading-signal.entity';
 
 /** Maximum number of records to export to prevent DoS */
 const MAX_EXPORT_LIMIT = 10000;
@@ -131,7 +129,9 @@ export class BacktestMonitoringService {
     @InjectRepository(PaperTradingOrder)
     private readonly paperOrderRepo: Repository<PaperTradingOrder>,
     @InjectRepository(PaperTradingSignal)
-    private readonly paperSignalRepo: Repository<PaperTradingSignal>
+    private readonly paperSignalRepo: Repository<PaperTradingSignal>,
+    @InjectRepository(LiveTradingSignal)
+    private readonly liveSignalRepo: Repository<LiveTradingSignal>
   ) {}
 
   /**
@@ -683,7 +683,7 @@ export class BacktestMonitoringService {
   }
 
   private async getRecentSignals(limit: number): Promise<SignalFeedItemDto[]> {
-    const [backtestSignals, paperSignals] = await Promise.all([
+    const [backtestSignals, paperSignals, liveSignals] = await Promise.all([
       this.signalRepo
         .createQueryBuilder('s')
         .innerJoinAndSelect('s.backtest', 'b')
@@ -730,6 +730,36 @@ export class BacktestMonitoringService {
         ])
         .orderBy('ps.createdAt', 'DESC')
         .take(limit)
+        .getMany(),
+      this.liveSignalRepo
+        .createQueryBuilder('ls')
+        .leftJoinAndSelect('ls.user', 'u')
+        .leftJoinAndSelect('ls.strategyConfig', 'sc')
+        .leftJoinAndSelect('sc.algorithm', 'sca')
+        .leftJoinAndSelect('ls.algorithmActivation', 'aa')
+        .leftJoinAndSelect('aa.algorithm', 'aaa')
+        .select([
+          'ls.id',
+          'ls.createdAt',
+          'ls.action',
+          'ls.symbol',
+          'ls.quantity',
+          'ls.price',
+          'ls.confidence',
+          'ls.status',
+          'ls.reasonCode',
+          'ls.reason',
+          'ls.strategyConfigId',
+          'ls.algorithmActivationId',
+          'u.email',
+          'sc.id',
+          'sc.name',
+          'sca.name',
+          'aa.id',
+          'aaa.name'
+        ])
+        .orderBy('ls.createdAt', 'DESC')
+        .take(limit)
         .getMany()
     ]);
 
@@ -745,6 +775,8 @@ export class BacktestMonitoringService {
         quantity: s.quantity,
         price: s.price ?? undefined,
         confidence: s.confidence ?? undefined,
+        status: SignalStatus.RECORDED,
+        reasonCode: undefined,
         reason: s.reason ?? undefined,
         source: SignalSource.BACKTEST,
         sourceId: s.backtest.id,
@@ -764,6 +796,8 @@ export class BacktestMonitoringService {
         quantity: ps.quantity,
         price: ps.price ?? undefined,
         confidence: ps.confidence ?? undefined,
+        status: ps.processed ? SignalStatus.PROCESSED : SignalStatus.PENDING,
+        reasonCode: undefined,
         reason: ps.reason ?? undefined,
         source: SignalSource.PAPER_TRADING,
         sourceId: ps.session.id,
@@ -771,6 +805,27 @@ export class BacktestMonitoringService {
         algorithmName: ps.session.algorithm?.name || 'Unknown',
         userEmail: ps.session.user?.email,
         processed: ps.processed
+      });
+    }
+
+    for (const ls of liveSignals) {
+      mapped.push({
+        id: ls.id,
+        timestamp: ls.createdAt.toISOString(),
+        signalType: this.mapLiveSignalType(ls.action),
+        direction: this.mapLiveSignalDirection(ls.action),
+        instrument: ls.symbol?.toUpperCase() ?? ls.symbol,
+        quantity: ls.quantity,
+        price: ls.price ?? undefined,
+        confidence: ls.confidence ?? undefined,
+        status: ls.status,
+        reasonCode: ls.reasonCode ?? undefined,
+        reason: ls.reason ?? undefined,
+        source: SignalSource.LIVE_TRADING,
+        sourceId: ls.strategyConfigId ?? ls.algorithmActivationId ?? ls.id,
+        sourceName: ls.strategyConfig?.name ?? ls.algorithmActivation?.id ?? 'Live trading',
+        algorithmName: ls.strategyConfig?.algorithm?.name ?? ls.algorithmActivation?.algorithm?.name ?? 'Unknown',
+        userEmail: ls.user?.email
       });
     }
 
@@ -793,7 +848,7 @@ export class BacktestMonitoringService {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    const [backtestStats, paperStats, activeBacktests, activePaperSessions] = await Promise.all([
+    const [backtestStats, paperStats, liveStats, activeBacktests, activePaperSessions] = await Promise.all([
       this.signalRepo
         .createQueryBuilder('s')
         .select('MAX(s.timestamp)', 'maxTs')
@@ -810,18 +865,28 @@ export class BacktestMonitoringService {
         .setParameter('oneHourAgo', oneHourAgo)
         .setParameter('oneDayAgo', oneDayAgo)
         .getRawOne(),
+      this.liveSignalRepo
+        .createQueryBuilder('ls')
+        .select('MAX(ls.createdAt)', 'maxTs')
+        .addSelect(`COUNT(*) FILTER (WHERE ls.createdAt >= :oneHourAgo)`, 'hourCount')
+        .addSelect(`COUNT(*) FILTER (WHERE ls.createdAt >= :oneDayAgo)`, 'dayCount')
+        .setParameter('oneHourAgo', oneHourAgo)
+        .setParameter('oneDayAgo', oneDayAgo)
+        .getRawOne(),
       this.backtestRepo.count({ where: { status: BacktestStatus.RUNNING } }),
       this.paperSessionRepo.count({ where: { status: PaperTradingStatus.ACTIVE } })
     ]);
 
     const backtestMax = backtestStats?.maxTs ? new Date(backtestStats.maxTs) : null;
     const paperMax = paperStats?.maxTs ? new Date(paperStats.maxTs) : null;
+    const liveMax = liveStats?.maxTs ? new Date(liveStats.maxTs) : null;
 
     let lastSignalTime: string | undefined;
     let lastSignalAgoMs: number | undefined;
 
-    const latest =
-      backtestMax && paperMax ? (backtestMax > paperMax ? backtestMax : paperMax) : (backtestMax ?? paperMax);
+    const latest = [backtestMax, paperMax, liveMax]
+      .filter((value): value is Date => value != null)
+      .sort((left, right) => right.getTime() - left.getTime())[0];
 
     if (latest) {
       lastSignalTime = latest.toISOString();
@@ -833,12 +898,26 @@ export class BacktestMonitoringService {
     return {
       lastSignalTime,
       lastSignalAgoMs,
-      signalsLastHour: parseInt(backtestStats?.hourCount, 10) + parseInt(paperStats?.hourCount, 10) || 0,
-      signalsLast24h: parseInt(backtestStats?.dayCount, 10) + parseInt(paperStats?.dayCount, 10) || 0,
+      signalsLastHour:
+        (parseInt(backtestStats?.hourCount, 10) || 0) +
+        (parseInt(paperStats?.hourCount, 10) || 0) +
+        (parseInt(liveStats?.hourCount, 10) || 0),
+      signalsLast24h:
+        (parseInt(backtestStats?.dayCount, 10) || 0) +
+        (parseInt(paperStats?.dayCount, 10) || 0) +
+        (parseInt(liveStats?.dayCount, 10) || 0),
       activeBacktestSources: activeBacktests,
       activePaperTradingSources: activePaperSessions,
       totalActiveSources
     };
+  }
+
+  private mapLiveSignalType(action: string): SignalType {
+    return action === 'buy' || action === 'short_entry' ? SignalType.ENTRY : SignalType.EXIT;
+  }
+
+  private mapLiveSignalDirection(action: string): SignalDirection {
+    return action === 'short_entry' || action === 'short_exit' ? SignalDirection.SHORT : SignalDirection.LONG;
   }
 
   // ===========================================================================

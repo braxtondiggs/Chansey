@@ -3,9 +3,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { ObjectLiteral, Repository } from 'typeorm';
 
+import { SignalReasonCode, SignalSource, SignalStatus } from '@chansey/api-interfaces';
+
 import { CapitalAllocationService } from './capital-allocation.service';
 import { ConcentrationGateService } from './concentration-gate.service';
 import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
+import { LiveSignalService } from './live-signal.service';
 import { LiveTradingService } from './live-trading.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
@@ -77,6 +80,7 @@ describe('LiveTradingService', () => {
   let tradeExecutionService: jest.Mocked<TradeExecutionService>;
   let tradeCooldownService: jest.Mocked<TradeCooldownService>;
   let opportunitySellService: jest.Mocked<OpportunitySellService>;
+  let liveSignalService: jest.Mocked<LiveSignalService>;
 
   beforeEach(async () => {
     userRepo = {
@@ -158,6 +162,10 @@ describe('LiveTradingService', () => {
       })
     } as unknown as jest.Mocked<OpportunitySellService>;
 
+    liveSignalService = {
+      recordOutcome: jest.fn().mockResolvedValue({ id: 'live-signal-1' })
+    } as unknown as jest.Mocked<LiveSignalService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LiveTradingService,
@@ -200,6 +208,7 @@ describe('LiveTradingService', () => {
           }
         },
         { provide: OpportunitySellService, useValue: opportunitySellService },
+        { provide: LiveSignalService, useValue: liveSignalService },
         {
           provide: MetricsService,
           useValue: {
@@ -1264,6 +1273,66 @@ describe('LiveTradingService', () => {
         expect.objectContaining({ action: 'sell', symbol: 'ETH/USDT' }),
         'ek-1'
       );
+    });
+  });
+
+  describe('recordOutcome assertions', () => {
+    it('records PLACED outcome with orderId on successful order', async () => {
+      setupSignalPath({
+        user: {
+          exchanges: [{ id: 'ex-2', name: 'Binance US', slug: 'binance_us', isActive: true }] as any
+        }
+      });
+
+      const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+      orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+
+      await service.executeLiveTrading();
+
+      expect(liveSignalService.recordOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: SignalStatus.PLACED,
+          orderId: 'order-1',
+          source: SignalSource.LIVE_TRADING
+        })
+      );
+    });
+
+    it('records BLOCKED outcome when signal validation fails', async () => {
+      setupSignalPath();
+
+      const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: false, reason: 'low confidence' });
+
+      await service.executeLiveTrading();
+
+      expect(liveSignalService.recordOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: SignalStatus.BLOCKED,
+          reasonCode: SignalReasonCode.SIGNAL_VALIDATION_FAILED,
+          source: SignalSource.LIVE_TRADING
+        })
+      );
+    });
+
+    it('does not propagate recordOutcome rejection — order still placed', async () => {
+      setupSignalPath({
+        user: {
+          exchanges: [{ id: 'ex-2', name: 'Binance US', slug: 'binance_us', isActive: true }] as any
+        }
+      });
+
+      const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+      orderService.placeAlgorithmicOrder.mockResolvedValue({ id: 'order-1' } as any);
+      liveSignalService.recordOutcome.mockRejectedValue(new Error('DB write failed'));
+
+      await expect(service.executeLiveTrading()).resolves.not.toThrow();
+      expect(orderService.placeAlgorithmicOrder).toHaveBeenCalled();
     });
   });
 });

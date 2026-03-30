@@ -3,12 +3,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
-import { SignalDirection, SignalType } from '../../../order/backtest/backtest.entity';
+import { SignalReasonCode, SignalSource, SignalStatus } from '@chansey/api-interfaces';
 
-export enum SignalSource {
-  BACKTEST = 'BACKTEST',
-  PAPER_TRADING = 'PAPER_TRADING'
-}
+import { SignalDirection, SignalType } from '../../../order/backtest/backtest.entity';
 
 /**
  * A single signal in the activity feed
@@ -37,6 +34,12 @@ export class SignalFeedItemDto {
 
   @ApiPropertyOptional({ description: 'Confidence score 0-1' })
   confidence?: number;
+
+  @ApiProperty({ description: 'Signal status', enum: SignalStatus })
+  status: SignalStatus;
+
+  @ApiPropertyOptional({ description: 'Machine-readable signal reason code', enum: SignalReasonCode })
+  reasonCode?: SignalReasonCode;
 
   @ApiPropertyOptional({ description: 'Human-readable reason' })
   reason?: string;

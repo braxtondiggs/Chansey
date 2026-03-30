@@ -18,6 +18,7 @@ import { OrderModule } from '../order/order.module';
 import { PaperTradingOrder } from '../order/paper-trading/entities/paper-trading-order.entity';
 import { PaperTradingSession } from '../order/paper-trading/entities/paper-trading-session.entity';
 import { PaperTradingSignal } from '../order/paper-trading/entities/paper-trading-signal.entity';
+import { LiveTradingSignal } from '../strategy/entities/live-trading-signal.entity';
 import { StrategyModule } from '../strategy/strategy.module';
 import { TasksModule } from '../tasks/tasks.module';
 
@@ -45,7 +46,8 @@ import { TasksModule } from '../tasks/tasks.module';
       OptimizationResult,
       PaperTradingSession,
       PaperTradingOrder,
-      PaperTradingSignal
+      PaperTradingSignal,
+      LiveTradingSignal
     ]),
     AuditModule,
     LiveTradeMonitoringModule,

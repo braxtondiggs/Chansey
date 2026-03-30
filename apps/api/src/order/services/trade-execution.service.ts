@@ -59,6 +59,8 @@ export interface TradeSignal {
  * Extended trade signal with exit configuration
  */
 export interface TradeSignalWithExit extends TradeSignal {
+  /** Original algorithm confidence score (0-1) */
+  confidence?: number;
   /** Exit configuration for automatic SL/TP/trailing stop placement */
   exitConfig?: Partial<ExitConfig>;
   /** Historical price data for ATR-based exit calculations */
