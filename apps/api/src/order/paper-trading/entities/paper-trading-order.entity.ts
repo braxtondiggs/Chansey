@@ -38,6 +38,12 @@ export enum PaperTradingOrderStatus {
   REJECTED = 'REJECTED'
 }
 
+export enum PaperTradingExitType {
+  STOP_LOSS = 'STOP_LOSS',
+  TAKE_PROFIT = 'TAKE_PROFIT',
+  TRAILING_STOP = 'TRAILING_STOP'
+}
+
 @Entity('paper_trading_orders')
 @Index(['session'])
 @Index(['session', 'status'])
@@ -162,6 +168,12 @@ export class PaperTradingOrder {
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Additional order metadata', required: false })
   metadata?: Record<string, any>;
+
+  @IsEnum(PaperTradingExitType)
+  @IsOptional()
+  @Column({ type: 'enum', enum: PaperTradingExitType, enumName: 'paper_trading_exit_type_enum', nullable: true })
+  @ApiProperty({ description: 'Exit type that triggered this order', enum: PaperTradingExitType, required: false })
+  exitType?: PaperTradingExitType;
 
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: 'When the order was created' })

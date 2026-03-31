@@ -3,6 +3,8 @@
  * Used by both API and frontend for type consistency
  */
 
+import { ExitConfigRequest } from '../order/exit-config.interface';
+
 export enum PaperTradingStatus {
   ACTIVE = 'ACTIVE',
   PAUSED = 'PAUSED',
@@ -233,6 +235,8 @@ export interface PipelineStartParams {
   name?: string;
   /** User risk level (1-5) for allocation sizing */
   riskLevel?: number;
+  /** Exit configuration for SL/TP/trailing stop tracking */
+  exitConfig?: Partial<ExitConfigRequest>;
 }
 
 export interface SessionStatusResponse {

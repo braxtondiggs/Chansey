@@ -259,6 +259,12 @@ export class PaperTradingProcessor extends WorkerHost {
         session.throttleState = serializedThrottle;
       }
 
+      // Persist exit tracker state to DB for restart resilience
+      const serializedExitTracker = this.engineService.getSerializedExitTrackerState(sessionId);
+      if (serializedExitTracker) {
+        session.exitTrackerState = serializedExitTracker;
+      }
+
       // Apply successful tick result (reset counters, update metrics, save)
       const currentDrawdown = await this.applySuccessfulTickResult(session, result);
 
@@ -297,6 +303,7 @@ export class PaperTradingProcessor extends WorkerHost {
           errorType: 'unrecoverable'
         });
         this.engineService.clearThrottleState(sessionId);
+        this.engineService.clearExitTracker(sessionId);
         if (typeof global.gc === 'function') {
           global.gc();
         }
@@ -375,8 +382,9 @@ export class PaperTradingProcessor extends WorkerHost {
         }
       });
 
-      // Clean up in-memory throttle state and trigger GC
+      // Clean up in-memory throttle state, exit tracker, and trigger GC
       this.engineService.clearThrottleState(sessionId);
+      this.engineService.clearExitTracker(sessionId);
       if (typeof global.gc === 'function') {
         global.gc();
       }
@@ -578,6 +586,7 @@ export class PaperTradingProcessor extends WorkerHost {
           errorType: 'unrecoverable'
         });
         this.engineService.clearThrottleState(sessionId);
+        this.engineService.clearExitTracker(sessionId);
         return;
       }
 
@@ -629,8 +638,9 @@ export class PaperTradingProcessor extends WorkerHost {
 
     await this.paperTradingService.removeTickJobs(session.id);
 
-    // Clear throttle state so resumed sessions start with fresh cooldowns
+    // Clear throttle and exit tracker state so resumed sessions start fresh
     this.engineService.clearThrottleState(session.id);
+    this.engineService.clearExitTracker(session.id);
 
     await this.streamService.publishStatus(session.id, 'paused', 'consecutive_errors', {
       errorMessage,

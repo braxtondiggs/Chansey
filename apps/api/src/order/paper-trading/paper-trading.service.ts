@@ -38,6 +38,7 @@ import { DEFAULT_QUOTE_CURRENCY, getQuoteCurrency } from '../../exchange/constan
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { forceRemoveJob } from '../../shared/queue.util';
 import { User } from '../../users/users.entity';
+import { ExitConfig } from '../interfaces/exit-config.interface';
 
 @Injectable()
 export class PaperTradingService {
@@ -96,6 +97,7 @@ export class PaperTradingService {
       duration: dto.duration,
       stopConditions: dto.stopConditions,
       algorithmConfig: dto.algorithmConfig,
+      exitConfig: dto.exitConfig as unknown as ExitConfig,
       status: PaperTradingStatus.PAUSED, // Start paused until explicitly started
       user,
       algorithm,
@@ -553,10 +555,13 @@ export class PaperTradingService {
 
     const session = await this.create(dto, user);
 
-    // Set pipeline ID and risk level
+    // Set pipeline ID, risk level, and exit config
     session.pipelineId = params.pipelineId;
     if (params.riskLevel != null) {
       session.riskLevel = params.riskLevel;
+    }
+    if (params.exitConfig) {
+      session.exitConfig = params.exitConfig as unknown as ExitConfig;
     }
     await this.sessionRepository.save(session);
 
@@ -699,6 +704,7 @@ export class PaperTradingService {
     // Remove tick jobs and clean up in-memory state
     await this.removeTickJobs(sessionId);
     this.engineService.clearThrottleState(sessionId);
+    this.engineService.clearExitTracker(sessionId);
 
     this.logger.error(`Paper trading session ${sessionId} marked as failed: ${errorMessage}`);
   }
@@ -722,6 +728,7 @@ export class PaperTradingService {
     // Remove tick jobs and clean up in-memory state
     await this.removeTickJobs(sessionId);
     this.engineService.clearThrottleState(sessionId);
+    this.engineService.clearExitTracker(sessionId);
 
     // Emit event for pipeline orchestrator
     if (session.pipelineId) {

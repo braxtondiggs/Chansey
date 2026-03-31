@@ -33,7 +33,11 @@ describe('PaperTradingRecoveryService', () => {
     };
 
     const queue = createMockQueue();
-    const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+    const service = new PaperTradingRecoveryService(
+      paperTradingService as any,
+      { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+      queue as any
+    );
 
     await service.onApplicationBootstrap();
 
@@ -56,7 +60,11 @@ describe('PaperTradingRecoveryService', () => {
     };
 
     const queue = createMockQueue();
-    const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+    const service = new PaperTradingRecoveryService(
+      paperTradingService as any,
+      { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+      queue as any
+    );
 
     await service.onApplicationBootstrap();
 
@@ -86,7 +94,11 @@ describe('PaperTradingRecoveryService', () => {
         removeRepeatableByKey: jest.fn()
       });
 
-      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+      const service = new PaperTradingRecoveryService(
+        paperTradingService as any,
+        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        queue as any
+      );
 
       await service.onApplicationBootstrap();
 
@@ -113,7 +125,11 @@ describe('PaperTradingRecoveryService', () => {
         removeRepeatableByKey: jest.fn()
       });
 
-      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+      const service = new PaperTradingRecoveryService(
+        paperTradingService as any,
+        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        queue as any
+      );
 
       await service.onApplicationBootstrap();
 
@@ -134,7 +150,11 @@ describe('PaperTradingRecoveryService', () => {
         removeRepeatableByKey: jest.fn()
       });
 
-      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+      const service = new PaperTradingRecoveryService(
+        paperTradingService as any,
+        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        queue as any
+      );
 
       await service.onApplicationBootstrap();
 
@@ -152,7 +172,11 @@ describe('PaperTradingRecoveryService', () => {
       };
 
       const queue = createMockQueue();
-      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+      const service = new PaperTradingRecoveryService(
+        paperTradingService as any,
+        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        queue as any
+      );
 
       await service.onApplicationBootstrap();
 
@@ -165,7 +189,11 @@ describe('PaperTradingRecoveryService', () => {
 
     function createService(paperTradingService: any, bootedAgo = TWENTY_MINUTES): PaperTradingRecoveryService {
       const queue = createMockQueue();
-      const service = new PaperTradingRecoveryService(paperTradingService as any, queue as any);
+      const service = new PaperTradingRecoveryService(
+        paperTradingService as any,
+        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        queue as any
+      );
       // Override bootedAt to simulate time since boot
       (service as any).bootedAt = Date.now() - bootedAgo;
       return service;

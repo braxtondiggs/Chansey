@@ -17,6 +17,7 @@ import {
 
 import { toErrorInfo } from '../../../shared/error.util';
 import { sanitizeObject } from '../../../utils/sanitize.util';
+import { ExitConfig } from '../../interfaces/exit-config.interface';
 
 const MAX_ALGORITHM_CONFIG_SIZE = 10000; // Maximum JSON string size in bytes
 const MAX_CONFIG_DEPTH = 5; // Maximum nesting depth for algorithm config
@@ -191,6 +192,43 @@ export class CreatePaperTradingSessionDto {
     required: false
   })
   quoteCurrency?: string;
+
+  @IsObject()
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return value;
+    let sanitized: Record<string, unknown>;
+    try {
+      sanitized = sanitizeObject(value, {
+        maxDepth: MAX_CONFIG_DEPTH,
+        maxKeys: MAX_CONFIG_KEYS,
+        allowedTypes: ['string', 'number', 'boolean', 'null'],
+        maxStringLength: 1000,
+        allowArrays: false,
+        maxArrayLength: 0
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      throw new BadRequestException(`Invalid exitConfig: ${err.message}`);
+    }
+    const jsonString = JSON.stringify(sanitized);
+    if (jsonString.length > MAX_ALGORITHM_CONFIG_SIZE) {
+      throw new BadRequestException(
+        `exitConfig exceeds maximum size of ${MAX_ALGORITHM_CONFIG_SIZE} bytes (got ${jsonString.length})`
+      );
+    }
+    return sanitized;
+  })
+  @ApiProperty({
+    description: 'Exit configuration for SL/TP/trailing stop tracking (optional — omit to disable exit tracking)',
+    example: {
+      enableStopLoss: true,
+      stopLossType: 'percentage',
+      stopLossValue: 5
+    },
+    required: false
+  })
+  exitConfig?: Partial<ExitConfig>;
 }
 
 export class UpdatePaperTradingSessionDto {

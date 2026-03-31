@@ -60,7 +60,8 @@ describe('PaperTradingService', () => {
     };
 
     const engineService = {
-      clearThrottleState: jest.fn()
+      clearThrottleState: jest.fn(),
+      clearExitTracker: jest.fn()
     };
 
     const service = new PaperTradingService(

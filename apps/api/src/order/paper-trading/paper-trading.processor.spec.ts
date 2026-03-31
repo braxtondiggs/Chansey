@@ -27,9 +27,11 @@ describe('PaperTradingProcessor', () => {
       processTick: jest.fn(),
       calculateSessionMetrics: jest.fn(),
       clearThrottleState: jest.fn(),
+      clearExitTracker: jest.fn(),
       hasThrottleState: jest.fn().mockReturnValue(false),
       restoreThrottleState: jest.fn(),
-      getSerializedThrottleState: jest.fn().mockReturnValue(undefined)
+      getSerializedThrottleState: jest.fn().mockReturnValue(undefined),
+      getSerializedExitTrackerState: jest.fn().mockReturnValue(undefined)
     };
 
     const streamService = {
