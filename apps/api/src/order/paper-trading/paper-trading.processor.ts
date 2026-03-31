@@ -27,6 +27,7 @@ import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 
 const MAX_RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_CLEANUP_CACHE = 500;
 
 // Error types for classification
 class RecoverableError extends Error {
@@ -210,7 +211,7 @@ export class PaperTradingProcessor extends WorkerHost {
       if (!this.cleanedUpSessions.has(sessionId)) {
         this.logger.warn(`Session ${sessionId} not found, removing tick jobs`);
         await this.paperTradingService.removeTickJobs(sessionId);
-        this.cleanedUpSessions.add(sessionId);
+        this.trackCleanedUpSession(sessionId);
       }
       return;
     }
@@ -220,7 +221,7 @@ export class PaperTradingProcessor extends WorkerHost {
       if (!this.cleanedUpSessions.has(sessionId)) {
         this.logger.warn(`Session ${sessionId} was externally marked as FAILED, removing tick jobs`);
         await this.paperTradingService.removeTickJobs(sessionId);
-        this.cleanedUpSessions.add(sessionId);
+        this.trackCleanedUpSession(sessionId);
       }
       return;
     }
@@ -268,10 +269,14 @@ export class PaperTradingProcessor extends WorkerHost {
       // Apply successful tick result (reset counters, update metrics, save)
       const currentDrawdown = await this.applySuccessfulTickResult(session, result);
 
-      // Check stop conditions
+      // Stop-condition precedence (order matters):
+      //   1. Safety overrides first — maxDrawdown / targetReturn protect capital
+      //   2. Min-trades gate — ensures statistical significance before graduation
+      //   3. Duration cap — hard time limit prevents runaway sessions
+      // Each check short-circuits by verifying session.status === ACTIVE,
+      // so the first triggered condition wins.
       await this.checkStopConditions(session, result.portfolioValue, currentDrawdown);
-
-      // Check duration
+      await this.checkMinTrades(session);
       await this.checkDuration(session);
 
       // Emit tick event
@@ -419,6 +424,7 @@ export class PaperTradingProcessor extends WorkerHost {
     portfolioValue: number,
     currentDrawdown: number
   ): Promise<void> {
+    if (session.status !== PaperTradingStatus.ACTIVE) return;
     if (!session.stopConditions) return;
 
     const { maxDrawdown, targetReturn } = session.stopConditions;
@@ -426,6 +432,7 @@ export class PaperTradingProcessor extends WorkerHost {
     if (maxDrawdown !== undefined && currentDrawdown > maxDrawdown) {
       this.logger.log(`Session ${session.id} hit max drawdown limit (${(currentDrawdown * 100).toFixed(2)}%)`);
       await this.paperTradingService.markCompleted(session.id, 'max_drawdown');
+      session.status = PaperTradingStatus.COMPLETED;
       return;
     }
 
@@ -433,14 +440,32 @@ export class PaperTradingProcessor extends WorkerHost {
     if (targetReturn !== undefined && currentReturn >= targetReturn) {
       this.logger.log(`Session ${session.id} hit target return (${(currentReturn * 100).toFixed(2)}%)`);
       await this.paperTradingService.markCompleted(session.id, 'target_reached');
+      session.status = PaperTradingStatus.COMPLETED;
       return;
     }
   }
 
   /**
-   * Check if duration limit is reached
+   * Check if minimum trade count gate is met
+   */
+  private async checkMinTrades(session: PaperTradingSession): Promise<void> {
+    if (session.status !== PaperTradingStatus.ACTIVE) return;
+    if (session.minTrades == null) return;
+
+    if (session.totalTrades >= session.minTrades) {
+      this.logger.log(
+        `Session ${session.id} reached minimum trade count (${session.totalTrades}/${session.minTrades})`
+      );
+      await this.paperTradingService.markCompleted(session.id, 'min_trades_reached');
+      session.status = PaperTradingStatus.COMPLETED;
+    }
+  }
+
+  /**
+   * Check if duration limit is reached (hard time cap)
    */
   private async checkDuration(session: PaperTradingSession): Promise<void> {
+    if (session.status !== PaperTradingStatus.ACTIVE) return;
     if (!session.duration || !session.startedAt) return;
 
     const startTime = session.startedAt.getTime();
@@ -450,6 +475,7 @@ export class PaperTradingProcessor extends WorkerHost {
     if (now - startTime >= durationMs) {
       this.logger.log(`Session ${session.id} reached duration limit (${session.duration})`);
       await this.paperTradingService.markCompleted(session.id, 'duration_reached');
+      session.status = PaperTradingStatus.COMPLETED;
     }
   }
 
@@ -512,6 +538,14 @@ export class PaperTradingProcessor extends WorkerHost {
     return currentDrawdown;
   }
 
+  /** Track a cleaned-up session, pruning the set when it exceeds the threshold to prevent memory leaks */
+  private trackCleanedUpSession(sessionId: string): void {
+    if (this.cleanedUpSessions.size >= MAX_CLEANUP_CACHE) {
+      this.cleanedUpSessions.clear();
+    }
+    this.cleanedUpSessions.add(sessionId);
+  }
+
   /** Restore throttle state from DB if not already in memory */
   private restoreThrottleStateIfNeeded(sessionId: string, session: PaperTradingSession): void {
     if (session.throttleState && !this.engineService.hasThrottleState(sessionId)) {
@@ -555,6 +589,7 @@ export class PaperTradingProcessor extends WorkerHost {
 
         // Check stop conditions before rescheduling (may complete the session)
         await this.checkStopConditions(session, result.portfolioValue, currentDrawdown);
+        await this.checkMinTrades(session);
         await this.checkDuration(session);
 
         // Re-schedule normal repeating tick job

@@ -9,7 +9,7 @@ import {
   PIPELINE_STANDARD_CAPITAL,
   buildStageConfigFromRisk,
   getOptimizationConfig,
-  getPaperTradingDuration
+  getPaperTradingMinTrades
 } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
@@ -20,7 +20,7 @@ import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
-import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
+import { CUSTOM_RISK_LEVEL, MIN_TRADING_COINS } from '../risk/risk.constants';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
@@ -35,6 +35,7 @@ describe('PipelineOrchestrationService', () => {
   let pipelineOrchestrator: jest.Mocked<PipelineOrchestratorService>;
   let algorithmService: jest.Mocked<AlgorithmService>;
   let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
+  let coinSelectionService: jest.Mocked<CoinSelectionService>;
 
   const mockUser = {
     id: 'user-123',
@@ -150,10 +151,7 @@ describe('PipelineOrchestrationService', () => {
     pipelineOrchestrator = module.get(PipelineOrchestratorService);
     algorithmService = module.get(AlgorithmService);
     algorithmRegistry = module.get(AlgorithmRegistry);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+    coinSelectionService = module.get(CoinSelectionService);
   });
 
   describe('getEligibleUsers', () => {
@@ -164,7 +162,7 @@ describe('PipelineOrchestrationService', () => {
       expect(result[0].id).toBe('user-123');
     });
 
-    it('should return empty array on error', async () => {
+    it('should return empty array on database error', async () => {
       userRepository.createQueryBuilder = jest.fn().mockImplementation(() => {
         throw new Error('Database error');
       });
@@ -176,18 +174,13 @@ describe('PipelineOrchestrationService', () => {
   });
 
   describe('getUserExchangeKey', () => {
-    it('should return user primary exchange key', async () => {
+    it('should query with correct params and return the key', async () => {
       const result = await service.getUserExchangeKey('user-123');
 
       expect(result).toEqual(mockExchangeKey);
       expect(exchangeKeyRepository.findOne).toHaveBeenCalledWith({
-        where: {
-          userId: 'user-123',
-          isActive: true
-        },
-        order: {
-          createdAt: 'ASC'
-        },
+        where: { userId: 'user-123', isActive: true },
+        order: { createdAt: 'ASC' },
         relations: ['exchange']
       });
     });
@@ -195,14 +188,12 @@ describe('PipelineOrchestrationService', () => {
     it('should return null when no exchange key found', async () => {
       exchangeKeyRepository.findOne = jest.fn().mockResolvedValue(null);
 
-      const result = await service.getUserExchangeKey('user-123');
-
-      expect(result).toBeNull();
+      expect(await service.getUserExchangeKey('user-123')).toBeNull();
     });
   });
 
   describe('getEligibleStrategyConfigs', () => {
-    it('should return validated and testing strategy configs', async () => {
+    it('should query for VALIDATED and TESTING strategy configs with algorithm relation', async () => {
       const result = await service.getEligibleStrategyConfigs();
 
       expect(result).toHaveLength(1);
@@ -212,13 +203,19 @@ describe('PipelineOrchestrationService', () => {
         relations: ['algorithm']
       });
     });
+
+    it('should return empty array on database error', async () => {
+      strategyConfigRepository.find = jest.fn().mockRejectedValue(new Error('DB error'));
+
+      const result = await service.getEligibleStrategyConfigs();
+
+      expect(result).toEqual([]);
+    });
   });
 
   describe('checkDuplicate', () => {
     it('should return false when no duplicate exists', async () => {
-      const result = await service.checkDuplicate('strategy-123', 'user-123');
-
-      expect(result).toBe(false);
+      expect(await service.checkDuplicate('strategy-123', 'user-123')).toBe(false);
     });
 
     it('should return true when duplicate exists', async () => {
@@ -230,32 +227,59 @@ describe('PipelineOrchestrationService', () => {
       };
       pipelineRepository.createQueryBuilder = jest.fn().mockReturnValue(mockQB);
 
-      const result = await service.checkDuplicate('strategy-123', 'user-123');
-
-      expect(result).toBe(true);
+      expect(await service.checkDuplicate('strategy-123', 'user-123')).toBe(true);
     });
   });
 
   describe('orchestrateForUser', () => {
-    it('should create pipelines for eligible strategy configs', async () => {
+    it('should create and start pipelines for eligible strategy configs', async () => {
       const result = await service.orchestrateForUser('user-123');
 
-      expect(result.userId).toBe('user-123');
-      expect(result.pipelinesCreated).toBe(1);
-      expect(result.pipelineIds).toContain('pipeline-123');
-      expect(result.skippedConfigs).toHaveLength(0);
-      expect(result.errors).toHaveLength(0);
+      expect(result).toEqual(
+        expect.objectContaining({
+          userId: 'user-123',
+          pipelinesCreated: 1,
+          pipelineIds: ['pipeline-123'],
+          skippedConfigs: [],
+          errors: []
+        })
+      );
       expect(pipelineOrchestrator.createPipeline).toHaveBeenCalled();
       expect(pipelineOrchestrator.startPipeline).toHaveBeenCalled();
     });
 
-    it('should skip when no exchange key', async () => {
+    it('should return early with error when no exchange key', async () => {
       exchangeKeyRepository.findOne = jest.fn().mockResolvedValue(null);
 
       const result = await service.orchestrateForUser('user-123');
 
       expect(result.pipelinesCreated).toBe(0);
       expect(result.errors).toContain('No active exchange key');
+    });
+
+    it('should return early when custom risk user has insufficient trading coins', async () => {
+      const customRiskUser = {
+        ...mockUser,
+        coinRisk: { id: 'risk-1', level: CUSTOM_RISK_LEVEL } as any,
+        effectiveCalculationRiskLevel: 3
+      } as unknown as User;
+      usersService.getById = jest.fn().mockResolvedValue(customRiskUser);
+      coinSelectionService.getManualCoinSelectionSymbols = jest.fn().mockResolvedValue(['BTC']); // < MIN_TRADING_COINS
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.pipelinesCreated).toBe(0);
+      expect(result.errors[0]).toContain(`minimum ${MIN_TRADING_COINS} required`);
+    });
+
+    it('should return 0 pipelines when no eligible strategy configs', async () => {
+      strategyConfigRepository.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.pipelinesCreated).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.skippedConfigs).toHaveLength(0);
     });
 
     it('should skip duplicate pipelines', async () => {
@@ -274,8 +298,7 @@ describe('PipelineOrchestrationService', () => {
       expect(result.skippedConfigs[0].reason).toContain('Duplicate');
     });
 
-    it('should pass initialStage=HISTORICAL when no strategy is registered', async () => {
-      // algorithmRegistry returns undefined → no ParameterSpace → HISTORICAL
+    it('should use initialStage=HISTORICAL and record skip when no optimizable strategy', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue(undefined);
 
       const result = await service.orchestrateForUser('user-123');
@@ -288,8 +311,7 @@ describe('PipelineOrchestrationService', () => {
       expect(pipelineOrchestrator.recordOptimizationSkipped).toHaveBeenCalledWith('pipeline-123');
     });
 
-    it('should pass initialStage=OPTIMIZE when strategy has optimizable schema', async () => {
-      // Mock a strategy that returns a schema with optimizable params
+    it('should use initialStage=OPTIMIZE when strategy has optimizable parameters', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
         id: 'ema-crossover-001',
         getConfigSchema: () => ({
@@ -305,30 +327,44 @@ describe('PipelineOrchestrationService', () => {
 
       expect(result.pipelinesCreated).toBe(1);
       expect(pipelineOrchestrator.createPipeline).toHaveBeenCalledWith(
-        expect.objectContaining({
-          initialStage: PipelineStage.OPTIMIZE
-        }),
+        expect.objectContaining({ initialStage: PipelineStage.OPTIMIZE }),
         expect.any(Object)
       );
       expect(pipelineOrchestrator.recordOptimizationSkipped).not.toHaveBeenCalled();
     });
 
-    it('should NOT call seedStrategyConfigsFromAlgorithms (moved to task scheduler)', async () => {
-      const seedSpy = jest.spyOn(service, 'seedStrategyConfigsFromAlgorithms');
+    it('should capture error and continue when processStrategyConfig throws', async () => {
+      pipelineOrchestrator.createPipeline.mockRejectedValue(new Error('Pipeline creation failed'));
 
-      await service.orchestrateForUser('user-123');
+      const result = await service.orchestrateForUser('user-123');
 
-      expect(seedSpy).not.toHaveBeenCalled();
-      seedSpy.mockRestore();
+      expect(result.pipelinesCreated).toBe(0);
+      expect(result.errors.length).toBeGreaterThanOrEqual(1);
+      expect(result.skippedConfigs).toHaveLength(1);
+      expect(result.skippedConfigs[0].reason).toContain('Pipeline creation failed');
+    });
+
+    it('should capture error when usersService.getById throws', async () => {
+      usersService.getById = jest.fn().mockRejectedValue(new Error('User not found'));
+
+      const result = await service.orchestrateForUser('user-123');
+
+      expect(result.pipelinesCreated).toBe(0);
+      expect(result.errors[0]).toContain('User not found');
     });
   });
 
   describe('seedStrategyConfigsFromAlgorithms', () => {
+    it('should return 0 when no algorithms found', async () => {
+      algorithmService.getAlgorithmsForTesting.mockResolvedValue([]);
+
+      expect(await service.seedStrategyConfigsFromAlgorithms()).toBe(0);
+    });
+
     it('should skip algorithms that already have a strategy config', async () => {
       algorithmService.getAlgorithmsForTesting.mockResolvedValue([
         { id: 'algo-123', name: 'RSI', config: {}, version: '1.0.0' } as any
       ]);
-      // Return existing config for algo-123
       strategyConfigRepository.find = jest
         .fn()
         .mockResolvedValue([{ algorithmId: 'algo-123', status: StrategyStatus.TESTING }]);
@@ -339,65 +375,64 @@ describe('PipelineOrchestrationService', () => {
       expect(strategyConfigRepository.save).not.toHaveBeenCalled();
     });
 
-    it('should return 0 when no algorithms found', async () => {
-      algorithmService.getAlgorithmsForTesting.mockResolvedValue([]);
-
-      const seeded = await service.seedStrategyConfigsFromAlgorithms();
-
-      expect(seeded).toBe(0);
-    });
-
-    it('should use default parameters when algorithm config is empty', async () => {
+    it('should create strategy config with correct defaults when algorithm config is empty', async () => {
       algorithmService.getAlgorithmsForTesting.mockResolvedValue([
-        { id: 'algo-no-config', name: 'No Config Algo', config: null, version: null } as any
+        { id: 'algo-new', name: 'New Algo', config: null, version: null } as any
       ]);
       strategyConfigRepository.find = jest.fn().mockResolvedValue([]);
 
-      await service.seedStrategyConfigsFromAlgorithms();
+      const seeded = await service.seedStrategyConfigsFromAlgorithms();
 
+      expect(seeded).toBe(1);
       expect(strategyConfigRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          name: 'Auto: New Algo',
+          algorithmId: 'algo-new',
           parameters: {},
-          version: '1.0.0'
+          version: '1.0.0',
+          status: StrategyStatus.TESTING
         })
       );
+      expect(strategyConfigRepository.save).toHaveBeenCalled();
+    });
+
+    it('should return 0 on database error', async () => {
+      algorithmService.getAlgorithmsForTesting.mockRejectedValue(new Error('DB error'));
+
+      expect(await service.seedStrategyConfigsFromAlgorithms()).toBe(0);
     });
   });
 });
 
 describe('Pipeline Orchestration DTOs', () => {
-  describe('getPaperTradingDuration', () => {
-    it('should return correct duration for each risk level', () => {
-      expect(getPaperTradingDuration(1)).toBe('14d');
-      expect(getPaperTradingDuration(2)).toBe('10d');
-      expect(getPaperTradingDuration(3)).toBe('7d');
-      expect(getPaperTradingDuration(4)).toBe('5d');
-      expect(getPaperTradingDuration(5)).toBe('3d');
+  describe('getPaperTradingMinTrades', () => {
+    it.each([
+      [1, 50],
+      [2, 45],
+      [3, 40],
+      [4, 35],
+      [5, 30]
+    ])('risk level %i should require %i minimum trades', (level, expected) => {
+      expect(getPaperTradingMinTrades(level)).toBe(expected);
     });
 
-    it('should return default duration for invalid risk level', () => {
-      expect(getPaperTradingDuration(0)).toBe('7d');
-      expect(getPaperTradingDuration(6)).toBe('7d');
-      expect(getPaperTradingDuration(100)).toBe('7d');
+    it.each([0, 6, 100])('invalid risk level %i should fall back to level 3 default (40)', (level) => {
+      expect(getPaperTradingMinTrades(level)).toBe(40);
     });
   });
 
   describe('getOptimizationConfig', () => {
-    it('should return correct config for each risk level', () => {
-      const config1 = getOptimizationConfig(1);
-      expect(config1.trainDays).toBe(180);
-      expect(config1.maxCombinations).toBe(50);
-
-      const config3 = getOptimizationConfig(3);
-      expect(config3.trainDays).toBe(90);
-      expect(config3.maxCombinations).toBe(30);
-
-      const config5 = getOptimizationConfig(5);
-      expect(config5.trainDays).toBe(30);
-      expect(config5.maxCombinations).toBe(20);
+    it.each([
+      [1, 180, 50],
+      [3, 90, 30],
+      [5, 30, 20]
+    ])('risk level %i should use trainDays=%i, maxCombinations=%i', (level, trainDays, maxCombinations) => {
+      const config = getOptimizationConfig(level);
+      expect(config.trainDays).toBe(trainDays);
+      expect(config.maxCombinations).toBe(maxCombinations);
     });
 
-    it('should return default config for invalid risk level', () => {
+    it('should fall back to level 3 defaults for invalid risk level', () => {
       const config = getOptimizationConfig(100);
       expect(config.trainDays).toBe(90);
       expect(config.maxCombinations).toBe(30);
@@ -405,51 +440,43 @@ describe('Pipeline Orchestration DTOs', () => {
   });
 
   describe('buildStageConfigFromRisk', () => {
-    it('should build complete stage config for risk level 3', () => {
+    it('should build complete stage config with all four stages', () => {
       const config = buildStageConfigFromRisk(3);
 
-      // Optimization stage
+      // Optimization
       expect(config.optimization!.trainDays).toBe(90);
       expect(config.optimization!.testDays).toBe(30);
       expect(config.optimization!.objectiveMetric).toBe('sharpe_ratio');
       expect(config.optimization!.maxCombinations).toBe(30);
       expect(config.optimization!.earlyStop).toBe(true);
 
-      // Historical stage
+      // Historical
       expect(config.historical.initialCapital).toBe(PIPELINE_STANDARD_CAPITAL);
       expect(config.historical.tradingFee).toBe(0.001);
+      expect(config.historical.startDate).toBeDefined();
+      expect(config.historical.endDate).toBeDefined();
 
-      // Live replay stage
+      // Live replay
       expect(config.liveReplay.initialCapital).toBe(PIPELINE_STANDARD_CAPITAL);
       expect(config.liveReplay.enablePacing).toBe(false);
+      expect(config.liveReplay.startDate).toBeDefined();
+      expect(config.liveReplay.endDate).toBeDefined();
 
-      // Paper trading stage
+      // Paper trading
       expect(config.paperTrading.initialCapital).toBe(PIPELINE_STANDARD_CAPITAL);
-      expect(config.paperTrading.duration).toBe('7d');
+      expect(config.paperTrading.duration).toBe('30d');
       expect(config.paperTrading.stopConditions?.maxDrawdown).toBe(0.25);
+      expect(config.paperTrading.stopConditions?.targetReturn).toBe(0.5);
+      expect(config.paperTrading.minTrades).toBe(40);
     });
 
-    it('should build conservative config for risk level 1', () => {
-      const config = buildStageConfigFromRisk(1);
+    it('should produce date ranges where historical ends before live replay starts', () => {
+      const config = buildStageConfigFromRisk(3);
 
-      expect(config.optimization!.trainDays).toBe(180);
-      expect(config.optimization!.maxCombinations).toBe(50);
-      expect(config.paperTrading.duration).toBe('14d');
-    });
+      const historicalEnd = new Date(config.historical.endDate!);
+      const liveReplayStart = new Date(config.liveReplay.startDate!);
 
-    it('should build aggressive config for risk level 5', () => {
-      const config = buildStageConfigFromRisk(5);
-
-      expect(config.optimization!.trainDays).toBe(30);
-      expect(config.optimization!.maxCombinations).toBe(20);
-      expect(config.paperTrading.duration).toBe('3d');
-    });
-  });
-
-  describe('Constants', () => {
-    it('should have correct default values', () => {
-      expect(DEFAULT_RISK_LEVEL).toBe(3);
-      expect(PIPELINE_STANDARD_CAPITAL).toBe(10000);
+      expect(historicalEnd.getTime()).toBeLessThanOrEqual(liveReplayStart.getTime());
     });
   });
 });

@@ -127,20 +127,24 @@ export class ScoringService {
 
   /**
    * Get score modifier based on market regime.
-   * Higher volatility regimes get a bonus since strategies that perform
-   * acceptably in volatile markets are more valuable.
+   * Low-volatility performance gets a bonus because calm markets produce
+   * cleaner signals — strong results there are a genuine robustness indicator.
+   * High-volatility / extreme regimes receive a penalty because noisy data
+   * inflates returns and masks strategy weaknesses.
+   * The asymmetry (+5 vs -10) is intentional: noisy data actively misleads
+   * (larger penalty) while clean data provides a modest confidence boost.
    */
   private getRegimeModifier(regime?: MarketRegimeType): number {
     if (!regime) return 0;
     switch (regime) {
       case MarketRegimeType.EXTREME:
-        return 15;
+        return -10;
       case MarketRegimeType.HIGH_VOLATILITY:
-        return 10;
+        return -5;
       case MarketRegimeType.NORMAL:
         return 0;
       case MarketRegimeType.LOW_VOLATILITY:
-        return -5;
+        return 5;
       default:
         return 0;
     }

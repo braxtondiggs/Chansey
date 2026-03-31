@@ -192,6 +192,12 @@ export class PaperTradingSession {
   riskLevel?: number;
 
   @IsNumber()
+  @IsOptional()
+  @Column({ type: 'integer', nullable: true })
+  @ApiProperty({ description: 'Minimum trades required before session can complete', required: false })
+  minTrades?: number;
+
+  @IsNumber()
   @Column({ type: 'integer', default: 30000 })
   @ApiProperty({ description: 'Interval between market data ticks in milliseconds', default: 30000 })
   tickIntervalMs: number;

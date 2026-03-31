@@ -217,11 +217,13 @@ cascade delete. Users cannot see each other's results - all queries filter by `u
 
 **Risk-Based Configuration** (determines pipeline stage behavior):
 
-| Risk Level       | Paper Trading | Training Period | Max Drawdown |
-| ---------------- | ------------- | --------------- | ------------ |
-| 1 (Conservative) | 14 days       | 180 days        | 15%          |
-| 3 (Moderate)     | 7 days        | 90 days         | 25%          |
-| 5 (Aggressive)   | 3 days        | 30 days         | 40%          |
+| Risk Level        | Min Trades | Time Cap | Training Period | Max Drawdown | Target Return |
+| ----------------- | ---------- | -------- | --------------- | ------------ | ------------- |
+| 1 (Conservative)  | 50         | 30 days  | 180 days        | 15%          | 25%           |
+| 2 (Low-Moderate)  | 45         | 30 days  | 120 days        | 20%          | 40%           |
+| 3 (Moderate)      | 40         | 30 days  | 90 days         | 25%          | 50%           |
+| 4 (Moderate-High) | 35         | 30 days  | 60 days         | 35%          | 75%           |
+| 5 (Aggressive)    | 30         | 30 days  | 30 days         | 40%          | 100%          |
 
 **Pipeline Stage Flow**: `OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADING → COMPLETED`
 

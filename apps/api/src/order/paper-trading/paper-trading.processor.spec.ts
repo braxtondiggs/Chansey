@@ -877,6 +877,197 @@ describe('PaperTradingProcessor', () => {
     expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-stop-dd', 'max_drawdown');
   });
 
+  it('triggers markCompleted when minTrades gate is met', async () => {
+    const session = {
+      id: 'session-min-trades',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 20,
+      totalTrades: 38,
+      minTrades: 40
+    };
+
+    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 2,
+      ordersExecuted: 2,
+      errors: [],
+      portfolioValue: 1050,
+      prices: { 'BTC/USD': 50000 }
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-min-trades',
+      userId: 'user-mt'
+    });
+
+    await processor.process(job);
+
+    // totalTrades should be 38 + 2 = 40, meeting minTrades
+    expect(session.totalTrades).toBe(40);
+    expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-min-trades', 'min_trades_reached');
+  });
+
+  it('does not trigger minTrades completion when minTrades is null (backward compat)', async () => {
+    const session = {
+      id: 'session-no-min',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 20,
+      totalTrades: 50,
+      minTrades: null as number | null
+    };
+
+    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 0,
+      ordersExecuted: 0,
+      errors: [],
+      portfolioValue: 1050,
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-no-min',
+      userId: 'user-nm'
+    });
+
+    await processor.process(job);
+
+    expect(paperTradingService.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it('duration fires as hard cap even when minTrades is not met', async () => {
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 31); // 31 days ago
+
+    const session = {
+      id: 'session-duration-cap',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 10,
+      totalTrades: 5,
+      minTrades: 40,
+      duration: '30d',
+      startedAt: pastDate
+    };
+
+    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 0,
+      ordersExecuted: 0,
+      errors: [],
+      portfolioValue: 1010,
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-duration-cap',
+      userId: 'user-dc'
+    });
+
+    await processor.process(job);
+
+    // minTrades not met (5 < 40), but duration exceeded → should complete via duration
+    expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-duration-cap', 'duration_reached');
+  });
+
+  it('does not double-complete when stop condition fires before minTrades check', async () => {
+    const session = {
+      id: 'session-no-double',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      consecutiveErrors: 0,
+      tickCount: 20,
+      totalTrades: 38,
+      minTrades: 40,
+      stopConditions: { maxDrawdown: 0.05 }
+    };
+
+    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 2,
+      ordersExecuted: 2,
+      errors: [],
+      portfolioValue: 900, // 10% drawdown, exceeds 5% limit
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-no-double',
+      userId: 'user-nd'
+    });
+
+    await processor.process(job);
+
+    // Stop condition fires first (max_drawdown), minTrades should NOT also fire
+    expect(paperTradingService.markCompleted).toHaveBeenCalledTimes(1);
+    expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-no-double', 'max_drawdown');
+  });
+
+  it('clears cleanedUpSessions set when it exceeds the threshold to prevent memory leaks', async () => {
+    const { processor, sessionRepository, paperTradingService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(null);
+
+    // Fill the set to the limit (MAX_CLEANUP_CACHE = 500)
+    for (let i = 0; i < 500; i++) {
+      const job = createJob({
+        type: PaperTradingJobType.TICK,
+        sessionId: `session-cleanup-${i}`,
+        userId: 'user-1'
+      });
+      await processor.process(job);
+    }
+
+    // All 500 sessions should have been cleaned up
+    expect(paperTradingService.removeTickJobs).toHaveBeenCalledTimes(500);
+    paperTradingService.removeTickJobs.mockClear();
+
+    // Next session triggers a clear + re-add, so cleanup runs again
+    const overflowJob = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-overflow',
+      userId: 'user-1'
+    });
+    await overflowJob;
+    await processor.process(overflowJob);
+    expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-overflow');
+
+    // Verify a previously-cached session is now re-cleaned (set was cleared)
+    paperTradingService.removeTickJobs.mockClear();
+    const reprocessJob = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-cleanup-0',
+      userId: 'user-1'
+    });
+    await processor.process(reprocessJob);
+    expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-cleanup-0');
+  });
+
   it('triggers markCompleted when stop condition targetReturn is reached', async () => {
     const session = {
       id: 'session-stop-target',

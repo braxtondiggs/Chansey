@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { Decimal } from 'decimal.js';
 import { DataSource, Repository } from 'typeorm';
 
 import { getAllocationLimits, PipelineStage, SignalReasonCode } from '@chansey/api-interfaces';
@@ -82,6 +83,14 @@ export type ExecuteOrderStatus = 'success' | 'insufficient_funds' | 'no_price' |
 export interface ExecuteOrderResult {
   status: ExecuteOrderStatus;
   order: PaperTradingOrder | null;
+}
+
+const VALID_EXIT_TYPES = new Set(Object.values(PaperTradingExitType));
+
+/** Safely convert an unknown string to PaperTradingExitType, returning undefined for invalid values */
+function toExitType(value: string | undefined | null): PaperTradingExitType | undefined {
+  if (!value) return undefined;
+  return VALID_EXIT_TYPES.has(value as PaperTradingExitType) ? (value as PaperTradingExitType) : undefined;
 }
 
 const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string): TradingSignal => {
@@ -282,9 +291,9 @@ export class PaperTradingEngineService {
         this.logger.debug(
           `Throttled ${signals.length - filteredSignals.length}/${signals.length} signals for session ${session.id}`
         );
-        // Persist throttled signals as REJECTED with reason code
-        const throttledSymbols = new Set(filteredSignals.map((s) => s.symbol));
-        const throttledSignals = signals.filter((s) => !throttledSymbols.has(s.symbol));
+        // Persist throttled signals as REJECTED with reason code (use object identity to handle duplicate symbols)
+        const passedSignals = new Set<TradingSignal>(filteredSignals);
+        const throttledSignals = signals.filter((s) => !passedSignals.has(s));
         for (const blocked of throttledSignals) {
           const entity = await this.saveSignal(session, blocked);
           entity.status = PaperTradingSignalStatus.REJECTED;
@@ -320,9 +329,9 @@ export class PaperTradingEngineService {
         this.logger.debug(
           `Regime gate blocked ${regimeResult.regimeGateBlockedCount} signals in ${compositeRegime} regime for session ${session.id}`
         );
-        // Persist regime-gated signals as REJECTED with reason code
-        const regimePassedSymbols = new Set(regimeFilteredSignals.map((s) => s.symbol));
-        const regimeBlockedSignals = filteredSignals.filter((s: TradingSignal) => !regimePassedSymbols.has(s.symbol));
+        // Persist regime-gated signals as REJECTED with reason code (use object identity to handle duplicate symbols)
+        const regimePassedSignals = new Set<TradingSignal>(regimeFilteredSignals);
+        const regimeBlockedSignals = filteredSignals.filter((s: TradingSignal) => !regimePassedSignals.has(s));
         for (const blocked of regimeBlockedSignals) {
           const entity = await this.saveSignal(session, blocked);
           entity.status = PaperTradingSignalStatus.REJECTED;
@@ -631,7 +640,9 @@ export class PaperTradingEngineService {
           quantity = investmentAmount / executionPrice;
         }
 
-        totalValue = quantity * executionPrice;
+        const dQuantity = new Decimal(quantity);
+        const dExecutionPrice = new Decimal(executionPrice);
+        totalValue = dQuantity.mul(dExecutionPrice).toNumber();
 
         // Calculate fee
         const feeConfig = this.feeCalculator.fromFlatRate(session.tradingFee);
@@ -639,15 +650,16 @@ export class PaperTradingEngineService {
         const fee = feeResult.fee;
 
         // Check if we have enough balance
-        if (quoteAccount.available < totalValue + fee) {
+        const totalCost = new Decimal(totalValue).plus(fee).toNumber();
+        if (quoteAccount.available < totalCost) {
           this.logger.warn(
-            `Insufficient ${quoteCurrency} balance for BUY order: need ${(totalValue + fee).toFixed(2)}, have ${quoteAccount.available.toFixed(2)}`
+            `Insufficient ${quoteCurrency} balance for BUY order: need ${totalCost.toFixed(2)}, have ${quoteAccount.available.toFixed(2)}`
           );
           return { status: 'insufficient_funds', order: null };
         }
 
         // Update quote account atomically
-        quoteAccount.available -= totalValue + fee;
+        quoteAccount.available = new Decimal(quoteAccount.available).minus(totalCost).toNumber();
         await transactionalEntityManager.save(quoteAccount);
 
         // Update or create base account atomically
@@ -667,12 +679,14 @@ export class PaperTradingEngineService {
           baseAccount.entryDate = timestamp;
         }
 
-        // Update average cost
-        const oldCost = baseAccount.averageCost ?? 0;
-        const newQuantity = oldQuantity + quantity;
-        baseAccount.averageCost =
-          oldQuantity > 0 ? (oldCost * oldQuantity + executionPrice * quantity) / newQuantity : executionPrice;
-        baseAccount.available = newQuantity;
+        // Update average cost using Decimal to avoid floating-point drift
+        const dOldCost = new Decimal(baseAccount.averageCost ?? 0);
+        const dOldQuantity = new Decimal(oldQuantity);
+        const dNewQuantity = dOldQuantity.plus(dQuantity);
+        baseAccount.averageCost = dOldQuantity.gt(0)
+          ? dOldCost.mul(dOldQuantity).plus(dExecutionPrice.mul(dQuantity)).div(dNewQuantity).toNumber()
+          : executionPrice;
+        baseAccount.available = dNewQuantity.toNumber();
         await transactionalEntityManager.save(baseAccount);
 
         // Create order record
@@ -740,19 +754,23 @@ export class PaperTradingEngineService {
         quantity = baseAccount.available * 0.5;
       }
 
-      totalValue = quantity * executionPrice;
+      const dSellQuantity = new Decimal(quantity);
+      const dSellPrice = new Decimal(executionPrice);
+      totalValue = dSellQuantity.mul(dSellPrice).toNumber();
 
       // Calculate fee
       const feeConfig = this.feeCalculator.fromFlatRate(session.tradingFee);
       const feeResult = this.feeCalculator.calculateFee({ tradeValue: totalValue }, feeConfig);
       const fee = feeResult.fee;
 
-      // Calculate realized P&L
-      const realizedPnL = (executionPrice - costBasis) * quantity - fee;
-      const realizedPnLPercent = costBasis > 0 ? (executionPrice - costBasis) / costBasis : 0;
+      // Calculate realized P&L using Decimal to preserve precision
+      const dCostBasis = new Decimal(costBasis);
+      const dFee = new Decimal(fee);
+      const realizedPnL = dSellPrice.minus(dCostBasis).mul(dSellQuantity).minus(dFee).toNumber();
+      const realizedPnLPercent = costBasis > 0 ? dSellPrice.minus(dCostBasis).div(dCostBasis).toNumber() : 0;
 
       // Update base account atomically
-      baseAccount.available -= quantity;
+      baseAccount.available = new Decimal(baseAccount.available).minus(dSellQuantity).toNumber();
       if (baseAccount.available < 0.00000001) {
         baseAccount.available = 0;
         baseAccount.averageCost = undefined;
@@ -761,7 +779,7 @@ export class PaperTradingEngineService {
       await transactionalEntityManager.save(baseAccount);
 
       // Update quote account atomically
-      quoteAccount.available += totalValue - fee;
+      quoteAccount.available = new Decimal(quoteAccount.available).plus(new Decimal(totalValue).minus(dFee)).toNumber();
       await transactionalEntityManager.save(quoteAccount);
 
       // Create order record
@@ -1293,7 +1311,7 @@ export class PaperTradingEngineService {
           quoteCurrency,
           timestamp,
           { maxAllocation, minAllocation },
-          exit.exitType as PaperTradingExitType
+          toExitType(exit.exitType)
         );
 
         if (result.status === 'success') {
@@ -1368,7 +1386,8 @@ export class PaperTradingEngineService {
     quoteCurrency: string,
     exchangeSlug: string,
     timestamp: Date,
-    allocationOverrides?: { maxAllocation: number; minAllocation: number }
+    allocationOverrides?: { maxAllocation: number; minAllocation: number },
+    cachedAccounts?: PaperTradingAccount[]
   ): Promise<number> {
     const { enabled, config } = this.resolveOpportunitySellingConfig(session.algorithmConfig);
     if (!enabled) return 0;
@@ -1376,10 +1395,8 @@ export class PaperTradingEngineService {
     const buyConfidence = buySignal.confidence ?? 0;
     if (buyConfidence < config.minOpportunityConfidence) return 0;
 
-    // Get fresh accounts from DB
-    const accounts = await this.accountRepository.find({
-      where: { session: { id: session.id } }
-    });
+    // Use cached accounts if provided, otherwise fetch from DB
+    const accounts = cachedAccounts ?? (await this.accountRepository.find({ where: { session: { id: session.id } } }));
     const portfolio = this.buildPortfolioFromAccounts(accounts, quoteCurrency);
     const updatedPortfolio = this.updatePortfolioWithPrices(portfolio, priceMap, quoteCurrency);
 

@@ -673,7 +673,12 @@ export class PipelineOrchestratorService {
 
     const result: PaperTradingStageResult = {
       sessionId,
-      status: stoppedReason === 'duration_reached' || stoppedReason === 'target_reached' ? 'COMPLETED' : 'STOPPED',
+      status:
+        stoppedReason === 'duration_reached' ||
+        stoppedReason === 'target_reached' ||
+        stoppedReason === 'min_trades_reached'
+          ? 'COMPLETED'
+          : 'STOPPED',
       sharpeRatio: metrics.sharpeRatio ?? 0,
       totalReturn: metrics.totalReturn,
       maxDrawdown: metrics.maxDrawdown,
@@ -1193,7 +1198,8 @@ export class PipelineOrchestratorService {
       stopConditions: config.stopConditions,
       userId: pipeline.user.id,
       name: `Pipeline ${pipeline.name} - Paper Trading`,
-      riskLevel: this.getUserRiskLevel(pipeline)
+      riskLevel: this.getUserRiskLevel(pipeline),
+      minTrades: config.minTrades
     });
 
     // Store session reference

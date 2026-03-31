@@ -80,9 +80,18 @@ import {
 import {
   PaperTradingSignal,
   PaperTradingSignalDirection,
+  PaperTradingSignalStatus,
   PaperTradingSignalType
 } from '../../order/paper-trading/entities/paper-trading-signal.entity';
 import { LiveTradingSignal } from '../../strategy/entities/live-trading-signal.entity';
+
+/** Explicit mapping from PaperTradingSignalStatus to the shared SignalStatus enum */
+const PAPER_SIGNAL_STATUS_MAP: Record<PaperTradingSignalStatus, SignalStatus> = {
+  [PaperTradingSignalStatus.PENDING]: SignalStatus.PENDING,
+  [PaperTradingSignalStatus.SIMULATED]: SignalStatus.SIMULATED,
+  [PaperTradingSignalStatus.REJECTED]: SignalStatus.REJECTED,
+  [PaperTradingSignalStatus.ERROR]: SignalStatus.ERROR
+};
 
 /** Maximum number of records to export to prevent DoS */
 const MAX_EXPORT_LIMIT = 10000;
@@ -797,7 +806,7 @@ export class BacktestMonitoringService {
         price: ps.price ?? undefined,
         confidence: ps.confidence ?? undefined,
         status: ps.status
-          ? (ps.status as unknown as SignalStatus)
+          ? (PAPER_SIGNAL_STATUS_MAP[ps.status] ?? SignalStatus.PENDING)
           : ps.processed
             ? SignalStatus.PROCESSED
             : SignalStatus.PENDING,
