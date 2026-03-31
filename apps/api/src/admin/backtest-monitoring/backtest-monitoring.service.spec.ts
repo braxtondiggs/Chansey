@@ -676,6 +676,8 @@ describe('BacktestMonitoringService', () => {
           confidence: 0.8,
           reason: 'Take profit',
           processed: true,
+          status: 'SIMULATED',
+          rejectionCode: null,
           session: {
             id: 'sess-1',
             name: 'Test Session',

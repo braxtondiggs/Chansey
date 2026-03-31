@@ -13,6 +13,8 @@ import {
   Relation
 } from 'typeorm';
 
+import { SignalReasonCode } from '@chansey/api-interfaces';
+
 import { PaperTradingOrder } from './paper-trading-order.entity';
 import { PaperTradingSession } from './paper-trading-session.entity';
 
@@ -31,9 +33,17 @@ export enum PaperTradingSignalDirection {
   FLAT = 'FLAT'
 }
 
+export enum PaperTradingSignalStatus {
+  PENDING = 'PENDING',
+  SIMULATED = 'SIMULATED',
+  REJECTED = 'REJECTED',
+  ERROR = 'ERROR'
+}
+
 @Entity('paper_trading_signals')
 @Index(['session'])
 @Index(['session', 'processed'])
+@Index('IDX_paper_trading_signals_session_status', ['session', 'status'])
 export class PaperTradingSignal {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({ description: 'Unique identifier for the signal' })
@@ -88,6 +98,19 @@ export class PaperTradingSignal {
   @Column({ type: 'boolean', default: false })
   @ApiProperty({ description: 'Whether the signal has been processed', default: false })
   processed: boolean;
+
+  @IsEnum(PaperTradingSignalStatus)
+  @Column({
+    type: 'enum',
+    enum: PaperTradingSignalStatus,
+    enumName: 'paper_trading_signal_status_enum',
+    default: PaperTradingSignalStatus.PENDING
+  })
+  @ApiProperty({ description: 'Processing status of the signal', enum: PaperTradingSignalStatus })
+  status: PaperTradingSignalStatus;
+
+  @Column({ type: 'enum', enum: SignalReasonCode, enumName: 'signal_reason_code_enum', nullable: true })
+  rejectionCode?: SignalReasonCode | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   @ApiProperty({ description: 'When the signal was processed', required: false })

@@ -23,7 +23,8 @@ import { Algorithm } from '../../../algorithm/algorithm.entity';
 import { ExchangeKey } from '../../../exchange/exchange-key/exchange-key.entity';
 import { User } from '../../../users/users.entity';
 import { ColumnNumericTransformer } from '../../../utils/transformers';
-import { SerializableThrottleState } from '../../backtest/shared';
+import { SerializableExitTrackerState, SerializableThrottleState } from '../../backtest/shared';
+import { ExitConfig } from '../../interfaces/exit-config.interface';
 
 export enum PaperTradingStatus {
   ACTIVE = 'ACTIVE',
@@ -167,6 +168,14 @@ export class PaperTradingSession {
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Persisted signal throttle state for restart resilience', required: false })
   throttleState?: SerializableThrottleState;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: 'Exit configuration for SL/TP/trailing stop tracking', required: false })
+  exitConfig?: ExitConfig;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: 'Persisted exit tracker state for restart resilience', required: false })
+  exitTrackerState?: SerializableExitTrackerState;
 
   @IsString()
   @IsOptional()

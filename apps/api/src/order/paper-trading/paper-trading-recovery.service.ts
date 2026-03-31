@@ -5,6 +5,7 @@ import { Cron } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 
 import { PaperTradingStatus } from './entities';
+import { PaperTradingEngineService } from './paper-trading-engine.service';
 import { PaperTradingService } from './paper-trading.service';
 
 import { toErrorInfo } from '../../shared/error.util';
@@ -26,6 +27,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
 
   constructor(
     private readonly paperTradingService: PaperTradingService,
+    private readonly engineService: PaperTradingEngineService,
     @InjectQueue('paper-trading') private readonly paperTradingQueue: Queue
   ) {}
 
@@ -102,6 +104,13 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
 
     if (recovered > 0 || failed > 0) {
       this.logger.log(`Stale session watchdog: recovered=${recovered}, failed=${failed}`);
+    }
+
+    // Sweep in-memory state for sessions that no longer exist
+    const activeIds = new Set(activeSessions.map((s) => s.id));
+    const swept = this.engineService.sweepOrphanedState(activeIds);
+    if (swept > 0) {
+      this.logger.log(`Swept ${swept} orphaned in-memory state entries`);
     }
   }
 

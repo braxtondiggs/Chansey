@@ -462,7 +462,10 @@ export enum SignalStatus {
   PROCESSED = 'PROCESSED',
   PLACED = 'PLACED',
   BLOCKED = 'BLOCKED',
-  FAILED = 'FAILED'
+  FAILED = 'FAILED',
+  SIMULATED = 'SIMULATED',
+  REJECTED = 'REJECTED',
+  ERROR = 'ERROR'
 }
 
 export enum SignalReasonCode {

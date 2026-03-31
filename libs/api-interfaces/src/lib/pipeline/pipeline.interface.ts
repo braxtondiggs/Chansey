@@ -3,6 +3,8 @@
  * Used by both API and frontend for type consistency
  */
 
+import { ExitConfigRequest } from '../order/exit-config.interface';
+
 export enum PipelineStatus {
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
@@ -78,6 +80,8 @@ export interface PaperTradingStageConfig {
   marketType?: string;
   /** Leverage multiplier for futures (1-10) */
   leverage?: number;
+  /** Exit configuration for SL/TP/trailing stop tracking */
+  exitConfig?: Partial<ExitConfigRequest>;
 }
 
 export interface PipelineStageConfig {

@@ -3,10 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DataSource, Repository } from 'typeorm';
 
-import { getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
+import { getAllocationLimits, PipelineStage, SignalReasonCode } from '@chansey/api-interfaces';
 
 import {
   PaperTradingAccount,
+  PaperTradingExitType,
   PaperTradingOrder,
   PaperTradingOrderSide,
   PaperTradingOrderStatus,
@@ -14,6 +15,7 @@ import {
   PaperTradingSession,
   PaperTradingSignal,
   PaperTradingSignalDirection,
+  PaperTradingSignalStatus,
   PaperTradingSignalType,
   PaperTradingSnapshot,
   SnapshotHolding
@@ -34,6 +36,8 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 import { toErrorInfo } from '../../shared/error.util';
 import {
+  BacktestExitTracker,
+  computeAtrFromOHLC,
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   FeeCalculatorService,
   MetricsCalculatorService,
@@ -42,12 +46,14 @@ import {
   PortfolioStateService,
   PositionAnalysisService,
   PositionManagerService,
+  SerializableExitTrackerState,
   SignalFilterChainService,
   SerializableThrottleState,
   SignalThrottleService,
   ThrottleState,
   TimeframeType
 } from '../backtest/shared';
+import { resolveExitConfig } from '../utils/exit-config-merge.util';
 
 export interface TradingSignal {
   action: 'BUY' | 'SELL' | 'HOLD' | 'OPEN_SHORT' | 'CLOSE_SHORT';
@@ -130,6 +136,9 @@ export class PaperTradingEngineService {
 
   /** In-memory throttle state per session (survives across ticks, resets on restart) */
   private readonly throttleStates = new Map<string, ThrottleState>();
+
+  /** In-memory exit tracker per session (SL/TP/trailing stop monitoring) */
+  private readonly exitTrackers = new Map<string, BacktestExitTracker>();
 
   constructor(
     @InjectRepository(PaperTradingAccount)
@@ -219,10 +228,39 @@ export class PaperTradingEngineService {
       // 4. Update portfolio values with current prices
       const updatedPortfolio = this.updatePortfolioWithPrices(portfolio, priceMap, quoteCurrency);
 
+      // 4b. Check exit levels (SL/TP/trailing) before running algorithm
+      const exitTracker = this.getOrCreateExitTracker(session);
+      let exitOrdersExecuted = 0;
+      if (exitTracker && exitTracker.size > 0) {
+        exitOrdersExecuted = await this.checkAndExecuteExits(
+          session,
+          exitTracker,
+          priceMap,
+          historicalCandles,
+          quoteCurrency,
+          exchangeSlug,
+          now
+        );
+        ordersExecuted += exitOrdersExecuted;
+      }
+
+      // 4c. Refresh portfolio after exits so algorithm sees accurate state
+      let algoPortfolio = updatedPortfolio;
+      if (exitOrdersExecuted > 0) {
+        const refreshedAccounts = await this.accountRepository.find({
+          where: { session: { id: session.id } }
+        });
+        algoPortfolio = this.updatePortfolioWithPrices(
+          this.buildPortfolioFromAccounts(refreshedAccounts, quoteCurrency),
+          priceMap,
+          quoteCurrency
+        );
+      }
+
       // 5. Run algorithm to get signals
       const signals = await this.runAlgorithm(
         session,
-        updatedPortfolio,
+        algoPortfolio,
         priceMap,
         accounts,
         quoteCurrency,
@@ -244,6 +282,17 @@ export class PaperTradingEngineService {
         this.logger.debug(
           `Throttled ${signals.length - filteredSignals.length}/${signals.length} signals for session ${session.id}`
         );
+        // Persist throttled signals as REJECTED with reason code
+        const throttledSymbols = new Set(filteredSignals.map((s) => s.symbol));
+        const throttledSignals = signals.filter((s) => !throttledSymbols.has(s.symbol));
+        for (const blocked of throttledSignals) {
+          const entity = await this.saveSignal(session, blocked);
+          entity.status = PaperTradingSignalStatus.REJECTED;
+          entity.rejectionCode = SignalReasonCode.SIGNAL_THROTTLED;
+          entity.processed = true;
+          entity.processedAt = new Date();
+          await this.signalRepository.save(entity);
+        }
       }
 
       // 5c. Apply regime filter chain: gate BUY in bear/extreme, scale allocations
@@ -271,6 +320,17 @@ export class PaperTradingEngineService {
         this.logger.debug(
           `Regime gate blocked ${regimeResult.regimeGateBlockedCount} signals in ${compositeRegime} regime for session ${session.id}`
         );
+        // Persist regime-gated signals as REJECTED with reason code
+        const regimePassedSymbols = new Set(regimeFilteredSignals.map((s) => s.symbol));
+        const regimeBlockedSignals = filteredSignals.filter((s: TradingSignal) => !regimePassedSymbols.has(s.symbol));
+        for (const blocked of regimeBlockedSignals) {
+          const entity = await this.saveSignal(session, blocked);
+          entity.status = PaperTradingSignalStatus.REJECTED;
+          entity.rejectionCode = SignalReasonCode.REGIME_GATE;
+          entity.processed = true;
+          entity.processedAt = new Date();
+          await this.signalRepository.save(entity);
+        }
       }
 
       // 6. Process signals and execute orders
@@ -294,7 +354,9 @@ export class PaperTradingEngineService {
             );
 
             // Opportunity selling: only when BUY fails due to insufficient funds
+            let opportunitySellingAttempted = false;
             if (result.status === 'insufficient_funds' && signal.action === 'BUY') {
+              opportunitySellingAttempted = true;
               const oppSellCount = await this.attemptOpportunitySelling(
                 session,
                 signal,
@@ -331,6 +393,33 @@ export class PaperTradingEngineService {
 
             if (result.order) {
               ordersExecuted++;
+              signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+
+              // Register position in exit tracker on BUY fill
+              if (exitTracker && signal.action === 'BUY') {
+                const [baseCurrency] = signal.symbol.split('/');
+                const candles = historicalCandles[signal.symbol];
+                let atr: number | undefined;
+                if (candles && candles.length > 0) {
+                  const highs = candles.map((c) => c.high);
+                  const lows = candles.map((c) => c.low);
+                  const closes = candles.map((c) => c.avg);
+                  atr = computeAtrFromOHLC(highs, lows, closes, session.exitConfig?.atrPeriod ?? 14);
+                }
+                if (result.order.executedPrice != null && result.order.executedPrice > 0) {
+                  exitTracker.onBuy(baseCurrency, result.order.executedPrice, result.order.filledQuantity, atr);
+                } else {
+                  this.logger.warn(
+                    `Skipping exit tracker registration for ${baseCurrency}: executedPrice is ${result.order.executedPrice}`
+                  );
+                }
+              }
+
+              // Update exit tracker on SELL fill
+              if (exitTracker && signal.action === 'SELL') {
+                const [baseCurrency] = signal.symbol.split('/');
+                exitTracker.onSell(baseCurrency, result.order.filledQuantity);
+              }
 
               // Refresh portfolio for next signal iteration
               const refreshedAccounts = await this.accountRepository.find({
@@ -341,12 +430,28 @@ export class PaperTradingEngineService {
                 priceMap,
                 quoteCurrency
               );
+            } else {
+              // No order produced — rejected (insufficient_funds, no_position, no_price, hold_period)
+              signalEntity.status = PaperTradingSignalStatus.REJECTED;
+              if (result.status === 'insufficient_funds') {
+                signalEntity.rejectionCode = opportunitySellingAttempted
+                  ? SignalReasonCode.OPPORTUNITY_SELLING_REJECTED
+                  : SignalReasonCode.INSUFFICIENT_FUNDS;
+              } else if (result.status === 'no_price') {
+                signalEntity.rejectionCode = SignalReasonCode.SYMBOL_RESOLUTION_FAILED;
+              } else if (result.status === 'hold_period') {
+                signalEntity.rejectionCode = SignalReasonCode.TRADE_COOLDOWN;
+              }
             }
           } catch (error: unknown) {
             const err = toErrorInfo(error);
             errors.push(`Failed to execute ${signal.action} order for ${signal.symbol}: ${err.message}`);
             this.logger.warn(`Order execution failed: ${err.message}`);
+            signalEntity.status = PaperTradingSignalStatus.ERROR;
           }
+        } else {
+          // HOLD action — valid intentional no-op
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
         }
 
         // Mark signal as processed
@@ -455,7 +560,8 @@ export class PaperTradingEngineService {
     exchangeSlug: string,
     quoteCurrency: string,
     timestamp: Date,
-    allocationOverrides?: { maxAllocation: number; minAllocation: number }
+    allocationOverrides?: { maxAllocation: number; minAllocation: number },
+    exitType?: PaperTradingExitType
   ): Promise<ExecuteOrderResult> {
     const basePrice = prices[signal.symbol];
     if (!basePrice) {
@@ -588,6 +694,7 @@ export class PaperTradingEngineService {
           executedAt: timestamp,
           session,
           signal: signalEntity,
+          ...(exitType && { exitType }),
           metadata: {
             reason: signal.reason,
             confidence: signal.confidence,
@@ -679,6 +786,7 @@ export class PaperTradingEngineService {
         executedAt: timestamp,
         session,
         signal: signalEntity,
+        ...(exitType && { exitType }),
         metadata: {
           reason: signal.reason,
           confidence: signal.confidence,
@@ -1044,6 +1152,209 @@ export class PaperTradingEngineService {
     return val;
   }
 
+  // ─── Exit Tracker Lifecycle ─────────────────────────────────────────────────
+
+  /**
+   * Get or create exit tracker for a session.
+   * Returns null if session has no exitConfig (feature flag — backward compatible).
+   */
+  private getOrCreateExitTracker(session: PaperTradingSession): BacktestExitTracker | null {
+    if (!session.exitConfig) return null;
+
+    let tracker = this.exitTrackers.get(session.id);
+    if (!tracker) {
+      const config = resolveExitConfig(session.exitConfig);
+      if (session.exitTrackerState) {
+        tracker = BacktestExitTracker.deserialize(session.exitTrackerState, config);
+      } else {
+        tracker = new BacktestExitTracker(config);
+      }
+      this.exitTrackers.set(session.id, tracker);
+    }
+    return tracker;
+  }
+
+  /** Serialize exit tracker state for DB persistence */
+  getSerializedExitTrackerState(sessionId: string): SerializableExitTrackerState | undefined {
+    const tracker = this.exitTrackers.get(sessionId);
+    if (!tracker) return undefined;
+    return tracker.serialize();
+  }
+
+  /** Clean up exit tracker when session ends */
+  clearExitTracker(sessionId: string): void {
+    this.exitTrackers.delete(sessionId);
+  }
+
+  /**
+   * Sweep in-memory state for sessions that are no longer active.
+   * Prevents memory leaks if a session fails to reach a terminal state.
+   * @param activeSessionIds Set of session IDs that are still RUNNING or PAUSED
+   */
+  sweepOrphanedState(activeSessionIds: Set<string>): number {
+    let swept = 0;
+    for (const sessionId of this.exitTrackers.keys()) {
+      if (!activeSessionIds.has(sessionId)) {
+        this.exitTrackers.delete(sessionId);
+        swept++;
+      }
+    }
+    for (const sessionId of this.throttleStates.keys()) {
+      if (!activeSessionIds.has(sessionId)) {
+        this.throttleStates.delete(sessionId);
+        swept++;
+      }
+    }
+    return swept;
+  }
+
+  /**
+   * Check exit levels and execute exit orders for triggered positions.
+   * Runs before algorithm so exits mirror live trading behavior.
+   */
+  private async checkAndExecuteExits(
+    session: PaperTradingSession,
+    exitTracker: BacktestExitTracker,
+    priceMap: Record<string, number>,
+    historicalCandles: Record<string, CandleData[]>,
+    quoteCurrency: string,
+    exchangeSlug: string,
+    timestamp: Date
+  ): Promise<number> {
+    // Build close/low/high price maps from current prices + last candle data
+    const closePrices = new Map<string, number>();
+    const lowPrices = new Map<string, number>();
+    const highPrices = new Map<string, number>();
+
+    for (const [symbol, price] of Object.entries(priceMap)) {
+      const [baseCurrency] = symbol.split('/');
+      closePrices.set(baseCurrency, price);
+
+      const candles = historicalCandles[symbol];
+      if (candles && candles.length > 0) {
+        const lastCandle = candles[candles.length - 1];
+        // Use the wider range: last candle's high/low vs current price
+        lowPrices.set(baseCurrency, Math.min(lastCandle.low, price));
+        highPrices.set(baseCurrency, Math.max(lastCandle.high, price));
+      } else {
+        lowPrices.set(baseCurrency, price);
+        highPrices.set(baseCurrency, price);
+      }
+    }
+
+    const exitSignals = exitTracker.checkExits(closePrices, lowPrices, highPrices);
+    if (exitSignals.length === 0) return 0;
+
+    // Fetch accounts once before the loop
+    let accounts = await this.accountRepository.find({ where: { session: { id: session.id } } });
+    let currentPortfolio = this.updatePortfolioWithPrices(
+      this.buildPortfolioFromAccounts(accounts, quoteCurrency),
+      priceMap,
+      quoteCurrency
+    );
+
+    const { maxAllocation, minAllocation } = this.getSessionAllocationLimits(session);
+
+    let ordersExecuted = 0;
+    for (const exit of exitSignals) {
+      // Declare signalEntity outside try so catch block can access it
+      let signalEntity: PaperTradingSignal | undefined;
+      try {
+        // Convert exit signal to trading signal
+        const exitTradingSignal: TradingSignal = {
+          action: 'SELL',
+          coinId: exit.coinId,
+          symbol: `${exit.coinId}/${quoteCurrency}`,
+          quantity: exit.quantity,
+          reason: exit.reason,
+          metadata: exit.metadata as Record<string, any>,
+          originalType:
+            exit.exitType === 'STOP_LOSS'
+              ? AlgoSignalType.STOP_LOSS
+              : exit.exitType === 'TAKE_PROFIT'
+                ? AlgoSignalType.TAKE_PROFIT
+                : AlgoSignalType.STOP_LOSS // trailing stop treated as SL for signal classification
+        };
+
+        // Save signal as RISK_CONTROL type
+        signalEntity = await this.saveSignal(session, exitTradingSignal);
+
+        // Execute at the exit's execution price by temporarily overriding the price map
+        const exitPriceMap = { ...priceMap, [`${exit.coinId}/${quoteCurrency}`]: exit.executionPrice };
+
+        // Pass exitType into transaction so it's set atomically
+        const result = await this.executeOrder(
+          session,
+          exitTradingSignal,
+          signalEntity,
+          currentPortfolio,
+          exitPriceMap,
+          exchangeSlug,
+          quoteCurrency,
+          timestamp,
+          { maxAllocation, minAllocation },
+          exit.exitType as PaperTradingExitType
+        );
+
+        if (result.status === 'success') {
+          ordersExecuted++;
+          // Refresh portfolio after successful exit for next iteration
+          accounts = await this.accountRepository.find({ where: { session: { id: session.id } } });
+          currentPortfolio = this.updatePortfolioWithPrices(
+            this.buildPortfolioFromAccounts(accounts, quoteCurrency),
+            priceMap,
+            quoteCurrency
+          );
+          exitTracker.removePosition(exit.coinId);
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+          signalEntity.processed = true;
+          signalEntity.processedAt = new Date();
+          await this.signalRepository.save(signalEntity);
+          this.logger.log(
+            `Exit triggered for ${exit.coinId} in session ${session.id}: ${exit.exitType} at ${exit.executionPrice.toFixed(2)}`
+          );
+        } else if (result.status === 'no_position') {
+          // Position already gone — clean up tracker and mark signal processed
+          exitTracker.removePosition(exit.coinId);
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+          signalEntity.processed = true;
+          signalEntity.processedAt = new Date();
+          await this.signalRepository.save(signalEntity);
+          this.logger.log(
+            `Exit cleanup for ${exit.coinId} in session ${session.id}: position already closed (${result.status})`
+          );
+        } else {
+          // Transient failure (no_price, insufficient_funds, hold_period) — keep position tracked for retry
+          signalEntity.status = PaperTradingSignalStatus.REJECTED;
+          if (result.status === 'no_price') {
+            signalEntity.rejectionCode = SignalReasonCode.SYMBOL_RESOLUTION_FAILED;
+          } else if (result.status === 'insufficient_funds') {
+            signalEntity.rejectionCode = SignalReasonCode.INSUFFICIENT_FUNDS;
+          } else if (result.status === 'hold_period') {
+            signalEntity.rejectionCode = SignalReasonCode.TRADE_COOLDOWN;
+          }
+          signalEntity.processed = true;
+          signalEntity.processedAt = new Date();
+          await this.signalRepository.save(signalEntity);
+          this.logger.warn(
+            `Exit deferred for ${exit.coinId} in session ${session.id}: ${result.status} — will retry next tick`
+          );
+        }
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        if (signalEntity) {
+          signalEntity.status = PaperTradingSignalStatus.ERROR;
+          signalEntity.processed = true;
+          signalEntity.processedAt = new Date();
+          await this.signalRepository.save(signalEntity);
+        }
+        this.logger.warn(`Failed to execute exit order for ${exit.coinId}: ${err.message}`);
+      }
+    }
+
+    return ordersExecuted;
+  }
+
   /**
    * Attempt to sell weakest positions to free cash for a higher-confidence BUY signal.
    * Mirrors the BacktestEngine pattern using PositionAnalysisService for scoring.
@@ -1180,9 +1491,14 @@ export class PaperTradingEngineService {
         if (result.order) {
           coveredAmount += (result.order.totalValue ?? 0) - (result.order.fee ?? 0);
           sellCount++;
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+        } else {
+          signalEntity.status = PaperTradingSignalStatus.REJECTED;
+          signalEntity.rejectionCode = SignalReasonCode.INSUFFICIENT_FUNDS;
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
+        signalEntity.status = PaperTradingSignalStatus.ERROR;
         this.logger.warn(`Opportunity sell failed for ${candidate.coinId}: ${err.message}`);
       }
 

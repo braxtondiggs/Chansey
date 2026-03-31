@@ -796,8 +796,12 @@ export class BacktestMonitoringService {
         quantity: ps.quantity,
         price: ps.price ?? undefined,
         confidence: ps.confidence ?? undefined,
-        status: ps.processed ? SignalStatus.PROCESSED : SignalStatus.PENDING,
-        reasonCode: undefined,
+        status: ps.status
+          ? (ps.status as unknown as SignalStatus)
+          : ps.processed
+            ? SignalStatus.PROCESSED
+            : SignalStatus.PENDING,
+        reasonCode: ps.rejectionCode ?? undefined,
         reason: ps.reason ?? undefined,
         source: SignalSource.PAPER_TRADING,
         sourceId: ps.session.id,
