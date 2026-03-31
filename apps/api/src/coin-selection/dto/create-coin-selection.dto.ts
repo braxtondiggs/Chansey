@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsEnum, IsNotEmpty, IsUUID } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
 
+import { CoinSelectionSource } from '../coin-selection-source.enum';
 import { CoinSelectionType } from '../coin-selection-type.enum';
 
 export class CreateCoinSelectionDto {
@@ -23,4 +24,14 @@ export class CreateCoinSelectionDto {
     description: 'The type of coin selection'
   })
   type: CoinSelectionType;
+
+  @IsOptional()
+  @IsEnum(CoinSelectionSource)
+  @ApiProperty({
+    enum: CoinSelectionSource,
+    example: CoinSelectionSource.RISK_BASED,
+    description: 'The source that created this automatic selection',
+    required: false
+  })
+  source?: CoinSelectionSource;
 }

@@ -9,6 +9,7 @@ import { UserController } from './users.controller';
 import { User } from './users.entity';
 import { UsersService } from './users.service';
 
+import { ActivePositionGuardModule } from '../active-position-guard';
 import { CoinSelectionModule } from '../coin-selection/coin-selection.module';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
@@ -26,6 +27,7 @@ import { StrategyModule } from '../strategy/strategy.module';
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => CoinSelectionModule),
     forwardRef(() => StrategyModule),
+    ActivePositionGuardModule,
     RiskModule,
     SharedCacheModule,
     StorageModule,
