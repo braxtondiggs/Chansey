@@ -1,12 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 
-import { SignalActivityFeedDto } from '@chansey/api-interfaces';
+import { SignalActivityFeedDto, SignalReasonCode } from '@chansey/api-interfaces';
 
 import { TimeAgoPipe } from '../../../../../shared/pipes';
 
@@ -21,11 +21,11 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
       <p-card>
         <div class="text-center">
           <div class="text-sm text-gray-500">Last Signal</div>
-          @if (feed?.health?.lastSignalTime) {
+          @if (feed()?.health?.lastSignalTime) {
             <div class="text-xl font-bold" [class]="lastSignalColorClass">
-              {{ feed?.health?.lastSignalTime | timeAgo }}
+              {{ feed()?.health?.lastSignalTime | timeAgo }}
             </div>
-            <div class="mt-1 text-xs text-gray-400">{{ feed?.health?.lastSignalTime | date: 'short' }}</div>
+            <div class="mt-1 text-xs text-gray-400">{{ feed()?.health?.lastSignalTime | date: 'short' }}</div>
           } @else {
             <div class="text-xl font-bold text-gray-400">No signals</div>
           }
@@ -35,24 +35,24 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
       <p-card>
         <div class="text-center">
           <div class="text-sm text-gray-500">Signals / Hour</div>
-          <div class="text-2xl font-bold">{{ feed?.health?.signalsLastHour ?? 0 }}</div>
+          <div class="text-2xl font-bold">{{ feed()?.health?.signalsLastHour ?? 0 }}</div>
         </div>
       </p-card>
 
       <p-card>
         <div class="text-center">
           <div class="text-sm text-gray-500">Signals / 24h</div>
-          <div class="text-2xl font-bold">{{ feed?.health?.signalsLast24h ?? 0 }}</div>
+          <div class="text-2xl font-bold">{{ feed()?.health?.signalsLast24h ?? 0 }}</div>
         </div>
       </p-card>
 
       <p-card>
         <div class="text-center">
           <div class="text-sm text-gray-500">Active Sources</div>
-          <div class="text-2xl font-bold">{{ feed?.health?.totalActiveSources ?? 0 }}</div>
+          <div class="text-2xl font-bold">{{ feed()?.health?.totalActiveSources ?? 0 }}</div>
           <div class="mt-1 text-xs text-gray-400">
-            {{ feed?.health?.activeBacktestSources ?? 0 }} backtest ·
-            {{ feed?.health?.activePaperTradingSources ?? 0 }} paper
+            {{ feed()?.health?.activeBacktestSources ?? 0 }} backtest ·
+            {{ feed()?.health?.activePaperTradingSources ?? 0 }} paper
           </div>
         </div>
       </p-card>
@@ -61,9 +61,9 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
     <!-- Signal Feed Table -->
     <p-card header="Recent Signals">
       <p-table
-        [value]="feed?.signals ?? []"
+        [value]="feed()?.signals ?? []"
         [rows]="20"
-        [paginator]="(feed?.signals?.length ?? 0) > 20"
+        [paginator]="(feed()?.signals?.length ?? 0) > 20"
         [rowsPerPageOptions]="[20, 50, 100]"
         [scrollable]="true"
         scrollHeight="500px"
@@ -80,6 +80,8 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
             <th style="width: 100px">Source</th>
             <th>Algorithm</th>
             <th>User</th>
+            <th style="width: 90px">Status</th>
+            <th style="width: 140px">Reason Code</th>
             <th>Reason</th>
           </tr>
         </ng-template>
@@ -108,25 +110,36 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
               }
             </td>
             <td>
-              <p-tag
-                [value]="signal.source === 'BACKTEST' ? 'Backtest' : 'Paper'"
-                [severity]="signal.source === 'BACKTEST' ? 'info' : 'warn'"
-              />
+              <p-tag [value]="getSourceLabel(signal.source)" [severity]="getSourceSeverity(signal.source)" />
             </td>
-            <td class="max-w-[120px] truncate" [pTooltip]="signal.algorithmName">
+            <td class="max-w-30 truncate" [pTooltip]="signal.algorithmName">
               {{ signal.algorithmName }}
             </td>
-            <td class="max-w-[120px] truncate" [pTooltip]="signal.userEmail || ''">
+            <td class="max-w-30 truncate" [pTooltip]="signal.userEmail || ''">
               {{ signal.userEmail || '-' }}
             </td>
-            <td class="max-w-[200px] truncate" [pTooltip]="signal.reason || ''">
+            <td>
+              <p-tag [value]="signal.status" [severity]="getStatusSeverity(signal.status)" />
+            </td>
+            <td>
+              @if (signal.reasonCode) {
+                <p-tag
+                  [value]="getReasonCodeLabel(signal.reasonCode)"
+                  [severity]="getReasonCodeSeverity(signal.reasonCode)"
+                  [pTooltip]="signal.reasonCode"
+                />
+              } @else {
+                <span class="text-gray-400">-</span>
+              }
+            </td>
+            <td class="max-w-50 truncate" [pTooltip]="signal.reason || ''">
               {{ signal.reason || '-' }}
             </td>
           </tr>
         </ng-template>
         <ng-template #emptymessage>
           <tr>
-            <td colspan="10" class="py-8 text-center text-gray-500">No signals found</td>
+            <td colspan="12" class="py-8 text-center text-gray-500">No signals found</td>
           </tr>
         </ng-template>
       </p-table>
@@ -134,10 +147,10 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
   `
 })
 export class SignalActivityFeedComponent {
-  @Input() feed?: SignalActivityFeedDto;
+  feed = input<SignalActivityFeedDto>();
 
   get lastSignalColorClass(): string {
-    const lastSignalTime = this.feed?.health?.lastSignalTime;
+    const lastSignalTime = this.feed()?.health?.lastSignalTime;
     if (lastSignalTime == null) return 'text-gray-400';
     const ms = Date.now() - new Date(lastSignalTime).getTime();
     if (ms < 5 * 60 * 1000) return 'text-green-500'; // < 5 min
@@ -165,6 +178,88 @@ export class SignalActivityFeedComponent {
       case 'LONG':
         return 'success';
       case 'SHORT':
+        return 'danger';
+      default:
+        return 'secondary';
+    }
+  }
+
+  getSourceLabel(source: string): string {
+    switch (source) {
+      case 'BACKTEST':
+        return 'Backtest';
+      case 'PAPER_TRADING':
+        return 'Paper';
+      case 'LIVE_TRADING':
+        return 'Live';
+      default:
+        return source;
+    }
+  }
+
+  getSourceSeverity(source: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' {
+    switch (source) {
+      case 'BACKTEST':
+        return 'info';
+      case 'PAPER_TRADING':
+        return 'warn';
+      case 'LIVE_TRADING':
+        return 'success';
+      default:
+        return 'secondary';
+    }
+  }
+
+  getReasonCodeLabel(code: string): string {
+    const labels: Record<string, string> = {
+      [SignalReasonCode.SIGNAL_VALIDATION_FAILED]: 'Validation Failed',
+      [SignalReasonCode.DAILY_LOSS_LIMIT]: 'Daily Loss',
+      [SignalReasonCode.REGIME_GATE]: 'Regime Gate',
+      [SignalReasonCode.DRAWDOWN_GATE]: 'Drawdown Gate',
+      [SignalReasonCode.CONCENTRATION_LIMIT]: 'Concentration',
+      [SignalReasonCode.CONCENTRATION_REDUCED]: 'Conc. Reduced',
+      [SignalReasonCode.OPPORTUNITY_SELLING_REJECTED]: 'Opp. Rejected',
+      [SignalReasonCode.INSUFFICIENT_FUNDS]: 'Insufficient Funds',
+      [SignalReasonCode.EXCHANGE_SELECTION_FAILED]: 'Exchange Failed',
+      [SignalReasonCode.TRADE_COOLDOWN]: 'Cooldown',
+      [SignalReasonCode.ORDER_EXECUTION_FAILED]: 'Execution Failed',
+      [SignalReasonCode.SIGNAL_THROTTLED]: 'Throttled',
+      [SignalReasonCode.SYMBOL_RESOLUTION_FAILED]: 'Symbol Failed'
+    };
+    return labels[code] ?? code;
+  }
+
+  getReasonCodeSeverity(code: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' {
+    switch (code) {
+      case SignalReasonCode.ORDER_EXECUTION_FAILED:
+      case SignalReasonCode.INSUFFICIENT_FUNDS:
+      case SignalReasonCode.SIGNAL_VALIDATION_FAILED:
+      case SignalReasonCode.SYMBOL_RESOLUTION_FAILED:
+        return 'danger';
+      case SignalReasonCode.DAILY_LOSS_LIMIT:
+      case SignalReasonCode.DRAWDOWN_GATE:
+      case SignalReasonCode.CONCENTRATION_LIMIT:
+      case SignalReasonCode.CONCENTRATION_REDUCED:
+        return 'warn';
+      case SignalReasonCode.SIGNAL_THROTTLED:
+      case SignalReasonCode.TRADE_COOLDOWN:
+        return 'info';
+      default:
+        return 'secondary';
+    }
+  }
+
+  getStatusSeverity(status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' {
+    switch (status) {
+      case 'PLACED':
+      case 'PROCESSED':
+        return 'success';
+      case 'PENDING':
+      case 'RECORDED':
+        return 'info';
+      case 'BLOCKED':
+        return 'warn';
+      case 'FAILED':
         return 'danger';
       default:
         return 'secondary';

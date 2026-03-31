@@ -6,7 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Job, Queue } from 'bullmq';
 import { In, Repository } from 'typeorm';
 
-import { MarketType } from '@chansey/api-interfaces';
+import { MarketType, SignalReasonCode, SignalSource, SignalStatus } from '@chansey/api-interfaces';
 
 import { TradingStateService } from '../../admin/trading-state/trading-state.service';
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
@@ -24,12 +24,24 @@ import { toErrorInfo } from '../../shared/error.util';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';
 import { ConcentrationGateService } from '../../strategy/concentration-gate.service';
 import { DailyLossLimitGateService } from '../../strategy/daily-loss-limit-gate.service';
+import { LiveTradingSignalAction } from '../../strategy/entities/live-trading-signal.entity';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { LiveSignalService } from '../../strategy/live-signal.service';
 import { AssetAllocation } from '../../strategy/risk/concentration-check.service';
 import { User } from '../../users/users.entity';
 import { UsersService } from '../../users/users.service';
 import { SignalThrottleService, ThrottleState } from '../backtest/shared/throttle';
 import { TradeExecutionService, TradeSignalWithExit } from '../services/trade-execution.service';
+
+interface GenerateSignalResult {
+  signal: TradeSignalWithExit | null;
+  skipReason?: {
+    reasonCode: SignalReasonCode;
+    reason: string;
+    metadata?: Record<string, unknown>;
+    partialSignal?: { action?: 'BUY' | 'SELL'; symbol?: string; confidence?: number; positionSide?: 'long' | 'short' };
+  };
+}
 
 const MIN_CONFIDENCE_THRESHOLD = 0.6;
 const ACTIONABLE_SIGNAL_TYPES = new Set([
@@ -74,7 +86,8 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     private readonly concentrationGate: ConcentrationGateService,
     private readonly metricsService: MetricsService,
     private readonly exchangeSelectionService: ExchangeSelectionService,
-    private readonly failedJobService: FailedJobService
+    private readonly failedJobService: FailedJobService,
+    private readonly liveSignalService: LiveSignalService
   ) {
     super();
   }
@@ -360,7 +373,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       return 'skipped';
     }
 
-    const signal = await this.generateTradeSignal(activation, portfolioValue);
+    const { signal, skipReason } = await this.generateTradeSignal(activation, portfolioValue);
 
     if (signal) {
       // Daily loss limit gate: block entry signals when user's rolling 24h losses exceed threshold
@@ -372,6 +385,11 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         this.logger.warn(
           `Daily loss limit blocked activation ${activation.id}: ${signal.action} ${signal.symbol} (entry) for user ${activation.userId}`
         );
+        await this.recordActivationSignalOutcome(activation, signal, SignalStatus.BLOCKED, {
+          reasonCode: SignalReasonCode.DAILY_LOSS_LIMIT,
+          reason: `Daily loss limit blocked ${signal.action} ${signal.symbol}`,
+          metadata: { portfolioValue }
+        });
         return 'blocked';
       }
 
@@ -393,6 +411,11 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           this.logger.warn(
             `Concentration gate blocked activation ${activation.id}: ${signal.action} ${signal.symbol} for user ${activation.userId}: ${concCheck.reason}`
           );
+          await this.recordActivationSignalOutcome(activation, signal, SignalStatus.BLOCKED, {
+            reasonCode: SignalReasonCode.CONCENTRATION_LIMIT,
+            reason: concCheck.reason,
+            metadata: { estimatedTradeUsd }
+          });
           return 'blocked';
         }
       }
@@ -410,11 +433,22 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
           `Trade cooldown blocked activation ${activation.id}: ${signal.action} ${signal.symbol} ` +
             `already claimed by ${cooldownCheck.existingClaim?.pipeline}`
         );
+        await this.recordActivationSignalOutcome(activation, signal, SignalStatus.BLOCKED, {
+          reasonCode: SignalReasonCode.TRADE_COOLDOWN,
+          reason:
+            `Trade cooldown blocked activation ${activation.id}: ${signal.action} ${signal.symbol} ` +
+            `already claimed by ${cooldownCheck.existingClaim?.pipeline}`,
+          metadata: { existingClaim: cooldownCheck.existingClaim?.pipeline }
+        });
         return 'blocked';
       }
 
       try {
-        await this.tradeExecutionService.executeTradeSignal(signal);
+        const order = await this.tradeExecutionService.executeTradeSignal(signal);
+        await this.recordActivationSignalOutcome(activation, signal, SignalStatus.PLACED, {
+          orderId: order.id,
+          quantity: Number(order.executedQuantity ?? order.quantity ?? signal.quantity)
+        });
         this.logger.log(
           `Executed trade for activation ${activation.id} (${activation.algorithm.name}): ${signal.action} ${signal.symbol}`
         );
@@ -422,8 +456,18 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       } catch (error: unknown) {
         // Clear cooldown on failure so next cycle can retry
         await this.tradeCooldownService.clearCooldown(signal.userId, signal.symbol, signal.action);
+        const err = toErrorInfo(error);
+        await this.recordActivationSignalOutcome(activation, signal, SignalStatus.FAILED, {
+          reasonCode: SignalReasonCode.ORDER_EXECUTION_FAILED,
+          reason: err.message
+        });
         throw error;
       }
+    }
+
+    if (skipReason) {
+      await this.recordSkippedSignalOutcome(activation, skipReason);
+      return 'blocked';
     }
 
     this.logger.debug(`No actionable signal for activation ${activation.id} (${activation.algorithm.name})`);
@@ -437,13 +481,13 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   private async generateTradeSignal(
     activation: AlgorithmActivation,
     portfolioValue: number
-  ): Promise<TradeSignalWithExit | null> {
+  ): Promise<GenerateSignalResult> {
     const algorithm = activation.algorithm;
 
     // Skip algorithms without a strategy
     if (!algorithm.strategyId && !algorithm.service) {
       this.logger.debug(`Algorithm ${algorithm.name} has no strategy configured, skipping`);
-      return null;
+      return { signal: null };
     }
 
     // Build execution context
@@ -451,14 +495,14 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
 
     if (!this.contextBuilder.validateContext(context)) {
       this.logger.debug(`Context validation failed for algorithm ${algorithm.name}, skipping`);
-      return null;
+      return { signal: null };
     }
 
     // Execute the algorithm strategy
     const result = await this.algorithmRegistry.executeAlgorithm(activation.algorithmId, context);
 
     if (!result.success || !result.signals || result.signals.length === 0) {
-      return null;
+      return { signal: null };
     }
 
     // Filter to actionable signals with sufficient confidence
@@ -467,7 +511,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     );
 
     if (actionableSignals.length === 0) {
-      return null;
+      return { signal: null };
     }
 
     // Apply signal throttle: cooldowns, daily cap, min sell %
@@ -477,7 +521,23 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     const throttleOutput = this.signalThrottle.filterSignals(throttleInput, throttleState, throttleConfig, Date.now());
 
     if (throttleOutput.length === 0) {
-      return null;
+      const bestThrottled = actionableSignals.reduce((best, cur) =>
+        cur.strength * cur.confidence > best.strength * best.confidence ? cur : best
+      );
+      return {
+        signal: null,
+        skipReason: {
+          reasonCode: SignalReasonCode.SIGNAL_THROTTLED,
+          reason: `All ${actionableSignals.length} actionable signal(s) filtered by throttle`,
+          metadata: { filteredCount: actionableSignals.length },
+          partialSignal: {
+            action: this.mapSignalToAction(bestThrottled.type, 'spot')?.action,
+            symbol: bestThrottled.coinId,
+            confidence: bestThrottled.confidence,
+            positionSide: this.mapSignalToAction(bestThrottled.type, 'spot')?.positionSide
+          }
+        }
+      };
     }
 
     // Map accepted throttle signals back to original algorithm signals
@@ -499,14 +559,30 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     const symbol = await this.resolveTradingSymbol(bestSignal.coinId);
     if (!symbol) {
       this.logger.warn(`Could not resolve trading symbol for coin ${bestSignal.coinId}, skipping`);
-      return null;
+      return {
+        signal: null,
+        skipReason: {
+          reasonCode: SignalReasonCode.SYMBOL_RESOLUTION_FAILED,
+          reason: `Could not resolve trading symbol for coin ${bestSignal.coinId}`,
+          metadata: { coinId: bestSignal.coinId },
+          partialSignal: { confidence: bestSignal.confidence }
+        }
+      };
     }
 
     const marketContext = await this.resolveMarketContext(activation);
     const mapped = this.mapSignalToAction(bestSignal.type, marketContext.marketType);
     if (!mapped) {
       this.logger.warn(`Unknown signal type ${bestSignal.type} for activation ${activation.id}, skipping`);
-      return null;
+      return {
+        signal: null,
+        skipReason: {
+          reasonCode: SignalReasonCode.SIGNAL_VALIDATION_FAILED,
+          reason: `Unknown signal type ${bestSignal.type} for activation ${activation.id}`,
+          metadata: { signalType: bestSignal.type },
+          partialSignal: { symbol, confidence: bestSignal.confidence }
+        }
+      };
     }
     const { action, positionSide } = mapped;
 
@@ -520,7 +596,15 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     } catch (error) {
       const err = toErrorInfo(error);
       this.logger.warn(`Exchange selection failed for activation ${activation.id}: ${err.message}`);
-      return null;
+      return {
+        signal: null,
+        skipReason: {
+          reasonCode: SignalReasonCode.EXCHANGE_SELECTION_FAILED,
+          reason: `Exchange selection failed: ${err.message}`,
+          metadata: { errorMessage: err.message },
+          partialSignal: { action, symbol, confidence: bestSignal.confidence, positionSide }
+        }
+      };
     }
 
     // Re-resolve symbol with correct exchange-specific quote currency if needed
@@ -530,19 +614,22 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       : symbol;
 
     return {
-      algorithmActivationId: activation.id,
-      userId: activation.userId,
-      exchangeKeyId: exchangeKey.id,
-      action,
-      symbol: finalSymbol,
-      quantity: 0,
-      autoSize: true,
-      portfolioValue,
-      allocationPercentage: activation.allocationPercentage || 5.0,
-      marketType: marketContext.marketType,
-      leverage: marketContext.leverage,
-      positionSide,
-      exitConfig
+      signal: {
+        algorithmActivationId: activation.id,
+        userId: activation.userId,
+        exchangeKeyId: exchangeKey.id,
+        action,
+        symbol: finalSymbol,
+        quantity: 0,
+        confidence: bestSignal.confidence,
+        autoSize: true,
+        portfolioValue,
+        allocationPercentage: activation.allocationPercentage || 5.0,
+        marketType: marketContext.marketType,
+        leverage: marketContext.leverage,
+        positionSide,
+        exitConfig
+      }
     };
   }
 
@@ -616,21 +703,6 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Fetch total portfolio USD value for a user
-   * Returns 0 on error for graceful degradation
-   */
-  private async fetchPortfolioValue(user: User): Promise<number> {
-    try {
-      const balances = await this.balanceService.getUserBalances(user);
-      return balances.totalUsdValue || 0;
-    } catch (error) {
-      const err = toErrorInfo(error);
-      this.logger.warn(`Failed to fetch portfolio value for user ${user.id}: ${err.message}`);
-      return 0;
-    }
-  }
-
-  /**
    * Filter out activations belonging to robo-advisor users (algoTradingEnabled=true).
    * Those users are handled exclusively by Pipeline 1 (LiveTradingService).
    */
@@ -688,5 +760,76 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       this.throttleStates.set(activationId, state);
     }
     return state;
+  }
+
+  private async recordActivationSignalOutcome(
+    activation: AlgorithmActivation,
+    signal: TradeSignalWithExit,
+    status: SignalStatus,
+    details: {
+      reasonCode?: SignalReasonCode;
+      reason?: string;
+      metadata?: Record<string, unknown>;
+      orderId?: string;
+      quantity?: number;
+    }
+  ): Promise<void> {
+    try {
+      await this.liveSignalService.recordOutcome({
+        userId: activation.userId,
+        algorithmActivationId: activation.id,
+        action: this.toLiveSignalAction(signal.action, signal.positionSide),
+        symbol: signal.symbol,
+        quantity: details.quantity ?? signal.quantity,
+        confidence: signal.confidence,
+        status,
+        reasonCode: details.reasonCode,
+        reason: details.reason,
+        metadata: details.metadata,
+        orderId: details.orderId,
+        source: SignalSource.LIVE_TRADING
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to record signal outcome for activation ${activation.id}: ${err.message}`, err.stack);
+    }
+  }
+
+  private async recordSkippedSignalOutcome(
+    activation: AlgorithmActivation,
+    skipReason: NonNullable<GenerateSignalResult['skipReason']>
+  ): Promise<void> {
+    try {
+      const partial = skipReason.partialSignal ?? {};
+      const action = partial.action ?? 'BUY';
+      const symbol = partial.symbol ?? 'UNKNOWN';
+      await this.liveSignalService.recordOutcome({
+        userId: activation.userId,
+        algorithmActivationId: activation.id,
+        action: this.toLiveSignalAction(action, partial.positionSide),
+        symbol,
+        quantity: 0,
+        confidence: partial.confidence,
+        status: SignalStatus.BLOCKED,
+        reasonCode: skipReason.reasonCode,
+        reason: skipReason.reason,
+        metadata: skipReason.metadata,
+        source: SignalSource.LIVE_TRADING
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(
+        `Failed to record skipped signal outcome for activation ${activation.id}: ${err.message}`,
+        err.stack
+      );
+    }
+  }
+
+  private toLiveSignalAction(action: 'BUY' | 'SELL', positionSide?: 'long' | 'short'): LiveTradingSignalAction {
+    if (positionSide === 'short') {
+      return action === 'BUY' ? LiveTradingSignalAction.SHORT_EXIT : LiveTradingSignalAction.SHORT_ENTRY;
+    }
+
+    return action === 'BUY' ? LiveTradingSignalAction.BUY : LiveTradingSignalAction.SELL;
   }
 }

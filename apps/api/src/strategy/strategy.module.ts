@@ -9,6 +9,7 @@ import { DeploymentController } from './deployment.controller';
 import { DeploymentService } from './deployment.service';
 import { BacktestRun } from './entities/backtest-run.entity';
 import { Deployment } from './entities/deployment.entity';
+import { LiveTradingSignal } from './entities/live-trading-signal.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { StrategyScore } from './entities/strategy-score.entity';
@@ -23,12 +24,11 @@ import { PositiveReturnsGate } from './gates/positive-returns.gate';
 import { PromotionGateService } from './gates/promotion-gate.service';
 import { VolatilityCapGate } from './gates/volatility-cap.gate';
 import { WFAConsistencyGate } from './gates/wfa-consistency.gate';
+import { LiveSignalService } from './live-signal.service';
 import { LiveTradingService } from './live-trading.service';
 import { PoolStatisticsService } from './pool-statistics.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
-// eslint-disable-next-line import/order
-import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { ConcentrationCheckService } from './risk/concentration-check.service';
 import { ConcentrationRiskCheck } from './risk/concentration-risk.check';
 import { ConsecutiveLossesCheck } from './risk/consecutive-losses.check';
@@ -37,9 +37,11 @@ import { DrawdownBreachCheck } from './risk/drawdown-breach.check';
 import { RiskManagementService } from './risk/risk-management.service';
 import { SharpeDegradationCheck } from './risk/sharpe-degradation.check';
 import { VolatilitySpikeCheck } from './risk/volatility-spike.check';
+import { RiskPoolMappingService } from './risk-pool-mapping.service';
 import { StrategyExecutorService } from './strategy-executor.service';
 import { StrategyController } from './strategy.controller';
 import { StrategyService } from './strategy.service';
+import { LiveSignalCleanupTask } from './tasks/live-signal-cleanup.task';
 import { UserPerformanceService } from './user-performance.service';
 
 import { AdminModule } from '../admin/admin.module';
@@ -62,6 +64,7 @@ import { User } from '../users/users.entity';
   imports: [
     TypeOrmModule.forFeature([
       StrategyConfig,
+      LiveTradingSignal,
       BacktestRun,
       WalkForwardWindow,
       StrategyScore,
@@ -93,6 +96,7 @@ import { User } from '../users/users.entity';
     StrategyExecutorService,
     SignalThrottleService,
     LiveTradingService,
+    LiveSignalService,
     PreTradeRiskGateService,
     DailyLossLimitGateService,
     ConcentrationCheckService,
@@ -114,7 +118,8 @@ import { User } from '../users/users.entity';
     DailyLossLimitCheck,
     ConsecutiveLossesCheck,
     VolatilitySpikeCheck,
-    SharpeDegradationCheck
+    SharpeDegradationCheck,
+    LiveSignalCleanupTask
   ],
   controllers: [StrategyController, DeploymentController, AdminPoolController],
   exports: [
@@ -126,6 +131,7 @@ import { User } from '../users/users.entity';
     PositionTrackingService,
     CapitalAllocationService,
     StrategyExecutorService,
+    LiveSignalService,
     UserPerformanceService,
     DailyLossLimitGateService,
     ConcentrationGateService
