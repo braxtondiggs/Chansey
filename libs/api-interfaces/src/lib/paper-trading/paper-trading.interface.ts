@@ -46,6 +46,13 @@ export enum PaperTradingSignalDirection {
   FLAT = 'FLAT'
 }
 
+export enum PaperTradingSignalStatus {
+  PENDING = 'PENDING',
+  SIMULATED = 'SIMULATED',
+  REJECTED = 'REJECTED',
+  ERROR = 'ERROR'
+}
+
 export interface StopConditions {
   maxDrawdown?: number;
   targetReturn?: number;
@@ -140,6 +147,8 @@ export interface PaperTradingSignal {
   confidence?: number;
   reason?: string;
   processed: boolean;
+  status?: PaperTradingSignalStatus;
+  rejectionCode?: string;
   createdAt: string;
   processedAt?: string;
 }

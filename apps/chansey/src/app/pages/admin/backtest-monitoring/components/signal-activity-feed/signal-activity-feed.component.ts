@@ -253,13 +253,16 @@ export class SignalActivityFeedComponent {
     switch (status) {
       case 'PLACED':
       case 'PROCESSED':
+      case 'SIMULATED':
         return 'success';
       case 'PENDING':
       case 'RECORDED':
         return 'info';
       case 'BLOCKED':
+      case 'REJECTED':
         return 'warn';
       case 'FAILED':
+      case 'ERROR':
         return 'danger';
       default:
         return 'secondary';

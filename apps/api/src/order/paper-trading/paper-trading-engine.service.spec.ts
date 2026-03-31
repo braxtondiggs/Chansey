@@ -246,7 +246,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 1 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.save.mockResolvedValue({});
@@ -323,7 +323,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -412,7 +412,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -496,7 +496,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 50 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     const session = {
@@ -606,7 +606,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 50 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -680,7 +680,7 @@ describe('PaperTradingEngineService', () => {
 
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -770,7 +770,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 1 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -877,7 +877,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 10 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -973,7 +973,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       const session = {
@@ -1049,7 +1049,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1136,7 +1136,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 50 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1216,7 +1216,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 0.5 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1307,7 +1307,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 0.5 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1401,7 +1401,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1475,7 +1475,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       // Custom minHoldMs of 4 hours — held only 2h, should be rejected
@@ -1513,8 +1513,15 @@ describe('PaperTradingEngineService', () => {
         }))
       };
 
-      const { service, accountRepository, snapshotRepository, orderRepository, marketDataService, algorithmRegistry } =
-        createService({ compositeRegimeService, signalFilterChain });
+      const {
+        service,
+        accountRepository,
+        snapshotRepository,
+        orderRepository,
+        marketDataService,
+        algorithmRegistry,
+        signalRepository
+      } = createService({ compositeRegimeService, signalFilterChain });
 
       const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
       accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
@@ -1534,6 +1541,9 @@ describe('PaperTradingEngineService', () => {
         andWhere: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
       });
+
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
+      signalRepository.save.mockImplementation(async (value: any) => value);
 
       snapshotRepository.create.mockReturnValue({});
       snapshotRepository.save.mockResolvedValue({});
@@ -1627,7 +1637,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 25 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1733,7 +1743,7 @@ describe('PaperTradingEngineService', () => {
     feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
     feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
 
-    signalRepository.create.mockReturnValue({ processed: false });
+    signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
     signalRepository.save.mockImplementation(async (value: any) => value);
 
     orderRepository.createQueryBuilder.mockReturnValue({
@@ -1845,7 +1855,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 1 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -1994,7 +2004,7 @@ describe('PaperTradingEngineService', () => {
         holdingPeriodHours: 72
       });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -2089,7 +2099,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       // No enableOpportunitySelling in config — defaults to disabled
@@ -2158,7 +2168,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       const session = {
@@ -2283,7 +2293,7 @@ describe('PaperTradingEngineService', () => {
         holdingPeriodHours: 72
       });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       orderRepository.createQueryBuilder.mockReturnValue({
@@ -2385,7 +2395,7 @@ describe('PaperTradingEngineService', () => {
       feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
       feeCalculator.calculateFee.mockReturnValue({ fee: 5 });
 
-      signalRepository.create.mockReturnValue({ processed: false });
+      signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
 
       const session = {

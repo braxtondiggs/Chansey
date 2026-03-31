@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DataSource, Repository } from 'typeorm';
 
-import { getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
+import { getAllocationLimits, PipelineStage, SignalReasonCode } from '@chansey/api-interfaces';
 
 import {
   PaperTradingAccount,
@@ -15,6 +15,7 @@ import {
   PaperTradingSession,
   PaperTradingSignal,
   PaperTradingSignalDirection,
+  PaperTradingSignalStatus,
   PaperTradingSignalType,
   PaperTradingSnapshot,
   SnapshotHolding
@@ -281,6 +282,17 @@ export class PaperTradingEngineService {
         this.logger.debug(
           `Throttled ${signals.length - filteredSignals.length}/${signals.length} signals for session ${session.id}`
         );
+        // Persist throttled signals as REJECTED with reason code
+        const throttledSymbols = new Set(filteredSignals.map((s) => s.symbol));
+        const throttledSignals = signals.filter((s) => !throttledSymbols.has(s.symbol));
+        for (const blocked of throttledSignals) {
+          const entity = await this.saveSignal(session, blocked);
+          entity.status = PaperTradingSignalStatus.REJECTED;
+          entity.rejectionCode = SignalReasonCode.SIGNAL_THROTTLED;
+          entity.processed = true;
+          entity.processedAt = new Date();
+          await this.signalRepository.save(entity);
+        }
       }
 
       // 5c. Apply regime filter chain: gate BUY in bear/extreme, scale allocations
@@ -308,6 +320,17 @@ export class PaperTradingEngineService {
         this.logger.debug(
           `Regime gate blocked ${regimeResult.regimeGateBlockedCount} signals in ${compositeRegime} regime for session ${session.id}`
         );
+        // Persist regime-gated signals as REJECTED with reason code
+        const regimePassedSymbols = new Set(regimeFilteredSignals.map((s) => s.symbol));
+        const regimeBlockedSignals = filteredSignals.filter((s: TradingSignal) => !regimePassedSymbols.has(s.symbol));
+        for (const blocked of regimeBlockedSignals) {
+          const entity = await this.saveSignal(session, blocked);
+          entity.status = PaperTradingSignalStatus.REJECTED;
+          entity.rejectionCode = SignalReasonCode.REGIME_GATE;
+          entity.processed = true;
+          entity.processedAt = new Date();
+          await this.signalRepository.save(entity);
+        }
       }
 
       // 6. Process signals and execute orders
@@ -331,7 +354,9 @@ export class PaperTradingEngineService {
             );
 
             // Opportunity selling: only when BUY fails due to insufficient funds
+            let opportunitySellingAttempted = false;
             if (result.status === 'insufficient_funds' && signal.action === 'BUY') {
+              opportunitySellingAttempted = true;
               const oppSellCount = await this.attemptOpportunitySelling(
                 session,
                 signal,
@@ -368,6 +393,7 @@ export class PaperTradingEngineService {
 
             if (result.order) {
               ordersExecuted++;
+              signalEntity.status = PaperTradingSignalStatus.SIMULATED;
 
               // Register position in exit tracker on BUY fill
               if (exitTracker && signal.action === 'BUY') {
@@ -404,12 +430,28 @@ export class PaperTradingEngineService {
                 priceMap,
                 quoteCurrency
               );
+            } else {
+              // No order produced — rejected (insufficient_funds, no_position, no_price, hold_period)
+              signalEntity.status = PaperTradingSignalStatus.REJECTED;
+              if (result.status === 'insufficient_funds') {
+                signalEntity.rejectionCode = opportunitySellingAttempted
+                  ? SignalReasonCode.OPPORTUNITY_SELLING_REJECTED
+                  : SignalReasonCode.INSUFFICIENT_FUNDS;
+              } else if (result.status === 'no_price') {
+                signalEntity.rejectionCode = SignalReasonCode.SYMBOL_RESOLUTION_FAILED;
+              } else if (result.status === 'hold_period') {
+                signalEntity.rejectionCode = SignalReasonCode.TRADE_COOLDOWN;
+              }
             }
           } catch (error: unknown) {
             const err = toErrorInfo(error);
             errors.push(`Failed to execute ${signal.action} order for ${signal.symbol}: ${err.message}`);
             this.logger.warn(`Order execution failed: ${err.message}`);
+            signalEntity.status = PaperTradingSignalStatus.ERROR;
           }
+        } else {
+          // HOLD action — valid intentional no-op
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
         }
 
         // Mark signal as processed
@@ -1215,6 +1257,8 @@ export class PaperTradingEngineService {
 
     let ordersExecuted = 0;
     for (const exit of exitSignals) {
+      // Declare signalEntity outside try so catch block can access it
+      let signalEntity: PaperTradingSignal | undefined;
       try {
         // Convert exit signal to trading signal
         const exitTradingSignal: TradingSignal = {
@@ -1233,7 +1277,7 @@ export class PaperTradingEngineService {
         };
 
         // Save signal as RISK_CONTROL type
-        const signalEntity = await this.saveSignal(session, exitTradingSignal);
+        signalEntity = await this.saveSignal(session, exitTradingSignal);
 
         // Execute at the exit's execution price by temporarily overriding the price map
         const exitPriceMap = { ...priceMap, [`${exit.coinId}/${quoteCurrency}`]: exit.executionPrice };
@@ -1262,6 +1306,7 @@ export class PaperTradingEngineService {
             quoteCurrency
           );
           exitTracker.removePosition(exit.coinId);
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
           signalEntity.processed = true;
           signalEntity.processedAt = new Date();
           await this.signalRepository.save(signalEntity);
@@ -1271,6 +1316,7 @@ export class PaperTradingEngineService {
         } else if (result.status === 'no_position') {
           // Position already gone — clean up tracker and mark signal processed
           exitTracker.removePosition(exit.coinId);
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
           signalEntity.processed = true;
           signalEntity.processedAt = new Date();
           await this.signalRepository.save(signalEntity);
@@ -1279,12 +1325,29 @@ export class PaperTradingEngineService {
           );
         } else {
           // Transient failure (no_price, insufficient_funds, hold_period) — keep position tracked for retry
+          signalEntity.status = PaperTradingSignalStatus.REJECTED;
+          if (result.status === 'no_price') {
+            signalEntity.rejectionCode = SignalReasonCode.SYMBOL_RESOLUTION_FAILED;
+          } else if (result.status === 'insufficient_funds') {
+            signalEntity.rejectionCode = SignalReasonCode.INSUFFICIENT_FUNDS;
+          } else if (result.status === 'hold_period') {
+            signalEntity.rejectionCode = SignalReasonCode.TRADE_COOLDOWN;
+          }
+          signalEntity.processed = true;
+          signalEntity.processedAt = new Date();
+          await this.signalRepository.save(signalEntity);
           this.logger.warn(
             `Exit deferred for ${exit.coinId} in session ${session.id}: ${result.status} — will retry next tick`
           );
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
+        if (signalEntity) {
+          signalEntity.status = PaperTradingSignalStatus.ERROR;
+          signalEntity.processed = true;
+          signalEntity.processedAt = new Date();
+          await this.signalRepository.save(signalEntity);
+        }
         this.logger.warn(`Failed to execute exit order for ${exit.coinId}: ${err.message}`);
       }
     }
@@ -1428,9 +1491,14 @@ export class PaperTradingEngineService {
         if (result.order) {
           coveredAmount += (result.order.totalValue ?? 0) - (result.order.fee ?? 0);
           sellCount++;
+          signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+        } else {
+          signalEntity.status = PaperTradingSignalStatus.REJECTED;
+          signalEntity.rejectionCode = SignalReasonCode.INSUFFICIENT_FUNDS;
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
+        signalEntity.status = PaperTradingSignalStatus.ERROR;
         this.logger.warn(`Opportunity sell failed for ${candidate.coinId}: ${err.message}`);
       }
 
