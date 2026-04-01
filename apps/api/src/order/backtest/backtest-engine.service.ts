@@ -120,6 +120,13 @@ export interface TradingSignal {
   exitConfig?: Partial<ExitConfig>;
 }
 
+interface ExecuteTradeResult {
+  trade: Partial<BacktestTrade>;
+  slippageBps: number;
+  fillStatus: SimulatedOrderStatus;
+  requestedQuantity?: number;
+}
+
 interface ExecuteOptions {
   dataset: MarketDataSet;
   deterministicSeed: string;
@@ -730,12 +737,21 @@ export class BacktestEngine {
 
     // Build slippage config from backtest configSnapshot using shared service
     const slippageSnapshot = backtest.configSnapshot?.slippage;
+    const slippageModel = slippageSnapshot
+      ? this.mapSlippageModelType(slippageSnapshot.model as string)
+      : SlippageModelType.FIXED;
+    const riskDefaults =
+      slippageModel === SlippageModelType.VOLUME_BASED
+        ? this.getParticipationDefaults(backtest.configSnapshot?.regime?.riskLevel ?? 3)
+        : undefined;
     const slippageConfig: SlippageConfig = slippageSnapshot
       ? this.slippageService.buildConfig({
-          type: this.mapSlippageModelType(slippageSnapshot.model as string),
+          type: slippageModel,
           fixedBps: slippageSnapshot.fixedBps ?? 5,
-          baseSlippageBps: slippageSnapshot.baseBps ?? 5,
-          volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
+          baseSlippageBps: slippageSnapshot.baseSlippageBps ?? 5,
+          participationRateLimit: slippageSnapshot.participationRateLimit ?? riskDefaults?.participationRateLimit,
+          rejectParticipationRate: slippageSnapshot.rejectParticipationRate ?? riskDefaults?.rejectParticipationRate,
+          volatilityFactor: slippageSnapshot.volatilityFactor
         })
       : DEFAULT_SLIPPAGE_CONFIG;
 
@@ -1080,41 +1096,57 @@ export class BacktestEngine {
         }
 
         if (tradeResult) {
-          const { trade, slippageBps } = tradeResult;
+          const { trade, slippageBps, fillStatus } = tradeResult;
 
-          const baseCoin = coinMap.get(strategySignal.coinId);
-          if (!baseCoin) {
-            throw new Error(
-              `baseCoin not found for coinId ${strategySignal.coinId}. Ensure all coins referenced by the algorithm are included in the backtest.`
-            );
-          }
-
-          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
-          simulatedFills.push({
-            orderType: SimulatedOrderType.MARKET,
-            status: SimulatedOrderStatus.FILLED,
-            filledQuantity: trade.quantity,
-            averagePrice: trade.price,
-            fees: trade.fee,
-            slippageBps,
-            executionTimestamp: timestamp,
-            instrument: strategySignal.coinId,
-            metadata: trade.metadata,
-            backtest
-          });
-
-          // Update exit tracker: register new BUY positions, reduce on SELL
-          if (exitTracker && trade.price != null && trade.quantity != null) {
-            if (strategySignal.action === 'BUY') {
-              exitTracker.onBuy(
-                strategySignal.coinId,
-                trade.price,
-                trade.quantity,
-                undefined,
-                strategySignal.exitConfig
+          if (fillStatus === SimulatedOrderStatus.CANCELLED) {
+            simulatedFills.push({
+              orderType: SimulatedOrderType.MARKET,
+              status: SimulatedOrderStatus.CANCELLED,
+              filledQuantity: 0,
+              averagePrice: trade.price,
+              fees: 0,
+              slippageBps,
+              executionTimestamp: timestamp,
+              instrument: strategySignal.coinId,
+              metadata: { ...trade.metadata, requestedQuantity: tradeResult.requestedQuantity },
+              backtest
+            });
+            if (strategySignal.action === 'BUY') metricsAcc.skippedBuyCount++;
+          } else {
+            const baseCoin = coinMap.get(strategySignal.coinId);
+            if (!baseCoin) {
+              throw new Error(
+                `baseCoin not found for coinId ${strategySignal.coinId}. Ensure all coins referenced by the algorithm are included in the backtest.`
               );
-            } else if (strategySignal.action === 'SELL') {
-              exitTracker.onSell(strategySignal.coinId, trade.quantity);
+            }
+
+            trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
+            simulatedFills.push({
+              orderType: SimulatedOrderType.MARKET,
+              status: fillStatus,
+              filledQuantity: trade.quantity,
+              averagePrice: trade.price,
+              fees: trade.fee,
+              slippageBps,
+              executionTimestamp: timestamp,
+              instrument: strategySignal.coinId,
+              metadata: trade.metadata,
+              backtest
+            });
+
+            // Update exit tracker: register new BUY positions, reduce on SELL
+            if (exitTracker && trade.price != null && trade.quantity != null) {
+              if (strategySignal.action === 'BUY') {
+                exitTracker.onBuy(
+                  strategySignal.coinId,
+                  trade.price,
+                  trade.quantity,
+                  undefined,
+                  strategySignal.exitConfig
+                );
+              } else if (strategySignal.action === 'SELL') {
+                exitTracker.onSell(strategySignal.coinId, trade.quantity);
+              }
             }
           }
         } else if (strategySignal.action === 'BUY') {
@@ -1512,13 +1544,22 @@ export class BacktestEngine {
 
     // Build slippage config from backtest configSnapshot
     const slippageSnapshot = backtest.configSnapshot?.slippage;
+    const lrSlippageModel = slippageSnapshot
+      ? this.mapSlippageModelType(slippageSnapshot.model as string)
+      : SlippageModelType.FIXED;
+    const lrRiskDefaults =
+      lrSlippageModel === SlippageModelType.VOLUME_BASED
+        ? this.getParticipationDefaults(backtest.configSnapshot?.regime?.riskLevel ?? 3)
+        : undefined;
     const slippageConfig: SlippageConfig = slippageSnapshot
-      ? {
-          type: this.mapSlippageModelType(slippageSnapshot.model as string),
+      ? this.slippageService.buildConfig({
+          type: lrSlippageModel,
           fixedBps: slippageSnapshot.fixedBps ?? 5,
-          baseSlippageBps: slippageSnapshot.baseBps ?? 5,
-          volumeImpactFactor: slippageSnapshot.volumeImpactFactor ?? 100
-        }
+          baseSlippageBps: slippageSnapshot.baseSlippageBps ?? 5,
+          participationRateLimit: slippageSnapshot.participationRateLimit ?? lrRiskDefaults?.participationRateLimit,
+          rejectParticipationRate: slippageSnapshot.rejectParticipationRate ?? lrRiskDefaults?.rejectParticipationRate,
+          volatilityFactor: slippageSnapshot.volatilityFactor
+        })
       : DEFAULT_SLIPPAGE_CONFIG;
 
     // Minimum hold period: configurable via options, default 24h
@@ -1943,41 +1984,57 @@ export class BacktestEngine {
           barMinAllocation
         );
         if (tradeResult) {
-          const { trade, slippageBps } = tradeResult;
+          const { trade, slippageBps, fillStatus } = tradeResult;
 
-          const baseCoin = coinMap.get(strategySignal.coinId);
-          if (!baseCoin) {
-            throw new Error(
-              `baseCoin not found for coinId ${strategySignal.coinId}. Ensure all coins referenced by the algorithm are included in the backtest.`
-            );
-          }
-
-          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
-          simulatedFills.push({
-            orderType: SimulatedOrderType.MARKET,
-            status: SimulatedOrderStatus.FILLED,
-            filledQuantity: trade.quantity,
-            averagePrice: trade.price,
-            fees: trade.fee,
-            slippageBps,
-            executionTimestamp: timestamp,
-            instrument: strategySignal.coinId,
-            metadata: trade.metadata,
-            backtest
-          });
-
-          // Update exit tracker: register new BUY positions, reduce on SELL
-          if (exitTracker && trade.price != null && trade.quantity != null) {
-            if (strategySignal.action === 'BUY') {
-              exitTracker.onBuy(
-                strategySignal.coinId,
-                trade.price,
-                trade.quantity,
-                undefined,
-                strategySignal.exitConfig
+          if (fillStatus === SimulatedOrderStatus.CANCELLED) {
+            simulatedFills.push({
+              orderType: SimulatedOrderType.MARKET,
+              status: SimulatedOrderStatus.CANCELLED,
+              filledQuantity: 0,
+              averagePrice: trade.price,
+              fees: 0,
+              slippageBps,
+              executionTimestamp: timestamp,
+              instrument: strategySignal.coinId,
+              metadata: { ...trade.metadata, requestedQuantity: tradeResult.requestedQuantity },
+              backtest
+            });
+            if (strategySignal.action === 'BUY') metricsAcc.skippedBuyCount++;
+          } else {
+            const baseCoin = coinMap.get(strategySignal.coinId);
+            if (!baseCoin) {
+              throw new Error(
+                `baseCoin not found for coinId ${strategySignal.coinId}. Ensure all coins referenced by the algorithm are included in the backtest.`
               );
-            } else if (strategySignal.action === 'SELL') {
-              exitTracker.onSell(strategySignal.coinId, trade.quantity);
+            }
+
+            trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin, quoteCoin });
+            simulatedFills.push({
+              orderType: SimulatedOrderType.MARKET,
+              status: fillStatus,
+              filledQuantity: trade.quantity,
+              averagePrice: trade.price,
+              fees: trade.fee,
+              slippageBps,
+              executionTimestamp: timestamp,
+              instrument: strategySignal.coinId,
+              metadata: trade.metadata,
+              backtest
+            });
+
+            // Update exit tracker: register new BUY positions, reduce on SELL
+            if (exitTracker && trade.price != null && trade.quantity != null) {
+              if (strategySignal.action === 'BUY') {
+                exitTracker.onBuy(
+                  strategySignal.coinId,
+                  trade.price,
+                  trade.quantity,
+                  undefined,
+                  strategySignal.exitConfig
+                );
+              } else if (strategySignal.action === 'SELL') {
+                exitTracker.onSell(strategySignal.coinId, trade.quantity);
+              }
             }
           }
         } else if (strategySignal.action === 'BUY') {
@@ -2395,7 +2452,11 @@ export class BacktestEngine {
    * Extract daily volume from OHLC candles for a specific coin
    */
   private extractDailyVolume(currentPrices: OHLCCandle[], coinId: string): number | undefined {
-    return currentPrices.find((c) => c.coinId === coinId)?.volume;
+    const candle = currentPrices.find((c) => c.coinId === coinId);
+    if (!candle) return undefined;
+    // Convert base-currency volume to quote-currency (USD) for participation rate math.
+    // quoteVolume is preferred but typically NULL (CCXT fetchOHLCV doesn't provide it).
+    return candle.quoteVolume ?? (candle.volume ? candle.volume * candle.close : undefined);
   }
 
   private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {
@@ -2412,6 +2473,20 @@ export class BacktestEngine {
     );
   }
 
+  private getParticipationDefaults(riskLevel: number): {
+    participationRateLimit: number;
+    rejectParticipationRate: number;
+  } {
+    const defaults = [
+      { participationRateLimit: 0.02, rejectParticipationRate: 0.25 }, // risk 1
+      { participationRateLimit: 0.03, rejectParticipationRate: 0.3 }, // risk 2
+      { participationRateLimit: 0.05, rejectParticipationRate: 0.5 }, // risk 3
+      { participationRateLimit: 0.08, rejectParticipationRate: 0.6 }, // risk 4
+      { participationRateLimit: 0.1, rejectParticipationRate: 0.75 } // risk 5
+    ];
+    return defaults[Math.max(0, Math.min(4, (riskLevel ?? 3) - 1))];
+  }
+
   private async executeTrade(
     signal: TradingSignal,
     portfolio: Portfolio,
@@ -2424,7 +2499,7 @@ export class BacktestEngine {
     maxAllocation: number = getAllocationLimits().maxAllocation,
     minAllocation: number = getAllocationLimits().minAllocation,
     defaultLeverage = 1
-  ): Promise<{ trade: Partial<BacktestTrade>; slippageBps: number } | null> {
+  ): Promise<ExecuteTradeResult | null> {
     const marketPrice = marketData.prices.get(signal.coinId);
     if (!marketPrice) {
       this.logger.warn(`No price data available for coin ${signal.coinId}`);
@@ -2458,54 +2533,61 @@ export class BacktestEngine {
         ? signal.metadata.stopExecutionPrice
         : marketPrice;
 
-    const isBuy = signal.action === 'BUY';
     let quantity = 0;
     let totalValue = 0;
+    let slippageBps = 0;
+    let price = basePrice;
+    let fillStatus = SimulatedOrderStatus.FILLED;
+    let requestedQuantity: number | undefined;
 
-    // Calculate slippage based on estimated order size and market volume
-    let estimatedQuantity: number;
-    if (signal.quantity) {
-      estimatedQuantity = signal.quantity;
-    } else if (isBuy) {
-      // For BUY: estimate based on typical portfolio allocation (10%)
-      estimatedQuantity = (portfolio.totalValue * 0.1) / basePrice;
-    } else {
-      // For SELL: estimate based on existing position (50% as reasonable middle-ground)
-      const existingPosition = portfolio.positions.get(signal.coinId);
-      estimatedQuantity = (existingPosition?.quantity ?? 0) * 0.5;
-    }
-
-    // Use shared SlippageService for consistent slippage calculation
-    const slippageResult = this.slippageService.calculateSlippage(
-      {
-        price: basePrice,
-        quantity: estimatedQuantity,
-        isBuy,
-        dailyVolume
-      },
-      slippageConfig
-    );
-    const slippageBps = slippageResult.slippageBps;
-    const price = slippageResult.executionPrice;
-
-    if (isBuy) {
+    if (signal.action === 'BUY') {
       // Position sizing priority: quantity > percentage > confidence > random
+      // Size on basePrice (market price) — slippage applied after sizing
       if (signal.quantity) {
-        // Use explicit quantity if provided
         quantity = signal.quantity;
       } else if (signal.percentage) {
-        // Use percentage (from signal.strength) if provided
         const investmentAmount = portfolio.totalValue * signal.percentage;
-        quantity = investmentAmount / price;
+        quantity = investmentAmount / basePrice;
       } else if (signal.confidence !== undefined) {
-        // Use confidence-based sizing: higher confidence = larger position (scaled between min and max allocation)
         const confidenceBasedAllocation = minAllocation + signal.confidence * (maxAllocation - minAllocation);
         const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
-        quantity = investmentAmount / price;
+        quantity = investmentAmount / basePrice;
       } else {
-        // Fallback to random allocation (within min–max range of portfolio)
         const investmentAmount = portfolio.totalValue * Math.min(maxAllocation, Math.max(minAllocation, rng.next()));
-        quantity = investmentAmount / price;
+        quantity = investmentAmount / basePrice;
+      }
+
+      // Calculate slippage on actual quantity
+      const slippageResult = this.slippageService.calculateSlippage(
+        { price: basePrice, quantity, isBuy: true, dailyVolume },
+        slippageConfig
+      );
+      slippageBps = slippageResult.slippageBps;
+      price = slippageResult.executionPrice;
+
+      // Volume-aware fill assessment on actual quantity
+      const buyFillAssessment = this.slippageService.assessFillability(
+        quantity * price,
+        price,
+        dailyVolume,
+        slippageConfig
+      );
+      if (buyFillAssessment.fillStatus === 'CANCELLED') {
+        return {
+          trade: {
+            quantity: 0,
+            price,
+            metadata: { volumeRejection: true, reason: buyFillAssessment.reason }
+          } as Partial<BacktestTrade>,
+          slippageBps,
+          fillStatus: SimulatedOrderStatus.CANCELLED,
+          requestedQuantity: quantity
+        };
+      }
+      if (buyFillAssessment.fillStatus === 'PARTIAL') {
+        requestedQuantity = quantity;
+        quantity = buyFillAssessment.fillableQuantity;
+        fillStatus = SimulatedOrderStatus.PARTIAL;
       }
 
       totalValue = quantity * price;
@@ -2575,20 +2657,50 @@ export class BacktestEngine {
 
       // Position sizing priority: quantity > percentage > confidence > random
       if (signal.quantity) {
-        // Use explicit quantity if provided
         quantity = signal.quantity;
       } else if (signal.percentage) {
-        // Use percentage (from signal.strength) to determine portion to sell
         quantity = existingPosition.quantity * Math.min(1, signal.percentage);
       } else if (signal.confidence !== undefined) {
-        // Use confidence-based sizing: higher confidence = sell more (25% to 100% of position)
         const confidenceBasedPercent = 0.25 + signal.confidence * 0.75;
         quantity = existingPosition.quantity * confidenceBasedPercent;
       } else {
-        // Fallback to random exit size (25-100% of position)
         quantity = existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
       }
       quantity = Math.min(quantity, existingPosition.quantity);
+
+      // Calculate slippage on actual quantity
+      const slippageResult = this.slippageService.calculateSlippage(
+        { price: basePrice, quantity, isBuy: false, dailyVolume },
+        slippageConfig
+      );
+      slippageBps = slippageResult.slippageBps;
+      price = slippageResult.executionPrice;
+
+      // Volume-aware fill assessment on actual quantity
+      const sellFillAssessment = this.slippageService.assessFillability(
+        quantity * price,
+        price,
+        dailyVolume,
+        slippageConfig
+      );
+      if (sellFillAssessment.fillStatus === 'CANCELLED') {
+        return {
+          trade: {
+            quantity: 0,
+            price,
+            metadata: { volumeRejection: true, reason: sellFillAssessment.reason }
+          } as Partial<BacktestTrade>,
+          slippageBps,
+          fillStatus: SimulatedOrderStatus.CANCELLED,
+          requestedQuantity: quantity
+        };
+      }
+      if (sellFillAssessment.fillStatus === 'PARTIAL') {
+        requestedQuantity = quantity;
+        quantity = Math.min(sellFillAssessment.fillableQuantity, existingPosition.quantity);
+        fillStatus = SimulatedOrderStatus.PARTIAL;
+      }
+
       totalValue = quantity * price;
 
       // Calculate realized P&L: (sell price - cost basis) * quantity
@@ -2620,18 +2732,52 @@ export class BacktestEngine {
       );
 
       // Position sizing priority: quantity > percentage > confidence > random
+      // Size on basePrice (market price) — slippage applied after sizing
       if (signal.quantity) {
         quantity = signal.quantity;
       } else if (signal.percentage) {
         const investmentAmount = portfolio.totalValue * signal.percentage;
-        quantity = investmentAmount / price;
+        quantity = investmentAmount / basePrice;
       } else if (signal.confidence !== undefined) {
         const confidenceBasedAllocation = minAllocation + signal.confidence * (maxAllocation - minAllocation);
         const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
-        quantity = investmentAmount / price;
+        quantity = investmentAmount / basePrice;
       } else {
         const investmentAmount = portfolio.totalValue * Math.min(maxAllocation, Math.max(minAllocation, rng.next()));
-        quantity = investmentAmount / price;
+        quantity = investmentAmount / basePrice;
+      }
+
+      // Calculate slippage on actual quantity (opening short = selling)
+      const slippageResult = this.slippageService.calculateSlippage(
+        { price: basePrice, quantity, isBuy: false, dailyVolume },
+        slippageConfig
+      );
+      slippageBps = slippageResult.slippageBps;
+      price = slippageResult.executionPrice;
+
+      // Volume-aware fill assessment on actual quantity
+      const shortFillAssessment = this.slippageService.assessFillability(
+        quantity * price,
+        price,
+        dailyVolume,
+        slippageConfig
+      );
+      if (shortFillAssessment.fillStatus === 'CANCELLED') {
+        return {
+          trade: {
+            quantity: 0,
+            price,
+            metadata: { volumeRejection: true, reason: shortFillAssessment.reason }
+          } as Partial<BacktestTrade>,
+          slippageBps,
+          fillStatus: SimulatedOrderStatus.CANCELLED,
+          requestedQuantity: quantity
+        };
+      }
+      if (shortFillAssessment.fillStatus === 'PARTIAL') {
+        requestedQuantity = quantity;
+        quantity = shortFillAssessment.fillableQuantity;
+        fillStatus = SimulatedOrderStatus.PARTIAL;
       }
 
       const marginAmount = (quantity * price) / shortLeverage;
@@ -2694,6 +2840,39 @@ export class BacktestEngine {
         quantity = existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
       }
       quantity = Math.min(quantity, existingPosition.quantity);
+
+      // Calculate slippage on actual quantity (closing short = buying)
+      const slippageResult = this.slippageService.calculateSlippage(
+        { price: basePrice, quantity, isBuy: true, dailyVolume },
+        slippageConfig
+      );
+      slippageBps = slippageResult.slippageBps;
+      price = slippageResult.executionPrice;
+
+      // Volume-aware fill assessment on actual quantity
+      const closeShortFillAssessment = this.slippageService.assessFillability(
+        quantity * price,
+        price,
+        dailyVolume,
+        slippageConfig
+      );
+      if (closeShortFillAssessment.fillStatus === 'CANCELLED') {
+        return {
+          trade: {
+            quantity: 0,
+            price,
+            metadata: { volumeRejection: true, reason: closeShortFillAssessment.reason }
+          } as Partial<BacktestTrade>,
+          slippageBps,
+          fillStatus: SimulatedOrderStatus.CANCELLED,
+          requestedQuantity: quantity
+        };
+      }
+      if (closeShortFillAssessment.fillStatus === 'PARTIAL') {
+        requestedQuantity = quantity;
+        quantity = Math.min(closeShortFillAssessment.fillableQuantity, existingPosition.quantity);
+        fillStatus = SimulatedOrderStatus.PARTIAL;
+      }
 
       // Calculate realized P&L: (entryPrice - exitPrice) * quantity (inverted from long)
       realizedPnL = (costBasis - price) * quantity;
@@ -2768,10 +2947,13 @@ export class BacktestEngine {
           confidence: signal.confidence ?? 0,
           basePrice, // Original price before slippage
           slippageBps, // Simulated slippage applied
-          ...(holdTimeMs !== undefined && { holdTimeMs })
+          ...(holdTimeMs !== undefined && { holdTimeMs }),
+          ...(fillStatus === SimulatedOrderStatus.PARTIAL && { fillStatus: 'PARTIAL', requestedQuantity })
         }
       } as Partial<BacktestTrade>,
-      slippageBps
+      slippageBps,
+      fillStatus,
+      requestedQuantity
     };
   }
 
@@ -2925,8 +3107,27 @@ export class BacktestEngine {
       );
 
       if (tradeResult) {
-        const { trade, slippageBps } = tradeResult;
-        if (fullFidelity) {
+        const { trade, slippageBps, fillStatus } = tradeResult;
+        if (fillStatus === SimulatedOrderStatus.CANCELLED) {
+          if (fullFidelity) {
+            opts.simulatedFills!.push({
+              orderType: SimulatedOrderType.MARKET,
+              status: SimulatedOrderStatus.CANCELLED,
+              filledQuantity: 0,
+              averagePrice: trade.price,
+              fees: 0,
+              slippageBps,
+              executionTimestamp: timestamp,
+              instrument: exitSig.coinId,
+              metadata: {
+                ...(trade.metadata ?? {}),
+                exitType: exitSig.exitType,
+                requestedQuantity: tradeResult.requestedQuantity
+              },
+              backtest: opts.backtest
+            });
+          }
+        } else if (fullFidelity) {
           const baseCoin = opts.coinMap?.get(exitSig.coinId);
           trades.push({
             ...trade,
@@ -2937,7 +3138,7 @@ export class BacktestEngine {
           });
           opts.simulatedFills!.push({
             orderType: SimulatedOrderType.MARKET,
-            status: SimulatedOrderStatus.FILLED,
+            status: fillStatus,
             filledQuantity: trade.quantity,
             averagePrice: trade.price,
             fees: trade.fee,
@@ -3168,26 +3369,45 @@ export class BacktestEngine {
         0
       );
       if (sellResult) {
-        const { trade, slippageBps } = sellResult;
-        const baseCoin = coinMap.get(candidate.coinId);
+        const { trade, slippageBps, fillStatus } = sellResult;
+        if (fillStatus === SimulatedOrderStatus.CANCELLED) {
+          simulatedFills.push({
+            orderType: SimulatedOrderType.MARKET,
+            status: SimulatedOrderStatus.CANCELLED,
+            filledQuantity: 0,
+            averagePrice: trade.price,
+            fees: 0,
+            slippageBps,
+            executionTimestamp: timestamp,
+            instrument: candidate.coinId,
+            metadata: {
+              ...(trade.metadata ?? {}),
+              opportunitySell: true,
+              requestedQuantity: sellResult.requestedQuantity
+            },
+            backtest
+          });
+        } else {
+          const baseCoin = coinMap.get(candidate.coinId);
 
-        trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin: baseCoin || undefined, quoteCoin });
-        simulatedFills.push({
-          orderType: SimulatedOrderType.MARKET,
-          status: SimulatedOrderStatus.FILLED,
-          filledQuantity: trade.quantity,
-          averagePrice: trade.price,
-          fees: trade.fee,
-          slippageBps,
-          executionTimestamp: timestamp,
-          instrument: candidate.coinId,
-          metadata: { ...(trade.metadata ?? {}), opportunitySell: true },
-          backtest
-        });
+          trades.push({ ...trade, executedAt: timestamp, backtest, baseCoin: baseCoin || undefined, quoteCoin });
+          simulatedFills.push({
+            orderType: SimulatedOrderType.MARKET,
+            status: fillStatus,
+            filledQuantity: trade.quantity,
+            averagePrice: trade.price,
+            fees: trade.fee,
+            slippageBps,
+            executionTimestamp: timestamp,
+            instrument: candidate.coinId,
+            metadata: { ...(trade.metadata ?? {}), opportunitySell: true },
+            backtest
+          });
 
-        totalSellValue += (trade.quantity ?? 0) * (trade.price ?? 0);
-        remainingShortfall -= (trade.quantity ?? 0) * (trade.price ?? 0);
-        sellExecuted = true;
+          totalSellValue += (trade.quantity ?? 0) * (trade.price ?? 0);
+          remainingShortfall -= (trade.quantity ?? 0) * (trade.price ?? 0);
+          sellExecuted = true;
+        }
       }
     }
 
@@ -3598,7 +3818,8 @@ export class BacktestEngine {
     for (const tsKey of timestamps) {
       for (const candle of pricesByTimestamp[tsKey]) {
         if (candle.volume != null) {
-          volumeMap.set(`${tsKey}:${candle.coinId}`, candle.volume);
+          const quoteVol = candle.quoteVolume ?? candle.volume * candle.close;
+          volumeMap.set(`${tsKey}:${candle.coinId}`, quoteVol);
         }
       }
     }
@@ -3817,7 +4038,7 @@ export class BacktestEngine {
           optMaxAllocation,
           optMinAllocation
         );
-        if (tradeResult) {
+        if (tradeResult && tradeResult.fillStatus !== SimulatedOrderStatus.CANCELLED) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
           if (optExitTracker && tradeResult.trade.price != null && tradeResult.trade.quantity != null) {
             if (strategySignal.action === 'BUY') {
@@ -4136,7 +4357,8 @@ export class BacktestEngine {
     for (const tsKey of timestamps) {
       for (const candle of pricesByTimestamp[tsKey]) {
         if (candle.volume != null) {
-          volumeMap.set(`${tsKey}:${candle.coinId}`, candle.volume);
+          const quoteVol = candle.quoteVolume ?? candle.volume * candle.close;
+          volumeMap.set(`${tsKey}:${candle.coinId}`, quoteVol);
         }
       }
     }
@@ -4281,7 +4503,7 @@ export class BacktestEngine {
           optMaxAllocation,
           optMinAllocation
         );
-        if (tradeResult) {
+        if (tradeResult && tradeResult.fillStatus !== SimulatedOrderStatus.CANCELLED) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
           if (coreExitTracker && tradeResult.trade.price != null && tradeResult.trade.quantity != null) {
             if (strategySignal.action === 'BUY') {

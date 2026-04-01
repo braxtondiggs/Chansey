@@ -193,8 +193,10 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
         slippage: {
           model: createBacktestDto.slippageModel || 'fixed',
           fixedBps: createBacktestDto.slippageFixedBps ?? 5,
-          baseBps: createBacktestDto.slippageBaseBps ?? 5,
-          volumeImpactFactor: createBacktestDto.slippageVolumeImpactFactor ?? 100
+          baseSlippageBps: createBacktestDto.slippageBaseBps ?? 5,
+          participationRateLimit: createBacktestDto.slippageParticipationRate,
+          rejectParticipationRate: createBacktestDto.slippageRejectThreshold,
+          volatilityFactor: createBacktestDto.slippageVolatilityFactor
         },
         regime: {
           enableRegimeGate: createBacktestDto.enableRegimeGate,

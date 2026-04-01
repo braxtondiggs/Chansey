@@ -29,10 +29,14 @@ export interface SlippageConfig {
   fixedBps?: number;
   /** Base slippage in basis points (for VOLUME_BASED model) */
   baseSlippageBps?: number;
-  /** Multiplier for volume impact (for VOLUME_BASED model) */
-  volumeImpactFactor?: number;
   /** Maximum slippage in basis points (default: 500 = 5%) */
   maxSlippageBps?: number;
+  /** Max fraction of daily volume for a single order (e.g., 0.05 = 5%). Undefined = no limit. */
+  participationRateLimit?: number;
+  /** If raw order exceeds this fraction, reject entirely (e.g., 0.50 = 50%). Undefined = no rejection. */
+  rejectParticipationRate?: number;
+  /** Volatility factor (sigma) for square-root impact model (default: 0.1) */
+  volatilityFactor?: number;
 }
 
 /**
@@ -64,13 +68,25 @@ export interface SlippageInput {
 }
 
 /**
+ * Fill assessment result from volume participation analysis
+ */
+export interface FillAssessment {
+  fillable: boolean;
+  fillableQuantity: number;
+  fillStatus: 'FILLED' | 'PARTIAL' | 'CANCELLED';
+  participationRate: number;
+  reason?: string;
+}
+
+/**
  * Default slippage configuration
  * Uses fixed 5 bps (0.05%) slippage as a conservative default
  */
 export const DEFAULT_SLIPPAGE_CONFIG: SlippageConfig = {
   type: SlippageModelType.FIXED,
   fixedBps: 5,
-  maxSlippageBps: 500
+  maxSlippageBps: 500,
+  volatilityFactor: 0.1
 };
 
 /**
@@ -110,4 +126,19 @@ export interface ISlippageService {
    * @returns Complete SlippageConfig with defaults applied
    */
   buildConfig(config?: Partial<SlippageConfig>): SlippageConfig;
+
+  /**
+   * Assess whether an order can be filled given daily volume constraints
+   * @param orderValue Total order value in quote currency
+   * @param price Current price per unit
+   * @param dailyVolume Daily trading volume in quote currency
+   * @param config Slippage configuration with participation limits
+   * @returns FillAssessment with fillable quantity and status
+   */
+  assessFillability(
+    orderValue: number,
+    price: number,
+    dailyVolume: number | undefined,
+    config?: SlippageConfig
+  ): FillAssessment;
 }
