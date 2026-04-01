@@ -71,3 +71,26 @@ export interface ExchangeKey {
   supportsFutures?: boolean;
   createdAt?: Date;
 }
+
+export type ExchangeKeyHealthStatus = 'healthy' | 'unhealthy' | 'warning' | 'deactivated' | 'unknown';
+export type ExchangeKeyErrorCategory =
+  | 'authentication'
+  | 'permission'
+  | 'nonce'
+  | 'exchange_down'
+  | 'rate_limit'
+  | 'network'
+  | 'unknown';
+
+export interface ExchangeKeyHealthSummary {
+  id: string;
+  exchangeId: string;
+  exchange: { id: string; name: string; slug: string };
+  healthStatus: ExchangeKeyHealthStatus;
+  lastHealthCheckAt: Date | null;
+  consecutiveFailures: number;
+  lastErrorCategory: ExchangeKeyErrorCategory | null;
+  lastErrorMessage: string | null;
+  deactivatedByHealthCheck: boolean;
+  isActive: boolean;
+}

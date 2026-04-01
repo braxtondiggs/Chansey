@@ -2,6 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Exclude } from 'class-transformer';
 
+import type { ExchangeKeyErrorCategory, ExchangeKeyHealthStatus } from '@chansey/api-interfaces';
+
 export class ExchangeKeyResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the exchange key',
@@ -69,7 +71,7 @@ export class ExchangeKeyResponseDto {
     description: 'Current health status of the exchange key',
     example: 'healthy'
   })
-  healthStatus: string;
+  healthStatus: ExchangeKeyHealthStatus;
 
   @ApiProperty({
     description: 'When the last health check was performed',
@@ -89,7 +91,7 @@ export class ExchangeKeyResponseDto {
     example: 'authentication',
     nullable: true
   })
-  lastErrorCategory: string | null;
+  lastErrorCategory: ExchangeKeyErrorCategory | null;
 
   @ApiProperty({
     description: 'Message of the last error',

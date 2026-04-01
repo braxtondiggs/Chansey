@@ -3,6 +3,7 @@ import { Component, computed, DestroyRef, effect, inject, signal } from '@angula
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 
 import { ExchangeBalanceComponent } from '../../shared/components/exchange-balance/exchange-balance.component';
+import { ExchangeStatusAlertComponent } from '../../shared/components/exchange-status-alert/exchange-status-alert.component';
 import { GettingStartedComponent } from '../../shared/components/getting-started/getting-started.component';
 import { RecentTransactionsComponent } from '../../shared/components/recent-transactions/recent-transactions.component';
 import { UserAssetsComponent } from '../../shared/components/user-assets/user-assets.component';
@@ -14,6 +15,7 @@ import { LayoutService } from '../../shared/services/layout.service';
   imports: [
     ProgressSpinnerModule,
     ExchangeBalanceComponent,
+    ExchangeStatusAlertComponent,
     GettingStartedComponent,
     UserAssetsComponent,
     RecentTransactionsComponent
