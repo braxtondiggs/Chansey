@@ -10,11 +10,11 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { AxiosError } from 'axios';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { SimplePriceRequestDto, SimplePriceResponseDto } from './dto/simple-price-request.dto';
 
+import { extractCoinGeckoStatusCode } from '../shared/coingecko-error.util';
 import { toErrorInfo } from '../shared/error.util';
 import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
 import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
@@ -189,16 +189,15 @@ export class SimplePriceController {
       }
 
       // Handle CoinGecko API errors
-      if (error instanceof AxiosError) {
-        if (error.response?.status === 429) {
-          throw new InternalServerErrorException(
-            'Rate limit exceeded. Please wait a moment before making another request.'
-          );
-        }
+      const status = extractCoinGeckoStatusCode(error);
+      if (status === 429) {
+        throw new InternalServerErrorException(
+          'Rate limit exceeded. Please wait a moment before making another request.'
+        );
+      }
 
-        if (error.response?.status && error.response.status >= 400 && error.response.status < 500) {
-          throw new BadRequestException(`Invalid request to CoinGecko API: ${err.message}`);
-        }
+      if (status && status >= 400 && status < 500) {
+        throw new BadRequestException(`Invalid request to CoinGecko API: ${err.message}`);
       }
 
       // General error fallback

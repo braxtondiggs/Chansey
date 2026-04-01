@@ -2,7 +2,6 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { AxiosError } from 'axios';
 import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
 import { In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
@@ -14,6 +13,7 @@ import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
 import { CoinNotFoundException } from '../common/exceptions/resource';
 import { CircuitBreakerService, CircuitOpenError } from '../shared';
+import { extractCoinGeckoStatusCode } from '../shared/coingecko-error.util';
 import { User } from '../users/users.entity';
 import { stripHtml } from '../utils/strip-html.util';
 import { stripNullProps } from '../utils/strip-null-props.util';
@@ -282,7 +282,7 @@ export class CoinService {
 
       return [];
     } catch (error: unknown) {
-      if (error instanceof AxiosError && error.response?.status === 404) {
+      if (extractCoinGeckoStatusCode(error) === 404) {
         throw new CoinNotFoundException(coinId);
       }
       this.logger.error(
@@ -418,21 +418,21 @@ export class CoinService {
 
       return coinDetail;
     } catch (error: unknown) {
-      if (error instanceof AxiosError) {
-        // Handle rate limiting (429) by trying to return cached data
-        if (error.response?.status === 429) {
-          this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
-          const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
-          if (cached) {
-            this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
-            return cached;
-          }
-        }
+      const status = extractCoinGeckoStatusCode(error);
 
-        // Handle 404 - coin not found
-        if (error.response?.status === 404) {
-          throw new CoinNotFoundException(coinGeckoId, 'slug');
+      // Handle rate limiting (429) by trying to return cached data
+      if (status === 429) {
+        this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
+        const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
+        if (cached) {
+          this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
+          return cached;
         }
+      }
+
+      // Handle 404 - coin not found
+      if (status === 404) {
+        throw new CoinNotFoundException(coinGeckoId, 'slug');
       }
 
       throw error;

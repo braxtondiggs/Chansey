@@ -2,12 +2,12 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { AxiosError, AxiosHeaders } from 'axios';
 import { Repository } from 'typeorm';
 
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 
+import { CoinNotFoundException } from '../common/exceptions/resource';
 import { CircuitBreakerService } from '../shared';
 
 const originalSetTimeout = global.setTimeout;
@@ -25,17 +25,8 @@ const createTestCoin = (overrides: Partial<Coin> & Record<string, unknown> = {})
   } as Coin;
 };
 
-const makeAxiosError = (status: number, statusText: string, code?: string) =>
-  Object.assign(
-    new AxiosError(statusText, code ?? String(status), undefined, undefined, {
-      status,
-      statusText,
-      headers: {},
-      config: { headers: new AxiosHeaders() },
-      data: {}
-    }),
-    code ? { code } : {}
-  );
+const makeCoinGeckoError = (status: number, statusText: string, code?: string) =>
+  code ? new Error(`Connection refused (${code})`) : new Error(`got error from coin gecko. status code: ${status}`);
 
 describe('CoinService', () => {
   let service: CoinService;
@@ -164,7 +155,7 @@ describe('CoinService', () => {
     it('falls back to cached data on 429 rate limit', async () => {
       const cachedDetail = { id: 'bitcoin', description: { en: 'cached' } };
       cacheManager.get.mockResolvedValueOnce(null); // first check: miss
-      geckoMock.coinId.mockRejectedValueOnce(makeAxiosError(429, 'Too Many Requests'));
+      geckoMock.coinId.mockRejectedValueOnce(makeCoinGeckoError(429, 'Too Many Requests'));
       cacheManager.get.mockResolvedValueOnce(cachedDetail); // fallback check: hit
 
       const result = await (service as any).fetchCoinDetail('bitcoin');
@@ -173,12 +164,12 @@ describe('CoinService', () => {
 
     it('throws CoinNotFoundException on 404', async () => {
       cacheManager.get.mockResolvedValueOnce(null);
-      geckoMock.coinId.mockRejectedValueOnce(makeAxiosError(404, 'Not Found'));
+      geckoMock.coinId.mockRejectedValueOnce(makeCoinGeckoError(404, 'Not Found'));
 
-      await expect((service as any).fetchCoinDetail('invalid-coin')).rejects.toThrow();
+      await expect((service as any).fetchCoinDetail('invalid-coin')).rejects.toThrow(CoinNotFoundException);
     });
 
-    it('re-throws non-Axios errors', async () => {
+    it('re-throws non-CoinGecko errors', async () => {
       cacheManager.get.mockResolvedValueOnce(null);
       geckoMock.coinId.mockRejectedValueOnce(new Error('Network error'));
 
@@ -190,6 +181,12 @@ describe('CoinService', () => {
   // fetchMarketChart()
   // ===========================================================================
   describe('fetchMarketChart()', () => {
+    let circuitBreaker: { isOpen: jest.Mock; recordSuccess: jest.Mock; recordFailure: jest.Mock };
+
+    beforeEach(() => {
+      circuitBreaker = (service as any).circuitBreaker;
+    });
+
     it('fetches chart data from CoinGecko and caches the result', async () => {
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
 
@@ -199,6 +196,7 @@ describe('CoinService', () => {
         expect.objectContaining({ id: 'bitcoin', vs_currency: 'usd', days: 7 })
       );
       expect(cacheManager.set).toHaveBeenCalledWith('coingecko:chart:bitcoin:7d', result, 900);
+      expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('coingecko-chart');
     });
 
     it('returns cached chart data on cache hit', async () => {
@@ -212,7 +210,7 @@ describe('CoinService', () => {
 
     it('throws user-friendly error on network failure with no cache', async () => {
       cacheManager.get.mockResolvedValue(null); // all cache lookups miss
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeAxiosError(0, 'Connection refused', 'ECONNREFUSED'));
+      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeCoinGeckoError(0, 'Connection refused', 'ECONNREFUSED'));
 
       await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
         'Unable to fetch chart data. Please try again later.'
@@ -221,22 +219,24 @@ describe('CoinService', () => {
 
     it('falls back to cached data on 429 rate limit', async () => {
       const cachedChart = { prices: [[Date.now(), 42000]] };
-      cacheManager.get.mockResolvedValueOnce(null); // first check: miss
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeAxiosError(429, 'Too Many Requests'));
-      cacheManager.get.mockResolvedValueOnce(cachedChart); // fallback check: hit
+      cacheManager.get.mockResolvedValueOnce(null); // primary cache: miss
+      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeCoinGeckoError(429, 'Too Many Requests'));
+      cacheManager.get.mockResolvedValueOnce(cachedChart); // catch-block primary cache retry: hit
 
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
       expect(result).toBe(cachedChart);
+      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
     });
 
     it('falls back to cached data on timeout', async () => {
       const cachedChart = { prices: [[Date.now(), 41000]] };
-      cacheManager.get.mockResolvedValueOnce(null);
+      cacheManager.get.mockResolvedValueOnce(null); // primary cache: miss
       geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('CoinGecko API timeout'));
-      cacheManager.get.mockResolvedValueOnce(cachedChart);
+      cacheManager.get.mockResolvedValueOnce(cachedChart); // catch-block primary cache retry: hit
 
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
       expect(result).toBe(cachedChart);
+      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
     });
 
     it('throws user-friendly error on timeout with no cache', async () => {
@@ -246,6 +246,41 @@ describe('CoinService', () => {
       await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
         'Unable to fetch chart data. Please try again later.'
       );
+    });
+
+    it('skips API call and returns stale cache when circuit breaker is open', async () => {
+      const staleChart = { prices: [[Date.now(), 40000]] };
+      circuitBreaker.isOpen.mockReturnValue(true);
+      cacheManager.get
+        .mockResolvedValueOnce(null) // primary cache: miss
+        .mockResolvedValueOnce(staleChart); // stale cache: hit
+
+      const result = await (service as any).fetchMarketChart('bitcoin', 7);
+
+      expect(result).toBe(staleChart);
+      expect(geckoMock.coinIdMarketChart).not.toHaveBeenCalled();
+    });
+
+    it('throws when circuit breaker is open and no stale cache exists', async () => {
+      circuitBreaker.isOpen.mockReturnValue(true);
+      cacheManager.get.mockResolvedValue(null); // all cache lookups miss
+
+      await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
+        'Unable to fetch chart data. Please try again later.'
+      );
+      expect(geckoMock.coinIdMarketChart).not.toHaveBeenCalled();
+    });
+
+    it('falls back to stale cache when primary cache retry misses', async () => {
+      const staleChart = { prices: [[Date.now(), 39000]] };
+      cacheManager.get
+        .mockResolvedValueOnce(null) // primary cache: miss
+        .mockResolvedValueOnce(null) // catch-block primary cache retry: miss
+        .mockResolvedValueOnce(staleChart); // stale cache: hit
+      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('API down'));
+
+      const result = await (service as any).fetchMarketChart('bitcoin', 7);
+      expect(result).toBe(staleChart);
     });
   });
 
@@ -300,10 +335,10 @@ describe('CoinService', () => {
       expect(result.description).toBe('Bitcoin mock description');
     });
 
-    it('throws NotFoundException when slug does not exist', async () => {
+    it('throws CoinNotFoundException when slug does not exist', async () => {
       coinRepository.findOne.mockResolvedValue(null);
 
-      await expect((service as any).getCoinDetailBySlug('invalid-slug')).rejects.toThrow();
+      await expect((service as any).getCoinDetailBySlug('invalid-slug')).rejects.toThrow(CoinNotFoundException);
     });
 
     it('gracefully continues with DB data when CoinGecko fetch fails', async () => {
@@ -344,10 +379,10 @@ describe('CoinService', () => {
       expect(result.generatedAt).toBeInstanceOf(Date);
     });
 
-    it('throws NotFoundException when slug does not exist', async () => {
+    it('throws CoinNotFoundException when slug does not exist', async () => {
       coinRepository.findOne.mockResolvedValue(null);
 
-      await expect((service as any).getMarketChart('missing', '7d')).rejects.toThrow();
+      await expect((service as any).getMarketChart('missing', '7d')).rejects.toThrow(CoinNotFoundException);
     });
 
     it('propagates error when CoinGecko fails and no cache exists', async () => {
@@ -355,7 +390,9 @@ describe('CoinService', () => {
       geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('API down'));
       cacheManager.get.mockResolvedValue(null); // no cache
 
-      await expect((service as any).getMarketChart('bitcoin', '7d')).rejects.toThrow();
+      await expect((service as any).getMarketChart('bitcoin', '7d')).rejects.toThrow(
+        'Unable to fetch chart data. Please try again later.'
+      );
     });
   });
 
@@ -388,7 +425,7 @@ describe('CoinService', () => {
     it('throws CoinNotFoundException when fail=true and coin not found', async () => {
       coinRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.getCoinBySymbol('FAKE')).rejects.toThrow();
+      await expect(service.getCoinBySymbol('FAKE')).rejects.toThrow(CoinNotFoundException);
     });
 
     it('returns null when fail=false and coin not found', async () => {
@@ -414,7 +451,7 @@ describe('CoinService', () => {
     it('throws CoinNotFoundException when not found', async () => {
       coinRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.getCoinById('missing')).rejects.toThrow();
+      await expect(service.getCoinById('missing')).rejects.toThrow(CoinNotFoundException);
     });
   });
 
