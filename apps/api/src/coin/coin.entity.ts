@@ -378,6 +378,12 @@ export class Coin {
   metadataLastUpdated?: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true, default: null })
+  @ApiProperty({
+    description: 'Timestamp when the coin was soft-delisted (null if active)',
+    example: '2026-03-15T00:00:00Z',
+    required: false,
+    type: Date
+  })
   delistedAt?: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz', select: false })

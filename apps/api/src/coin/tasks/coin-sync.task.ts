@@ -343,9 +343,10 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       const allCoinsIncludingDelisted = await this.coin.getCoins({ includeDelisted: true });
       const delistedCoins = allCoinsIncludingDelisted.filter((c) => c.delistedAt != null);
 
+      const justDelistedSet = new Set(uniqueCoinsToRemove);
       const coinsToRelist: string[] = [];
       for (const coin of delistedCoins) {
-        if (geckoCoinsSet.has(coin.slug) && usedCoinSlugs.has(coin.slug)) {
+        if (geckoCoinsSet.has(coin.slug) && usedCoinSlugs.has(coin.slug) && !justDelistedSet.has(coin.id)) {
           coinsToRelist.push(coin.id);
         }
       }
