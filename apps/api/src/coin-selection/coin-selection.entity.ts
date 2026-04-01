@@ -11,14 +11,13 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
+import { CoinSelectionSource } from './coin-selection-source.enum';
 import { CoinSelectionType } from './coin-selection-type.enum';
 
 import { Coin } from '../coin/coin.entity';
 import { User } from '../users/users.entity';
 
 @Entity('coin_selection')
-@Index(['coin', 'user', 'type'], { unique: true })
-@Index(['id', 'user'], { unique: true })
 export class CoinSelection {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
@@ -39,6 +38,22 @@ export class CoinSelection {
     enum: CoinSelectionType
   })
   type: CoinSelectionType;
+
+  @Column({
+    type: 'enum',
+    enum: CoinSelectionSource,
+    nullable: true,
+    default: null,
+    enumName: 'coin_selection_source_enum'
+  })
+  @ApiProperty({
+    description: 'Source that created this selection (null for manual/watched)',
+    example: CoinSelectionSource.RISK_BASED,
+    enum: CoinSelectionSource,
+    nullable: true,
+    required: false
+  })
+  source: CoinSelectionSource | null;
 
   @CreateDateColumn({ type: 'timestamptz', select: false })
   createdAt: Date;

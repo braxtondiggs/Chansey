@@ -15,7 +15,9 @@ import { UpdateFuturesEnabledDto, UpdateOpportunitySellingConfigDto, UpdateUserD
 import { User } from './users.entity';
 import { UserWithExchanges } from './users.types';
 
+import { ActivePositionGuardService } from '../active-position-guard';
 import { CoinService } from '../coin/coin.service';
+import { CoinSelectionSource } from '../coin-selection/coin-selection-source.enum';
 import { CoinSelectionType } from '../coin-selection/coin-selection-type.enum';
 import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
@@ -40,7 +42,8 @@ export class UsersService {
     private readonly coinSelection: CoinSelectionService,
     private readonly coin: CoinService,
     private readonly exchangeKeyService: ExchangeKeyService,
-    private readonly riskPoolMapping: RiskPoolMappingService
+    private readonly riskPoolMapping: RiskPoolMappingService,
+    private readonly activePositionGuard: ActivePositionGuardService
   ) {}
 
   async create(user: Partial<User>): Promise<UserWithExchanges> {
@@ -193,7 +196,9 @@ export class UsersService {
   }
 
   async updateCoinSelectionByUserRisk(user: User) {
-    await this.coinSelection.bulkDeleteAutomaticSelections(user.id);
+    const guardedCoinIds = await this.activePositionGuard.getActivePositionCoinIds(user.id);
+
+    await this.coinSelection.bulkDeleteAutomaticSelections(user.id, CoinSelectionSource.RISK_BASED, guardedCoinIds);
 
     // Custom risk users manage their own trading coins manually
     if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) return;
@@ -205,7 +210,8 @@ export class UsersService {
         this.coinSelection.createCoinSelectionItem(
           {
             coinId: coin.id,
-            type: CoinSelectionType.AUTOMATIC
+            type: CoinSelectionType.AUTOMATIC,
+            source: CoinSelectionSource.RISK_BASED
           },
           user
         )

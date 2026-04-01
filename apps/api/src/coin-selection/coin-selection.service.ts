@@ -1,8 +1,9 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
+import { CoinSelectionSource } from './coin-selection-source.enum';
 import { CoinSelectionType } from './coin-selection-type.enum';
 import { CoinSelection, CoinSelectionRelations } from './coin-selection.entity';
 import { CreateCoinSelectionDto, UpdateCoinSelectionDto } from './dto';
@@ -81,7 +82,8 @@ export class CoinSelectionService {
         user: {
           id: user.id
         },
-        type: dto.type
+        type: dto.type,
+        source: dto.source ?? IsNull()
       }
     });
 
@@ -93,7 +95,8 @@ export class CoinSelectionService {
     const newSelection = this.coinSelection.create({
       coin: { id: dto.coinId },
       user,
-      type: dto.type
+      type: dto.type,
+      source: dto.source ?? null
     });
 
     const savedSelection = await this.coinSelection.save(newSelection);
@@ -135,11 +138,25 @@ export class CoinSelectionService {
     return items.map((p) => p.coin.symbol.toUpperCase());
   }
 
-  async bulkDeleteAutomaticSelections(userId: string) {
-    return this.coinSelection.delete({
-      user: { id: userId },
-      type: CoinSelectionType.AUTOMATIC
-    });
+  async bulkDeleteAutomaticSelections(userId: string, source?: CoinSelectionSource, excludeCoinIds?: Set<string>) {
+    const qb = this.coinSelection
+      .createQueryBuilder()
+      .delete()
+      .from(CoinSelection)
+      .where('"userId" = :userId', { userId })
+      .andWhere('type = :type', { type: CoinSelectionType.AUTOMATIC });
+
+    if (source) {
+      qb.andWhere('source = :source', { source });
+    }
+
+    if (excludeCoinIds && excludeCoinIds.size > 0) {
+      qb.andWhere('"coinId" NOT IN (:...excludeCoinIds)', {
+        excludeCoinIds: [...excludeCoinIds]
+      });
+    }
+
+    return qb.execute();
   }
 
   async deleteCoinSelectionItem(selectionId: string, userId: string) {
