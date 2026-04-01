@@ -66,10 +66,12 @@ export function estimateSpreadHighLow(
   volume?: number,
   referenceVolume = 1_000_000
 ): number {
-  if (high === low || close <= 0) {
+  if (high <= low || close <= 0) {
     return 0;
   }
 
+  // Empirical heuristic: the bid-ask spread is roughly 30% of the high-low range.
+  // Derived from Corwin-Schultz (2012) estimates on liquid crypto pairs.
   const RANGE_TO_SPREAD_RATIO = 0.3;
   const rangeFraction = (high - low) / close;
   let spread = rangeFraction * RANGE_TO_SPREAD_RATIO;

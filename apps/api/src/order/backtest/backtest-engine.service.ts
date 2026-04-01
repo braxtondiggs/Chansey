@@ -848,7 +848,8 @@ export class BacktestEngine {
     let lastHeartbeatTime = Date.now();
     const HEARTBEAT_INTERVAL_MS = 30_000;
 
-    // Track previous candle per coin for spread estimation context
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
     const prevCandleMap = new Map<string, OHLCCandle>();
 
     for (let i = startIndex; i < effectiveTimestampCount; i++) {
@@ -1669,7 +1670,8 @@ export class BacktestEngine {
     const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
     let consecutivePauseFailures = 0;
 
-    // Track previous candle per coin for spread estimation context
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
     const prevCandleMap = new Map<string, OHLCCandle>();
 
     for (let i = startIndex; i < effectiveTimestampCount; i++) {
@@ -4001,7 +4003,8 @@ export class BacktestEngine {
     // Reusable price map
     const currentPriceMap = new Map<string, number>();
 
-    // Track previous candle per coin for spread estimation context
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
     const optPrevCandleMap = new Map<string, OHLCCandle>();
 
     for (let i = 0; i < timestamps.length; i++) {
@@ -4482,7 +4485,8 @@ export class BacktestEngine {
     // Reusable price map to avoid new Map() allocation per iteration
     const currentPriceMap = new Map<string, number>();
 
-    // Track previous candle per coin for spread estimation context
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
     const optPrevCandleMap = new Map<string, OHLCCandle>();
 
     for (let i = 0; i < timestamps.length; i++) {
