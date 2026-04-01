@@ -2527,4 +2527,45 @@ describe('PaperTradingEngineService', () => {
       expect(result.processed).toBe(true);
     });
   });
+
+  it('does not produce duplicate signals when multiple symbols share a base currency', async () => {
+    const { service, accountRepository, snapshotRepository, orderRepository, marketDataService, algorithmRegistry } =
+      createService();
+
+    const quoteAccount = { currency: 'USDT', available: 10000, total: 10000 };
+
+    accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
+
+    // Two symbols sharing the same base currency (ETH)
+    marketDataService.getPrices.mockResolvedValue(
+      new Map([
+        ['ETH/USDT', { price: 1900 }],
+        ['ETH/BTC', { price: 0.05 }]
+      ])
+    );
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-dedup', initialCapital: 10000, tickCount: 5, user: { id: 'user-1' } } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    await service.processTick(session, exchangeKey);
+
+    // Algorithm should receive only one coin entry for ETH, not two
+    const algorithmCall = algorithmRegistry.executeAlgorithm.mock.calls[0];
+    const context = algorithmCall[1]; // second argument is the AlgorithmContext
+    const ethCoins = context.coins.filter((c: any) => c.id === 'ETH');
+
+    expect(ethCoins).toHaveLength(1);
+  });
 });

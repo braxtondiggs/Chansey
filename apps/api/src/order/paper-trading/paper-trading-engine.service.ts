@@ -1077,14 +1077,15 @@ export class PaperTradingEngineService {
    * Helper: Extract coins from prices map
    */
   private extractCoinsFromPrices(prices: Record<string, number>): Array<{ id: string; symbol: string }> {
+    const seen = new Set<string>();
     const coins: Array<{ id: string; symbol: string }> = [];
 
     for (const symbol of Object.keys(prices)) {
       const [baseCurrency] = symbol.split('/');
-      coins.push({
-        id: baseCurrency,
-        symbol: baseCurrency
-      });
+      if (!seen.has(baseCurrency)) {
+        seen.add(baseCurrency);
+        coins.push({ id: baseCurrency, symbol: baseCurrency });
+      }
     }
 
     return coins;
@@ -1104,13 +1105,14 @@ export class PaperTradingEngineService {
     for (const [symbol, price] of Object.entries(prices)) {
       const [baseCurrency] = symbol.split('/');
       const candles = historicalCandles[symbol] ?? [];
+      const candidate =
+        candles.length > 0
+          ? [...candles, { avg: price, high: price, low: price, date: now }]
+          : [{ avg: price, high: price, low: price, date: now }];
 
-      if (candles.length > 0) {
-        // Use historical candles + append current price as latest data point
-        priceData[baseCurrency] = [...candles, { avg: price, high: price, low: price, date: now }];
-      } else {
-        // Fallback: single price point (algorithm will skip due to insufficient data)
-        priceData[baseCurrency] = [{ avg: price, high: price, low: price, date: now }];
+      // Keep the entry with the most candles (richest indicator data)
+      if (!priceData[baseCurrency] || candidate.length > priceData[baseCurrency].length) {
+        priceData[baseCurrency] = candidate;
       }
     }
 
