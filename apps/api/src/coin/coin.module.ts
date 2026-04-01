@@ -2,6 +2,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { CoinListingEvent } from './coin-listing-event.entity';
+import { CoinListingEventService } from './coin-listing-event.service';
 import { CoinController, CoinsController } from './coin.controller';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
@@ -20,9 +22,9 @@ import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   controllers: [CoinController, CoinsController, SimplePriceController],
-  exports: [CoinService, TickerPairService, TickerPairSyncTask],
+  exports: [CoinService, CoinListingEventService, TickerPairService, TickerPairSyncTask],
   imports: [
-    TypeOrmModule.forFeature([Coin, CoinSelection, TickerPairs]),
+    TypeOrmModule.forFeature([Coin, CoinSelection, TickerPairs, CoinListingEvent]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
@@ -31,6 +33,6 @@ import { SharedCacheModule } from '../shared-cache.module';
     BullModule.registerQueue({ name: 'coin-queue' }),
     BullModule.registerQueue({ name: 'ticker-pairs-queue' })
   ],
-  providers: [CoinService, CoinSyncTask, TickerPairService, TickerPairSyncTask]
+  providers: [CoinService, CoinListingEventService, CoinSyncTask, TickerPairService, TickerPairSyncTask]
 })
 export class CoinModule {}

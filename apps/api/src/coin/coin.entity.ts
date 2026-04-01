@@ -377,6 +377,9 @@ export class Coin {
   })
   metadataLastUpdated?: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true, default: null })
+  delistedAt?: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', select: false })
   @ApiProperty({
     description: 'Timestamp when the coin was created',
