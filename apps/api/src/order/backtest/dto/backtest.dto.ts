@@ -228,7 +228,7 @@ export class CreateBacktestDto {
 
   @IsNumber()
   @Min(0)
-  @Max(100)
+  @Max(500)
   @IsOptional()
   @ApiProperty({
     description: 'Base slippage for volume-based model in basis points',
@@ -241,18 +241,44 @@ export class CreateBacktestDto {
   slippageBaseBps?: number = 5;
 
   @IsNumber()
-  @Min(0)
-  @Max(1000)
+  @Min(0.01)
+  @Max(0.5)
   @IsOptional()
   @ApiProperty({
-    description: 'Volume impact factor for volume-based slippage model',
-    example: 100,
-    default: 100,
-    minimum: 0,
-    maximum: 1000,
+    description: 'Max fraction of daily volume for a single order (e.g., 0.05 = 5%)',
+    example: 0.05,
+    minimum: 0.01,
+    maximum: 0.5,
     required: false
   })
-  slippageVolumeImpactFactor?: number = 100;
+  slippageParticipationRate?: number;
+
+  @IsNumber()
+  @Min(0.1)
+  @Max(1.0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'If order exceeds this fraction of daily volume, reject entirely (e.g., 0.50 = 50%)',
+    example: 0.5,
+    minimum: 0.1,
+    maximum: 1.0,
+    required: false
+  })
+  slippageRejectThreshold?: number;
+
+  @IsNumber()
+  @Min(0.01)
+  @Max(1.0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Volatility factor (sigma) for square-root impact model',
+    example: 0.1,
+    default: 0.1,
+    minimum: 0.01,
+    maximum: 1.0,
+    required: false
+  })
+  slippageVolatilityFactor?: number;
 
   @IsDateString()
   @IsNotEmpty()

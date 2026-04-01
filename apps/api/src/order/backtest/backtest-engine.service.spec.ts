@@ -289,7 +289,7 @@ describe('BacktestEngine.executeTrade', () => {
         createMarketData('BTC', 100),
         0,
         { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000000000 // High volume
       );
 
@@ -299,7 +299,7 @@ describe('BacktestEngine.executeTrade', () => {
         createMarketData('BTC', 100),
         0,
         { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000 // Low volume
       );
 
@@ -308,8 +308,8 @@ describe('BacktestEngine.executeTrade', () => {
     });
   });
 
-  describe('Bug Fix: SELL slippage estimation uses position quantity', () => {
-    it('uses existing position quantity for SELL slippage estimation (percentage)', async () => {
+  describe('SELL slippage uses actual position quantity', () => {
+    it('uses actual position quantity for SELL slippage calculation (percentage)', async () => {
       const engine = createEngine();
       // Large portfolio ($100,000) with small position (10 BTC @ $100 = $1,000)
       // Selling 50% should estimate slippage for 5 BTC, not $10,000 worth
@@ -345,16 +345,15 @@ describe('BacktestEngine.executeTrade', () => {
         createMarketData('BTC', 100),
         0,
         { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000 // $1M daily volume
       );
 
       expect(result).toBeTruthy();
       // Should sell 5 BTC (50% of 10)
       expect(result.trade.quantity).toBeCloseTo(5);
-      // Slippage should be reasonable given 5 BTC * $100 = $500 vs $10k volume
-      // Not inflated due to $10,000 (10% of $100k portfolio) estimate
-      expect(result.trade.metadata?.slippageBps).toBeLessThanOrEqual(15);
+      // Slippage uses square-root model on actual quantity: 5 + 0.1 * sqrt(500/10000) * 10000 ≈ 228.6 bps
+      expect(result.trade.metadata?.slippageBps).toBeLessThanOrEqual(250);
     });
 
     it('calculates volume-based slippage correctly for SELL trades with no explicit quantity', async () => {
@@ -389,7 +388,7 @@ describe('BacktestEngine.executeTrade', () => {
         createMarketData('BTC', 100),
         0,
         { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000 // Low volume
       );
 
@@ -399,7 +398,7 @@ describe('BacktestEngine.executeTrade', () => {
         createMarketData('BTC', 100),
         0,
         { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000000 // High volume
       );
 
@@ -459,7 +458,7 @@ describe('BacktestEngine.executeTrade', () => {
         createMarketData('BTC', 100),
         0,
         { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000
       );
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import {
   DEFAULT_SLIPPAGE_CONFIG,
+  FillAssessment,
   ISlippageService,
   SlippageConfig,
   SlippageInput,
@@ -75,12 +76,17 @@ export class SlippageService implements ISlippageService {
         break;
 
       case SlippageModelType.VOLUME_BASED: {
-        // Slippage increases with order size relative to daily volume
         const orderValue = quantity * price;
-        const volumeRatio = dailyVolume && dailyVolume > 0 ? orderValue / dailyVolume : 0.001;
         const baseSlippage = effectiveConfig.baseSlippageBps ?? 5;
-        const volumeImpact = effectiveConfig.volumeImpactFactor ?? 100;
-        slippageBps = baseSlippage + volumeRatio * volumeImpact;
+        if (!dailyVolume || dailyVolume <= 0) {
+          slippageBps = baseSlippage;
+          break;
+        }
+        const participationRate = orderValue / dailyVolume;
+        const sigma = effectiveConfig.volatilityFactor ?? 0.1;
+        // Almgren-Chriss square-root temporary impact: impact ∝ σ * √(Q/V)
+        const impactDecimal = sigma * Math.sqrt(participationRate);
+        slippageBps = baseSlippage + impactDecimal * 10000;
         break;
       }
 
@@ -109,6 +115,63 @@ export class SlippageService implements ISlippageService {
   }
 
   /**
+   * Assess whether an order can be filled given daily volume constraints.
+   * Only applies participation limits for VOLUME_BASED model with defined volume.
+   */
+  assessFillability(
+    orderValue: number,
+    price: number,
+    dailyVolume: number | undefined,
+    config: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG
+  ): FillAssessment {
+    const effectiveConfig = this.buildConfig(config);
+    const orderQuantity = price > 0 ? orderValue / price : 0;
+
+    // Non-VOLUME_BASED models or missing volume: always full fill
+    if (effectiveConfig.type !== SlippageModelType.VOLUME_BASED || !dailyVolume || dailyVolume <= 0) {
+      return { fillable: true, fillableQuantity: orderQuantity, fillStatus: 'FILLED', participationRate: 0 };
+    }
+
+    const rawParticipationRate = orderValue / dailyVolume;
+
+    // Check rejection threshold first
+    if (
+      effectiveConfig.rejectParticipationRate != null &&
+      rawParticipationRate >= effectiveConfig.rejectParticipationRate
+    ) {
+      return {
+        fillable: false,
+        fillableQuantity: 0,
+        fillStatus: 'CANCELLED',
+        participationRate: rawParticipationRate,
+        reason: `Order participation rate ${(rawParticipationRate * 100).toFixed(1)}% exceeds rejection threshold ${(effectiveConfig.rejectParticipationRate * 100).toFixed(1)}%`
+      };
+    }
+
+    // Check participation rate limit for partial fill
+    if (
+      effectiveConfig.participationRateLimit != null &&
+      rawParticipationRate > effectiveConfig.participationRateLimit
+    ) {
+      const fillableQuantity = (effectiveConfig.participationRateLimit * dailyVolume) / price;
+      return {
+        fillable: true,
+        fillableQuantity,
+        fillStatus: 'PARTIAL',
+        participationRate: rawParticipationRate,
+        reason: `Order capped to ${(effectiveConfig.participationRateLimit * 100).toFixed(1)}% participation rate`
+      };
+    }
+
+    return {
+      fillable: true,
+      fillableQuantity: orderQuantity,
+      fillStatus: 'FILLED',
+      participationRate: rawParticipationRate
+    };
+  }
+
+  /**
    * Build complete configuration from partial inputs with defaults
    */
   buildConfig(config?: Partial<SlippageConfig>): SlippageConfig {
@@ -116,8 +179,10 @@ export class SlippageService implements ISlippageService {
       type: config?.type ?? SlippageModelType.FIXED,
       fixedBps: config?.fixedBps ?? 5,
       baseSlippageBps: config?.baseSlippageBps ?? 5,
-      volumeImpactFactor: config?.volumeImpactFactor ?? 100,
-      maxSlippageBps: config?.maxSlippageBps ?? 500
+      maxSlippageBps: config?.maxSlippageBps ?? 500,
+      participationRateLimit: config?.participationRateLimit,
+      rejectParticipationRate: config?.rejectParticipationRate,
+      volatilityFactor: config?.volatilityFactor ?? 0.1
     };
   }
 }

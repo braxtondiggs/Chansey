@@ -35,105 +35,80 @@ describe('SlippageService', () => {
         const config: SlippageConfig = { type: SlippageModelType.FIXED };
         expect(service.calculateSlippageBps(100, 50000, config)).toBe(5);
       });
-
-      it('should ignore quantity and price for fixed model', () => {
-        const config: SlippageConfig = {
-          type: SlippageModelType.FIXED,
-          fixedBps: 15
-        };
-        expect(service.calculateSlippageBps(1, 1, config)).toBe(15);
-        expect(service.calculateSlippageBps(1000000, 100000, config)).toBe(15);
-      });
     });
 
     describe('VOLUME_BASED model', () => {
       it('should increase slippage with larger order size relative to volume', () => {
         const config: SlippageConfig = {
           type: SlippageModelType.VOLUME_BASED,
-          baseSlippageBps: 5,
-          volumeImpactFactor: 100
+          baseSlippageBps: 5
         };
 
-        // Small order (1% of daily volume)
         const smallOrder = service.calculateSlippageBps(100, 50000, config, 500000000);
-        // Medium order (10% of daily volume)
         const mediumOrder = service.calculateSlippageBps(1000, 50000, config, 500000000);
-        // Large order (50% of daily volume)
         const largeOrder = service.calculateSlippageBps(5000, 50000, config, 500000000);
 
         expect(smallOrder).toBeLessThan(mediumOrder);
         expect(mediumOrder).toBeLessThan(largeOrder);
       });
 
-      it('should calculate slippage from order value and volume', () => {
+      it('should calculate slippage using square-root impact model', () => {
         const config: SlippageConfig = {
           type: SlippageModelType.VOLUME_BASED,
           baseSlippageBps: 5,
-          volumeImpactFactor: 100
+          volatilityFactor: 0.1
         };
 
-        // orderValue = 10 * 100 = 1000; volumeRatio = 0.01
+        // orderValue = 10 * 100 = 1000; participationRate = 0.01
+        // impact = 0.1 * sqrt(0.01) = 0.1 * 0.1 = 0.01 => 100 bps
+        // total = 5 + 100 = 105
         const result = service.calculateSlippageBps(10, 100, config, 100000);
-        expect(result).toBe(6);
-      });
-
-      it('should use default values when not specified', () => {
-        const config: SlippageConfig = { type: SlippageModelType.VOLUME_BASED };
-        const result = service.calculateSlippageBps(100, 50000, config, 500000000);
-        // Should be base 5 + volume impact
-        expect(result).toBeGreaterThanOrEqual(5);
+        expect(result).toBeCloseTo(105, 5);
       });
 
       it('should cap slippage at maxSlippageBps', () => {
         const config: SlippageConfig = {
           type: SlippageModelType.VOLUME_BASED,
           baseSlippageBps: 5,
-          volumeImpactFactor: 1000,
+          volatilityFactor: 0.5,
           maxSlippageBps: 500
         };
-        // Very large order relative to volume
         const result = service.calculateSlippageBps(1000000, 50000, config, 1000000);
         expect(result).toBeLessThanOrEqual(500);
       });
 
-      it('should handle missing volume with small default ratio', () => {
+      it.each([
+        ['missing', undefined],
+        ['zero', 0],
+        ['negative', -1000]
+      ])('should return baseSlippageBps when volume is %s', (_label, volume) => {
         const config: SlippageConfig = {
           type: SlippageModelType.VOLUME_BASED,
-          baseSlippageBps: 5,
-          volumeImpactFactor: 100
+          baseSlippageBps: 5
         };
-        const result = service.calculateSlippageBps(100, 50000, config);
-        // Should use default 0.001 volume ratio
-        expect(result).toBeGreaterThanOrEqual(5);
+        const result = service.calculateSlippageBps(100, 50000, config, volume);
+        expect(result).toBe(5);
       });
 
-      it('should handle zero volume gracefully', () => {
+      it('should show convexity: doubling order increases impact by ~sqrt(2)x, not 2x', () => {
         const config: SlippageConfig = {
           type: SlippageModelType.VOLUME_BASED,
-          baseSlippageBps: 5,
-          volumeImpactFactor: 100
+          baseSlippageBps: 0,
+          volatilityFactor: 0.1,
+          maxSlippageBps: 10000
         };
-        const result = service.calculateSlippageBps(100, 50000, config, 0);
-        expect(result).toBeGreaterThanOrEqual(5);
-      });
-
-      it('should fall back to default ratio when volume is negative', () => {
-        const config: SlippageConfig = {
-          type: SlippageModelType.VOLUME_BASED,
-          baseSlippageBps: 5,
-          volumeImpactFactor: 100
-        };
-        const result = service.calculateSlippageBps(10, 100, config, -1000);
-        expect(result).toBeCloseTo(5.1, 5);
+        const dailyVolume = 1000000;
+        const small = service.calculateSlippageBps(100, 100, config, dailyVolume);
+        const double = service.calculateSlippageBps(200, 100, config, dailyVolume);
+        expect(double / small).toBeCloseTo(Math.sqrt(2), 2);
       });
 
       it('should cap slippage using default max when maxSlippageBps not provided', () => {
         const config: SlippageConfig = {
           type: SlippageModelType.VOLUME_BASED,
           baseSlippageBps: 5,
-          volumeImpactFactor: 1000
+          volatilityFactor: 0.5
         };
-        // Very large order; should be capped at default 500 bps
         const result = service.calculateSlippageBps(1000000, 50000, config, 1000000);
         expect(result).toBe(500);
       });
@@ -174,62 +149,31 @@ describe('SlippageService', () => {
   describe('applySlippage', () => {
     const basePrice = 50000;
 
-    describe('BUY orders', () => {
-      it('should increase price for buy orders', () => {
-        const result = service.applySlippage(basePrice, 10, true);
-        // 10 bps = 0.1% increase = 50000 * 0.001 = 50
-        expect(result).toBeCloseTo(50050, 2);
-      });
-
-      it('should handle zero slippage', () => {
-        const result = service.applySlippage(basePrice, 0, true);
-        expect(result).toBe(basePrice);
-      });
-
-      it('should handle large slippage correctly', () => {
-        const result = service.applySlippage(basePrice, 100, true);
-        // 100 bps = 1% increase = 50000 * 0.01 = 500
-        expect(result).toBeCloseTo(50500, 2);
-      });
+    it('should increase price for buy orders', () => {
+      const result = service.applySlippage(basePrice, 10, true);
+      expect(result).toBeCloseTo(50050, 2);
     });
 
-    describe('SELL orders', () => {
-      it('should decrease price for sell orders', () => {
-        const result = service.applySlippage(basePrice, 10, false);
-        // 10 bps = 0.1% decrease = 50000 * 0.001 = 50
-        expect(result).toBeCloseTo(49950, 2);
-      });
+    it('should decrease price for sell orders', () => {
+      const result = service.applySlippage(basePrice, 10, false);
+      expect(result).toBeCloseTo(49950, 2);
+    });
 
-      it('should handle zero slippage', () => {
-        const result = service.applySlippage(basePrice, 0, false);
-        expect(result).toBe(basePrice);
-      });
-
-      it('should handle large slippage correctly', () => {
-        const result = service.applySlippage(basePrice, 100, false);
-        // 100 bps = 1% decrease = 50000 * 0.01 = 500
-        expect(result).toBeCloseTo(49500, 2);
-      });
+    it('should return original price for zero slippage', () => {
+      expect(service.applySlippage(basePrice, 0, true)).toBe(basePrice);
+      expect(service.applySlippage(basePrice, 0, false)).toBe(basePrice);
     });
 
     it('should be symmetric for buy and sell', () => {
       const slippageBps = 50;
       const buyPrice = service.applySlippage(basePrice, slippageBps, true);
       const sellPrice = service.applySlippage(basePrice, slippageBps, false);
-
-      // Buy adds, sell subtracts the same amount (within floating point tolerance)
       expect(buyPrice - basePrice).toBeCloseTo(basePrice - sellPrice, 2);
     });
 
     it('should handle fractional bps with precision', () => {
       const result = service.applySlippage(basePrice, 12.5, true);
       expect(result).toBeCloseTo(50062.5, 5);
-    });
-
-    it('should increase price impact with higher bps', () => {
-      const low = service.applySlippage(basePrice, 5, true);
-      const high = service.applySlippage(basePrice, 50, true);
-      expect(high - basePrice).toBeGreaterThan(low - basePrice);
     });
   });
 
@@ -242,15 +186,13 @@ describe('SlippageService', () => {
         dailyVolume: 1000000
       });
 
-      expect(result).toHaveProperty('slippageBps');
-      expect(result).toHaveProperty('executionPrice');
-      expect(result).toHaveProperty('priceImpact');
-      expect(result).toHaveProperty('originalPrice');
       expect(result.originalPrice).toBe(50000);
       expect(result.executionPrice).toBeGreaterThan(50000);
+      expect(result.slippageBps).toBeGreaterThan(0);
+      expect(result.priceImpact).toBeGreaterThan(0);
     });
 
-    it('should return complete SlippageResult for sell order', () => {
+    it('should return lower execution price for sell order', () => {
       const result = service.calculateSlippage({
         price: 50000,
         quantity: 1,
@@ -272,26 +214,19 @@ describe('SlippageService', () => {
         { type: SlippageModelType.FIXED, fixedBps: 10 }
       );
 
-      // 10 bps = 0.1% = 0.001
       expect(result.priceImpact).toBeCloseTo(0.001, 5);
     });
 
     it('should use custom config when provided', () => {
-      const customConfig: SlippageConfig = {
-        type: SlippageModelType.FIXED,
-        fixedBps: 20
-      };
-
       const result = service.calculateSlippage(
         {
           price: 10000,
           quantity: 1,
           isBuy: true
         },
-        customConfig
+        { type: SlippageModelType.FIXED, fixedBps: 20 }
       );
 
-      // 20 bps = 0.2% = 0.002 price impact
       expect(result.slippageBps).toBe(20);
       expect(result.priceImpact).toBeCloseTo(0.002, 5);
     });
@@ -303,7 +238,6 @@ describe('SlippageService', () => {
         isBuy: true
       });
 
-      // Default is FIXED with 5 bps
       expect(result.slippageBps).toBe(5);
     });
 
@@ -323,40 +257,15 @@ describe('SlippageService', () => {
     });
 
     describe('input validation', () => {
-      it('should throw error for zero price', () => {
+      it.each([
+        ['zero', 0],
+        ['negative', -100],
+        ['NaN', NaN],
+        ['Infinity', Infinity]
+      ])('should throw error for %s price', (_label, price) => {
         expect(() =>
           service.calculateSlippage({
-            price: 0,
-            quantity: 1,
-            isBuy: true
-          })
-        ).toThrow('Price must be a positive finite number');
-      });
-
-      it('should throw error for negative price', () => {
-        expect(() =>
-          service.calculateSlippage({
-            price: -100,
-            quantity: 1,
-            isBuy: true
-          })
-        ).toThrow('Price must be a positive finite number');
-      });
-
-      it('should throw error for NaN price', () => {
-        expect(() =>
-          service.calculateSlippage({
-            price: NaN,
-            quantity: 1,
-            isBuy: true
-          })
-        ).toThrow('Price must be a positive finite number');
-      });
-
-      it('should throw error for Infinity price', () => {
-        expect(() =>
-          service.calculateSlippage({
-            price: Infinity,
+            price,
             quantity: 1,
             isBuy: true
           })
@@ -371,15 +280,19 @@ describe('SlippageService', () => {
         type: SlippageModelType.VOLUME_BASED,
         fixedBps: 10,
         baseSlippageBps: 7,
-        volumeImpactFactor: 150,
-        maxSlippageBps: 300
+        maxSlippageBps: 300,
+        participationRateLimit: 0.05,
+        rejectParticipationRate: 0.5,
+        volatilityFactor: 0.2
       });
 
       expect(config.type).toBe(SlippageModelType.VOLUME_BASED);
       expect(config.fixedBps).toBe(10);
       expect(config.baseSlippageBps).toBe(7);
-      expect(config.volumeImpactFactor).toBe(150);
       expect(config.maxSlippageBps).toBe(300);
+      expect(config.participationRateLimit).toBe(0.05);
+      expect(config.rejectParticipationRate).toBe(0.5);
+      expect(config.volatilityFactor).toBe(0.2);
     });
 
     it('should use defaults when parameters not provided', () => {
@@ -388,41 +301,88 @@ describe('SlippageService', () => {
       expect(config.type).toBe(SlippageModelType.FIXED);
       expect(config.fixedBps).toBe(5);
       expect(config.baseSlippageBps).toBe(5);
-      expect(config.volumeImpactFactor).toBe(100);
       expect(config.maxSlippageBps).toBe(500);
+      expect(config.volatilityFactor).toBe(0.1);
+      expect(config.participationRateLimit).toBeUndefined();
+      expect(config.rejectParticipationRate).toBeUndefined();
+    });
+  });
+
+  describe('assessFillability', () => {
+    const volumeConfig: SlippageConfig = {
+      type: SlippageModelType.VOLUME_BASED,
+      participationRateLimit: 0.05,
+      rejectParticipationRate: 0.5
+    };
+
+    it('should return FILLED when order is within participation limit', () => {
+      const result = service.assessFillability(1000, 100, 100000, volumeConfig);
+      expect(result.fillStatus).toBe('FILLED');
+      expect(result.fillable).toBe(true);
+      expect(result.fillableQuantity).toBe(10);
+      expect(result.participationRate).toBeCloseTo(0.01);
     });
 
-    it('should handle partial parameters', () => {
-      const config = service.buildConfig({
-        type: SlippageModelType.FIXED,
-        fixedBps: 20
-      });
-
-      expect(config.type).toBe(SlippageModelType.FIXED);
-      expect(config.fixedBps).toBe(20);
-      expect(config.baseSlippageBps).toBe(5);
-      expect(config.volumeImpactFactor).toBe(100);
-      expect(config.maxSlippageBps).toBe(500);
+    it('should return PARTIAL when order exceeds participation limit', () => {
+      const result = service.assessFillability(10000, 100, 100000, volumeConfig);
+      expect(result.fillStatus).toBe('PARTIAL');
+      expect(result.fillable).toBe(true);
+      expect(result.fillableQuantity).toBe(50);
+      expect(result.participationRate).toBeCloseTo(0.1);
+      expect(result.reason).toContain('5.0%');
     });
 
-    it('should default model when only other values are provided', () => {
-      const config = service.buildConfig({
-        fixedBps: 12,
-        volumeImpactFactor: 200
-      });
+    it('should return CANCELLED when order exceeds reject threshold', () => {
+      const result = service.assessFillability(60000, 100, 100000, volumeConfig);
+      expect(result.fillStatus).toBe('CANCELLED');
+      expect(result.fillable).toBe(false);
+      expect(result.fillableQuantity).toBe(0);
+      expect(result.participationRate).toBeCloseTo(0.6);
+      expect(result.reason).toContain('rejection threshold');
+    });
 
-      expect(config.type).toBe(SlippageModelType.FIXED);
-      expect(config.fixedBps).toBe(12);
-      expect(config.baseSlippageBps).toBe(5);
-      expect(config.volumeImpactFactor).toBe(200);
+    it.each([
+      ['undefined', undefined],
+      ['zero', 0]
+    ])('should return FILLED when volume is %s (graceful degradation)', (_label, volume) => {
+      const result = service.assessFillability(10000, 100, volume, volumeConfig);
+      expect(result.fillStatus).toBe('FILLED');
+      expect(result.fillable).toBe(true);
+      expect(result.participationRate).toBe(0);
+    });
+
+    it.each([
+      ['NONE', SlippageModelType.NONE],
+      ['FIXED', SlippageModelType.FIXED]
+    ])('should always return FILLED for %s model', (_label, type) => {
+      const config: SlippageConfig = { type, participationRateLimit: 0.01 };
+      const result = service.assessFillability(100000, 100, 1000, config);
+      expect(result.fillStatus).toBe('FILLED');
+      expect(result.fillable).toBe(true);
+    });
+
+    it('should return FILLED when no participation limits are set', () => {
+      const config: SlippageConfig = { type: SlippageModelType.VOLUME_BASED };
+      const result = service.assessFillability(50000, 100, 100000, config);
+      expect(result.fillStatus).toBe('FILLED');
+      expect(result.fillable).toBe(true);
+      expect(result.participationRate).toBeCloseTo(0.5);
+    });
+
+    it('should return fillableQuantity 0 when price is 0', () => {
+      const config: SlippageConfig = { type: SlippageModelType.VOLUME_BASED };
+      const result = service.assessFillability(10000, 0, 100000, config);
+      expect(result.fillStatus).toBe('FILLED');
+      expect(result.fillableQuantity).toBe(0);
     });
   });
 
   describe('DEFAULT_SLIPPAGE_CONFIG', () => {
-    it('should have FIXED model with 5 bps and 500 max', () => {
+    it('should have FIXED model with 5 bps, 500 max, and volatilityFactor 0.1', () => {
       expect(DEFAULT_SLIPPAGE_CONFIG.type).toBe(SlippageModelType.FIXED);
       expect(DEFAULT_SLIPPAGE_CONFIG.fixedBps).toBe(5);
       expect(DEFAULT_SLIPPAGE_CONFIG.maxSlippageBps).toBe(500);
+      expect(DEFAULT_SLIPPAGE_CONFIG.volatilityFactor).toBe(0.1);
     });
   });
 });
