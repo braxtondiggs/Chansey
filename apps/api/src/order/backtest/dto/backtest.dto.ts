@@ -280,6 +280,34 @@ export class CreateBacktestDto {
   })
   slippageVolatilityFactor?: number;
 
+  @IsNumber()
+  @Min(0.1)
+  @Max(5.0)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Calibration multiplier for spread-adjusted slippage model (1.0 = unscaled estimate)',
+    example: 1.0,
+    default: 1.0,
+    minimum: 0.1,
+    maximum: 5.0,
+    required: false
+  })
+  slippageSpreadCalibrationFactor?: number = 1.0;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  @ApiProperty({
+    description: 'Minimum spread floor in basis points for spread-adjusted model',
+    example: 2,
+    default: 2,
+    minimum: 0,
+    maximum: 100,
+    required: false
+  })
+  slippageMinSpreadBps?: number = 2;
+
   @IsDateString()
   @IsNotEmpty()
   @ApiProperty({
