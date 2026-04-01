@@ -7,8 +7,10 @@ import {
   SlippageConfig,
   SlippageInput,
   SlippageModelType,
-  SlippageResult
+  SlippageResult,
+  SpreadEstimationContext
 } from './slippage.interface';
+import { estimateSpreadBps } from './spread-estimator';
 
 /**
  * Slippage Service
@@ -40,7 +42,13 @@ export class SlippageService implements ISlippageService {
     }
 
     const effectiveConfig = this.buildConfig(config);
-    const slippageBps = this.calculateSlippageBps(input.quantity, input.price, effectiveConfig, input.dailyVolume);
+    const slippageBps = this.calculateSlippageBps(
+      input.quantity,
+      input.price,
+      effectiveConfig,
+      input.dailyVolume,
+      input.spreadContext
+    );
     const executionPrice = this.applySlippage(input.price, slippageBps, input.isBuy);
     const priceImpact = Math.abs(executionPrice - input.price) / input.price;
 
@@ -59,7 +67,8 @@ export class SlippageService implements ISlippageService {
     quantity: number,
     price: number,
     config: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
-    dailyVolume?: number
+    dailyVolume?: number,
+    spreadContext?: SpreadEstimationContext
   ): number {
     const effectiveConfig = this.buildConfig(config);
     const maxSlippage = effectiveConfig.maxSlippageBps ?? 500;
@@ -96,6 +105,35 @@ export class SlippageService implements ISlippageService {
         // Use original config.fixedBps (not effectiveConfig) to preserve 10 bps default for HISTORICAL
         slippageBps = config?.fixedBps ?? 10;
         break;
+
+      case SlippageModelType.SPREAD_ADJUSTED: {
+        if (!spreadContext) {
+          // Graceful fallback when no OHLCV context available
+          slippageBps = effectiveConfig.fixedBps ?? 5;
+          break;
+        }
+
+        // Estimate full spread in bps from OHLCV data
+        const fullSpreadBps = estimateSpreadBps(
+          spreadContext,
+          effectiveConfig.spreadCalibrationFactor ?? 1.0,
+          effectiveConfig.minSpreadBps ?? 2
+        );
+
+        // Each side of a trade pays half the spread
+        let halfSpreadBps = fullSpreadBps / 2;
+
+        // Add volume-based market impact when daily volume is available
+        if (dailyVolume && dailyVolume > 0) {
+          const orderValue = quantity * price;
+          const volumeRatio = orderValue / dailyVolume;
+          const volumeImpact = volumeRatio * (effectiveConfig.volumeImpactFactor ?? 100);
+          halfSpreadBps += volumeImpact;
+        }
+
+        slippageBps = halfSpreadBps;
+        break;
+      }
 
       default:
         slippageBps = 5;
@@ -182,7 +220,9 @@ export class SlippageService implements ISlippageService {
       maxSlippageBps: config?.maxSlippageBps ?? 500,
       participationRateLimit: config?.participationRateLimit,
       rejectParticipationRate: config?.rejectParticipationRate,
-      volatilityFactor: config?.volatilityFactor ?? 0.1
+      volatilityFactor: config?.volatilityFactor ?? 0.1,
+      spreadCalibrationFactor: config?.spreadCalibrationFactor ?? 1.0,
+      minSpreadBps: config?.minSpreadBps ?? 2
     };
   }
 }

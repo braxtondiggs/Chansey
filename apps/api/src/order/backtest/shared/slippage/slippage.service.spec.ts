@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { DEFAULT_SLIPPAGE_CONFIG, SlippageConfig, SlippageModelType } from './slippage.interface';
+import {
+  DEFAULT_SLIPPAGE_CONFIG,
+  SlippageConfig,
+  SlippageModelType,
+  SpreadEstimationContext
+} from './slippage.interface';
 import { SlippageService } from './slippage.service';
 
 describe('SlippageService', () => {
@@ -383,6 +388,166 @@ describe('SlippageService', () => {
       expect(DEFAULT_SLIPPAGE_CONFIG.fixedBps).toBe(5);
       expect(DEFAULT_SLIPPAGE_CONFIG.maxSlippageBps).toBe(500);
       expect(DEFAULT_SLIPPAGE_CONFIG.volatilityFactor).toBe(0.1);
+    });
+  });
+
+  describe('SPREAD_ADJUSTED model', () => {
+    const spreadConfig: SlippageConfig = {
+      type: SlippageModelType.SPREAD_ADJUSTED,
+      maxSlippageBps: 500,
+      spreadCalibrationFactor: 1.0,
+      minSpreadBps: 2
+    };
+
+    it('should return estimated half-spread when spreadContext is provided', () => {
+      const result = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: true,
+          spreadContext: {
+            high: 50500,
+            low: 49500,
+            close: 50000,
+            prevHigh: 50300,
+            prevLow: 49700
+          }
+        },
+        spreadConfig
+      );
+
+      expect(result.slippageBps).toBeGreaterThan(0);
+      expect(result.executionPrice).toBeGreaterThan(50000);
+    });
+
+    it('should fall back to fixedBps when spreadContext is missing', () => {
+      const configWithFallback = { ...spreadConfig, fixedBps: 10 };
+      const result = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: true
+        },
+        configWithFallback
+      );
+
+      expect(result.slippageBps).toBe(10);
+    });
+
+    it('should apply half-spread (buys pay half, sells receive half less)', () => {
+      const ctx: SpreadEstimationContext = {
+        high: 50500,
+        low: 49500,
+        close: 50000,
+        prevHigh: 50300,
+        prevLow: 49700
+      };
+
+      const buyResult = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: true,
+          spreadContext: ctx
+        },
+        spreadConfig
+      );
+
+      const sellResult = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: false,
+          spreadContext: ctx
+        },
+        spreadConfig
+      );
+
+      expect(buyResult.slippageBps).toBeCloseTo(sellResult.slippageBps, 2);
+      expect(buyResult.executionPrice).toBeGreaterThan(50000);
+      expect(sellResult.executionPrice).toBeLessThan(50000);
+    });
+
+    it('should combine half-spread with volume impact when dailyVolume provided', () => {
+      const ctx = { high: 50500, low: 49500, close: 50000 };
+
+      const withoutVolume = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 100,
+          isBuy: true,
+          spreadContext: ctx
+        },
+        { ...spreadConfig, volumeImpactFactor: 100, baseSlippageBps: 5 }
+      );
+
+      const withVolume = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 100,
+          isBuy: true,
+          dailyVolume: 1000,
+          spreadContext: ctx
+        },
+        { ...spreadConfig, volumeImpactFactor: 100, baseSlippageBps: 5 }
+      );
+
+      expect(withVolume.slippageBps).toBeGreaterThan(withoutVolume.slippageBps);
+    });
+
+    it('should respect maxSlippageBps cap', () => {
+      const result = service.calculateSlippage(
+        {
+          price: 100,
+          quantity: 1,
+          isBuy: true,
+          spreadContext: { high: 200, low: 50, close: 100 }
+        },
+        { ...spreadConfig, maxSlippageBps: 50 }
+      );
+
+      expect(result.slippageBps).toBeLessThanOrEqual(50);
+    });
+
+    it('should respect minSpreadBps floor', () => {
+      const result = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: true,
+          spreadContext: { high: 50001, low: 49999, close: 50000 }
+        },
+        { ...spreadConfig, minSpreadBps: 10 }
+      );
+
+      // Half of minSpreadBps=10 full spread => at least 5 bps half-spread
+      expect(result.slippageBps).toBeGreaterThanOrEqual(5);
+    });
+
+    it('should scale with calibrationFactor', () => {
+      const ctx = { high: 50500, low: 49500, close: 50000 };
+
+      const base = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: true,
+          spreadContext: ctx
+        },
+        { ...spreadConfig, spreadCalibrationFactor: 1.0 }
+      );
+
+      const scaled = service.calculateSlippage(
+        {
+          price: 50000,
+          quantity: 1,
+          isBuy: true,
+          spreadContext: ctx
+        },
+        { ...spreadConfig, spreadCalibrationFactor: 2.0 }
+      );
+
+      expect(scaled.slippageBps).toBeCloseTo(base.slippageBps * 2, 1);
     });
   });
 });
