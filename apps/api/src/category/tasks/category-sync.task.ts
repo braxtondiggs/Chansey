@@ -1,15 +1,17 @@
-import { HttpService } from '@nestjs/axios';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
-import { AxiosError } from 'axios';
 import { Job, Queue } from 'bullmq';
-import { firstValueFrom } from 'rxjs';
 
 import { toErrorInfo } from '../../shared/error.util';
 import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { CategoryService } from '../category.service';
+
+interface CoinGeckoCategoryItem {
+  category_id: string;
+  name: string;
+}
 
 @Processor('category-queue')
 @Injectable()
@@ -19,8 +21,7 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('category-queue') private readonly categoryQueue: Queue,
-    private readonly category: CategoryService,
-    private readonly http: HttpService
+    private readonly category: CategoryService
   ) {
     super();
   }
@@ -94,12 +95,18 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
 
   private async fetchCategories() {
     return withRateLimitRetryThrow(
-      () =>
-        firstValueFrom(
-          this.http.get('https://api.coingecko.com/api/v3/coins/categories/list', {
-            timeout: 10000
-          })
-        ),
+      async () => {
+        const response = await fetch('https://api.coingecko.com/api/v3/coins/categories/list', {
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => '');
+          throw new Error(
+            `CoinGecko API error: ${response.status} ${response.statusText}${body ? ` - ${body.slice(0, 200)}` : ''}`
+          );
+        }
+        return (await response.json()) as CoinGeckoCategoryItem[];
+      },
       { operationName: 'fetchCategories' }
     );
   }
@@ -115,11 +122,11 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
       ]);
       await job.updateProgress(30);
 
-      if (!apiResponse?.data || !Array.isArray(apiResponse.data)) {
+      if (!apiResponse || !Array.isArray(apiResponse)) {
         throw new Error('Invalid API response format');
       }
 
-      const apiCategories = apiResponse.data;
+      const apiCategories = apiResponse;
       await job.updateProgress(50);
 
       const newCategories = apiCategories
@@ -152,17 +159,8 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
         total: apiCategories.length
       };
     } catch (e: unknown) {
-      if (e instanceof AxiosError) {
-        const errorDetails = {
-          status: e.response?.status,
-          statusText: e.response?.statusText,
-          data: e.response?.data
-        };
-        this.logger.error(`Category sync failed: ${e.message}`, errorDetails);
-      } else {
-        const err = toErrorInfo(e);
-        this.logger.error(`Category sync failed: ${err.message}`);
-      }
+      const err = toErrorInfo(e);
+      this.logger.error(`Category sync failed: ${err.message}`);
       throw e;
     } finally {
       this.logger.log('Category Sync Complete');
