@@ -334,8 +334,26 @@ export class PaperTradingEngineService {
       }
 
       // 6. Process signals and execute orders
+      // Build set of currently-held coins to prevent duplicate BUY signals
+      const activeAccounts =
+        exitOrdersExecuted > 0
+          ? await this.accountRepository.find({ where: { session: { id: session.id } } })
+          : accounts;
+      const heldCoins = new Set(
+        activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 0).map((a) => a.currency)
+      );
+
       let currentPortfolio = updatedPortfolio;
       for (const signal of regimeFilteredSignals) {
+        // Skip BUY if position already held for this symbol
+        if (signal.action === 'BUY') {
+          const [baseCurrency] = signal.symbol.split('/');
+          if (heldCoins.has(baseCurrency)) {
+            this.logger.debug(`Skipped duplicate BUY for ${signal.symbol}: position already held`);
+            continue;
+          }
+        }
+
         // Save signal to database
         const signalEntity = await this.saveSignal(session, signal);
 
@@ -394,6 +412,12 @@ export class PaperTradingEngineService {
             if (result.order) {
               ordersExecuted++;
               signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+
+              // Track newly bought coin to block subsequent same-tick BUY signals
+              if (signal.action === 'BUY') {
+                const [bought] = signal.symbol.split('/');
+                heldCoins.add(bought);
+              }
 
               // Register position in exit tracker on BUY fill
               if (exitTracker && signal.action === 'BUY') {

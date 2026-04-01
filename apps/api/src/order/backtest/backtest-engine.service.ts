@@ -2518,6 +2518,15 @@ export class BacktestEngine {
         return null;
       }
     }
+
+    // Prevent duplicate long: skip BUY if long position already exists
+    if (signal.action === 'BUY') {
+      const existingLong = portfolio.positions.get(signal.coinId);
+      if (existingLong && existingLong.side !== 'short' && existingLong.quantity > 0) {
+        this.logger.debug(`Skipped BUY for ${signal.coinId}: long position already held`);
+        return null;
+      }
+    }
     if (signal.action === 'OPEN_SHORT') {
       const existingLong = portfolio.positions.get(signal.coinId);
       if (existingLong && existingLong.side !== 'short' && existingLong.quantity > 0) {
