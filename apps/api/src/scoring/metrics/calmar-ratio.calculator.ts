@@ -23,7 +23,7 @@ export class CalmarRatioCalculator {
   /**
    * Calculate Calmar ratio from period returns
    */
-  calculateFromReturns(returns: number[], maxDrawdown: number, periodsPerYear = 252): number {
+  calculateFromReturns(returns: number[], maxDrawdown: number, periodsPerYear = 365): number {
     if (returns.length === 0) return 0;
 
     // Calculate total return

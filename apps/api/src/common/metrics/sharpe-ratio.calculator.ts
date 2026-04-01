@@ -16,8 +16,8 @@ import { calculateMean, calculateStandardDeviation } from './metric-calculator';
  * - **52** - Weekly returns
  * - **12** - Monthly returns
  *
- * This codebase uses **252** as the default, representing traditional trading days.
- * For cryptocurrency backtests running on calendar days, consider using 365.
+ * This codebase uses **365** as the default for 24/7 cryptocurrency markets.
+ * For traditional equity markets with weekends/holidays, use 252.
  *
  * @see https://en.wikipedia.org/wiki/Sharpe_ratio
  */
@@ -36,7 +36,7 @@ export class SharpeRatioCalculator {
    *   Common values: 252 (trading days), 365 (calendar days), 52 (weeks), 12 (months)
    * @returns Annualized Sharpe ratio, or 0 if returns array is empty or has zero volatility
    */
-  calculate(returns: number[], riskFreeRate = 0.02, periodsPerYear = 252): number {
+  calculate(returns: number[], riskFreeRate = 0.02, periodsPerYear = 365): number {
     if (returns.length === 0) return 0;
 
     // Convert annual risk-free rate to period rate
@@ -87,7 +87,7 @@ export class SharpeRatioCalculator {
    * @param periodsPerYear Number of periods per year for annualization (default: 252)
    * @returns Array of Sharpe ratios, one for each complete window. Empty if returns.length < windowSize
    */
-  calculateRolling(returns: number[], windowSize = 30, riskFreeRate = 0.02, periodsPerYear = 252): number[] {
+  calculateRolling(returns: number[], windowSize = 30, riskFreeRate = 0.02, periodsPerYear = 365): number[] {
     if (returns.length < windowSize) return [];
 
     const rollingSharpe: number[] = [];
@@ -113,7 +113,7 @@ export class SharpeRatioCalculator {
    * @param periodsPerYear Number of periods per year for annualization (default: 252)
    * @returns Annualized Sortino ratio. Returns Infinity if all returns exceed risk-free rate
    */
-  calculateSortino(returns: number[], riskFreeRate = 0.02, periodsPerYear = 252): number {
+  calculateSortino(returns: number[], riskFreeRate = 0.02, periodsPerYear = 365): number {
     if (returns.length === 0) return 0;
 
     const periodRiskFreeRate = riskFreeRate / periodsPerYear;

@@ -3518,7 +3518,7 @@ export class BacktestEngine {
       returns.length > 0
         ? this.metricsCalculator.calculateSharpeRatio(returns, {
             timeframe: TimeframeType.DAILY,
-            useCryptoCalendar: false,
+            useCryptoCalendar: true,
             riskFreeRate: 0.02
           })
         : 0;
@@ -3532,7 +3532,7 @@ export class BacktestEngine {
     if (returns.length > 0) {
       const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
       const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
-      volatility = Math.sqrt(variance) * Math.sqrt(252);
+      volatility = Math.sqrt(variance) * Math.sqrt(365);
     }
 
     return {
@@ -4579,19 +4579,19 @@ export class BacktestEngine {
     const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
     const variance =
       returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
-    const volatility = Math.sqrt(variance) * Math.sqrt(252);
+    const volatility = Math.sqrt(variance) * Math.sqrt(365);
 
-    const periodRiskFreeRate = 0.02 / 252;
+    const periodRiskFreeRate = 0.02 / 365;
     const downsideReturns = returns.filter((r) => r < periodRiskFreeRate);
     const downsideVariance =
       returns.length > 0
         ? downsideReturns.reduce((sum, r) => sum + Math.pow(r - periodRiskFreeRate, 2), 0) / returns.length
         : 0;
-    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252);
+    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(365);
 
     const sharpeRatio = this.metricsCalculator.calculateSharpeRatio(returns, {
       timeframe: TimeframeType.DAILY,
-      useCryptoCalendar: false,
+      useCryptoCalendar: true,
       riskFreeRate: 0.02
     });
 
