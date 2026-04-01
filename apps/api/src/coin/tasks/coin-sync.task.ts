@@ -9,7 +9,6 @@ import { ExchangeService } from '../../exchange/exchange.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRetry } from '../../shared/retry.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
-import { CoinListingEventType } from '../coin-listing-event.entity';
 import { CoinListingEventService } from '../coin-listing-event.service';
 import { CoinService } from '../coin.service';
 
@@ -229,7 +228,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log('Fetching data from CoinGecko and database...');
       const [geckoCoins, existingCoins, supportedExchanges] = await Promise.all([
         this.gecko.coinList({ include_platform: false }),
-        this.coin.getCoins(),
+        this.coin.getCoins({ includeDelisted: true }),
         this.exchangeService.getExchanges({ supported: true })
       ]);
       await job.updateProgress(15); // Data fetching complete
@@ -340,34 +339,28 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       }
 
       // Check for previously delisted coins that should be re-listed
-      const allCoinsIncludingDelisted = await this.coin.getCoins({ includeDelisted: true });
-      const delistedCoins = allCoinsIncludingDelisted.filter((c) => c.delistedAt != null);
-
       const justDelistedSet = new Set(uniqueCoinsToRemove);
-      const coinsToRelist: string[] = [];
-      for (const coin of delistedCoins) {
-        if (geckoCoinsSet.has(coin.slug) && usedCoinSlugs.has(coin.slug) && !justDelistedSet.has(coin.id)) {
-          coinsToRelist.push(coin.id);
-        }
-      }
+      const coinsToRelist = existingCoins
+        .filter(
+          (c) =>
+            c.delistedAt != null && geckoCoinsSet.has(c.slug) && usedCoinSlugs.has(c.slug) && !justDelistedSet.has(c.id)
+        )
+        .map((c) => c.id);
 
       if (coinsToRelist.length > 0) {
-        for (const coinId of coinsToRelist) {
-          await this.coin.relistCoin(coinId);
-          await this.listingEventService.recordEvent(coinId, CoinListingEventType.LISTED, {
-            source: 'coin_sync'
-          });
-        }
+        await this.coin.relistMany(coinsToRelist);
+        await this.listingEventService.recordBulkListings(coinsToRelist, 'coin_sync');
         this.logger.log(`Re-listed ${coinsToRelist.length} previously delisted coins`);
       }
 
       // Return summary for job completion callback
+      const activeCoins = existingCoins.filter((c) => c.delistedAt == null);
       return {
         added: newCoins.length,
         updated: coinsToUpdate.length,
         delisted: uniqueCoinsToRemove.length,
         relisted: coinsToRelist.length,
-        total: existingCoins.length + newCoins.length - uniqueCoinsToRemove.length + coinsToRelist.length
+        total: activeCoins.length + newCoins.length - uniqueCoinsToRemove.length + coinsToRelist.length
       };
     } catch (e: unknown) {
       const errInfo = toErrorInfo(e);

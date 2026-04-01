@@ -6,7 +6,6 @@ import { Job } from 'bullmq';
 import { CoinSyncTask } from './coin-sync.task';
 
 import { ExchangeService } from '../../exchange/exchange.service';
-import { CoinListingEventType } from '../coin-listing-event.entity';
 import { CoinListingEventService } from '../coin-listing-event.service';
 import { CoinService } from '../coin.service';
 
@@ -52,7 +51,7 @@ describe('CoinSyncTask', () => {
       createMany: jest.fn(),
       update: jest.fn(),
       removeMany: jest.fn(),
-      relistCoin: jest.fn(),
+      relistMany: jest.fn().mockResolvedValue(undefined),
       clearRank: jest.fn()
     };
 
@@ -62,7 +61,8 @@ describe('CoinSyncTask', () => {
 
     listingEventService = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
-      recordBulkDelistings: jest.fn().mockResolvedValue(undefined)
+      recordBulkDelistings: jest.fn().mockResolvedValue(undefined),
+      recordBulkListings: jest.fn().mockResolvedValue(undefined)
     };
 
     mockQueue = {
@@ -92,14 +92,51 @@ describe('CoinSyncTask', () => {
     geckoClient = (task as unknown as { gecko: Record<string, jest.Mock> }).gecko;
   });
 
+  describe('process', () => {
+    it('should route coin-sync jobs to handleSyncCoins', async () => {
+      const spy = jest.spyOn(task, 'handleSyncCoins').mockResolvedValue({
+        added: 0,
+        updated: 0,
+        delisted: 0,
+        relisted: 0,
+        total: 0
+      });
+
+      const result = await task.process(mockJob as Job);
+
+      expect(spy).toHaveBeenCalledWith(mockJob);
+      expect(result).toEqual(expect.objectContaining({ added: 0 }));
+    });
+
+    it('should route coin-detail jobs to handleCoinDetail', async () => {
+      mockJob.name = 'coin-detail';
+      const spy = jest.spyOn(task, 'handleCoinDetail').mockResolvedValue({
+        totalCoins: 5,
+        updatedSuccessfully: 5,
+        errors: 0
+      });
+
+      const result = await task.process(mockJob as Job);
+
+      expect(spy).toHaveBeenCalledWith(mockJob);
+      expect(result).toEqual(expect.objectContaining({ totalCoins: 5 }));
+    });
+
+    it('should throw for unknown job names', async () => {
+      mockJob.name = 'unknown-job';
+
+      await expect(task.process(mockJob as Job)).rejects.toThrow('Unknown job name: unknown-job');
+    });
+  });
+
   describe('handleSyncCoins', () => {
     beforeEach(() => {
-      // Default mock setup: gecko returns coins, exchange returns tickers with bitcoin + ethereum
+      // Default mock setup: gecko returns coins, exchange returns tickers with bitcoin + ethereum + newcoin
       geckoClient.coinList.mockResolvedValue(geckoCoins);
       (exchangeService.getExchanges as jest.Mock).mockResolvedValue(supportedExchanges);
       (coinService.getCoins as jest.Mock).mockResolvedValue([...existingCoins]);
 
-      // Mock exchange tickers: page 1 returns bitcoin+ethereum tickers, page 2 returns empty
+      // Mock exchange tickers: page 1 returns bitcoin+ethereum+newcoin tickers, page 2 returns empty
       geckoClient.exchangeIdTickers.mockImplementation(({ page }: { page: number }) => {
         if (page === 1) {
           return Promise.resolve({
@@ -116,25 +153,19 @@ describe('CoinSyncTask', () => {
       (coinService.createMany as jest.Mock).mockResolvedValue([]);
     });
 
-    it('should call removeMany for coins to delist', async () => {
+    it('should soft-delist coins missing from CoinGecko and record listing events', async () => {
       const result = await task.handleSyncCoins(mockJob as Job);
 
       // 'oldcoin' is missing from CoinGecko -> should be soft-delisted
       expect(coinService.removeMany).toHaveBeenCalledWith(expect.arrayContaining(['id-old']));
-      expect(result).toHaveProperty('delisted');
-    });
-
-    it('should call recordBulkDelistings after soft-deleting coins', async () => {
-      await task.handleSyncCoins(mockJob as Job);
-
       expect(listingEventService.recordBulkDelistings).toHaveBeenCalledWith(
         expect.arrayContaining(['id-old']),
         'coin_sync'
       );
+      expect(result.delisted).toBeGreaterThanOrEqual(1);
     });
 
-    it('should not call recordBulkDelistings when no coins are delisted', async () => {
-      // All existing coins are in CoinGecko and on exchanges
+    it('should skip delisting when all coins are present in CoinGecko and exchanges', async () => {
       geckoClient.coinList.mockResolvedValue([
         { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin' },
         { id: 'ethereum', symbol: 'eth', name: 'Ethereum' },
@@ -154,15 +185,14 @@ describe('CoinSyncTask', () => {
         return Promise.resolve({ tickers: [] });
       });
 
-      await task.handleSyncCoins(mockJob as Job);
+      const result = await task.handleSyncCoins(mockJob as Job);
 
       expect(coinService.removeMany).not.toHaveBeenCalled();
       expect(listingEventService.recordBulkDelistings).not.toHaveBeenCalled();
+      expect(result.delisted).toBe(0);
     });
 
-    it('should detect previously-delisted coins that reappear and call relistCoin', async () => {
-      // After the main sync, getCoins({ includeDelisted: true }) returns a delisted coin
-      // that is back in CoinGecko and used on exchanges
+    it('should re-list previously delisted coins and record listing events', async () => {
       const delistedCoin = {
         id: 'id-relisted',
         slug: 'relisted-coin',
@@ -171,50 +201,7 @@ describe('CoinSyncTask', () => {
         delistedAt: new Date('2026-01-01')
       };
 
-      // First call: normal getCoins (no delisted), second call: includeDelisted
-      (coinService.getCoins as jest.Mock)
-        .mockResolvedValueOnce([...existingCoins]) // initial fetch
-        .mockResolvedValueOnce([...existingCoins, delistedCoin]); // includeDelisted
-
-      // Add relisted-coin to CoinGecko response
-      geckoClient.coinList.mockResolvedValue([
-        ...geckoCoins,
-        { id: 'relisted-coin', symbol: 'rls', name: 'RelistedCoin' }
-      ]);
-
-      // Add relisted-coin to exchange tickers
-      geckoClient.exchangeIdTickers.mockImplementation(({ page }: { page: number }) => {
-        if (page === 1) {
-          return Promise.resolve({
-            tickers: [
-              { coin_id: 'bitcoin', target_coin_id: 'tether' },
-              { coin_id: 'ethereum', target_coin_id: 'tether' },
-              { coin_id: 'newcoin', target_coin_id: 'tether' },
-              { coin_id: 'relisted-coin', target_coin_id: 'tether' }
-            ]
-          });
-        }
-        return Promise.resolve({ tickers: [] });
-      });
-
-      const result = await task.handleSyncCoins(mockJob as Job);
-
-      expect(coinService.relistCoin).toHaveBeenCalledWith('id-relisted');
-      expect(result).toHaveProperty('relisted', 1);
-    });
-
-    it('should record LISTED events for re-listed coins', async () => {
-      const delistedCoin = {
-        id: 'id-relisted',
-        slug: 'relisted-coin',
-        symbol: 'rls',
-        name: 'RelistedCoin',
-        delistedAt: new Date('2026-01-01')
-      };
-
-      (coinService.getCoins as jest.Mock)
-        .mockResolvedValueOnce([...existingCoins])
-        .mockResolvedValueOnce([...existingCoins, delistedCoin]);
+      (coinService.getCoins as jest.Mock).mockResolvedValueOnce([...existingCoins, delistedCoin]);
 
       geckoClient.coinList.mockResolvedValue([
         ...geckoCoins,
@@ -235,22 +222,11 @@ describe('CoinSyncTask', () => {
         return Promise.resolve({ tickers: [] });
       });
 
-      await task.handleSyncCoins(mockJob as Job);
-
-      expect(listingEventService.recordEvent).toHaveBeenCalledWith('id-relisted', CoinListingEventType.LISTED, {
-        source: 'coin_sync'
-      });
-    });
-
-    it('should return summary with delisted key instead of removed', async () => {
       const result = await task.handleSyncCoins(mockJob as Job);
 
-      expect(result).toHaveProperty('delisted');
-      expect(result).toHaveProperty('relisted');
-      expect(result).not.toHaveProperty('removed');
-      expect(result).toHaveProperty('added');
-      expect(result).toHaveProperty('updated');
-      expect(result).toHaveProperty('total');
+      expect(coinService.relistMany).toHaveBeenCalledWith(['id-relisted']);
+      expect(listingEventService.recordBulkListings).toHaveBeenCalledWith(['id-relisted'], 'coin_sync');
+      expect(result.relisted).toBe(1);
     });
 
     it('should soft-delist coins not used in any ticker pairs', async () => {
@@ -261,7 +237,6 @@ describe('CoinSyncTask', () => {
         { id: 'oldcoin', symbol: 'old', name: 'OldCoin' }
       ]);
 
-      // Exchange tickers only have bitcoin and ethereum
       geckoClient.exchangeIdTickers.mockImplementation(({ page }: { page: number }) => {
         if (page === 1) {
           return Promise.resolve({
@@ -276,12 +251,36 @@ describe('CoinSyncTask', () => {
 
       await task.handleSyncCoins(mockJob as Job);
 
-      // oldcoin should be delisted because it's not used in ticker pairs
       expect(coinService.removeMany).toHaveBeenCalledWith(expect.arrayContaining(['id-old']));
       expect(listingEventService.recordBulkDelistings).toHaveBeenCalledWith(
         expect.arrayContaining(['id-old']),
         'coin_sync'
       );
+    });
+
+    it('should add new coins that are in CoinGecko and exchange tickers but not in DB', async () => {
+      const result = await task.handleSyncCoins(mockJob as Job);
+
+      // 'newcoin' is in CoinGecko, in exchange tickers, but not in existingCoins
+      expect(coinService.createMany).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ slug: 'newcoin', symbol: 'new', name: 'NewCoin' })])
+      );
+      expect(result.added).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should return a complete summary with correct keys and numeric values', async () => {
+      const result = await task.handleSyncCoins(mockJob as Job);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          added: expect.any(Number),
+          updated: expect.any(Number),
+          delisted: expect.any(Number),
+          relisted: expect.any(Number),
+          total: expect.any(Number)
+        })
+      );
+      expect(result).not.toHaveProperty('removed');
     });
   });
 });

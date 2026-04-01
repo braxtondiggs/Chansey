@@ -5,7 +5,9 @@ export class AddCoinSoftDeleteAndListingEvents1775079189579 implements Migration
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "coin" ADD COLUMN "delistedAt" TIMESTAMP WITH TIME ZONE DEFAULT NULL`);
-    await queryRunner.query(`CREATE INDEX "IDX_coin_delistedAt" ON "coin" ("delistedAt")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_coin_delistedAt_active" ON "coin" ("delistedAt") WHERE "delistedAt" IS NULL`
+    );
     await queryRunner.query(`CREATE TYPE "coin_listing_event_type_enum" AS ENUM ('LISTED', 'DELISTED')`);
     await queryRunner.query(`
       CREATE TABLE "coin_listing_events" (
@@ -32,7 +34,7 @@ export class AddCoinSoftDeleteAndListingEvents1775079189579 implements Migration
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "coin_listing_events"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "coin_listing_event_type_enum"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_coin_delistedAt"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_coin_delistedAt_active"`);
     await queryRunner.query(`ALTER TABLE "coin" DROP COLUMN IF EXISTS "delistedAt"`);
   }
 }

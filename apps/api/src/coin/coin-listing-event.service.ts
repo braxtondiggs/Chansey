@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { CoinListingEvent, CoinListingEventType } from './coin-listing-event.entity';
 
@@ -31,15 +31,27 @@ export class CoinListingEventService {
   async recordBulkDelistings(coinIds: string[], source = 'coin_sync'): Promise<void> {
     if (coinIds.length === 0) return;
 
-    const events = coinIds.map((coinId) =>
-      this.repo.create({
-        coinId,
-        eventType: CoinListingEventType.DELISTED,
-        source,
-        eventDate: new Date()
-      })
-    );
-    await this.repo.save(events);
+    const now = new Date();
+    const events: QueryDeepPartialEntity<CoinListingEvent>[] = coinIds.map((coinId) => ({
+      coinId,
+      eventType: CoinListingEventType.DELISTED,
+      source,
+      eventDate: now
+    }));
+    await this.repo.insert(events);
+  }
+
+  async recordBulkListings(coinIds: string[], source = 'coin_sync'): Promise<void> {
+    if (coinIds.length === 0) return;
+
+    const now = new Date();
+    const events: QueryDeepPartialEntity<CoinListingEvent>[] = coinIds.map((coinId) => ({
+      coinId,
+      eventType: CoinListingEventType.LISTED,
+      source,
+      eventDate: now
+    }));
+    await this.repo.insert(events);
   }
 
   async getEventsByCoin(coinId: string): Promise<CoinListingEvent[]> {

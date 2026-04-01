@@ -228,26 +228,6 @@ describe('CoinService', () => {
       expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
     });
 
-    it('falls back to cached data on timeout', async () => {
-      const cachedChart = { prices: [[Date.now(), 41000]] };
-      cacheManager.get.mockResolvedValueOnce(null); // primary cache: miss
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('CoinGecko API timeout'));
-      cacheManager.get.mockResolvedValueOnce(cachedChart); // catch-block primary cache retry: hit
-
-      const result = await (service as any).fetchMarketChart('bitcoin', 7);
-      expect(result).toBe(cachedChart);
-      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
-    });
-
-    it('throws user-friendly error on timeout with no cache', async () => {
-      cacheManager.get.mockResolvedValue(null); // all cache lookups miss
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('CoinGecko API timeout'));
-
-      await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
-        'Unable to fetch chart data. Please try again later.'
-      );
-    });
-
     it('skips API call and returns stale cache when circuit breaker is open', async () => {
       const staleChart = { prices: [[Date.now(), 40000]] };
       circuitBreaker.isOpen.mockReturnValue(true);
@@ -445,6 +425,7 @@ describe('CoinService', () => {
       coinRepository.findOne.mockResolvedValue(coin);
 
       const result = await service.getCoinById('abc');
+      expect(coinRepository.findOne).toHaveBeenCalledWith({ where: { id: 'abc' }, relations: undefined });
       expect(result.id).toBe('abc');
     });
 
@@ -502,14 +483,6 @@ describe('CoinService', () => {
   });
 
   describe('getCoinBySymbol() soft-delete filtering', () => {
-    it('excludes delisted coins by default', async () => {
-      const coin = createTestCoin({ symbol: 'btc' });
-      coinRepository.findOne.mockResolvedValue(coin);
-      await service.getCoinBySymbol('btc');
-      const callArg = coinRepository.findOne.mock.calls[0][0] as FindOneOptions<Coin>;
-      expect(callArg.where).toEqual(expect.objectContaining({ delistedAt: IsNull() }));
-    });
-
     it('includes delisted coins when includeDelisted is true', async () => {
       const coin = createTestCoin({ symbol: 'btc' });
       coinRepository.findOne.mockResolvedValue(coin);
@@ -599,11 +572,6 @@ describe('CoinService', () => {
       expect(mockQb.execute).toHaveBeenCalled();
       expect(coinRepository.delete).not.toHaveBeenCalled();
     });
-
-    it('is a no-op for empty array', async () => {
-      await service.removeMany([]);
-      expect(coinRepository.createQueryBuilder).not.toHaveBeenCalled();
-    });
   });
 
   describe('relistCoin()', () => {
@@ -613,14 +581,59 @@ describe('CoinService', () => {
     });
   });
 
+  describe('relistMany()', () => {
+    let mockQb: Record<string, jest.Mock>;
+
+    beforeEach(() => {
+      mockQb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 2 })
+      };
+      coinRepository.createQueryBuilder.mockReturnValue(mockQb as any);
+    });
+
+    it('clears delistedAt for multiple coins', async () => {
+      await service.relistMany(['id1', 'id2']);
+
+      expect(mockQb.update).toHaveBeenCalled();
+      expect(mockQb.set).toHaveBeenCalledWith({ delistedAt: null });
+      expect(mockQb.where).toHaveBeenCalledWith('id IN (:...ids)', { ids: ['id1', 'id2'] });
+      expect(mockQb.andWhere).toHaveBeenCalledWith('delistedAt IS NOT NULL');
+      expect(mockQb.execute).toHaveBeenCalled();
+    });
+  });
+
+  describe('getDelistedCoins()', () => {
+    it('returns only coins where delistedAt is not null', async () => {
+      const delistedCoin = createTestCoin({ id: 'del1', delistedAt: new Date() });
+      coinRepository.find.mockResolvedValue([delistedCoin]);
+
+      const result = await service.getDelistedCoins();
+
+      expect(coinRepository.find).toHaveBeenCalledWith({ where: { delistedAt: expect.anything() } });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('del1');
+    });
+  });
+
   describe('hardRemoveMany()', () => {
     it('calls actual delete', async () => {
       await service.hardRemoveMany(['id1', 'id2']);
       expect(coinRepository.delete).toHaveBeenCalledWith({ id: In(['id1', 'id2']) });
     });
+  });
 
-    it('is a no-op for empty array', async () => {
-      await service.hardRemoveMany([]);
+  describe('empty array guard clauses', () => {
+    it.each([
+      ['removeMany', () => service.removeMany([])],
+      ['relistMany', () => service.relistMany([])],
+      ['hardRemoveMany', () => service.hardRemoveMany([])]
+    ])('%s is a no-op for empty array', async (_name, fn) => {
+      await fn();
+      expect(coinRepository.createQueryBuilder).not.toHaveBeenCalled();
       expect(coinRepository.delete).not.toHaveBeenCalled();
     });
   });

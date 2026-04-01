@@ -307,6 +307,21 @@ export class CoinService {
     await this.coin.update(coinId, { delistedAt: null });
   }
 
+  async relistMany(coinIds: string[]): Promise<void> {
+    if (coinIds.length === 0) return;
+    await this.coin
+      .createQueryBuilder()
+      .update()
+      .set({ delistedAt: null })
+      .where('id IN (:...ids)', { ids: coinIds })
+      .andWhere('delistedAt IS NOT NULL')
+      .execute();
+  }
+
+  async getDelistedCoins(): Promise<Coin[]> {
+    return this.coin.find({ where: { delistedAt: Not(IsNull()) } });
+  }
+
   async getCoinHistoricalData(coinId: string): Promise<HistoricalDataPoint[]> {
     const coin = await this.getCoinById(coinId);
 
