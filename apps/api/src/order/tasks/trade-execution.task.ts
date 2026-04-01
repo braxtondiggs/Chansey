@@ -381,7 +381,7 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
         const userAssets = balanceCache.get(activation.userId) ?? [];
         const [baseCurrency] = signal.symbol.split('/');
         const existingHolding = userAssets.find(
-          (a) => a.symbol.toUpperCase() === baseCurrency.toUpperCase() && a.usdValue > 0
+          (a) => a.symbol.toUpperCase() === baseCurrency.toUpperCase() && a.usdValue > 1.0
         );
         if (existingHolding) {
           this.logger.debug(

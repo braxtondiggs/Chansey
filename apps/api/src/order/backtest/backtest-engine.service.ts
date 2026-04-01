@@ -2510,20 +2510,15 @@ export class BacktestEngine {
       return null;
     }
 
-    // Position conflict guards: prevent opposite-direction positions on same coin
+    // Position conflict guards: block BUY if any position (long or short) already exists
     if (signal.action === 'BUY') {
-      const existingShort = portfolio.positions.get(signal.coinId);
-      if (existingShort && existingShort.side === 'short' && existingShort.quantity > 0) {
-        this.logger.debug(`Cannot buy ${signal.coinId}: short position already exists`);
-        return null;
-      }
-    }
-
-    // Prevent duplicate long: skip BUY if long position already exists
-    if (signal.action === 'BUY') {
-      const existingLong = portfolio.positions.get(signal.coinId);
-      if (existingLong && existingLong.side !== 'short' && existingLong.quantity > 0) {
-        this.logger.debug(`Skipped BUY for ${signal.coinId}: long position already held`);
+      const existing = portfolio.positions.get(signal.coinId);
+      if (existing && existing.quantity > 0) {
+        if (existing.side === 'short') {
+          this.logger.debug(`Cannot buy ${signal.coinId}: short position already exists`);
+        } else {
+          this.logger.debug(`Skipped BUY for ${signal.coinId}: long position already held`);
+        }
         return null;
       }
     }

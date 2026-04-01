@@ -340,7 +340,7 @@ export class PaperTradingEngineService {
           ? await this.accountRepository.find({ where: { session: { id: session.id } } })
           : accounts;
       const heldCoins = new Set(
-        activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 0).map((a) => a.currency)
+        activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
       );
 
       let currentPortfolio = updatedPortfolio;
@@ -417,6 +417,12 @@ export class PaperTradingEngineService {
               if (signal.action === 'BUY') {
                 const [bought] = signal.symbol.split('/');
                 heldCoins.add(bought);
+              }
+
+              // Remove sold coin so it can be re-bought by a later signal in the same tick
+              if (signal.action === 'SELL') {
+                const [sold] = signal.symbol.split('/');
+                heldCoins.delete(sold);
               }
 
               // Register position in exit tracker on BUY fill

@@ -253,8 +253,12 @@ export class LiveTradingService implements OnApplicationShutdown {
 
           // Skip BUY if long position already exists for this symbol
           if (action === 'buy') {
+            const signalCoinId = this.extractCoinIdFromSymbol(signal.symbol);
             const existingPosition = strategyPositions.find(
-              (p) => p.symbol === signal.symbol && p.positionSide !== 'short' && Number(p.quantity) > 0
+              (p) =>
+                p.positionSide !== 'short' &&
+                Number(p.quantity) > 0 &&
+                this.extractCoinIdFromSymbol(p.symbol) === signalCoinId
             );
             if (existingPosition) {
               this.logger.debug(
