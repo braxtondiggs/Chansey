@@ -9,6 +9,8 @@ import { ExchangeService } from '../../exchange/exchange.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRetry } from '../../shared/retry.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
+import { CoinListingEventType } from '../coin-listing-event.entity';
+import { CoinListingEventService } from '../coin-listing-event.service';
 import { CoinService } from '../coin.service';
 
 @Processor('coin-queue')
@@ -22,7 +24,8 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
     private readonly coin: CoinService,
-    private readonly exchangeService: ExchangeService
+    private readonly exchangeService: ExchangeService,
+    private readonly listingEventService: CoinListingEventService
   ) {
     super();
   }
@@ -323,26 +326,47 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       }
 
       if (uniqueCoinsToRemove.length > 0) {
-        // First log detailed information about the coins being removed
         if (missingFromGeckoIds.length > 0) {
-          this.logger.log(`Removing ${missingFromGeckoIds.length} coins no longer found in CoinGecko`);
+          this.logger.log(`Soft-delisting ${missingFromGeckoIds.length} coins no longer found in CoinGecko`);
         }
 
         if (unsupportedCoinIds.length > 0) {
-          this.logger.log(`Removing ${unsupportedCoinIds.length} coins not used in any ticker pairs`);
+          this.logger.log(`Soft-delisting ${unsupportedCoinIds.length} coins not used in any ticker pairs`);
         }
 
-        // Remove all coins in one operation
         await this.coin.removeMany(uniqueCoinsToRemove);
-        this.logger.log(`Removed ${uniqueCoinsToRemove.length} coins in total`);
+        await this.listingEventService.recordBulkDelistings(uniqueCoinsToRemove, 'coin_sync');
+        this.logger.log(`Soft-delisted ${uniqueCoinsToRemove.length} coins in total`);
+      }
+
+      // Check for previously delisted coins that should be re-listed
+      const allCoinsIncludingDelisted = await this.coin.getCoins({ includeDelisted: true });
+      const delistedCoins = allCoinsIncludingDelisted.filter((c) => c.delistedAt != null);
+
+      const coinsToRelist: string[] = [];
+      for (const coin of delistedCoins) {
+        if (geckoCoinsSet.has(coin.slug) && usedCoinSlugs.has(coin.slug)) {
+          coinsToRelist.push(coin.id);
+        }
+      }
+
+      if (coinsToRelist.length > 0) {
+        for (const coinId of coinsToRelist) {
+          await this.coin.relistCoin(coinId);
+          await this.listingEventService.recordEvent(coinId, CoinListingEventType.LISTED, {
+            source: 'coin_sync'
+          });
+        }
+        this.logger.log(`Re-listed ${coinsToRelist.length} previously delisted coins`);
       }
 
       // Return summary for job completion callback
       return {
         added: newCoins.length,
         updated: coinsToUpdate.length,
-        removed: uniqueCoinsToRemove.length,
-        total: existingCoins.length + newCoins.length - uniqueCoinsToRemove.length
+        delisted: uniqueCoinsToRemove.length,
+        relisted: coinsToRelist.length,
+        total: existingCoins.length + newCoins.length - uniqueCoinsToRemove.length + coinsToRelist.length
       };
     } catch (e: unknown) {
       const errInfo = toErrorInfo(e);
