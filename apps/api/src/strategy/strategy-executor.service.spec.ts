@@ -56,7 +56,7 @@ async function createMockModule(
   const signalThrottle = {
     createState: jest.fn().mockReturnValue({ lastSignalTime: {}, tradeTimestamps: [] }),
     resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 }),
-    filterSignals: jest.fn().mockImplementation((signals) => signals),
+    filterSignals: jest.fn().mockImplementation((signals) => ({ accepted: signals, rejected: [] })),
     toThrottleSignal: jest.fn().mockImplementation((s: any) => {
       const map: Record<string, string> = {
         BUY: 'BUY',
@@ -277,7 +277,7 @@ describe('StrategyExecutorService – signal throttle integration', () => {
       timestamp: new Date()
     });
 
-    signalThrottle.filterSignals.mockReturnValue([]);
+    signalThrottle.filterSignals.mockReturnValue({ accepted: [], rejected: [] });
 
     const result = await service.executeStrategy(strategy, marketData, [], 10000);
 
@@ -295,9 +295,10 @@ describe('StrategyExecutorService – signal throttle integration', () => {
     });
 
     // Filter out BTC, keep ETH
-    signalThrottle.filterSignals.mockImplementation((signals: any[]) =>
-      signals.filter((s: any) => s.coinId !== 'btc-id')
-    );
+    signalThrottle.filterSignals.mockImplementation((signals: any[]) => ({
+      accepted: signals.filter((s: any) => s.coinId !== 'btc-id'),
+      rejected: signals.filter((s: any) => s.coinId === 'btc-id')
+    }));
 
     const result = await service.executeStrategy(strategy, marketData, [], 10000);
 

@@ -280,20 +280,15 @@ export class PaperTradingEngineService {
       // 5b. Apply signal throttle: cooldowns, daily cap, min sell %
       const throttleState = this.getOrCreateThrottleState(session.id);
       const throttleConfig = this.signalThrottle.resolveConfig(session.algorithmConfig);
-      const filteredSignals = this.signalThrottle.filterSignals(
+      const { accepted: filteredSignals, rejected: throttledSignals } = this.signalThrottle.filterSignals(
         signals,
         throttleState,
         throttleConfig,
         Date.now()
-      ) as TradingSignal[];
+      ) as { accepted: TradingSignal[]; rejected: TradingSignal[] };
 
-      if (signals.length > filteredSignals.length) {
-        this.logger.debug(
-          `Throttled ${signals.length - filteredSignals.length}/${signals.length} signals for session ${session.id}`
-        );
-        // Persist throttled signals as REJECTED with reason code (use object identity to handle duplicate symbols)
-        const passedSignals = new Set<TradingSignal>(filteredSignals);
-        const throttledSignals = signals.filter((s) => !passedSignals.has(s));
+      if (throttledSignals.length > 0) {
+        this.logger.debug(`Throttled ${throttledSignals.length}/${signals.length} signals for session ${session.id}`);
         for (const blocked of throttledSignals) {
           const entity = await this.saveSignal(session, blocked);
           entity.status = PaperTradingSignalStatus.REJECTED;
@@ -650,8 +645,8 @@ export class PaperTradingEngineService {
         const fee = feeResult.fee;
 
         // Check if we have enough balance
-        const totalCost = new Decimal(totalValue).plus(fee).toNumber();
-        if (quoteAccount.available < totalCost) {
+        const totalCost = new Decimal(totalValue).plus(fee);
+        if (new Decimal(quoteAccount.available).lt(totalCost)) {
           this.logger.warn(
             `Insufficient ${quoteCurrency} balance for BUY order: need ${totalCost.toFixed(2)}, have ${quoteAccount.available.toFixed(2)}`
           );
@@ -751,7 +746,10 @@ export class PaperTradingEngineService {
         const sellPercent = 0.25 + signal.confidence * 0.75;
         quantity = baseAccount.available * sellPercent;
       } else {
-        quantity = baseAccount.available * 0.5;
+        this.logger.warn(
+          `No quantity/percentage/confidence for SELL signal on ${baseCurrency}/${quoteCurrency}, using 25% conservative fallback`
+        );
+        quantity = baseAccount.available * 0.25;
       }
 
       const dSellQuantity = new Decimal(quantity);

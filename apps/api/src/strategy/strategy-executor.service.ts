@@ -134,17 +134,18 @@ export class StrategyExecutorService {
         strategy.parameters as Record<string, unknown> | undefined
       );
       const throttleInput = actionableSignals.map((s) => this.signalThrottle.toThrottleSignal(s));
-      const throttleOutput = this.signalThrottle.filterSignals(
+      const { accepted: throttleOutput, rejected: throttleRejected } = this.signalThrottle.filterSignals(
         throttleInput,
         throttleState,
         throttleConfig,
         Date.now()
       );
 
-      if (throttleInput.length > throttleOutput.length) {
-        const suppressedCount = throttleInput.length - throttleOutput.length;
-        this.metricsService.recordSignalThrottleSuppressed(strategy.id, suppressedCount);
-        this.logger.debug(`Strategy ${strategy.id}: throttled ${suppressedCount}/${throttleInput.length} signals`);
+      if (throttleRejected.length > 0) {
+        this.metricsService.recordSignalThrottleSuppressed(strategy.id, throttleRejected.length);
+        this.logger.debug(
+          `Strategy ${strategy.id}: throttled ${throttleRejected.length}/${throttleInput.length} signals`
+        );
       }
       if (throttleOutput.length === 0) {
         this.logger.debug(`Strategy ${strategy.id}: all signals suppressed by throttle`);
@@ -152,7 +153,9 @@ export class StrategyExecutorService {
       }
 
       // Map accepted throttle signals back to original algorithm signals
-      const acceptedKeys = new Set(throttleOutput.map((s) => `${s.coinId}:${s.action}`));
+      const acceptedKeys = new Set(
+        throttleOutput.map((s: { coinId: string; action: string }) => `${s.coinId}:${s.action}`)
+      );
       const surviving = actionableSignals.filter((s) => {
         const t = this.signalThrottle.toThrottleSignal(s);
         return acceptedKeys.has(`${t.coinId}:${t.action}`);

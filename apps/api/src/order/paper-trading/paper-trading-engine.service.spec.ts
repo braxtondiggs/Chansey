@@ -51,7 +51,7 @@ const createService = (overrides: Partial<any> = {}) => {
   const portfolioState = {};
   const signalThrottle = {
     createState: jest.fn().mockReturnValue({ lastSignalTime: {}, tradeTimestamps: [] }),
-    filterSignals: jest.fn().mockImplementation((signals: any[]) => signals),
+    filterSignals: jest.fn().mockImplementation((signals: any[]) => ({ accepted: signals, rejected: [] })),
     resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 })
   };
 

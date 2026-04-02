@@ -7,6 +7,7 @@ import {
   SerializableThrottleState,
   SignalThrottleConfig,
   THROTTLE_BYPASS_TYPES,
+  ThrottleResult,
   ThrottleState
 } from './signal-throttle.interface';
 
@@ -58,14 +59,14 @@ export class SignalThrottleService {
    * Filter an array of trading signals through throttle rules.
    * Mutates `state` in place for accepted signals.
    *
-   * @returns Signals that pass all throttle checks (possibly with adjusted percentage).
+   * @returns Accepted signals (possibly with adjusted percentage) and rejected signals (original refs).
    */
   filterSignals(
     signals: TradingSignal[],
     state: ThrottleState,
     config: SignalThrottleConfig,
     currentTimestampMs: number
-  ): TradingSignal[] {
+  ): ThrottleResult {
     // Prune expired entries from rolling 24h window
     const windowStart = currentTimestampMs - TWENTY_FOUR_HOURS_MS;
     state.tradeTimestamps = state.tradeTimestamps.filter((ts) => ts > windowStart);
@@ -81,9 +82,11 @@ export class SignalThrottleService {
     }
 
     const accepted: TradingSignal[] = [];
+    const rejected: TradingSignal[] = [];
 
     for (const signal of signals) {
       if (signal.action === 'HOLD') {
+        rejected.push(signal);
         continue;
       }
 
@@ -94,6 +97,7 @@ export class SignalThrottleService {
           const key: CooldownKey = `${signal.coinId}:${direction}`;
           const lastTime = state.lastSignalTime[key];
           if (lastTime !== undefined && currentTimestampMs - lastTime < config.cooldownMs) {
+            rejected.push(signal);
             continue; // Duplicate risk-control signal — suppress
           }
           state.lastSignalTime[key] = currentTimestampMs;
@@ -109,12 +113,14 @@ export class SignalThrottleService {
         const key: CooldownKey = `${signal.coinId}:${direction}`;
         const lastTime = state.lastSignalTime[key];
         if (lastTime !== undefined && currentTimestampMs - lastTime < config.cooldownMs) {
+          rejected.push(signal);
           continue; // Still in cooldown — suppress
         }
       }
 
       // Daily cap check
       if (config.maxTradesPerDay > 0 && state.tradeTimestamps.length >= config.maxTradesPerDay) {
+        rejected.push(signal);
         continue; // Daily limit reached — suppress
       }
 
@@ -137,7 +143,7 @@ export class SignalThrottleService {
       accepted.push(effectiveSignal);
     }
 
-    return accepted;
+    return { accepted, rejected };
   }
 
   /** Serialize throttle state for checkpoint persistence */

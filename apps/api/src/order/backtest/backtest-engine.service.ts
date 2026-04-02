@@ -998,7 +998,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing + concentration filter
       const concentrationCtx = this.buildConcentrationContext(portfolio, marketData);
@@ -1921,7 +1921,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing + concentration filter
       const concentrationCtx = this.buildConcentrationContext(portfolio, marketData);
@@ -4009,7 +4009,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing
       if (btcCoin) {
@@ -4469,7 +4469,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing
       if (btcCoin) {

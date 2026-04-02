@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import {
   Column,
   CreateDateColumn,
@@ -191,7 +191,8 @@ export class PaperTradingSession {
   @ApiProperty({ description: 'User risk level (1-5) for allocation sizing', required: false })
   riskLevel?: number;
 
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   @IsOptional()
   @Column({ type: 'integer', nullable: true })
   @ApiProperty({ description: 'Minimum trades required before session can complete', required: false })

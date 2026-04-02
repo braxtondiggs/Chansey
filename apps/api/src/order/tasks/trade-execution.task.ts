@@ -518,7 +518,12 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     const throttleState = this.getThrottleState(activation.id);
     const throttleConfig = this.signalThrottle.resolveConfig(activation.config as Record<string, unknown> | undefined);
     const throttleInput = actionableSignals.map((s) => this.signalThrottle.toThrottleSignal(s));
-    const throttleOutput = this.signalThrottle.filterSignals(throttleInput, throttleState, throttleConfig, Date.now());
+    const throttleOutput = this.signalThrottle.filterSignals(
+      throttleInput,
+      throttleState,
+      throttleConfig,
+      Date.now()
+    ).accepted;
 
     if (throttleOutput.length === 0) {
       const bestThrottled = actionableSignals.reduce((best, cur) =>
