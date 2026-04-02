@@ -69,6 +69,13 @@ export class PasswordService {
   }
 
   /**
+   * Get the configured OTP lifetime in milliseconds
+   */
+  getOtpLifetimeMs(): number {
+    return this.OTP_EXPIRATION_MINUTES * 60 * 1000;
+  }
+
+  /**
    * Get OTP expiration time (configurable, default 10 minutes from now)
    */
   getOtpExpiration(): Date {

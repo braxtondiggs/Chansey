@@ -26,18 +26,13 @@ import {
 import { DEFAULT_CHECKPOINT_CONFIG } from './backtest-checkpoint.interface';
 import { BacktestEngine } from './backtest-engine.service';
 import { BacktestPauseService } from './backtest-pause.service';
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
 import { BacktestResultService } from './backtest-result.service';
+import { BacktestSignal as BacktestSignalEntity } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
+import { BacktestTrade } from './backtest-trade.entity';
 import { backtestConfig } from './backtest.config';
-import {
-  Backtest,
-  BacktestPerformanceSnapshot,
-  BacktestSignal as BacktestSignalEntity,
-  BacktestStatus,
-  BacktestTrade,
-  BacktestType,
-  SimulatedOrderFill as SimulatedOrderFillEntity
-} from './backtest.entity';
+import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
 import { ComparisonReport, ComparisonReportRun } from './comparison-report.entity';
 import { DatasetValidatorService } from './dataset-validator.service';
@@ -53,6 +48,7 @@ import {
   UpdateBacktestDto
 } from './dto/backtest.dto';
 import { MarketDataSet, MarketDataSource, MarketDataTimeframe } from './market-data-set.entity';
+import { SimulatedOrderFill as SimulatedOrderFillEntity } from './simulated-order-fill.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { CoinService } from '../../coin/coin.service';

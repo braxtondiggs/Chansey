@@ -7,21 +7,18 @@ import { Role } from '@chansey/api-interfaces';
 
 import { BacktestEngine } from './backtest-engine.service';
 import { BacktestPauseService } from './backtest-pause.service';
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
 import { BacktestResultService } from './backtest-result.service';
+import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
+import { BacktestTrade } from './backtest-trade.entity';
 import { backtestConfig } from './backtest.config';
-import {
-  Backtest,
-  BacktestPerformanceSnapshot,
-  BacktestSignal,
-  BacktestTrade,
-  BacktestType,
-  SimulatedOrderFill
-} from './backtest.entity';
+import { Backtest, BacktestType } from './backtest.entity';
 import { BacktestService } from './backtest.service';
 import { ComparisonReport, ComparisonReportRun } from './comparison-report.entity';
 import { DatasetValidatorService } from './dataset-validator.service';
 import { MarketDataSet } from './market-data-set.entity';
+import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { AlgorithmService } from '../../algorithm/algorithm.service';
 import { CoinService } from '../../coin/coin.service';

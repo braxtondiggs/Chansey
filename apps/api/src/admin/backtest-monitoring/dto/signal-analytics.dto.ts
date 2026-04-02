@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { SignalDirection, SignalType } from '../../../order/backtest/backtest.entity';
+import { SignalDirection, SignalType } from '../../../order/backtest/backtest-signal.entity';
 
 /**
  * Overall signal statistics

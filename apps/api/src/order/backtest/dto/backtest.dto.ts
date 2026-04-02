@@ -27,15 +27,10 @@ import {
   TrailingType
 } from '../../interfaces/exit-config.interface';
 import { ReplaySpeed } from '../backtest-pacing.interface';
-import {
-  BacktestStatus,
-  BacktestType,
-  SignalDirection,
-  SignalType,
-  SimulatedOrderStatus,
-  SimulatedOrderType
-} from '../backtest.entity';
+import { SignalDirection, SignalType } from '../backtest-signal.entity';
+import { BacktestStatus, BacktestType } from '../backtest.entity';
 import { SlippageModelType } from '../shared/slippage';
+import { SimulatedOrderStatus, SimulatedOrderType } from '../simulated-order-fill.entity';
 
 export class ExitConfigDto implements Partial<ExitConfig> {
   @IsOptional()

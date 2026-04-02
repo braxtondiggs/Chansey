@@ -27,7 +27,7 @@ import {
 import { Algorithm } from '../algorithm/algorithm.entity';
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { CoinSelectionService } from '../coin-selection/coin-selection.service';
-import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
+import { Backtest, BacktestConfigSnapshot, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { BacktestService } from '../order/backtest/backtest.service';
 import { CreateBacktestDto } from '../order/backtest/dto/backtest.dto';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
@@ -326,7 +326,7 @@ export class BacktestOrchestrationService {
     };
 
     await this.backtestRepository.update(backtestResult.id, {
-      configSnapshot: updatedConfigSnapshot
+      configSnapshot: updatedConfigSnapshot as unknown as BacktestConfigSnapshot
     });
 
     // Fetch and return the updated backtest

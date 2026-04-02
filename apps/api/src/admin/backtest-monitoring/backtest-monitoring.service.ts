@@ -58,17 +58,10 @@ import {
 import { Coin } from '../../coin/coin.entity';
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
-import {
-  Backtest,
-  BacktestSignal,
-  BacktestStatus,
-  BacktestTrade,
-  BacktestType,
-  SignalDirection,
-  SignalType,
-  SimulatedOrderFill,
-  TradeType
-} from '../../order/backtest/backtest.entity';
+import { BacktestSignal, SignalDirection, SignalType } from '../../order/backtest/backtest-signal.entity';
+import { BacktestTrade, TradeType } from '../../order/backtest/backtest-trade.entity';
+import { Backtest, BacktestStatus, BacktestType } from '../../order/backtest/backtest.entity';
+import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
 import {
   PaperTradingOrder,
   PaperTradingOrderSide

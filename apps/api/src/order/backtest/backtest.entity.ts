@@ -14,14 +14,17 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { ColumnNumericTransformer } from './../../utils/transformers';
 import { BacktestCheckpointState } from './backtest-checkpoint.interface';
 import { LiveReplayState } from './backtest-pacing.interface';
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
+import { BacktestSignal } from './backtest-signal.entity';
+import { BacktestTrade } from './backtest-trade.entity';
 import { MarketDataSet } from './market-data-set.entity';
+import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
-import { Coin } from '../../coin/coin.entity';
 import { User } from '../../users/users.entity';
+import { ColumnNumericTransformer } from '../../utils/transformers';
 
 export interface BacktestConfigSnapshot {
   coinSymbolFilter?: string[];
@@ -79,7 +82,7 @@ export class Backtest {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 8, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Initial capital for the backtest in USD' })
   initialCapital: number;
 
@@ -100,27 +103,27 @@ export class Backtest {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Final portfolio value', required: false })
   finalValue?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Total return percentage', required: false })
   totalReturn?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Annualized return percentage', required: false })
   annualizedReturn?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Sharpe ratio', required: false })
   sharpeRatio?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Maximum drawdown percentage', required: false })
   maxDrawdown?: number;
 
@@ -135,7 +138,7 @@ export class Backtest {
   winningTrades?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
   @ApiProperty({ description: 'Win rate as decimal (0.0-1.0), e.g., 0.65 = 65%', required: false })
   winRate?: number;
 
@@ -238,19 +241,19 @@ export class Backtest {
   @ApiProperty({ description: 'Market data set leveraged for the run', required: false, type: () => MarketDataSet })
   marketDataSet?: Relation<MarketDataSet>;
 
-  @OneToMany(() => BacktestTrade, (trade) => trade.backtest, { cascade: true })
+  @OneToMany('BacktestTrade', 'backtest', { cascade: true })
   @ApiProperty({ description: 'Trades executed during the backtest', type: () => [BacktestTrade] })
   trades: BacktestTrade[];
 
-  @OneToMany(() => BacktestPerformanceSnapshot, (snapshot) => snapshot.backtest, { cascade: true })
+  @OneToMany('BacktestPerformanceSnapshot', 'backtest', { cascade: true })
   @ApiProperty({ description: 'Performance snapshots over time', type: () => [BacktestPerformanceSnapshot] })
   performanceSnapshots: BacktestPerformanceSnapshot[];
 
-  @OneToMany(() => BacktestSignal, (signal) => signal.backtest, { cascade: true })
+  @OneToMany('BacktestSignal', 'backtest', { cascade: true })
   @ApiProperty({ description: 'Signals emitted during the run', type: () => [BacktestSignal] })
   signals: BacktestSignal[];
 
-  @OneToMany(() => SimulatedOrderFill, (fill) => fill.backtest, { cascade: true })
+  @OneToMany('SimulatedOrderFill', 'backtest', { cascade: true })
   @ApiProperty({
     description: 'Simulated order fills captured during replay/backtest',
     type: () => [SimulatedOrderFill]
@@ -258,346 +261,6 @@ export class Backtest {
   simulatedFills: SimulatedOrderFill[];
 
   constructor(partial: Partial<Backtest>) {
-    Object.assign(this, partial);
-  }
-}
-
-export enum TradeType {
-  BUY = 'BUY',
-  SELL = 'SELL'
-}
-
-export enum TradeStatus {
-  EXECUTED = 'EXECUTED',
-  FAILED = 'FAILED'
-}
-
-@Entity('backtest_trades')
-@Index(['backtest', 'executedAt'])
-@Index(['baseCoin', 'quoteCoin'])
-export class BacktestTrade {
-  @PrimaryGeneratedColumn('uuid')
-  @ApiProperty({ description: 'Unique identifier for the trade' })
-  id: string;
-
-  @IsEnum(TradeType)
-  @IsNotEmpty()
-  @Column({ type: 'enum', enum: TradeType, enumName: 'backtest_trade_type_enum' })
-  @ApiProperty({ description: 'Type of trade', enum: TradeType })
-  type: TradeType;
-
-  @IsEnum(TradeStatus)
-  @IsNotEmpty()
-  @Column({ type: 'enum', enum: TradeStatus, enumName: 'backtest_trade_status_enum', default: TradeStatus.EXECUTED })
-  @ApiProperty({ description: 'Status of the trade', enum: TradeStatus })
-  status: TradeStatus;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Quantity of base asset traded' })
-  quantity: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Price per unit of base asset' })
-  price: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Total value of the trade (quantity * price)' })
-  totalValue: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Trading fee paid' })
-  fee: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Realized profit/loss in quote currency (only for SELL trades)', required: false })
-  realizedPnL?: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Realized P&L as percentage (e.g., 0.05 = 5% gain)', required: false })
-  realizedPnLPercent?: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Average cost basis at time of trade (entry price for position)', required: false })
-  costBasis?: number;
-
-  @Column({ type: 'timestamptz' })
-  @ApiProperty({ description: 'When the trade was executed' })
-  executedAt: Date;
-
-  @IsString()
-  @IsOptional()
-  @Column({ nullable: true })
-  @ApiProperty({ description: 'Reason for the trade (signal that triggered it)', required: false })
-  signal?: string;
-
-  @IsString()
-  @IsOptional()
-  @Column({ type: 'varchar', length: 10, nullable: true })
-  @ApiProperty({ description: 'Position side: long or short', required: false })
-  positionSide?: string;
-
-  @IsNumber()
-  @IsOptional()
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Leverage used for this trade', required: false })
-  leverage?: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Liquidation price at time of trade', required: false })
-  liquidationPrice?: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Column({ type: 'decimal', precision: 20, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Margin amount used for this trade', required: false })
-  marginUsed?: number;
-
-  @Column({ type: 'jsonb', nullable: true })
-  @ApiProperty({ description: 'Additional trade metadata', required: false })
-  metadata?: Record<string, any>;
-
-  @ManyToOne(() => Backtest, (backtest) => backtest.trades, { onDelete: 'CASCADE' })
-  @JoinColumn()
-  @ApiProperty({ description: 'Backtest this trade belongs to' })
-  backtest: Backtest;
-
-  @ManyToOne('Coin', { nullable: false })
-  @JoinColumn()
-  @ApiProperty({ description: 'Base coin being traded' })
-  baseCoin: Relation<Coin>;
-
-  @ManyToOne('Coin', { nullable: false })
-  @JoinColumn()
-  @ApiProperty({ description: 'Quote coin (usually USD/USDT)' })
-  quoteCoin: Relation<Coin>;
-
-  constructor(partial: Partial<BacktestTrade>) {
-    Object.assign(this, partial);
-  }
-}
-
-@Entity('backtest_performance_snapshots')
-@Index(['backtest', 'timestamp'])
-export class BacktestPerformanceSnapshot {
-  @PrimaryGeneratedColumn('uuid')
-  @ApiProperty({ description: 'Unique identifier for the snapshot' })
-  id: string;
-
-  @Column({ type: 'timestamptz' })
-  @ApiProperty({ description: 'Timestamp of this performance snapshot' })
-  timestamp: Date;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Total portfolio value at this point' })
-  portfolioValue: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Cash balance (quote currency)' })
-  cashBalance: number;
-
-  @Column({ type: 'jsonb' })
-  @ApiProperty({ description: 'Holdings breakdown by asset' })
-  holdings: Record<string, { quantity: number; value: number; price: number }>;
-
-  @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Return from initial capital up to this point' })
-  cumulativeReturn: number;
-
-  @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Drawdown from peak at this point' })
-  drawdown: number;
-
-  @ManyToOne(() => Backtest, (backtest) => backtest.performanceSnapshots, { onDelete: 'CASCADE' })
-  @JoinColumn()
-  @ApiProperty({ description: 'Backtest this snapshot belongs to' })
-  backtest: Backtest;
-
-  constructor(partial: Partial<BacktestPerformanceSnapshot>) {
-    Object.assign(this, partial);
-  }
-}
-
-export enum SignalType {
-  ENTRY = 'ENTRY',
-  EXIT = 'EXIT',
-  ADJUSTMENT = 'ADJUSTMENT',
-  RISK_CONTROL = 'RISK_CONTROL'
-}
-
-export enum SignalDirection {
-  LONG = 'LONG',
-  SHORT = 'SHORT',
-  FLAT = 'FLAT'
-}
-
-@Entity('backtest_signals')
-@Index(['backtest', 'timestamp'])
-export class BacktestSignal {
-  @PrimaryGeneratedColumn('uuid')
-  @ApiProperty({ description: 'Unique identifier for the signal' })
-  id: string;
-
-  @Column({ type: 'timestamptz' })
-  @ApiProperty({ description: 'Market timestamp when the signal was generated' })
-  timestamp: Date;
-
-  @IsEnum(SignalType)
-  @Column({ type: 'enum', enum: SignalType, enumName: 'backtest_signal_type_enum' })
-  @ApiProperty({ description: 'Signal classification', enum: SignalType })
-  signalType: SignalType;
-
-  @IsString()
-  @Column()
-  @ApiProperty({ description: 'Instrument or symbol the signal targets' })
-  instrument: string;
-
-  @IsEnum(SignalDirection)
-  @Column({ type: 'enum', enum: SignalDirection, enumName: 'backtest_signal_direction_enum' })
-  @ApiProperty({ description: 'Directional intent of the signal', enum: SignalDirection })
-  direction: SignalDirection;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Quantity or exposure requested by the signal' })
-  quantity: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Reference price when applicable', required: false })
-  price?: number;
-
-  @IsString()
-  @IsOptional()
-  @Column({ type: 'text', nullable: true })
-  @ApiProperty({ description: 'Human-readable explanation for the signal', required: false })
-  reason?: string;
-
-  @IsNumber()
-  @Min(0)
-  @Max(1)
-  @Column({ type: 'decimal', precision: 5, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Confidence score on a 0-1 scale', required: false })
-  confidence?: number;
-
-  @Column({ type: 'jsonb', nullable: true })
-  @ApiProperty({ description: 'Custom metadata payload emitted with the signal', required: false })
-  payload?: Record<string, any>;
-
-  @ManyToOne(() => Backtest, (backtest) => backtest.signals, { onDelete: 'CASCADE' })
-  @JoinColumn()
-  @ApiProperty({ description: 'Backtest run that produced the signal' })
-  backtest: Backtest;
-
-  @OneToMany(() => SimulatedOrderFill, (fill) => fill.signal, { cascade: true })
-  @ApiProperty({ description: 'Simulated fills linked to this signal', type: () => [SimulatedOrderFill] })
-  simulatedFills: SimulatedOrderFill[];
-
-  constructor(partial: Partial<BacktestSignal>) {
-    Object.assign(this, partial);
-  }
-}
-
-export enum SimulatedOrderType {
-  MARKET = 'MARKET',
-  LIMIT = 'LIMIT',
-  STOP = 'STOP',
-  STOP_LIMIT = 'STOP_LIMIT'
-}
-
-export enum SimulatedOrderStatus {
-  FILLED = 'FILLED',
-  PARTIAL = 'PARTIAL',
-  CANCELLED = 'CANCELLED'
-}
-
-@Entity('simulated_order_fills')
-@Index(['backtest', 'executionTimestamp'])
-export class SimulatedOrderFill {
-  @PrimaryGeneratedColumn('uuid')
-  @ApiProperty({ description: 'Unique identifier for the simulated fill' })
-  id: string;
-
-  @IsEnum(SimulatedOrderType)
-  @Column({ type: 'enum', enum: SimulatedOrderType, enumName: 'simulated_order_type_enum' })
-  @ApiProperty({ description: 'Simulated order type', enum: SimulatedOrderType })
-  orderType: SimulatedOrderType;
-
-  @IsEnum(SimulatedOrderStatus)
-  @Column({ type: 'enum', enum: SimulatedOrderStatus, enumName: 'simulated_order_status_enum' })
-  @ApiProperty({ description: 'Fill completion status', enum: SimulatedOrderStatus })
-  status: SimulatedOrderStatus;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Quantity executed during the simulation' })
-  filledQuantity: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Average price achieved by the simulated fill' })
-  averagePrice: number;
-
-  @IsNumber()
-  @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Estimated fees charged for the fill' })
-  fees: number;
-
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
-  @ApiProperty({ description: 'Slippage captured in basis points', required: false })
-  slippageBps?: number;
-
-  @Column({ type: 'timestamptz' })
-  @ApiProperty({ description: 'Timestamp recorded for the simulated execution' })
-  executionTimestamp: Date;
-
-  @IsString()
-  @IsOptional()
-  @Column({ nullable: true })
-  @ApiProperty({ description: 'Instrument or symbol related to the fill', required: false })
-  instrument?: string;
-
-  @Column({ type: 'jsonb', nullable: true })
-  @ApiProperty({ description: 'Additional metadata captured during simulation', required: false })
-  metadata?: Record<string, any>;
-
-  @ManyToOne(() => Backtest, (backtest) => backtest.simulatedFills, { onDelete: 'CASCADE' })
-  @JoinColumn()
-  @ApiProperty({ description: 'Backtest run associated with this simulated fill' })
-  backtest: Backtest;
-
-  @ManyToOne(() => BacktestSignal, (signal) => signal.simulatedFills, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn()
-  @ApiProperty({ description: 'Source signal that triggered this fill', required: false })
-  signal?: BacktestSignal;
-
-  constructor(partial: Partial<SimulatedOrderFill>) {
     Object.assign(this, partial);
   }
 }

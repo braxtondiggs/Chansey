@@ -32,7 +32,7 @@ export class BacktestOrchestrationProcessor extends WorkerHost {
 
     this.logger.log(
       `Processing orchestration job ${job.id} for user ${userId} ` +
-        `(risk level: ${riskLevel}, scheduled: ${scheduledAt})`
+        `(risk level: ${riskLevel ?? 'user-default'}, scheduled: ${scheduledAt})`
     );
 
     const startTime = Date.now();

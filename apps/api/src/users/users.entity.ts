@@ -68,20 +68,20 @@ export class User {
 
   @Column({ nullable: true, select: false })
   @Exclude()
-  emailVerificationToken?: string;
+  emailVerificationToken!: string | null;
 
   @Column({ type: 'timestamptz', nullable: true, select: false })
   @Exclude()
-  emailVerificationTokenExpiresAt?: Date;
+  emailVerificationTokenExpiresAt!: Date | null;
 
   // OTP/2FA Fields
   @Column({ nullable: true, select: false })
   @Exclude()
-  otpHash?: string;
+  otpHash!: string | null;
 
   @Column({ type: 'timestamptz', nullable: true, select: false })
   @Exclude()
-  otpExpiresAt?: Date;
+  otpExpiresAt!: Date | null;
 
   @Column({ default: false })
   otpEnabled: boolean;
@@ -92,11 +92,11 @@ export class User {
   // Password Reset Fields
   @Column({ nullable: true, select: false })
   @Exclude()
-  passwordResetToken?: string;
+  passwordResetToken!: string | null;
 
   @Column({ type: 'timestamptz', nullable: true, select: false })
   @Exclude()
-  passwordResetTokenExpiresAt?: Date;
+  passwordResetTokenExpiresAt!: Date | null;
 
   @Column({
     type: 'enum',
@@ -111,10 +111,10 @@ export class User {
   failedLoginAttempts: number;
 
   @Column({ type: 'timestamptz', nullable: true })
-  lockedUntil?: Date;
+  lockedUntil!: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true })
-  lastLoginAt?: Date;
+  lastLoginAt!: Date | null;
 
   @Column({ default: false })
   hide_balance: boolean;

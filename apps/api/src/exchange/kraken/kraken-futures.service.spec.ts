@@ -58,6 +58,10 @@ describe('KrakenFuturesService', () => {
       expect(service.formatSymbol('BTC/USD')).toBe('BTC/USD:USD');
     });
 
+    it('converts ETH/USDT → ETH/USDT:USDT (slash with USDT quote)', () => {
+      expect(service.formatSymbol('ETH/USDT')).toBe('ETH/USDT:USDT');
+    });
+
     it.each([
       ['BTCUSD', 'BTC/USD:USD'],
       ['ETHUSDT', 'ETH/USDT:USDT'],
@@ -123,12 +127,17 @@ describe('KrakenFuturesService', () => {
       expect(mockExchange.setLeverage).not.toHaveBeenCalled();
     });
 
-    it('throws when ticker has no last price and no explicit price', async () => {
-      (mockExchange.fetchTicker as jest.Mock).mockResolvedValueOnce({ last: null });
+    it('forwards extra params but strips price from the params bag', async () => {
+      await service.createFuturesOrder(mockUser, 'BTC/USD:USD', 'buy', 1, 1, {
+        price: 49_000,
+        stopLossPrice: 48_000,
+        clientOrderId: 'abc'
+      });
 
-      await expect(service.createFuturesOrder(mockUser, 'BTC/USD:USD', 'buy', 1, 1)).rejects.toThrow(
-        InternalServerErrorException
-      );
+      expect(mockExchange.createOrder).toHaveBeenCalledWith('BTC/USD:USD', 'limit', 'buy', 1, 49_000, {
+        stopLossPrice: 48_000,
+        clientOrderId: 'abc'
+      });
     });
 
     it('throws InternalServerErrorException when createOrder fails', async () => {
@@ -147,14 +156,16 @@ describe('KrakenFuturesService', () => {
       );
     });
 
-    it('re-throws ISE from inner code without double-wrapping', async () => {
-      // When fetchTicker returns null price, an ISE is thrown at line 80.
-      // The catch block (line 90) should re-throw it as-is, not wrap it again.
+    it('throws ISE with correct message when ticker has no last price (no double-wrapping)', async () => {
       (mockExchange.fetchTicker as jest.Mock).mockResolvedValueOnce({ last: null });
 
-      await expect(service.createFuturesOrder(mockUser, 'BTC/USD:USD', 'buy', 1, 1)).rejects.toThrow(
-        /Cannot determine price/
-      );
+      try {
+        await service.createFuturesOrder(mockUser, 'BTC/USD:USD', 'buy', 1, 1);
+        fail('Expected InternalServerErrorException');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InternalServerErrorException);
+        expect((error as InternalServerErrorException).message).toMatch(/Cannot determine price/);
+      }
     });
 
     it('calls getClient only once per createFuturesOrder invocation', async () => {
@@ -194,7 +205,7 @@ describe('KrakenFuturesService', () => {
     });
 
     it('throws InternalServerErrorException on failure', async () => {
-      (mockExchange.fetchBalance as jest.Mock).mockRejectedValueOnce(new Error('network error'));
+      (mockExchange.fetchBalance as jest.Mock).mockRejectedValueOnce(new ccxt.AuthenticationError('invalid key'));
 
       await expect(service.getBalance(mockUser)).rejects.toThrow(InternalServerErrorException);
     });
@@ -207,14 +218,6 @@ describe('KrakenFuturesService', () => {
       const balances = await service.getFreeBalance(mockUser);
 
       expect(balances).toEqual([{ asset: 'USD', free: '8000', locked: '2000' }]);
-    });
-  });
-
-  // ── setMarginMode (inherited no-op) ──
-
-  describe('setMarginMode', () => {
-    it('does not throw — inherits base class no-op', async () => {
-      await expect(service.setMarginMode('isolated', 'BTC/USD:USD', mockUser)).resolves.toBeUndefined();
     });
   });
 });

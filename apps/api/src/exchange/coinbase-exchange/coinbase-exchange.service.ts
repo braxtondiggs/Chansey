@@ -3,12 +3,7 @@ import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
-import { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
-import { toErrorInfo } from '../../shared/error.util';
-import { withRateLimitRetryThrow } from '../../shared/retry.util';
-import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
-import { CCXT_BALANCE_META_KEYS } from '../ccxt-balance.util';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -20,6 +15,14 @@ export class CoinbaseExchangeService extends BaseExchangeService {
   protected readonly apiSecretConfigName = 'COINBASE_EXCHANGE_API_SECRET';
   readonly quoteAsset = 'USD';
 
+  protected override get balanceFilterByTotal(): boolean {
+    return true;
+  }
+
+  protected override get balanceSilentOnError(): boolean {
+    return true;
+  }
+
   constructor(
     configService?: ConfigService,
     @Inject(forwardRef(() => ExchangeService)) exchangeService?: ExchangeService,
@@ -29,32 +32,12 @@ export class CoinbaseExchangeService extends BaseExchangeService {
   }
 
   /**
-   * Get the current price of an asset in the original API format
-   * @param symbol Symbol in format like "BTC-USD"
-   * @returns Price data in the same format as the original API
+   * Override formatSymbol for Coinbase Exchange (Pro) — accepts "BTC-USD" format
    */
-  async getPrice(symbol: string) {
-    try {
-      // Format symbol to CCXT format if it's not already
-      const formattedSymbol = symbol.includes('/') ? symbol : symbol.replace('-', '/');
-
-      const client = await this.getClient();
-      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
-        logger: this.logger,
-        operationName: `getPrice(${symbol})`
-      });
-
-      // Return in the format expected by existing code
-      return {
-        symbol: symbol,
-        price: ticker.last?.toString() || '0',
-        timestamp: Number(ticker.timestamp ?? 0)
-      };
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Error fetching Coinbase Pro price for ${symbol}`, err.stack || err.message);
-      throw new Error(`Failed to fetch Coinbase Pro price for ${symbol}`);
-    }
+  override formatSymbol(symbol: string): string {
+    if (symbol.includes('/')) return symbol;
+    // Convert "BTC-USD" → "BTC/USD"
+    return symbol.replace('-', '/');
   }
 
   /**
@@ -64,36 +47,5 @@ export class CoinbaseExchangeService extends BaseExchangeService {
     return {
       v3: true // Use v3 API for Coinbase Pro
     };
-  }
-
-  async getBalance(user: User): Promise<AssetBalanceDto[]> {
-    try {
-      const client = await this.getClient(user);
-      const balances = await withRateLimitRetryThrow(() => client.fetchBalance(), {
-        logger: this.logger,
-        operationName: 'getBalance'
-      });
-
-      const assetBalances: AssetBalanceDto[] = [];
-
-      for (const [asset, balance] of Object.entries(balances)) {
-        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
-
-        // const balanceData = balance as { total?: string; free?: string; used?: string };
-        if (balance.total && parseFloat(balance.total.toString()) > 0) {
-          assetBalances.push({
-            asset,
-            free: balance.free?.toString() || '0',
-            locked: balance.used?.toString() || '0'
-          });
-        }
-      }
-
-      return assetBalances;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Error fetching Coinbase Pro balance for user ${user.id}`, err.stack || err.message);
-      return [];
-    }
   }
 }

@@ -5,7 +5,7 @@ import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 import { SignalReasonCode, SignalSource, SignalStatus } from '@chansey/api-interfaces';
 
-import { SignalDirection, SignalType } from '../../../order/backtest/backtest.entity';
+import { SignalDirection, SignalType } from '../../../order/backtest/backtest-signal.entity';
 
 /**
  * A single signal in the activity feed

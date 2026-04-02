@@ -1,5 +1,3 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
-
 import { Repository } from 'typeorm';
 
 import { Role } from '@chansey/api-interfaces';
@@ -7,9 +5,20 @@ import { Role } from '@chansey/api-interfaces';
 import { SecurityAuditService } from './audit';
 import { AuthenticationService } from './authentication.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { OtpService } from './otp.service';
 import { PasswordService } from './password.service';
 
+import {
+  AccountLockedException,
+  EmailAlreadyExistsException,
+  EmailNotVerifiedException,
+  InternalException,
+  InvalidCredentialsException,
+  InvalidTokenException,
+  PasswordMismatchException,
+  TokenExpiredException,
+  ValidationException
+} from '../common/exceptions';
 import { EmailService } from '../email/email.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '../users/users.entity';
@@ -27,6 +36,7 @@ describe('AuthenticationService', () => {
   let passwordService: jest.Mocked<PasswordService>;
   let emailService: jest.Mocked<EmailService>;
   let securityAudit: jest.Mocked<SecurityAuditService>;
+  let otpService: jest.Mocked<OtpService>;
 
   beforeEach(() => {
     userRepository = {
@@ -34,13 +44,12 @@ describe('AuthenticationService', () => {
       update: jest.fn()
     } as unknown as jest.Mocked<Repository<User>>;
 
-    configService = {
-      get: jest.fn()
-    };
+    configService = { get: jest.fn() };
 
     usersService = {
       create: jest.fn(),
-      getById: jest.fn()
+      getById: jest.fn(),
+      getExchangeKeysForUser: jest.fn()
     } as unknown as jest.Mocked<UsersService>;
 
     passwordService = {
@@ -65,10 +74,17 @@ describe('AuthenticationService', () => {
     securityAudit = {
       logRegistration: jest.fn(),
       logLoginFailed: jest.fn(),
+      logLoginSuccess: jest.fn(),
       logAccountLocked: jest.fn(),
       logOtpFailed: jest.fn(),
-      logPasswordChanged: jest.fn()
+      logPasswordChanged: jest.fn(),
+      logPasswordResetRequested: jest.fn(),
+      logPasswordResetCompleted: jest.fn()
     } as unknown as jest.Mocked<SecurityAuditService>;
+
+    otpService = {
+      sendLoginOtp: jest.fn()
+    } as unknown as jest.Mocked<OtpService>;
 
     service = new AuthenticationService(
       userRepository,
@@ -76,7 +92,8 @@ describe('AuthenticationService', () => {
       usersService,
       passwordService,
       emailService,
-      securityAudit
+      securityAudit,
+      otpService
     );
   });
 
@@ -84,9 +101,7 @@ describe('AuthenticationService', () => {
     jest.clearAllMocks();
   });
 
-  it('rejects registration when user already exists', async () => {
-    userRepository.findOne.mockResolvedValue({ id: 'existing-user' } as User);
-
+  describe('register', () => {
     const payload: CreateUserDto = {
       email: 'user@example.com',
       given_name: 'Sam',
@@ -95,226 +110,399 @@ describe('AuthenticationService', () => {
       confirm_password: 'pass123'
     };
 
-    await expect(service.register(payload)).rejects.toThrow('User with this email already exists');
-  });
+    it('rejects when user already exists', async () => {
+      userRepository.findOne.mockResolvedValue({ id: 'existing-user' } as User);
 
-  it('registers new users and sends verification email', async () => {
-    userRepository.findOne.mockResolvedValue(null);
-    passwordService.hashPassword.mockResolvedValue('hashed-password');
-    passwordService.generateSecureToken.mockReturnValue('verify-token');
-    const verificationExpiresAt = new Date('2024-01-01T00:00:00Z');
-    passwordService.getVerificationTokenExpiration.mockReturnValue(verificationExpiresAt);
+      await expect(service.register(payload)).rejects.toThrow(EmailAlreadyExistsException);
+    });
 
-    usersService.create.mockResolvedValue({
-      id: 'user-id-123',
-      email: 'user@example.com',
-      given_name: 'Sam',
-      family_name: 'Stone',
-      exchanges: []
-    } as any);
+    it('creates user with hashed password and sends verification email', async () => {
+      userRepository.findOne.mockResolvedValue(null);
+      passwordService.hashPassword.mockResolvedValue('hashed-password');
+      passwordService.generateSecureToken.mockReturnValue('verify-token');
+      const expiresAt = new Date('2024-01-01T00:00:00Z');
+      passwordService.getVerificationTokenExpiration.mockReturnValue(expiresAt);
 
-    emailService.sendVerificationEmail.mockResolvedValue(true);
-
-    const payload: CreateUserDto = {
-      email: 'user@example.com',
-      given_name: 'Sam',
-      family_name: 'Stone',
-      password: 'pass123',
-      confirm_password: 'pass123'
-    };
-
-    const result = await service.register(payload);
-
-    expect(securityAudit.logRegistration).toHaveBeenCalledWith('user-id-123', 'user@example.com');
-    expect(usersService.create).toHaveBeenCalledWith(
-      expect.objectContaining({
+      usersService.create.mockResolvedValue({
+        id: 'user-id-123',
         email: 'user@example.com',
         given_name: 'Sam',
         family_name: 'Stone',
-        passwordHash: 'hashed-password',
-        emailVerified: false,
-        emailVerificationToken: 'verify-token',
-        roles: [Role.USER]
-      })
-    );
-    expect(emailService.sendVerificationEmail).toHaveBeenCalledWith('user@example.com', 'verify-token', 'Sam');
-    expect(result).toEqual(
-      expect.objectContaining({
-        message: 'Registration successful. Please check your email to verify your account.',
-        user: {
-          id: 'user-id-123',
+        exchanges: []
+      } as any);
+      emailService.sendVerificationEmail.mockResolvedValue(true);
+
+      const result = await service.register(payload);
+
+      expect(usersService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
           email: 'user@example.com',
-          given_name: 'Sam',
-          family_name: 'Stone'
-        }
-      })
-    );
+          passwordHash: 'hashed-password',
+          emailVerified: false,
+          emailVerificationToken: 'verify-token',
+          emailVerificationTokenExpiresAt: expiresAt,
+          roles: [Role.USER]
+        })
+      );
+      expect(emailService.sendVerificationEmail).toHaveBeenCalledWith('user@example.com', 'verify-token', 'Sam');
+      expect(securityAudit.logRegistration).toHaveBeenCalledWith('user-id-123', 'user@example.com');
+      expect(result.message).toContain('Registration successful');
+      expect(result.user).toEqual(expect.objectContaining({ id: 'user-id-123', email: 'user@example.com' }));
+    });
+
+    it('wraps unexpected errors in InternalException', async () => {
+      userRepository.findOne.mockRejectedValue(new Error('DB connection failed'));
+
+      await expect(service.register(payload)).rejects.toThrow(InternalException);
+    });
   });
 
-  it('rejects email verification with invalid token', async () => {
-    userRepository.findOne.mockResolvedValue(null);
+  describe('verifyEmail', () => {
+    it('rejects invalid verification token', async () => {
+      userRepository.findOne.mockResolvedValue(null);
 
-    await expect(service.verifyEmail('bad-token')).rejects.toThrow('Invalid verification token');
+      await expect(service.verifyEmail('bad-token')).rejects.toThrow(InvalidTokenException);
+    });
+
+    it('rejects expired verification token', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        email: 'user@example.com',
+        emailVerificationTokenExpiresAt: new Date(Date.now() - 60_000)
+      } as User);
+
+      await expect(service.verifyEmail('expired-token')).rejects.toThrow(TokenExpiredException);
+    });
+
+    it('marks email as verified and sends welcome email', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        email: 'user@example.com',
+        given_name: 'Sam',
+        emailVerificationTokenExpiresAt: new Date(Date.now() + 60_000)
+      } as User);
+      emailService.sendWelcomeEmail.mockResolvedValue(true);
+
+      const result = await service.verifyEmail('good-token');
+
+      expect(userRepository.update).toHaveBeenCalledWith('user-id', {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationTokenExpiresAt: null
+      });
+      expect(emailService.sendWelcomeEmail).toHaveBeenCalledWith('user@example.com', 'Sam');
+      expect(result).toEqual({ message: 'Email verified successfully' });
+    });
   });
 
-  it('verifies email and sends welcome email', async () => {
-    userRepository.findOne.mockResolvedValue({
+  describe('resendVerificationEmail', () => {
+    it('returns generic message when user not found (anti-enumeration)', async () => {
+      userRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.resendVerificationEmail('unknown@example.com');
+
+      expect(result.message).toContain('If an account exists');
+      expect(emailService.sendVerificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('returns early when email is already verified', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        email: 'user@example.com',
+        emailVerified: true
+      } as User);
+
+      const result = await service.resendVerificationEmail('user@example.com');
+
+      expect(result.message).toBe('Email is already verified');
+      expect(userRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('generates new token and sends verification email', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        email: 'user@example.com',
+        given_name: 'Sam',
+        emailVerified: false
+      } as User);
+      passwordService.generateSecureToken.mockReturnValue('new-token');
+      const expiresAt = new Date('2024-01-01T00:00:00Z');
+      passwordService.getVerificationTokenExpiration.mockReturnValue(expiresAt);
+      emailService.sendVerificationEmail.mockResolvedValue(true);
+
+      const result = await service.resendVerificationEmail('user@example.com');
+
+      expect(userRepository.update).toHaveBeenCalledWith('user-id', {
+        emailVerificationToken: 'new-token',
+        emailVerificationTokenExpiresAt: expiresAt
+      });
+      expect(emailService.sendVerificationEmail).toHaveBeenCalledWith('user@example.com', 'new-token', 'Sam');
+      expect(result).toEqual({ message: 'Verification email sent' });
+    });
+  });
+
+  describe('getAuthenticatedUser', () => {
+    const verifiedUser = {
       id: 'user-id',
       email: 'user@example.com',
       given_name: 'Sam',
-      emailVerificationTokenExpiresAt: new Date(Date.now() + 60_000)
-    } as User);
-
-    emailService.sendWelcomeEmail.mockResolvedValue(true);
-
-    const result = await service.verifyEmail('good-token');
-
-    expect(userRepository.update).toHaveBeenCalledWith('user-id', {
-      emailVerified: true,
-      emailVerificationToken: undefined,
-      emailVerificationTokenExpiresAt: undefined
-    });
-    expect(emailService.sendWelcomeEmail).toHaveBeenCalledWith('user@example.com', 'Sam');
-    expect(result).toEqual({ message: 'Email verified successfully' });
-  });
-
-  it('resends verification email when user is not verified', async () => {
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-id',
-      email: 'user@example.com',
-      given_name: 'Sam',
-      emailVerified: false
-    } as User);
-
-    passwordService.generateSecureToken.mockReturnValue('new-token');
-    const verificationExpiresAt = new Date('2024-01-01T00:00:00Z');
-    passwordService.getVerificationTokenExpiration.mockReturnValue(verificationExpiresAt);
-    emailService.sendVerificationEmail.mockResolvedValue(true);
-
-    const result = await service.resendVerificationEmail('user@example.com');
-
-    expect(userRepository.update).toHaveBeenCalledWith('user-id', {
-      emailVerificationToken: 'new-token',
-      emailVerificationTokenExpiresAt: verificationExpiresAt
-    });
-    expect(emailService.sendVerificationEmail).toHaveBeenCalledWith('user@example.com', 'new-token', 'Sam');
-    expect(result).toEqual({ message: 'Verification email sent' });
-  });
-
-  it('locks the account after too many failed login attempts', async () => {
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-id',
-      email: 'user@example.com',
+      family_name: 'Stone',
       passwordHash: 'hash',
       emailVerified: true,
-      failedLoginAttempts: 4,
-      roles: [Role.USER]
-    } as User);
-
-    passwordService.verifyPassword.mockResolvedValue(false);
-
-    await expect(service.getAuthenticatedUser('user@example.com', 'wrong')).rejects.toThrow(
-      new HttpException('Wrong credentials provided', HttpStatus.BAD_REQUEST)
-    );
-
-    expect(securityAudit.logLoginFailed).toHaveBeenCalledWith(
-      'user@example.com',
-      'Invalid password',
-      undefined,
-      undefined,
-      'user-id'
-    );
-    expect(userRepository.update).toHaveBeenCalledWith(
-      'user-id',
-      expect.objectContaining({
-        failedLoginAttempts: 5,
-        lockedUntil: expect.any(Date)
-      })
-    );
-    expect(securityAudit.logAccountLocked).toHaveBeenCalledWith('user-id', 'user@example.com');
-  });
-
-  it('returns OTP response when OTP is enabled', async () => {
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-id',
-      email: 'user@example.com',
-      given_name: 'Sam',
-      passwordHash: 'hash',
-      emailVerified: true,
-      otpEnabled: true,
+      otpEnabled: false,
       failedLoginAttempts: 0,
       roles: [Role.USER]
-    } as User);
+    } as unknown as User;
 
-    passwordService.verifyPassword.mockResolvedValue(true);
-    passwordService.generateOtp.mockReturnValue('123456');
-    passwordService.hashOtp.mockResolvedValue('otp-hash');
-    const otpExpiresAt = new Date('2024-01-01T00:10:00Z');
-    passwordService.getOtpExpiration.mockReturnValue(otpExpiresAt);
-    emailService.sendOtpEmail.mockResolvedValue(true);
+    it('rejects when user not found', async () => {
+      userRepository.findOne.mockResolvedValue(null);
 
-    const result = await service.getAuthenticatedUser('user@example.com', 'pass');
-
-    expect(userRepository.update).toHaveBeenCalledWith('user-id', {
-      otpHash: 'otp-hash',
-      otpExpiresAt,
-      otpFailedAttempts: 0
+      await expect(service.getAuthenticatedUser('unknown@example.com', 'pass')).rejects.toThrow(
+        InvalidCredentialsException
+      );
     });
-    expect(emailService.sendOtpEmail).toHaveBeenCalledWith('user@example.com', '123456', 'Sam');
-    expect(result).toEqual({
-      should_show_email_otp_screen: true,
-      message: 'OTP sent to your email'
+
+    it('rejects when account is locked', async () => {
+      userRepository.findOne.mockResolvedValue({
+        ...verifiedUser,
+        lockedUntil: new Date(Date.now() + 600_000)
+      } as User);
+
+      await expect(service.getAuthenticatedUser('user@example.com', 'pass')).rejects.toThrow(AccountLockedException);
+    });
+
+    it('rejects when user has no password hash (migrated user)', async () => {
+      userRepository.findOne.mockResolvedValue({
+        ...verifiedUser,
+        passwordHash: undefined
+      } as unknown as User);
+
+      await expect(service.getAuthenticatedUser('user@example.com', 'pass')).rejects.toThrow(ValidationException);
+    });
+
+    it('increments failed attempts on wrong password without locking', async () => {
+      userRepository.findOne.mockResolvedValue({
+        ...verifiedUser,
+        failedLoginAttempts: 2
+      } as User);
+      passwordService.verifyPassword.mockResolvedValue(false);
+
+      await expect(service.getAuthenticatedUser('user@example.com', 'wrong')).rejects.toThrow(
+        InvalidCredentialsException
+      );
+
+      expect(securityAudit.logLoginFailed).toHaveBeenCalled();
+      expect(userRepository.update).toHaveBeenCalledWith(
+        'user-id',
+        expect.objectContaining({ failedLoginAttempts: 3 })
+      );
+      expect(securityAudit.logAccountLocked).not.toHaveBeenCalled();
+    });
+
+    it('locks account after max failed login attempts', async () => {
+      userRepository.findOne.mockResolvedValue({
+        ...verifiedUser,
+        failedLoginAttempts: 4
+      } as User);
+      passwordService.verifyPassword.mockResolvedValue(false);
+
+      await expect(service.getAuthenticatedUser('user@example.com', 'wrong')).rejects.toThrow(
+        InvalidCredentialsException
+      );
+
+      expect(userRepository.update).toHaveBeenCalledWith(
+        'user-id',
+        expect.objectContaining({
+          failedLoginAttempts: 5,
+          lockedUntil: expect.any(Date)
+        })
+      );
+      expect(securityAudit.logAccountLocked).toHaveBeenCalledWith('user-id', 'user@example.com');
+    });
+
+    it('rejects when email is not verified', async () => {
+      userRepository.findOne.mockResolvedValue({
+        ...verifiedUser,
+        emailVerified: false
+      } as User);
+      passwordService.verifyPassword.mockResolvedValue(true);
+
+      await expect(service.getAuthenticatedUser('user@example.com', 'pass')).rejects.toThrow(EmailNotVerifiedException);
+    });
+
+    it('sends OTP and returns early when OTP is enabled', async () => {
+      userRepository.findOne.mockResolvedValue({
+        ...verifiedUser,
+        otpEnabled: true
+      } as User);
+      passwordService.verifyPassword.mockResolvedValue(true);
+      otpService.sendLoginOtp.mockResolvedValue(undefined);
+
+      const result = await service.getAuthenticatedUser('user@example.com', 'pass');
+
+      expect(otpService.sendLoginOtp).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'user-id', email: 'user@example.com' })
+      );
+      expect(result).toEqual({
+        should_show_email_otp_screen: true,
+        message: 'OTP sent to your email'
+      });
+    });
+
+    it('returns user data and resets failed attempts on successful login', async () => {
+      userRepository.findOne.mockResolvedValue({ ...verifiedUser } as User);
+      passwordService.verifyPassword.mockResolvedValue(true);
+      usersService.getExchangeKeysForUser.mockResolvedValue([]);
+
+      const result = await service.getAuthenticatedUser('user@example.com', 'pass');
+
+      expect(userRepository.update).toHaveBeenCalledWith(
+        'user-id',
+        expect.objectContaining({
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastLoginAt: expect.any(Date)
+        })
+      );
+      expect(securityAudit.logLoginSuccess).toHaveBeenCalledWith('user-id', 'user@example.com');
+      expect(result).toEqual(
+        expect.objectContaining({
+          message: 'Login successful',
+          access_token: null
+        })
+      );
     });
   });
 
-  it('increments OTP failed attempts when verification fails', async () => {
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-id',
-      email: 'user@example.com',
-      otpHash: 'otp-hash',
-      otpExpiresAt: new Date(Date.now() + 60_000),
-      otpFailedAttempts: 1,
-      roles: [Role.USER]
-    } as User);
+  describe('validateAPIKey', () => {
+    it('returns true for matching key', () => {
+      configService.get.mockReturnValue('secret-key');
+      expect(service.validateAPIKey('secret-key')).toBe(true);
+    });
 
-    passwordService.verifyOtp.mockResolvedValue(false);
-
-    const payload: VerifyOtpDto = {
-      email: 'user@example.com',
-      otp: '000000'
-    };
-
-    await expect(service.verifyOtp(payload)).rejects.toThrow('Invalid OTP');
-    expect(userRepository.update).toHaveBeenCalledWith('user-id', { otpFailedAttempts: 2 });
+    it('returns false for non-matching key', () => {
+      configService.get.mockReturnValue('secret-key');
+      expect(service.validateAPIKey('wrong-key')).toBe(false);
+    });
   });
 
-  it('changes password when current password is valid', async () => {
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-id',
-      passwordHash: 'hash'
-    } as User);
+  describe('changePassword', () => {
+    const user = { id: 'user-id', email: 'user@example.com' } as User;
 
-    passwordService.verifyPassword.mockResolvedValue(true);
-    passwordService.hashPassword.mockResolvedValue('new-hash');
+    it('rejects when new passwords do not match', async () => {
+      const payload: ChangePasswordDto = {
+        old_password: 'old',
+        new_password: 'new1',
+        confirm_new_password: 'new2'
+      };
 
-    const payload: ChangePasswordDto = {
-      old_password: 'old',
-      new_password: 'new',
-      confirm_new_password: 'new'
-    };
+      await expect(service.changePassword(user, payload)).rejects.toThrow(PasswordMismatchException);
+    });
 
-    const result = await service.changePassword({ id: 'user-id' } as User, payload);
+    it('rejects when current password is wrong', async () => {
+      userRepository.findOne.mockResolvedValue({ id: 'user-id', passwordHash: 'hash' } as User);
+      passwordService.verifyPassword.mockResolvedValue(false);
 
-    expect(userRepository.update).toHaveBeenCalledWith('user-id', { passwordHash: 'new-hash' });
-    expect(result).toEqual({ message: 'Password changed successfully' });
+      const payload: ChangePasswordDto = {
+        old_password: 'wrong',
+        new_password: 'new',
+        confirm_new_password: 'new'
+      };
+
+      await expect(service.changePassword(user, payload)).rejects.toThrow(InvalidCredentialsException);
+    });
+
+    it('updates password hash and audits on success', async () => {
+      userRepository.findOne.mockResolvedValue({ id: 'user-id', passwordHash: 'hash' } as User);
+      passwordService.verifyPassword.mockResolvedValue(true);
+      passwordService.hashPassword.mockResolvedValue('new-hash');
+
+      const payload: ChangePasswordDto = {
+        old_password: 'old',
+        new_password: 'new',
+        confirm_new_password: 'new'
+      };
+
+      const result = await service.changePassword(user, payload);
+
+      expect(userRepository.update).toHaveBeenCalledWith('user-id', { passwordHash: 'new-hash' });
+      expect(securityAudit.logPasswordChanged).toHaveBeenCalledWith('user-id', 'user@example.com');
+      expect(result).toEqual({ message: 'Password changed successfully' });
+    });
   });
 
-  it('rejects password reset when token is expired', async () => {
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-id',
-      passwordResetTokenExpiresAt: new Date(Date.now() - 60_000)
-    } as User);
+  describe('forgotPassword', () => {
+    it('returns generic message when user not found (anti-enumeration)', async () => {
+      userRepository.findOne.mockResolvedValue(null);
 
-    await expect(service.resetPassword('token', 'new', 'new')).rejects.toThrow('Reset token has expired');
+      const result = await service.forgotPassword('unknown@example.com');
+
+      expect(result.message).toContain('If an account exists');
+      expect(emailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it('generates reset token and sends email for existing user', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        email: 'user@example.com',
+        given_name: 'Sam'
+      } as User);
+      passwordService.generateSecureToken.mockReturnValue('reset-token');
+      const expiresAt = new Date('2024-02-01T00:00:00Z');
+      passwordService.getPasswordResetExpiration.mockReturnValue(expiresAt);
+      emailService.sendPasswordResetEmail.mockResolvedValue(true);
+
+      const result = await service.forgotPassword('user@example.com');
+
+      expect(userRepository.update).toHaveBeenCalledWith('user-id', {
+        passwordResetToken: 'reset-token',
+        passwordResetTokenExpiresAt: expiresAt
+      });
+      expect(emailService.sendPasswordResetEmail).toHaveBeenCalledWith('user@example.com', 'reset-token', 'Sam');
+      expect(securityAudit.logPasswordResetRequested).toHaveBeenCalledWith('user@example.com');
+      expect(result.message).toContain('If an account exists');
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('rejects when passwords do not match', async () => {
+      await expect(service.resetPassword('token', 'new1', 'new2')).rejects.toThrow(PasswordMismatchException);
+    });
+
+    it('rejects invalid reset token', async () => {
+      userRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.resetPassword('bad-token', 'new', 'new')).rejects.toThrow(InvalidTokenException);
+    });
+
+    it('rejects expired reset token', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        passwordResetTokenExpiresAt: new Date(Date.now() - 60_000)
+      } as User);
+
+      await expect(service.resetPassword('token', 'new', 'new')).rejects.toThrow(TokenExpiredException);
+    });
+
+    it('resets password and clears lockout on success', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-id',
+        email: 'user@example.com',
+        passwordResetTokenExpiresAt: new Date(Date.now() + 60_000)
+      } as User);
+      passwordService.hashPassword.mockResolvedValue('new-hash');
+
+      const result = await service.resetPassword('token', 'new', 'new');
+
+      expect(userRepository.update).toHaveBeenCalledWith('user-id', {
+        passwordHash: 'new-hash',
+        passwordResetToken: null,
+        passwordResetTokenExpiresAt: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null
+      });
+      expect(securityAudit.logPasswordResetCompleted).toHaveBeenCalledWith('user-id', 'user@example.com');
+      expect(result).toEqual({ message: 'Password reset successfully' });
+    });
   });
 });

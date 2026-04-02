@@ -5,18 +5,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { BacktestEngine } from './backtest/backtest-engine.service';
 import { BacktestPauseService } from './backtest/backtest-pause.service';
+import { BacktestPerformanceSnapshot } from './backtest/backtest-performance-snapshot.entity';
 import { BacktestRecoveryService } from './backtest/backtest-recovery.service';
 import { BacktestResultService } from './backtest/backtest-result.service';
+import { BacktestSignal } from './backtest/backtest-signal.entity';
 import { BacktestStreamService } from './backtest/backtest-stream.service';
+import { BacktestTrade } from './backtest/backtest-trade.entity';
 import { backtestConfig } from './backtest/backtest.config';
 import { BacktestController, ComparisonReportController } from './backtest/backtest.controller';
-import {
-  Backtest,
-  BacktestPerformanceSnapshot,
-  BacktestSignal,
-  BacktestTrade,
-  SimulatedOrderFill
-} from './backtest/backtest.entity';
+import { Backtest } from './backtest/backtest.entity';
 import { BacktestGateway } from './backtest/backtest.gateway';
 import { BacktestProcessor } from './backtest/backtest.processor';
 import { BacktestService } from './backtest/backtest.service';
@@ -28,6 +25,7 @@ import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver.service';
 import { BacktestSharedModule } from './backtest/shared';
+import { SimulatedOrderFill } from './backtest/simulated-order-fill.entity';
 import { orderCleanupConfig } from './config/order-cleanup.config';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
 import { OpportunitySellEvaluation } from './entities/opportunity-sell-evaluation.entity';

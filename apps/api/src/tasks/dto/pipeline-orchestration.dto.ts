@@ -128,7 +128,7 @@ export const STOP_CONDITIONS_CONFIG: Record<number, RiskStopConditions> = {
 export const PIPELINE_STANDARD_CAPITAL = 10000;
 
 /** Stagger interval between users in milliseconds (1 minute) */
-export const STAGGER_INTERVAL_MS = 60_000;
+export const PIPELINE_STAGGER_INTERVAL_MS = 60_000;
 
 /** Standard trading fee for all stages */
 export const STANDARD_TRADING_FEE = 0.001;

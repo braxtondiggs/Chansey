@@ -38,6 +38,7 @@ import {
 } from './dto';
 import { JwtAuthenticationGuard } from './guard/jwt-authentication.guard';
 import { LocalAuthenticationGuard } from './guard/localAuthentication.guard';
+import { OtpService } from './otp.service';
 import { RefreshTokenService } from './refresh-token.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
@@ -52,6 +53,7 @@ export class AuthenticationController {
 
   constructor(
     private readonly authentication: AuthenticationService,
+    private readonly otp: OtpService,
     private readonly refreshTokenService: RefreshTokenService
   ) {}
 
@@ -268,7 +270,7 @@ export class AuthenticationController {
   })
   @HttpCode(HttpStatus.OK)
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto, @Res() response: FastifyReply) {
-    const authResult = await this.authentication.verifyOtp(verifyOtpDto);
+    const authResult = await this.otp.verifyOtp(verifyOtpDto);
 
     if (authResult.user) {
       const user = {
@@ -305,7 +307,7 @@ export class AuthenticationController {
   })
   @HttpCode(HttpStatus.OK)
   async resendOtp(@Body() resendEmailDto: ResendEmailDto) {
-    const result = await this.authentication.resendOtp(resendEmailDto.email);
+    const result = await this.otp.resendOtp(resendEmailDto.email);
     return new OtpResponseDto(result.message);
   }
 
@@ -326,7 +328,7 @@ export class AuthenticationController {
   })
   @HttpCode(HttpStatus.OK)
   async enableOtp(@GetUser() user: User) {
-    return this.authentication.enableOtp(user.id);
+    return this.otp.enableOtp(user.id);
   }
 
   @Post('disable-otp')
@@ -351,7 +353,7 @@ export class AuthenticationController {
   })
   @HttpCode(HttpStatus.OK)
   async disableOtp(@GetUser() user: User, @Body() disableOtpDto: DisableOtpDto) {
-    return this.authentication.disableOtp(user.id, disableOtpDto.password);
+    return this.otp.disableOtp(user.id, disableOtpDto.password);
   }
 
   private async sendAuthResponse(response: FastifyReply, user: User, rememberMe: boolean, body: object) {

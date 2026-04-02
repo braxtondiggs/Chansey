@@ -44,7 +44,8 @@ import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity
 import { AlgorithmPerformance } from '../../algorithm/algorithm-performance.entity';
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
-import { Backtest, BacktestStatus, SimulatedOrderFill } from '../../order/backtest/backtest.entity';
+import { Backtest, BacktestStatus } from '../../order/backtest/backtest.entity';
+import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
 import { Order } from '../../order/order.entity';
 import { User } from '../../users/users.entity';
 

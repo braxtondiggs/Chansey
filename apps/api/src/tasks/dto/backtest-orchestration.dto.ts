@@ -84,7 +84,7 @@ export const BACKTEST_STANDARD_CAPITAL = 10000;
 export const MIN_DATASET_INTEGRITY_SCORE = 70;
 
 /** Stagger interval between users in milliseconds (30 seconds) */
-export const STAGGER_INTERVAL_MS = 30_000;
+export const BACKTEST_STAGGER_INTERVAL_MS = 30_000;
 
 /**
  * Job data passed to the orchestration queue processor
@@ -95,7 +95,7 @@ export interface OrchestrationJobData {
   /** ISO timestamp when the job was scheduled */
   scheduledAt: string;
   /** User's risk level (used for config lookup) */
-  riskLevel: number;
+  riskLevel?: number;
 }
 
 /**
@@ -140,7 +140,7 @@ export interface OrchestratedConfigSnapshot {
   /** Optional coin symbol filter for custom risk level users */
   coinSymbolFilter?: string[];
   /** Allow additional fields from base configSnapshot */
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**

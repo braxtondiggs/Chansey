@@ -4,16 +4,13 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { DataSource } from 'typeorm';
 
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
 import { BacktestFinalMetrics, BacktestResultService } from './backtest-result.service';
+import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
-import {
-  Backtest,
-  BacktestPerformanceSnapshot,
-  BacktestSignal,
-  BacktestStatus,
-  BacktestTrade,
-  SimulatedOrderFill
-} from './backtest.entity';
+import { BacktestTrade } from './backtest-trade.entity';
+import { Backtest, BacktestStatus } from './backtest.entity';
+import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
 

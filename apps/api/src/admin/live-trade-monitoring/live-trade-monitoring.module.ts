@@ -9,7 +9,8 @@ import { AlgorithmPerformance } from '../../algorithm/algorithm-performance.enti
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { AlgorithmModule } from '../../algorithm/algorithm.module';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
-import { Backtest, SimulatedOrderFill } from '../../order/backtest/backtest.entity';
+import { Backtest } from '../../order/backtest/backtest.entity';
+import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
 import { Order } from '../../order/order.entity';
 import { User } from '../../users/users.entity';
 

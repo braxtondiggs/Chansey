@@ -5,6 +5,7 @@ import { AdminPoolController } from './admin-pool.controller';
 import { CapitalAllocationService } from './capital-allocation.service';
 import { ConcentrationGateService } from './concentration-gate.service';
 import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
+import { DeploymentMetricsService } from './deployment-metrics.service';
 import { DeploymentController } from './deployment.controller';
 import { DeploymentService } from './deployment.service';
 import { BacktestRun } from './entities/backtest-run.entity';
@@ -89,6 +90,7 @@ import { User } from '../users/users.entity';
   ],
   providers: [
     StrategyService,
+    DeploymentMetricsService,
     DeploymentService,
     RiskPoolMappingService,
     PositionTrackingService,
