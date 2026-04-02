@@ -110,6 +110,8 @@ export interface PaperTradingStageConfig {
   };
   /** Tick interval in milliseconds */
   tickIntervalMs?: number;
+  /** Minimum number of trades before session can complete (trade-count gate) */
+  minTrades?: number;
 }
 
 /**

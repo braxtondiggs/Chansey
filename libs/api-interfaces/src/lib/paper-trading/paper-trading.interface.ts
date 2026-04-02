@@ -246,6 +246,8 @@ export interface PipelineStartParams {
   riskLevel?: number;
   /** Exit configuration for SL/TP/trailing stop tracking */
   exitConfig?: Partial<ExitConfigRequest>;
+  /** Minimum trades required before session can complete */
+  minTrades?: number;
 }
 
 export interface SessionStatusResponse {

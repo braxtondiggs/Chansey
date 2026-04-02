@@ -555,13 +555,16 @@ export class PaperTradingService {
 
     const session = await this.create(dto, user);
 
-    // Set pipeline ID, risk level, and exit config
+    // Set pipeline ID, risk level, exit config, and min trades
     session.pipelineId = params.pipelineId;
     if (params.riskLevel != null) {
       session.riskLevel = params.riskLevel;
     }
     if (params.exitConfig) {
       session.exitConfig = params.exitConfig as unknown as ExitConfig;
+    }
+    if (params.minTrades != null) {
+      session.minTrades = params.minTrades;
     }
     await this.sessionRepository.save(session);
 

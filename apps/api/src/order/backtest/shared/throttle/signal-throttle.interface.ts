@@ -48,6 +48,12 @@ export interface SerializableThrottleState {
   tradeTimestamps: number[];
 }
 
+/** Result of signal throttle filtering, separating accepted from rejected signals. */
+export interface ThrottleResult {
+  accepted: TradingSignal[];
+  rejected: TradingSignal[];
+}
+
 /** Algorithm signal types that bypass throttling (risk-control signals). */
 export const THROTTLE_BYPASS_TYPES: ReadonlySet<AlgoSignalType> = new Set([
   AlgoSignalType.STOP_LOSS,

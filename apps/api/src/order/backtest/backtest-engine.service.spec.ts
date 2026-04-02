@@ -99,7 +99,6 @@ describe('BacktestEngine.executeTrade', () => {
       portfolio,
       createMarketData('BTC', 15),
       0,
-      { next: () => 0.5 },
       noSlippage
     );
 
@@ -128,14 +127,10 @@ describe('BacktestEngine.executeTrade', () => {
       confidence: 0.8
     };
 
-    const result = await (engine as any).executeTrade(
-      buySignal,
-      portfolio,
-      createMarketData('BTC', 100),
-      0.01,
-      { next: () => 0.5 },
-      { type: SlippageModelType.FIXED, fixedBps: 100 }
-    );
+    const result = await (engine as any).executeTrade(buySignal, portfolio, createMarketData('BTC', 100), 0.01, {
+      type: SlippageModelType.FIXED,
+      fixedBps: 100
+    });
 
     expect(result?.trade.price).toBeCloseTo(101);
     expect(result?.trade.fee).toBeCloseTo(1.01);
@@ -170,14 +165,10 @@ describe('BacktestEngine.executeTrade', () => {
       confidence: 1
     };
 
-    const result = await (engine as any).executeTrade(
-      sellSignal,
-      portfolio,
-      createMarketData('BTC', 100),
-      0.01,
-      { next: () => 0.5 },
-      { type: SlippageModelType.FIXED, fixedBps: 100 }
-    );
+    const result = await (engine as any).executeTrade(sellSignal, portfolio, createMarketData('BTC', 100), 0.01, {
+      type: SlippageModelType.FIXED,
+      fixedBps: 100
+    });
 
     expect(result?.trade.price).toBeCloseTo(99);
     // Note: Fee is no longer subtracted from realizedPnL (bug fix: fee only affects cashBalance)
@@ -198,7 +189,6 @@ describe('BacktestEngine.executeTrade', () => {
       portfolio,
       { timestamp: new Date(), prices: new Map() },
       0,
-      { next: () => 0.5 },
       noSlippage
     );
 
@@ -228,7 +218,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0.01, // 1% fee means we need 101 total
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -257,7 +246,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0.01, // 1% fee
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -288,8 +276,7 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 10000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
         1000000000 // High volume
       );
 
@@ -298,8 +285,7 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 10000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
         1000 // Low volume
       );
 
@@ -344,8 +330,7 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
         10000 // $1M daily volume
       );
 
@@ -374,12 +359,12 @@ describe('BacktestEngine.executeTrade', () => {
         ])
       };
 
-      // SELL with no quantity specified - should use 50% of position (25 BTC) for slippage estimate
+      // SELL with no quantity specified - should use 25% fallback (12.5 BTC) for slippage estimate
       const sellSignal: TradingSignal = {
         action: 'SELL',
         coinId: 'BTC',
         reason: 'exit'
-        // No quantity, percentage, or confidence - will use random
+        // No quantity, percentage, or confidence - will use 25% conservative fallback
       };
 
       const lowVolumeResult = await (engine as any).executeTrade(
@@ -387,8 +372,7 @@ describe('BacktestEngine.executeTrade', () => {
         clonePortfolio(portfolio),
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
         1000 // Low volume
       );
 
@@ -397,15 +381,15 @@ describe('BacktestEngine.executeTrade', () => {
         clonePortfolio(portfolio),
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
         10000000 // High volume
       );
 
       // Higher volume should result in lower slippage
       expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
-      expect(highVolumeResult?.trade.quantity).toBeCloseTo(25);
-      expect(lowVolumeResult?.trade.quantity).toBeCloseTo(25);
+      // 25% of 50 BTC = 12.5 BTC (conservative fallback)
+      expect(highVolumeResult?.trade.quantity).toBeCloseTo(12.5);
+      expect(lowVolumeResult?.trade.quantity).toBeCloseTo(12.5);
     });
 
     it('deducts fee from cash balance on SELL trades', async () => {
@@ -428,7 +412,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 200),
         0.01,
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -457,8 +440,7 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
         10000
       );
 
@@ -488,7 +470,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.99 }, // Would use 20% if random was used
         noSlippage
       );
 
@@ -524,7 +505,6 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 1000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -533,7 +513,6 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 1000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -562,7 +541,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.99 }, // Would sell ~100% if random was used
         noSlippage
       );
 
@@ -596,7 +574,6 @@ describe('BacktestEngine.executeTrade', () => {
         },
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -609,7 +586,6 @@ describe('BacktestEngine.executeTrade', () => {
         },
         createMarketData('BTC', 100),
         0,
-        { next: () => 0.5 },
         noSlippage
       );
 
@@ -640,7 +616,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         { timestamp: sellTimestamp, prices: new Map([['BTC', 120]]) },
         0,
-        { next: () => 0.5 },
         noSlippage,
         undefined,
         TWENTY_FOUR_HOURS_MS
@@ -664,7 +639,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         { timestamp: sellTimestamp, prices: new Map([['BTC', 80]]) },
         0,
-        { next: () => 0.5 },
         noSlippage,
         undefined,
         TWENTY_FOUR_HOURS_MS
@@ -685,7 +659,6 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         { timestamp: sellTimestamp, prices: new Map([['BTC', 120]]) },
         0,
-        { next: () => 0.5 },
         noSlippage,
         undefined,
         TWENTY_FOUR_HOURS_MS
@@ -2732,7 +2705,6 @@ describe('BacktestEngine hard stop-loss', () => {
       portfolio,
       { timestamp: new Date(), prices: new Map([['BTC', 80]]) },
       0,
-      { next: () => 0.5 },
       noSlippage,
       undefined,
       0
@@ -2773,7 +2745,6 @@ describe('BacktestEngine hard stop-loss', () => {
       portfolio,
       { timestamp: sellTimestamp, prices: new Map([['BTC', 80]]) },
       0,
-      { next: () => 0.5 },
       noSlippage,
       undefined,
       0 // minHoldMs = 0 (hard stop-loss passes 0)
@@ -2807,7 +2778,6 @@ describe('BacktestEngine hard stop-loss', () => {
       portfolio,
       { timestamp: new Date(), prices: new Map([['BTC', 90]]) },
       0,
-      { next: () => 0.5 },
       noSlippage,
       undefined,
       0
@@ -2862,7 +2832,6 @@ describe('BacktestEngine per-run allocation overrides', () => {
       portfolio,
       { timestamp: new Date(), prices: new Map([['BTC', 100]]) },
       0,
-      { next: () => 0.5 },
       noSlippage,
       undefined,
       0, // minHoldMs
@@ -2894,7 +2863,6 @@ describe('BacktestEngine per-run allocation overrides', () => {
       portfolio,
       { timestamp: new Date(), prices: new Map([['BTC', 100]]) },
       0,
-      { next: () => 0.5 },
       noSlippage,
       undefined,
       0,

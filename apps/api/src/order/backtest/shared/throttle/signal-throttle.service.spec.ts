@@ -54,8 +54,8 @@ describe('SignalThrottleService', () => {
     it('fresh state — all signals pass', () => {
       const state = service.createState();
       const signals = [makeBuy('btc'), makeSell('eth', 0.8, 0.6)];
-      const result = service.filterSignals(signals, state, config, BASE_TIME);
-      expect(result).toHaveLength(2);
+      const { accepted } = service.filterSignals(signals, state, config, BASE_TIME);
+      expect(accepted).toHaveLength(2);
     });
 
     it('should filter out HOLD signals', () => {
@@ -66,8 +66,10 @@ describe('SignalThrottleService', () => {
         reason: 'hold',
         confidence: 0.5
       };
-      const result = service.filterSignals([holdSignal], state, config, BASE_TIME);
-      expect(result).toHaveLength(0);
+      const { accepted, rejected } = service.filterSignals([holdSignal], state, config, BASE_TIME);
+      expect(accepted).toHaveLength(0);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]).toBe(holdSignal);
     });
 
     describe('cooldown', () => {
@@ -75,34 +77,34 @@ describe('SignalThrottleService', () => {
         const state = service.createState();
         service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
 
-        const result = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_HOUR);
-        expect(result).toHaveLength(0);
+        const { accepted } = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(0);
       });
 
       it('BUY cooldown does not block SELL for same coin', () => {
         const state = service.createState();
         service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
 
-        const result = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
-        expect(result).toHaveLength(1);
-        expect(result[0].action).toBe('SELL');
+        const { accepted } = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].action).toBe('SELL');
       });
 
       it('BUY cooldown for BTC does not block BUY for ETH', () => {
         const state = service.createState();
         service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
 
-        const result = service.filterSignals([makeBuy('eth')], state, config, BASE_TIME + ONE_HOUR);
-        expect(result).toHaveLength(1);
-        expect(result[0].coinId).toBe('eth');
+        const { accepted } = service.filterSignals([makeBuy('eth')], state, config, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].coinId).toBe('eth');
       });
 
       it('signal passes after cooldownMs elapsed', () => {
         const state = service.createState();
         service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
 
-        const result = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_DAY);
-        expect(result).toHaveLength(1);
+        const { accepted } = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_DAY);
+        expect(accepted).toHaveLength(1);
       });
 
       it('cooldownMs: 0 disables cooldown', () => {
@@ -110,15 +112,26 @@ describe('SignalThrottleService', () => {
         const noCooldown: SignalThrottleConfig = { ...config, cooldownMs: 0, maxTradesPerDay: 100 };
 
         service.filterSignals([makeBuy('btc')], state, noCooldown, BASE_TIME);
-        const result = service.filterSignals([makeBuy('btc')], state, noCooldown, BASE_TIME + 1);
-        expect(result).toHaveLength(1);
+        const { accepted } = service.filterSignals([makeBuy('btc')], state, noCooldown, BASE_TIME + 1);
+        expect(accepted).toHaveLength(1);
       });
 
       it('second same-coin BUY in a single batch is suppressed by mid-batch cooldown', () => {
         const state = service.createState();
         const signals = [makeBuy('btc'), makeBuy('btc')];
-        const result = service.filterSignals(signals, state, config, BASE_TIME);
-        expect(result).toHaveLength(1);
+        const { accepted } = service.filterSignals(signals, state, config, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+      });
+
+      it('cooldown-rejected signal appears in rejected array', () => {
+        const state = service.createState();
+        service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+
+        const signal = makeBuy('btc');
+        const { accepted, rejected } = service.filterSignals([signal], state, config, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(0);
+        expect(rejected).toHaveLength(1);
+        expect(rejected[0]).toBe(signal);
       });
     });
 
@@ -130,8 +143,8 @@ describe('SignalThrottleService', () => {
         service.filterSignals([makeBuy('btc')], state, limitConfig, BASE_TIME);
         service.filterSignals([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
 
-        const result = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + 2000);
-        expect(result).toHaveLength(0);
+        const { accepted } = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + 2000);
+        expect(accepted).toHaveLength(0);
       });
 
       it('24h rolling window prunes old entries', () => {
@@ -141,8 +154,8 @@ describe('SignalThrottleService', () => {
         service.filterSignals([makeBuy('btc')], state, limitConfig, BASE_TIME);
         service.filterSignals([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
 
-        const result = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + ONE_DAY + 1);
-        expect(result).toHaveLength(1);
+        const { accepted } = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + ONE_DAY + 1);
+        expect(accepted).toHaveLength(1);
       });
 
       it('maxTradesPerDay: 0 disables daily cap', () => {
@@ -150,8 +163,8 @@ describe('SignalThrottleService', () => {
         const noCap: SignalThrottleConfig = { ...config, maxTradesPerDay: 0, cooldownMs: 0 };
 
         for (let i = 0; i < 20; i++) {
-          const result = service.filterSignals([makeBuy(`coin-${i}`)], state, noCap, BASE_TIME + i);
-          expect(result).toHaveLength(1);
+          const { accepted } = service.filterSignals([makeBuy(`coin-${i}`)], state, noCap, BASE_TIME + i);
+          expect(accepted).toHaveLength(1);
         }
       });
     });
@@ -169,9 +182,9 @@ describe('SignalThrottleService', () => {
         service.filterSignals([makeBuy('btc')], state, noCooldownStrict, BASE_TIME);
 
         // Risk-control signal still passes despite daily cap reached
-        const result = service.filterSignals([makeSignal()], state, noCooldownStrict, BASE_TIME + ONE_HOUR);
-        expect(result).toHaveLength(1);
-        expect(result[0].originalType).toBe(expectedType);
+        const { accepted } = service.filterSignals([makeSignal()], state, noCooldownStrict, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].originalType).toBe(expectedType);
       });
 
       it.each([
@@ -180,12 +193,12 @@ describe('SignalThrottleService', () => {
       ] as const)('%s respects cooldown', (_label, makeSignal) => {
         const state = service.createState();
         // First risk-control signal passes
-        const result1 = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME);
-        expect(result1).toHaveLength(1);
+        const { accepted: r1 } = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME);
+        expect(r1).toHaveLength(1);
 
         // Second within cooldown is suppressed
-        const result2 = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME + ONE_HOUR);
-        expect(result2).toHaveLength(0);
+        const { accepted: r2 } = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME + ONE_HOUR);
+        expect(r2).toHaveLength(0);
       });
 
       it('bypass signals do not count against daily limit', () => {
@@ -195,8 +208,8 @@ describe('SignalThrottleService', () => {
         service.filterSignals([makeStopLoss('btc')], state, capConfig, BASE_TIME);
         service.filterSignals([makeTakeProfit('eth')], state, capConfig, BASE_TIME + 1000);
 
-        const result = service.filterSignals([makeBuy('sol')], state, capConfig, BASE_TIME + 2000);
-        expect(result).toHaveLength(1);
+        const { accepted } = service.filterSignals([makeBuy('sol')], state, capConfig, BASE_TIME + 2000);
+        expect(accepted).toHaveLength(1);
       });
 
       it('bypass signals set cooldown — blocks subsequent normal SELL for same coin', () => {
@@ -204,16 +217,16 @@ describe('SignalThrottleService', () => {
         service.filterSignals([makeStopLoss('btc')], state, config, BASE_TIME);
 
         // Normal SELL for same coin+direction within cooldown is suppressed
-        const result = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
-        expect(result).toHaveLength(0);
+        const { accepted } = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(0);
       });
 
       it('bypass signals pass freely when cooldownMs is 0', () => {
         const state = service.createState();
         const noCooldown: SignalThrottleConfig = { cooldownMs: 0, maxTradesPerDay: 10, minSellPercent: 0 };
 
-        const r1 = service.filterSignals([makeStopLoss('btc')], state, noCooldown, BASE_TIME);
-        const r2 = service.filterSignals([makeStopLoss('btc')], state, noCooldown, BASE_TIME + 1);
+        const { accepted: r1 } = service.filterSignals([makeStopLoss('btc')], state, noCooldown, BASE_TIME);
+        const { accepted: r2 } = service.filterSignals([makeStopLoss('btc')], state, noCooldown, BASE_TIME + 1);
         expect(r1).toHaveLength(1);
         expect(r2).toHaveLength(1);
       });
@@ -223,17 +236,17 @@ describe('SignalThrottleService', () => {
       it('SELL below floor gets percentage raised to minSellPercent', () => {
         const state = service.createState();
         const signal = makeSell('btc', 0.3, 0.3);
-        const result = service.filterSignals([signal], state, config, BASE_TIME);
-        expect(result).toHaveLength(1);
-        expect(result[0].percentage).toBe(0.5);
+        const { accepted } = service.filterSignals([signal], state, config, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].percentage).toBe(0.5);
       });
 
       it('SELL with undefined percentage gets floored to minSellPercent', () => {
         const state = service.createState();
         const signal = makeSell('btc', 0.3); // no percentage arg → undefined
-        const result = service.filterSignals([signal], state, config, BASE_TIME);
-        expect(result).toHaveLength(1);
-        expect(result[0].percentage).toBe(0.5);
+        const { accepted } = service.filterSignals([signal], state, config, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].percentage).toBe(0.5);
       });
 
       it('explicit quantity SELL is NOT modified', () => {
@@ -247,26 +260,35 @@ describe('SignalThrottleService', () => {
           percentage: 0.1,
           originalType: AlgoSignalType.SELL
         };
-        const result = service.filterSignals([signal], state, config, BASE_TIME);
-        expect(result).toHaveLength(1);
-        expect(result[0].percentage).toBe(0.1);
+        const { accepted } = service.filterSignals([signal], state, config, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].percentage).toBe(0.1);
       });
 
       it('high-confidence SELL above floor is NOT modified', () => {
         const state = service.createState();
         const signal = makeSell('btc', 0.9, 0.8);
-        const result = service.filterSignals([signal], state, config, BASE_TIME);
-        expect(result).toHaveLength(1);
-        expect(result[0].percentage).toBe(0.8);
+        const { accepted } = service.filterSignals([signal], state, config, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].percentage).toBe(0.8);
       });
 
       it('minSellPercent: 0 disables sell floor', () => {
         const state = service.createState();
         const noFloor: SignalThrottleConfig = { ...config, minSellPercent: 0 };
         const signal = makeSell('btc', 0.3, 0.1);
-        const result = service.filterSignals([signal], state, noFloor, BASE_TIME);
-        expect(result).toHaveLength(1);
-        expect(result[0].percentage).toBe(0.1);
+        const { accepted } = service.filterSignals([signal], state, noFloor, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].percentage).toBe(0.1);
+      });
+
+      it('minSellPercent-bumped signal is in accepted, not rejected', () => {
+        const state = service.createState();
+        const signal = makeSell('btc', 0.3, 0.2);
+        const { accepted, rejected } = service.filterSignals([signal], state, config, BASE_TIME);
+        expect(accepted).toHaveLength(1);
+        expect(accepted[0].percentage).toBe(0.5);
+        expect(rejected).toHaveLength(0);
       });
     });
 

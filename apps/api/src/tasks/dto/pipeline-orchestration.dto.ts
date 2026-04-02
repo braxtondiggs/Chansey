@@ -43,25 +43,49 @@ export interface RiskStopConditions {
 }
 
 /**
- * Paper Trading Duration Matrix
+ * Paper Trading Duration Matrix (Hard Time Cap)
  *
- * Maps user risk levels (1-5) to paper trading duration.
- * Lower risk levels use longer validation periods.
+ * Maps user risk levels (1-5) to paper trading time cap.
+ * All levels use 30d as a safety-net hard cap; the primary completion
+ * gate is now the minimum trade count (see PAPER_TRADING_MIN_TRADES).
  *
- * | Level | Description      | Duration |
+ * | Level | Description      | Time Cap |
  * |-------|------------------|----------|
- * | 1     | Conservative     | 14 days  |
- * | 2     | Low-Moderate     | 10 days  |
- * | 3     | Moderate         | 7 days   |
- * | 4     | Moderate-High    | 5 days   |
- * | 5     | Aggressive       | 3 days   |
+ * | 1     | Conservative     | 30 days  |
+ * | 2     | Low-Moderate     | 30 days  |
+ * | 3     | Moderate         | 30 days  |
+ * | 4     | Moderate-High    | 30 days  |
+ * | 5     | Aggressive       | 30 days  |
  */
 export const PAPER_TRADING_DURATION: Record<number, string> = {
-  1: '14d', // Conservative - longest validation
-  2: '10d',
-  3: '7d', // Moderate - default
-  4: '5d',
-  5: '3d' // Aggressive - shortest validation
+  1: '30d',
+  2: '30d',
+  3: '30d',
+  4: '30d',
+  5: '30d'
+};
+
+/**
+ * Paper Trading Minimum Trade Count Matrix
+ *
+ * Maps user risk levels (1-5) to minimum trades required before
+ * the paper trading session can complete. This is the primary
+ * completion gate; duration acts as a hard time cap.
+ *
+ * | Level | Description      | Min Trades |
+ * |-------|------------------|------------|
+ * | 1     | Conservative     | 50         |
+ * | 2     | Low-Moderate     | 45         |
+ * | 3     | Moderate         | 40         |
+ * | 4     | Moderate-High    | 35         |
+ * | 5     | Aggressive       | 30         |
+ */
+export const PAPER_TRADING_MIN_TRADES: Record<number, number> = {
+  1: 50, // Conservative - most trades for statistical confidence
+  2: 45,
+  3: 40, // Default
+  4: 35,
+  5: 30 // Aggressive - minimum for statistical confidence
 };
 
 /**
@@ -87,16 +111,16 @@ export const OPTIMIZATION_CONFIG: Record<number, RiskOptimizationConfig> = {
  * | Level | Description      | Max Drawdown | Target Return |
  * |-------|------------------|--------------|---------------|
  * | 1     | Conservative     | 15%          | 25%           |
- * | 2     | Low-Moderate     | 20%          | 35%           |
+ * | 2     | Low-Moderate     | 20%          | 40%           |
  * | 3     | Moderate         | 25%          | 50%           |
- * | 4     | Moderate-High    | 30%          | 75%           |
+ * | 4     | Moderate-High    | 35%          | 75%           |
  * | 5     | Aggressive       | 40%          | 100%          |
  */
 export const STOP_CONDITIONS_CONFIG: Record<number, RiskStopConditions> = {
   1: { maxDrawdown: 0.15, targetReturn: 0.25 }, // Conservative - tight stops
-  2: { maxDrawdown: 0.2, targetReturn: 0.35 },
+  2: { maxDrawdown: 0.2, targetReturn: 0.4 },
   3: { maxDrawdown: 0.25, targetReturn: 0.5 }, // Default
-  4: { maxDrawdown: 0.3, targetReturn: 0.75 },
+  4: { maxDrawdown: 0.35, targetReturn: 0.75 },
   5: { maxDrawdown: 0.4, targetReturn: 1.0 } // Aggressive - wide stops
 };
 
@@ -158,6 +182,14 @@ export function getPaperTradingDuration(riskLevel: number): string {
 }
 
 /**
+ * Get paper trading minimum trade count for a given risk level
+ * Falls back to default (level 3) if level is invalid
+ */
+export function getPaperTradingMinTrades(riskLevel: number): number {
+  return PAPER_TRADING_MIN_TRADES[riskLevel] ?? PAPER_TRADING_MIN_TRADES[DEFAULT_RISK_LEVEL];
+}
+
+/**
  * Get optimization config for a given risk level
  * Falls back to default (level 3) if level is invalid
  */
@@ -180,6 +212,7 @@ export function buildStageConfigFromRisk(riskLevel: number): PipelineStageConfig
   const optimizationConfig = getOptimizationConfig(riskLevel);
   const paperTradingDuration = getPaperTradingDuration(riskLevel);
   const stopConditions = getStopConditions(riskLevel);
+  const minTrades = getPaperTradingMinTrades(riskLevel);
 
   // Calculate date ranges
   const now = new Date();
@@ -222,7 +255,8 @@ export function buildStageConfigFromRisk(riskLevel: number): PipelineStageConfig
     initialCapital: PIPELINE_STANDARD_CAPITAL,
     duration: paperTradingDuration,
     tradingFee: STANDARD_TRADING_FEE,
-    stopConditions
+    stopConditions,
+    minTrades
   };
 
   return {

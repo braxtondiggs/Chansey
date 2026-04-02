@@ -95,7 +95,7 @@ export function calculateCumulativeReturn(returns: number[]): number {
 /**
  * Calculate annualized return from total return and number of periods
  */
-export function annualizeReturn(totalReturn: number, periods: number, periodsPerYear = 252): number {
+export function annualizeReturn(totalReturn: number, periods: number, periodsPerYear = 365): number {
   if (periods === 0) return 0;
 
   return Math.pow(1 + totalReturn, periodsPerYear / periods) - 1;
@@ -104,7 +104,7 @@ export function annualizeReturn(totalReturn: number, periods: number, periodsPer
 /**
  * Calculate annualized volatility from period returns
  */
-export function annualizeVolatility(returns: number[], periodsPerYear = 252): number {
+export function annualizeVolatility(returns: number[], periodsPerYear = 365): number {
   const stdDev = calculateStandardDeviation(returns);
   return stdDev * Math.sqrt(periodsPerYear);
 }

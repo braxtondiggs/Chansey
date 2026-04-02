@@ -673,8 +673,8 @@ describe('PipelineOrchestratorService', () => {
       marketRegimeService.getCurrentRegime.mockResolvedValue({ regime: 'extreme' } as any);
       scoringService.calculateScoreFromMetrics.mockReturnValue({
         ...mockScoreResult,
-        overallScore: 45,
-        regimeModifier: 15
+        overallScore: 20,
+        regimeModifier: -10
       });
 
       await service.handleBacktestComplete('backtest-lr-regime', 'LIVE_REPLAY', {
@@ -1085,6 +1085,54 @@ describe('PipelineOrchestratorService', () => {
           durationHours: 24
         },
         'duration_reached'
+      );
+
+      expect(runningPipeline.status).toBe(PipelineStatus.COMPLETED);
+      expect(eventEmitter.emit).toHaveBeenCalled();
+    });
+
+    it('treats min_trades_reached as COMPLETED status', async () => {
+      const runningPipeline = {
+        ...mockPipeline,
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        progressionRules: {
+          ...DEFAULT_PROGRESSION_RULES,
+          paperTrading: {
+            minSharpeRatio: 0.5,
+            minTotalReturn: 0,
+            maxDrawdown: 0.5,
+            minWinRate: 0.4
+          }
+        },
+        stageResults: {
+          optimization: { status: 'COMPLETED' },
+          historical: { status: 'COMPLETED', totalReturn: 0.2 },
+          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 }
+        }
+      } as Pipeline;
+
+      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
+      pipelineRepository.save.mockResolvedValue(runningPipeline);
+
+      await service.handlePaperTradingComplete(
+        'session-min-trades',
+        runningPipeline.id,
+        {
+          initialCapital: 10000,
+          currentPortfolioValue: 12000,
+          totalReturn: 0.17,
+          totalReturnPercent: 17,
+          maxDrawdown: 0.2,
+          sharpeRatio: 1.2,
+          winRate: 0.6,
+          totalTrades: 50,
+          winningTrades: 30,
+          losingTrades: 20,
+          totalFees: 10,
+          durationHours: 24
+        },
+        'min_trades_reached'
       );
 
       expect(runningPipeline.status).toBe(PipelineStatus.COMPLETED);

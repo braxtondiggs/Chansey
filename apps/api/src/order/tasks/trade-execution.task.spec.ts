@@ -115,7 +115,7 @@ describe('TradeExecutionTask', () => {
     mockSignalThrottle = {
       createState: jest.fn().mockReturnValue({ lastSignalTime: {}, tradeTimestamps: [] }),
       resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 }),
-      filterSignals: jest.fn().mockImplementation((signals: any[]) => signals),
+      filterSignals: jest.fn().mockImplementation((signals: any[]) => ({ accepted: signals, rejected: [] })),
       toThrottleSignal: jest.fn().mockImplementation((s: any) => {
         const map: Record<string, string> = {
           BUY: 'BUY',
@@ -667,7 +667,7 @@ describe('TradeExecutionTask', () => {
       const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       configureActionableSignal();
-      mockSignalThrottle.filterSignals.mockReturnValue([]);
+      mockSignalThrottle.filterSignals.mockReturnValue({ accepted: [], rejected: [] });
 
       const result: any = await task.process(mockJob);
 
@@ -679,7 +679,7 @@ describe('TradeExecutionTask', () => {
       const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       configureActionableSignal();
-      mockSignalThrottle.filterSignals.mockReturnValue([]);
+      mockSignalThrottle.filterSignals.mockReturnValue({ accepted: [], rejected: [] });
 
       await task.process(mockJob);
 
@@ -707,7 +707,7 @@ describe('TradeExecutionTask', () => {
       const activation = buildActivation();
       mockActivationService.findAllActiveAlgorithms.mockResolvedValue([activation]);
       configureActionableSignal();
-      mockSignalThrottle.filterSignals.mockReturnValue([]);
+      mockSignalThrottle.filterSignals.mockReturnValue({ accepted: [], rejected: [] });
 
       await task.process(mockJob);
 

@@ -242,7 +242,6 @@ interface ProcessExitSignalsOptions {
   marketData: MarketData;
   portfolio: Portfolio;
   tradingFee: number;
-  rng: SeededRandom;
   timestamp: Date;
   trades: Partial<BacktestTrade>[];
   slippageConfig?: SlippageConfig;
@@ -919,7 +918,6 @@ export class BacktestEngine {
           marketData,
           portfolio,
           tradingFee: backtest.tradingFee,
-          rng,
           timestamp,
           trades,
           slippageConfig,
@@ -1000,7 +998,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing + concentration filter
       const concentrationCtx = this.buildConcentrationContext(portfolio, marketData);
@@ -1049,7 +1047,6 @@ export class BacktestEngine {
           portfolio,
           marketData,
           backtest.tradingFee,
-          rng,
           slippageConfig,
           dailyVolume,
           minHoldMs,
@@ -1064,7 +1061,6 @@ export class BacktestEngine {
             portfolio,
             marketData,
             backtest.tradingFee,
-            rng,
             slippageConfig,
             oppSellingConfig,
             coinMap,
@@ -1085,7 +1081,6 @@ export class BacktestEngine {
               portfolio,
               marketData,
               backtest.tradingFee,
-              rng,
               slippageConfig,
               dailyVolume,
               minHoldMs,
@@ -1848,7 +1843,6 @@ export class BacktestEngine {
           marketData,
           portfolio,
           tradingFee: backtest.tradingFee,
-          rng,
           timestamp,
           trades,
           slippageConfig,
@@ -1927,7 +1921,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing + concentration filter
       const concentrationCtx = this.buildConcentrationContext(portfolio, marketData);
@@ -1976,7 +1970,6 @@ export class BacktestEngine {
           portfolio,
           marketData,
           backtest.tradingFee,
-          rng,
           slippageConfig,
           dailyVolume,
           minHoldMs,
@@ -2492,7 +2485,6 @@ export class BacktestEngine {
     portfolio: Portfolio,
     marketData: MarketData,
     tradingFee: number,
-    rng: SeededRandom,
     slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
     dailyVolume?: number,
     minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS,
@@ -2541,7 +2533,7 @@ export class BacktestEngine {
     let requestedQuantity: number | undefined;
 
     if (signal.action === 'BUY') {
-      // Position sizing priority: quantity > percentage > confidence > random
+      // Position sizing priority: quantity > percentage > confidence > conservative fallback
       // Size on basePrice (market price) — slippage applied after sizing
       if (signal.quantity) {
         quantity = signal.quantity;
@@ -2553,7 +2545,12 @@ export class BacktestEngine {
         const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
         quantity = investmentAmount / basePrice;
       } else {
-        const investmentAmount = portfolio.totalValue * Math.min(maxAllocation, Math.max(minAllocation, rng.next()));
+        // No sizing info on signal — use conservative minimum allocation and warn loudly
+        this.logger.warn(
+          `[POSITION_SIZING] Signal for ${signal.coinId} has no quantity, percentage, or confidence. ` +
+            `Falling back to minAllocation (${minAllocation}). Fix the strategy to emit confidence.`
+        );
+        const investmentAmount = portfolio.totalValue * minAllocation;
         quantity = investmentAmount / basePrice;
       }
 
@@ -2655,7 +2652,7 @@ export class BacktestEngine {
       // Capture cost basis BEFORE modifying position
       costBasis = existingPosition.averagePrice;
 
-      // Position sizing priority: quantity > percentage > confidence > random
+      // Position sizing priority: quantity > percentage > confidence > conservative fallback
       if (signal.quantity) {
         quantity = signal.quantity;
       } else if (signal.percentage) {
@@ -2664,7 +2661,11 @@ export class BacktestEngine {
         const confidenceBasedPercent = 0.25 + signal.confidence * 0.75;
         quantity = existingPosition.quantity * confidenceBasedPercent;
       } else {
-        quantity = existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
+        this.logger.warn(
+          `[POSITION_SIZING] Signal for ${signal.coinId} has no quantity, percentage, or confidence. ` +
+            `Falling back to 25% exit. Fix the strategy to emit confidence.`
+        );
+        quantity = existingPosition.quantity * 0.25;
       }
       quantity = Math.min(quantity, existingPosition.quantity);
 
@@ -2731,7 +2732,7 @@ export class BacktestEngine {
         MAX_LEVERAGE_CAP
       );
 
-      // Position sizing priority: quantity > percentage > confidence > random
+      // Position sizing priority: quantity > percentage > confidence > conservative fallback
       // Size on basePrice (market price) — slippage applied after sizing
       if (signal.quantity) {
         quantity = signal.quantity;
@@ -2743,7 +2744,12 @@ export class BacktestEngine {
         const investmentAmount = portfolio.totalValue * confidenceBasedAllocation;
         quantity = investmentAmount / basePrice;
       } else {
-        const investmentAmount = portfolio.totalValue * Math.min(maxAllocation, Math.max(minAllocation, rng.next()));
+        // No sizing info on signal — use conservative minimum allocation and warn loudly
+        this.logger.warn(
+          `[POSITION_SIZING] Signal for ${signal.coinId} has no quantity, percentage, or confidence. ` +
+            `Falling back to minAllocation (${minAllocation}). Fix the strategy to emit confidence.`
+        );
+        const investmentAmount = portfolio.totalValue * minAllocation;
         quantity = investmentAmount / basePrice;
       }
 
@@ -2828,7 +2834,7 @@ export class BacktestEngine {
 
       costBasis = existingPosition.averagePrice;
 
-      // Position sizing priority: quantity > percentage > confidence > random
+      // Position sizing priority: quantity > percentage > confidence > conservative fallback
       if (signal.quantity) {
         quantity = signal.quantity;
       } else if (signal.percentage) {
@@ -2837,7 +2843,11 @@ export class BacktestEngine {
         const confidenceBasedPercent = 0.25 + signal.confidence * 0.75;
         quantity = existingPosition.quantity * confidenceBasedPercent;
       } else {
-        quantity = existingPosition.quantity * Math.min(1, Math.max(0.25, rng.next()));
+        this.logger.warn(
+          `[POSITION_SIZING] Signal for ${signal.coinId} has no quantity, percentage, or confidence. ` +
+            `Falling back to 25% exit. Fix the strategy to emit confidence.`
+        );
+        quantity = existingPosition.quantity * 0.25;
       }
       quantity = Math.min(quantity, existingPosition.quantity);
 
@@ -3056,7 +3066,7 @@ export class BacktestEngine {
    * and pushes only minimal trade records.
    */
   private async processExitSignals(opts: ProcessExitSignalsOptions): Promise<void> {
-    const { exitTracker, currentPrices, marketData, portfolio, tradingFee, rng, timestamp, trades } = opts;
+    const { exitTracker, currentPrices, marketData, portfolio, tradingFee, timestamp, trades } = opts;
 
     if (exitTracker.size === 0) return;
 
@@ -3098,7 +3108,6 @@ export class BacktestEngine {
         portfolio,
         marketData,
         tradingFee,
-        rng,
         opts.slippageConfig ?? DEFAULT_SLIPPAGE_CONFIG,
         dailyVolume,
         0, // bypass hold period for risk-control exits
@@ -3183,7 +3192,6 @@ export class BacktestEngine {
     portfolio: Portfolio,
     marketData: MarketData,
     tradingFee: number,
-    rng: SeededRandom,
     slippageConfig: SlippageConfig,
     config: OpportunitySellingUserConfig,
     coinMap: Map<string, Coin>,
@@ -3249,7 +3257,6 @@ export class BacktestEngine {
       portfolio,
       marketData,
       tradingFee,
-      rng,
       slippageConfig,
       coinMap,
       quoteCoin,
@@ -3316,7 +3323,6 @@ export class BacktestEngine {
     portfolio: Portfolio,
     marketData: MarketData,
     tradingFee: number,
-    rng: SeededRandom,
     slippageConfig: SlippageConfig,
     coinMap: Map<string, Coin>,
     quoteCoin: Coin,
@@ -3363,7 +3369,6 @@ export class BacktestEngine {
         portfolio,
         marketData,
         tradingFee,
-        rng,
         slippageConfig,
         dailyVolume,
         0
@@ -3513,7 +3518,7 @@ export class BacktestEngine {
       returns.length > 0
         ? this.metricsCalculator.calculateSharpeRatio(returns, {
             timeframe: TimeframeType.DAILY,
-            useCryptoCalendar: false,
+            useCryptoCalendar: true,
             riskFreeRate: 0.02
           })
         : 0;
@@ -3527,7 +3532,7 @@ export class BacktestEngine {
     if (returns.length > 0) {
       const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
       const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
-      volatility = Math.sqrt(variance) * Math.sqrt(252);
+      volatility = Math.sqrt(variance) * Math.sqrt(365);
     }
 
     return {
@@ -3855,8 +3860,6 @@ export class BacktestEngine {
         `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
     );
 
-    const rng = new SeededRandom(deterministicSeed);
-
     let portfolio: Portfolio = {
       cashBalance: initialCapital,
       positions: new Map(),
@@ -3952,7 +3955,6 @@ export class BacktestEngine {
           marketData,
           portfolio,
           tradingFee,
-          rng,
           timestamp,
           trades,
           slippageConfig
@@ -4007,7 +4009,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing
       if (btcCoin) {
@@ -4031,7 +4033,6 @@ export class BacktestEngine {
           portfolio,
           marketData,
           tradingFee,
-          rng,
           slippageConfig,
           dailyVolume,
           BacktestEngine.DEFAULT_MIN_HOLD_MS,
@@ -4319,8 +4320,6 @@ export class BacktestEngine {
         `range=${config.startDate.toISOString()} to ${config.endDate.toISOString()}`
     );
 
-    const rng = new SeededRandom(deterministicSeed);
-
     let portfolio: Portfolio = {
       cashBalance: initialCapital,
       positions: new Map(),
@@ -4415,7 +4414,6 @@ export class BacktestEngine {
           marketData,
           portfolio,
           tradingFee,
-          rng,
           timestamp,
           trades,
           slippageConfig
@@ -4471,7 +4469,7 @@ export class BacktestEngine {
         throttleState,
         throttleConfig,
         timestamp.getTime()
-      );
+      ).accepted;
 
       // Regime gate + regime-scaled position sizing
       if (btcCoin) {
@@ -4496,7 +4494,6 @@ export class BacktestEngine {
           portfolio,
           marketData,
           tradingFee,
-          rng,
           slippageConfig,
           dailyVolume,
           BacktestEngine.DEFAULT_MIN_HOLD_MS,
@@ -4582,19 +4579,19 @@ export class BacktestEngine {
     const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
     const variance =
       returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
-    const volatility = Math.sqrt(variance) * Math.sqrt(252);
+    const volatility = Math.sqrt(variance) * Math.sqrt(365);
 
-    const periodRiskFreeRate = 0.02 / 252;
+    const periodRiskFreeRate = 0.02 / 365;
     const downsideReturns = returns.filter((r) => r < periodRiskFreeRate);
     const downsideVariance =
       returns.length > 0
         ? downsideReturns.reduce((sum, r) => sum + Math.pow(r - periodRiskFreeRate, 2), 0) / returns.length
         : 0;
-    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(252);
+    const downsideDeviation = Math.sqrt(downsideVariance) * Math.sqrt(365);
 
     const sharpeRatio = this.metricsCalculator.calculateSharpeRatio(returns, {
       timeframe: TimeframeType.DAILY,
-      useCryptoCalendar: false,
+      useCryptoCalendar: true,
       riskFreeRate: 0.02
     });
 

@@ -216,8 +216,8 @@ export class MonitoringService {
     const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
     const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
     const stdDev = Math.sqrt(variance);
-    const annualizedVol = stdDev * Math.sqrt(252); // 252 trading days
-    const annualizedReturn = avgReturn * 252;
+    const annualizedVol = stdDev * Math.sqrt(365); // 365 calendar days (24/7 crypto markets)
+    const annualizedReturn = avgReturn * 365;
     const sharpe = annualizedVol > 0 ? annualizedReturn / annualizedVol : 0;
 
     return {
