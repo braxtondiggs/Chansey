@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { BalanceHistoryService } from './balance-history.service';
 import { BalanceController } from './balance.controller';
 import { BalanceService } from './balance.service';
 import { HistoricalBalance } from './historical-balance.entity';
@@ -23,7 +24,7 @@ import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.inter
     forwardRef(() => ExchangeModule),
     forwardRef(() => UsersModule)
   ],
-  providers: [BalanceService, BalanceSyncTask, CustomCacheInterceptor],
-  exports: [BalanceService]
+  providers: [BalanceService, BalanceHistoryService, BalanceSyncTask, CustomCacheInterceptor],
+  exports: [BalanceService, BalanceHistoryService]
 })
 export class BalanceModule {}

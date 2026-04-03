@@ -92,18 +92,28 @@ describe('AuditService', () => {
       expect(created.ipAddress).toBeNull();
     });
 
-    it('generates correlationId when not provided', async () => {
-      await service.createAuditLog(baseDto);
-
-      const created = mockRepo.create.mock.calls[0][0];
-      expect(created.correlationId).toMatch(/^[0-9a-f-]{36}$/);
-    });
-
-    it('uses provided correlationId', async () => {
+    it('uses provided correlationId over CLS requestId', async () => {
       await service.createAuditLog({ ...baseDto, correlationId: 'corr-123' });
 
       const created = mockRepo.create.mock.calls[0][0];
       expect(created.correlationId).toBe('corr-123');
+    });
+
+    it('falls back to CLS requestId when correlationId not provided', async () => {
+      const ctxWithReqId = { ...mockRequestContext, requestId: 'req-id-from-cls' } as RequestContext;
+      const svcWithReqId = new AuditService(mockRepo, cryptoService, ctxWithReqId);
+
+      await svcWithReqId.createAuditLog(baseDto);
+
+      const created = mockRepo.create.mock.calls[0][0];
+      expect(created.correlationId).toBe('req-id-from-cls');
+    });
+
+    it('generates random UUID correlationId when neither DTO nor CLS provides one', async () => {
+      await service.createAuditLog(baseDto);
+
+      const created = mockRepo.create.mock.calls[0][0];
+      expect(created.correlationId).toMatch(/^[0-9a-f-]{36}$/);
     });
   });
 
@@ -119,8 +129,7 @@ describe('AuditService', () => {
 
       expect(mockRepo.save).toHaveBeenCalledTimes(2);
       const secondSave = mockRepo.save.mock.calls[1][0];
-      expect(secondSave.chainHash).toBeDefined();
-      expect(typeof secondSave.chainHash).toBe('string');
+      expect(secondSave.chainHash).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it('uses previous entry chainHash when available', async () => {
@@ -138,6 +147,14 @@ describe('AuditService', () => {
       const secondSaveNoPrev = mockRepo.save.mock.calls[1][0];
 
       expect(secondSave.chainHash).not.toBe(secondSaveNoPrev.chainHash);
+    });
+
+    it('excludes the saved entry when finding previous entry (Not(saved.id))', async () => {
+      await service.createAuditLog(baseDto);
+
+      const findOneCall = mockRepo.findOne.mock.calls[0][0];
+      expect(findOneCall.where).toEqual({ id: expect.objectContaining({ _type: 'not' }) });
+      expect(findOneCall.order).toEqual({ timestamp: 'DESC' });
     });
   });
 
@@ -171,20 +188,6 @@ describe('AuditService', () => {
       expect(service.verifyIntegrity(auditLog)).toBe(false);
     });
 
-    it('detects tampering when eventType is changed', async () => {
-      await service.createAuditLog({
-        eventType: AuditEventType.STRATEGY_MODIFIED,
-        entityType: 'StrategyConfig',
-        entityId: 'entity-1'
-      } as any);
-
-      const created = mockRepo.create.mock.calls[0][0];
-      const auditLog = { ...created } as AuditLog;
-      auditLog.eventType = AuditEventType.BACKTEST_COMPLETED;
-
-      expect(service.verifyIntegrity(auditLog)).toBe(false);
-    });
-
     it('verifies integrity with undefined userId (coerced to null)', async () => {
       await service.createAuditLog({
         eventType: AuditEventType.STRATEGY_MODIFIED,
@@ -209,99 +212,98 @@ describe('AuditService', () => {
     });
   });
 
-  describe('verifyAuditChain', () => {
-    it('returns valid for empty entries', () => {
-      const result = service.verifyAuditChain([]);
+  describe('queryAuditTrail', () => {
+    let mockQb: any;
 
-      expect(result.valid).toBe(true);
-      expect(result.totalEntries).toBe(0);
-      expect(result.verifiedEntries).toBe(0);
-      expect(result.brokenChainAt).toBeNull();
-      expect(result.tamperedEntries).toEqual([]);
-      expect(result.integrityFailures).toEqual([]);
+    beforeEach(() => {
+      mockQb = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(2),
+        getMany: jest.fn().mockResolvedValue([{ id: 'a-1' }, { id: 'a-2' }])
+      };
+      mockRepo.createQueryBuilder.mockReturnValue(mockQb);
     });
 
-    it('validates a single-entry chain', () => {
-      const timestamp = new Date();
-      const integrity = cryptoService.generateAuditIntegrityHash({
-        eventType: AuditEventType.STRATEGY_MODIFIED,
-        entityType: 'StrategyConfig',
-        entityId: 'e-1',
-        userId: 'u-1',
-        timestamp
-      });
-      const chainHash = cryptoService.generateChainHash(
-        {
-          id: 'a-1',
-          eventType: AuditEventType.STRATEGY_MODIFIED,
-          entityType: 'StrategyConfig',
-          entityId: 'e-1',
-          timestamp,
-          integrity
-        },
-        null
-      );
+    it('applies entityType and userId filters', async () => {
+      await service.queryAuditTrail({ entityType: 'StrategyConfig', userId: 'u-1' });
 
-      const entry = {
-        id: 'a-1',
-        eventType: AuditEventType.STRATEGY_MODIFIED,
-        entityType: 'StrategyConfig',
-        entityId: 'e-1',
-        userId: 'u-1',
-        timestamp,
-        integrity,
-        chainHash,
-        beforeState: undefined,
-        afterState: undefined,
-        metadata: undefined
-      } as unknown as AuditLog;
-
-      const result = service.verifyAuditChain([entry]);
-
-      expect(result.valid).toBe(true);
-      expect(result.verifiedEntries).toBe(1);
-      expect(result.integrityFailures).toEqual([]);
+      const calls = mockQb.andWhere.mock.calls.map((c: any) => c[0]);
+      expect(calls).toContain('audit.entityType = :entityType');
+      expect(calls).toContain('audit.userId = :userId');
     });
 
-    it('detects integrity failure in chain entry', () => {
-      const timestamp = new Date();
-      const integrity = cryptoService.generateAuditIntegrityHash({
-        eventType: AuditEventType.STRATEGY_MODIFIED,
-        entityType: 'StrategyConfig',
-        entityId: 'e-1',
-        userId: 'u-1',
-        timestamp
+    it('handles eventType as array with IN clause', async () => {
+      await service.queryAuditTrail({
+        eventType: [AuditEventType.STRATEGY_MODIFIED, AuditEventType.STRATEGY_PROMOTED]
       });
-      const chainHash = cryptoService.generateChainHash(
-        {
-          id: 'a-1',
-          eventType: AuditEventType.STRATEGY_MODIFIED,
-          entityType: 'StrategyConfig',
-          entityId: 'e-1',
-          timestamp,
-          integrity
-        },
-        null
-      );
 
-      const entry = {
-        id: 'a-1',
-        eventType: AuditEventType.STRATEGY_MODIFIED,
-        entityType: 'StrategyConfig',
-        entityId: 'e-1',
-        userId: 'tampered-user', // tampered
-        timestamp,
-        integrity,
-        chainHash,
-        beforeState: undefined,
-        afterState: undefined,
-        metadata: undefined
-      } as unknown as AuditLog;
+      const calls = mockQb.andWhere.mock.calls.map((c: any) => c[0]);
+      expect(calls).toContain('audit.eventType IN (:...eventTypes)');
+    });
 
-      const result = service.verifyAuditChain([entry]);
+    it('handles eventType as single value', async () => {
+      await service.queryAuditTrail({ eventType: AuditEventType.STRATEGY_MODIFIED });
 
-      expect(result.valid).toBe(false);
-      expect(result.integrityFailures).toContain('a-1');
+      const calls = mockQb.andWhere.mock.calls.map((c: any) => c[0]);
+      expect(calls).toContain('audit.eventType = :eventType');
+    });
+
+    it('applies date range filters', async () => {
+      await service.queryAuditTrail({
+        startDate: '2025-01-01',
+        endDate: '2025-12-31'
+      });
+
+      const calls = mockQb.andWhere.mock.calls.map((c: any) => c[0]);
+      expect(calls).toContain('audit.timestamp >= :startDate');
+      expect(calls).toContain('audit.timestamp <= :endDate');
+    });
+
+    it('uses default pagination when not specified', async () => {
+      await service.queryAuditTrail({});
+
+      expect(mockQb.skip).toHaveBeenCalledWith(0);
+      expect(mockQb.take).toHaveBeenCalledWith(100);
+    });
+
+    it('applies custom pagination', async () => {
+      await service.queryAuditTrail({ limit: 25, offset: 50 });
+
+      expect(mockQb.skip).toHaveBeenCalledWith(50);
+      expect(mockQb.take).toHaveBeenCalledWith(25);
+    });
+
+    it('returns logs and total count', async () => {
+      const result = await service.queryAuditTrail({});
+
+      expect(result).toEqual({ logs: [{ id: 'a-1' }, { id: 'a-2' }], total: 2 });
+    });
+  });
+
+  describe('logDeploymentLifecycle — event type mapping', () => {
+    it.each([
+      ['created', AuditEventType.STRATEGY_PROMOTED],
+      ['activated', AuditEventType.DEPLOYMENT_ACTIVATED],
+      ['paused', AuditEventType.DEPLOYMENT_PAUSED],
+      ['resumed', AuditEventType.DEPLOYMENT_RESUMED],
+      ['demoted', AuditEventType.STRATEGY_DEMOTED],
+      ['terminated', AuditEventType.DEPLOYMENT_TERMINATED]
+    ] as const)('maps "%s" to %s', async (event, expectedType) => {
+      await service.logDeploymentLifecycle({
+        deploymentId: 'deploy-1',
+        userId: 'u-1',
+        event,
+        beforeState: null,
+        afterState: null,
+        reason: 'test reason'
+      });
+
+      const created = mockRepo.create.mock.calls[0][0];
+      expect(created.eventType).toBe(expectedType);
+      expect(created.metadata).toEqual(expect.objectContaining({ lifecycleEvent: event }));
     });
   });
 

@@ -5,6 +5,7 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 
 import { toErrorInfo } from '../../shared/error.util';
+import { BalanceHistoryService } from '../balance-history.service';
 import { BalanceService } from '../balance.service';
 
 @Processor('balance-queue')
@@ -15,6 +16,7 @@ export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('balance-queue') private readonly balanceQueue: Queue,
+    private readonly balanceHistoryService: BalanceHistoryService,
     private readonly balanceService: BalanceService
   ) {
     super();
@@ -68,7 +70,7 @@ export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
       }
     );
 
-    this.logger.log('Historical balance storage job scheduled with daily midnight cron pattern');
+    this.logger.log('Historical balance storage job scheduled with hourly cron pattern');
   }
 
   // BullMQ: log job start, completion, and errors inside process/handler
@@ -95,8 +97,8 @@ export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log('Starting Historical Balance Storage');
       await job.updateProgress(10);
 
-      // Call the existing method from BalanceService
-      await this.balanceService.storeHistoricalBalances();
+      // Fetch balances via BalanceService and pass to history service
+      await this.balanceHistoryService.storeHistoricalBalances((user) => this.balanceService.getCurrentBalances(user));
 
       await job.updateProgress(100);
       this.logger.log('Historical Balance Storage Complete');

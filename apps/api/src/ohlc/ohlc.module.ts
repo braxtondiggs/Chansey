@@ -7,6 +7,7 @@ import { OHLCCandle } from './ohlc-candle.entity';
 import { OHLCController } from './ohlc.controller';
 import { OHLCService } from './ohlc.service';
 import { ExchangeOHLCService } from './services/exchange-ohlc.service';
+import { ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
 import { OHLCBackfillService } from './services/ohlc-backfill.service';
 import { RealtimeTickerService } from './services/realtime-ticker.service';
 import { OHLCPruneTask } from './tasks/ohlc-prune.task';
@@ -29,11 +30,12 @@ import { SharedCacheModule } from '../shared-cache.module';
   providers: [
     OHLCService,
     ExchangeOHLCService,
+    ExchangeSymbolMapService,
     OHLCBackfillService,
     RealtimeTickerService,
     OHLCSyncTask,
     OHLCPruneTask
   ],
-  exports: [OHLCService, ExchangeOHLCService, OHLCBackfillService, RealtimeTickerService]
+  exports: [OHLCService, ExchangeOHLCService, ExchangeSymbolMapService, OHLCBackfillService, RealtimeTickerService]
 })
 export class OHLCModule {}

@@ -70,7 +70,7 @@ export class ConcentrationRiskCheck implements IRiskCheck {
         };
       }
 
-      const balances = await this.balanceService.getUserBalances(user, false);
+      const balances = await this.balanceService.getUserBalances(user);
       const assets = this.concentrationGate.buildAssetAllocations(balances.current);
 
       if (assets.length === 0) {

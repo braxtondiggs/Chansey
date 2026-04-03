@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cache } from 'cache-manager';
 
 import { ExchangeOHLCService } from './exchange-ohlc.service';
+import { ExchangeSymbolMapService } from './exchange-symbol-map.service';
 
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeService } from '../../exchange/exchange.service';
@@ -39,6 +40,7 @@ export class OHLCBackfillService {
   constructor(
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly ohlcService: OHLCService,
+    private readonly symbolMapService: ExchangeSymbolMapService,
     private readonly exchangeOHLC: ExchangeOHLCService,
     @Inject(forwardRef(() => CoinService))
     private readonly coinService: CoinService,
@@ -153,7 +155,7 @@ export class OHLCBackfillService {
   async getAllProgress(): Promise<BackfillProgress[]> {
     // Note: This is a simplified implementation
     // In production, you might want to store job IDs in a separate set
-    const symbolMaps = await this.ohlcService.getActiveSymbolMaps();
+    const symbolMaps = await this.symbolMapService.getActiveSymbolMaps();
     const progress: BackfillProgress[] = [];
 
     for (const mapping of symbolMaps) {
@@ -206,7 +208,7 @@ export class OHLCBackfillService {
         batch.map(async (coin) => {
           try {
             // Create symbol mapping if it doesn't exist
-            await this.ohlcService.upsertSymbolMap({
+            await this.symbolMapService.upsertSymbolMap({
               coinId: coin.id,
               exchangeId: primaryExchange.id,
               symbol: `${coin.symbol.toUpperCase()}/USD`,

@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 
 import { CoinIdParamDto, GetCandlesQueryDto } from './dto';
 import { OHLCService } from './ohlc.service';
+import { ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
 import { OHLCBackfillService } from './services/ohlc-backfill.service';
 
 export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
@@ -27,6 +28,7 @@ export interface OHLCHealthResponse {
 export class OHLCController {
   constructor(
     private readonly ohlcService: OHLCService,
+    private readonly symbolMapService: ExchangeSymbolMapService,
     private readonly backfillService: OHLCBackfillService
   ) {}
 
@@ -54,7 +56,7 @@ export class OHLCController {
   async getHealth(): Promise<OHLCHealthResponse> {
     const [syncStatus, staleCoins] = await Promise.all([
       this.ohlcService.getSyncStatus(),
-      this.ohlcService.getStaleCoins(2) // Coins not synced in last 2 hours
+      this.symbolMapService.getStaleCoins(2) // Coins not synced in last 2 hours
     ]);
 
     // Determine health status
@@ -92,7 +94,7 @@ export class OHLCController {
   async getSyncStatus() {
     const [syncStatus, staleCoins, gapSummary] = await Promise.all([
       this.ohlcService.getSyncStatus(),
-      this.ohlcService.getStaleCoins(),
+      this.symbolMapService.getStaleCoins(),
       this.ohlcService.getGapSummary()
     ]);
 

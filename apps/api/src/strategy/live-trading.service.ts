@@ -165,7 +165,7 @@ export class LiveTradingService implements OnApplicationShutdown {
     }
 
     // Fetch user's free balance from exchange
-    let balances = await this.balanceService.getUserBalances(user, false);
+    let balances = await this.balanceService.getUserBalances(user);
     const totalFreeUsdValue = this.calculateFreeUsdValue(balances.current);
 
     if (totalFreeUsdValue <= 0 && !user.enableOpportunitySelling) {
@@ -371,7 +371,7 @@ export class LiveTradingService implements OnApplicationShutdown {
               }
 
               // Re-verify available cash after opportunity sells (Fix #2)
-              const updatedBalances = await this.balanceService.getUserBalances(user, false);
+              const updatedBalances = await this.balanceService.getUserBalances(user);
               const newAvailableCash = this.calculateFreeUsdValue(updatedBalances.current);
               if (newAvailableCash < buyAmount * 0.95) {
                 const insufficientFundsReason =

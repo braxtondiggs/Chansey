@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AuditChainService } from './audit-chain.service';
 import { AuditQueryService } from './audit-query.service';
 import { AuditController } from './audit.controller';
 import { AuditService } from './audit.service';
@@ -11,8 +12,8 @@ import { PerformanceMetric } from '../strategy/entities/performance-metric.entit
 
 @Module({
   imports: [TypeOrmModule.forFeature([AuditLog, PerformanceMetric])],
-  providers: [AuditService, AuditQueryService, CryptoService],
+  providers: [AuditService, AuditChainService, AuditQueryService, CryptoService],
   controllers: [AuditController],
-  exports: [AuditService, AuditQueryService, CryptoService]
+  exports: [AuditService, AuditChainService, AuditQueryService, CryptoService]
 })
 export class AuditModule {}
