@@ -11,12 +11,17 @@ export function estimateSpreadCorwinSchultz(
   current: { high: number; low: number },
   previous: { high: number; low: number }
 ): number {
-  // Guard: invalid or flat prices
-  if (current.high <= 0 || current.low <= 0 || previous.high <= 0 || previous.low <= 0) {
+  // Guard: non-finite, non-positive, or inverted/flat candles
+  if (
+    !Number.isFinite(current.high) ||
+    !Number.isFinite(current.low) ||
+    !Number.isFinite(previous.high) ||
+    !Number.isFinite(previous.low)
+  ) {
     return 0;
   }
 
-  if (current.high === current.low && previous.high === previous.low) {
+  if (current.high <= current.low || previous.high <= previous.low) {
     return 0;
   }
 
@@ -45,6 +50,8 @@ export function estimateSpreadCorwinSchultz(
 
   const eAlpha = Math.exp(alpha);
   const spread = (2 * (eAlpha - 1)) / (1 + eAlpha);
+
+  if (!Number.isFinite(spread) || spread < 0) return 0;
 
   return spread;
 }
@@ -112,6 +119,8 @@ export function estimateSpreadBps(ctx: SpreadEstimationContext, calibrationFacto
   }
 
   const spreadBps = spreadFraction * 10_000 * calibrationFactor;
+
+  if (!Number.isFinite(spreadBps) || spreadBps < 0) return minSpreadBps;
 
   return Math.max(spreadBps, minSpreadBps);
 }

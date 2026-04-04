@@ -917,6 +917,9 @@ export class BacktestEngine {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
 
+        // Update prevCandleMap during warmup for spread context on first trading bar
+        this.updatePrevCandleMap(prevCandleMap, currentPrices);
+
         continue;
       }
 
@@ -1195,9 +1198,7 @@ export class BacktestEngine {
       }
 
       // Update previous candle map for spread estimation
-      for (const candle of currentPrices) {
-        prevCandleMap.set(candle.coinId, candle);
-      }
+      this.updatePrevCandleMap(prevCandleMap, currentPrices);
 
       // Iteration timing telemetry
       const iterDuration = Date.now() - iterStart;
@@ -1861,6 +1862,9 @@ export class BacktestEngine {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
 
+        // Update prevCandleMap during warmup for spread context on first trading bar
+        this.updatePrevCandleMap(prevCandleMap, currentPrices);
+
         continue;
       }
 
@@ -2098,9 +2102,7 @@ export class BacktestEngine {
       }
 
       // Update previous candle map for spread estimation
-      for (const candle of currentPrices) {
-        prevCandleMap.set(candle.coinId, candle);
-      }
+      this.updatePrevCandleMap(prevCandleMap, currentPrices);
 
       // Lightweight heartbeat for stale detection (every ~30 seconds)
       // Report progress using global indices so warmup + trading is monotonic
@@ -2500,17 +2502,26 @@ export class BacktestEngine {
     prevCandleMap: Map<string, OHLCCandle>
   ): SpreadEstimationContext | undefined {
     const candle = currentPrices.find((c) => c.coinId === coinId);
-    if (!candle || candle.high <= 0 || candle.low <= 0) return undefined;
+    if (!candle || candle.high <= 0 || candle.low <= 0 || candle.close <= 0 || candle.high <= candle.low)
+      return undefined;
 
     const prev = prevCandleMap.get(coinId);
+    const prevHigh = prev?.high;
+    const prevLow = prev?.low;
     return {
       high: candle.high,
       low: candle.low,
       close: candle.close,
       volume: candle.volume,
-      prevHigh: prev?.high,
-      prevLow: prev?.low
+      prevHigh: Number.isFinite(prevHigh) ? prevHigh : undefined,
+      prevLow: Number.isFinite(prevLow) ? prevLow : undefined
     };
+  }
+
+  private updatePrevCandleMap(prevCandleMap: Map<string, OHLCCandle>, currentPrices: OHLCCandle[]): void {
+    for (const candle of currentPrices) {
+      prevCandleMap.set(candle.coinId, candle);
+    }
   }
 
   private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {
@@ -4030,9 +4041,7 @@ export class BacktestEngine {
       // valid values, but no trades should execute before the original window start date
       if (i < tradingStartIndex) {
         // Still update prevCandleMap during warmup for spread context
-        for (const candle of currentPrices) {
-          optPrevCandleMap.set(candle.coinId, candle);
-        }
+        this.updatePrevCandleMap(optPrevCandleMap, currentPrices);
         continue;
       }
 
@@ -4145,9 +4154,7 @@ export class BacktestEngine {
       }
 
       // Update previous candle map for spread estimation
-      for (const candle of currentPrices) {
-        optPrevCandleMap.set(candle.coinId, candle);
-      }
+      this.updatePrevCandleMap(optPrevCandleMap, currentPrices);
 
       // Track peak and drawdown
       if (portfolio.totalValue > peakValue) {
@@ -4619,9 +4626,7 @@ export class BacktestEngine {
       }
 
       // Update previous candle map for spread estimation
-      for (const candle of currentPrices) {
-        optPrevCandleMap.set(candle.coinId, candle);
-      }
+      this.updatePrevCandleMap(optPrevCandleMap, currentPrices);
 
       // Track peak and drawdown
       if (portfolio.totalValue > peakValue) {
