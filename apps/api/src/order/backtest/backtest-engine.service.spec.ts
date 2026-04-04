@@ -277,7 +277,7 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 10000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000000000 // High volume
       );
 
@@ -286,7 +286,7 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 10000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000 // Low volume
       );
 
@@ -331,7 +331,7 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000 // $1M daily volume
       );
 
@@ -373,7 +373,7 @@ describe('BacktestEngine.executeTrade', () => {
         clonePortfolio(portfolio),
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000 // Low volume
       );
 
@@ -382,7 +382,7 @@ describe('BacktestEngine.executeTrade', () => {
         clonePortfolio(portfolio),
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000000 // High volume
       );
 
@@ -441,7 +441,7 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000
       );
 

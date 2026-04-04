@@ -478,7 +478,7 @@ describe('SlippageService', () => {
           isBuy: true,
           spreadContext: ctx
         },
-        { ...spreadConfig, volumeImpactFactor: 100, baseSlippageBps: 5 }
+        { ...spreadConfig, baseSlippageBps: 5 }
       );
 
       const withVolume = service.calculateSlippage(
@@ -489,7 +489,7 @@ describe('SlippageService', () => {
           dailyVolume: 1000,
           spreadContext: ctx
         },
-        { ...spreadConfig, volumeImpactFactor: 100, baseSlippageBps: 5 }
+        { ...spreadConfig, baseSlippageBps: 5 }
       );
 
       expect(withVolume.slippageBps).toBeGreaterThan(withoutVolume.slippageBps);

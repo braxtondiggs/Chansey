@@ -127,7 +127,7 @@ export class SlippageService implements ISlippageService {
         if (dailyVolume && dailyVolume > 0) {
           const orderValue = quantity * price;
           const volumeRatio = orderValue / dailyVolume;
-          const volumeImpact = volumeRatio * (effectiveConfig.volumeImpactFactor ?? 100);
+          const volumeImpact = volumeRatio * 100;
           halfSpreadBps += volumeImpact;
         }
 
