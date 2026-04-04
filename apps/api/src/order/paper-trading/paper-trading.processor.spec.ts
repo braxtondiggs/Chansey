@@ -321,8 +321,7 @@ describe('PaperTradingProcessor', () => {
       exchangeKey: { id: 'ek-2' }
     };
 
-    const { processor, sessionRepository, paperTradingService, engineService, streamService, metricsService } =
-      createProcessor();
+    const { processor, sessionRepository, paperTradingService, engineService, metricsService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockResolvedValue({
@@ -660,7 +659,7 @@ describe('PaperTradingProcessor', () => {
       user: { id: 'user-rec' }
     };
 
-    const { processor, sessionRepository, engineService, streamService, metricsService } = createProcessor();
+    const { processor, sessionRepository, engineService, streamService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockRejectedValue(new Error('Network timeout'));
@@ -712,8 +711,7 @@ describe('PaperTradingProcessor', () => {
       user: { id: 'user-ru' }
     };
 
-    const { processor, sessionRepository, paperTradingService, engineService, streamService, metricsService } =
-      createProcessor();
+    const { processor, sessionRepository, paperTradingService, engineService, streamService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockRejectedValue(new Error('Invalid API key'));
@@ -785,7 +783,7 @@ describe('PaperTradingProcessor', () => {
       throttleState: { lastCallTimestamps: { 'BTC/USD': 123456 } }
     };
 
-    const { processor, sessionRepository, engineService, metricsService } = createProcessor();
+    const { processor, sessionRepository, engineService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.hasThrottleState.mockReturnValue(false);
@@ -820,7 +818,7 @@ describe('PaperTradingProcessor', () => {
       totalTrades: 3
     };
 
-    const { processor, sessionRepository, engineService, metricsService } = createProcessor();
+    const { processor, sessionRepository, engineService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockResolvedValue({
@@ -854,7 +852,7 @@ describe('PaperTradingProcessor', () => {
       stopConditions: { maxDrawdown: 0.05 }
     };
 
-    const { processor, sessionRepository, engineService, paperTradingService, metricsService } = createProcessor();
+    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockResolvedValue({
@@ -1079,7 +1077,7 @@ describe('PaperTradingProcessor', () => {
       stopConditions: { targetReturn: 0.1 }
     };
 
-    const { processor, sessionRepository, engineService, paperTradingService, metricsService } = createProcessor();
+    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockResolvedValue({
@@ -1100,5 +1098,43 @@ describe('PaperTradingProcessor', () => {
     await processor.process(job);
 
     expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-stop-target', 'target_reached');
+  });
+
+  it('should update maxDrawdown when portfolio value drops below peak', async () => {
+    const session = {
+      id: 'session-drawdown',
+      status: PaperTradingStatus.ACTIVE,
+      initialCapital: 1000,
+      peakPortfolioValue: 1000,
+      maxDrawdown: 0,
+      consecutiveErrors: 0,
+      tickCount: 5,
+      totalTrades: 0
+    };
+
+    const { processor, sessionRepository, engineService } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(session);
+    engineService.processTick.mockResolvedValue({
+      processed: true,
+      signalsReceived: 0,
+      ordersExecuted: 0,
+      errors: [],
+      portfolioValue: 850, // 15% drawdown from peak of 1000
+      prices: {}
+    });
+
+    const job = createJob({
+      type: PaperTradingJobType.TICK,
+      sessionId: 'session-drawdown',
+      userId: 'user-dd'
+    });
+
+    await processor.process(job);
+
+    expect(session.maxDrawdown).toBeCloseTo(0.15, 2);
+    expect(sessionRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ maxDrawdown: expect.closeTo(0.15, 2) })
+    );
   });
 });

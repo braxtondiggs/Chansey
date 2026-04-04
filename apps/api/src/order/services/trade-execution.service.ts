@@ -8,17 +8,13 @@ import { Repository } from 'typeorm';
 
 import { MarketType, MAX_LEVERAGE_CAP } from '@chansey/api-interfaces';
 
-import { OrderStateMachineService } from './order-state-machine.service';
+import { OrderConversionService } from './order-conversion.service';
 import { OrderValidationService } from './order-validation.service';
 import { PositionManagementService } from './position-management.service';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
-import { Coin } from '../../coin/coin.entity';
-import { CoinService } from '../../coin/coin.service';
 import {
-  AppException,
   ExchangeKeyNotFoundException,
-  InsufficientBalanceException,
   InvalidSymbolException,
   SlippageExceededException,
   UserNotFoundException,
@@ -26,52 +22,15 @@ import {
 } from '../../common/exceptions';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
-import { Exchange } from '../../exchange/exchange.entity';
 import { NOTIFICATION_EVENTS } from '../../notification/interfaces/notification-events.interface';
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
-import { OrderTransitionReason } from '../entities/order-status-history.entity';
-import { ExitConfig } from '../interfaces/exit-config.interface';
-import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
+import type { TradeSignal, TradeSignalWithExit } from '../interfaces/trade-signal.interface';
+import { Order } from '../order.entity';
 
-/**
- * Trade signal interface for algorithm-generated signals
- */
-export interface TradeSignal {
-  algorithmActivationId: string;
-  userId: string;
-  exchangeKeyId: string;
-  action: 'BUY' | 'SELL';
-  symbol: string;
-  quantity: number;
-  /** Market type: 'spot' (default) or 'futures' */
-  marketType?: 'spot' | 'futures';
-  /** Position side for futures: 'long' or 'short' */
-  positionSide?: 'long' | 'short';
-  /** Leverage multiplier for futures positions (1-10) */
-  leverage?: number;
-}
-
-/**
- * Extended trade signal with exit configuration
- */
-export interface TradeSignalWithExit extends TradeSignal {
-  /** Original algorithm confidence score (0-1) */
-  confidence?: number;
-  /** Exit configuration for automatic SL/TP/trailing stop placement */
-  exitConfig?: Partial<ExitConfig>;
-  /** Historical price data for ATR-based exit calculations */
-  priceData?: PriceSummary[];
-  /** Whether to auto-size the order based on portfolio value */
-  autoSize?: boolean;
-  /** Total portfolio value in USD for auto-sizing */
-  portfolioValue?: number;
-  /** Allocation percentage of portfolio for this trade */
-  allocationPercentage?: number;
-}
+export type { TradeSignal, TradeSignalWithExit } from '../interfaces/trade-signal.interface';
 
 /**
  * TradeExecutionService
@@ -85,16 +44,13 @@ export class TradeExecutionService {
   private readonly slippageLimits: SlippageLimitsConfig;
 
   constructor(
-    @InjectRepository(Order)
-    private readonly orderRepository: Repository<Order>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(AlgorithmActivation)
     private readonly algorithmActivationRepository: Repository<AlgorithmActivation>,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManagerService: ExchangeManagerService,
-    private readonly coinService: CoinService,
-    private readonly stateMachineService: OrderStateMachineService,
+    private readonly orderConversionService: OrderConversionService,
     private readonly orderValidationService: OrderValidationService,
     private readonly eventEmitter: EventEmitter2,
     @Optional()
@@ -126,159 +82,29 @@ export class TradeExecutionService {
     );
 
     try {
-      // Fetch exchange key and validate
-      const exchangeKey = await this.exchangeKeyService.findOne(signal.exchangeKeyId, signal.userId);
-      if (!exchangeKey || !exchangeKey.exchange) {
-        throw new ExchangeKeyNotFoundException(signal.exchangeKeyId);
-      }
+      const { exchangeKey, user } = await this.validatePrerequisites(signal);
+      const exchangeClient = await this.initializeExchangeClient(exchangeKey.exchange.slug, user, signal.symbol);
+      const expectedPrice = await this.captureExpectedPrice(exchangeClient, signal.symbol, signal.action);
+      const effectiveQuantity = this.resolveQuantity(signal, expectedPrice);
 
-      // Fetch user
-      const user = await this.userRepository.findOneBy({ id: signal.userId });
-      if (!user) {
-        throw new UserNotFoundException(signal.userId);
-      }
-
-      // Gate: block futures orders if user hasn't opted in
-      if (signal.marketType === MarketType.FUTURES && !user.futuresEnabled) {
-        throw new ValidationException(
-          'Futures trading is not enabled. Enable it in Settings > Trading to use futures/short-selling.'
-        );
-      }
-
-      // Initialize CCXT exchange client
-      const exchangeClient = await this.exchangeManagerService.getExchangeClient(exchangeKey.exchange.slug, user);
-
-      // Load markets
-      await withRateLimitRetryThrow(() => exchangeClient.loadMarkets(), {
-        logger: this.logger,
-        operationName: 'loadMarkets'
-      });
-
-      // Verify symbol exists
-      if (!exchangeClient.markets[signal.symbol]) {
-        throw new InvalidSymbolException(signal.symbol, exchangeKey.exchange.name);
-      }
-
-      // Verify funds (optional - can be skipped for faster execution)
-      // await this.verifyFunds(exchangeClient, signal);
-
-      // CAPTURE EXPECTED PRICE BEFORE EXECUTION (for slippage calculation)
-      const ticker = await withRateLimitRetryThrow(() => exchangeClient.fetchTicker(signal.symbol), {
-        logger: this.logger,
-        operationName: `fetchTicker(${signal.symbol})`
-      });
-      const expectedPrice = signal.action === 'BUY' ? ticker.ask || ticker.last || 0 : ticker.bid || ticker.last || 0;
-
-      this.logger.debug(
-        `Expected price for ${signal.symbol}: ${expectedPrice} (${signal.action === 'BUY' ? 'ask' : 'bid'})`
-      );
-
-      // AUTO-SIZE: calculate quantity from portfolio allocation
-      let effectiveQuantity = signal.quantity;
-      if (
-        signal.autoSize &&
-        signal.portfolioValue &&
-        signal.portfolioValue > 0 &&
-        signal.allocationPercentage &&
-        signal.allocationPercentage > 0
-      ) {
-        if (expectedPrice <= 0) {
-          throw new ValidationException('Cannot auto-size: expected price is zero or negative');
-        }
-        const tradeSizeUsd = (signal.portfolioValue * signal.allocationPercentage) / 100;
-        effectiveQuantity = tradeSizeUsd / expectedPrice;
-        this.logger.debug(
-          `Auto-sized: ${signal.allocationPercentage}% of $${signal.portfolioValue.toFixed(2)} = ` +
-            `$${tradeSizeUsd.toFixed(2)} → ${effectiveQuantity.toFixed(8)} ${signal.symbol}`
-        );
-      }
-
-      // GUARD: reject zero-quantity orders before they reach the exchange
-      if (effectiveQuantity <= 0) {
-        throw new ValidationException(
-          `Trade quantity is zero after ${signal.autoSize ? 'auto-sizing' : 'signal'} — ` +
-            `cannot place order for ${signal.symbol}`
-        );
-      }
-
-      // VALIDATE ORDER SIZE against exchange minimums
+      // Validate order size against exchange minimums
       const market = exchangeClient.markets[signal.symbol];
       this.orderValidationService.validateAlgorithmicOrderSize(effectiveQuantity, expectedPrice, market);
 
-      // PRE-EXECUTION SLIPPAGE CHECK
-      if (this.slippageLimits.enabled) {
-        const estimatedSlippageBps = await this.estimateSlippageFromOrderBook(
-          exchangeClient,
-          signal.symbol,
-          effectiveQuantity,
-          signal.action,
-          expectedPrice
-        );
+      // Pre-execution slippage check
+      await this.validateSlippage(exchangeClient, signal.symbol, effectiveQuantity, signal.action, expectedPrice);
 
-        if (estimatedSlippageBps > this.slippageLimits.maxSlippageBps) {
-          throw new SlippageExceededException(
-            Math.round(estimatedSlippageBps * 100) / 100,
-            this.slippageLimits.maxSlippageBps
-          );
-        }
-
-        if (estimatedSlippageBps > this.slippageLimits.warnSlippageBps) {
-          this.logger.warn(
-            `High estimated slippage for ${signal.symbol}: ${estimatedSlippageBps.toFixed(2)} bps ` +
-              `(warning threshold: ${this.slippageLimits.warnSlippageBps} bps)`
-          );
-        }
-      }
-
-      // Execute order via CCXT — branch on market type
-      let ccxtOrder: ccxt.Order;
-      const orderSide = signal.action.toLowerCase() as 'buy' | 'sell';
-
-      if (signal.marketType === MarketType.FUTURES) {
-        // --- FUTURES ORDER PATH ---
-        const leverage = Math.min(signal.leverage ?? 1, MAX_LEVERAGE_CAP);
-
-        const futuresSide = this.resolveFuturesSide(signal.action, signal.positionSide);
-
-        const exchangeService = this.exchangeManagerService.getExchangeService(exchangeKey.exchange.slug);
-        if (!exchangeService.supportsFutures) {
-          throw new ValidationException(`Exchange ${exchangeKey.exchange.name} does not support futures trading`);
-        }
-
-        this.logger.log(
-          `Placing futures order: ${futuresSide} ${effectiveQuantity} ${signal.symbol} ` +
-            `leverage=${leverage}x positionSide=${signal.positionSide ?? 'long'}`
-        );
-
-        ccxtOrder = await exchangeService.createFuturesOrder(
-          user,
-          signal.symbol,
-          futuresSide,
-          effectiveQuantity,
-          leverage,
-          { positionSide: signal.positionSide ?? 'long' }
-        );
-      } else {
-        // --- SPOT ORDER PATH (default) ---
-        ccxtOrder = await exchangeClient.createMarketOrder(signal.symbol, orderSide, effectiveQuantity);
-      }
-
+      // Execute order via CCXT
+      const ccxtOrder = await this.placeOrder(exchangeClient, exchangeKey.exchange, user, signal, effectiveQuantity);
       this.logger.log(`Order executed successfully: ${ccxtOrder.id}`);
 
-      // CALCULATE ACTUAL SLIPPAGE
+      // Calculate and log actual slippage
       const actualPrice = ccxtOrder.average || ccxtOrder.price || 0;
       const actualSlippageBps = this.calculateSlippageBps(expectedPrice, actualPrice, signal.action);
+      this.logSlippage(signal.symbol, actualSlippageBps, expectedPrice, actualPrice);
 
-      // LOG SIGNIFICANT SLIPPAGE
-      if (Math.abs(actualSlippageBps) > this.slippageLimits.warnSlippageBps) {
-        this.logger.warn(
-          `High slippage detected on ${signal.symbol}: ${actualSlippageBps.toFixed(2)} bps ` +
-            `(expected: ${expectedPrice.toFixed(8)}, actual: ${actualPrice.toFixed(8)})`
-        );
-      }
-
-      // Convert CCXT order to our Order entity with slippage data
-      const order = await this.convertCcxtOrderToEntity(
+      // Convert CCXT order to our Order entity
+      const order = await this.orderConversionService.convertCcxtOrderToEntity(
         ccxtOrder,
         user,
         exchangeKey.exchange,
@@ -288,7 +114,7 @@ export class TradeExecutionService {
         signal.marketType === 'futures' ? signal : undefined
       );
 
-      // Accept partial fills as successful (per clarifications)
+      // Log partial fill info
       if (ccxtOrder.filled && ccxtOrder.filled > 0) {
         this.logger.log(
           `Order ${ccxtOrder.id} executed: ${ccxtOrder.filled}/${ccxtOrder.amount} filled ` +
@@ -296,40 +122,8 @@ export class TradeExecutionService {
         );
       }
 
-      // ATTACH EXIT ORDERS if exit config is provided
-      if (signal.exitConfig && this.positionManagementService) {
-        const hasExitEnabled =
-          signal.exitConfig.enableStopLoss ||
-          signal.exitConfig.enableTakeProfit ||
-          signal.exitConfig.enableTrailingStop;
-
-        if (hasExitEnabled) {
-          try {
-            const exitResult = await this.positionManagementService.attachExitOrders(
-              order,
-              signal.exitConfig,
-              signal.priceData
-            );
-
-            this.logger.log(
-              `Exit orders attached to entry ${order.id}: SL=${exitResult.stopLossOrderId || 'none'}, ` +
-                `TP=${exitResult.takeProfitOrderId || 'none'}, OCO=${exitResult.ocoLinked}`
-            );
-
-            if (exitResult.warnings && exitResult.warnings.length > 0) {
-              this.logger.warn(`Exit order warnings: ${exitResult.warnings.join(', ')}`);
-            }
-          } catch (exitError: unknown) {
-            const err = toErrorInfo(exitError);
-            // Entry succeeded - log exit failure but don't fail the trade
-            this.logger.error(
-              `Failed to attach exit orders to entry ${order.id}: ${err.message}. ` +
-                `Entry order succeeded - manual exit order placement may be required.`,
-              err.stack
-            );
-          }
-        }
-      }
+      // Attach exit orders if configured
+      await this.tryAttachExitOrders(order, signal);
 
       // Emit trade executed notification
       this.eventEmitter.emit(NOTIFICATION_EVENTS.TRADE_EXECUTED, {
@@ -345,13 +139,11 @@ export class TradeExecutionService {
       return order;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
-      // Log failures but do not retry (per clarifications)
       this.logger.error(
         `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${err.message}`,
         err.stack
       );
 
-      // Emit trade error notification
       this.eventEmitter.emit(NOTIFICATION_EVENTS.TRADE_ERROR, {
         userId: signal.userId,
         symbol: signal.symbol,
@@ -365,9 +157,6 @@ export class TradeExecutionService {
 
   /**
    * Calculate trade size based on algorithm activation allocation percentage
-   * @param activation - AlgorithmActivation with allocation percentage
-   * @param portfolioValue - Total portfolio value in USD
-   * @returns Trade size in USD
    */
   calculateTradeSize(activation: AlgorithmActivation, portfolioValue: number): number {
     const allocationPercentage = activation.allocationPercentage || 5.0;
@@ -410,219 +199,232 @@ export class TradeExecutionService {
   }
 
   /**
-   * Verify user has sufficient funds for the trade
-   * @param exchangeClient - CCXT exchange client
-   * @param signal - Trade signal
-   * @throws BadRequestException if insufficient funds
+   * Fetch and validate exchange key + user, gate futures if not enabled.
    */
-  private async verifyFunds(exchangeClient: ccxt.Exchange, signal: TradeSignal): Promise<void> {
+  private async validatePrerequisites(signal: TradeSignalWithExit) {
+    const exchangeKey = await this.exchangeKeyService.findOne(signal.exchangeKeyId, signal.userId);
+    if (!exchangeKey || !exchangeKey.exchange) {
+      throw new ExchangeKeyNotFoundException(signal.exchangeKeyId);
+    }
+
+    const user = await this.userRepository.findOneBy({ id: signal.userId });
+    if (!user) {
+      throw new UserNotFoundException(signal.userId);
+    }
+
+    if (signal.marketType === MarketType.FUTURES && !user.futuresEnabled) {
+      throw new ValidationException(
+        'Futures trading is not enabled. Enable it in Settings > Trading to use futures/short-selling.'
+      );
+    }
+
+    return { exchangeKey, user };
+  }
+
+  /**
+   * Initialize CCXT exchange client, load markets, and verify the symbol exists.
+   */
+  private async initializeExchangeClient(slug: string, user: User, symbol: string) {
+    const exchangeClient = await this.exchangeManagerService.getExchangeClient(slug, user);
+
+    await withRateLimitRetryThrow(() => exchangeClient.loadMarkets(), {
+      logger: this.logger,
+      operationName: 'loadMarkets'
+    });
+
+    if (!exchangeClient.markets[symbol]) {
+      throw new InvalidSymbolException(symbol, slug);
+    }
+
+    return exchangeClient;
+  }
+
+  /**
+   * Capture the expected execution price from the current ticker.
+   */
+  private async captureExpectedPrice(
+    exchangeClient: ccxt.Exchange,
+    symbol: string,
+    action: 'BUY' | 'SELL'
+  ): Promise<number> {
+    const ticker = await withRateLimitRetryThrow(() => exchangeClient.fetchTicker(symbol), {
+      logger: this.logger,
+      operationName: `fetchTicker(${symbol})`
+    });
+    const expectedPrice = action === 'BUY' ? ticker.ask || ticker.last || 0 : ticker.bid || ticker.last || 0;
+
+    this.logger.debug(`Expected price for ${symbol}: ${expectedPrice} (${action === 'BUY' ? 'ask' : 'bid'})`);
+
+    return expectedPrice;
+  }
+
+  /**
+   * Resolve effective quantity: auto-size from portfolio allocation or use signal quantity.
+   */
+  private resolveQuantity(signal: TradeSignalWithExit, expectedPrice: number): number {
+    let effectiveQuantity = signal.quantity;
+
+    if (
+      signal.autoSize &&
+      signal.portfolioValue &&
+      signal.portfolioValue > 0 &&
+      signal.allocationPercentage &&
+      signal.allocationPercentage > 0
+    ) {
+      if (expectedPrice <= 0) {
+        throw new ValidationException('Cannot auto-size: expected price is zero or negative');
+      }
+      const tradeSizeUsd = (signal.portfolioValue * signal.allocationPercentage) / 100;
+      effectiveQuantity = tradeSizeUsd / expectedPrice;
+      this.logger.debug(
+        `Auto-sized: ${signal.allocationPercentage}% of $${signal.portfolioValue.toFixed(2)} = ` +
+          `$${tradeSizeUsd.toFixed(2)} → ${effectiveQuantity.toFixed(8)} ${signal.symbol}`
+      );
+    }
+
+    if (effectiveQuantity <= 0) {
+      throw new ValidationException(
+        `Trade quantity is zero after ${signal.autoSize ? 'auto-sizing' : 'signal'} — ` +
+          `cannot place order for ${signal.symbol}`
+      );
+    }
+
+    return effectiveQuantity;
+  }
+
+  /**
+   * Run pre-execution slippage validation against the order book.
+   */
+  private async validateSlippage(
+    exchangeClient: ccxt.Exchange,
+    symbol: string,
+    quantity: number,
+    action: 'BUY' | 'SELL',
+    expectedPrice: number
+  ): Promise<void> {
+    if (!this.slippageLimits.enabled) return;
+
+    const estimatedSlippageBps = await this.estimateSlippageFromOrderBook(
+      exchangeClient,
+      symbol,
+      quantity,
+      action,
+      expectedPrice
+    );
+
+    if (estimatedSlippageBps > this.slippageLimits.maxSlippageBps) {
+      throw new SlippageExceededException(
+        Math.round(estimatedSlippageBps * 100) / 100,
+        this.slippageLimits.maxSlippageBps
+      );
+    }
+
+    if (estimatedSlippageBps > this.slippageLimits.warnSlippageBps) {
+      this.logger.warn(
+        `High estimated slippage for ${symbol}: ${estimatedSlippageBps.toFixed(2)} bps ` +
+          `(warning threshold: ${this.slippageLimits.warnSlippageBps} bps)`
+      );
+    }
+  }
+
+  /**
+   * Place a market order via CCXT, branching on spot vs futures.
+   */
+  private async placeOrder(
+    exchangeClient: ccxt.Exchange,
+    exchange: { slug: string; name: string },
+    user: User,
+    signal: TradeSignalWithExit,
+    effectiveQuantity: number
+  ): Promise<ccxt.Order> {
+    const orderSide = signal.action.toLowerCase() as 'buy' | 'sell';
+
+    if (signal.marketType === MarketType.FUTURES) {
+      const leverage = Math.min(signal.leverage ?? 1, MAX_LEVERAGE_CAP);
+      const futuresSide = signal.action.toLowerCase() as 'buy' | 'sell';
+
+      const exchangeService = this.exchangeManagerService.getExchangeService(exchange.slug);
+      if (!exchangeService.supportsFutures) {
+        throw new ValidationException(`Exchange ${exchange.name} does not support futures trading`);
+      }
+
+      this.logger.log(
+        `Placing futures order: ${futuresSide} ${effectiveQuantity} ${signal.symbol} ` +
+          `leverage=${leverage}x positionSide=${signal.positionSide ?? 'long'}`
+      );
+
+      return exchangeService.createFuturesOrder(user, signal.symbol, futuresSide, effectiveQuantity, leverage, {
+        positionSide: signal.positionSide ?? 'long'
+      });
+    }
+
+    return exchangeClient.createMarketOrder(signal.symbol, orderSide, effectiveQuantity);
+  }
+
+  /**
+   * Attach exit orders (SL/TP/trailing) to an entry order, swallowing errors.
+   */
+  private async tryAttachExitOrders(order: Order, signal: TradeSignalWithExit): Promise<void> {
+    if (!signal.exitConfig || !this.positionManagementService) return;
+
+    const hasExitEnabled =
+      signal.exitConfig.enableStopLoss || signal.exitConfig.enableTakeProfit || signal.exitConfig.enableTrailingStop;
+
+    if (!hasExitEnabled) return;
+
     try {
-      const balance = await exchangeClient.fetchBalance();
-      const [baseCurrency, quoteCurrency] = signal.symbol.split('/');
+      const exitResult = await this.positionManagementService.attachExitOrders(
+        order,
+        signal.exitConfig,
+        signal.priceData
+      );
 
-      if (signal.action === 'BUY') {
-        // Check quote currency balance (e.g., USDT for BTC/USDT buy)
-        const ticker = await exchangeClient.fetchTicker(signal.symbol);
-        const requiredAmount = signal.quantity * (ticker.last || 0);
-        const available = balance[quoteCurrency]?.free || 0;
+      this.logger.log(
+        `Exit orders attached to entry ${order.id}: SL=${exitResult.stopLossOrderId || 'none'}, ` +
+          `TP=${exitResult.takeProfitOrderId || 'none'}, OCO=${exitResult.ocoLinked}`
+      );
 
-        if (available < requiredAmount) {
-          throw new InsufficientBalanceException(quoteCurrency, available, requiredAmount);
-        }
-      } else {
-        // Check base currency balance (e.g., BTC for BTC/USDT sell)
-        const available = balance[baseCurrency]?.free || 0;
-
-        if (available < signal.quantity) {
-          throw new InsufficientBalanceException(baseCurrency, available, signal.quantity);
-        }
+      if (exitResult.warnings && exitResult.warnings.length > 0) {
+        this.logger.warn(`Exit order warnings: ${exitResult.warnings.join(', ')}`);
       }
-    } catch (error: unknown) {
-      if (error instanceof AppException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.warn(`Failed to verify funds: ${err.message}`);
-      // Continue with order execution even if balance check fails
+    } catch (exitError: unknown) {
+      const err = toErrorInfo(exitError);
+      this.logger.error(
+        `Failed to attach exit orders to entry ${order.id}: ${err.message}. ` +
+          `Entry order succeeded - manual exit order placement may be required.`,
+        err.stack
+      );
+    }
+  }
+
+  /**
+   * Log slippage warnings when actual slippage exceeds the warning threshold.
+   */
+  private logSlippage(symbol: string, slippageBps: number, expectedPrice: number, actualPrice: number): void {
+    if (Math.abs(slippageBps) > this.slippageLimits.warnSlippageBps) {
+      this.logger.warn(
+        `High slippage detected on ${symbol}: ${slippageBps.toFixed(2)} bps ` +
+          `(expected: ${expectedPrice.toFixed(8)}, actual: ${actualPrice.toFixed(8)})`
+      );
     }
   }
 
   /**
    * Calculate slippage in basis points
-   * @param expectedPrice - Price captured before execution
-   * @param actualPrice - Price achieved after execution
-   * @param action - Trade direction (BUY or SELL)
-   * @returns Slippage in basis points (positive = unfavorable)
+   * Positive = unfavorable (paid more for buy, received less for sell)
    */
   private calculateSlippageBps(expectedPrice: number, actualPrice: number, action: 'BUY' | 'SELL'): number {
     if (expectedPrice <= 0 || actualPrice <= 0) return 0;
 
-    // Positive slippage = unfavorable (paid more for buy, received less for sell)
     const diff =
       action === 'BUY' ? (actualPrice - expectedPrice) / expectedPrice : (expectedPrice - actualPrice) / expectedPrice;
 
-    return Math.round(diff * 10000 * 100) / 100; // Round to 2 decimal places
+    return Math.round(diff * 10000 * 100) / 100;
   }
 
   /**
-   * Convert CCXT order response to our Order entity
-   * @param ccxtOrder - CCXT order object
-   * @param user - User entity
-   * @param exchange - Exchange entity
-   * @param algorithmActivationId - Algorithm activation ID
-   * @param expectedPrice - Expected execution price (for slippage calculation)
-   * @param actualSlippageBps - Calculated slippage in basis points
-   * @param futuresSignal - Optional futures signal data to populate futures-specific fields
-   * @returns Order entity
-   */
-  private async convertCcxtOrderToEntity(
-    ccxtOrder: ccxt.Order,
-    user: User,
-    exchange: Exchange,
-    algorithmActivationId: string,
-    expectedPrice?: number,
-    actualSlippageBps?: number,
-    futuresSignal?: Pick<TradeSignal, 'marketType' | 'positionSide' | 'leverage'>
-  ): Promise<Order> {
-    // Parse symbol to get base and quote coins
-    const [baseSymbol, quoteSymbol] = ccxtOrder.symbol.split('/');
-
-    let baseCoin: Coin | null = null;
-    let quoteCoin: Coin | null = null;
-
-    try {
-      baseCoin = await this.coinService.getCoinBySymbol(baseSymbol, [], false);
-    } catch {
-      this.logger.warn(`Base coin ${baseSymbol} not found in database`);
-    }
-
-    try {
-      quoteCoin = await this.coinService.getCoinBySymbol(quoteSymbol, [], false);
-    } catch {
-      this.logger.warn(`Quote coin ${quoteSymbol} not found in database`);
-    }
-
-    // Determine order status
-    let status: OrderStatus;
-    if (ccxtOrder.status === 'closed' || ccxtOrder.filled === ccxtOrder.amount) {
-      status = OrderStatus.FILLED;
-    } else if (ccxtOrder.filled && ccxtOrder.filled > 0) {
-      status = OrderStatus.PARTIALLY_FILLED;
-    } else if (ccxtOrder.status === 'canceled') {
-      status = OrderStatus.CANCELED;
-    } else if (ccxtOrder.status === 'rejected') {
-      status = OrderStatus.REJECTED;
-    } else {
-      status = OrderStatus.NEW;
-    }
-
-    // Create order entity
-    const order = new Order({
-      symbol: ccxtOrder.symbol,
-      orderId: ccxtOrder.id || '',
-      clientOrderId: ccxtOrder.clientOrderId || '',
-      transactTime: new Date(ccxtOrder.timestamp || Date.now()),
-      quantity: ccxtOrder.amount || 0,
-      price: ccxtOrder.price || ccxtOrder.average || 0,
-      executedQuantity: ccxtOrder.filled || 0,
-      cost: ccxtOrder.cost || (ccxtOrder.filled || 0) * (ccxtOrder.average || ccxtOrder.price || 0),
-      fee: ccxtOrder.fee?.cost || 0,
-      commission: ccxtOrder.fee?.cost || 0,
-      feeCurrency: ccxtOrder.fee?.currency,
-      averagePrice: ccxtOrder.average,
-      expectedPrice,
-      actualSlippageBps,
-      status,
-      side: ccxtOrder.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-      type: this.mapCcxtOrderType(String(ccxtOrder.type ?? '')),
-      user,
-      baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
-      quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
-      exchange,
-      algorithmActivationId,
-      timeInForce: ccxtOrder.timeInForce,
-      remaining: ccxtOrder.remaining,
-      trades: ccxtOrder.trades.map((t) => ({
-        id: String(t.id ?? ''),
-        timestamp: Number(t.timestamp ?? 0),
-        price: t.price,
-        amount: Number(t.amount ?? 0),
-        cost: Number(t.cost ?? 0),
-        fee: t.fee ? { cost: Number(t.fee.cost ?? 0), currency: String(t.fee.currency ?? '') } : undefined,
-        side: t.side?.toString(),
-        takerOrMaker: t.takerOrMaker?.toString()
-      })),
-      info: ccxtOrder.info,
-      // Futures-specific fields
-      marketType:
-        futuresSignal?.marketType === MarketType.FUTURES ? 'futures' : ccxtOrder.info?.marginMode ? 'futures' : 'spot',
-      positionSide: futuresSignal?.positionSide ?? (ccxtOrder.info?.positionSide as string) ?? undefined,
-      leverage: futuresSignal?.leverage ?? (ccxtOrder.info?.leverage ? Number(ccxtOrder.info.leverage) : undefined),
-      marginMode:
-        futuresSignal?.marketType === MarketType.FUTURES
-          ? 'isolated'
-          : ((ccxtOrder.info?.marginMode as string) ?? undefined),
-      liquidationPrice: ccxtOrder.info?.liquidationPrice ? Number(ccxtOrder.info.liquidationPrice) : undefined,
-      marginAmount: ccxtOrder.info?.initialMargin ? Number(ccxtOrder.info.initialMargin) : undefined
-    });
-
-    const savedOrder = await this.orderRepository.save(order);
-
-    // Record initial status in order history
-    await this.stateMachineService.transitionStatus(
-      savedOrder.id,
-      null,
-      savedOrder.status,
-      OrderTransitionReason.TRADE_EXECUTION,
-      {
-        algorithmActivationId,
-        expectedPrice,
-        actualSlippageBps,
-        exchangeOrderId: ccxtOrder.id,
-        symbol: ccxtOrder.symbol,
-        side: ccxtOrder.side,
-        type: ccxtOrder.type,
-        filled: ccxtOrder.filled,
-        amount: ccxtOrder.amount
-      }
-    );
-
-    return savedOrder;
-  }
-
-  /**
-   * Map CCXT order type to our OrderType enum
-   * @param ccxtType - CCXT order type string
-   * @returns OrderType enum value
-   */
-  private mapCcxtOrderType(ccxtType: string): OrderType {
-    const typeMap: { [key: string]: OrderType } = {
-      market: OrderType.MARKET,
-      limit: OrderType.LIMIT,
-      stop: OrderType.STOP_LOSS,
-      stop_loss: OrderType.STOP_LOSS,
-      stop_limit: OrderType.STOP_LIMIT,
-      stop_loss_limit: OrderType.STOP_LIMIT,
-      take_profit: OrderType.TAKE_PROFIT,
-      take_profit_limit: OrderType.TAKE_PROFIT,
-      trailing_stop: OrderType.TRAILING_STOP,
-      trailing_stop_market: OrderType.TRAILING_STOP,
-      oco: OrderType.OCO
-    };
-
-    return typeMap[ccxtType.toLowerCase()] || OrderType.MARKET;
-  }
-
-  /**
-   * Estimate slippage from order book before execution
-   * Uses order book depth to estimate price impact
-   *
-   * @param exchangeClient - CCXT exchange client
-   * @param symbol - Trading pair symbol
-   * @param quantity - Order quantity
-   * @param action - Trade direction (BUY or SELL)
-   * @param expectedPrice - Expected execution price (best bid/ask)
-   * @returns Estimated slippage in basis points
+   * Estimate slippage from order book before execution.
+   * Uses order book depth to estimate price impact.
    */
   private async estimateSlippageFromOrderBook(
     exchangeClient: ccxt.Exchange,
@@ -632,21 +434,17 @@ export class TradeExecutionService {
     expectedPrice: number
   ): Promise<number> {
     try {
-      // Fetch order book with limited depth for efficiency
       const orderBook = await withRateLimitRetryThrow(() => exchangeClient.fetchOrderBook(symbol, 20), {
         logger: this.logger,
         operationName: `fetchOrderBook(${symbol})`
       });
 
-      // Use asks for BUY orders, bids for SELL orders
       const relevantSide = action === 'BUY' ? orderBook.asks : orderBook.bids;
 
       if (!relevantSide || relevantSide.length === 0) {
-        // If no order book data, assume minimal slippage
         return 0;
       }
 
-      // Calculate volume-weighted average price for the order size
       let remainingQuantity = quantity;
       let totalCost = 0;
 
@@ -658,9 +456,7 @@ export class TradeExecutionService {
         remainingQuantity -= fillQuantity;
       }
 
-      // If order book doesn't have enough liquidity, estimate conservatively
       if (remainingQuantity > 0) {
-        // Assume worst-case 1% additional slippage for unfilled portion
         const lastPrice = Number(relevantSide[relevantSide.length - 1][0] ?? 0);
         const worstCasePrice = action === 'BUY' ? lastPrice * 1.01 : lastPrice * 0.99;
         totalCost += remainingQuantity * worstCasePrice;
@@ -673,20 +469,7 @@ export class TradeExecutionService {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.warn(`Failed to estimate slippage from order book: ${err.message}`);
-      // On error, don't block the trade - return 0 to allow execution
       return 0;
     }
-  }
-
-  /**
-   * Determine the order side for a futures trade.
-   * - Short positions invert: SELL opens, BUY closes
-   * - Long positions follow normal mapping
-   */
-  private resolveFuturesSide(action: string, positionSide: string | undefined): 'buy' | 'sell' {
-    if (positionSide === 'short') {
-      return action === 'BUY' ? 'buy' : 'sell';
-    }
-    return action.toLowerCase() as 'buy' | 'sell';
   }
 }

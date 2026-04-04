@@ -18,7 +18,7 @@ import { Backtest } from '../../order/backtest/backtest.entity';
 import { PaperTradingSession } from '../../order/paper-trading/entities/paper-trading-session.entity';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
-import { ColumnNumericTransformer } from '../../utils/transformers/columnNumeric.transformer';
+import { NUMERIC_TRANSFORMER } from '../../utils/transformers';
 import {
   DeploymentRecommendation,
   PipelineProgressionRules,
@@ -146,7 +146,7 @@ export class Pipeline {
   @ApiProperty({ description: 'Comprehensive final summary report', required: false })
   summaryReport?: PipelineSummaryReport;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Composite pipeline score (0-100)', required: false })
   pipelineScore?: number;
 

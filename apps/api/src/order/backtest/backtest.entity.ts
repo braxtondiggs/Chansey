@@ -24,7 +24,7 @@ import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { User } from '../../users/users.entity';
-import { ColumnNumericTransformer } from '../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../utils/transformers';
 
 export interface BacktestConfigSnapshot {
   coinSymbolFilter?: string[];
@@ -82,14 +82,14 @@ export class Backtest {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 25, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Initial capital for the backtest in USD' })
   initialCapital: number;
 
   @IsNumber()
   @Min(0)
   @Max(1)
-  @Column({ type: 'decimal', precision: 5, scale: 4, default: 0.001, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 5, scale: 4, default: 0.001, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Trading fee percentage (e.g., 0.001 = 0.1%)', default: 0.001 })
   tradingFee: number;
 
@@ -103,27 +103,27 @@ export class Backtest {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Final portfolio value', required: false })
   finalValue?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Total return percentage', required: false })
   totalReturn?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Annualized return percentage', required: false })
   annualizedReturn?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Sharpe ratio', required: false })
   sharpeRatio?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Maximum drawdown percentage', required: false })
   maxDrawdown?: number;
 
@@ -138,7 +138,7 @@ export class Backtest {
   winningTrades?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Win rate as decimal (0.0-1.0), e.g., 0.65 = 65%', required: false })
   winRate?: number;
 
@@ -185,7 +185,7 @@ export class Backtest {
   @IsOptional()
   @Min(1)
   @Max(10)
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Leverage multiplier for futures backtests', required: false })
   leverage?: number;
 

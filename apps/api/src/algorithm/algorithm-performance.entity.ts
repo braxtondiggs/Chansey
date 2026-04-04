@@ -5,7 +5,7 @@ import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, Primary
 import { AlgorithmActivation } from './algorithm-activation.entity';
 
 import { User } from '../users/users.entity';
-import { ColumnNumericTransformer } from '../utils/transformers/columnNumeric.transformer';
+import { NUMERIC_TRANSFORMER } from '../utils/transformers';
 
 /**
  * AlgorithmPerformance Entity
@@ -59,7 +59,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 2,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -73,7 +73,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 5,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -87,7 +87,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -101,7 +101,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 2,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -122,7 +122,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -136,7 +136,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -150,7 +150,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({
@@ -164,7 +164,7 @@ export class AlgorithmPerformance {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({

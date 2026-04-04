@@ -16,7 +16,7 @@ import {
 
 import { PaperTradingSession } from './paper-trading-session.entity';
 
-import { ColumnNumericTransformer } from '../../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../../utils/transformers';
 
 @Entity('paper_trading_accounts')
 @Index(['session'])
@@ -33,18 +33,18 @@ export class PaperTradingAccount {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Available balance', default: 0 })
   available: number;
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Locked balance (in pending orders)', default: 0 })
   locked: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Average cost basis for the asset', required: false })
   averageCost?: number;
 

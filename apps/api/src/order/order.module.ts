@@ -39,13 +39,17 @@ import { LiquidationMonitorService } from './services/liquidation-monitor.servic
 import { OpportunitySellService } from './services/opportunity-sell.service';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderCleanupService } from './services/order-cleanup.service';
+import { OrderConversionService } from './services/order-conversion.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
 import { PositionAnalysisService } from './services/position-analysis.service';
 import { PositionManagementService } from './services/position-management.service';
+import { PositionMonitorService } from './services/position-monitor.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 import { TradeExecutionService } from './services/trade-execution.service';
+import { TradeOrchestratorService } from './services/trade-orchestrator.service';
+import { TradeSignalGeneratorService } from './services/trade-signal-generator.service';
 import { LiquidationMonitorTask } from './tasks/liquidation-monitor.task';
 import { OrderSyncTask } from './tasks/order-sync.task';
 import { PositionMonitorTask } from './tasks/position-monitor.task';
@@ -171,6 +175,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OpportunitySellService,
     OrderCalculationService,
     OrderCleanupService,
+    OrderConversionService,
     OrderService,
     OrderStateMachineService,
     OrderSyncService,
@@ -178,10 +183,13 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OrderValidationService,
     PositionAnalysisService,
     PositionManagementService,
+    PositionMonitorService,
     PositionMonitorTask,
     SlippageAnalysisService,
     TradeExecutionService,
     TradeExecutionTask,
+    TradeOrchestratorService,
+    TradeSignalGeneratorService,
     TickerPairService
   ]
 })

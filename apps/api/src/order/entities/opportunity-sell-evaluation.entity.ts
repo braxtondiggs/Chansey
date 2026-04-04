@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 import { User } from '../../users/users.entity';
-import { ColumnNumericTransformer } from '../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../utils/transformers';
 import { OpportunitySellDecision, OpportunitySellPlan } from '../interfaces/opportunity-selling.interface';
 
 /**
@@ -32,7 +32,7 @@ export class OpportunitySellEvaluation {
     type: 'decimal',
     precision: 5,
     scale: 4,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   buySignalConfidence: number;
 
@@ -41,7 +41,7 @@ export class OpportunitySellEvaluation {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   shortfall: number;
 
@@ -50,7 +50,7 @@ export class OpportunitySellEvaluation {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   availableCash: number;
 
@@ -59,7 +59,7 @@ export class OpportunitySellEvaluation {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   portfolioValue: number;
 
@@ -68,7 +68,7 @@ export class OpportunitySellEvaluation {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   projectedProceeds: number;
 
