@@ -16,7 +16,9 @@ export enum SlippageModelType {
   /** Slippage increases with order size relative to volume */
   VOLUME_BASED = 'volume-based',
   /** Use historical slippage data (placeholder for future implementation) */
-  HISTORICAL = 'historical'
+  HISTORICAL = 'historical',
+  /** Estimates bid-ask spread from OHLCV high-low range using Corwin-Schultz estimator */
+  SPREAD_ADJUSTED = 'spread-adjusted'
 }
 
 /**
@@ -37,6 +39,30 @@ export interface SlippageConfig {
   rejectParticipationRate?: number;
   /** Volatility factor (sigma) for square-root impact model (default: 0.1) */
   volatilityFactor?: number;
+  /** Calibration multiplier for spread estimation (default: 1.0). Higher = more conservative. */
+  spreadCalibrationFactor?: number;
+  /** Minimum spread floor in basis points (default: 2). Prevents unrealistically tight spreads. */
+  minSpreadBps?: number;
+}
+
+/**
+ * OHLCV context for spread-adjusted slippage estimation.
+ * Requires at minimum the current candle's high/low/close.
+ * For Corwin-Schultz estimation, previous candle data improves accuracy.
+ */
+export interface SpreadEstimationContext {
+  /** Current candle high price */
+  high: number;
+  /** Current candle low price */
+  low: number;
+  /** Current candle close price */
+  close: number;
+  /** Current candle volume (base currency) */
+  volume?: number;
+  /** Previous candle high (enables Corwin-Schultz 2-period estimator) */
+  prevHigh?: number;
+  /** Previous candle low (enables Corwin-Schultz 2-period estimator) */
+  prevLow?: number;
 }
 
 /**
@@ -65,6 +91,8 @@ export interface SlippageInput {
   isBuy: boolean;
   /** Optional daily volume for volume-based calculations */
   dailyVolume?: number;
+  /** OHLCV context for spread-adjusted model. When absent, falls back to FIXED behavior. */
+  spreadContext?: SpreadEstimationContext;
 }
 
 /**
@@ -109,7 +137,13 @@ export interface ISlippageService {
    * @param dailyVolume Optional daily volume for volume-based calculations
    * @returns Slippage in basis points
    */
-  calculateSlippageBps(quantity: number, price: number, config?: SlippageConfig, dailyVolume?: number): number;
+  calculateSlippageBps(
+    quantity: number,
+    price: number,
+    config?: SlippageConfig,
+    dailyVolume?: number,
+    spreadContext?: SpreadEstimationContext
+  ): number;
 
   /**
    * Apply slippage to a price

@@ -9,6 +9,7 @@ import {
   PositionManagerService,
   SignalFilterChainService,
   SignalThrottleService,
+  SlippageConfig,
   SlippageModelType,
   SlippageService
 } from './shared';
@@ -276,7 +277,7 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 10000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000000000 // High volume
       );
 
@@ -285,7 +286,7 @@ describe('BacktestEngine.executeTrade', () => {
         { ...portfolio, cashBalance: 10000, positions: new Map() },
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000 // Low volume
       );
 
@@ -330,7 +331,7 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000 // $1M daily volume
       );
 
@@ -372,7 +373,7 @@ describe('BacktestEngine.executeTrade', () => {
         clonePortfolio(portfolio),
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         1000 // Low volume
       );
 
@@ -381,7 +382,7 @@ describe('BacktestEngine.executeTrade', () => {
         clonePortfolio(portfolio),
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000000 // High volume
       );
 
@@ -440,7 +441,7 @@ describe('BacktestEngine.executeTrade', () => {
         portfolio,
         createMarketData('BTC', 100),
         0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5, volumeImpactFactor: 100 },
+        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
         10000
       );
 
@@ -2872,5 +2873,74 @@ describe('BacktestEngine per-run allocation overrides', () => {
 
     // confidence=0.0 → allocation = minAlloc = 0.08
     expect(result?.trade.totalValue).toBeCloseTo(800); // 8% of $10,000
+  });
+});
+
+describe('SPREAD_ADJUSTED slippage integration', () => {
+  it('should apply spread-based slippage that varies with candle range', () => {
+    const spreadConfig: SlippageConfig = {
+      type: SlippageModelType.SPREAD_ADJUSTED,
+      spreadCalibrationFactor: 1.0,
+      minSpreadBps: 2,
+      maxSlippageBps: 500
+    };
+
+    // Narrow range candle
+    const narrowResult = slippageService.calculateSlippage(
+      {
+        price: 50000,
+        quantity: 1,
+        isBuy: true,
+        spreadContext: {
+          high: 50100,
+          low: 49900,
+          close: 50000,
+          volume: 1000000
+        }
+      },
+      spreadConfig
+    );
+
+    // Wide range candle
+    const wideResult = slippageService.calculateSlippage(
+      {
+        price: 50000,
+        quantity: 1,
+        isBuy: true,
+        spreadContext: {
+          high: 52000,
+          low: 48000,
+          close: 50000,
+          volume: 1000000
+        }
+      },
+      spreadConfig
+    );
+
+    // Wide candle should have higher slippage
+    expect(wideResult.slippageBps).toBeGreaterThan(narrowResult.slippageBps);
+    // Both should be positive
+    expect(narrowResult.slippageBps).toBeGreaterThan(0);
+    expect(wideResult.slippageBps).toBeGreaterThan(0);
+  });
+
+  it('should not affect FIXED model results (backward compatibility)', () => {
+    const fixedConfig: SlippageConfig = {
+      type: SlippageModelType.FIXED,
+      fixedBps: 5
+    };
+
+    const result = slippageService.calculateSlippage(
+      {
+        price: 50000,
+        quantity: 1,
+        isBuy: true,
+        spreadContext: { high: 51000, low: 49000, close: 50000 }
+      },
+      fixedConfig
+    );
+
+    // FIXED model ignores spreadContext entirely
+    expect(result.slippageBps).toBe(5);
   });
 });

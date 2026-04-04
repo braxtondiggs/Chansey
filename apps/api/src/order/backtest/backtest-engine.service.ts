@@ -67,6 +67,7 @@ import {
   SlippageConfig,
   SlippageModelType,
   SlippageService,
+  SpreadEstimationContext,
   ThrottleState,
   TimeframeType
 } from './shared';
@@ -253,6 +254,7 @@ interface ProcessExitSignalsOptions {
   backtest?: Backtest;
   coinMap?: Map<string, Coin>;
   quoteCoin?: Coin;
+  prevCandleMap?: Map<string, OHLCCandle>;
 }
 
 // Note: Seeded random generation now uses SeededRandom class for checkpoint support
@@ -450,6 +452,8 @@ export class BacktestEngine {
         return SlippageModelType.VOLUME_BASED;
       case 'historical':
         return SlippageModelType.HISTORICAL;
+      case 'spread-adjusted':
+        return SlippageModelType.SPREAD_ADJUSTED;
       case 'fixed':
       default:
         return SlippageModelType.FIXED;
@@ -750,7 +754,9 @@ export class BacktestEngine {
           baseSlippageBps: slippageSnapshot.baseSlippageBps ?? 5,
           participationRateLimit: slippageSnapshot.participationRateLimit ?? riskDefaults?.participationRateLimit,
           rejectParticipationRate: slippageSnapshot.rejectParticipationRate ?? riskDefaults?.rejectParticipationRate,
-          volatilityFactor: slippageSnapshot.volatilityFactor
+          volatilityFactor: slippageSnapshot.volatilityFactor,
+          spreadCalibrationFactor: slippageSnapshot.spreadCalibrationFactor ?? 1.0,
+          minSpreadBps: slippageSnapshot.minSpreadBps ?? 2
         })
       : DEFAULT_SLIPPAGE_CONFIG;
 
@@ -842,6 +848,10 @@ export class BacktestEngine {
     let lastHeartbeatTime = Date.now();
     const HEARTBEAT_INTERVAL_MS = 30_000;
 
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
+    const prevCandleMap = new Map<string, OHLCCandle>();
+
     for (let i = startIndex; i < effectiveTimestampCount; i++) {
       const iterStart = Date.now();
       const timestamp = new Date(timestamps[i]);
@@ -907,6 +917,9 @@ export class BacktestEngine {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
 
+        // Update prevCandleMap during warmup for spread context on first trading bar
+        this.updatePrevCandleMap(prevCandleMap, currentPrices);
+
         continue;
       }
 
@@ -927,7 +940,8 @@ export class BacktestEngine {
           simulatedFills,
           backtest,
           coinMap,
-          quoteCoin
+          quoteCoin,
+          prevCandleMap
         });
       }
 
@@ -1041,6 +1055,7 @@ export class BacktestEngine {
 
         // Extract volume from current candle for volume-based slippage calculation
         const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
+        const spreadCtx = this.buildSpreadContext(currentPrices, strategySignal.coinId, prevCandleMap);
 
         let tradeResult = await this.executeTrade(
           strategySignal,
@@ -1051,7 +1066,9 @@ export class BacktestEngine {
           dailyVolume,
           minHoldMs,
           barMaxAllocation,
-          barMinAllocation
+          barMinAllocation,
+          1,
+          spreadCtx
         );
 
         // Opportunity selling: if BUY failed (likely insufficient cash), attempt to sell positions to fund it
@@ -1071,7 +1088,9 @@ export class BacktestEngine {
             simulatedFills,
             dailyVolume,
             barMaxAllocation,
-            barMinAllocation
+            barMinAllocation,
+            currentPrices,
+            prevCandleMap
           );
 
           if (oppResult) {
@@ -1085,7 +1104,9 @@ export class BacktestEngine {
               dailyVolume,
               minHoldMs,
               barMaxAllocation,
-              barMinAllocation
+              barMinAllocation,
+              1,
+              spreadCtx
             );
           }
         }
@@ -1175,6 +1196,9 @@ export class BacktestEngine {
           });
         }
       }
+
+      // Update previous candle map for spread estimation
+      this.updatePrevCandleMap(prevCandleMap, currentPrices);
 
       // Iteration timing telemetry
       const iterDuration = Date.now() - iterStart;
@@ -1553,7 +1577,9 @@ export class BacktestEngine {
           baseSlippageBps: slippageSnapshot.baseSlippageBps ?? 5,
           participationRateLimit: slippageSnapshot.participationRateLimit ?? lrRiskDefaults?.participationRateLimit,
           rejectParticipationRate: slippageSnapshot.rejectParticipationRate ?? lrRiskDefaults?.rejectParticipationRate,
-          volatilityFactor: slippageSnapshot.volatilityFactor
+          volatilityFactor: slippageSnapshot.volatilityFactor,
+          spreadCalibrationFactor: slippageSnapshot.spreadCalibrationFactor ?? 1.0,
+          minSpreadBps: slippageSnapshot.minSpreadBps ?? 2
         })
       : DEFAULT_SLIPPAGE_CONFIG;
 
@@ -1644,6 +1670,10 @@ export class BacktestEngine {
     // If pause checks fail repeatedly, force a pause as a safety measure
     const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
     let consecutivePauseFailures = 0;
+
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
+    const prevCandleMap = new Map<string, OHLCCandle>();
 
     for (let i = startIndex; i < effectiveTimestampCount; i++) {
       // Check for pause request BEFORE processing this timestamp
@@ -1832,6 +1862,9 @@ export class BacktestEngine {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
 
+        // Update prevCandleMap during warmup for spread context on first trading bar
+        this.updatePrevCandleMap(prevCandleMap, currentPrices);
+
         continue;
       }
 
@@ -1852,7 +1885,8 @@ export class BacktestEngine {
           simulatedFills,
           backtest,
           coinMap,
-          quoteCoin
+          quoteCoin,
+          prevCandleMap
         });
       }
 
@@ -1964,6 +1998,7 @@ export class BacktestEngine {
 
         // Extract volume from current candle for volume-based slippage calculation
         const dailyVolume = this.extractDailyVolume(currentPrices, strategySignal.coinId);
+        const spreadCtx = this.buildSpreadContext(currentPrices, strategySignal.coinId, prevCandleMap);
 
         const tradeResult = await this.executeTrade(
           strategySignal,
@@ -1974,7 +2009,9 @@ export class BacktestEngine {
           dailyVolume,
           minHoldMs,
           barMaxAllocation,
-          barMinAllocation
+          barMinAllocation,
+          1,
+          spreadCtx
         );
         if (tradeResult) {
           const { trade, slippageBps, fillStatus } = tradeResult;
@@ -2063,6 +2100,9 @@ export class BacktestEngine {
           });
         }
       }
+
+      // Update previous candle map for spread estimation
+      this.updatePrevCandleMap(prevCandleMap, currentPrices);
 
       // Lightweight heartbeat for stale detection (every ~30 seconds)
       // Report progress using global indices so warmup + trading is monotonic
@@ -2452,6 +2492,38 @@ export class BacktestEngine {
     return candle.quoteVolume ?? (candle.volume ? candle.volume * candle.close : undefined);
   }
 
+  /**
+   * Build spread estimation context from current and previous candle data.
+   * Returns undefined if no candle found for the given coinId.
+   */
+  private buildSpreadContext(
+    currentPrices: OHLCCandle[],
+    coinId: string,
+    prevCandleMap: Map<string, OHLCCandle>
+  ): SpreadEstimationContext | undefined {
+    const candle = currentPrices.find((c) => c.coinId === coinId);
+    if (!candle || candle.high <= 0 || candle.low <= 0 || candle.close <= 0 || candle.high <= candle.low)
+      return undefined;
+
+    const prev = prevCandleMap.get(coinId);
+    const prevHigh = prev?.high;
+    const prevLow = prev?.low;
+    return {
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      prevHigh: Number.isFinite(prevHigh) ? prevHigh : undefined,
+      prevLow: Number.isFinite(prevLow) ? prevLow : undefined
+    };
+  }
+
+  private updatePrevCandleMap(prevCandleMap: Map<string, OHLCCandle>, currentPrices: OHLCCandle[]): void {
+    for (const candle of currentPrices) {
+      prevCandleMap.set(candle.coinId, candle);
+    }
+  }
+
   private groupPricesByTimestamp(candles: OHLCCandle[]): Record<string, OHLCCandle[]> {
     return candles.reduce(
       (grouped, candle) => {
@@ -2490,7 +2562,8 @@ export class BacktestEngine {
     minHoldMs: number = BacktestEngine.DEFAULT_MIN_HOLD_MS,
     maxAllocation: number = getAllocationLimits().maxAllocation,
     minAllocation: number = getAllocationLimits().minAllocation,
-    defaultLeverage = 1
+    defaultLeverage = 1,
+    spreadContext?: SpreadEstimationContext
   ): Promise<ExecuteTradeResult | null> {
     const marketPrice = marketData.prices.get(signal.coinId);
     if (!marketPrice) {
@@ -2556,7 +2629,7 @@ export class BacktestEngine {
 
       // Calculate slippage on actual quantity
       const slippageResult = this.slippageService.calculateSlippage(
-        { price: basePrice, quantity, isBuy: true, dailyVolume },
+        { price: basePrice, quantity, isBuy: true, dailyVolume, spreadContext },
         slippageConfig
       );
       slippageBps = slippageResult.slippageBps;
@@ -2671,7 +2744,7 @@ export class BacktestEngine {
 
       // Calculate slippage on actual quantity
       const slippageResult = this.slippageService.calculateSlippage(
-        { price: basePrice, quantity, isBuy: false, dailyVolume },
+        { price: basePrice, quantity, isBuy: false, dailyVolume, spreadContext },
         slippageConfig
       );
       slippageBps = slippageResult.slippageBps;
@@ -2755,7 +2828,7 @@ export class BacktestEngine {
 
       // Calculate slippage on actual quantity (opening short = selling)
       const slippageResult = this.slippageService.calculateSlippage(
-        { price: basePrice, quantity, isBuy: false, dailyVolume },
+        { price: basePrice, quantity, isBuy: false, dailyVolume, spreadContext },
         slippageConfig
       );
       slippageBps = slippageResult.slippageBps;
@@ -2853,7 +2926,7 @@ export class BacktestEngine {
 
       // Calculate slippage on actual quantity (closing short = buying)
       const slippageResult = this.slippageService.calculateSlippage(
-        { price: basePrice, quantity, isBuy: true, dailyVolume },
+        { price: basePrice, quantity, isBuy: true, dailyVolume, spreadContext },
         slippageConfig
       );
       slippageBps = slippageResult.slippageBps;
@@ -3103,6 +3176,9 @@ export class BacktestEngine {
       }
 
       const dailyVolume = fullFidelity ? this.extractDailyVolume(currentPrices, exitSig.coinId) : undefined;
+      const spreadCtx = opts.prevCandleMap
+        ? this.buildSpreadContext(currentPrices, exitSig.coinId, opts.prevCandleMap)
+        : undefined;
       const tradeResult = await this.executeTrade(
         exitTradingSignal,
         portfolio,
@@ -3112,7 +3188,9 @@ export class BacktestEngine {
         dailyVolume,
         0, // bypass hold period for risk-control exits
         opts.maxAllocation,
-        opts.minAllocation
+        opts.minAllocation,
+        1,
+        spreadCtx
       );
 
       if (tradeResult) {
@@ -3202,7 +3280,9 @@ export class BacktestEngine {
     simulatedFills: Partial<SimulatedOrderFill>[],
     dailyVolume?: number,
     maxAllocation: number = getAllocationLimits().maxAllocation,
-    minAllocation: number = getAllocationLimits().minAllocation
+    minAllocation: number = getAllocationLimits().minAllocation,
+    currentPrices?: OHLCCandle[],
+    prevCandleMap?: Map<string, OHLCCandle>
   ): Promise<boolean> {
     const buyConfidence = buySignal.confidence ?? 0;
 
@@ -3264,7 +3344,9 @@ export class BacktestEngine {
       timestamp,
       trades,
       simulatedFills,
-      dailyVolume
+      dailyVolume,
+      currentPrices,
+      prevCandleMap
     );
   }
 
@@ -3330,7 +3412,9 @@ export class BacktestEngine {
     timestamp: Date,
     trades: Partial<BacktestTrade>[],
     simulatedFills: Partial<SimulatedOrderFill>[],
-    dailyVolume?: number
+    dailyVolume?: number,
+    currentPrices?: OHLCCandle[],
+    prevCandleMap?: Map<string, OHLCCandle>
   ): Promise<boolean> {
     let remainingShortfall = shortfall;
     let totalSellValue = 0;
@@ -3364,6 +3448,10 @@ export class BacktestEngine {
       };
 
       // Use minHoldMs=0 so the sell isn't blocked by hold period (already checked by scoring)
+      const spreadCtx =
+        currentPrices && prevCandleMap
+          ? this.buildSpreadContext(currentPrices, candidate.coinId, prevCandleMap)
+          : undefined;
       const sellResult = await this.executeTrade(
         sellSignal,
         portfolio,
@@ -3371,7 +3459,11 @@ export class BacktestEngine {
         tradingFee,
         slippageConfig,
         dailyVolume,
-        0
+        0,
+        undefined,
+        undefined,
+        1,
+        spreadCtx
       );
       if (sellResult) {
         const { trade, slippageBps, fillStatus } = sellResult;
@@ -3922,6 +4014,10 @@ export class BacktestEngine {
     // Reusable price map
     const currentPriceMap = new Map<string, number>();
 
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
+    const optPrevCandleMap = new Map<string, OHLCCandle>();
+
     for (let i = 0; i < timestamps.length; i++) {
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
@@ -3944,6 +4040,8 @@ export class BacktestEngine {
       // Skip trading logic during warm-up period — indicators need history to produce
       // valid values, but no trades should execute before the original window start date
       if (i < tradingStartIndex) {
+        // Still update prevCandleMap during warmup for spread context
+        this.updatePrevCandleMap(optPrevCandleMap, currentPrices);
         continue;
       }
 
@@ -3957,7 +4055,8 @@ export class BacktestEngine {
           tradingFee,
           timestamp,
           trades,
-          slippageConfig
+          slippageConfig,
+          prevCandleMap: optPrevCandleMap
         });
       }
 
@@ -4027,6 +4126,7 @@ export class BacktestEngine {
 
       for (const strategySignal of strategySignals) {
         const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
+        const spreadCtx = this.buildSpreadContext(currentPrices, strategySignal.coinId, optPrevCandleMap);
 
         const tradeResult = await this.executeTrade(
           strategySignal,
@@ -4037,7 +4137,9 @@ export class BacktestEngine {
           dailyVolume,
           BacktestEngine.DEFAULT_MIN_HOLD_MS,
           optMaxAllocation,
-          optMinAllocation
+          optMinAllocation,
+          1,
+          spreadCtx
         );
         if (tradeResult && tradeResult.fillStatus !== SimulatedOrderStatus.CANCELLED) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
@@ -4050,6 +4152,9 @@ export class BacktestEngine {
           }
         }
       }
+
+      // Update previous candle map for spread estimation
+      this.updatePrevCandleMap(optPrevCandleMap, currentPrices);
 
       // Track peak and drawdown
       if (portfolio.totalValue > peakValue) {
@@ -4387,6 +4492,10 @@ export class BacktestEngine {
     // Reusable price map to avoid new Map() allocation per iteration
     const currentPriceMap = new Map<string, number>();
 
+    // Track previous candle per coin for spread estimation context.
+    // Empty on checkpoint resume — first candle per coin falls back to high-low estimator.
+    const optPrevCandleMap = new Map<string, OHLCCandle>();
+
     for (let i = 0; i < timestamps.length; i++) {
       const timestamp = new Date(timestamps[i]);
       const currentPrices = pricesByTimestamp[timestamps[i]];
@@ -4416,7 +4525,8 @@ export class BacktestEngine {
           tradingFee,
           timestamp,
           trades,
-          slippageConfig
+          slippageConfig,
+          prevCandleMap: optPrevCandleMap
         });
       }
 
@@ -4488,6 +4598,7 @@ export class BacktestEngine {
       for (const strategySignal of strategySignals) {
         // Use precomputed volume map instead of .find() per signal
         const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
+        const spreadCtx = this.buildSpreadContext(currentPrices, strategySignal.coinId, optPrevCandleMap);
 
         const tradeResult = await this.executeTrade(
           strategySignal,
@@ -4498,7 +4609,9 @@ export class BacktestEngine {
           dailyVolume,
           BacktestEngine.DEFAULT_MIN_HOLD_MS,
           optMaxAllocation,
-          optMinAllocation
+          optMinAllocation,
+          1,
+          spreadCtx
         );
         if (tradeResult && tradeResult.fillStatus !== SimulatedOrderStatus.CANCELLED) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
@@ -4511,6 +4624,9 @@ export class BacktestEngine {
           }
         }
       }
+
+      // Update previous candle map for spread estimation
+      this.updatePrevCandleMap(optPrevCandleMap, currentPrices);
 
       // Track peak and drawdown
       if (portfolio.totalValue > peakValue) {

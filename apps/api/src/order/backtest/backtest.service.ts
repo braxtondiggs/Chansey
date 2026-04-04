@@ -196,7 +196,9 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
           baseSlippageBps: createBacktestDto.slippageBaseBps ?? 5,
           participationRateLimit: createBacktestDto.slippageParticipationRate,
           rejectParticipationRate: createBacktestDto.slippageRejectThreshold,
-          volatilityFactor: createBacktestDto.slippageVolatilityFactor
+          volatilityFactor: createBacktestDto.slippageVolatilityFactor,
+          spreadCalibrationFactor: createBacktestDto.slippageSpreadCalibrationFactor ?? 1.0,
+          minSpreadBps: createBacktestDto.slippageMinSpreadBps ?? 2
         },
         regime: {
           enableRegimeGate: createBacktestDto.enableRegimeGate,
