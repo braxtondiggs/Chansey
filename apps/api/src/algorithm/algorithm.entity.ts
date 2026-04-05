@@ -13,7 +13,7 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 
-import { ColumnNumericTransformer } from './../utils/transformers/columnNumeric.transformer';
+import { NUMERIC_TRANSFORMER } from '../utils/transformers';
 
 /**
  * Algorithm execution status enum
@@ -153,7 +153,7 @@ export class Algorithm {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true,
     default: 5
   })

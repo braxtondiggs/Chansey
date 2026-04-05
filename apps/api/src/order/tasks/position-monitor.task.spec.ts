@@ -4,7 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { Job } from 'bullmq';
 import * as ccxt from 'ccxt';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { PositionMonitorTask } from './position-monitor.task';
 
@@ -20,14 +20,11 @@ import {
   TrailingType
 } from '../interfaces/exit-config.interface';
 import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
-import { PositionManagementService } from '../services/position-management.service';
+import { PositionMonitorService } from '../services/position-monitor.service';
 
 describe('PositionMonitorTask', () => {
   let task: PositionMonitorTask;
-  let positionExitRepo: Repository<PositionExit>;
-  let positionManagementService: PositionManagementService;
-  let exchangeManagerService: ExchangeManagerService;
-  let exchangeKeyService: ExchangeKeyService;
+  let service: PositionMonitorService;
 
   type PositionExitOverrides = Omit<Partial<PositionExit>, 'exitConfig' | 'user'> & {
     exitConfig?: Partial<ExitConfig>;
@@ -93,10 +90,6 @@ describe('PositionMonitorTask', () => {
     save: jest.fn((entity) => Promise.resolve({ ...entity, id: entity.id || 'new-order-uuid' }))
   };
 
-  const mockPositionManagementService = {
-    getActiveTrailingStops: jest.fn()
-  };
-
   const mockExchangeManagerService = {
     getExchangeClient: jest.fn()
   };
@@ -118,10 +111,10 @@ describe('PositionMonitorTask', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PositionMonitorTask,
+        PositionMonitorService,
         { provide: getQueueToken('position-monitor'), useValue: mockQueue },
         { provide: getRepositoryToken(PositionExit), useValue: mockPositionExitRepo },
         { provide: getRepositoryToken(Order), useValue: mockOrderRepo },
-        { provide: PositionManagementService, useValue: mockPositionManagementService },
         { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
         { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
         { provide: DataSource, useValue: mockDataSource },
@@ -130,10 +123,7 @@ describe('PositionMonitorTask', () => {
     }).compile();
 
     task = module.get<PositionMonitorTask>(PositionMonitorTask);
-    positionExitRepo = module.get(getRepositoryToken(PositionExit));
-    positionManagementService = module.get(PositionManagementService);
-    exchangeManagerService = module.get(ExchangeManagerService);
-    exchangeKeyService = module.get(ExchangeKeyService);
+    service = module.get<PositionMonitorService>(PositionMonitorService);
 
     jest.clearAllMocks();
   });
@@ -144,7 +134,7 @@ describe('PositionMonitorTask', () => {
         exitConfig: { trailingActivation: TrailingActivationType.IMMEDIATE }
       });
 
-      const result = (task as any).shouldActivateTrailing(position, 51000);
+      const result = service.shouldActivateTrailing(position, 51000);
 
       expect(result).toBe(true);
     });
@@ -158,11 +148,11 @@ describe('PositionMonitorTask', () => {
       });
 
       // Price below activation
-      expect((task as any).shouldActivateTrailing(position, 51000)).toBe(false);
+      expect(service.shouldActivateTrailing(position, 51000)).toBe(false);
       // Price at activation
-      expect((task as any).shouldActivateTrailing(position, 52000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 52000)).toBe(true);
       // Price above activation
-      expect((task as any).shouldActivateTrailing(position, 53000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 53000)).toBe(true);
     });
 
     it('should activate when price falls below activation price for short', () => {
@@ -175,11 +165,11 @@ describe('PositionMonitorTask', () => {
       });
 
       // Price above activation (not activated for shorts)
-      expect((task as any).shouldActivateTrailing(position, 49000)).toBe(false);
+      expect(service.shouldActivateTrailing(position, 49000)).toBe(false);
       // Price at activation
-      expect((task as any).shouldActivateTrailing(position, 48000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 48000)).toBe(true);
       // Price below activation
-      expect((task as any).shouldActivateTrailing(position, 47000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 47000)).toBe(true);
     });
 
     it('should activate based on percentage gain for long', () => {
@@ -191,9 +181,9 @@ describe('PositionMonitorTask', () => {
       });
 
       // Target: 50000 * 1.02 = 51000
-      expect((task as any).shouldActivateTrailing(position, 50500)).toBe(false);
-      expect((task as any).shouldActivateTrailing(position, 51000)).toBe(true);
-      expect((task as any).shouldActivateTrailing(position, 52000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 50500)).toBe(false);
+      expect(service.shouldActivateTrailing(position, 51000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 52000)).toBe(true);
     });
 
     it('should activate based on percentage gain for short', () => {
@@ -206,9 +196,9 @@ describe('PositionMonitorTask', () => {
       });
 
       // Target: 50000 * 0.98 = 49000
-      expect((task as any).shouldActivateTrailing(position, 49500)).toBe(false);
-      expect((task as any).shouldActivateTrailing(position, 49000)).toBe(true);
-      expect((task as any).shouldActivateTrailing(position, 48000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 49500)).toBe(false);
+      expect(service.shouldActivateTrailing(position, 49000)).toBe(true);
+      expect(service.shouldActivateTrailing(position, 48000)).toBe(true);
     });
 
     it('should return false for unknown activation type', () => {
@@ -216,7 +206,7 @@ describe('PositionMonitorTask', () => {
         exitConfig: { trailingActivation: 'unknown' as TrailingActivationType }
       });
 
-      expect((task as any).shouldActivateTrailing(position, 55000)).toBe(false);
+      expect(service.shouldActivateTrailing(position, 55000)).toBe(false);
     });
   });
 
@@ -227,7 +217,7 @@ describe('PositionMonitorTask', () => {
         trailingValue: 500 // $500 trailing
       };
 
-      const result = (task as any).calculateTrailingStopPrice(52000, config, 'BUY');
+      const result = service.calculateTrailingStopPrice(52000, config as ExitConfig, 'BUY');
 
       // 52000 - 500 = 51500
       expect(result).toBe(51500);
@@ -239,7 +229,7 @@ describe('PositionMonitorTask', () => {
         trailingValue: 500
       };
 
-      const result = (task as any).calculateTrailingStopPrice(48000, config, 'SELL');
+      const result = service.calculateTrailingStopPrice(48000, config as ExitConfig, 'SELL');
 
       // 48000 + 500 = 48500
       expect(result).toBe(48500);
@@ -251,7 +241,7 @@ describe('PositionMonitorTask', () => {
         trailingValue: 2 // 2%
       };
 
-      const result = (task as any).calculateTrailingStopPrice(52000, config, 'BUY');
+      const result = service.calculateTrailingStopPrice(52000, config as ExitConfig, 'BUY');
 
       // 52000 - (52000 * 0.02) = 52000 - 1040 = 50960
       expect(result).toBe(50960);
@@ -263,7 +253,7 @@ describe('PositionMonitorTask', () => {
         trailingValue: 2
       };
 
-      const result = (task as any).calculateTrailingStopPrice(48000, config, 'SELL');
+      const result = service.calculateTrailingStopPrice(48000, config as ExitConfig, 'SELL');
 
       // 48000 + (48000 * 0.02) = 48000 + 960 = 48960
       expect(result).toBe(48960);
@@ -275,31 +265,19 @@ describe('PositionMonitorTask', () => {
         trailingValue: 2 // 2x ATR multiplier
       };
 
-      const result = (task as any).calculateTrailingStopPrice(52000, config, 'BUY', 1000);
+      const result = service.calculateTrailingStopPrice(52000, config as ExitConfig, 'BUY', 1000);
 
       // 52000 - (1000 * 2) = 50000
       expect(result).toBe(50000);
     });
 
-    it('should fallback to 2% when entryAtr is unavailable', () => {
+    it.each([undefined, NaN])('should fallback to 2%% when entryAtr is %s', (atrValue) => {
       const config = {
         trailingType: TrailingType.ATR,
         trailingValue: 2
       };
 
-      const result = (task as any).calculateTrailingStopPrice(50000, config, 'BUY', undefined);
-
-      // Default 2%: 50000 - (50000 * 0.02) = 49000
-      expect(result).toBe(49000);
-    });
-
-    it('should fallback to 2% when entryAtr is NaN', () => {
-      const config = {
-        trailingType: TrailingType.ATR,
-        trailingValue: 2
-      };
-
-      const result = (task as any).calculateTrailingStopPrice(50000, config, 'BUY', NaN);
+      const result = service.calculateTrailingStopPrice(50000, config as ExitConfig, 'BUY', atrValue);
 
       // Default 2%: 50000 - (50000 * 0.02) = 49000
       expect(result).toBe(49000);
@@ -311,7 +289,7 @@ describe('PositionMonitorTask', () => {
         trailingValue: 1
       };
 
-      const result = (task as any).calculateTrailingStopPrice(50000, config, 'BUY');
+      const result = service.calculateTrailingStopPrice(50000, config as ExitConfig, 'BUY');
 
       // Default 2%: 50000 - (50000 * 0.02) = 49000
       expect(result).toBe(49000);
@@ -363,7 +341,7 @@ describe('PositionMonitorTask', () => {
       });
 
       const updateSpy = jest
-        .spyOn(task as any, 'updateTrailingStop')
+        .spyOn(service, 'updateTrailingStop')
         .mockResolvedValue({ updated: true, triggered: false });
 
       const result = await task.process(mockJob);
@@ -388,7 +366,7 @@ describe('PositionMonitorTask', () => {
       mockExchangeKeyService.findOne.mockResolvedValue(null);
 
       const updateSpy = jest
-        .spyOn(task as any, 'updateTrailingStop')
+        .spyOn(service, 'updateTrailingStop')
         .mockResolvedValue({ updated: true, triggered: false });
 
       const result = await task.process(mockJob);
@@ -417,7 +395,7 @@ describe('PositionMonitorTask', () => {
       });
 
       const updateSpy = jest
-        .spyOn(task as any, 'updateTrailingStop')
+        .spyOn(service, 'updateTrailingStop')
         .mockResolvedValue({ updated: false, triggered: false });
 
       const result = await task.process(mockJob);
@@ -445,7 +423,7 @@ describe('PositionMonitorTask', () => {
       });
 
       const updateSpy = jest
-        .spyOn(task as any, 'updateTrailingStop')
+        .spyOn(service, 'updateTrailingStop')
         .mockResolvedValue({ updated: false, triggered: false });
 
       const result = await task.process(mockJob);
@@ -459,7 +437,10 @@ describe('PositionMonitorTask', () => {
       });
     });
 
-    it('should fall back to sequential fetchTicker when exchange does not support fetchTickers', async () => {
+    it.each([
+      { scenario: 'exchange does not support fetchTickers', hasFetchTickers: false, batchThrows: false },
+      { scenario: 'batch fetchTickers throws', hasFetchTickers: true, batchThrows: true }
+    ])('should fall back to sequential fetchTicker when $scenario', async ({ hasFetchTickers, batchThrows }) => {
       const position = buildPositionExit({
         id: 'pos-1',
         exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
@@ -469,43 +450,13 @@ describe('PositionMonitorTask', () => {
       mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
       const fetchTickerMock = jest.fn().mockResolvedValue({ last: 51000 });
       mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        has: { fetchTickers: false },
+        has: { fetchTickers: hasFetchTickers },
+        ...(batchThrows && { fetchTickers: jest.fn().mockRejectedValue(new Error('Batch not supported')) }),
         fetchTicker: fetchTickerMock
       });
 
       const updateSpy = jest
-        .spyOn(task as any, 'updateTrailingStop')
-        .mockResolvedValue({ updated: true, triggered: false });
-
-      const result = await task.process(mockJob);
-
-      expect(fetchTickerMock).toHaveBeenCalledWith('BTC/USD');
-      expect(updateSpy).toHaveBeenCalledWith(expect.any(Object), 51000, expect.any(Object));
-      expect(result).toEqual({
-        monitored: 1,
-        updated: 1,
-        triggered: 0,
-        timestamp: expect.any(String)
-      });
-    });
-
-    it('should fall back to sequential fetchTicker when batch fetchTickers throws', async () => {
-      const position = buildPositionExit({
-        id: 'pos-1',
-        exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
-      });
-      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
-
-      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
-      const fetchTickerMock = jest.fn().mockResolvedValue({ last: 51000 });
-      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        has: { fetchTickers: true },
-        fetchTickers: jest.fn().mockRejectedValue(new Error('Batch not supported')),
-        fetchTicker: fetchTickerMock
-      });
-
-      const updateSpy = jest
-        .spyOn(task as any, 'updateTrailingStop')
+        .spyOn(service, 'updateTrailingStop')
         .mockResolvedValue({ updated: true, triggered: false });
 
       const result = await task.process(mockJob);
@@ -541,7 +492,7 @@ describe('PositionMonitorTask', () => {
 
       mockPositionExitRepo.save.mockResolvedValue(position);
 
-      const result = await (task as any).updateTrailingStop(position, 51000, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 51000, mockExchangeClient as any);
 
       expect(result.updated).toBe(true);
       expect(position.trailingActivated).toBe(true);
@@ -563,7 +514,7 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.save.mockResolvedValue(position);
 
       // New high at 54000
-      const result = await (task as any).updateTrailingStop(position, 54000, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 54000, mockExchangeClient as any);
 
       expect(result.updated).toBe(true);
       expect(position.trailingHighWaterMark).toBe(54000);
@@ -583,7 +534,7 @@ describe('PositionMonitorTask', () => {
       });
 
       // Price drops but still above stop
-      const result = await (task as any).updateTrailingStop(position, 53000, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 53000, mockExchangeClient as any);
 
       expect(result.updated).toBe(false);
       expect(result.triggered).toBe(false);
@@ -606,7 +557,7 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.save.mockResolvedValue(position);
 
       // Price falls below stop
-      const result = await (task as any).updateTrailingStop(position, 52000, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 52000, mockExchangeClient as any);
 
       expect(result.triggered).toBe(true);
       expect(position.status).toBe(PositionExitStatus.TRAILING_TRIGGERED);
@@ -628,7 +579,7 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.save.mockResolvedValue(position);
 
       // New low at 46000
-      const result = await (task as any).updateTrailingStop(position, 46000, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 46000, mockExchangeClient as any);
 
       expect(result.updated).toBe(true);
       expect(position.trailingLowWaterMark).toBe(46000);
@@ -649,7 +600,7 @@ describe('PositionMonitorTask', () => {
       });
 
       // Price rises but still below stop
-      const result = await (task as any).updateTrailingStop(position, 46500, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 46500, mockExchangeClient as any);
 
       expect(result.updated).toBe(false);
       expect(result.triggered).toBe(false);
@@ -673,7 +624,7 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.save.mockResolvedValue(position);
 
       // Price rises above stop
-      const result = await (task as any).updateTrailingStop(position, 47500, mockExchangeClient);
+      const result = await service.updateTrailingStop(position, 47500, mockExchangeClient as any);
 
       expect(result.triggered).toBe(true);
       expect(position.status).toBe(PositionExitStatus.TRAILING_TRIGGERED);
@@ -707,6 +658,41 @@ describe('PositionMonitorTask', () => {
 
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
+
+    it('should schedule repeatable job in production when no existing job', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.DISABLE_POSITION_MONITOR;
+      mockQueue.getRepeatableJobs.mockResolvedValue([]);
+
+      await task.onModuleInit();
+
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'monitor-positions',
+        expect.objectContaining({ description: expect.any(String) }),
+        expect.objectContaining({ repeat: { pattern: '0 * * * * *' } })
+      );
+    });
+
+    it('should skip scheduling when job already exists', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.DISABLE_POSITION_MONITOR;
+      mockQueue.getRepeatableJobs.mockResolvedValue([{ name: 'monitor-positions', pattern: '0 * * * * *' }]);
+
+      await task.onModuleInit();
+
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule twice (idempotency guard)', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.DISABLE_POSITION_MONITOR;
+      mockQueue.getRepeatableJobs.mockResolvedValue([]);
+
+      await task.onModuleInit();
+      await task.onModuleInit();
+
+      expect(mockQueue.add).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('updateStopOrderOnExchange', () => {
@@ -729,7 +715,7 @@ describe('PositionMonitorTask', () => {
 
       const exchangeClient = buildExchangeClient();
 
-      await (task as any).updateStopOrderOnExchange(position, 52000, exchangeClient);
+      await service.updateStopOrderOnExchange(position, 52000, exchangeClient);
 
       // Old order cancelled on exchange
       expect(exchangeClient.cancelOrder).toHaveBeenCalledWith('exchange-order-123', 'BTC/USDT');
@@ -778,7 +764,7 @@ describe('PositionMonitorTask', () => {
 
       const exchangeClient = buildExchangeClient();
 
-      await (task as any).updateStopOrderOnExchange(position, 49500, exchangeClient);
+      await service.updateStopOrderOnExchange(position, 49500, exchangeClient);
 
       // Exit side for SELL position should be 'buy'
       expect(exchangeClient.createOrder).toHaveBeenCalledWith('ETH/USDT', 'stop_loss', 'buy', 10, undefined, {
@@ -818,7 +804,7 @@ describe('PositionMonitorTask', () => {
         createOrder: jest.fn()
       });
 
-      await (task as any).updateStopOrderOnExchange(position, 52000, exchangeClient);
+      await service.updateStopOrderOnExchange(position, 52000, exchangeClient);
 
       // Reference cleared
       expect(position.trailingStopOrderId).toBeUndefined();
@@ -853,7 +839,7 @@ describe('PositionMonitorTask', () => {
         createOrder: jest.fn().mockRejectedValue(createError)
       });
 
-      await expect((task as any).updateStopOrderOnExchange(position, 52000, exchangeClient)).rejects.toThrow(
+      await expect(service.updateStopOrderOnExchange(position, 52000, exchangeClient)).rejects.toThrow(
         'Insufficient balance'
       );
 
@@ -884,7 +870,7 @@ describe('PositionMonitorTask', () => {
         has: { createStopOrder: false, createOrder: false }
       });
 
-      await (task as any).updateStopOrderOnExchange(position, 52000, exchangeClient);
+      await service.updateStopOrderOnExchange(position, 52000, exchangeClient);
 
       // No exchange calls made
       expect(exchangeClient.cancelOrder).not.toHaveBeenCalled();
@@ -908,7 +894,7 @@ describe('PositionMonitorTask', () => {
 
       const exchangeClient = buildExchangeClient();
 
-      await (task as any).updateStopOrderOnExchange(position, 52000, exchangeClient);
+      await service.updateStopOrderOnExchange(position, 52000, exchangeClient);
 
       // Reference cleared
       expect(position.trailingStopOrderId).toBeUndefined();
@@ -941,7 +927,7 @@ describe('PositionMonitorTask', () => {
         createOrder: jest.fn()
       });
 
-      await expect((task as any).updateStopOrderOnExchange(position, 52000, exchangeClient)).rejects.toThrow(
+      await expect(service.updateStopOrderOnExchange(position, 52000, exchangeClient)).rejects.toThrow(
         'Connection refused'
       );
 
@@ -967,7 +953,7 @@ describe('PositionMonitorTask', () => {
 
       // Simulate updateStopOrderOnExchange setting ERROR status
       const updateStopSpy = jest
-        .spyOn(task as any, 'updateStopOrderOnExchange')
+        .spyOn(service, 'updateStopOrderOnExchange')
         .mockImplementation(async (pos: unknown) => {
           (pos as PositionExit).status = PositionExitStatus.ERROR;
         });
@@ -975,7 +961,7 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.save.mockResolvedValue(position);
 
       // Price at 54000 triggers a new high -> should attempt to update stop
-      const result = await (task as any).updateTrailingStop(position, 54000, {});
+      const result = await service.updateTrailingStop(position, 54000, {} as any);
 
       expect(updateStopSpy).toHaveBeenCalled();
 

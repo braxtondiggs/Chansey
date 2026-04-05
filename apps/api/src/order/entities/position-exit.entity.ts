@@ -12,7 +12,7 @@ import {
 
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
-import { ColumnNumericTransformer } from '../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../utils/transformers';
 import { ExitConfig, PositionExitStatus } from '../interfaces/exit-config.interface';
 import { Order } from '../order.entity';
 
@@ -84,7 +84,7 @@ export class PositionExit {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   entryPrice: number;
 
@@ -96,7 +96,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   stopLossPrice?: number;
 
@@ -108,7 +108,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   takeProfitPrice?: number;
 
@@ -120,7 +120,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   currentTrailingStopPrice?: number;
 
@@ -133,7 +133,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   trailingHighWaterMark?: number;
 
@@ -146,7 +146,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   trailingLowWaterMark?: number;
 
@@ -191,7 +191,7 @@ export class PositionExit {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   quantity: number;
 
@@ -235,7 +235,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   entryAtr?: number;
 
@@ -253,7 +253,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   exitPrice?: number;
 
@@ -265,7 +265,7 @@ export class PositionExit {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new ColumnNumericTransformer()
+    transformer: NUMERIC_TRANSFORMER
   })
   realizedPnL?: number;
 

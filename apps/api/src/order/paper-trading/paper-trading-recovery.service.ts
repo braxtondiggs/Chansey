@@ -6,7 +6,7 @@ import { Queue } from 'bullmq';
 
 import { PaperTradingStatus } from './entities';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
-import { PaperTradingService } from './paper-trading.service';
+import { PaperTradingJobService } from './paper-trading-job.service';
 
 import { toErrorInfo } from '../../shared/error.util';
 
@@ -26,7 +26,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
   private readonly bootedAt = Date.now();
 
   constructor(
-    private readonly paperTradingService: PaperTradingService,
+    private readonly jobService: PaperTradingJobService,
     private readonly engineService: PaperTradingEngineService,
     @InjectQueue('paper-trading') private readonly paperTradingQueue: Queue
   ) {}
@@ -61,7 +61,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
       return;
     }
 
-    const activeSessions = await this.paperTradingService.findActiveSessions();
+    const activeSessions = await this.jobService.findActiveSessions();
 
     if (activeSessions.length === 0) {
       return;
@@ -81,15 +81,15 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
 
         if (heartbeatMs < failCutoff) {
           // 20+ min stale — recovery didn't help, mark FAILED
-          await this.paperTradingService.markFailed(
+          await this.jobService.markFailed(
             session.id,
             `Session stale for 20+ minutes (last heartbeat: ${new Date(heartbeat).toISOString()})`
           );
           failed++;
         } else if (heartbeatMs < recoveryCutoff) {
           // 10-20 min stale — attempt recovery
-          await this.paperTradingService.removeTickJobs(session.id);
-          await this.paperTradingService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
+          await this.jobService.removeTickJobs(session.id);
+          await this.jobService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
           recovered++;
           this.logger.warn(
             `Recovered stale paper trading session ${session.id} (last heartbeat: ${new Date(heartbeat).toISOString()})`
@@ -136,7 +136,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
         const sessionId = match[1];
 
         try {
-          const { status } = await this.paperTradingService.getSessionStatus(sessionId);
+          const { status } = await this.jobService.getSessionStatus(sessionId);
 
           if (PaperTradingRecoveryService.TERMINAL_STATUSES.has(status as PaperTradingStatus)) {
             await this.paperTradingQueue.removeRepeatableByKey(job.key);
@@ -173,7 +173,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
     this.logger.log('Checking for active paper trading sessions to recover...');
 
     try {
-      const activeSessions = await this.paperTradingService.findActiveSessions();
+      const activeSessions = await this.jobService.findActiveSessions();
 
       if (activeSessions.length === 0) {
         this.logger.log('No active paper trading sessions to recover');
@@ -185,8 +185,8 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
       for (const session of activeSessions) {
         try {
           // Remove stale tick job schedulers before re-scheduling to prevent duplicates
-          await this.paperTradingService.removeTickJobs(session.id);
-          await this.paperTradingService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
+          await this.jobService.removeTickJobs(session.id);
+          await this.jobService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
 
           this.logger.log(`Recovered paper trading session ${session.id}`);
         } catch (error: unknown) {
@@ -195,7 +195,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
 
           // Mark as failed if recovery fails
           try {
-            await this.paperTradingService.markFailed(session.id, `Recovery failed: ${err.message}`);
+            await this.jobService.markFailed(session.id, `Recovery failed: ${err.message}`);
           } catch (markError: unknown) {
             const err = toErrorInfo(markError);
             this.logger.error(`Failed to mark session ${session.id} as failed: ${err.message}`);

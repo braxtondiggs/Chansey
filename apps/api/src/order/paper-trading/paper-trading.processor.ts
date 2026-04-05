@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 
 import { PaperTradingSession, PaperTradingStatus } from './entities';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
+import { PaperTradingJobService } from './paper-trading-job.service';
 import { PaperTradingStreamService } from './paper-trading-stream.service';
 import { paperTradingConfig } from './paper-trading.config';
 import {
@@ -20,7 +21,6 @@ import {
   StopSessionJobData,
   TickJobData
 } from './paper-trading.job-data';
-import { PaperTradingService } from './paper-trading.service';
 
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { MetricsService } from '../../metrics/metrics.service';
@@ -111,7 +111,7 @@ export class PaperTradingProcessor extends WorkerHost {
     private readonly sessionRepository: Repository<PaperTradingSession>,
     @InjectRepository(ExchangeKey)
     private readonly exchangeKeyRepository: Repository<ExchangeKey>,
-    private readonly paperTradingService: PaperTradingService,
+    private readonly jobService: PaperTradingJobService,
     private readonly engineService: PaperTradingEngineService,
     private readonly streamService: PaperTradingStreamService,
     private readonly metricsService: MetricsService,
@@ -185,13 +185,13 @@ export class PaperTradingProcessor extends WorkerHost {
       });
 
       // Schedule repeatable tick jobs
-      await this.paperTradingService.scheduleTickJob(sessionId, userId, session.tickIntervalMs);
+      await this.jobService.scheduleTickJob(sessionId, userId, session.tickIntervalMs);
 
       this.logger.log(`Session ${sessionId} started successfully, tick jobs scheduled`);
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to start session ${sessionId}: ${err.message}`, err.stack);
-      await this.paperTradingService.markFailed(sessionId, err.message);
+      await this.jobService.markFailed(sessionId, err.message);
       await this.streamService.publishStatus(sessionId, 'failed', err.message);
     }
   }
@@ -210,7 +210,7 @@ export class PaperTradingProcessor extends WorkerHost {
     if (!session) {
       if (!this.cleanedUpSessions.has(sessionId)) {
         this.logger.warn(`Session ${sessionId} not found, removing tick jobs`);
-        await this.paperTradingService.removeTickJobs(sessionId);
+        await this.jobService.removeTickJobs(sessionId);
         this.trackCleanedUpSession(sessionId);
       }
       return;
@@ -220,7 +220,7 @@ export class PaperTradingProcessor extends WorkerHost {
     if (session.status === PaperTradingStatus.FAILED) {
       if (!this.cleanedUpSessions.has(sessionId)) {
         this.logger.warn(`Session ${sessionId} was externally marked as FAILED, removing tick jobs`);
-        await this.paperTradingService.removeTickJobs(sessionId);
+        await this.jobService.removeTickJobs(sessionId);
         this.trackCleanedUpSession(sessionId);
       }
       return;
@@ -302,7 +302,7 @@ export class PaperTradingProcessor extends WorkerHost {
       if (classifiedError instanceof UnrecoverableError) {
         // Unrecoverable errors should fail the session immediately
         this.logger.warn(`Session ${sessionId} encountered unrecoverable error, marking as failed`);
-        await this.paperTradingService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
+        await this.jobService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
         await this.streamService.publishStatus(sessionId, 'failed', 'unrecoverable_error', {
           errorMessage: classifiedError.message,
           errorType: 'unrecoverable'
@@ -431,7 +431,7 @@ export class PaperTradingProcessor extends WorkerHost {
 
     if (maxDrawdown !== undefined && currentDrawdown > maxDrawdown) {
       this.logger.log(`Session ${session.id} hit max drawdown limit (${(currentDrawdown * 100).toFixed(2)}%)`);
-      await this.paperTradingService.markCompleted(session.id, 'max_drawdown');
+      await this.jobService.markCompleted(session.id, 'max_drawdown');
       session.status = PaperTradingStatus.COMPLETED;
       return;
     }
@@ -439,7 +439,7 @@ export class PaperTradingProcessor extends WorkerHost {
     const currentReturn = (portfolioValue - session.initialCapital) / session.initialCapital;
     if (targetReturn !== undefined && currentReturn >= targetReturn) {
       this.logger.log(`Session ${session.id} hit target return (${(currentReturn * 100).toFixed(2)}%)`);
-      await this.paperTradingService.markCompleted(session.id, 'target_reached');
+      await this.jobService.markCompleted(session.id, 'target_reached');
       session.status = PaperTradingStatus.COMPLETED;
       return;
     }
@@ -456,7 +456,7 @@ export class PaperTradingProcessor extends WorkerHost {
       this.logger.log(
         `Session ${session.id} reached minimum trade count (${session.totalTrades}/${session.minTrades})`
       );
-      await this.paperTradingService.markCompleted(session.id, 'min_trades_reached');
+      await this.jobService.markCompleted(session.id, 'min_trades_reached');
       session.status = PaperTradingStatus.COMPLETED;
     }
   }
@@ -474,7 +474,7 @@ export class PaperTradingProcessor extends WorkerHost {
 
     if (now - startTime >= durationMs) {
       this.logger.log(`Session ${session.id} reached duration limit (${session.duration})`);
-      await this.paperTradingService.markCompleted(session.id, 'duration_reached');
+      await this.jobService.markCompleted(session.id, 'duration_reached');
       session.status = PaperTradingStatus.COMPLETED;
     }
   }
@@ -596,7 +596,7 @@ export class PaperTradingProcessor extends WorkerHost {
         if (!session.user?.id) {
           throw new Error(`User not loaded for session ${sessionId}, cannot schedule tick job.`);
         }
-        await this.paperTradingService.scheduleTickJob(sessionId, session.user.id, session.tickIntervalMs);
+        await this.jobService.scheduleTickJob(sessionId, session.user.id, session.tickIntervalMs);
 
         await this.streamService.publishStatus(sessionId, 'active', 'retry_recovered', {
           retryAttempt,
@@ -615,7 +615,7 @@ export class PaperTradingProcessor extends WorkerHost {
       const classifiedError = classifyError(error instanceof Error ? error : new Error(err.message));
 
       if (classifiedError instanceof UnrecoverableError) {
-        await this.paperTradingService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
+        await this.jobService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
         await this.streamService.publishStatus(sessionId, 'failed', 'unrecoverable_error', {
           errorMessage: classifiedError.message,
           errorType: 'unrecoverable'
@@ -644,13 +644,13 @@ export class PaperTradingProcessor extends WorkerHost {
       await this.sessionRepository.save(session);
 
       // Remove repeating tick scheduler — the retry job will re-schedule it on success
-      await this.paperTradingService.removeTickJobs(session.id);
+      await this.jobService.removeTickJobs(session.id);
 
       // Queue one-shot delayed retry
       if (!session.user?.id) {
         throw new Error(`User not loaded for session ${session.id}, cannot schedule retry tick.`);
       }
-      await this.paperTradingService.scheduleRetryTick(session.id, session.user.id, delay, session.retryAttempts);
+      await this.jobService.scheduleRetryTick(session.id, session.user.id, delay, session.retryAttempts);
 
       await this.streamService.publishStatus(session.id, 'retry_scheduled', 'consecutive_errors', {
         errorMessage,
@@ -671,7 +671,7 @@ export class PaperTradingProcessor extends WorkerHost {
     session.errorMessage = `Auto-paused after ${this.maxRetryAttempts} retry attempts: ${errorMessage}`;
     await this.sessionRepository.save(session);
 
-    await this.paperTradingService.removeTickJobs(session.id);
+    await this.jobService.removeTickJobs(session.id);
 
     // Clear throttle and exit tracker state so resumed sessions start fresh
     this.engineService.clearThrottleState(session.id);

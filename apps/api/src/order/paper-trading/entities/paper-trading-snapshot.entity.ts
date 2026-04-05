@@ -5,7 +5,7 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, R
 
 import { PaperTradingSession } from './paper-trading-session.entity';
 
-import { ColumnNumericTransformer } from '../../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../../utils/transformers';
 
 export interface SnapshotHolding {
   quantity: number;
@@ -26,13 +26,13 @@ export class PaperTradingSnapshot {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Total portfolio value at this point' })
   portfolioValue: number;
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Cash balance (quote currency)' })
   cashBalance: number;
 
@@ -41,22 +41,22 @@ export class PaperTradingSnapshot {
   holdings: Record<string, SnapshotHolding>;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Cumulative return from initial capital up to this point' })
   cumulativeReturn: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Drawdown from peak at this point' })
   drawdown: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Unrealized P&L at this point', required: false })
   unrealizedPnL?: number;
 
   @IsNumber()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Realized P&L at this point', required: false })
   realizedPnL?: number;
 

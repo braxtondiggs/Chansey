@@ -18,7 +18,7 @@ import { StrategyConfig } from './strategy-config.entity';
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { Order } from '../../order/order.entity';
 import { User } from '../../users/users.entity';
-import { ColumnNumericTransformer } from '../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../utils/transformers';
 
 export { LiveTradingSignalAction } from '@chansey/api-interfaces';
 
@@ -69,15 +69,15 @@ export class LiveTradingSignal {
   @ApiProperty({ description: 'Target instrument/symbol for the signal' })
   symbol: string;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Requested trade quantity' })
   quantity: number;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiPropertyOptional({ description: 'Reference price used for the trade decision' })
   price?: number | null;
 
-  @Column({ type: 'decimal', precision: 5, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 5, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiPropertyOptional({ description: 'Signal confidence score (0-1)' })
   confidence?: number | null;
 

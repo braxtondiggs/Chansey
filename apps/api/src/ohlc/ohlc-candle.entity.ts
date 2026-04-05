@@ -13,7 +13,7 @@ import {
 
 import { Coin } from '../coin/coin.entity';
 import { Exchange } from '../exchange/exchange.entity';
-import { ColumnNumericTransformer } from '../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../utils/transformers';
 
 @Entity('ohlc_candles')
 @Unique(['coinId', 'timestamp', 'exchangeId'])
@@ -58,7 +58,7 @@ export class OHLCCandle {
     type: 'decimal',
     precision: 25,
     scale: 8,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: false
   })
   @ApiProperty({
@@ -71,7 +71,7 @@ export class OHLCCandle {
     type: 'decimal',
     precision: 25,
     scale: 8,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: false
   })
   @ApiProperty({
@@ -84,7 +84,7 @@ export class OHLCCandle {
     type: 'decimal',
     precision: 25,
     scale: 8,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: false
   })
   @ApiProperty({
@@ -97,7 +97,7 @@ export class OHLCCandle {
     type: 'decimal',
     precision: 25,
     scale: 8,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: false
   })
   @ApiProperty({
@@ -110,7 +110,7 @@ export class OHLCCandle {
     type: 'decimal',
     precision: 30,
     scale: 8,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     default: 0
   })
   @ApiProperty({
@@ -123,7 +123,7 @@ export class OHLCCandle {
     type: 'decimal',
     precision: 30,
     scale: 2,
-    transformer: new ColumnNumericTransformer(),
+    transformer: NUMERIC_TRANSFORMER,
     nullable: true
   })
   @ApiProperty({

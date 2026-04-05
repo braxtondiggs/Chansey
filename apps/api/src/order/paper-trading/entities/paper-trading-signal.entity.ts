@@ -18,7 +18,7 @@ import { SignalReasonCode } from '@chansey/api-interfaces';
 import { PaperTradingOrder } from './paper-trading-order.entity';
 import { PaperTradingSession } from './paper-trading-session.entity';
 
-import { ColumnNumericTransformer } from '../../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../../utils/transformers';
 
 export enum PaperTradingSignalType {
   ENTRY = 'ENTRY',
@@ -66,13 +66,13 @@ export class PaperTradingSignal {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Quantity or exposure requested by the signal' })
   quantity: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Reference price when applicable', required: false })
   price?: number;
 
@@ -80,7 +80,7 @@ export class PaperTradingSignal {
   @IsOptional()
   @Min(0)
   @Max(1)
-  @Column({ type: 'decimal', precision: 5, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 5, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Confidence score on a 0-1 scale', required: false })
   confidence?: number;
 

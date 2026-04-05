@@ -39,6 +39,7 @@ import { RiskManagementService } from './risk/risk-management.service';
 import { SharpeDegradationCheck } from './risk/sharpe-degradation.check';
 import { VolatilitySpikeCheck } from './risk/volatility-spike.check';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
+import { EntryGateService } from './services/entry-gate.service';
 import { StrategyExecutorService } from './strategy-executor.service';
 import { StrategyController } from './strategy.controller';
 import { StrategyService } from './strategy.service';
@@ -121,7 +122,8 @@ import { User } from '../users/users.entity';
     ConsecutiveLossesCheck,
     VolatilitySpikeCheck,
     SharpeDegradationCheck,
-    LiveSignalCleanupTask
+    LiveSignalCleanupTask,
+    EntryGateService
   ],
   controllers: [StrategyController, DeploymentController, AdminPoolController],
   exports: [
@@ -136,7 +138,8 @@ import { User } from '../users/users.entity';
     LiveSignalService,
     UserPerformanceService,
     DailyLossLimitGateService,
-    ConcentrationGateService
+    ConcentrationGateService,
+    EntryGateService
   ]
 })
 export class StrategyModule {}

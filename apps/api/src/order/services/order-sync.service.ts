@@ -22,6 +22,11 @@ import { withRateLimitRetry, withRateLimitRetryThrow } from '../../shared/retry.
 import { User } from '../../users/users.entity';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide, OrderStatus } from '../order.entity';
+import {
+  convertTradesToOrders,
+  extractAlgorithmicTradingFields,
+  extractFuturesFields
+} from '../utils/order-mapping.util';
 
 @Injectable()
 export class OrderSyncService {
@@ -45,159 +50,28 @@ export class OrderSyncService {
    * Fetch historical orders from exchange
    */
   async fetchHistoricalOrders(client: ccxt.Exchange, lastSyncTime?: Date): Promise<ccxt.Order[]> {
-    if (!client.has.fetchOrders) {
-      this.logger.debug(`Exchange ${client.id} does not support fetchOrders, skipping`);
-      return [];
-    }
-
-    try {
-      const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
-      const markets = await withRateLimitRetryThrow(() => client.loadMarkets(), {
-        logger: this.logger,
-        operationName: 'loadMarkets (fetchHistoricalOrders)'
-      });
-      this.logger.log(`Fetching historical orders since: ${since}`);
-      this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
-      const allOrders: ccxt.Order[] = [];
-
-      for (const symbol of Object.keys(markets)) {
-        const result = await withRateLimitRetry(() => client.fetchOrders(symbol, since), {
-          logger: this.logger,
-          operationName: `fetchOrders(${symbol})`
-        });
-        if (result.success) {
-          this.logger.log(`Fetched ${result.result!.length} orders for ${symbol}`);
-          allOrders.push(...result.result!);
-        } else {
-          this.logger.log(`Failed to fetch orders for ${symbol}: ${result.error!.message}`);
-        }
-      }
-
-      return this.removeDuplicateOrders(allOrders);
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to fetch historical orders: ${err.message}`);
-      return [];
-    }
+    return this.fetchFromExchange<ccxt.Order>(
+      client,
+      'fetchOrders',
+      (symbol, since) => client.fetchOrders(symbol, since),
+      (items) => this.removeDuplicates(items, (o) => String(o.id)),
+      'fetchOrders',
+      lastSyncTime
+    );
   }
 
   /**
    * Fetch historical trades from exchange using fetchMyTrades
-   * This can catch trades that might be missed by fetchOrders
    */
   async fetchMyTrades(client: ccxt.Exchange, lastSyncTime?: Date): Promise<ccxt.Trade[]> {
-    try {
-      const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
-
-      // Check if the exchange supports fetchMyTrades
-      if (!client.has.fetchMyTrades) {
-        this.logger.debug(`Exchange ${client.id} does not support fetchMyTrades`);
-        return [];
-      }
-
-      const markets = await withRateLimitRetryThrow(() => client.loadMarkets(), {
-        logger: this.logger,
-        operationName: 'loadMarkets (fetchMyTrades)'
-      });
-      this.logger.log(`Fetching historical trades since: ${since}`);
-      this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
-      const allTrades: ccxt.Trade[] = [];
-
-      for (const symbol of Object.keys(markets)) {
-        const result = await withRateLimitRetry(() => client.fetchMyTrades(symbol, since), {
-          logger: this.logger,
-          operationName: `fetchMyTrades(${symbol})`
-        });
-        if (result.success) {
-          this.logger.log(`Fetched ${result.result!.length} trades for ${symbol}`);
-          allTrades.push(...result.result!);
-        } else {
-          this.logger.log(`Failed to fetch trades for ${symbol}: ${result.error!.message}`);
-        }
-      }
-
-      return this.removeDuplicateTrades(allTrades);
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to fetch historical trades: ${err.message}`);
-      return [];
-    }
-  }
-
-  /**
-   * Convert CCXT Trade objects to CCXT Order objects
-   * This allows us to process trades using the existing order sync logic
-   */
-  convertTradesToOrders(trades: ccxt.Trade[]): ccxt.Order[] {
-    const tradeGroups = new Map<string, ccxt.Trade[]>();
-
-    // Group trades by order ID if available, otherwise by symbol and timestamp
-    for (const trade of trades) {
-      const groupKey = trade.order || `${trade.symbol}_${trade.timestamp}_${trade.side}`;
-      if (!tradeGroups.has(groupKey)) {
-        tradeGroups.set(groupKey, []);
-      }
-      const group = tradeGroups.get(groupKey);
-      if (group) {
-        group.push(trade);
-      }
-    }
-
-    const orders: ccxt.Order[] = [];
-
-    for (const [groupKey, groupTrades] of tradeGroups) {
-      const firstTrade = groupTrades[0];
-
-      // Calculate aggregated values from trades
-      const totalAmount = groupTrades.reduce((sum, t) => sum + (t.amount || 0), 0);
-      const totalCost = groupTrades.reduce((sum, t) => sum + (t.cost || 0), 0);
-      const weightedPrice = totalCost > 0 && totalAmount > 0 ? totalCost / totalAmount : firstTrade.price || 0;
-
-      // Create order object from trade data
-      const syntheticOrder: ccxt.Order = {
-        id: firstTrade.order || `trade_${groupKey}`,
-        clientOrderId: firstTrade.order || undefined,
-        datetime: firstTrade.datetime ?? new Date(firstTrade.timestamp ?? 0).toISOString(),
-        timestamp: firstTrade.timestamp ?? 0,
-        lastTradeTimestamp: Math.max(...groupTrades.map((t) => t.timestamp ?? 0)),
-        symbol: firstTrade.symbol ?? '',
-        type: 'market', // Trades are typically market executions
-        timeInForce: undefined,
-        amount: totalAmount,
-        price: weightedPrice,
-        average: weightedPrice,
-        filled: totalAmount,
-        remaining: 0,
-        cost: totalCost,
-        side: firstTrade.side,
-        status: 'closed', // Trades represent completed executions
-        postOnly: false, // Trades are not post-only since they already executed
-        reduceOnly: false, // Trades are not reduce-only by default
-        fee: groupTrades.reduce<ccxt.FeeInterface>(
-          (sum, t) => {
-            if (t.fee) {
-              return {
-                cost: (Number(sum.cost) || 0) + (Number(t.fee.cost) || 0),
-                currency: t.fee.currency ?? sum.currency
-              };
-            }
-            return sum;
-          },
-          { cost: 0, currency: undefined }
-        ),
-        trades: groupTrades,
-        info: {
-          ...firstTrade.info,
-          synthetic: true, // Mark as converted from trades
-          tradeIds: groupTrades.map((t) => t.id).join(',')
-        }
-      };
-
-      orders.push(syntheticOrder);
-    }
-
-    this.logger.log(`Converted ${trades.length} trades into ${orders.length} synthetic orders`);
-    return orders;
+    return this.fetchFromExchange<ccxt.Trade>(
+      client,
+      'fetchMyTrades',
+      (symbol, since) => client.fetchMyTrades(symbol, since),
+      (items) => this.removeDuplicates(items, (t) => String(t.id ?? '')),
+      'fetchMyTrades',
+      lastSyncTime
+    );
   }
 
   /**
@@ -232,32 +106,118 @@ export class OrderSyncService {
     return savedCount;
   }
 
-  private async findExistingOrder(exchangeOrder: ccxt.Order, user: User): Promise<Order | null> {
-    // For synthetic orders from trades, also check for existing trades data
-    if (exchangeOrder.info?.synthetic && exchangeOrder.info?.tradeIds) {
-      const tradeIds = exchangeOrder.info.tradeIds as string;
+  /**
+   * Synchronizes orders from exchange for a specific user
+   */
+  async syncOrdersForUser(user: User): Promise<number> {
+    try {
+      this.logger.log(`Syncing orders for user: ${user.id}`);
 
-      // Check if we already have an order with the same trade IDs
-      const existingOrderWithTrades = await this.orderRepository.findOne({
-        where: {
-          user: { id: user.id },
-          symbol: exchangeOrder.symbol
+      const exchangeKeys = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+      if (!exchangeKeys || exchangeKeys.length === 0) {
+        this.logger.debug(`No active exchange keys found for user: ${user.id}`);
+        return 0;
+      }
+
+      let totalNewOrders = 0;
+
+      const userExchangeSlugs = new Set(exchangeKeys.map((k) => k.slug));
+      const availableExchanges = (await this.exchangeService.getExchanges({ supported: true })).filter((e) =>
+        userExchangeSlugs.has(e.slug)
+      );
+
+      this.logger.log(`Syncing exchanges for user ${user.id}: ${availableExchanges.map((e) => e.name).join(', ')}`);
+
+      for (const exchange of availableExchanges) {
+        try {
+          const client = await this.exchangeManager.getExchangeClient(exchange.slug, user);
+
+          if (client) {
+            const syncCount = await this.syncOrdersForExchange(user, exchange.name, client);
+            totalNewOrders += syncCount;
+
+            if (syncCount > 0) {
+              this.logger.log(`Synced ${syncCount} ${exchange.name} orders for user: ${user.id}`);
+            }
+          } else {
+            this.logger.debug(`No valid ${exchange.name} client for user: ${user.id}`);
+          }
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.error(`Error syncing ${exchange.name} orders for user ${user.id}: ${err.message}`, err.stack);
         }
+      }
+
+      return totalNewOrders;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to sync orders for user ${user.id}: ${err.message}`, err.stack);
+      return 0;
+    }
+  }
+
+  private async fetchFromExchange<T>(
+    client: ccxt.Exchange,
+    capability: string,
+    fetchFn: (symbol: string, since?: number) => Promise<T[]>,
+    dedup: (items: T[]) => T[],
+    operationName: string,
+    lastSyncTime?: Date
+  ): Promise<T[]> {
+    if (!client.has[capability]) {
+      this.logger.debug(`Exchange ${client.id} does not support ${capability}, skipping`);
+      return [];
+    }
+
+    try {
+      const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
+      const markets = await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        logger: this.logger,
+        operationName: `loadMarkets (${operationName})`
       });
+      this.logger.log(`Fetching historical ${operationName} since: ${since}`);
+      this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
+      const allItems: T[] = [];
 
-      if (existingOrderWithTrades?.trades) {
-        const existingTradeIds = Array.isArray(existingOrderWithTrades.trades)
-          ? existingOrderWithTrades.trades.map((t: { id: string }) => t.id).join(',')
-          : '';
-
-        if (existingTradeIds === tradeIds) {
-          this.logger.debug(`Found existing order with same trade IDs: ${tradeIds}`);
-          return existingOrderWithTrades;
+      for (const symbol of Object.keys(markets)) {
+        const result = await withRateLimitRetry(() => fetchFn(symbol, since), {
+          logger: this.logger,
+          operationName: `${operationName}(${symbol})`
+        });
+        if (result.success) {
+          this.logger.log(`Fetched ${result.result?.length ?? 0} ${operationName} for ${symbol}`);
+          if (result.result) allItems.push(...result.result);
+        } else {
+          this.logger.log(
+            `Failed to fetch ${operationName} for ${symbol}: ${result.error?.message ?? 'Unknown error'}`
+          );
         }
+      }
+
+      return dedup(allItems);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to fetch historical ${operationName}: ${err.message}`);
+      return [];
+    }
+  }
+
+  private removeDuplicates<T>(items: T[], getId: (item: T) => string): T[] {
+    const seen = new Set<string>();
+    const unique: T[] = [];
+
+    for (const item of items) {
+      const id = getId(item);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        unique.push(item);
       }
     }
 
-    // Standard check by order ID
+    return unique;
+  }
+
+  private async findExistingOrder(exchangeOrder: ccxt.Order, user: User): Promise<Order | null> {
     return this.orderRepository.findOne({
       where: {
         orderId: exchangeOrder.id.toString(),
@@ -278,7 +238,6 @@ export class OrderSyncService {
     let hasChanges = false;
     const previousStatus = existingOrder.status;
 
-    // Use state machine for status transitions with validation and history tracking
     if (existingOrder.status !== newStatus) {
       await this.stateMachineService.transitionStatus(
         existingOrder.id,
@@ -332,14 +291,12 @@ export class OrderSyncService {
     if (hasChanges) {
       await this.orderRepository.update(existingOrder.id, updateData as QueryDeepPartialEntity<Order>);
 
-      // Handle OCO fill detection: when an exit order fills, cancel the linked order
       if (previousStatus !== OrderStatus.FILLED && newStatus === OrderStatus.FILLED && this.positionManagementService) {
         try {
           await this.positionManagementService.handleOcoFill(existingOrder.id);
           this.logger.debug(`Processed OCO fill for order ${existingOrder.id}`);
         } catch (ocoError: unknown) {
           const err = toErrorInfo(ocoError);
-          // Log but don't fail the sync - OCO handling is a secondary concern
           this.logger.warn(`Failed to process OCO fill for order ${existingOrder.id}: ${err.message}`);
         }
       }
@@ -352,27 +309,19 @@ export class OrderSyncService {
 
   private async createNewOrder(exchangeOrder: ccxt.Order, user: User, exchangeName?: string): Promise<boolean> {
     try {
-      // Get coin information
       const { base: coinSymbol } = this.calculationService.extractCoinSymbol(exchangeOrder.symbol);
       const coin = await this.coinService.getCoinBySymbol(coinSymbol, undefined, false);
 
-      // Calculate order data
       const price = this.calculationService.calculateOrderPrice(exchangeOrder);
       const feeData = this.calculationService.extractFeeData(exchangeOrder);
       const cost = this.calculationService.calculateOrderCost(exchangeOrder);
       const gainLoss = this.calculationService.calculateGainLoss(exchangeOrder, feeData);
 
-      // Get exchange information
       const exchange = await this.getExchangeForOrder(exchangeOrder, exchangeName);
-
-      // Get trading pair coins
       const { baseCoin, quoteCoin } = await this.getTradingPairCoins(exchangeOrder.symbol, coin ?? undefined);
 
-      // Extract algorithmic trading fields
-      const algorithmicFields = this.extractAlgorithmicTradingFields(exchangeOrder);
-
-      // Detect futures-specific fields from CCXT order info
-      const futuresFields = this.extractFuturesFields(exchangeOrder);
+      const algorithmicFields = extractAlgorithmicTradingFields(exchangeOrder);
+      const futuresFields = extractFuturesFields(exchangeOrder);
 
       const newOrder = this.orderRepository.create({
         clientOrderId: exchangeOrder.clientOrderId || exchangeOrder.id.toString(),
@@ -415,12 +364,11 @@ export class OrderSyncService {
       }
 
       if (exchangeOrder.info?.exchange) {
-        const exchangeNameFromOrder = exchangeOrder.info.exchange.toLowerCase();
-        if (exchangeNameFromOrder.includes('binance')) {
-          return await this.exchangeService.getExchangeByName('Binance US');
-        } else if (exchangeNameFromOrder.includes('coinbase') || exchangeNameFromOrder.includes('gdax')) {
-          return await this.exchangeService.getExchangeByName('Coinbase');
-        }
+        const infoExchange = String(exchangeOrder.info.exchange).toLowerCase();
+        const supported = await this.exchangeService.getExchanges({ supported: true });
+        return (
+          supported.find((e) => infoExchange.includes(e.slug) || infoExchange.includes(e.name.toLowerCase())) ?? null
+        );
       }
 
       return null;
@@ -447,213 +395,17 @@ export class OrderSyncService {
 
       return { baseCoin: fallbackCoin || null, quoteCoin: null };
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.warn(`Failed to load coins from ticker pair: ${errorMessage}`);
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to load coins from ticker pair: ${err.message}`);
       return { baseCoin: fallbackCoin || null, quoteCoin: null };
     }
   }
 
-  private extractAlgorithmicTradingFields(exchangeOrder: ccxt.Order): Partial<Order> {
-    const fields: Partial<Order> = {};
-
-    if (exchangeOrder.timeInForce) {
-      fields.timeInForce = exchangeOrder.timeInForce as string;
-    }
-
-    if (exchangeOrder.stopPrice && exchangeOrder.stopPrice > 0) {
-      fields.stopPrice = exchangeOrder.stopPrice;
-    }
-
-    if (exchangeOrder.remaining !== undefined && exchangeOrder.remaining !== null) {
-      fields.remaining = exchangeOrder.remaining;
-    } else if (exchangeOrder.amount && exchangeOrder.filled) {
-      fields.remaining = exchangeOrder.amount - exchangeOrder.filled;
-    }
-
-    if (exchangeOrder.postOnly !== undefined) {
-      fields.postOnly = exchangeOrder.postOnly;
-    }
-
-    if (exchangeOrder.reduceOnly !== undefined) {
-      fields.reduceOnly = exchangeOrder.reduceOnly;
-    }
-
-    // Extract from info object for exchange-specific fields
-    if (exchangeOrder.info && typeof exchangeOrder.info === 'object') {
-      const info = exchangeOrder.info as Record<string, string | number>;
-
-      if (info.triggerPrice && parseFloat(info.triggerPrice.toString()) > 0) {
-        fields.triggerPrice = parseFloat(info.triggerPrice.toString());
-      }
-
-      if (info.takeProfitPrice && parseFloat(info.takeProfitPrice.toString()) > 0) {
-        fields.takeProfitPrice = parseFloat(info.takeProfitPrice.toString());
-      }
-
-      if (info.stopLossPrice && parseFloat(info.stopLossPrice.toString()) > 0) {
-        fields.stopLossPrice = parseFloat(info.stopLossPrice.toString());
-      }
-
-      if (info.updateTime) {
-        fields.lastUpdateTimestamp = new Date(parseInt(info.updateTime.toString()));
-      }
-    }
-
-    // Store trades and info as JSONB
-    if (exchangeOrder.trades && exchangeOrder.trades.length > 0) {
-      fields.trades = exchangeOrder.trades.map((trade) => ({
-        id: String(trade.id ?? ''),
-        timestamp: Number(trade.timestamp ?? 0),
-        amount: Number(trade.amount ?? 0),
-        price: trade.price,
-        cost: Number(trade.cost ?? 0),
-        side: trade.side ?? undefined,
-        fee: trade.fee ? { cost: Number(trade.fee.cost ?? 0), currency: String(trade.fee.currency ?? '') } : undefined,
-        takerOrMaker: trade.takerOrMaker ?? undefined
-      }));
-
-      const lastTrade = exchangeOrder.trades[exchangeOrder.trades.length - 1];
-      if (lastTrade.timestamp) {
-        fields.lastTradeTimestamp = new Date(lastTrade.timestamp);
-      }
-    }
-
-    if (exchangeOrder.info && typeof exchangeOrder.info === 'object') {
-      const cleanInfo = { ...exchangeOrder.info };
-      delete cleanInfo.fills; // Remove potential duplicates
-      fields.info = cleanInfo;
-    }
-
-    return fields;
-  }
-
-  private removeDuplicateOrders(orders: ccxt.Order[]): ccxt.Order[] {
-    const uniqueOrders: ccxt.Order[] = [];
-    const seenOrderIds = new Set<string | number>();
-
-    for (const order of orders) {
-      if (!seenOrderIds.has(order.id)) {
-        seenOrderIds.add(order.id);
-        uniqueOrders.push(order);
-      }
-    }
-
-    return uniqueOrders;
-  }
-
-  /**
-   * Extract futures-specific fields from a CCXT order
-   * Detects whether an order is a futures/swap order and populates margin, leverage, and liquidation data
-   */
-  private extractFuturesFields(exchangeOrder: ccxt.Order): Partial<Order> {
-    const info = exchangeOrder.info as Record<string, string | number | undefined> | undefined;
-    const orderType = String(exchangeOrder.type ?? '');
-
-    const isFutures =
-      info?.marginMode !== undefined ||
-      orderType === 'swap' ||
-      orderType === 'future' ||
-      info?.marginType !== undefined ||
-      (typeof exchangeOrder.symbol === 'string' && exchangeOrder.symbol.includes(':'));
-
-    if (isFutures) {
-      return {
-        marketType: 'futures',
-        positionSide: info?.positionSide != null ? String(info.positionSide).toLowerCase() : undefined,
-        leverage: info?.leverage != null ? Number(info.leverage) : undefined,
-        liquidationPrice: info?.liquidationPrice != null ? Number(info.liquidationPrice) : undefined,
-        marginAmount: info?.initialMargin != null ? Number(info.initialMargin) : undefined,
-        marginMode: info?.marginMode != null ? String(info.marginMode).toLowerCase() : undefined
-      };
-    }
-
-    return { marketType: 'spot' };
-  }
-
-  private removeDuplicateTrades(trades: ccxt.Trade[]): ccxt.Trade[] {
-    const uniqueTrades: ccxt.Trade[] = [];
-    const seenTradeIds = new Set<string>();
-
-    for (const trade of trades) {
-      const tradeId = String(trade.id ?? '');
-      if (tradeId && !seenTradeIds.has(tradeId)) {
-        seenTradeIds.add(tradeId);
-        uniqueTrades.push(trade);
-      }
-    }
-
-    return uniqueTrades;
-  }
-
-  /**
-   * Synchronizes orders from exchange for a specific user
-   * @param user The user to sync orders for
-   * @returns The number of new orders synced
-   */
-  async syncOrdersForUser(user: User): Promise<number> {
-    try {
-      this.logger.log(`Syncing orders for user: ${user.id}`);
-
-      // Get exchange keys for the user (with secrets for API authentication)
-      const exchangeKeys = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
-      if (!exchangeKeys || exchangeKeys.length === 0) {
-        this.logger.debug(`No active exchange keys found for user: ${user.id}`);
-        return 0;
-      }
-
-      let totalNewOrders = 0;
-
-      // Get available exchanges filtered to only those the user has keys for
-      const userExchangeSlugs = new Set(exchangeKeys.map((k) => k.slug));
-      const availableExchanges = (await this.exchangeService.getExchanges({ supported: true })).filter((e) =>
-        userExchangeSlugs.has(e.slug)
-      );
-
-      this.logger.log(`Syncing exchanges for user ${user.id}: ${availableExchanges.map((e) => e.name).join(', ')}`);
-      // Process each exchange
-      for (const exchange of availableExchanges) {
-        try {
-          const client = await this.exchangeManager.getExchangeClient(exchange.slug, user);
-
-          if (client) {
-            const syncCount = await this.syncOrdersForExchange(user, exchange.name, client);
-            totalNewOrders += syncCount;
-
-            if (syncCount > 0) {
-              this.logger.log(`Synced ${syncCount} ${exchange.name} orders for user: ${user.id}`);
-            }
-          } else {
-            this.logger.debug(`No valid ${exchange.name} client for user: ${user.id}`);
-          }
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          const errorStack = error instanceof Error ? error.stack : undefined;
-          this.logger.error(`Error syncing ${exchange.name} orders for user ${user.id}: ${errorMessage}`, errorStack);
-        }
-      }
-
-      return totalNewOrders;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(`Failed to sync orders for user ${user.id}: ${errorMessage}`, errorStack);
-      return 0;
-    }
-  }
-
-  /**
-   * Synchronizes orders from a specific exchange for a user
-   * @param user The user to sync orders for
-   * @param exchangeName The name of the exchange
-   * @param client The exchange client
-   * @returns The number of new orders synced
-   */
   private async syncOrdersForExchange(user: User, exchangeName: string, client: ccxt.Exchange): Promise<number> {
     const exchangeSlug = exchangeName.toLowerCase().replace(/\s+/g, '-');
     const endTimer = this.metricsService.startOrderSyncTimer(exchangeSlug);
 
     try {
-      // Get the most recent order from DB for this user and exchange
       const mostRecentOrder = await this.orderRepository.findOne({
         where: {
           user: { id: user.id },
@@ -664,7 +416,6 @@ export class OrderSyncService {
 
       let totalNewOrders = 0;
 
-      // Fetch orders using fetchOrders API
       const newOrders = await this.fetchHistoricalOrders(client, mostRecentOrder?.transactTime);
       this.logger.log(`Fetched ${newOrders.length} new orders from ${exchangeName} for user ${user.id}`);
 
@@ -672,27 +423,23 @@ export class OrderSyncService {
         totalNewOrders += await this.saveExchangeOrders(newOrders, user, exchangeName);
       }
 
-      // Fetch trades using fetchMyTrades API to catch any missing orders
       try {
         const newTrades = await this.fetchMyTrades(client, mostRecentOrder?.transactTime);
         this.logger.log(`Fetched ${newTrades.length} new trades from ${exchangeName} for user ${user.id}`);
 
         if (newTrades.length > 0) {
-          // Convert trades to orders and save them
-          const syntheticOrders = this.convertTradesToOrders(newTrades);
-          this.logger.log(`Converted ${newTrades.length} trades into ${syntheticOrders.length} synthetic orders`);
+          const { orders: syntheticOrders, tradeCount } = convertTradesToOrders(newTrades);
+          this.logger.log(`Converted ${tradeCount} trades into ${syntheticOrders.length} synthetic orders`);
 
           if (syntheticOrders.length > 0) {
             totalNewOrders += await this.saveExchangeOrders(syntheticOrders, user, exchangeName);
           }
         }
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        this.logger.warn(`Trade synchronization failed for ${exchangeName}: ${errorMessage}`);
-        // Don't throw - continue with order sync even if trade sync fails
+        const err = toErrorInfo(error);
+        this.logger.warn(`Trade synchronization failed for ${exchangeName}: ${err.message}`);
       }
 
-      // Record successful sync metrics
       this.metricsService.recordOrdersSynced(exchangeSlug, 'success', totalNewOrders);
 
       return totalNewOrders;
@@ -703,25 +450,6 @@ export class OrderSyncService {
       throw error;
     } finally {
       endTimer();
-    }
-  }
-
-  /**
-   * Synchronize orders for all users with active exchange keys
-   * @returns The number of orders synced
-   */
-  async syncOrdersForAllUsers(): Promise<number> {
-    try {
-      // Get users with active exchange keys through the users service
-      // Note: We'll need to inject UsersService to make this work
-      // For now, return 0 and log that this needs implementation
-      this.logger.warn('syncOrdersForAllUsers needs UsersService injection to work properly');
-      return 0;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(`Failed to sync orders for all users: ${errorMessage}`, errorStack);
-      return 0;
     }
   }
 }

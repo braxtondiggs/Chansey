@@ -22,7 +22,7 @@ import { PaperTradingSnapshot } from './paper-trading-snapshot.entity';
 import { Algorithm } from '../../../algorithm/algorithm.entity';
 import { ExchangeKey } from '../../../exchange/exchange-key/exchange-key.entity';
 import { User } from '../../../users/users.entity';
-import { ColumnNumericTransformer } from '../../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../../utils/transformers';
 import { SerializableExitTrackerState, SerializableThrottleState } from '../../backtest/shared';
 import { ExitConfig } from '../../interfaces/exit-config.interface';
 
@@ -72,43 +72,43 @@ export class PaperTradingSession {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Initial capital for the paper trading session' })
   initialCapital: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Current portfolio value', required: false })
   currentPortfolioValue?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Peak portfolio value (for drawdown calculation)', required: false })
   peakPortfolioValue?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Maximum drawdown percentage', required: false })
   maxDrawdown?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Total return percentage', required: false })
   totalReturn?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Sharpe ratio', required: false })
   sharpeRatio?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Win rate as decimal (0.0-1.0)', required: false })
   winRate?: number;
 
@@ -130,7 +130,7 @@ export class PaperTradingSession {
   @IsNumber()
   @Min(0)
   @Max(1)
-  @Column({ type: 'decimal', precision: 5, scale: 4, default: 0.001, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 5, scale: 4, default: 0.001, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Trading fee percentage (e.g., 0.001 = 0.1%)', default: 0.001 })
   tradingFee: number;
 

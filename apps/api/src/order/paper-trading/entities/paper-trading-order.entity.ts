@@ -16,7 +16,7 @@ import {
 import { PaperTradingSession } from './paper-trading-session.entity';
 import { PaperTradingSignal } from './paper-trading-signal.entity';
 
-import { ColumnNumericTransformer } from '../../../utils/transformers';
+import { NUMERIC_TRANSFORMER } from '../../../utils/transformers';
 
 export enum PaperTradingOrderSide {
   BUY = 'BUY',
@@ -95,43 +95,43 @@ export class PaperTradingOrder {
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Requested quantity' })
   requestedQuantity: number;
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Filled quantity', default: 0 })
   filledQuantity: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Requested price (for limit orders)', required: false })
   requestedPrice?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Executed price (for market orders)', required: false })
   executedPrice?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Average execution price (for partial fills)', required: false })
   averagePrice?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Slippage in basis points', required: false })
   slippageBps?: number;
 
   @IsNumber()
   @Min(0)
-  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, default: 0, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Trading fee paid', default: 0 })
   fee: number;
 
@@ -143,25 +143,25 @@ export class PaperTradingOrder {
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Total value of the trade (quantity * price)', required: false })
   totalValue?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Realized profit/loss (for SELL orders)', required: false })
   realizedPnL?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Realized P&L as percentage', required: false })
   realizedPnLPercent?: number;
 
   @IsNumber()
   @IsOptional()
-  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: new ColumnNumericTransformer() })
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Cost basis at time of trade', required: false })
   costBasis?: number;
 

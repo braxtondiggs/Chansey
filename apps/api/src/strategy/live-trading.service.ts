@@ -29,9 +29,10 @@ import { CompositeRegimeService } from '../market-regime/composite-regime.servic
 import { MetricsService } from '../metrics/metrics.service';
 import { SignalFilterChainService } from '../order/backtest/shared/filters';
 import { OpportunitySellDecision } from '../order/interfaces/opportunity-selling.interface';
+import { TradeSignalWithExit } from '../order/interfaces/trade-signal.interface';
 import { OrderService } from '../order/order.service';
 import { OpportunitySellService } from '../order/services/opportunity-sell.service';
-import { TradeExecutionService, TradeSignalWithExit } from '../order/services/trade-execution.service';
+import { TradeExecutionService } from '../order/services/trade-execution.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../shared/distributed-lock.constants';
 import { DistributedLockService } from '../shared/distributed-lock.service';
 import { toErrorInfo } from '../shared/error.util';
