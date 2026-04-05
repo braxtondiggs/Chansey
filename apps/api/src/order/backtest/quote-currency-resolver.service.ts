@@ -38,7 +38,7 @@ export class QuoteCurrencyResolverService {
 
     for (const symbol of candidates) {
       // Pass fail=false to avoid throwing when coin not found
-      const coin = await this.coinService.getCoinBySymbol(symbol, undefined, false);
+      const coin = await this.coinService.getCoinBySymbol(symbol, undefined, false, true);
 
       if (coin && !CoinService.isVirtualCoin(coin)) {
         if (symbol !== preferredCurrency.toUpperCase()) {

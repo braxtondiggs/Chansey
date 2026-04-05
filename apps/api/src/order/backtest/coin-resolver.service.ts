@@ -75,7 +75,9 @@ export class CoinResolverService {
     const normalizedSymbols = instruments.map((i) => i.toUpperCase());
 
     // Batch query: try direct symbol lookup first
-    const directCoins = await this.coinService.getMultipleCoinsBySymbol(normalizedSymbols);
+    const directCoins = await this.coinService.getMultipleCoinsBySymbol(normalizedSymbols, undefined, {
+      includeDelisted: true
+    });
     const directSymbolSet = new Set(directCoins.map((c) => c.symbol.toUpperCase()));
 
     // Record direct resolution count
@@ -101,7 +103,9 @@ export class CoinResolverService {
     // Batch query: try base symbol lookup for unresolved instruments
     if (unresolvedWithBases.length > 0) {
       const baseCandidates = [...new Set(unresolvedWithBases.map((u) => u.base))];
-      const baseCoins = await this.coinService.getMultipleCoinsBySymbol(baseCandidates);
+      const baseCoins = await this.coinService.getMultipleCoinsBySymbol(baseCandidates, undefined, {
+        includeDelisted: true
+      });
       const baseSymbolMap = new Map(baseCoins.map((c) => [c.symbol.toUpperCase(), c]));
 
       let symbolExtractionCount = 0;

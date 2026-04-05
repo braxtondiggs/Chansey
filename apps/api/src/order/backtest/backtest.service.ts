@@ -371,7 +371,9 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Get coin symbols for the instrument universe (filtered by quality)
-      const coins = await this.coinService.getCoinsByIdsFiltered(coinIds);
+      const coins = await this.coinService.getCoinsByIdsFiltered(coinIds, 100_000_000, 1_000_000, {
+        includeDelisted: true
+      });
       const instrumentUniverse = coins.map((c) => c.symbol).filter(Boolean);
 
       if (instrumentUniverse.length === 0) {

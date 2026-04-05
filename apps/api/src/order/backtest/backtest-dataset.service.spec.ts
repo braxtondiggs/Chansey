@@ -132,7 +132,9 @@ describe('BacktestService – default dataset', () => {
 
       const result = await service.ensureDefaultDatasetExists();
 
-      expect(coinService.getCoinsByIdsFiltered).toHaveBeenCalledWith(['btc', 'memecoin']);
+      expect(coinService.getCoinsByIdsFiltered).toHaveBeenCalledWith(['btc', 'memecoin'], 100_000_000, 1_000_000, {
+        includeDelisted: true
+      });
       expect(result).toBeTruthy();
       expect(marketDataSetRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({

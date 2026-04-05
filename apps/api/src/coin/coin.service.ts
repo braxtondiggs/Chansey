@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Cache } from 'cache-manager';
 import { CoinGeckoClient } from 'coingecko-api-v3';
-import { In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
+import { FindOptionsWhere, In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
 
@@ -85,8 +85,12 @@ export class CoinService {
     });
   }
 
-  async getCoins() {
-    const coins = await this.coin.find({ order: { marketRank: 'ASC' } });
+  async getCoins(options?: { includeDelisted?: boolean }) {
+    const where: FindOptionsWhere<Coin> = {};
+    if (!options?.includeDelisted) {
+      where.delistedAt = IsNull();
+    }
+    const coins = await this.coin.find({ where, order: { marketRank: 'ASC' } });
     return coins.map((coin) => stripNullProps(coin));
   }
 
@@ -128,36 +132,55 @@ export class CoinService {
   async getCoinsByIdsFiltered(
     coinIds: string[],
     minMarketCap = 100_000_000,
-    minDailyVolume = 1_000_000
+    minDailyVolume = 1_000_000,
+    options?: { includeDelisted?: boolean }
   ): Promise<Coin[]> {
     if (coinIds.length === 0) return [];
 
     const uniqueIds = [...new Set(coinIds.filter((id) => id && typeof id === 'string' && id.trim().length > 0))];
     if (uniqueIds.length === 0) return [];
 
-    return this.coin
-      .createQueryBuilder('coin')
-      .where('coin.id IN (:...ids)', { ids: uniqueIds })
-      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
-      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
-      .andWhere('coin.currentPrice IS NOT NULL')
-      .orderBy('coin.marketCap', 'DESC')
-      .getMany();
+    const qb = this.coin.createQueryBuilder('coin').where('coin.id IN (:...ids)', { ids: uniqueIds });
+
+    if (!options?.includeDelisted) {
+      qb.andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
+        .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
+        .andWhere('coin.currentPrice IS NOT NULL')
+        .andWhere('coin.delistedAt IS NULL');
+    }
+
+    return qb.orderBy('coin.marketCap', 'DESC').getMany();
   }
 
-  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail?: true): Promise<Coin>;
-  async getCoinBySymbol(symbol: string, relations: CoinRelations[] | undefined, fail: false): Promise<Coin | null>;
-  async getCoinBySymbol(symbol: string, relations?: CoinRelations[], fail = true): Promise<Coin | null> {
+  async getCoinBySymbol(
+    symbol: string,
+    relations?: CoinRelations[],
+    fail?: true,
+    includeDelisted?: boolean
+  ): Promise<Coin>;
+  async getCoinBySymbol(
+    symbol: string,
+    relations: CoinRelations[] | undefined,
+    fail: false,
+    includeDelisted?: boolean
+  ): Promise<Coin | null>;
+  async getCoinBySymbol(
+    symbol: string,
+    relations?: CoinRelations[],
+    fail = true,
+    includeDelisted = false
+  ): Promise<Coin | null> {
     // Handle USD as a special case
     if (symbol.toLowerCase() === 'usd') {
       return CoinService.createVirtualUsdCoin();
     }
 
     // Handle other coins normally
-    const coin = await this.coin.findOne({
-      where: { symbol: symbol.toLowerCase() },
-      relations
-    });
+    const where: FindOptionsWhere<Coin> = { symbol: symbol.toLowerCase() };
+    if (!includeDelisted) {
+      where.delistedAt = IsNull();
+    }
+    const coin = await this.coin.findOne({ where, relations });
     if (!coin && fail) throw new CoinNotFoundException(symbol, 'symbol');
     if (coin) {
       stripNullProps(coin);
@@ -172,7 +195,11 @@ export class CoinService {
    * @returns Array of coin entities that were found matching the provided symbols.
    * If some symbols don't exist, they're silently ignored (with a warning log).
    */
-  async getMultipleCoinsBySymbol(symbols: string[], relations?: CoinRelations[]): Promise<Coin[]> {
+  async getMultipleCoinsBySymbol(
+    symbols: string[],
+    relations?: CoinRelations[],
+    options?: { includeDelisted?: boolean }
+  ): Promise<Coin[]> {
     // Convert all symbols to lowercase for case-insensitive comparison
     const lowercaseSymbols = symbols.map((symbol) => symbol.toLowerCase());
 
@@ -184,12 +211,14 @@ export class CoinService {
     const symbolsToSearch = needsUsd ? lowercaseSymbols.filter((symbol) => symbol !== 'usd') : lowercaseSymbols;
 
     // Only query the database if we have actual coin symbols to search for
+    const whereClause: FindOptionsWhere<Coin> = { symbol: In(symbolsToSearch) };
+    if (!options?.includeDelisted) {
+      whereClause.delistedAt = IsNull();
+    }
     const coins =
       symbolsToSearch.length > 0
         ? await this.coin.find({
-            where: {
-              symbol: In(symbolsToSearch)
-            },
+            where: whereClause,
             relations,
             order: { name: 'ASC' }
           })
@@ -251,13 +280,45 @@ export class CoinService {
   }
 
   async remove(coinId: string) {
-    const response = await this.coin.delete(coinId);
-    if (!response.affected) throw new CoinNotFoundException(coinId);
-    return response;
+    const coin = await this.getCoinById(coinId);
+    if (coin.delistedAt) return coin;
+    coin.delistedAt = new Date();
+    return this.coin.save(coin);
   }
 
   async removeMany(coinIds: string[]): Promise<void> {
+    if (coinIds.length === 0) return;
+    await this.coin
+      .createQueryBuilder()
+      .update()
+      .set({ delistedAt: new Date() })
+      .where('id IN (:...ids)', { ids: coinIds })
+      .andWhere('delistedAt IS NULL')
+      .execute();
+  }
+
+  async hardRemoveMany(coinIds: string[]): Promise<void> {
+    if (coinIds.length === 0) return;
     await this.coin.delete({ id: In(coinIds) });
+  }
+
+  async relistCoin(coinId: string): Promise<void> {
+    await this.coin.update(coinId, { delistedAt: null });
+  }
+
+  async relistMany(coinIds: string[]): Promise<void> {
+    if (coinIds.length === 0) return;
+    await this.coin
+      .createQueryBuilder()
+      .update()
+      .set({ delistedAt: null })
+      .where('id IN (:...ids)', { ids: coinIds })
+      .andWhere('delistedAt IS NOT NULL')
+      .execute();
+  }
+
+  async getDelistedCoins(): Promise<Coin[]> {
+    return this.coin.find({ where: { delistedAt: Not(IsNull()) } });
   }
 
   async getCoinHistoricalData(coinId: string): Promise<HistoricalDataPoint[]> {
@@ -295,6 +356,7 @@ export class CoinService {
   async getCoinsWithCurrentPrices() {
     const coins = await this.coin.find({
       select: ['id', 'slug', 'name', 'symbol', 'image', 'currentPrice'],
+      where: { delistedAt: IsNull() },
       order: { name: 'ASC' }
     });
     return coins.map((coin) => stripNullProps(coin));
@@ -320,7 +382,8 @@ export class CoinService {
     if (riskLevel === 1) {
       return await this.coin.find({
         where: {
-          totalVolume: Not(IsNull())
+          totalVolume: Not(IsNull()),
+          delistedAt: IsNull()
         },
         order: {
           totalVolume: 'DESC'
@@ -332,7 +395,8 @@ export class CoinService {
     if (riskLevel === 5) {
       return await this.coin.find({
         where: {
-          geckoRank: Not(IsNull())
+          geckoRank: Not(IsNull()),
+          delistedAt: IsNull()
         },
         order: {
           geckoRank: 'ASC'
@@ -351,6 +415,7 @@ export class CoinService {
       .where('coin.totalVolume IS NOT NULL')
       .andWhere('coin.geckoRank IS NOT NULL')
       .andWhere('coin.marketCap IS NOT NULL')
+      .andWhere('coin.delistedAt IS NULL')
       .orderBy(
         `(
           COALESCE(LN(coin."totalVolume" + 1), 0) * ${volWeight} +
@@ -373,7 +438,8 @@ export class CoinService {
       where: {
         marketCap: Not(IsNull()),
         totalVolume: Not(IsNull()),
-        currentPrice: Not(IsNull())
+        currentPrice: Not(IsNull()),
+        delistedAt: IsNull()
       },
       order: {
         marketCap: 'DESC'

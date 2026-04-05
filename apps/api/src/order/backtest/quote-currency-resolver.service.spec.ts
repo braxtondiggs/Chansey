@@ -35,7 +35,7 @@ describe('QuoteCurrencyResolverService', () => {
       const result = await service.resolveQuoteCurrency('USDT');
 
       expect(result).toBe(usdt);
-      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false);
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false, true);
     });
 
     it('uses fallback when preferred currency not found', async () => {
@@ -50,8 +50,8 @@ describe('QuoteCurrencyResolverService', () => {
       expect(result).toBe(usdc);
       // Should have tried USDT first, then fallback to USDC
       expect(coinService.getCoinBySymbol).toHaveBeenCalledTimes(2);
-      expect(coinService.getCoinBySymbol).toHaveBeenNthCalledWith(1, 'USDT', undefined, false);
-      expect(coinService.getCoinBySymbol).toHaveBeenNthCalledWith(2, 'USDC', undefined, false);
+      expect(coinService.getCoinBySymbol).toHaveBeenNthCalledWith(1, 'USDT', undefined, false, true);
+      expect(coinService.getCoinBySymbol).toHaveBeenNthCalledWith(2, 'USDC', undefined, false, true);
     });
 
     it('rejects virtual coins (id contains "virtual")', async () => {
@@ -113,7 +113,7 @@ describe('QuoteCurrencyResolverService', () => {
       const result = await service.resolveQuoteCurrency();
 
       expect(result).toBe(usdt);
-      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false);
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false, true);
     });
 
     it('handles case-insensitive preferred currency', async () => {
@@ -126,7 +126,7 @@ describe('QuoteCurrencyResolverService', () => {
       const result = await service.resolveQuoteCurrency('usdt');
 
       expect(result).toBe(usdt);
-      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false);
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDT', undefined, false, true);
     });
 
     it('does not duplicate preferred currency in fallback chain', async () => {
@@ -147,7 +147,7 @@ describe('QuoteCurrencyResolverService', () => {
       // Should only call once for USDT, not twice
       const calls = coinService.getCoinBySymbol.mock.calls.filter((call) => call[0].toUpperCase() === 'USDT');
       expect(calls).toHaveLength(1);
-      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDC', undefined, false);
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDC', undefined, false, true);
     });
 
     it('accepts custom fallback chain', async () => {
@@ -194,8 +194,8 @@ describe('QuoteCurrencyResolverService', () => {
       const result = await service.resolveQuoteCurrency('USDT', ['USDC', 'DAI']);
 
       expect(result).toBe(dai);
-      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDC', undefined, false);
-      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('DAI', undefined, false);
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('USDC', undefined, false, true);
+      expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('DAI', undefined, false, true);
     });
   });
 
