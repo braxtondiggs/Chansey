@@ -8,6 +8,7 @@ import { AuthenticationController } from './authentication.controller';
 import { AuthenticationService } from './authentication.service';
 import { RolesGuard } from './guard/roles.guard';
 import { WsJwtAuthenticationGuard } from './guard/ws-jwt-authentication.guard';
+import { OtpService } from './otp.service';
 import { PasswordService } from './password.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { ApiKeyStrategy } from './strategy/api.strategy';
@@ -29,6 +30,7 @@ import { UsersModule } from '../users/users.module';
   providers: [
     ApiKeyStrategy,
     AuthenticationService,
+    OtpService,
     LocalStrategy,
     JwtStrategy,
     RolesGuard,

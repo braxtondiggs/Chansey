@@ -3,10 +3,9 @@ import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
-import * as http from 'http';
-import * as https from 'https';
-
 import { CCXT_BALANCE_META_KEYS } from './ccxt-balance.util';
+import { createCcxtClient } from './ccxt-client.util';
+import { ExchangeClientPool } from './exchange-client-pool';
 import { EXCHANGE_KEY_SERVICE, EXCHANGE_SERVICE, IExchangeKeyService, IExchangeService } from './interfaces';
 
 import { AssetBalanceDto } from '../balance/dto/balance-response.dto';
@@ -20,12 +19,7 @@ import { User } from '../users/users.entity';
  */
 export abstract class BaseExchangeService implements OnModuleDestroy {
   protected readonly logger = new Logger(this.constructor.name);
-  protected clients: Map<string, ccxt.Exchange> = new Map();
-  private clientLastUsed: Map<string, number> = new Map();
-  /** Stale client TTL: 30 minutes */
-  private static readonly CLIENT_TTL_MS = 30 * 60 * 1000;
-  /** Keys that should never be evicted (long-lived singletons) */
-  private static readonly PERMANENT_KEYS = new Set(['default', 'public']);
+  protected readonly pool = new ExchangeClientPool();
 
   // Abstract properties that must be implemented by subclasses
   protected abstract readonly exchangeSlug: string;
@@ -43,56 +37,14 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   ) {}
 
   async onModuleDestroy(): Promise<void> {
-    const closePromises = [...this.clients.entries()].map(async ([key, client]) => {
-      try {
-        await client.close();
-      } catch (error: unknown) {
-        const err = toErrorInfo(error);
-        this.logger.warn(`Failed to close CCXT client '${key}': ${err.message}`);
-      }
-    });
-    await Promise.allSettled(closePromises);
-    this.clients.clear();
-    this.clientLastUsed.clear();
+    await this.pool.closeAll(this.logger);
   }
 
   /**
    * Remove and close a single cached client
    */
   protected async removeClient(key: string): Promise<void> {
-    const client = this.clients.get(key);
-    if (client) {
-      try {
-        await client.close();
-      } catch {
-        // Swallow - best-effort cleanup
-      }
-      this.clients.delete(key);
-      this.clientLastUsed.delete(key);
-    }
-  }
-
-  /**
-   * Evict user-specific clients that have been idle longer than CLIENT_TTL_MS.
-   * Called lazily at the start of getClient() - no timers needed.
-   */
-  private evictStaleClients(): void {
-    const now = Date.now();
-    for (const [key, lastUsed] of this.clientLastUsed) {
-      if (BaseExchangeService.PERMANENT_KEYS.has(key)) continue;
-      if (now - lastUsed > BaseExchangeService.CLIENT_TTL_MS) {
-        const client = this.clients.get(key);
-        if (client) {
-          client.close().catch((error: unknown) => {
-            const err = toErrorInfo(error);
-            this.logger.warn(`Best-effort close failed for stale client '${key}': ${err.message}`);
-          });
-        }
-        this.clients.delete(key);
-        this.clientLastUsed.delete(key);
-        this.logger.debug(`Evicted stale CCXT client '${key}' on ${this.exchangeSlug}`);
-      }
-    }
+    await this.pool.remove(key);
   }
 
   /**
@@ -101,7 +53,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * @returns A configured CCXT client
    */
   async getClient(user?: User): Promise<ccxt.Exchange> {
-    this.evictStaleClients();
+    this.pool.evictStale(this.logger, this.exchangeSlug);
 
     // If no user is provided, return the default client
     if (!user) {
@@ -124,17 +76,28 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
             // Use user-specific API keys
             const clientKey = `user-${user.id}`;
 
-            if (!this.clients.has(clientKey)) {
+            if (this.pool.has(clientKey)) {
+              this.pool.touch(clientKey);
+              return this.pool.get(clientKey) as ccxt.Exchange;
+            }
+
+            const pending = this.pool.getPending(clientKey);
+            if (pending) {
+              return pending;
+            }
+
+            const creation = (async () => {
               this.logger.debug(`Creating user-specific client for user ${user.id} on ${this.exchangeSlug}`);
-              const userClient = this.createClient(
+              const userClient = this.createExchangeClient(
                 decryptedApi.replace(/\\n/g, '\n').trim(),
                 decryptedSecret.replace(/\\n/g, '\n').trim()
               );
-              this.clients.set(clientKey, userClient);
-            }
+              this.pool.set(clientKey, userClient);
+              return userClient;
+            })();
 
-            this.clientLastUsed.set(clientKey, Date.now());
-            return this.clients.get(clientKey) as ccxt.Exchange;
+            this.pool.setPending(clientKey, creation);
+            return creation.finally(() => this.pool.deletePending(clientKey));
           }
         }
       } catch (error: unknown) {
@@ -156,8 +119,16 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * @returns A configured CCXT client with default credentials
    */
   async getDefaultClient(): Promise<ccxt.Exchange> {
-    // Create or return the default client
-    if (!this.clients.has('default')) {
+    if (this.pool.has('default')) {
+      return this.pool.get('default') as ccxt.Exchange;
+    }
+
+    const pending = this.pool.getPending('default');
+    if (pending) {
+      return pending;
+    }
+
+    const creation = (async () => {
       if (!this.configService) {
         throw new InternalServerErrorException(`ConfigService is not available in ${this.constructor.name}`);
       }
@@ -169,11 +140,13 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
         throw new InternalServerErrorException(`${this.constructor.name} API keys are not configured`);
       }
 
-      const defaultClient = this.createClient(defaultApiKey, defaultApiSecret.replace(/\\n/g, '\n').trim());
-      this.clients.set('default', defaultClient);
-    }
+      const defaultClient = this.createExchangeClient(defaultApiKey, defaultApiSecret.replace(/\\n/g, '\n').trim());
+      this.pool.set('default', defaultClient);
+      return defaultClient;
+    })();
 
-    return this.clients.get('default') as ccxt.Exchange;
+    this.pool.setPending('default', creation);
+    return creation.finally(() => this.pool.deletePending('default'));
   }
 
   /**
@@ -182,14 +155,24 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * @returns A CCXT client without authentication
    */
   async getPublicClient(): Promise<ccxt.Exchange> {
-    // Create or return the public client
-    if (!this.clients.has('public')) {
-      this.logger.debug(`Creating public-only client for ${this.exchangeSlug}`);
-      const publicClient = this.createPublicClient();
-      this.clients.set('public', publicClient);
+    if (this.pool.has('public')) {
+      return this.pool.get('public') as ccxt.Exchange;
     }
 
-    return this.clients.get('public') as ccxt.Exchange;
+    const pending = this.pool.getPending('public');
+    if (pending) {
+      return pending;
+    }
+
+    const creation = (async () => {
+      this.logger.debug(`Creating public-only client for ${this.exchangeSlug}`);
+      const publicClient = this.createExchangeClient();
+      this.pool.set('public', publicClient);
+      return publicClient;
+    })();
+
+    this.pool.setPending('public', creation);
+    return creation.finally(() => this.pool.deletePending('public'));
   }
 
   /**
@@ -200,7 +183,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    */
   async getTemporaryClient(apiKey: string, apiSecret: string): Promise<ccxt.Exchange> {
     try {
-      return this.createClient(apiKey, apiSecret.replace(/\\n/g, '\n').trim());
+      return this.createExchangeClient(apiKey, apiSecret.replace(/\\n/g, '\n').trim());
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to create temporary ${this.constructor.name} client: ${err.message}`, err.stack);
@@ -223,6 +206,30 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   }
 
   /**
+   * Assets to include in free balance filtering.
+   * Override in subclass to change which assets are considered "free balance" (e.g. ['USD', 'USDT']).
+   */
+  protected get freeBalanceAssets(): string[] {
+    return ['USD', 'USDC'];
+  }
+
+  /**
+   * When true, getBalance() filters by total > 0 instead of free > 0 || locked > 0.
+   * Override in subclass (e.g. Coinbase services).
+   */
+  protected get balanceFilterByTotal(): boolean {
+    return false;
+  }
+
+  /**
+   * When true, getBalance() returns [] on error instead of throwing.
+   * Override in subclass (e.g. Coinbase services).
+   */
+  protected get balanceSilentOnError(): boolean {
+    return false;
+  }
+
+  /**
    * Get balances for all assets
    * @param user The user to fetch balances for
    * @returns Array of balances
@@ -230,7 +237,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
       const client = await this.getClient(user);
-      const balanceData = await client.fetchBalance(this.getFetchBalanceParams());
+      const balanceData = await withRateLimitRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
+        logger: this.logger,
+        operationName: 'getBalance'
+      });
 
       const assetBalances: AssetBalanceDto[] = [];
 
@@ -239,9 +249,10 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
 
         const free = Number(balance.free ?? 0);
         const used = Number(balance.used ?? 0);
-        const locked = used > 0 ? used : Math.max(0, Number(balance.total ?? 0) - free);
+        const total = Number(balance.total ?? 0);
+        const locked = used > 0 ? used : Math.max(0, total - free);
 
-        if (free > 0 || locked > 0) {
+        if (this.balanceFilterByTotal ? total > 0 : free > 0 || locked > 0) {
           assetBalances.push({
             asset: this.normalizeAssetName(asset),
             free: free.toString(),
@@ -252,6 +263,11 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
 
       return assetBalances;
     } catch (error: unknown) {
+      if (this.balanceSilentOnError) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
+        return [];
+      }
       const err = toErrorInfo(error);
       this.logger.warn(`Error fetching ${this.constructor.name} balances`, err.stack || err.message);
       throw new InternalServerErrorException(`Failed to fetch ${this.constructor.name} balances`);
@@ -265,8 +281,30 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    */
   async getFreeBalance(user: User) {
     try {
-      const balances = await this.getBalance(user);
-      return balances.filter((b) => (b.asset === 'USD' || b.asset === 'USDC') && parseFloat(b.free) > 0);
+      const client = await this.getClient(user);
+      const balanceData = await withRateLimitRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
+        logger: this.logger,
+        operationName: 'getFreeBalance'
+      });
+
+      const balances: AssetBalanceDto[] = [];
+      const allowedAssets = this.freeBalanceAssets;
+
+      for (const [asset, balance] of Object.entries(balanceData)) {
+        if (CCXT_BALANCE_META_KEYS.has(asset)) continue;
+
+        const normalized = this.normalizeAssetName(asset);
+        if (!allowedAssets.includes(normalized)) continue;
+
+        const free = Number(balance.free ?? 0);
+        if (free > 0) {
+          const total = Number(balance.total ?? 0);
+          const locked = balance.used != null ? Number(balance.used) : Math.max(0, total - free);
+          balances.push({ asset: normalized, free: free.toString(), locked: locked.toString() });
+        }
+      }
+
+      return balances;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Error fetching ${this.constructor.name} free balance`, err.stack || err.message);
@@ -305,11 +343,17 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    */
   async getPrice(symbol: string, user?: User) {
     try {
-      const price = await this.getPriceBySymbol(symbol, user);
+      const formattedSymbol = this.formatSymbol(symbol);
+      const client = await this.getClient(user);
+      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
+        logger: this.logger,
+        operationName: `getPrice(${symbol})`
+      });
+
       return {
         symbol,
-        price: (price ?? 0).toString(),
-        timestamp: Date.now()
+        price: (ticker.last ?? 0).toString(),
+        timestamp: ticker.timestamp ?? Date.now()
       };
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -348,69 +392,14 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   }
 
   /**
-   * Create a CCXT client instance
-   * @param apiKey - The API key
-   * @param apiSecret - The API secret
-   * @returns A CCXT client instance
+   * Create a CCXT client instance, optionally with credentials.
+   * Delegates to the shared createCcxtClient utility.
    */
-  protected createClient(apiKey: string, apiSecret: string): ccxt.Exchange {
-    // Get the exchange class dynamically from CCXT
-    const ccxtExchanges = ccxt as unknown as Record<string, new (config: object) => ccxt.Exchange>;
-    const ExchangeClass = ccxtExchanges[this.exchangeId];
-
-    if (!ExchangeClass || typeof ExchangeClass !== 'function') {
-      throw new InternalServerErrorException(`Exchange ${this.exchangeId} not found in CCXT`);
-    }
-
-    // Create HTTP/HTTPS agents that force IPv4 only
-    const httpAgent = new http.Agent({
-      family: 4 // Force IPv4
-    });
-
-    const httpsAgent = new https.Agent({
-      family: 4 // Force IPv4
-    });
-
-    return new ExchangeClass({
+  protected createExchangeClient(apiKey?: string, apiSecret?: string): ccxt.Exchange {
+    return createCcxtClient(this.exchangeId, {
       apiKey,
       secret: apiSecret,
-      enableRateLimit: true,
-      agent: httpsAgent, // Most exchanges use HTTPS
-      httpAgent, // Fallback for HTTP
-      httpsAgent,
-      ...this.getAdditionalClientConfig()
-    });
-  }
-
-  /**
-   * Create a public-only CCXT client instance without API keys
-   * @returns A CCXT client instance for public endpoints only
-   */
-  protected createPublicClient(): ccxt.Exchange {
-    // Get the exchange class dynamically from CCXT
-    const ccxtExchanges = ccxt as unknown as Record<string, new (config: object) => ccxt.Exchange>;
-    const ExchangeClass = ccxtExchanges[this.exchangeId];
-
-    if (!ExchangeClass || typeof ExchangeClass !== 'function') {
-      throw new InternalServerErrorException(`Exchange ${this.exchangeId} not found in CCXT`);
-    }
-
-    // Create HTTP/HTTPS agents that force IPv4 only
-    const httpAgent = new http.Agent({
-      family: 4 // Force IPv4
-    });
-
-    const httpsAgent = new https.Agent({
-      family: 4 // Force IPv4
-    });
-
-    // Create client without API keys - only for public endpoints
-    return new ExchangeClass({
-      enableRateLimit: true,
-      agent: httpsAgent,
-      httpAgent,
-      httpsAgent,
-      ...this.getAdditionalClientConfig()
+      additionalConfig: this.getAdditionalClientConfig()
     });
   }
 

@@ -13,18 +13,10 @@ import { BacktestFiltersDto } from './dto/overview.dto';
 import { Coin } from '../../coin/coin.entity';
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun } from '../../optimization/entities/optimization-run.entity';
-import {
-  Backtest,
-  BacktestSignal,
-  BacktestStatus,
-  BacktestTrade,
-  BacktestType,
-  SignalDirection,
-  SignalType,
-  SimulatedOrderFill,
-  TradeStatus,
-  TradeType
-} from '../../order/backtest/backtest.entity';
+import { BacktestSignal, SignalDirection, SignalType } from '../../order/backtest/backtest-signal.entity';
+import { BacktestTrade, TradeStatus, TradeType } from '../../order/backtest/backtest-trade.entity';
+import { Backtest, BacktestStatus, BacktestType } from '../../order/backtest/backtest.entity';
+import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
 import { PaperTradingOrder } from '../../order/paper-trading/entities/paper-trading-order.entity';
 import { PaperTradingSession } from '../../order/paper-trading/entities/paper-trading-session.entity';
 import { PaperTradingSignal } from '../../order/paper-trading/entities/paper-trading-signal.entity';

@@ -7,10 +7,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Between, type FindOptionsWhere, LessThan, MoreThan, type QueryDeepPartialEntity, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 
-import { AuditEventType, DeploymentStatus, StrategyStatus } from '@chansey/api-interfaces';
+import { AuditEventType, type CreateAuditLogDto, DeploymentStatus, StrategyStatus } from '@chansey/api-interfaces';
 
+import { DeploymentMetricsService } from './deployment-metrics.service';
 import { Deployment } from './entities/deployment.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
 import { StrategyConfig } from './entities/strategy-config.entity';
@@ -19,18 +20,6 @@ import { StrategyScore } from './entities/strategy-score.entity';
 import { AuditService } from '../audit/audit.service';
 import { toErrorInfo } from '../shared/error.util';
 
-/**
- * DeploymentService
- *
- * Manages the lifecycle of strategy deployments:
- * - Creating new deployments with risk limits
- * - Promoting strategies to live trading
- * - Pausing/resuming deployments
- * - Demoting underperforming strategies
- * - Tracking live performance metrics
- *
- * Integrates with promotion gates and risk management systems.
- */
 @Injectable()
 export class DeploymentService {
   private readonly logger = new Logger(DeploymentService.name);
@@ -38,19 +27,32 @@ export class DeploymentService {
   constructor(
     @InjectRepository(Deployment)
     private readonly deploymentRepo: Repository<Deployment>,
-    @InjectRepository(PerformanceMetric)
-    private readonly performanceMetricRepo: Repository<PerformanceMetric>,
     @InjectRepository(StrategyConfig)
     private readonly strategyConfigRepo: Repository<StrategyConfig>,
     @InjectRepository(StrategyScore)
     private readonly strategyScoreRepo: Repository<StrategyScore>,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly metricsService: DeploymentMetricsService
   ) {}
 
-  /**
-   * Create a new deployment for a strategy
-   * Called after promotion gates pass
-   */
+  private async safeAudit(dto: CreateAuditLogDto): Promise<void> {
+    try {
+      await this.auditService.createAuditLog(dto);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Audit log failed for ${dto.eventType} on ${dto.entityType} ${dto.entityId}: ${err.message}`);
+    }
+  }
+
+  private handleError(error: unknown, operation: string): never {
+    if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    const err = toErrorInfo(error);
+    this.logger.error(`Failed to ${operation}: ${err.message}`, err.stack);
+    throw new InternalServerErrorException(`Failed to ${operation} due to an internal error`);
+  }
+
   async createDeployment(
     strategyConfigId: string,
     allocationPercent: number,
@@ -130,32 +132,27 @@ export class DeploymentService {
 
       const savedDeployment = await this.deploymentRepo.save(deployment);
 
-      // Audit log - wrapped in try-catch to prevent audit failures from breaking deployment
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.STRATEGY_PROMOTED,
-          entityType: 'Deployment',
-          entityId: savedDeployment.id,
-          userId: approvedBy,
-          beforeState: undefined,
-          afterState: {
-            strategyConfigId,
-            allocationPercent,
-            status: DeploymentStatus.PENDING_APPROVAL,
-            maxDrawdownLimit,
-            promotionReason
-          },
-          metadata: {
-            strategyName: strategyConfig.name,
-            algorithmName: strategyConfig.algorithm?.name,
-            score: latestScore.overallScore,
-            grade: latestScore.grade
-          }
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for deployment ${savedDeployment.id}: ${err.message}`);
-      }
+      // Audit log - best-effort, failures must not break deployment lifecycle
+      await this.safeAudit({
+        eventType: AuditEventType.STRATEGY_PROMOTED,
+        entityType: 'Deployment',
+        entityId: savedDeployment.id,
+        userId: approvedBy,
+        beforeState: undefined,
+        afterState: {
+          strategyConfigId,
+          allocationPercent,
+          status: DeploymentStatus.PENDING_APPROVAL,
+          maxDrawdownLimit,
+          promotionReason
+        },
+        metadata: {
+          strategyName: strategyConfig.name,
+          algorithmName: strategyConfig.algorithm?.name,
+          score: latestScore.overallScore,
+          grade: latestScore.grade
+        }
+      });
 
       this.logger.log(
         `Created deployment ${savedDeployment.id} for strategy ${strategyConfig.name} ` +
@@ -164,18 +161,10 @@ export class DeploymentService {
 
       return savedDeployment;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to create deployment for strategy ${strategyConfigId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to create deployment due to an internal error');
+      this.handleError(error, 'create deployment for strategy ' + strategyConfigId);
     }
   }
 
-  /**
-   * Activate a deployment (move from pending to active)
-   */
   async activateDeployment(deploymentId: string, userId?: string): Promise<Deployment> {
     try {
       const deployment = await this.findOne(deploymentId);
@@ -197,37 +186,24 @@ export class DeploymentService {
       });
 
       // Audit log
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.DEPLOYMENT_ACTIVATED,
-          entityType: 'Deployment',
-          entityId: deploymentId,
-          userId,
-          beforeState,
-          afterState: activated,
-          metadata: { deployedAt: activated.deployedAt }
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for activation ${deploymentId}: ${err.message}`);
-      }
+      await this.safeAudit({
+        eventType: AuditEventType.DEPLOYMENT_ACTIVATED,
+        entityType: 'Deployment',
+        entityId: deploymentId,
+        userId,
+        beforeState,
+        afterState: activated,
+        metadata: { deployedAt: activated.deployedAt }
+      });
 
       this.logger.log(`Activated deployment ${deploymentId}`);
 
       return activated;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to activate deployment ${deploymentId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to activate deployment due to an internal error');
+      this.handleError(error, 'activate deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Pause a deployment (manual intervention)
-   */
   async pauseDeployment(deploymentId: string, reason: string, userId?: string): Promise<Deployment> {
     try {
       const deployment = await this.findOne(deploymentId);
@@ -248,37 +224,24 @@ export class DeploymentService {
       const paused = await this.deploymentRepo.save(deployment);
 
       // Audit log
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.DEPLOYMENT_PAUSED,
-          entityType: 'Deployment',
-          entityId: deploymentId,
-          userId,
-          beforeState,
-          afterState: paused,
-          metadata: { reason }
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for pause ${deploymentId}: ${err.message}`);
-      }
+      await this.safeAudit({
+        eventType: AuditEventType.DEPLOYMENT_PAUSED,
+        entityType: 'Deployment',
+        entityId: deploymentId,
+        userId,
+        beforeState,
+        afterState: paused,
+        metadata: { reason }
+      });
 
       this.logger.warn(`Paused deployment ${deploymentId}: ${reason}`);
 
       return paused;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to pause deployment ${deploymentId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to pause deployment due to an internal error');
+      this.handleError(error, 'pause deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Resume a paused deployment
-   */
   async resumeDeployment(deploymentId: string, userId?: string): Promise<Deployment> {
     try {
       const deployment = await this.findOne(deploymentId);
@@ -298,36 +261,23 @@ export class DeploymentService {
       const resumed = await this.deploymentRepo.save(deployment);
 
       // Audit log
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.DEPLOYMENT_RESUMED,
-          entityType: 'Deployment',
-          entityId: deploymentId,
-          userId,
-          beforeState,
-          afterState: resumed
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for resume ${deploymentId}: ${err.message}`);
-      }
+      await this.safeAudit({
+        eventType: AuditEventType.DEPLOYMENT_RESUMED,
+        entityType: 'Deployment',
+        entityId: deploymentId,
+        userId,
+        beforeState,
+        afterState: resumed
+      });
 
       this.logger.log(`Resumed deployment ${deploymentId}`);
 
       return resumed;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to resume deployment ${deploymentId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to resume deployment due to an internal error');
+      this.handleError(error, 'resume deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Demote a deployment (automatic due to performance/risk)
-   */
   async demoteDeployment(
     deploymentId: string,
     reason: string,
@@ -354,36 +304,23 @@ export class DeploymentService {
       });
 
       // Audit log
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.STRATEGY_DEMOTED,
-          entityType: 'Deployment',
-          entityId: deploymentId,
-          beforeState,
-          afterState: demoted,
-          metadata: { reason, ...metadata }
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for demotion ${deploymentId}: ${err.message}`);
-      }
+      await this.safeAudit({
+        eventType: AuditEventType.STRATEGY_DEMOTED,
+        entityType: 'Deployment',
+        entityId: deploymentId,
+        beforeState,
+        afterState: demoted,
+        metadata: { reason, ...metadata }
+      });
 
       this.logger.error(`Demoted deployment ${deploymentId}: ${reason}`);
 
       return demoted;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to demote deployment ${deploymentId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to demote deployment due to an internal error');
+      this.handleError(error, 'demote deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Terminate a deployment (manual or end-of-life)
-   */
   async terminateDeployment(deploymentId: string, reason: string, userId?: string): Promise<Deployment> {
     try {
       const deployment = await this.findOne(deploymentId);
@@ -402,37 +339,24 @@ export class DeploymentService {
       });
 
       // Audit log
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.DEPLOYMENT_TERMINATED,
-          entityType: 'Deployment',
-          entityId: deploymentId,
-          userId,
-          beforeState,
-          afterState: terminated,
-          metadata: { reason }
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for termination ${deploymentId}: ${err.message}`);
-      }
+      await this.safeAudit({
+        eventType: AuditEventType.DEPLOYMENT_TERMINATED,
+        entityType: 'Deployment',
+        entityId: deploymentId,
+        userId,
+        beforeState,
+        afterState: terminated,
+        metadata: { reason }
+      });
 
       this.logger.warn(`Terminated deployment ${deploymentId}: ${reason}`);
 
       return terminated;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to terminate deployment ${deploymentId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to terminate deployment due to an internal error');
+      this.handleError(error, 'terminate deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Update deployment allocation (progressive scaling)
-   */
   async updateAllocation(
     deploymentId: string,
     newAllocationPercent: number,
@@ -462,20 +386,15 @@ export class DeploymentService {
       const updated = await this.deploymentRepo.save(deployment);
 
       // Audit log
-      try {
-        await this.auditService.createAuditLog({
-          eventType: AuditEventType.ALLOCATION_ADJUSTED,
-          entityType: 'Deployment',
-          entityId: deploymentId,
-          userId,
-          beforeState,
-          afterState: { allocationPercent: newAllocationPercent },
-          metadata: { reason }
-        });
-      } catch (auditError: unknown) {
-        const err = toErrorInfo(auditError);
-        this.logger.error(`Failed to create audit log for allocation update ${deploymentId}: ${err.message}`);
-      }
+      await this.safeAudit({
+        eventType: AuditEventType.ALLOCATION_ADJUSTED,
+        entityType: 'Deployment',
+        entityId: deploymentId,
+        userId,
+        beforeState,
+        afterState: { allocationPercent: newAllocationPercent },
+        metadata: { reason }
+      });
 
       this.logger.log(
         `Updated allocation for deployment ${deploymentId}: ${beforeState.allocationPercent}% → ${newAllocationPercent}%`
@@ -483,111 +402,22 @@ export class DeploymentService {
 
       return updated;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to update allocation for deployment ${deploymentId}: ${err.message}`, err.stack);
-      throw new InternalServerErrorException('Failed to update allocation due to an internal error');
+      this.handleError(error, 'update allocation for deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Record daily performance snapshot
-   */
   async recordPerformanceMetric(
     deploymentId: string,
     metricData: Partial<PerformanceMetric>
   ): Promise<PerformanceMetric> {
     try {
       const deployment = await this.findOne(deploymentId);
-
-      const date = metricData.date || new Date().toISOString().split('T')[0];
-
-      // Check if metric already exists for this date
-      const existing = await this.performanceMetricRepo.findOne({
-        where: { deploymentId, date }
-      });
-
-      if (existing) {
-        // Update existing record
-        Object.assign(existing, metricData);
-        existing.snapshotAt = new Date();
-        return await this.performanceMetricRepo.save(existing);
-      }
-
-      // Create new record
-      const metric = this.performanceMetricRepo.create({
-        deploymentId,
-        date,
-        snapshotAt: new Date(),
-        ...metricData
-      });
-
-      const saved = await this.performanceMetricRepo.save(metric);
-
-      // Update deployment aggregate stats
-      try {
-        await this.updateDeploymentStats(deployment, metricData);
-      } catch (statsError: unknown) {
-        const err = toErrorInfo(statsError);
-        this.logger.error(`Failed to update deployment stats for ${deploymentId}: ${err.message}`);
-      }
-
-      return saved;
+      return await this.metricsService.recordPerformanceMetric(deployment, metricData);
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to record performance metric for deployment ${deploymentId}: ${err.message}`,
-        err.stack
-      );
-      throw new InternalServerErrorException('Failed to record performance metric due to an internal error');
+      this.handleError(error, 'record performance metric for deployment ' + deploymentId);
     }
   }
 
-  /**
-   * Update deployment aggregate statistics from latest metrics
-   */
-  private async updateDeploymentStats(deployment: Deployment, latestMetric: Partial<PerformanceMetric>): Promise<void> {
-    const updates: Partial<Deployment> = {};
-
-    if (latestMetric.cumulativePnl !== undefined) {
-      updates.realizedPnl = Number(latestMetric.cumulativePnl);
-    }
-
-    if (latestMetric.drawdown !== undefined) {
-      updates.currentDrawdown = Number(latestMetric.drawdown);
-    }
-
-    if (latestMetric.maxDrawdown !== undefined && Number(latestMetric.maxDrawdown) > deployment.maxDrawdownObserved) {
-      updates.maxDrawdownObserved = Number(latestMetric.maxDrawdown);
-    }
-
-    if (latestMetric.cumulativeTradesCount !== undefined) {
-      updates.totalTrades = latestMetric.cumulativeTradesCount;
-    }
-
-    if (latestMetric.sharpeRatio !== undefined) {
-      updates.liveSharpeRatio = Number(latestMetric.sharpeRatio);
-    }
-
-    if (latestMetric.driftDetected) {
-      updates.driftAlertCount = deployment.driftAlertCount + 1;
-      updates.lastDriftDetectedAt = new Date();
-      updates.driftMetrics = latestMetric.driftDetails || null;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await this.deploymentRepo.update(deployment.id, updates as QueryDeepPartialEntity<Deployment>);
-    }
-  }
-
-  /**
-   * Get all active deployments
-   */
   async getActiveDeployments(): Promise<Deployment[]> {
     return await this.deploymentRepo.find({
       where: { status: DeploymentStatus.ACTIVE },
@@ -596,9 +426,6 @@ export class DeploymentService {
     });
   }
 
-  /**
-   * Get deployment by ID
-   */
   async findOne(id: string): Promise<Deployment> {
     const deployment = await this.deploymentRepo.findOne({
       where: { id },
@@ -612,9 +439,6 @@ export class DeploymentService {
     return deployment;
   }
 
-  /**
-   * Get deployments for a specific strategy
-   */
   async findByStrategy(strategyConfigId: string): Promise<Deployment[]> {
     return await this.deploymentRepo.find({
       where: { strategyConfigId },
@@ -622,43 +446,18 @@ export class DeploymentService {
     });
   }
 
-  /**
-   * Get performance metrics for a deployment
-   */
   async getPerformanceMetrics(
     deploymentId: string,
     startDate?: string,
     endDate?: string
   ): Promise<PerformanceMetric[]> {
-    const where: FindOptionsWhere<PerformanceMetric> = { deploymentId };
-
-    if (startDate && endDate) {
-      where.date = Between(startDate, endDate);
-    } else if (startDate) {
-      where.date = MoreThan(startDate);
-    } else if (endDate) {
-      where.date = LessThan(endDate);
-    }
-
-    return await this.performanceMetricRepo.find({
-      where,
-      order: { date: 'ASC' }
-    });
+    return this.metricsService.getPerformanceMetrics(deploymentId, startDate, endDate);
   }
 
-  /**
-   * Get latest performance metric for a deployment
-   */
   async getLatestPerformanceMetric(deploymentId: string): Promise<PerformanceMetric | null> {
-    return await this.performanceMetricRepo.findOne({
-      where: { deploymentId },
-      order: { date: 'DESC' }
-    });
+    return this.metricsService.getLatestPerformanceMetric(deploymentId);
   }
 
-  /**
-   * Check if portfolio has capacity for new deployments
-   */
   async hasPortfolioCapacity(): Promise<boolean> {
     const activeCount = await this.deploymentRepo.count({
       where: { status: DeploymentStatus.ACTIVE }
@@ -667,9 +466,6 @@ export class DeploymentService {
     return activeCount < 35;
   }
 
-  /**
-   * Get total portfolio allocation
-   */
   async getTotalAllocation(): Promise<number> {
     const result = await this.deploymentRepo
       .createQueryBuilder('deployment')
@@ -680,17 +476,8 @@ export class DeploymentService {
     return Number(result?.total || 0);
   }
 
-  /**
-   * Get deployments approaching risk limits
-   */
   async getDeploymentsAtRisk(): Promise<Deployment[]> {
     const deployments = await this.getActiveDeployments();
-
-    return deployments.filter((d) => {
-      const drawdownThreshold = Number(d.maxDrawdownLimit) * 0.8; // 80% of limit
-      const dailyLossThreshold = Number(d.dailyLossLimit) * 0.8;
-
-      return Number(d.currentDrawdown) >= drawdownThreshold;
-    });
+    return this.metricsService.getDeploymentsAtRisk(deployments);
   }
 }

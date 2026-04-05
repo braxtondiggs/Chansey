@@ -5,15 +5,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, EntityTarget, FindOptionsOrder, ObjectLiteral, Repository } from 'typeorm';
 
 import { BacktestCheckpointState, PersistedResultsCounts } from './backtest-checkpoint.interface';
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
+import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
-import {
-  Backtest,
-  BacktestPerformanceSnapshot,
-  BacktestSignal,
-  BacktestStatus,
-  BacktestTrade,
-  SimulatedOrderFill
-} from './backtest.entity';
+import { BacktestTrade } from './backtest-trade.entity';
+import { Backtest, BacktestStatus } from './backtest.entity';
+import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';

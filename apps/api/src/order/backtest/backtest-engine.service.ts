@@ -31,20 +31,12 @@ import {
   LiveReplayExecuteResult,
   ReplaySpeed
 } from './backtest-pacing.interface';
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
 import { BacktestFinalMetrics } from './backtest-result.service';
+import { BacktestSignal, SignalDirection, SignalType } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
-import {
-  Backtest,
-  BacktestPerformanceSnapshot,
-  BacktestSignal,
-  BacktestTrade,
-  SignalDirection,
-  SignalType,
-  SimulatedOrderFill,
-  SimulatedOrderStatus,
-  SimulatedOrderType,
-  TradeType
-} from './backtest.entity';
+import { BacktestTrade, TradeType } from './backtest-trade.entity';
+import { Backtest } from './backtest.entity';
 import { IncrementalSma } from './incremental-sma';
 import { MarketDataReaderService, OHLCVData } from './market-data-reader.service';
 import { MarketDataSet } from './market-data-set.entity';
@@ -71,6 +63,7 @@ import {
   ThrottleState,
   TimeframeType
 } from './shared';
+import { SimulatedOrderFill, SimulatedOrderStatus, SimulatedOrderType } from './simulated-order-fill.entity';
 
 import {
   ATRCalculator,

@@ -14,7 +14,7 @@ import { Cron } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
-import { PipelineOrchestrationJobData, STAGGER_INTERVAL_MS } from './dto/pipeline-orchestration.dto';
+import { PIPELINE_STAGGER_INTERVAL_MS, PipelineOrchestrationJobData } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
 import { BacktestService } from '../order/backtest/backtest.service';
@@ -58,7 +58,7 @@ export class PipelineOrchestrationTask {
       // Queue jobs with staggered delays (1 minute apart)
       for (let i = 0; i < eligibleUsers.length; i++) {
         const user = eligibleUsers[i];
-        const delay = i * STAGGER_INTERVAL_MS;
+        const delay = i * PIPELINE_STAGGER_INTERVAL_MS;
 
         const jobData: PipelineOrchestrationJobData = {
           userId: user.id,

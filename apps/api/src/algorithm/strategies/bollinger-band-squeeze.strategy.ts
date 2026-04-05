@@ -23,6 +23,14 @@ interface SqueezeState {
   avgBandwidthDuringSqueeze: number;
 }
 
+interface BollingerBandsData {
+  upper: number[];
+  middle: number[];
+  lower: number[];
+  pb: number[];
+  bandwidth: number[];
+}
+
 /**
  * Bollinger Band Squeeze Strategy
  *
@@ -88,84 +96,18 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
         const coinStart = Date.now();
 
-        // Dual-path: try precomputed indicators first, fall back to IndicatorService
-        const bbKey = `bb_${config.period}_${config.stdDev}`;
-        const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
-        let upper: number[], middle: number[], lower: number[], pb: number[], bandwidth: number[];
-        let bbDuration = 0;
+        const bands = await this.loadBollingerBands(coin, priceHistory, context, config);
+        if (!bands) continue;
 
-        if (preUpper) {
-          upper = preUpper;
-          middle = this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)!;
-          lower = this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)!;
-          pb = this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length)!;
-          bandwidth = this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)!;
-        } else {
-          // Calculate Bollinger Bands with timeout guard to prevent indefinite hangs
-          let bbResult: Awaited<ReturnType<typeof this.indicatorService.calculateBollingerBands>>;
-          try {
-            const bbPromise = this.indicatorService.calculateBollingerBands(
-              {
-                coinId: coin.id,
-                prices: priceHistory,
-                period: config.period,
-                stdDev: config.stdDev
-              },
-              this
-            );
+        const bbDuration = Date.now() - coinStart;
 
-            const timeoutPromise = new Promise<never>((_, reject) => {
-              setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `BB calculation timed out for ${coin.symbol} after ${BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS}ms (${priceHistory.length} prices)`
-                    )
-                  ),
-                BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS
-              );
-            });
-
-            bbResult = await Promise.race([bbPromise, timeoutPromise]);
-          } catch (err: unknown) {
-            const errInfo = toErrorInfo(err);
-            this.logger.error(
-              `BB Squeeze: calculateBollingerBands failed for ${coin.symbol} ` +
-                `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${errInfo.message}`
-            );
-            continue;
-          }
-
-          bbDuration = Date.now() - coinStart;
-          if (bbDuration > 1000) {
-            this.logger.warn(
-              `BB Squeeze: slow calculateBollingerBands for ${coin.symbol}: ${bbDuration}ms ` +
-                `(${priceHistory.length} prices, cached=${bbResult.fromCache})`
-            );
-          }
-
-          ({ upper, middle, lower, pb, bandwidth } = bbResult);
-        }
-
-        // Analyze squeeze state and generate signals
-        const signal = this.generateSignal(
-          coin.id,
-          coin.symbol,
-          priceHistory,
-          upper,
-          middle,
-          lower,
-          pb,
-          bandwidth,
-          config
-        );
-
+        const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, bands, config);
         if (signal && signal.confidence >= config.minConfidence) {
           signals.push(signal);
         }
 
         if (!isBacktest) {
-          chartData[coin.id] = this.prepareChartData(priceHistory, upper, middle, lower, pb, bandwidth, config);
+          chartData[coin.id] = this.prepareChartData(priceHistory, bands, config);
         }
 
         const totalCoinDuration = Date.now() - coinStart;
@@ -259,113 +201,133 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
   }
 
   /**
+   * Load Bollinger Bands data from precomputed cache or calculate with timeout.
+   */
+  private async loadBollingerBands(
+    coin: { id: string; symbol: string },
+    priceHistory: CandleData[],
+    context: AlgorithmContext,
+    config: BollingerSqueezeConfig
+  ): Promise<BollingerBandsData | null> {
+    const bbKey = `bb_${config.period}_${config.stdDev}`;
+    const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
+
+    if (preUpper) {
+      return {
+        upper: preUpper,
+        middle: this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length) as number[],
+        lower: this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length) as number[],
+        pb: this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length) as number[],
+        bandwidth: this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length) as number[]
+      };
+    }
+
+    const coinStart = Date.now();
+    let bbResult: Awaited<ReturnType<typeof this.indicatorService.calculateBollingerBands>>;
+    try {
+      const bbPromise = this.indicatorService.calculateBollingerBands(
+        { coinId: coin.id, prices: priceHistory, period: config.period, stdDev: config.stdDev },
+        this
+      );
+
+      let timerId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timerId = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `BB calculation timed out for ${coin.symbol} after ${BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS}ms (${priceHistory.length} prices)`
+              )
+            ),
+          BollingerBandSqueezeStrategy.COIN_CALCULATION_TIMEOUT_MS
+        );
+      });
+
+      try {
+        bbResult = await Promise.race([bbPromise, timeoutPromise]);
+      } finally {
+        clearTimeout(timerId);
+      }
+    } catch (err: unknown) {
+      const errInfo = toErrorInfo(err);
+      this.logger.error(
+        `BB Squeeze: calculateBollingerBands failed for ${coin.symbol} ` +
+          `(${priceHistory.length} prices, elapsed=${Date.now() - coinStart}ms): ${errInfo.message}`
+      );
+      return null;
+    }
+
+    const bbDuration = Date.now() - coinStart;
+    if (bbDuration > 1000) {
+      this.logger.warn(
+        `BB Squeeze: slow calculateBollingerBands for ${coin.symbol}: ${bbDuration}ms ` +
+          `(${priceHistory.length} prices, cached=${bbResult.fromCache})`
+      );
+    }
+
+    return bbResult;
+  }
+
+  /**
    * Generate trading signal based on squeeze breakout
    */
   private generateSignal(
     coinId: string,
     coinSymbol: string,
     prices: CandleData[],
-    upper: number[],
-    middle: number[],
-    lower: number[],
-    pb: number[],
-    bandwidth: number[],
+    bands: BollingerBandsData,
     config: BollingerSqueezeConfig
   ): TradingSignal | null {
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
 
-    if (isNaN(bandwidth[currentIndex]) || isNaN(bandwidth[previousIndex])) {
+    if (isNaN(bands.bandwidth[currentIndex]) || isNaN(bands.bandwidth[previousIndex])) {
       return null;
     }
 
-    // Analyze previous squeeze state
-    const squeezeState = this.analyzeSqueezeState(bandwidth, config, currentIndex);
+    const squeezeState = this.analyzeSqueezeState(bands.bandwidth, config, currentIndex);
 
-    // Check for squeeze breakout (was in squeeze, now breaking out)
     const wasInSqueeze = squeezeState.squeezeBars >= config.minSqueezeBars;
     const isBreakingOut =
-      bandwidth[currentIndex] >= config.squeezeThreshold && bandwidth[previousIndex] < config.squeezeThreshold;
+      bands.bandwidth[currentIndex] >= config.squeezeThreshold &&
+      bands.bandwidth[previousIndex] < config.squeezeThreshold;
 
     if (!wasInSqueeze || !isBreakingOut) {
       return null;
     }
 
     const currentPrice = prices[currentIndex].avg;
-    const currentMiddle = middle[currentIndex];
-    const currentUpper = upper[currentIndex];
-    const currentLower = lower[currentIndex];
-    const currentPB = pb[currentIndex];
-    const currentBandwidth = bandwidth[currentIndex];
+    const isBullishBreakout = currentPrice > bands.middle[currentIndex];
 
-    // Determine breakout direction based on price position relative to middle band
-    const isBullishBreakout = currentPrice > currentMiddle;
-
-    // Optional confirmation: Price should be moving in breakout direction
     if (config.breakoutConfirmation) {
       const priceChange = currentPrice - prices[previousIndex].avg;
-      if (isBullishBreakout && priceChange <= 0) {
-        return null; // Price not confirming bullish breakout
-      }
-      if (!isBullishBreakout && priceChange >= 0) {
-        return null; // Price not confirming bearish breakout
-      }
+      if (isBullishBreakout && priceChange <= 0) return null;
+      if (!isBullishBreakout && priceChange >= 0) return null;
     }
 
-    const strength = this.calculateSignalStrength(squeezeState, bandwidth, currentIndex, config);
-    const confidence = this.calculateConfidence(
-      squeezeState,
-      prices,
-      pb,
-      bandwidth,
-      config,
-      currentIndex,
-      isBullishBreakout
-    );
+    const strength = this.calculateSignalStrength(squeezeState, bands.bandwidth, currentIndex, config);
+    const confidence = this.calculateConfidence(squeezeState, prices, bands, config, currentIndex, isBullishBreakout);
 
-    if (isBullishBreakout) {
-      return {
-        type: SignalType.BUY,
-        coinId,
-        strength,
-        price: currentPrice,
-        confidence,
-        reason: `Bullish squeeze breakout: ${squeezeState.squeezeBars} bars of low volatility (bandwidth < ${(config.squeezeThreshold * 100).toFixed(1)}%), price breaking above middle band`,
-        metadata: {
-          symbol: coinSymbol,
-          squeezeBars: squeezeState.squeezeBars,
-          squeezeStartIndex: squeezeState.squeezeStartIndex,
-          avgBandwidthDuringSqueeze: squeezeState.avgBandwidthDuringSqueeze,
-          currentBandwidth,
-          upperBand: currentUpper,
-          middleBand: currentMiddle,
-          lowerBand: currentLower,
-          percentB: currentPB,
-          breakoutType: 'bullish'
-        }
-      };
-    } else {
-      return {
-        type: SignalType.SELL,
-        coinId,
-        strength,
-        price: currentPrice,
-        confidence,
-        reason: `Bearish squeeze breakout: ${squeezeState.squeezeBars} bars of low volatility (bandwidth < ${(config.squeezeThreshold * 100).toFixed(1)}%), price breaking below middle band`,
-        metadata: {
-          symbol: coinSymbol,
-          squeezeBars: squeezeState.squeezeBars,
-          squeezeStartIndex: squeezeState.squeezeStartIndex,
-          avgBandwidthDuringSqueeze: squeezeState.avgBandwidthDuringSqueeze,
-          currentBandwidth,
-          upperBand: currentUpper,
-          middleBand: currentMiddle,
-          lowerBand: currentLower,
-          percentB: currentPB,
-          breakoutType: 'bearish'
-        }
-      };
-    }
+    return {
+      type: isBullishBreakout ? SignalType.BUY : SignalType.SELL,
+      coinId,
+      strength,
+      price: currentPrice,
+      confidence,
+      reason: `${isBullishBreakout ? 'Bullish' : 'Bearish'} squeeze breakout: ${squeezeState.squeezeBars} bars of low volatility (bandwidth < ${(config.squeezeThreshold * 100).toFixed(1)}%), price breaking ${isBullishBreakout ? 'above' : 'below'} middle band`,
+      metadata: {
+        symbol: coinSymbol,
+        squeezeBars: squeezeState.squeezeBars,
+        squeezeStartIndex: squeezeState.squeezeStartIndex,
+        avgBandwidthDuringSqueeze: squeezeState.avgBandwidthDuringSqueeze,
+        currentBandwidth: bands.bandwidth[currentIndex],
+        upperBand: bands.upper[currentIndex],
+        middleBand: bands.middle[currentIndex],
+        lowerBand: bands.lower[currentIndex],
+        percentB: bands.pb[currentIndex],
+        breakoutType: isBullishBreakout ? 'bullish' : 'bearish'
+      }
+    };
   }
 
   /**
@@ -400,36 +362,30 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
   private calculateConfidence(
     squeezeState: SqueezeState,
     prices: CandleData[],
-    pb: number[],
-    bandwidth: number[],
+    bands: BollingerBandsData,
     config: BollingerSqueezeConfig,
     currentIndex: number,
     isBullish: boolean
   ): number {
-    // Squeeze duration confidence (longer = more confident)
     const durationConfidence = Math.min(1, squeezeState.squeezeBars / (config.minSqueezeBars * 2));
 
-    // Breakout momentum (how decisively price moved)
     let momentumScore = 0;
     if (currentIndex > 0) {
       const priceChange = Math.abs(prices[currentIndex].avg - prices[currentIndex - 1].avg);
       const avgPrice = prices[currentIndex].avg;
-      momentumScore = Math.min(1, (priceChange / avgPrice) * 50); // 2% move = full score
+      momentumScore = Math.min(1, (priceChange / avgPrice) * 50);
     }
 
-    // %B position confirmation
     let pbConfirmation = 0;
-    if (!isNaN(pb[currentIndex])) {
-      if (isBullish && pb[currentIndex] > 0.5) {
-        pbConfirmation = (pb[currentIndex] - 0.5) * 2;
-      } else if (!isBullish && pb[currentIndex] < 0.5) {
-        pbConfirmation = (0.5 - pb[currentIndex]) * 2;
+    if (!isNaN(bands.pb[currentIndex])) {
+      if (isBullish && bands.pb[currentIndex] > 0.5) {
+        pbConfirmation = (bands.pb[currentIndex] - 0.5) * 2;
+      } else if (!isBullish && bands.pb[currentIndex] < 0.5) {
+        pbConfirmation = (0.5 - bands.pb[currentIndex]) * 2;
       }
     }
 
-    // Base confidence for squeeze breakouts
     const baseConfidence = 0.5;
-
     return Math.min(1, baseConfidence + durationConfidence * 0.2 + momentumScore * 0.15 + pbConfirmation * 0.15);
   }
 
@@ -438,23 +394,19 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
    */
   private prepareChartData(
     prices: CandleData[],
-    upper: number[],
-    middle: number[],
-    lower: number[],
-    pb: number[],
-    bandwidth: number[],
+    bands: BollingerBandsData,
     config: BollingerSqueezeConfig
   ): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
       value: price.avg,
       metadata: {
-        upperBand: upper[index],
-        middleBand: middle[index],
-        lowerBand: lower[index],
-        percentB: pb[index],
-        bandwidth: bandwidth[index],
-        isInSqueeze: !isNaN(bandwidth[index]) && bandwidth[index] < config.squeezeThreshold,
+        upperBand: bands.upper[index],
+        middleBand: bands.middle[index],
+        lowerBand: bands.lower[index],
+        percentB: bands.pb[index],
+        bandwidth: bands.bandwidth[index],
+        isInSqueeze: !isNaN(bands.bandwidth[index]) && bands.bandwidth[index] < config.squeezeThreshold,
         high: price.high,
         low: price.low
       }

@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BacktestOrchestrationProcessor } from './backtest-orchestration.processor';
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
+import { BacktestWatchdogService } from './backtest-watchdog.service';
 import { DriftDetectionProcessor } from './drift-detection.processor';
 import { DriftDetectionTask } from './drift-detection.task';
 import { MarketRegimeProcessor } from './market-regime.processor';
@@ -120,6 +121,7 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     BacktestOrchestrationTask,
     BacktestOrchestrationProcessor,
     BacktestOrchestrationService,
+    BacktestWatchdogService,
     PipelineOrchestrationTask,
     PipelineOrchestrationProcessor,
     PipelineOrchestrationService,

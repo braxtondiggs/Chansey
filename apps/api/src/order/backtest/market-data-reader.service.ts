@@ -9,9 +9,8 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { Options, parse } from 'csv-parse';
 
-import * as path from 'path';
-
 import { MarketDataSet } from './market-data-set.entity';
+import { parseStorageLocation } from './storage-path.util';
 
 import { toErrorInfo } from '../../shared/error.util';
 import { StorageService } from '../../storage/storage.service';
@@ -88,46 +87,12 @@ const COLUMN_ALIASES: Record<string, string[]> = {
 /**
  * Service for reading and parsing market data CSV files from MinIO/S3 storage.
  *
- * This service provides the data layer for backtesting by reading historical OHLCV
- * (Open, High, Low, Close, Volume) data from CSV files stored in object storage.
- * It handles multiple storage location formats, CSV parsing, and date filtering.
- *
- * ## Supported CSV Format
- *
- * The CSV must include a header row with the following columns:
- *
- * | Column      | Required | Aliases                              | Description                    |
- * |-------------|----------|--------------------------------------|--------------------------------|
- * | timestamp   | Yes      | `time`, `date`, `datetime`           | Candle timestamp               |
- * | close       | Yes      | `c`, `price`                         | Closing price                  |
- * | open        | No       | `o`                                  | Opening price (defaults to close) |
- * | high        | No       | `h`                                  | High price (defaults to close) |
- * | low         | No       | `l`                                  | Low price (defaults to close)  |
- * | volume      | No       | `vol`, `v`                           | Trading volume (defaults to 0) |
- * | symbol      | No       | `coin`, `asset`, `ticker`            | Asset symbol (defaults to first in instrumentUniverse) |
- *
- * ## Supported Timestamp Formats
- *
- * - ISO 8601: `2024-01-01T00:00:00Z`
- * - Unix seconds: `1704067200` (valid range: 2000-2100)
- * - Unix milliseconds: `1704067200000` (valid if > year 2000)
- *
- * ## Example CSV
- *
- * ```csv
- * timestamp,open,high,low,close,volume,symbol
- * 2024-01-01T00:00:00Z,42000.50,42150.00,41900.00,42100.00,1500.5,BTC
- * 2024-01-01T01:00:00Z,42100.00,42200.00,42000.00,42150.00,1200.0,BTC
- * ```
- *
- * ## Storage Location Formats
- *
- * - Direct path: `datasets/btc-hourly.csv`
- * - S3 URL: `s3://bucket/datasets/btc-hourly.csv`
- * - HTTP URL: `http://minio:9000/bucket/datasets/btc-hourly.csv`
+ * Provides the data layer for backtesting by reading historical OHLCV data from
+ * CSV files in object storage. Handles CSV parsing, column alias mapping, and date filtering.
  *
  * @see {@link StorageService} for underlying MinIO operations
  * @see {@link MarketDataSet} for dataset configuration entity
+ * @see {@link parseStorageLocation} for storage URL/path resolution
  */
 @Injectable()
 export class MarketDataReaderService {
@@ -163,7 +128,7 @@ export class MarketDataReaderService {
       throw new Error('Dataset does not have a storage location configured');
     }
 
-    const objectPath = this.parseStorageLocation(dataset.storageLocation);
+    const objectPath = parseStorageLocation(dataset.storageLocation);
 
     this.logger.log(`Reading market data from storage: ${objectPath}`);
 
@@ -185,7 +150,7 @@ export class MarketDataReaderService {
     const abortController = new AbortController();
     const timeoutMs = 5 * 60 * 1000;
 
-    let timer: NodeJS.Timeout;
+    let timer: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         abortController.abort();
@@ -226,7 +191,7 @@ export class MarketDataReaderService {
 
       return result;
     } finally {
-      clearTimeout(timer!);
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -407,88 +372,6 @@ export class MarketDataReaderService {
       volume: isNaN(volume) ? 0 : volume,
       coinId: coinId.toUpperCase()
     };
-  }
-
-  /**
-   * Parse storage location to extract the object path
-   * Supports formats:
-   * - Direct path: "datasets/btc-hourly.csv"
-   * - MinIO URL: "http://minio:9000/bucket/datasets/btc-hourly.csv"
-   * - S3-style: "s3://bucket/datasets/btc-hourly.csv"
-   *
-   * Security: Validates path to prevent traversal attacks
-   */
-  private parseStorageLocation(storageLocation: string): string {
-    const location = storageLocation.trim();
-    let objectPath: string;
-
-    // Handle s3:// URLs
-    if (location.startsWith('s3://')) {
-      // s3://bucket/path/to/file.csv -> path/to/file.csv
-      const withoutProtocol = location.substring(5);
-      const slashIndex = withoutProtocol.indexOf('/');
-      if (slashIndex === -1) {
-        throw new Error(`Invalid s3:// URL format: ${location}`);
-      }
-      objectPath = withoutProtocol.substring(slashIndex + 1);
-    } else if (location.startsWith('http://') || location.startsWith('https://')) {
-      // Handle HTTP/HTTPS URLs
-      try {
-        const url = new URL(location);
-        // Remove leading slash and bucket name from path
-        const pathParts = url.pathname.split('/').filter((p) => p);
-        if (pathParts.length < 2) {
-          throw new Error(`Invalid URL path format: ${location}`);
-        }
-        // Skip first part (bucket name)
-        objectPath = pathParts.slice(1).join('/');
-      } catch {
-        throw new Error(`Failed to parse storage URL: ${location}`);
-      }
-    } else {
-      // Assume it's a direct path
-      objectPath = location;
-    }
-
-    // Security: Validate path to prevent traversal attacks
-    return this.sanitizeObjectPath(objectPath);
-  }
-
-  /**
-   * Sanitize and validate object path to prevent path traversal attacks
-   * @throws Error if path contains traversal sequences or is invalid
-   */
-  private sanitizeObjectPath(objectPath: string): string {
-    // Reject explicit traversal segments before normalization
-    const pathSegments = objectPath.split('/').filter((segment) => segment.length > 0);
-    if (pathSegments.some((segment) => segment === '..')) {
-      throw new Error('Invalid storage path: path traversal not allowed');
-    }
-
-    // Normalize path to resolve any . or .. components
-    const normalized = path.posix.normalize(objectPath);
-
-    // Check for path traversal attempts
-    if (normalized.includes('..')) {
-      throw new Error('Invalid storage path: path traversal not allowed');
-    }
-
-    // Reject absolute paths (should be relative to bucket)
-    if (normalized.startsWith('/')) {
-      throw new Error('Invalid storage path: absolute paths not allowed');
-    }
-
-    // Reject empty paths
-    if (!normalized || normalized === '.') {
-      throw new Error('Invalid storage path: path cannot be empty');
-    }
-
-    // Reject paths with null bytes (common injection technique)
-    if (normalized.includes('\0')) {
-      throw new Error('Invalid storage path: null bytes not allowed');
-    }
-
-    return normalized;
   }
 
   /**

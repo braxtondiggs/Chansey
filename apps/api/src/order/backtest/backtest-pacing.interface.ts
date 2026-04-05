@@ -1,9 +1,12 @@
 import { PipelineStage, ReplaySpeed } from '@chansey/api-interfaces';
 
 import { BacktestCheckpointState } from './backtest-checkpoint.interface';
+import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
 import { BacktestFinalMetrics } from './backtest-result.service';
-import { BacktestPerformanceSnapshot, BacktestSignal, BacktestTrade, SimulatedOrderFill } from './backtest.entity';
+import { BacktestSignal } from './backtest-signal.entity';
+import { BacktestTrade } from './backtest-trade.entity';
 import { MarketDataSet } from './market-data-set.entity';
+import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { ExitConfig } from '../interfaces/exit-config.interface';
 

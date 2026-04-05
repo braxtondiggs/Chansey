@@ -7,8 +7,8 @@ import { Repository } from 'typeorm';
 import { Role } from '@chansey/api-interfaces';
 
 import { SecurityAuditService } from './audit';
-import { VerifyOtpDto } from './dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { OtpService } from './otp.service';
 import { PasswordService } from './password.service';
 
 import {
@@ -18,12 +18,9 @@ import {
   EmailNotVerifiedException,
   InternalException,
   InvalidCredentialsException,
-  InvalidOtpException,
   InvalidTokenException,
-  OtpExpiredException,
   PasswordMismatchException,
   TokenExpiredException,
-  TooManyOtpAttemptsException,
   ValidationException
 } from '../common/exceptions';
 import { EmailService } from '../email/email.service';
@@ -35,17 +32,17 @@ import { UsersService } from '../users/users.service';
 export class AuthenticationService {
   private readonly logger = new Logger(AuthenticationService.name);
   private readonly MAX_LOGIN_ATTEMPTS = 5;
-  private readonly MAX_OTP_ATTEMPTS = 3;
   private readonly LOCKOUT_DURATION_MINUTES = 15;
 
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    readonly config: ConfigService,
+    private readonly config: ConfigService,
     private readonly user: UsersService,
     private readonly password: PasswordService,
     private readonly email: EmailService,
-    private readonly securityAudit: SecurityAuditService
+    private readonly securityAudit: SecurityAuditService,
+    private readonly otp: OtpService
   ) {}
 
   public async register(registrationData: CreateUserDto) {
@@ -128,8 +125,8 @@ export class AuthenticationService {
 
     await this.userRepository.update(user.id, {
       emailVerified: true,
-      emailVerificationToken: undefined,
-      emailVerificationTokenExpiresAt: undefined
+      emailVerificationToken: null,
+      emailVerificationTokenExpiresAt: null
     });
 
     // Send welcome email
@@ -248,7 +245,7 @@ export class AuthenticationService {
 
       // Check if OTP is enabled - if so, send OTP and return early
       if (user.otpEnabled) {
-        await this.sendLoginOtp(user);
+        await this.otp.sendLoginOtp(user);
         return {
           should_show_email_otp_screen: true,
           message: 'OTP sent to your email'
@@ -259,7 +256,7 @@ export class AuthenticationService {
       const loginTime = new Date();
       await this.userRepository.update(user.id, {
         failedLoginAttempts: 0,
-        lockedUntil: undefined,
+        lockedUntil: null,
         lastLoginAt: loginTime
       });
 
@@ -299,97 +296,9 @@ export class AuthenticationService {
     }
   }
 
-  private async sendLoginOtp(user: User) {
-    const otpCode = this.password.generateOtp();
-    const otpHash = await this.password.hashOtp(otpCode);
-    const otpExpiresAt = this.password.getOtpExpiration();
-
-    await this.userRepository.update(user.id, {
-      otpHash,
-      otpExpiresAt,
-      otpFailedAttempts: 0 // Reset failed attempts on new OTP
-    });
-
-    const emailSent = await this.email.sendOtpEmail(user.email, otpCode, user.given_name);
-    if (!emailSent) {
-      this.logger.warn(`Failed to send OTP email to ${user.email}`);
-    }
-  }
-
-  public validateAPIKey(key: string) {
+  public validateAPIKey(key: string): boolean {
     const APIKey = this.config.get('CHANSEY_API_KEY');
-    if (key === APIKey) return true;
-  }
-
-  public async verifyOtp(verifyOtpDto: VerifyOtpDto) {
-    const user = await this.userRepository.findOne({
-      where: { email: verifyOtpDto.email },
-      select: ['id', 'email', 'given_name', 'family_name', 'otpHash', 'otpExpiresAt', 'otpFailedAttempts', 'roles']
-    });
-
-    if (!user || !user.otpHash) {
-      throw new InvalidOtpException();
-    }
-
-    // Check if OTP attempts are locked out
-    if (user.otpFailedAttempts >= this.MAX_OTP_ATTEMPTS) {
-      throw new TooManyOtpAttemptsException();
-    }
-
-    if (user.otpExpiresAt && user.otpExpiresAt < new Date()) {
-      throw new OtpExpiredException();
-    }
-
-    // Verify OTP using secure comparison
-    const isValidOtp = await this.password.verifyOtp(verifyOtpDto.otp, user.otpHash);
-
-    if (!isValidOtp) {
-      // Increment failed OTP attempts
-      await this.userRepository.update(user.id, {
-        otpFailedAttempts: (user.otpFailedAttempts || 0) + 1
-      });
-
-      // Audit log: OTP failed
-      await this.securityAudit.logOtpFailed(verifyOtpDto.email, 'Invalid OTP code', undefined, undefined, user.id);
-      throw new InvalidOtpException();
-    }
-
-    // Clear OTP and update login time
-    await this.userRepository.update(user.id, {
-      otpHash: undefined,
-      otpExpiresAt: undefined,
-      otpFailedAttempts: 0,
-      failedLoginAttempts: 0,
-      lockedUntil: undefined,
-      lastLoginAt: new Date()
-    });
-
-    // Audit log: OTP verified and login success
-    await this.securityAudit.logLoginSuccess(user.id, user.email);
-
-    // Get full user data
-    const userData = await this.user.getById(user.id);
-    userData.roles = user.roles;
-
-    return {
-      user: userData,
-      access_token: null, // Will be generated by controller
-      message: 'OTP verified successfully'
-    };
-  }
-
-  public async resendOtp(email: string) {
-    const user = await this.userRepository.findOne({
-      where: { email },
-      select: ['id', 'email', 'given_name', 'otpEnabled']
-    });
-
-    if (!user) {
-      return { message: 'If an account exists, an OTP will be sent.' };
-    }
-
-    await this.sendLoginOtp(user as User);
-    return { message: 'OTP sent successfully' };
+    return key === APIKey;
   }
 
   public async changePassword(user: User, changePasswordData: ChangePasswordDto) {
@@ -484,54 +393,15 @@ export class AuthenticationService {
 
     await this.userRepository.update(user.id, {
       passwordHash,
-      passwordResetToken: undefined,
-      passwordResetTokenExpiresAt: undefined,
+      passwordResetToken: null,
+      passwordResetTokenExpiresAt: null,
       failedLoginAttempts: 0,
-      lockedUntil: undefined
+      lockedUntil: null
     });
 
     // Audit log: password reset completed
     await this.securityAudit.logPasswordResetCompleted(user.id, user.email);
 
     return { message: 'Password reset successfully' };
-  }
-
-  public async enableOtp(userId: string) {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      select: ['id', 'email']
-    });
-
-    await this.userRepository.update(userId, { otpEnabled: true });
-
-    // Audit log: OTP enabled
-    if (user) {
-      await this.securityAudit.logOtpEnabled(userId, user.email);
-    }
-
-    return { message: 'OTP enabled successfully' };
-  }
-
-  public async disableOtp(userId: string, password: string) {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      select: ['id', 'email', 'passwordHash']
-    });
-
-    if (!user?.passwordHash) {
-      throw new ValidationException('Cannot verify password');
-    }
-
-    const isValid = await this.password.verifyPassword(password, user.passwordHash);
-    if (!isValid) {
-      throw new InvalidCredentialsException('Invalid password');
-    }
-
-    await this.userRepository.update(userId, { otpEnabled: false });
-
-    // Audit log: OTP disabled
-    await this.securityAudit.logOtpDisabled(userId, user.email);
-
-    return { message: 'OTP disabled successfully' };
   }
 }

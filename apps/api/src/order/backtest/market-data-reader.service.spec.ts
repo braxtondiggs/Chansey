@@ -26,67 +26,6 @@ describe('MarketDataReaderService', () => {
     endDate?: Date
   ) => service.readMarketData(csv as any, startDate, endDate);
 
-  // ── Security: sanitizeObjectPath ──────────────────────────────────────
-
-  describe('sanitizeObjectPath', () => {
-    it('rejects path traversal segments', () => {
-      const { service } = createService();
-      const sanitize = (p: string) => (service as any).sanitizeObjectPath(p);
-
-      expect(() => sanitize('../secrets.csv')).toThrow('path traversal not allowed');
-      expect(() => sanitize('datasets/../secrets.csv')).toThrow('path traversal not allowed');
-    });
-
-    it('rejects absolute paths', () => {
-      const { service } = createService();
-
-      expect(() => (service as any).sanitizeObjectPath('/datasets/btc.csv')).toThrow('absolute paths not allowed');
-    });
-
-    it('rejects null bytes', () => {
-      const { service } = createService();
-
-      expect(() => (service as any).sanitizeObjectPath('datasets/btc\0.csv')).toThrow('null bytes not allowed');
-    });
-
-    it('rejects empty paths', () => {
-      const { service } = createService();
-
-      expect(() => (service as any).sanitizeObjectPath('')).toThrow('path cannot be empty');
-    });
-  });
-
-  // ── Storage location parsing ──────────────────────────────────────────
-
-  describe('parseStorageLocation', () => {
-    it('parses s3:// URLs to object path', () => {
-      const { service } = createService();
-      const parse = (loc: string) => (service as any).parseStorageLocation(loc);
-
-      expect(parse('s3://my-bucket/datasets/btc-hourly.csv')).toBe('datasets/btc-hourly.csv');
-    });
-
-    it('rejects s3:// URLs without path', () => {
-      const { service } = createService();
-
-      expect(() => (service as any).parseStorageLocation('s3://bucket-only')).toThrow('Invalid s3:// URL format');
-    });
-
-    it('parses http:// URLs stripping bucket prefix', () => {
-      const { service } = createService();
-      const parse = (loc: string) => (service as any).parseStorageLocation(loc);
-
-      expect(parse('http://minio:9000/my-bucket/datasets/btc.csv')).toBe('datasets/btc.csv');
-      expect(parse('https://storage.example.com/bucket/deep/path/file.csv')).toBe('deep/path/file.csv');
-    });
-
-    it('passes through direct paths', () => {
-      const { service } = createService();
-
-      expect((service as any).parseStorageLocation('datasets/btc-hourly.csv')).toBe('datasets/btc-hourly.csv');
-    });
-  });
-
   // ── readMarketData: pre-checks ────────────────────────────────────────
 
   describe('readMarketData pre-checks', () => {
@@ -225,6 +164,27 @@ describe('MarketDataReaderService', () => {
 
       expect(result.data[0].coinId).toBe('UNKNOWN');
     });
+
+    it('uppercases symbol column values', async () => {
+      const csv = ['timestamp,close,symbol', '2024-01-01T00:00:00Z,100,btc'].join('\n');
+
+      const { service } = createService(mockStorageForCSV(csv));
+      const result = await readCSV(service, { storageLocation: 'datasets/btc.csv', instrumentUniverse: [] });
+
+      expect(result.data[0].coinId).toBe('BTC');
+    });
+
+    it('falls back to close when optional numeric fields are non-numeric', async () => {
+      const csv = ['timestamp,open,high,low,close,volume', '2024-01-01T00:00:00Z,abc,def,ghi,100,xyz'].join('\n');
+
+      const { service } = createService(mockStorageForCSV(csv));
+      const result = await readCSV(service, { storageLocation: 'datasets/btc.csv', instrumentUniverse: ['BTC'] });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({ open: 100, high: 100, low: 100, close: 100, volume: 0 })
+      );
+    });
   });
 
   // ── Timestamp parsing ─────────────────────────────────────────────────
@@ -286,6 +246,31 @@ describe('MarketDataReaderService', () => {
       await expect(
         readCSV(service, { storageLocation: 'datasets/btc.csv', instrumentUniverse: ['BTC'] })
       ).rejects.toThrow('close/price column');
+    });
+
+    it('throws "outside date range" when all valid rows are filtered out', async () => {
+      const csv = ['timestamp,close', '2024-01-01T00:00:00Z,100', '2024-01-02T00:00:00Z,101'].join('\n');
+
+      const { service } = createService(mockStorageForCSV(csv));
+
+      await expect(
+        readCSV(
+          service,
+          { storageLocation: 'datasets/btc.csv', instrumentUniverse: ['BTC'] },
+          new Date('2025-01-01T00:00:00Z'),
+          new Date('2025-12-31T00:00:00Z')
+        )
+      ).rejects.toThrow('outside the requested date range');
+    });
+
+    it('skips rows with non-numeric close price and keeps valid rows', async () => {
+      const csv = ['timestamp,close', '2024-01-01T00:00:00Z,abc', '2024-01-02T00:00:00Z,200'].join('\n');
+
+      const { service } = createService(mockStorageForCSV(csv));
+      const result = await readCSV(service, { storageLocation: 'datasets/btc.csv', instrumentUniverse: ['BTC'] });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].close).toBe(200);
     });
   });
 });
