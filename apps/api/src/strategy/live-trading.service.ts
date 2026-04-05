@@ -251,6 +251,23 @@ export class LiveTradingService implements OnApplicationShutdown {
             continue;
           }
 
+          // Skip BUY if long position already exists for this symbol
+          if (action === 'buy') {
+            const signalCoinId = this.extractCoinIdFromSymbol(signal.symbol);
+            const existingPosition = strategyPositions.find(
+              (p) =>
+                p.positionSide !== 'short' &&
+                Number(p.quantity) > 0 &&
+                this.extractCoinIdFromSymbol(p.symbol) === signalCoinId
+            );
+            if (existingPosition) {
+              this.logger.debug(
+                `Skipped BUY for ${signal.symbol}: long position already held for strategy ${strategy.id}`
+              );
+              continue;
+            }
+          }
+
           // Daily loss limit gate: block BUY/short_entry when rolling 24h losses exceed threshold
           if (dailyLossBlocked && (action === 'buy' || action === 'short_entry')) {
             this.metricsService.recordDailyLossGateBlock();

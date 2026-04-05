@@ -267,6 +267,51 @@ describe('PaperTradingEngineService', () => {
     expect(result.processed).toBe(true);
   });
 
+  it('skips BUY signal when position already held', async () => {
+    const { service, accountRepository, signalRepository, orderRepository, marketDataService, algorithmRegistry } =
+      createService();
+
+    // User already holds ETH
+    const quoteAccount = { currency: 'USD', available: 5000, total: 5000 };
+    const ethAccount = { currency: 'ETH', available: 1.5, total: 1.5 };
+
+    accountRepository.find.mockResolvedValue([quoteAccount, ethAccount]);
+
+    marketDataService.getPrices.mockResolvedValue(new Map([['ETH/USD', { price: 3000 }]]));
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        {
+          type: SignalType.BUY,
+          coinId: 'ETH',
+          strength: 0.8,
+          quantity: 0.5,
+          confidence: 0.9,
+          reason: 'bullish indicators'
+        }
+      ]
+    });
+
+    const session = {
+      id: 'session-dup',
+      initialCapital: 10000,
+      tickCount: 1,
+      tradingFee: 0.001,
+      user: { id: 'user-1' }
+    } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    const result = await service.processTick(session, exchangeKey);
+
+    // Signal should NOT be saved (skipped before saveSignal)
+    expect(signalRepository.save).not.toHaveBeenCalled();
+    // No order should be executed
+    expect(orderRepository.save).not.toHaveBeenCalled();
+    expect(result.ordersExecuted).toBe(0);
+    expect(result.processed).toBe(true);
+  });
+
   it('applies slippage to execution price for buy orders', async () => {
     const dataSource = {
       transaction: jest.fn((callback: any) =>
@@ -1247,30 +1292,13 @@ describe('PaperTradingEngineService', () => {
       expect(btcAccount.entryDate).toBeInstanceOf(Date);
     });
 
-    it('preserves entryDate on add-to BUY', async () => {
-      const originalEntryDate = new Date('2024-01-01T00:00:00Z');
+    it('skips add-to BUY when position already held (duplicate guard)', async () => {
       const existingBtcAccount = {
         currency: 'BTC',
         available: 0.5,
         total: 0.5,
         averageCost: 45000,
-        entryDate: originalEntryDate
-      };
-      const savedEntities: any[] = [];
-      const dataSource = {
-        transaction: jest.fn((callback: any) =>
-          callback({
-            findOne: jest
-              .fn()
-              .mockResolvedValueOnce({ currency: 'USD', available: 10000, total: 10000 })
-              .mockResolvedValueOnce({ ...existingBtcAccount }),
-            create: jest.fn((_entity: any, data: any) => data),
-            save: jest.fn((entity: any) => {
-              savedEntities.push({ ...entity });
-              return Promise.resolve(entity);
-            })
-          })
-        )
+        entryDate: new Date('2024-01-01T00:00:00Z')
       };
 
       const {
@@ -1280,22 +1308,13 @@ describe('PaperTradingEngineService', () => {
         snapshotRepository,
         orderRepository,
         marketDataService,
-        algorithmRegistry,
-        feeCalculator
-      } = createService({ dataSource });
+        algorithmRegistry
+      } = createService();
 
       const quoteAccount = { currency: 'USD', available: 10000, total: 10000 };
-      accountRepository.find
-        .mockResolvedValueOnce([quoteAccount, existingBtcAccount])
-        .mockResolvedValueOnce([quoteAccount, existingBtcAccount]) // refresh after successful order
-        .mockResolvedValueOnce([quoteAccount, existingBtcAccount]);
+      accountRepository.find.mockResolvedValue([quoteAccount, existingBtcAccount]);
 
       marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
-      marketDataService.calculateRealisticSlippage.mockResolvedValue({
-        estimatedPrice: 50000,
-        slippageBps: 0,
-        marketImpact: 0
-      });
 
       algorithmRegistry.executeAlgorithm.mockResolvedValue({
         success: true,
@@ -1303,9 +1322,6 @@ describe('PaperTradingEngineService', () => {
           { type: SignalType.BUY, coinId: 'BTC', strength: 0.05, quantity: 0.01, confidence: 0.8, reason: 'add to' }
         ]
       });
-
-      feeCalculator.fromFlatRate.mockReturnValue({ rate: 0.001 });
-      feeCalculator.calculateFee.mockReturnValue({ fee: 0.5 });
 
       signalRepository.create.mockReturnValue({ processed: false, rejectionCode: null });
       signalRepository.save.mockImplementation(async (value: any) => value);
@@ -1331,11 +1347,11 @@ describe('PaperTradingEngineService', () => {
 
       const result = await service.processTick(session, exchangeKey);
 
-      expect(result.ordersExecuted).toBe(1);
-      // The BTC account saved should preserve the original entryDate
-      const btcSave = savedEntities.find((e) => e.currency === 'BTC');
-      expect(btcSave).toBeDefined();
-      expect(btcSave.entryDate).toEqual(originalEntryDate);
+      // BUY should be skipped because BTC position is already held
+      expect(result.ordersExecuted).toBe(0);
+      // Signal should not be saved (skipped before saveSignal)
+      expect(signalRepository.save).not.toHaveBeenCalled();
+      expect(result.processed).toBe(true);
     });
 
     it('clears entryDate on full sell', async () => {
@@ -2510,5 +2526,46 @@ describe('PaperTradingEngineService', () => {
       expect(marketDataService.getPrices).toHaveBeenCalledWith('coinbase', expect.arrayContaining(['USDT/USD']));
       expect(result.processed).toBe(true);
     });
+  });
+
+  it('does not produce duplicate signals when multiple symbols share a base currency', async () => {
+    const { service, accountRepository, snapshotRepository, orderRepository, marketDataService, algorithmRegistry } =
+      createService();
+
+    const quoteAccount = { currency: 'USDT', available: 10000, total: 10000 };
+
+    accountRepository.find.mockResolvedValueOnce([quoteAccount]).mockResolvedValueOnce([quoteAccount]);
+
+    // Two symbols sharing the same base currency (ETH)
+    marketDataService.getPrices.mockResolvedValue(
+      new Map([
+        ['ETH/USDT', { price: 1900 }],
+        ['ETH/BTC', { price: 0.05 }]
+      ])
+    );
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+    orderRepository.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ totalRealizedPnL: 0 })
+    });
+
+    snapshotRepository.create.mockReturnValue({});
+    snapshotRepository.save.mockResolvedValue({});
+
+    const session = { id: 'session-dedup', initialCapital: 10000, tickCount: 5, user: { id: 'user-1' } } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    await service.processTick(session, exchangeKey);
+
+    // Algorithm should receive only one coin entry for ETH, not two
+    const algorithmCall = algorithmRegistry.executeAlgorithm.mock.calls[0];
+    const context = algorithmCall[1]; // second argument is the AlgorithmContext
+    const ethCoins = context.coins.filter((c: any) => c.id === 'ETH');
+
+    expect(ethCoins).toHaveLength(1);
   });
 });

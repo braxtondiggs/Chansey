@@ -376,6 +376,21 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     const { signal, skipReason } = await this.generateTradeSignal(activation, portfolioValue);
 
     if (signal) {
+      // Skip BUY if user already holds this asset
+      if (signal.action === 'BUY' && signal.positionSide !== 'short') {
+        const userAssets = balanceCache.get(activation.userId) ?? [];
+        const [baseCurrency] = signal.symbol.split('/');
+        const existingHolding = userAssets.find(
+          (a) => a.symbol.toUpperCase() === baseCurrency.toUpperCase() && a.usdValue > 1.0
+        );
+        if (existingHolding) {
+          this.logger.debug(
+            `Skipped BUY for ${signal.symbol}: user ${activation.userId} already holds ${baseCurrency}`
+          );
+          return 'skipped';
+        }
+      }
+
       // Daily loss limit gate: block entry signals when user's rolling 24h losses exceed threshold
       const isEntryAction =
         (signal.action === 'BUY' && signal.positionSide !== 'short') ||

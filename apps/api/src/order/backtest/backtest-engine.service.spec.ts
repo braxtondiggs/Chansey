@@ -1579,20 +1579,26 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
   it('includes cumulative counts in pause checkpoint after prior checkpoints', async () => {
     // Regression test for C1: pause paths must use cumulative counts, not just
     // the current (post-clear) array lengths, so that resume sees all trades.
+    let callCount = 0;
     const algorithmRegistry = {
-      executeAlgorithm: jest.fn().mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        callCount++;
+        const action = callCount % 2 === 1 ? SignalType.BUY : SignalType.SELL;
+        return Promise.resolve({
+          success: true,
+          signals: [{ type: action, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+        });
       })
     };
 
     // 4 candles → 4 iterations: checkpoint fires after iteration 0, then pause at iteration 2
+    // Spaced 25h apart so SELL signals aren't blocked by the 24h minimum hold period
     const candles = [0, 1, 2, 3].map(
       (i) =>
         new OHLCCandle({
           coinId: 'BTC',
           exchangeId: 'exchange-1',
-          timestamp: new Date(`2024-01-01T0${i}:00:00.000Z`),
+          timestamp: new Date(new Date('2024-01-01T00:00:00.000Z').getTime() + i * 25 * 60 * 60 * 1000),
           open: 100,
           high: 110,
           low: 96,
@@ -1627,7 +1633,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         initialCapital: 100000,
         tradingFee: 0,
         startDate: new Date('2024-01-01T00:00:00.000Z'),
-        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        endDate: new Date('2024-01-05T00:00:00.000Z'),
         algorithm: { id: 'algo-1' },
         configSnapshot: { parameters: { cooldownMs: 0, maxTradesPerDay: 0 } }
       } as any,
@@ -1636,7 +1642,7 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
         dataset: {
           id: 'dataset-c1',
           startAt: new Date('2024-01-01T00:00:00.000Z'),
-          endAt: new Date('2024-01-01T04:00:00.000Z')
+          endAt: new Date('2024-01-05T00:00:00.000Z')
         } as any,
         deterministicSeed: 'seed-c1',
         replaySpeed: ReplaySpeed.MAX_SPEED,
@@ -1652,13 +1658,13 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
 
     // Verify pause checkpoint has cumulative counts, not just partial
     const pausedCheckpoint = result.pausedCheckpoint!;
-    // Each iteration produces 1 trade (BUY signal always fires), so after 3 iterations → 3 trades
+    // Alternating BUY/SELL: iteration 0=BUY, 1=SELL, 2=BUY → 3 trades after 3 iterations
     // With checkpointInterval=1, arrays get cleared at checkpoints.
     // The bug was that pause used trades.length (partial) instead of totalPersistedCounts + trades.length (cumulative)
     expect(pausedCheckpoint.persistedCounts.trades).toBe(3);
 
-    // Sells and winningSells should be persisted (all BUY signals → 0 sells)
-    expect(pausedCheckpoint.persistedCounts.sells).toBe(0);
+    // One SELL executed (iteration 1), price unchanged so PnL=0 → not a winning sell
+    expect(pausedCheckpoint.persistedCounts.sells).toBe(1);
     expect(pausedCheckpoint.persistedCounts.winningSells).toBe(0);
 
     // Final metrics should also reflect all trades across checkpoints
@@ -2322,10 +2328,15 @@ describe('BacktestEngine warmup / date range separation', () => {
   it('does not trade before backtest.startDate when dataset is broader', async () => {
     // Dataset: Jan 1-4, Backtest trading window: Jan 3-4
     // Jan 1-2 should be warmup only (no trades/signals)
+    let callCount = 0;
     const algorithmRegistry = {
-      executeAlgorithm: jest.fn().mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        callCount++;
+        const action = callCount % 2 === 1 ? SignalType.BUY : SignalType.SELL;
+        return Promise.resolve({
+          success: true,
+          signals: [{ type: action, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+        });
       })
     };
 
@@ -2367,7 +2378,7 @@ describe('BacktestEngine warmup / date range separation', () => {
       }
     );
 
-    // Should only have trades from Jan 3 and Jan 4 (2 trading periods)
+    // Should only have trades from Jan 3 and Jan 4 (1 BUY + 1 SELL in trading window)
     expect(result.trades).toHaveLength(2);
     for (const trade of result.trades) {
       expect((trade.executedAt as Date).getTime()).toBeGreaterThanOrEqual(
@@ -2431,10 +2442,15 @@ describe('BacktestEngine warmup / date range separation', () => {
   });
 
   it('does not trade after backtest.endDate even if dataset extends further', async () => {
+    let callCount = 0;
     const algorithmRegistry = {
-      executeAlgorithm: jest.fn().mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        callCount++;
+        const action = callCount % 2 === 1 ? SignalType.BUY : SignalType.SELL;
+        return Promise.resolve({
+          success: true,
+          signals: [{ type: action, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+        });
       })
     };
 
@@ -2476,7 +2492,7 @@ describe('BacktestEngine warmup / date range separation', () => {
       }
     );
 
-    // Should only have trades from Jan 1 and Jan 2
+    // Should only have trades from Jan 1 and Jan 2 (1 BUY + 1 SELL)
     expect(result.trades).toHaveLength(2);
     for (const trade of result.trades) {
       expect((trade.executedAt as Date).getTime()).toBeLessThanOrEqual(new Date('2024-01-02T00:00:00.000Z').getTime());
@@ -2484,13 +2500,19 @@ describe('BacktestEngine warmup / date range separation', () => {
   });
 
   it('behaves identically when dataset and backtest dates match', async () => {
+    let callCount = 0;
     const algorithmRegistry = {
-      executeAlgorithm: jest.fn().mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        callCount++;
+        const action = callCount % 2 === 1 ? SignalType.BUY : SignalType.SELL;
+        return Promise.resolve({
+          success: true,
+          signals: [{ type: action, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+        });
       })
     };
 
+    // Candles spaced 25h apart so SELL isn't blocked by 24h minimum hold period
     const candles = [
       new OHLCCandle({
         coinId: 'BTC',
@@ -2505,7 +2527,7 @@ describe('BacktestEngine warmup / date range separation', () => {
       new OHLCCandle({
         coinId: 'BTC',
         exchangeId: 'exchange-1',
-        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        timestamp: new Date('2024-01-02T01:00:00.000Z'),
         open: 100,
         high: 110,
         low: 96,
@@ -2523,7 +2545,7 @@ describe('BacktestEngine warmup / date range separation', () => {
         initialCapital: 10000,
         tradingFee: 0,
         startDate: new Date('2024-01-01T00:00:00.000Z'),
-        endDate: new Date('2024-01-01T02:00:00.000Z'),
+        endDate: new Date('2024-01-02T02:00:00.000Z'),
         algorithm: { id: 'algo-1' },
         configSnapshot: { parameters: { cooldownMs: 0, maxTradesPerDay: 0 } }
       } as any,
@@ -2532,13 +2554,13 @@ describe('BacktestEngine warmup / date range separation', () => {
         dataset: {
           id: 'dataset-matching',
           startAt: new Date('2024-01-01T00:00:00.000Z'),
-          endAt: new Date('2024-01-01T02:00:00.000Z')
+          endAt: new Date('2024-01-02T02:00:00.000Z')
         } as any,
         deterministicSeed: 'seed-matching'
       }
     );
 
-    // No warmup, all periods are trading — 2 trades expected
+    // No warmup, all periods are trading — 2 trades expected (1 BUY + 1 SELL)
     expect(result.trades).toHaveLength(2);
     expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
   });
@@ -2602,10 +2624,15 @@ describe('BacktestEngine warmup / date range separation', () => {
   });
 
   it('live replay: no trades before backtest.startDate with broader dataset', async () => {
+    let callCount = 0;
     const algorithmRegistry = {
-      executeAlgorithm: jest.fn().mockResolvedValue({
-        success: true,
-        signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+      executeAlgorithm: jest.fn().mockImplementation(() => {
+        callCount++;
+        const action = callCount % 2 === 1 ? SignalType.BUY : SignalType.SELL;
+        return Promise.resolve({
+          success: true,
+          signals: [{ type: action, coinId: 'BTC', quantity: 0.1, reason: 'entry', confidence: 0.5 }]
+        });
       })
     };
 
@@ -2649,7 +2676,7 @@ describe('BacktestEngine warmup / date range separation', () => {
       }
     );
 
-    // Should only have trades from Jan 3 and Jan 4
+    // Should only have trades from Jan 3 and Jan 4 (1 BUY + 1 SELL)
     expect(result.trades).toHaveLength(2);
     for (const trade of result.trades) {
       expect((trade.executedAt as Date).getTime()).toBeGreaterThanOrEqual(

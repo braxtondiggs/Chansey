@@ -338,8 +338,26 @@ export class PaperTradingEngineService {
       }
 
       // 6. Process signals and execute orders
+      // Build set of currently-held coins to prevent duplicate BUY signals
+      const activeAccounts =
+        exitOrdersExecuted > 0
+          ? await this.accountRepository.find({ where: { session: { id: session.id } } })
+          : accounts;
+      const heldCoins = new Set(
+        activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
+      );
+
       let currentPortfolio = updatedPortfolio;
       for (const signal of regimeFilteredSignals) {
+        // Skip BUY if position already held for this symbol
+        if (signal.action === 'BUY') {
+          const [baseCurrency] = signal.symbol.split('/');
+          if (heldCoins.has(baseCurrency)) {
+            this.logger.debug(`Skipped duplicate BUY for ${signal.symbol}: position already held`);
+            continue;
+          }
+        }
+
         // Save signal to database
         const signalEntity = await this.saveSignal(session, signal);
 
@@ -398,6 +416,18 @@ export class PaperTradingEngineService {
             if (result.order) {
               ordersExecuted++;
               signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+
+              // Track newly bought coin to block subsequent same-tick BUY signals
+              if (signal.action === 'BUY') {
+                const [bought] = signal.symbol.split('/');
+                heldCoins.add(bought);
+              }
+
+              // Remove sold coin so it can be re-bought by a later signal in the same tick
+              if (signal.action === 'SELL') {
+                const [sold] = signal.symbol.split('/');
+                heldCoins.delete(sold);
+              }
 
               // Register position in exit tracker on BUY fill
               if (exitTracker && signal.action === 'BUY') {
@@ -1069,14 +1099,15 @@ export class PaperTradingEngineService {
    * Helper: Extract coins from prices map
    */
   private extractCoinsFromPrices(prices: Record<string, number>): Array<{ id: string; symbol: string }> {
+    const seen = new Set<string>();
     const coins: Array<{ id: string; symbol: string }> = [];
 
     for (const symbol of Object.keys(prices)) {
       const [baseCurrency] = symbol.split('/');
-      coins.push({
-        id: baseCurrency,
-        symbol: baseCurrency
-      });
+      if (!seen.has(baseCurrency)) {
+        seen.add(baseCurrency);
+        coins.push({ id: baseCurrency, symbol: baseCurrency });
+      }
     }
 
     return coins;
@@ -1096,13 +1127,14 @@ export class PaperTradingEngineService {
     for (const [symbol, price] of Object.entries(prices)) {
       const [baseCurrency] = symbol.split('/');
       const candles = historicalCandles[symbol] ?? [];
+      const candidate =
+        candles.length > 0
+          ? [...candles, { avg: price, high: price, low: price, date: now }]
+          : [{ avg: price, high: price, low: price, date: now }];
 
-      if (candles.length > 0) {
-        // Use historical candles + append current price as latest data point
-        priceData[baseCurrency] = [...candles, { avg: price, high: price, low: price, date: now }];
-      } else {
-        // Fallback: single price point (algorithm will skip due to insufficient data)
-        priceData[baseCurrency] = [{ avg: price, high: price, low: price, date: now }];
+      // Keep the entry with the most candles (richest indicator data)
+      if (!priceData[baseCurrency] || candidate.length > priceData[baseCurrency].length) {
+        priceData[baseCurrency] = candidate;
       }
     }
 
