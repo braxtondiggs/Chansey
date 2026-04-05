@@ -4,16 +4,11 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { DataSource, ObjectLiteral, Repository } from 'typeorm';
 
-import { WindowMetrics } from '@chansey/api-interfaces';
-
 import { GridSearchService } from './grid-search.service';
+import { OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
+import { OptimizationQueryService } from './optimization-query.service';
 
-import { Coin } from '../../coin/coin.entity';
-import { OHLCService } from '../../ohlc/ohlc.service';
-import { BacktestEngine } from '../../order/backtest/backtest-engine.service';
-import { WalkForwardService } from '../../scoring/walk-forward/walk-forward.service';
-import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { OptimizationResult } from '../entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
@@ -56,15 +51,12 @@ describe('OptimizationOrchestratorService', () => {
   let service: OptimizationOrchestratorService;
   let optimizationRunRepo: MockRepo<OptimizationRun>;
   let optimizationResultRepo: MockRepo<OptimizationResult>;
-  let strategyConfigRepo: MockRepo<StrategyConfig>;
-  let coinRepo: MockRepo<Coin>;
   let optimizationQueue: jest.Mocked<Queue>;
   let gridSearchService: jest.Mocked<GridSearchService>;
-  let walkForwardService: jest.Mocked<WalkForwardService>;
-  let windowProcessor: jest.Mocked<WindowProcessor>;
-  let backtestEngine: jest.Mocked<BacktestEngine>;
-  let ohlcService: jest.Mocked<OHLCService>;
+  let evaluationService: jest.Mocked<OptimizationEvaluationService>;
+  let queryService: jest.Mocked<OptimizationQueryService>;
   let dataSource: jest.Mocked<DataSource>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
 
   beforeEach(() => {
     optimizationRunRepo = {
@@ -89,16 +81,6 @@ describe('OptimizationOrchestratorService', () => {
       })
     } as unknown as MockRepo<OptimizationResult>;
 
-    strategyConfigRepo = {
-      findOne: jest.fn(),
-      save: jest.fn()
-    } as unknown as MockRepo<StrategyConfig>;
-
-    coinRepo = {
-      createQueryBuilder: jest.fn(),
-      find: jest.fn()
-    } as unknown as MockRepo<Coin>;
-
     optimizationQueue = {
       add: jest.fn(),
       remove: jest.fn()
@@ -109,49 +91,51 @@ describe('OptimizationOrchestratorService', () => {
       generateRandomCombinations: jest.fn()
     } as unknown as jest.Mocked<GridSearchService>;
 
-    walkForwardService = {
-      generateWindows: jest.fn()
-    } as unknown as jest.Mocked<WalkForwardService>;
-
-    windowProcessor = {
-      processWindow: jest.fn()
-    } as unknown as jest.Mocked<WindowProcessor>;
-
-    backtestEngine = {
-      executeOptimizationBacktest: jest.fn(),
-      executeOptimizationBacktestWithData: jest.fn(),
-      precomputeWindowData: jest.fn(),
-      runOptimizationBacktestWithPrecomputed: jest.fn()
-    } as unknown as jest.Mocked<BacktestEngine>;
-
-    ohlcService = {
-      getCandlesByDateRange: jest.fn().mockResolvedValue([]),
-      getCoinsWithCandleData: jest.fn().mockResolvedValue(['btc', 'eth']),
-      getCandleDataDateRange: jest.fn().mockResolvedValue({
-        start: new Date('2025-11-10'),
-        end: new Date('2026-02-20')
+    evaluationService = {
+      evaluateCombination: jest.fn(),
+      loadCoinsForOptimization: jest.fn().mockResolvedValue([{ id: 'btc' }, { id: 'eth' }]),
+      loadAndIndexCandles: jest.fn().mockResolvedValue({ candlesByCoin: new Map(), allCandleCount: 0 }),
+      precomputeAllWindowData: jest.fn().mockReturnValue(new Map()),
+      prepareWalkForwardData: jest.fn().mockResolvedValue({
+        windows: [
+          {
+            windowIndex: 0,
+            trainStartDate: new Date('2024-01-01'),
+            trainEndDate: new Date('2024-04-01'),
+            testStartDate: new Date('2024-04-01'),
+            testEndDate: new Date('2024-05-01')
+          }
+        ],
+        candlesByCoin: new Map(),
+        precomputedWindows: new Map(),
+        warmupDays: 14
+      }),
+      getDateRange: jest.fn().mockResolvedValue({
+        startDate: new Date('2025-11-10'),
+        endDate: new Date('2026-02-20')
       })
-    } as unknown as jest.Mocked<OHLCService>;
+    } as unknown as jest.Mocked<OptimizationEvaluationService>;
+
+    queryService = {
+      findStrategyConfig: jest.fn(),
+      rankResults: jest.fn().mockResolvedValue(null)
+    } as unknown as jest.Mocked<OptimizationQueryService>;
 
     dataSource = {
       transaction: jest.fn()
     } as unknown as jest.Mocked<DataSource>;
 
-    const eventEmitter = {
+    eventEmitter = {
       emit: jest.fn()
     } as unknown as jest.Mocked<EventEmitter2>;
 
     service = new OptimizationOrchestratorService(
       optimizationRunRepo,
       optimizationResultRepo,
-      strategyConfigRepo,
-      coinRepo,
       optimizationQueue,
       gridSearchService,
-      walkForwardService,
-      windowProcessor,
-      backtestEngine,
-      ohlcService,
+      evaluationService,
+      queryService,
       dataSource,
       eventEmitter
     );
@@ -161,142 +145,84 @@ describe('OptimizationOrchestratorService', () => {
     it('should pass for valid configuration', async () => {
       const config = createValidConfig();
 
-      strategyConfigRepo.findOne.mockResolvedValue({ id: 'strategy-1' } as StrategyConfig);
+      queryService.findStrategyConfig.mockResolvedValue({ id: 'strategy-1' } as StrategyConfig);
       gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
       optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
       optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
 
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).resolves.toBeDefined();
+      const result = await service.startOptimization('strategy-1', createValidSpace(), config);
+      expect(result.id).toBe('run-1');
     });
 
-    it('should reject when trainDays < testDays', async () => {
-      const config = createValidConfig({
-        walkForward: {
-          trainDays: 30,
-          testDays: 90, // Invalid: test > train
-          stepDays: 15,
-          method: 'rolling',
-          minWindowsRequired: 3
-        }
-      });
+    it.each([
+      {
+        name: 'trainDays < testDays',
+        override: {
+          walkForward: { trainDays: 30, testDays: 90, stepDays: 15, method: 'rolling', minWindowsRequired: 3 }
+        },
+        expectedMessage: 'trainDays must be >= testDays'
+      },
+      {
+        name: 'trainDays not positive',
+        override: {
+          walkForward: { trainDays: 0, testDays: 30, stepDays: 15, method: 'rolling', minWindowsRequired: 3 }
+        },
+        expectedMessage: 'trainDays must be positive'
+      },
+      {
+        name: 'testDays not positive',
+        override: {
+          walkForward: { trainDays: 90, testDays: 0, stepDays: 15, method: 'rolling', minWindowsRequired: 3 }
+        },
+        expectedMessage: 'testDays must be positive'
+      },
+      {
+        name: 'stepDays not positive',
+        override: {
+          walkForward: { trainDays: 90, testDays: 30, stepDays: 0, method: 'rolling', minWindowsRequired: 3 }
+        },
+        expectedMessage: 'stepDays must be positive'
+      },
+      {
+        name: 'maxCombinations not positive',
+        override: { maxCombinations: 0 },
+        expectedMessage: 'maxCombinations must be positive'
+      },
+      {
+        name: 'maxIterations not positive',
+        override: { method: 'random_search', maxIterations: 0 },
+        expectedMessage: 'maxIterations must be positive'
+      },
+      {
+        name: 'early stop patience not positive',
+        override: { earlyStop: { enabled: true, patience: 0, minImprovement: 1 } },
+        expectedMessage: 'patience must be positive'
+      },
+      {
+        name: 'early stop minImprovement negative',
+        override: { earlyStop: { enabled: true, patience: 3, minImprovement: -0.01 } },
+        expectedMessage: 'minImprovement cannot be negative'
+      },
+      {
+        name: 'composite weights do not sum to 1.0',
+        override: {
+          objective: { metric: 'composite', minimize: false, weights: { sharpeRatio: 0.5, totalReturn: 0.3 } }
+        },
+        expectedMessage: 'Composite weights must sum to 1.0'
+      },
+      {
+        name: 'startDate >= endDate',
+        override: { dateRange: { startDate: new Date('2024-01-01'), endDate: new Date('2023-01-01') } },
+        expectedMessage: 'startDate must be before endDate'
+      }
+    ])('should reject when $name', async ({ override, expectedMessage }) => {
+      const config = createValidConfig(override as Partial<OptimizationConfig>);
 
       await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
         BadRequestException
       );
-    });
-
-    it('should reject when trainDays is not positive', async () => {
-      const config = createValidConfig({
-        walkForward: {
-          trainDays: 0,
-          testDays: 30,
-          stepDays: 15,
-          method: 'rolling',
-          minWindowsRequired: 3
-        }
-      });
-
       await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when testDays is not positive', async () => {
-      const config = createValidConfig({
-        walkForward: {
-          trainDays: 90,
-          testDays: 0,
-          stepDays: 15,
-          method: 'rolling',
-          minWindowsRequired: 3
-        }
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when stepDays is not positive', async () => {
-      const config = createValidConfig({
-        walkForward: {
-          trainDays: 90,
-          testDays: 30,
-          stepDays: 0,
-          method: 'rolling',
-          minWindowsRequired: 3
-        }
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when maxCombinations is not positive', async () => {
-      const config = createValidConfig({
-        maxCombinations: 0
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when maxIterations is not positive', async () => {
-      const config = createValidConfig({
-        method: 'random_search',
-        maxIterations: 0
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when early stop patience is not positive', async () => {
-      const config = createValidConfig({
-        earlyStop: {
-          enabled: true,
-          patience: 0,
-          minImprovement: 1
-        }
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when early stop minImprovement is negative', async () => {
-      const config = createValidConfig({
-        earlyStop: {
-          enabled: true,
-          patience: 3,
-          minImprovement: -0.01
-        }
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-
-    it('should reject when composite weights do not sum to 1.0', async () => {
-      const config = createValidConfig({
-        objective: {
-          metric: 'composite',
-          minimize: false,
-          weights: {
-            sharpeRatio: 0.5,
-            totalReturn: 0.3
-            // Sum = 0.8, not 1.0
-          }
-        }
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
+        expectedMessage
       );
     });
 
@@ -305,137 +231,23 @@ describe('OptimizationOrchestratorService', () => {
         objective: {
           metric: 'composite',
           minimize: false,
-          weights: {
-            sharpeRatio: 0.5,
-            totalReturn: 0.5
-          }
+          weights: { sharpeRatio: 0.5, totalReturn: 0.5 }
         }
       });
 
-      strategyConfigRepo.findOne.mockResolvedValue({ id: 'strategy-1' } as StrategyConfig);
+      queryService.findStrategyConfig.mockResolvedValue({ id: 'strategy-1' } as StrategyConfig);
       gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
       optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
       optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
 
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).resolves.toBeDefined();
-    });
-
-    it('should reject when startDate >= endDate', async () => {
-      const config = createValidConfig({
-        dateRange: {
-          startDate: new Date('2024-01-01'),
-          endDate: new Date('2023-01-01') // Before start
-        }
-      });
-
-      await expect(service.startOptimization('strategy-1', createValidSpace(), config)).rejects.toThrow(
-        BadRequestException
-      );
-    });
-  });
-
-  describe('calculateObjectiveScore', () => {
-    // Access private method via service as any
-    const calculateScore = (metrics: WindowMetrics, metric: string, weights?: any) => {
-      return (service as any).calculateObjectiveScore(metrics, { metric, weights });
-    };
-
-    const baseMetrics: WindowMetrics = {
-      sharpeRatio: 1.5,
-      totalReturn: 0.25,
-      maxDrawdown: -0.15,
-      winRate: 0.6,
-      tradeCount: 100,
-      profitFactor: 2.0,
-      volatility: 0.2,
-      downsideDeviation: 0.15
-    };
-
-    it('should return sharpe ratio for sharpe_ratio metric', () => {
-      const score = calculateScore(baseMetrics, 'sharpe_ratio');
-      expect(score).toBe(1.5);
-    });
-
-    it('should return total return for total_return metric', () => {
-      const score = calculateScore(baseMetrics, 'total_return');
-      expect(score).toBe(0.25);
-    });
-
-    it('should calculate calmar ratio correctly', () => {
-      const score = calculateScore(baseMetrics, 'calmar_ratio');
-      // 0.25 / abs(-0.15) = 0.25 / 0.15 = 1.667
-      expect(score).toBeCloseTo(1.667, 2);
-    });
-
-    it('should return 0 for calmar ratio when maxDrawdown is 0', () => {
-      const metrics = { ...baseMetrics, maxDrawdown: 0 };
-      const score = calculateScore(metrics, 'calmar_ratio');
-      expect(score).toBe(0);
-    });
-
-    it('should return profit factor for profit_factor metric', () => {
-      const score = calculateScore(baseMetrics, 'profit_factor');
-      expect(score).toBe(2.0);
-    });
-
-    it('should default profit factor to 1 when missing', () => {
-      const metrics = { ...baseMetrics, profitFactor: undefined as unknown as number };
-      const score = calculateScore(metrics, 'profit_factor');
-      expect(score).toBe(1);
-    });
-
-    it('should calculate sortino ratio using downside deviation', () => {
-      const score = calculateScore(baseMetrics, 'sortino_ratio');
-      // (0.25 - 0.02) / 0.15 = 0.23 / 0.15 = 1.533
-      expect(score).toBeCloseTo(1.533, 2);
-    });
-
-    it('should fallback to sharpe when downsideDeviation is 0', () => {
-      const metrics = { ...baseMetrics, downsideDeviation: 0 };
-      const score = calculateScore(metrics, 'sortino_ratio');
-      expect(score).toBe(1.5); // Sharpe ratio fallback
-    });
-
-    it('should default to sharpe ratio for unknown metric', () => {
-      const score = calculateScore(baseMetrics, 'unknown_metric');
-      expect(score).toBe(1.5);
-    });
-  });
-
-  describe('calculateConsistencyScore', () => {
-    const calculateConsistency = (scores: number[]) => {
-      return (service as any).calculateConsistencyScore(scores);
-    };
-
-    it('should return 100 for single score', () => {
-      expect(calculateConsistency([1.5])).toBe(100);
-    });
-
-    it('should return 100 for identical scores (zero variance)', () => {
-      expect(calculateConsistency([1.5, 1.5, 1.5, 1.5])).toBe(100);
-    });
-
-    it('should return lower score for high variance', () => {
-      const lowVarianceScore = calculateConsistency([1.0, 1.1, 1.0, 1.1]);
-      const highVarianceScore = calculateConsistency([0.5, 2.0, 0.5, 2.0]);
-
-      expect(lowVarianceScore).toBeGreaterThan(highVarianceScore);
-    });
-
-    it('should return 0 for very high variance (stdDev >= 2)', () => {
-      const score = calculateConsistency([-5, 5, -5, 5]); // Very high std dev
-      expect(score).toBe(0);
-    });
-
-    it('should return 50 for stdDev of 1', () => {
-      const score = calculateConsistency([-1, 1]); // stdDev=1 -> 100 - 50 = 50
-      expect(score).toBe(50);
+      const result = await service.startOptimization('strategy-1', createValidSpace(), config);
+      expect(result.id).toBe('run-1');
     });
   });
 
   describe('startOptimization', () => {
     it('should throw NotFoundException for non-existent strategy', async () => {
-      strategyConfigRepo.findOne.mockResolvedValue(null);
+      queryService.findStrategyConfig.mockResolvedValue(null);
 
       await expect(service.startOptimization('non-existent', createValidSpace(), createValidConfig())).rejects.toThrow(
         NotFoundException
@@ -446,7 +258,7 @@ describe('OptimizationOrchestratorService', () => {
       const config = createValidConfig();
       const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
 
-      strategyConfigRepo.findOne.mockResolvedValue(strategyConfig);
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
       gridSearchService.generateCombinations.mockReturnValue([
         { index: 0, values: { period: 14 }, isBaseline: true },
         { index: 1, values: { period: 20 }, isBaseline: false }
@@ -463,7 +275,7 @@ describe('OptimizationOrchestratorService', () => {
           runId: 'run-1',
           combinations: expect.any(Array)
         }),
-        expect.any(Object)
+        expect.objectContaining({ jobId: 'run-1', removeOnComplete: true, attempts: 1 })
       );
     });
 
@@ -473,7 +285,7 @@ describe('OptimizationOrchestratorService', () => {
         parameters: [{ name: 'period', type: 'integer', min: 10, max: 20, step: 5, default: 15, priority: 'medium' }]
       });
 
-      strategyConfigRepo.findOne.mockResolvedValue({ id: 'strategy-1' } as StrategyConfig);
+      queryService.findStrategyConfig.mockResolvedValue({ id: 'strategy-1' } as StrategyConfig);
       gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: { period: 10 }, isBaseline: false }]);
       optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
       optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
@@ -491,7 +303,7 @@ describe('OptimizationOrchestratorService', () => {
       const config = createValidConfig({ method: 'random_search', maxIterations: 50 });
       const strategyConfig = { id: 'strategy-1' } as StrategyConfig;
 
-      strategyConfigRepo.findOne.mockResolvedValue(strategyConfig);
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
       gridSearchService.generateRandomCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
       optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
       optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
@@ -517,37 +329,29 @@ describe('OptimizationOrchestratorService', () => {
         ...overrides
       }) as OptimizationRun;
 
-    const mockCoins = [{ id: 'btc' }, { id: 'eth' }] as Coin[];
-
-    const mockCoinQueryBuilder = () => ({
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      take: jest.fn().mockReturnThis(),
-      getMany: jest.fn().mockResolvedValue(mockCoins)
-    });
-
     it('should throw NotFoundException when run is missing', async () => {
       optimizationRunRepo.findOne.mockResolvedValue(null);
 
       await expect(service.executeOptimization('missing', [])).rejects.toThrow(NotFoundException);
     });
 
-    it('should mark run failed when insufficient windows are generated', async () => {
+    it('should mark run failed and emit event when error occurs', async () => {
       const run = buildRun({
         config: createValidConfig({ walkForward: { minWindowsRequired: 3 } as any })
       });
       optimizationRunRepo.findOne.mockResolvedValue(run);
       optimizationRunRepo.save.mockResolvedValue(run);
-      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
-      walkForwardService.generateWindows.mockReturnValue([]);
+      evaluationService.prepareWalkForwardData.mockRejectedValue(new Error('Insufficient windows: 0 generated'));
 
       await expect(service.executeOptimization(run.id, [])).rejects.toThrow('Insufficient windows');
 
       expect(run.status).toBe(OptimizationStatus.FAILED);
       expect(run.errorMessage).toContain('Insufficient windows');
-      expect(run.errorMessage).toContain('Data span');
-      expect(optimizationRunRepo.save).toHaveBeenCalledWith(run);
+      expect(run.completedAt).toBeInstanceOf(Date);
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        expect.stringContaining('optimization.failed'),
+        expect.objectContaining({ runId: run.id, reason: expect.stringContaining('Insufficient windows') })
+      );
     });
 
     it('should preserve startedAt on resume', async () => {
@@ -560,35 +364,13 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne.mockResolvedValue(run);
       optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
-      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
 
-      // Return existing results for the already-processed combinations
       optimizationResultRepo.find.mockResolvedValue([
         { combinationIndex: 0, avgTestScore: 1.5, parameters: { period: 14 }, isBaseline: true } as any
       ]);
 
-      walkForwardService.generateWindows.mockReturnValue([
-        {
-          windowIndex: 0,
-          trainStartDate: new Date('2024-01-01'),
-          trainEndDate: new Date('2024-04-01'),
-          testStartDate: new Date('2024-04-01'),
-          testEndDate: new Date('2024-05-01')
-        }
-      ]);
-      backtestEngine.precomputeWindowData.mockReturnValue({
-        pricesByTimestamp: {},
-        timestamps: [],
-        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
-        volumeMap: new Map(),
-        filteredCandles: [],
-        tradingStartIndex: 0
-      });
-
-      // Empty combinations (all filtered out on resume)
       await service.executeOptimization(run.id, [{ index: 0, values: { period: 14 }, isBaseline: true }]);
 
-      // startedAt should still be the original value (not overwritten)
       expect(run.startedAt).toEqual(originalStartedAt);
     });
 
@@ -603,44 +385,19 @@ describe('OptimizationOrchestratorService', () => {
         .mockResolvedValueOnce(run); // cancellation check
       optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
-      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
 
-      // One combination already processed
       optimizationResultRepo.find.mockResolvedValue([
         { combinationIndex: 0, avgTestScore: 1.5, parameters: { period: 14 }, isBaseline: true } as any
       ]);
 
-      walkForwardService.generateWindows.mockReturnValue([
-        {
-          windowIndex: 0,
-          trainStartDate: new Date('2024-01-01'),
-          trainEndDate: new Date('2024-04-01'),
-          testStartDate: new Date('2024-04-01'),
-          testEndDate: new Date('2024-05-01')
-        }
-      ]);
-      backtestEngine.precomputeWindowData.mockReturnValue({
-        pricesByTimestamp: {},
-        timestamps: [],
-        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
-        volumeMap: new Map(),
-        filteredCandles: [],
-        tradingStartIndex: 0
+      evaluationService.evaluateCombination.mockResolvedValue({
+        avgTrainScore: 2.0,
+        avgTestScore: 2.0,
+        avgDegradation: 0.05,
+        consistencyScore: 90,
+        overfittingWindows: 0,
+        windowResults: []
       });
-
-      const mockMetrics = {
-        sharpeRatio: 2.0,
-        totalReturn: 0.15,
-        maxDrawdown: -0.1,
-        winRate: 0.65,
-        tradeCount: 60,
-        profitFactor: 2.5,
-        volatility: 0.18,
-        downsideDeviation: 0.12
-      };
-
-      backtestEngine.runOptimizationBacktestWithPrecomputed.mockResolvedValue(mockMetrics);
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
 
       const managerSave = jest.fn().mockResolvedValue({});
       const managerCreate = jest.fn().mockReturnValue({});
@@ -648,14 +405,12 @@ describe('OptimizationOrchestratorService', () => {
         await cb({ save: managerSave, create: managerCreate });
       });
 
-      // Pass two combinations: index 0 (already done) and index 1 (new)
       await service.executeOptimization(run.id, [
         { index: 0, values: { period: 14 }, isBaseline: true },
         { index: 1, values: { period: 20 }, isBaseline: false }
       ]);
 
-      // Only index 1 should be evaluated (index 0 was filtered out)
-      expect(backtestEngine.runOptimizationBacktestWithPrecomputed).toHaveBeenCalledTimes(2); // train + test for 1 combo
+      expect(evaluationService.evaluateCombination).toHaveBeenCalledTimes(1);
     });
 
     it('should reconstruct bestScore and baselineScore from existing results on resume', async () => {
@@ -667,40 +422,17 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne.mockResolvedValue(run);
       optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
-      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
 
-      // Two results already processed
       optimizationResultRepo.find.mockResolvedValue([
         { combinationIndex: 0, avgTestScore: 1.2, parameters: { period: 14 }, isBaseline: true } as any,
         { combinationIndex: 1, avgTestScore: 1.8, parameters: { period: 20 }, isBaseline: false } as any
       ]);
 
-      walkForwardService.generateWindows.mockReturnValue([
-        {
-          windowIndex: 0,
-          trainStartDate: new Date('2024-01-01'),
-          trainEndDate: new Date('2024-04-01'),
-          testStartDate: new Date('2024-04-01'),
-          testEndDate: new Date('2024-05-01')
-        }
-      ]);
-      backtestEngine.precomputeWindowData.mockReturnValue({
-        pricesByTimestamp: {},
-        timestamps: [],
-        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
-        volumeMap: new Map(),
-        filteredCandles: [],
-        tradingStartIndex: 0
-      });
-
-      // All combinations already processed, so no new evaluations
       await service.executeOptimization(run.id, [
         { index: 0, values: { period: 14 }, isBaseline: true },
         { index: 1, values: { period: 20 }, isBaseline: false }
       ]);
 
-      // Finalization should use reconstructed scores
-      // The run should be COMPLETED with best score from results
       expect(run.status).toBe(OptimizationStatus.COMPLETED);
       expect(run.bestScore).toBeDefined();
     });
@@ -710,171 +442,125 @@ describe('OptimizationOrchestratorService', () => {
         config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
       });
       optimizationRunRepo.findOne
-        .mockResolvedValueOnce(run) // initial load with relations
-        .mockResolvedValueOnce({ id: run.id, status: OptimizationStatus.CANCELLED } as OptimizationRun); // cancellation check
+        .mockResolvedValueOnce(run)
+        .mockResolvedValueOnce({ id: run.id, status: OptimizationStatus.CANCELLED } as OptimizationRun);
 
       optimizationRunRepo.save.mockResolvedValue(run);
-      coinRepo.createQueryBuilder.mockReturnValue(mockCoinQueryBuilder() as any);
-      walkForwardService.generateWindows.mockReturnValue([
-        {
-          windowIndex: 0,
-          trainStartDate: new Date('2024-01-01'),
-          trainEndDate: new Date('2024-02-01'),
-          testStartDate: new Date('2024-02-01'),
-          testEndDate: new Date('2024-03-01')
-        }
-      ]);
-      backtestEngine.precomputeWindowData.mockReturnValue({
-        pricesByTimestamp: {},
-        timestamps: [],
-        immutablePriceData: { timestampsByCoin: new Map(), summariesByCoin: new Map() },
-        volumeMap: new Map(),
-        filteredCandles: [],
-        tradingStartIndex: 0
-      });
-
-      const evaluateSpy = jest.spyOn(service, 'evaluateCombination');
 
       await service.executeOptimization(run.id, [{ index: 0, values: {}, isBaseline: true }]);
 
-      expect(evaluateSpy).not.toHaveBeenCalled();
+      expect(evaluationService.evaluateCombination).not.toHaveBeenCalled();
       expect(dataSource.transaction).not.toHaveBeenCalled();
     });
-  });
 
-  describe('evaluateCombination', () => {
-    it('should run train and test backtests in parallel per window', async () => {
-      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
-      const config = createValidConfig();
-      const coins = [{ id: 'btc' }] as Coin[];
-      const windows = [
-        {
-          windowIndex: 0,
-          trainStartDate: new Date('2024-01-01'),
-          trainEndDate: new Date('2024-04-01'),
-          testStartDate: new Date('2024-04-01'),
-          testEndDate: new Date('2024-05-01')
-        }
-      ];
+    it('should complete a full run with finalization and event emission', async () => {
+      const run = buildRun({
+        config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
+      });
+      optimizationRunRepo.findOne
+        .mockResolvedValueOnce(run) // initial load
+        .mockResolvedValueOnce(run); // cancellation check
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
-      const mockMetrics: WindowMetrics = {
-        sharpeRatio: 1.5,
-        totalReturn: 0.1,
-        maxDrawdown: -0.05,
-        winRate: 0.6,
-        tradeCount: 50,
-        profitFactor: 2.0,
-        volatility: 0.2,
-        downsideDeviation: 0.1
-      };
-
-      // Track call order to verify parallelism
-      const callOrder: string[] = [];
-      backtestEngine.executeOptimizationBacktestWithData.mockImplementation(async (cfg) => {
-        const label =
-          cfg.startDate < cfg.endDate && cfg.startDate.getTime() === windows[0].trainStartDate.getTime()
-            ? 'train'
-            : 'test';
-        callOrder.push(`${label}-start`);
-        await new Promise((r) => setTimeout(r, 10));
-        callOrder.push(`${label}-end`);
-        return mockMetrics;
+      evaluationService.evaluateCombination.mockResolvedValue({
+        avgTrainScore: 1.5,
+        avgTestScore: 1.2,
+        avgDegradation: 0.1,
+        consistencyScore: 85,
+        overfittingWindows: 0,
+        windowResults: []
       });
 
-      windowProcessor.processWindow.mockResolvedValue({
-        degradation: 0.05,
-        overfittingDetected: false
+      const managerSave = jest.fn().mockResolvedValue({});
+      const managerCreate = jest.fn().mockReturnValue({});
+      dataSource.transaction.mockImplementation(async (cb: any) => {
+        await cb({ save: managerSave, create: managerCreate });
+      });
+
+      queryService.rankResults.mockResolvedValue({
+        id: 'result-1',
+        avgTestScore: 1.2,
+        parameters: { period: 14 }
       } as any);
 
-      const candlesByCoin = new Map<string, any[]>();
-      candlesByCoin.set('btc', []);
+      await service.executeOptimization(run.id, [{ index: 0, values: { period: 14 }, isBaseline: true }]);
 
-      const result = await service.evaluateCombination(
-        strategyConfig,
-        { period: 14 },
-        windows,
-        config,
-        coins,
-        candlesByCoin
+      expect(run.status).toBe(OptimizationStatus.COMPLETED);
+      expect(run.completedAt).toBeInstanceOf(Date);
+      expect(run.bestScore).toBe(1.2);
+      expect(run.bestParameters).toEqual({ period: 14 });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        expect.stringContaining('optimization.completed'),
+        expect.objectContaining({
+          runId: run.id,
+          strategyConfigId: run.strategyConfigId,
+          bestParameters: { period: 14 },
+          bestScore: 1.2
+        })
       );
-
-      expect(result.windowResults).toHaveLength(1);
-      // Both backtests should have started before either finished (parallel execution)
-      expect(callOrder[0]).toContain('start');
-      expect(callOrder[1]).toContain('start');
-      expect(backtestEngine.executeOptimizationBacktestWithData).toHaveBeenCalledTimes(2);
     });
 
-    it('should use pre-computed fast path when precomputedWindows are provided', async () => {
-      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
-      const config = createValidConfig();
-      const coins = [{ id: 'btc' }] as Coin[];
-      const windows = [
-        {
-          windowIndex: 0,
-          trainStartDate: new Date('2024-01-01'),
-          trainEndDate: new Date('2024-04-01'),
-          testStartDate: new Date('2024-04-01'),
-          testEndDate: new Date('2024-05-01')
-        }
-      ];
-
-      const mockMetrics: WindowMetrics = {
-        sharpeRatio: 1.5,
-        totalReturn: 0.1,
-        maxDrawdown: -0.05,
-        winRate: 0.6,
-        tradeCount: 50,
-        profitFactor: 2.0,
-        volatility: 0.2,
-        downsideDeviation: 0.1
-      };
-
-      backtestEngine.runOptimizationBacktestWithPrecomputed.mockResolvedValue(mockMetrics);
-
-      windowProcessor.processWindow.mockResolvedValue({
-        degradation: 0.05,
-        overfittingDetected: false
-      } as any);
-
-      // Build precomputedWindows map with matching keys
-      const precomputedWindows = new Map<string, any>();
-      const trainKey = `${windows[0].trainStartDate.getTime()}-${windows[0].trainEndDate.getTime()}`;
-      const testKey = `${windows[0].testStartDate.getTime()}-${windows[0].testEndDate.getTime()}`;
-      precomputedWindows.set(trainKey, {
-        filteredCandles: [],
-        timestamps: [],
-        pricesByTimestamp: {},
-        immutablePriceData: {},
-        volumeMap: new Map()
+    it('should trigger early stopping when patience is exhausted', async () => {
+      const run = buildRun({
+        config: createValidConfig({
+          walkForward: { minWindowsRequired: 1 } as any,
+          earlyStop: { enabled: true, patience: 2, minImprovement: 50 },
+          parallelism: { maxConcurrentBacktests: 1, maxConcurrentWindows: 1 }
+        }),
+        totalCombinations: 3
       });
-      precomputedWindows.set(testKey, {
-        filteredCandles: [],
-        timestamps: [],
-        pricesByTimestamp: {},
-        immutablePriceData: {},
-        volumeMap: new Map()
+      optimizationRunRepo.findOne
+        .mockResolvedValueOnce(run) // initial load
+        .mockResolvedValueOnce(run) // cancellation check batch 1
+        .mockResolvedValueOnce(run) // cancellation check batch 2
+        .mockResolvedValueOnce(run); // cancellation check batch 3
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+
+      // Baseline sets bestScore; subsequent combos produce no improvement
+      evaluationService.evaluateCombination
+        .mockResolvedValueOnce({
+          avgTrainScore: 1.0,
+          avgTestScore: 1.0,
+          avgDegradation: 0.1,
+          consistencyScore: 80,
+          overfittingWindows: 0,
+          windowResults: []
+        })
+        .mockResolvedValueOnce({
+          avgTrainScore: 1.0,
+          avgTestScore: 0.9,
+          avgDegradation: 0.1,
+          consistencyScore: 80,
+          overfittingWindows: 0,
+          windowResults: []
+        })
+        .mockResolvedValueOnce({
+          avgTrainScore: 1.0,
+          avgTestScore: 0.8,
+          avgDegradation: 0.1,
+          consistencyScore: 80,
+          overfittingWindows: 0,
+          windowResults: []
+        });
+
+      const managerSave = jest.fn().mockResolvedValue({});
+      const managerCreate = jest.fn().mockReturnValue({});
+      dataSource.transaction.mockImplementation(async (cb: any) => {
+        await cb({ save: managerSave, create: managerCreate });
       });
 
-      const candlesByCoin = new Map<string, any[]>();
-      candlesByCoin.set('btc', []);
+      await service.executeOptimization(run.id, [
+        { index: 0, values: { period: 14 }, isBaseline: true },
+        { index: 1, values: { period: 20 }, isBaseline: false },
+        { index: 2, values: { period: 26 }, isBaseline: false }
+      ]);
 
-      const result = await service.evaluateCombination(
-        strategyConfig,
-        { period: 14 },
-        windows,
-        config,
-        coins,
-        candlesByCoin,
-        undefined,
-        precomputedWindows
-      );
-
-      expect(result.windowResults).toHaveLength(1);
-      // Should use the pre-computed fast path, not the legacy path
-      expect(backtestEngine.runOptimizationBacktestWithPrecomputed).toHaveBeenCalledTimes(2);
-      expect(backtestEngine.executeOptimizationBacktestWithData).not.toHaveBeenCalled();
-      expect(backtestEngine.executeOptimizationBacktest).not.toHaveBeenCalled();
+      // With patience=2 and maxConcurrent=1: combo 1 (baseline) resets counter,
+      // combos 2 & 3 each miss minImprovement → counter reaches patience and stops.
+      expect(evaluationService.evaluateCombination).toHaveBeenCalledTimes(3);
+      expect(run.status).toBe(OptimizationStatus.COMPLETED);
     });
   });
 
@@ -889,7 +575,6 @@ describe('OptimizationOrchestratorService', () => {
 
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
-      // Call private method
       await (service as any).updateProgress(run, 5, 3, 1.5, { period: 14 });
 
       expect(optimizationRunRepo.update).toHaveBeenCalledWith(
@@ -899,13 +584,14 @@ describe('OptimizationOrchestratorService', () => {
           progressDetails: expect.objectContaining({
             autoResumeCount: 2,
             currentCombination: 5,
-            currentBestScore: 1.5
+            currentBestScore: 1.5,
+            currentBestParams: { period: 14 }
           })
         })
       );
     });
 
-    it('should set autoResumeCount to undefined when not previously set', async () => {
+    it('should handle null progressDetails gracefully', async () => {
       const run = {
         id: 'run-1',
         startedAt: new Date(Date.now() - 60000),
@@ -922,7 +608,8 @@ describe('OptimizationOrchestratorService', () => {
         expect.objectContaining({
           progressDetails: expect.objectContaining({
             autoResumeCount: undefined,
-            currentCombination: 3
+            currentCombination: 3,
+            currentBestParams: undefined
           })
         })
       );
@@ -930,7 +617,7 @@ describe('OptimizationOrchestratorService', () => {
   });
 
   describe('cancelOptimization', () => {
-    it('should cancel running optimization', async () => {
+    it('should cancel running optimization and remove from queue', async () => {
       const run = { id: 'run-1', status: OptimizationStatus.RUNNING } as OptimizationRun;
       optimizationRunRepo.findOne.mockResolvedValue(run);
       optimizationRunRepo.save.mockResolvedValue(run);
@@ -938,7 +625,18 @@ describe('OptimizationOrchestratorService', () => {
       await service.cancelOptimization('run-1');
 
       expect(run.status).toBe(OptimizationStatus.CANCELLED);
+      expect(run.completedAt).toBeInstanceOf(Date);
       expect(optimizationQueue.remove).toHaveBeenCalledWith('run-1');
+    });
+
+    it('should cancel pending optimization', async () => {
+      const run = { id: 'run-1', status: OptimizationStatus.PENDING } as OptimizationRun;
+      optimizationRunRepo.findOne.mockResolvedValue(run);
+      optimizationRunRepo.save.mockResolvedValue(run);
+
+      await service.cancelOptimization('run-1');
+
+      expect(run.status).toBe(OptimizationStatus.CANCELLED);
     });
 
     it('should throw NotFoundException for non-existent run', async () => {
@@ -952,310 +650,6 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne.mockResolvedValue(run);
 
       await expect(service.cancelOptimization('run-1')).rejects.toThrow('Cannot cancel optimization');
-    });
-  });
-
-  describe('getProgress', () => {
-    it('should return progress for running optimization', async () => {
-      const run = {
-        id: 'run-1',
-        status: OptimizationStatus.RUNNING,
-        combinationsTested: 50,
-        totalCombinations: 100,
-        progressDetails: {
-          estimatedTimeRemaining: 300,
-          currentBestScore: 1.5
-        }
-      } as OptimizationRun;
-      optimizationRunRepo.findOne.mockResolvedValue(run);
-
-      const progress = await service.getProgress('run-1');
-
-      expect(progress.percentComplete).toBe(50);
-      expect(progress.currentBestScore).toBe(1.5);
-      expect(progress.estimatedTimeRemaining).toBe(300);
-    });
-
-    it('should return 0 percent when totalCombinations is 0', async () => {
-      const run = {
-        id: 'run-1',
-        status: OptimizationStatus.RUNNING,
-        combinationsTested: 0,
-        totalCombinations: 0
-      } as OptimizationRun;
-      optimizationRunRepo.findOne.mockResolvedValue(run);
-
-      const progress = await service.getProgress('run-1');
-
-      expect(progress.percentComplete).toBe(0);
-      expect(progress.estimatedTimeRemaining).toBe(0);
-    });
-
-    it('should throw NotFoundException for non-existent run', async () => {
-      optimizationRunRepo.findOne.mockResolvedValue(null);
-
-      await expect(service.getProgress('non-existent')).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  describe('getResults', () => {
-    it('should return results sorted by test score', async () => {
-      const results = [{ avgTestScore: 1.5 }, { avgTestScore: 2.0 }, { avgTestScore: 1.0 }] as OptimizationResult[];
-      optimizationResultRepo.find.mockResolvedValue(results);
-
-      const fetched = await service.getResults('run-1', 20, 'testScore');
-
-      expect(optimizationResultRepo.find).toHaveBeenCalledWith({
-        where: { optimizationRunId: 'run-1' },
-        order: { avgTestScore: 'DESC' },
-        take: 20
-      });
-    });
-
-    it('should sort by degradation ascending', async () => {
-      await service.getResults('run-1', 20, 'degradation');
-
-      expect(optimizationResultRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          order: { avgDegradation: 'ASC' }
-        })
-      );
-    });
-
-    it('should sort by consistency descending', async () => {
-      await service.getResults('run-1', 10, 'consistency');
-
-      expect(optimizationResultRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          order: { consistencyScore: 'DESC' },
-          take: 10
-        })
-      );
-    });
-  });
-
-  describe('calculateImprovement', () => {
-    it('should calculate improvement for positive baseline', () => {
-      // bestScore=2, baseline=1 → ((2-1)/1)*100 = 100%
-      expect(service.calculateImprovement(2, 1)).toBe(100);
-    });
-
-    it('should floor denominator at 1 for negative baseline', () => {
-      // Without flooring: (1.23 - (-0.78)) / 0.78 * 100 = 257.7% (inflated)
-      // With flooring:   (1.23 - (-0.78)) / max(0.78, 1) * 100 = 201%
-      const result = service.calculateImprovement(1.23, -0.78);
-      expect(result).toBeCloseTo(201, 0);
-    });
-
-    it('should use abs(baseline) when abs > 1 for negative baseline', () => {
-      // baseline=-2, best=1 → (1-(-2)) / max(2, 1) * 100 = 150%
-      expect(service.calculateImprovement(1, -2)).toBe(150);
-    });
-
-    it('should return min(bestScore*100, 500) when baseline=0 and best>0', () => {
-      expect(service.calculateImprovement(1.5, 0)).toBe(150);
-      expect(service.calculateImprovement(0.5, 0)).toBe(50);
-    });
-
-    it('should return 0 when baseline=0 and best<=0', () => {
-      expect(service.calculateImprovement(0, 0)).toBe(0);
-      expect(service.calculateImprovement(-0.5, 0)).toBe(0);
-    });
-
-    it('should cap at 500%', () => {
-      expect(service.calculateImprovement(10, 0)).toBe(500);
-      expect(service.calculateImprovement(100, 1)).toBe(500);
-    });
-
-    it('should cap at -500%', () => {
-      expect(service.calculateImprovement(-100, 1)).toBe(-500);
-    });
-  });
-
-  describe('computeRankingScore', () => {
-    it('should give full multiplier to high consistency results', () => {
-      // consistency=100 → 0.6 + 0.4*1 = 1.0, no overfit → 1.0
-      const score = service.computeRankingScore(2.0, 100, 0);
-      expect(score).toBeCloseTo(2.0, 4);
-    });
-
-    it('should penalize low consistency results', () => {
-      // consistency=0 → 0.6 + 0.4*0 = 0.6, no overfit → 1.0
-      const score = service.computeRankingScore(2.0, 0, 0);
-      expect(score).toBeCloseTo(1.2, 4);
-    });
-
-    it('should apply overfitting penalty', () => {
-      // 2 overfitting windows → max(0.5, 1.0-0.2) = 0.8
-      const penalized = service.computeRankingScore(2.0, 100, 2);
-      const clean = service.computeRankingScore(2.0, 100, 0);
-      expect(penalized).toBeCloseTo(clean * 0.8, 4);
-    });
-
-    it('should floor overfitting penalty at 0.5', () => {
-      // 10 overfitting windows → max(0.5, 1.0-1.0) = 0.5
-      const score = service.computeRankingScore(2.0, 100, 10);
-      expect(score).toBeCloseTo(1.0, 4);
-    });
-  });
-
-  describe('computeWarmupDays', () => {
-    it('should return minimum 5 for empty parameter space', () => {
-      const space = createValidSpace({ parameters: [] });
-      expect(service.computeWarmupDays(space)).toBe(5);
-    });
-
-    it('should return minimum 5 for non-period parameters', () => {
-      const space = createValidSpace({
-        parameters: [
-          { name: 'threshold', type: 'float', min: 0.1, max: 0.9, step: 0.1, default: 0.5, priority: 'medium' }
-        ]
-      });
-      expect(service.computeWarmupDays(space)).toBe(5);
-    });
-
-    it('should compute warmup from period parameter max', () => {
-      const space = createValidSpace({
-        parameters: [{ name: 'rsiPeriod', type: 'integer', min: 7, max: 21, step: 7, default: 14, priority: 'medium' }]
-      });
-      // max=21, no compound, * 1.2 = 25.2 → ceil = 26
-      expect(service.computeWarmupDays(space)).toBe(26);
-    });
-
-    it('should apply 1.5x multiplier for compound indicators (slow/signal)', () => {
-      const space = createValidSpace({
-        parameters: [
-          { name: 'slowPeriod', type: 'integer', min: 20, max: 34, step: 2, default: 26, priority: 'medium' },
-          { name: 'signalPeriod', type: 'integer', min: 5, max: 12, step: 1, default: 9, priority: 'medium' }
-        ]
-      });
-      // max=34, compound=true, 34*1.5*1.2 = 61.2 → ceil = 62
-      expect(service.computeWarmupDays(space)).toBe(62);
-    });
-
-    it('should use default when no max is defined', () => {
-      const space = createValidSpace({
-        parameters: [{ name: 'lookback', type: 'integer', default: 50, priority: 'medium' } as any]
-      });
-      // default=50, no compound, * 1.2 = 60
-      expect(service.computeWarmupDays(space)).toBe(60);
-    });
-  });
-
-  describe('computeAdaptiveStepDays', () => {
-    it('should not adjust when configured step fits comfortably', () => {
-      // 300 days, train=90, test=30, step=15, min=3 → windowSize=121, maxStep=floor((300-121)/2)=89 → no change
-      const result = service.computeAdaptiveStepDays(300, 90, 30, 15, 3);
-      expect(result.stepDays).toBe(15);
-      expect(result.adjusted).toBe(false);
-    });
-
-    it('should reduce step for 108-day data with risk level 4 config', () => {
-      // 108 days, train=60, test=21, step=21, min=3
-      // windowSize=82, maxStep = floor((108-82)/2) = floor(26/2) = 13
-      const result = service.computeAdaptiveStepDays(108, 60, 21, 21, 3);
-      expect(result.stepDays).toBe(13);
-      expect(result.adjusted).toBe(true);
-    });
-
-    it('should never increase beyond configured step', () => {
-      // Even when data allows much larger steps, cap at configured value
-      // 500 days, train=30, test=14, step=5, min=3 → windowSize=45, maxStep=floor((500-45)/2)=227 → stays 5
-      const result = service.computeAdaptiveStepDays(500, 30, 14, 5, 3);
-      expect(result.stepDays).toBe(5);
-      expect(result.adjusted).toBe(false);
-    });
-
-    it('should floor at 1 day for very tight data', () => {
-      // 82 days, train=60, test=21, step=21, min=3 → windowSize=82, maxStep=floor((82-82)/2)=0 → floors at 1
-      const result = service.computeAdaptiveStepDays(82, 60, 21, 21, 3);
-      expect(result.stepDays).toBe(1);
-      expect(result.adjusted).toBe(true);
-    });
-
-    it('should not adjust when data is less than one window (will fail at window gen)', () => {
-      // 50 days, train=60, test=21, step=21, min=3 → totalDays < windowSize → no adjustment
-      const result = service.computeAdaptiveStepDays(50, 60, 21, 21, 3);
-      expect(result.stepDays).toBe(21);
-      expect(result.adjusted).toBe(false);
-    });
-
-    it('should not adjust when minWindows is 1', () => {
-      // Any data with minWindows=1 never needs stepping
-      const result = service.computeAdaptiveStepDays(100, 60, 21, 21, 1);
-      expect(result.stepDays).toBe(21);
-      expect(result.adjusted).toBe(false);
-    });
-
-    it('should handle exact fit scenario (124 days, step=21, 3 windows)', () => {
-      // 124 days, train=60, test=21, step=21, min=3
-      // windowSize=60+1+21=82, maxStep=floor((124-82)/2)=floor(42/2)=21 → exact fit
-      const result = service.computeAdaptiveStepDays(124, 60, 21, 21, 3);
-      expect(result.stepDays).toBe(21);
-      expect(result.adjusted).toBe(false);
-    });
-
-    it('should work with risk level 5 config on 108 days of data', () => {
-      // 108 days, train=30, test=14, step=14, min=3
-      // windowSize=45, maxStep = floor((108-45)/2) = floor(63/2) = 31 → no adjustment needed
-      const result = service.computeAdaptiveStepDays(108, 30, 14, 14, 3);
-      expect(result.stepDays).toBe(14);
-      expect(result.adjusted).toBe(false);
-    });
-  });
-
-  describe('applyBestParameters', () => {
-    it('should apply best parameters to strategy', async () => {
-      const strategyConfig = {
-        id: 'strategy-1',
-        parameters: { existing: true }
-      } as unknown as StrategyConfig;
-      const run = {
-        id: 'run-1',
-        status: OptimizationStatus.COMPLETED,
-        bestParameters: { period: 20, threshold: 0.3 },
-        strategyConfig
-      } as unknown as OptimizationRun;
-
-      optimizationRunRepo.findOne.mockResolvedValue(run);
-      strategyConfigRepo.save.mockResolvedValue(strategyConfig);
-
-      const result = await service.applyBestParameters('run-1');
-
-      expect(result.parameters).toEqual({
-        existing: true,
-        period: 20,
-        threshold: 0.3
-      });
-    });
-
-    it('should throw NotFoundException when run does not exist', async () => {
-      optimizationRunRepo.findOne.mockResolvedValue(null);
-
-      await expect(service.applyBestParameters('missing')).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw error for incomplete optimization', async () => {
-      const run = {
-        id: 'run-1',
-        status: OptimizationStatus.RUNNING
-      } as OptimizationRun;
-      optimizationRunRepo.findOne.mockResolvedValue(run);
-
-      await expect(service.applyBestParameters('run-1')).rejects.toThrow(
-        'Cannot apply parameters from incomplete optimization run'
-      );
-    });
-
-    it('should throw error when no best parameters found', async () => {
-      const run = {
-        id: 'run-1',
-        status: OptimizationStatus.COMPLETED,
-        bestParameters: null
-      } as unknown as OptimizationRun;
-      optimizationRunRepo.findOne.mockResolvedValue(run);
-
-      await expect(service.applyBestParameters('run-1')).rejects.toThrow('No best parameters found');
     });
   });
 });

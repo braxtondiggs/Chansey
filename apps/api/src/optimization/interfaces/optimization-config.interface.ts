@@ -111,36 +111,6 @@ export interface OptimizationConfig {
 }
 
 /**
- * Default optimization configuration
- */
-export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
-  method: 'random_search',
-  maxIterations: 100,
-  maxCombinations: 75,
-  walkForward: {
-    trainDays: 90,
-    testDays: 30,
-    stepDays: 21,
-    method: 'rolling',
-    minWindowsRequired: 3,
-    maxAcceptableDegradation: 30
-  },
-  objective: {
-    metric: 'sharpe_ratio',
-    minimize: false
-  },
-  earlyStop: {
-    enabled: true,
-    patience: 20,
-    minImprovement: 1
-  },
-  parallelism: {
-    maxConcurrentBacktests: 5,
-    maxConcurrentWindows: 3
-  }
-};
-
-/**
  * Fast optimization configuration for development/testing
  */
 export const FAST_OPTIMIZATION_CONFIG: OptimizationConfig = {

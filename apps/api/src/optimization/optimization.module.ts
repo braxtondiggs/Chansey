@@ -6,10 +6,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OptimizationResult } from './entities/optimization-result.entity';
 import { OptimizationRun } from './entities/optimization-run.entity';
 import { optimizationConfig } from './optimization.config';
-import { OptimizationController } from './optimization.controller';
 import { OptimizationProcessor } from './processors/optimization.processor';
 import { GridSearchService } from './services/grid-search.service';
+import { OptimizationEvaluationService } from './services/optimization-evaluation.service';
 import { OptimizationOrchestratorService } from './services/optimization-orchestrator.service';
+import { OptimizationQueryService } from './services/optimization-query.service';
 import { OptimizationRecoveryService } from './services/optimization-recovery.service';
 
 import { Coin } from '../coin/coin.entity';
@@ -27,8 +28,14 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
     forwardRef(() => OrderModule),
     forwardRef(() => OHLCModule)
   ],
-  controllers: [OptimizationController],
-  providers: [GridSearchService, OptimizationOrchestratorService, OptimizationProcessor, OptimizationRecoveryService],
+  providers: [
+    GridSearchService,
+    OptimizationEvaluationService,
+    OptimizationOrchestratorService,
+    OptimizationQueryService,
+    OptimizationProcessor,
+    OptimizationRecoveryService
+  ],
   exports: [GridSearchService, OptimizationOrchestratorService]
 })
 export class OptimizationModule {}
