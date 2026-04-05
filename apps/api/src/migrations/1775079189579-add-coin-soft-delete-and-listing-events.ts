@@ -8,7 +8,7 @@ export class AddCoinSoftDeleteAndListingEvents1775079189579 implements Migration
     await queryRunner.query(
       `CREATE INDEX "IDX_coin_delistedAt_active" ON "coin" ("delistedAt") WHERE "delistedAt" IS NULL`
     );
-    await queryRunner.query(`CREATE TYPE "coin_listing_event_type_enum" AS ENUM ('LISTED', 'DELISTED')`);
+    await queryRunner.query(`CREATE TYPE "coin_listing_event_type_enum" AS ENUM ('LISTED', 'DELISTED', 'RELISTED')`);
     await queryRunner.query(`
       CREATE TABLE "coin_listing_events" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),

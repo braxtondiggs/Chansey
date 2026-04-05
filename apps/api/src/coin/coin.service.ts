@@ -140,15 +140,13 @@ export class CoinService {
     const uniqueIds = [...new Set(coinIds.filter((id) => id && typeof id === 'string' && id.trim().length > 0))];
     if (uniqueIds.length === 0) return [];
 
-    const qb = this.coin
-      .createQueryBuilder('coin')
-      .where('coin.id IN (:...ids)', { ids: uniqueIds })
-      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
-      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
-      .andWhere('coin.currentPrice IS NOT NULL');
+    const qb = this.coin.createQueryBuilder('coin').where('coin.id IN (:...ids)', { ids: uniqueIds });
 
     if (!options?.includeDelisted) {
-      qb.andWhere('coin.delistedAt IS NULL');
+      qb.andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
+        .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
+        .andWhere('coin.currentPrice IS NOT NULL')
+        .andWhere('coin.delistedAt IS NULL');
     }
 
     return qb.orderBy('coin.marketCap', 'DESC').getMany();
@@ -283,6 +281,7 @@ export class CoinService {
 
   async remove(coinId: string) {
     const coin = await this.getCoinById(coinId);
+    if (coin.delistedAt) return coin;
     coin.delistedAt = new Date();
     return this.coin.save(coin);
   }

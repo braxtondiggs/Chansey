@@ -62,7 +62,8 @@ describe('CoinSyncTask', () => {
     listingEventService = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
       recordBulkDelistings: jest.fn().mockResolvedValue(undefined),
-      recordBulkListings: jest.fn().mockResolvedValue(undefined)
+      recordBulkListings: jest.fn().mockResolvedValue(undefined),
+      recordBulkRelistings: jest.fn().mockResolvedValue(undefined)
     };
 
     mockQueue = {
@@ -225,7 +226,7 @@ describe('CoinSyncTask', () => {
       const result = await task.handleSyncCoins(mockJob as Job);
 
       expect(coinService.relistMany).toHaveBeenCalledWith(['id-relisted']);
-      expect(listingEventService.recordBulkListings).toHaveBeenCalledWith(['id-relisted'], 'coin_sync');
+      expect(listingEventService.recordBulkRelistings).toHaveBeenCalledWith(['id-relisted'], 'coin_sync');
       expect(result.relisted).toBe(1);
     });
 

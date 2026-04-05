@@ -349,7 +349,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       if (coinsToRelist.length > 0) {
         await this.coin.relistMany(coinsToRelist);
-        await this.listingEventService.recordBulkListings(coinsToRelist, 'coin_sync');
+        await this.listingEventService.recordBulkRelistings(coinsToRelist, 'coin_sync');
         this.logger.log(`Re-listed ${coinsToRelist.length} previously delisted coins`);
       }
 

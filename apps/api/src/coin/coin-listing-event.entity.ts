@@ -6,11 +6,12 @@ import { Exchange } from '../exchange/exchange.entity';
 
 export enum CoinListingEventType {
   LISTED = 'LISTED',
-  DELISTED = 'DELISTED'
+  DELISTED = 'DELISTED',
+  RELISTED = 'RELISTED'
 }
 
 @Entity('coin_listing_events')
-@Index(['coin', 'eventType'])
+@Index(['coinId', 'eventType'])
 export class CoinListingEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -54,6 +54,19 @@ export class CoinListingEventService {
     await this.repo.insert(events);
   }
 
+  async recordBulkRelistings(coinIds: string[], source = 'coin_sync'): Promise<void> {
+    if (coinIds.length === 0) return;
+
+    const now = new Date();
+    const events: QueryDeepPartialEntity<CoinListingEvent>[] = coinIds.map((coinId) => ({
+      coinId,
+      eventType: CoinListingEventType.RELISTED,
+      source,
+      eventDate: now
+    }));
+    await this.repo.insert(events);
+  }
+
   async getEventsByCoin(coinId: string): Promise<CoinListingEvent[]> {
     return this.repo.find({
       where: { coinId },
