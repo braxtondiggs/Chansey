@@ -22,6 +22,7 @@ import {
   UserHoldingsDto
 } from '@chansey/api-interfaces';
 
+import { CoinMarketDataService } from './coin-market-data.service';
 import { Coin, CoinRelations } from './coin.entity';
 import { CoinService } from './coin.service';
 import { CoinResponseDto, CoinWithPriceDto } from './dto';
@@ -43,6 +44,7 @@ import { User } from '../users/users.entity';
 export class CoinController {
   constructor(
     private readonly coin: CoinService,
+    private readonly coinMarketData: CoinMarketDataService,
     private readonly orderService: OrderService
   ) {}
 
@@ -174,7 +176,7 @@ export class CoinController {
     description: 'Coin not found.'
   })
   getCoinHistoricalData(@Param('id', new ParseUUIDPipe()) id: string): Promise<any> {
-    return this.coin.getCoinHistoricalData(id);
+    return this.coinMarketData.getCoinHistoricalData(id);
   }
 }
 
@@ -191,6 +193,7 @@ export class CoinsController implements OnModuleInit {
 
   constructor(
     private readonly coinService: CoinService,
+    private readonly coinMarketDataService: CoinMarketDataService,
     private readonly orderService: OrderService,
     private readonly riskService: RiskService,
     private readonly moduleRef: ModuleRef
@@ -283,7 +286,7 @@ export class CoinsController implements OnModuleInit {
   @UseGuards(OptionalJwtAuthenticationGuard)
   async getCoinDetail(@Param('slug') slug: string, @GetUser() user: User | null): Promise<CoinDetailResponseDto> {
     // Get base coin detail and entity in a single DB query
-    const { dto: coinDetail, entity: coin } = await this.coinService.getCoinDetailWithEntity(slug);
+    const { dto: coinDetail, entity: coin } = await this.coinMarketDataService.getCoinDetailWithEntity(slug);
 
     // If user is authenticated, add holdings data from live balances
     if (user) {
@@ -346,7 +349,7 @@ export class CoinsController implements OnModuleInit {
       throw new BadRequestException(`Invalid period. Must be one of: ${validPeriods.join(', ')}`);
     }
 
-    return this.coinService.getMarketChart(slug, period);
+    return this.coinMarketDataService.getMarketChart(slug, period);
   }
 
   /**

@@ -7,12 +7,14 @@ import { ExchangeService } from '../../exchange/exchange.service';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
+import { ExchangeSymbolMapService } from '../services/exchange-symbol-map.service';
 import { OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 describe('OHLCSyncTask', () => {
   let task: OHLCSyncTask;
   let queue: { getRepeatableJobs: jest.Mock; add: jest.Mock };
   let ohlcService: jest.Mocked<OHLCService>;
+  let symbolMapService: jest.Mocked<ExchangeSymbolMapService>;
   let exchangeOHLC: jest.Mocked<ExchangeOHLCService>;
   let coinService: jest.Mocked<CoinService>;
   let exchangeService: jest.Mocked<ExchangeService>;
@@ -31,14 +33,17 @@ describe('OHLCSyncTask', () => {
     };
 
     ohlcService = {
+      upsertCandles: jest.fn()
+    } as unknown as jest.Mocked<OHLCService>;
+
+    symbolMapService = {
       getActiveSymbolMaps: jest.fn(),
       upsertSymbolMap: jest.fn().mockResolvedValue({}),
-      upsertCandles: jest.fn(),
       incrementFailureCount: jest.fn(),
       markSyncSuccess: jest.fn(),
       deactivateFailedMappings: jest.fn().mockResolvedValue(0),
       updateSymbolMapStatus: jest.fn()
-    } as unknown as jest.Mocked<OHLCService>;
+    } as unknown as jest.Mocked<ExchangeSymbolMapService>;
 
     exchangeOHLC = {
       fetchOHLC: jest.fn(),
@@ -69,6 +74,7 @@ describe('OHLCSyncTask', () => {
     task = new OHLCSyncTask(
       queue as any,
       ohlcService,
+      symbolMapService,
       exchangeOHLC,
       coinService,
       exchangeService,
@@ -96,7 +102,7 @@ describe('OHLCSyncTask', () => {
     process.env.NODE_ENV = 'production';
     process.env.DISABLE_BACKGROUND_TASKS = 'false';
     configService.get.mockReturnValue(undefined);
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
     const scheduleSpy = jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
 
     await task.onModuleInit();
@@ -108,7 +114,7 @@ describe('OHLCSyncTask', () => {
     process.env.NODE_ENV = 'production';
     process.env.DISABLE_BACKGROUND_TASKS = 'false';
     configService.get.mockReturnValue(undefined);
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
     exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
     coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
     // getAvailableSymbols returns a valid pair for BTC on binance_us
@@ -117,8 +123,8 @@ describe('OHLCSyncTask', () => {
 
     await task.onModuleInit();
 
-    expect(ohlcService.deactivateFailedMappings).toHaveBeenCalledWith(24);
-    expect(ohlcService.upsertSymbolMap).toHaveBeenCalledWith({
+    expect(symbolMapService.deactivateFailedMappings).toHaveBeenCalledWith(24);
+    expect(symbolMapService.upsertSymbolMap).toHaveBeenCalledWith({
       coinId: 'btc',
       exchangeId: 'ex-1',
       symbol: 'BTC/USD',
@@ -132,7 +138,7 @@ describe('OHLCSyncTask', () => {
     process.env.NODE_ENV = 'production';
     process.env.DISABLE_BACKGROUND_TASKS = 'false';
     configService.get.mockReturnValue(undefined);
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([{ id: 'existing' }] as any);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([{ id: 'existing' }] as any);
     jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
 
     await task.onModuleInit();
@@ -209,7 +215,7 @@ describe('OHLCSyncTask', () => {
   });
 
   it('handleOHLCSync returns empty summary when no mappings', async () => {
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
 
     const job = { updateProgress: jest.fn(), name: 'ohlc-sync', id: 'job-1' } as unknown as Job;
     const result = await task.handleOHLCSync(job);
@@ -232,7 +238,7 @@ describe('OHLCSyncTask', () => {
       exchange: { slug: 'binance_us' }
     } as ExchangeSymbolMap;
 
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([mapping]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([mapping]);
     jest.spyOn(task as any, 'syncSingleMapping').mockResolvedValue({ success: true, closePrice: 123 });
     jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
 
@@ -264,7 +270,7 @@ describe('OHLCSyncTask', () => {
       exchange: { slug: 'gdax' }
     } as ExchangeSymbolMap;
 
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([mappingLowPriority, mappingHighPriority]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([mappingLowPriority, mappingHighPriority]);
     exchangeOHLC.fetchOHLC.mockImplementation(async (slug, symbol) => {
       if (symbol === 'BTC/USD') {
         return {
@@ -347,8 +353,8 @@ describe('OHLCSyncTask', () => {
         close: 110
       })
     ]);
-    expect(ohlcService.markSyncSuccess).toHaveBeenCalledWith('map-4');
-    expect(ohlcService.incrementFailureCount).not.toHaveBeenCalled();
+    expect(symbolMapService.markSyncSuccess).toHaveBeenCalledWith('map-4');
+    expect(symbolMapService.incrementFailureCount).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, closePrice: 110 });
   });
 
@@ -363,16 +369,16 @@ describe('OHLCSyncTask', () => {
       exchange: { slug: 'binance_us' }
     } as ExchangeSymbolMap;
 
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([mapping]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([mapping]);
     exchangeOHLC.fetchOHLC.mockResolvedValue({ success: false, candles: [] });
     jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
 
     const job = { updateProgress: jest.fn(), name: 'ohlc-sync', id: 'job-1' } as unknown as Job;
     await task.handleOHLCSync(job);
 
-    expect(ohlcService.incrementFailureCount).toHaveBeenCalledWith('map-1');
+    expect(symbolMapService.incrementFailureCount).toHaveBeenCalledWith('map-1');
     // failureCount (23) + 1 >= 24 → should deactivate
-    expect(ohlcService.updateSymbolMapStatus).toHaveBeenCalledWith('map-1', false);
+    expect(symbolMapService.updateSymbolMapStatus).toHaveBeenCalledWith('map-1', false);
   });
 
   it('does not deactivate mapping when failures are below threshold', async () => {
@@ -386,16 +392,16 @@ describe('OHLCSyncTask', () => {
       exchange: { slug: 'binance_us' }
     } as ExchangeSymbolMap;
 
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([mapping]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([mapping]);
     exchangeOHLC.fetchOHLC.mockResolvedValue({ success: false, candles: [] });
     jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
 
     const job = { updateProgress: jest.fn(), name: 'ohlc-sync', id: 'job-1' } as unknown as Job;
     await task.handleOHLCSync(job);
 
-    expect(ohlcService.incrementFailureCount).toHaveBeenCalledWith('map-2');
+    expect(symbolMapService.incrementFailureCount).toHaveBeenCalledWith('map-2');
     // failureCount (5) + 1 = 6 < 24 → should NOT deactivate
-    expect(ohlcService.updateSymbolMapStatus).not.toHaveBeenCalled();
+    expect(symbolMapService.updateSymbolMapStatus).not.toHaveBeenCalled();
   });
 
   it('deactivates mapping when sync throws an exception', async () => {
@@ -409,15 +415,15 @@ describe('OHLCSyncTask', () => {
       exchange: { slug: 'binance_us' }
     } as ExchangeSymbolMap;
 
-    ohlcService.getActiveSymbolMaps.mockResolvedValue([mapping]);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([mapping]);
     exchangeOHLC.fetchOHLC.mockRejectedValue(new Error('Exchange timeout'));
     jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
 
     const job = { updateProgress: jest.fn(), name: 'ohlc-sync', id: 'job-1' } as unknown as Job;
     await task.handleOHLCSync(job);
 
-    expect(ohlcService.incrementFailureCount).toHaveBeenCalledWith('map-3');
-    expect(ohlcService.updateSymbolMapStatus).toHaveBeenCalledWith('map-3', false);
+    expect(symbolMapService.incrementFailureCount).toHaveBeenCalledWith('map-3');
+    expect(symbolMapService.updateSymbolMapStatus).toHaveBeenCalledWith('map-3', false);
   });
 
   it('process calls handleOHLCSync', async () => {
@@ -433,5 +439,72 @@ describe('OHLCSyncTask', () => {
     await task.process(job);
 
     expect(handleSpy).toHaveBeenCalledWith(job);
+  });
+
+  it('process re-throws errors from handleOHLCSync', async () => {
+    jest.spyOn(task, 'handleOHLCSync').mockRejectedValue(new Error('sync exploded'));
+    const job = { name: 'ohlc-sync', id: 'job-1' } as Job;
+
+    await expect(task.process(job)).rejects.toThrow('sync exploded');
+  });
+
+  it('onModuleInit skips when DISABLE_BACKGROUND_TASKS is true', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'true';
+    const scheduleSpy = jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(scheduleSpy).not.toHaveBeenCalled();
+  });
+
+  it('onModuleInit skips when OHLC_SYNC_ENABLED is false', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue('false');
+    const scheduleSpy = jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(scheduleSpy).not.toHaveBeenCalled();
+  });
+
+  it('handleOHLCSync counts errors when all mappings for a coin fail', async () => {
+    const mapping = {
+      id: 'map-1',
+      coinId: 'btc',
+      exchangeId: 'ex-1',
+      symbol: 'BTC/USD',
+      priority: 0,
+      failureCount: 0,
+      exchange: { slug: 'binance_us' }
+    } as ExchangeSymbolMap;
+
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([mapping]);
+    exchangeOHLC.fetchOHLC.mockResolvedValue({ success: false, candles: [] });
+    jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
+
+    const job = { updateProgress: jest.fn(), name: 'ohlc-sync', id: 'job-1' } as unknown as Job;
+    const result = await task.handleOHLCSync(job);
+
+    expect(result.errorCount).toBe(1);
+    expect(result.successCount).toBe(0);
+    expect(coinService.updateCurrentPrice).not.toHaveBeenCalled();
+  });
+
+  it('seedSymbolMaps triggers backfill for newly mapped coins', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    // First call (seedSymbolMapsIfEmpty check) returns empty, second call (inside seedSymbolMaps) also empty
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
+    exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
+    coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
+    exchangeOHLC.getAvailableSymbols.mockResolvedValue(['BTC/USD']);
+    jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(backfillService.startBackfill).toHaveBeenCalledWith('btc');
   });
 });

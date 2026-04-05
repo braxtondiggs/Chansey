@@ -14,7 +14,7 @@ import {
 import { MarketRegimeService } from './market-regime.service';
 
 import { AuditService } from '../audit/audit.service';
-import { CoinService } from '../coin/coin.service';
+import { CoinMarketDataService } from '../coin/coin-market-data.service';
 import { toErrorInfo } from '../shared/error.util';
 
 /** Minimum data points required to compute the 200-period SMA */
@@ -57,7 +57,7 @@ export class CompositeRegimeService implements OnModuleInit {
 
   constructor(
     private readonly marketRegimeService: MarketRegimeService,
-    private readonly coinService: CoinService,
+    private readonly coinMarketDataService: CoinMarketDataService,
     private readonly auditService: AuditService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
   ) {}
@@ -120,7 +120,7 @@ export class CompositeRegimeService implements OnModuleInit {
   async refresh(): Promise<CompositeRegimeType> {
     try {
       // 1. Fetch BTC daily prices (1y ≈ 365 data points, well above 200)
-      const chartData = await this.coinService.getMarketChart(BTC_COIN_SLUG, '1y');
+      const chartData = await this.coinMarketDataService.getMarketChart(BTC_COIN_SLUG, '1y');
       const closes = chartData.prices.map((p) => p.price).filter((v): v is number => Number.isFinite(v));
 
       if (closes.length < SMA_PERIOD) {

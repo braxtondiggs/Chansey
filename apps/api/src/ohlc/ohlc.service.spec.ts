@@ -1,8 +1,8 @@
 import { ObjectLiteral, Repository } from 'typeorm';
 
-import { ExchangeSymbolMap } from './exchange-symbol-map.entity';
 import { OHLCCandle } from './ohlc-candle.entity';
 import { OHLCService } from './ohlc.service';
+import { ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
@@ -25,7 +25,7 @@ const createQueryBuilder = () => ({
 describe('OHLCService', () => {
   let service: OHLCService;
   let ohlcRepository: MockRepo<OHLCCandle>;
-  let symbolMapRepository: MockRepo<ExchangeSymbolMap>;
+  let symbolMapService: jest.Mocked<ExchangeSymbolMapService>;
 
   beforeEach(() => {
     ohlcRepository = {
@@ -39,17 +39,11 @@ describe('OHLCService', () => {
       increment: jest.fn()
     } as unknown as MockRepo<OHLCCandle>;
 
-    symbolMapRepository = {
-      findOne: jest.fn(),
-      find: jest.fn(),
-      update: jest.fn(),
-      increment: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-      createQueryBuilder: jest.fn()
-    } as unknown as MockRepo<ExchangeSymbolMap>;
+    symbolMapService = {
+      getLastSyncTime: jest.fn()
+    } as unknown as jest.Mocked<ExchangeSymbolMapService>;
 
-    service = new OHLCService(ohlcRepository, symbolMapRepository);
+    service = new OHLCService(ohlcRepository, symbolMapService);
   });
 
   afterEach(() => {
@@ -264,80 +258,6 @@ describe('OHLCService', () => {
     expect(result[0].gapCount).toBe(1);
   });
 
-  it('upsertSymbolMap updates existing mapping', async () => {
-    const existing = { id: 'map-1', coinId: 'btc', exchangeId: 'ex-1' } as ExchangeSymbolMap;
-    symbolMapRepository.findOne.mockResolvedValue(existing);
-
-    const result = await service.upsertSymbolMap({ coinId: 'btc', exchangeId: 'ex-1', symbol: 'BTC/USD' });
-
-    expect(symbolMapRepository.update).toHaveBeenCalledWith(existing.id, {
-      coinId: 'btc',
-      exchangeId: 'ex-1',
-      symbol: 'BTC/USD'
-    });
-    expect(result).toEqual({ ...existing, symbol: 'BTC/USD' });
-  });
-
-  it('upsertSymbolMap creates new mapping', async () => {
-    symbolMapRepository.findOne.mockResolvedValue(null);
-    const created = { coinId: 'btc', exchangeId: 'ex-1', symbol: 'BTC/USD' } as ExchangeSymbolMap;
-    symbolMapRepository.create.mockReturnValue(created);
-    symbolMapRepository.save.mockResolvedValue({ ...created, id: 'map-2' } as ExchangeSymbolMap);
-
-    const result = await service.upsertSymbolMap({ coinId: 'btc', exchangeId: 'ex-1', symbol: 'BTC/USD' });
-
-    expect(symbolMapRepository.create).toHaveBeenCalledWith({
-      coinId: 'btc',
-      exchangeId: 'ex-1',
-      symbol: 'BTC/USD'
-    });
-    expect(result.id).toBe('map-2');
-  });
-
-  it('getActiveSymbolMaps filters by exchange when provided', async () => {
-    symbolMapRepository.find.mockResolvedValue([]);
-
-    await service.getActiveSymbolMaps('ex-1');
-
-    expect(symbolMapRepository.find).toHaveBeenCalledWith({
-      where: { isActive: true, exchangeId: 'ex-1' },
-      order: { priority: 'ASC' },
-      relations: ['coin', 'exchange']
-    });
-  });
-
-  it('getSymbolMapsForCoins skips empty input', async () => {
-    const result = await service.getSymbolMapsForCoins([]);
-
-    expect(result).toEqual([]);
-    expect(symbolMapRepository.find).not.toHaveBeenCalled();
-  });
-
-  it('updateSymbolMapStatus updates isActive', async () => {
-    await service.updateSymbolMapStatus('map-1', false);
-
-    expect(symbolMapRepository.update).toHaveBeenCalledWith('map-1', { isActive: false });
-  });
-
-  it('incrementFailureCount increments failure count', async () => {
-    await service.incrementFailureCount('map-1');
-
-    expect(symbolMapRepository.increment).toHaveBeenCalledWith({ id: 'map-1' }, 'failureCount', 1);
-  });
-
-  it('markSyncSuccess resets failure count and sets lastSyncAt', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2024-01-03T00:00:00Z'));
-
-    await service.markSyncSuccess('map-1');
-
-    expect(symbolMapRepository.update).toHaveBeenCalledWith('map-1', {
-      failureCount: 0,
-      lastSyncAt: new Date('2024-01-03T00:00:00Z')
-    });
-
-    jest.useRealTimers();
-  });
-
   it('pruneOldCandles returns affected count', async () => {
     ohlcRepository.delete.mockResolvedValue({ affected: 4 } as any);
 
@@ -355,7 +275,7 @@ describe('OHLCService', () => {
     expect(result).toBe(0);
   });
 
-  it('getSyncStatus returns summary', async () => {
+  it('getSyncStatus returns summary using symbolMapService', async () => {
     const qb = createQueryBuilder();
     qb.getRawOne.mockResolvedValue({ count: '2' });
     qb.getOne
@@ -364,7 +284,7 @@ describe('OHLCService', () => {
     (ohlcRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
     ohlcRepository.count.mockResolvedValue(10);
-    symbolMapRepository.findOne.mockResolvedValue({ lastSyncAt: new Date('2024-01-02T01:00:00Z') } as any);
+    symbolMapService.getLastSyncTime.mockResolvedValue(new Date('2024-01-02T01:00:00Z'));
 
     const result = await service.getSyncStatus();
 
@@ -375,18 +295,7 @@ describe('OHLCService', () => {
       newestCandle: new Date('2024-01-02T00:00:00Z'),
       lastSyncTime: new Date('2024-01-02T01:00:00Z')
     });
-  });
-
-  it('getStaleCoins returns query results', async () => {
-    const qb = createQueryBuilder();
-    const mappings = [{ coinId: 'btc' }] as ExchangeSymbolMap[];
-    qb.getMany.mockResolvedValue(mappings);
-    (symbolMapRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
-
-    const result = await service.getStaleCoins(2);
-
-    expect(result).toEqual(mappings);
-    expect(qb.andWhere).toHaveBeenCalled();
+    expect(symbolMapService.getLastSyncTime).toHaveBeenCalled();
   });
 
   it('findAllByDay aggregates candles', async () => {
@@ -423,7 +332,7 @@ describe('OHLCService', () => {
     expect(result.btc[0].volume).toBe(12);
   });
 
-  it('findAllByHour groups by hour', async () => {
+  it('findAllByHour preserves individual candle values', async () => {
     const candles = [
       {
         coinId: 'btc',
@@ -450,6 +359,46 @@ describe('OHLCService', () => {
     const result = await service.findAllByHour('btc', '1d');
 
     expect(result.btc).toHaveLength(2);
+    expect(result.btc[0].open).toBe(2);
+    expect(result.btc[0].close).toBe(3);
+    expect(result.btc[1].open).toBe(1);
+    expect(result.btc[1].close).toBe(2);
+  });
+
+  it('findAllByDay accepts a single coin string', async () => {
+    const candles = [
+      {
+        coinId: 'btc',
+        timestamp: new Date('2024-01-01T00:00:00Z'),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10
+      }
+    ] as OHLCCandle[];
+
+    jest.spyOn(service, 'getCandlesByDateRange').mockResolvedValue(candles);
+
+    const result = await service.findAllByDay('btc', '1d');
+
+    expect(result.btc).toHaveLength(1);
+    const [coinIds] = (service.getCandlesByDateRange as jest.Mock).mock.calls[0];
+    expect(coinIds).toEqual(['btc']);
+  });
+
+  it('detectGaps includes trailing gap when last candle is before endDate', async () => {
+    const qb = createQueryBuilder();
+    qb.getMany.mockResolvedValue([{ timestamp: new Date('2024-01-01T00:00:00Z') }] as OHLCCandle[]);
+    (ohlcRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+    const gaps = await service.detectGaps('btc', new Date('2024-01-01T00:00:00Z'), new Date('2024-01-01T05:00:00Z'));
+
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toEqual({
+      start: new Date('2024-01-01T01:00:00Z'),
+      end: new Date('2024-01-01T05:00:00Z')
+    });
   });
 
   it('findAllByDay uses range-based dates', async () => {

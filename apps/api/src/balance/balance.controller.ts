@@ -2,6 +2,7 @@ import { CacheTTL } from '@nestjs/cache-manager';
 import { Controller, Get, UseGuards, Query, HttpStatus, UseInterceptors, Logger } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { BalanceHistoryService } from './balance-history.service';
 import { BalanceService } from './balance.service';
 import { BalanceResponseDto, AccountValueHistoryDto, AssetDetailsDto } from './dto';
 
@@ -19,7 +20,10 @@ import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.inter
 export class BalanceController {
   private readonly logger = new Logger(BalanceController.name);
 
-  constructor(private readonly balanceService: BalanceService) {}
+  constructor(
+    private readonly balanceService: BalanceService,
+    private readonly balanceHistoryService: BalanceHistoryService
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -63,8 +67,14 @@ export class BalanceController {
     this.logger.log(
       `getBalances called for user: ${user.id}, includeHistorical: ${includeHistorical}, period: ${period}`
     );
+    const response = await this.balanceService.getUserBalances(user);
+
     const periods = period ? (Array.isArray(period) ? period : [period]) : [];
-    return this.balanceService.getUserBalances(user, includeHistorical, periods);
+    if (includeHistorical && periods.length > 0) {
+      response.historical = await this.balanceHistoryService.getHistoricalBalances(user, periods);
+    }
+
+    return response;
   }
 
   @Get('history')
@@ -92,7 +102,13 @@ export class BalanceController {
     type: Number
   })
   async getAccountValueHistory(@GetUser() user: User, @Query('days') days?: number): Promise<AccountValueHistoryDto> {
-    return this.balanceService.getAccountValueHistory(user, days || 30);
+    let currentBalances;
+    try {
+      currentBalances = await this.balanceService.getCurrentBalances(user);
+    } catch {
+      this.logger.warn(`Couldn't fetch current balances for account value history, falling back to historical`);
+    }
+    return this.balanceHistoryService.getAccountValueHistory(user, days || 30, currentBalances);
   }
 
   @Get('assets')

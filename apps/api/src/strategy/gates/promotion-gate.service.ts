@@ -3,8 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { AuditEventType } from '@chansey/api-interfaces';
-
 import { CorrelationLimitGate } from './correlation-limit.gate';
 import { MaximumDrawdownGate } from './maximum-drawdown.gate';
 import { MinimumScoreGate } from './minimum-score.gate';
@@ -135,18 +133,10 @@ export class PromotionGateService {
     const evaluation = this.calculateEvaluation(gateResults);
 
     // Log to audit trail
-    await this.auditService.createAuditLog({
-      eventType: AuditEventType.GATE_EVALUATION,
-      entityType: 'StrategyConfig',
-      entityId: strategyConfigId,
+    await this.auditService.logPromotionGateEvaluation({
+      strategyConfigId,
       userId,
-      beforeState: undefined,
-      afterState: {
-        canPromote: evaluation.canPromote,
-        gatesPassed: evaluation.gatesPassed,
-        gatesFailed: evaluation.gatesFailed,
-        failedGates: evaluation.failedGates
-      },
+      evaluation,
       metadata: {
         gateResults,
         score: latestScore.overallScore,
@@ -232,7 +222,7 @@ export class PromotionGateService {
   /**
    * Load strategy configuration
    */
-  private async loadStrategyConfig(strategyConfigId: string): Promise<StrategyConfig> {
+  private async loadStrategyConfig(_strategyConfigId: string): Promise<StrategyConfig> {
     // This would use StrategyService in real implementation
     // For now, return a placeholder
     return {} as StrategyConfig;

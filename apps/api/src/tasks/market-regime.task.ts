@@ -4,7 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
-import { CoinService } from '../coin/coin.service';
+import { CoinMarketDataService } from '../coin/coin-market-data.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -23,7 +23,7 @@ export class MarketRegimeTask {
   constructor(
     @InjectQueue('regime-check-queue') private regimeQueue: Queue,
     private readonly marketRegimeService: MarketRegimeService,
-    private readonly coinService: CoinService
+    private readonly coinMarketDataService: CoinMarketDataService
   ) {}
 
   /**
@@ -92,7 +92,7 @@ export class MarketRegimeTask {
   }
 
   /**
-   * Fetch historical price data for asset using CoinService
+   * Fetch historical price data for asset using CoinMarketDataService
    * @param asset Asset symbol (e.g., 'BTC', 'ETH')
    * @param days Number of days of historical data
    * @returns Array of historical prices
@@ -119,7 +119,7 @@ export class MarketRegimeTask {
       else if (days <= 7) period = '7d';
       else if (days <= 30) period = '30d';
 
-      const chartData = await this.coinService.getMarketChart(slug, period);
+      const chartData = await this.coinMarketDataService.getMarketChart(slug, period);
 
       if (!chartData.prices || chartData.prices.length === 0) {
         this.logger.warn(`No price data returned for ${asset}, using fallback`);

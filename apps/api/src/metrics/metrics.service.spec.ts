@@ -1,325 +1,137 @@
 import { MetricsService } from './metrics.service';
+import { BacktestMetricsService } from './services/backtest-metrics.service';
+import { InfraMetricsService } from './services/infra-metrics.service';
+import { StrategyMetricsService } from './services/strategy-metrics.service';
+import { TradingMetricsService } from './services/trading-metrics.service';
 
-const createCounterMock = () => ({ inc: jest.fn() }) as any;
-const createGaugeMock = () => ({ set: jest.fn(), inc: jest.fn(), dec: jest.fn() }) as any;
-const createHistogramMock = () =>
-  ({
-    observe: jest.fn(),
-    startTimer: jest.fn()
-  }) as any;
+/**
+ * Delegation map: facade method → [sub-service key, delegate method, sample args].
+ * Exhaustive — every public method on MetricsService must appear here.
+ */
+const DELEGATION_MAP: [string, 'backtest' | 'trading' | 'strategy' | 'infra', string, unknown[]][] = [
+  // Infra
+  ['recordHttpRequest', 'infra', 'recordHttpRequest', ['GET', '/test', 200, 250]],
+  ['setActiveConnections', 'infra', 'setActiveConnections', [5]],
+  ['recordPriceUpdate', 'infra', 'recordPriceUpdate', ['coingecko', 2]],
+  ['setPriceUpdateLag', 'infra', 'setPriceUpdateLag', ['coingecko', 1.5]],
+  ['setQueueJobsWaiting', 'infra', 'setQueueJobsWaiting', ['orders', 7]],
+  ['setQueueJobsActive', 'infra', 'setQueueJobsActive', ['orders', 3]],
+  ['recordQueueJobCompleted', 'infra', 'recordQueueJobCompleted', ['orders']],
+  ['recordQueueJobFailed', 'infra', 'recordQueueJobFailed', ['orders', 'timeout']],
+
+  // Trading
+  ['recordOrdersSynced', 'trading', 'recordOrdersSynced', ['binance', 'success', 3]],
+  ['recordOrderSyncError', 'trading', 'recordOrderSyncError', ['binance', 'timeout']],
+  ['startOrderSyncTimer', 'trading', 'startOrderSyncTimer', ['binance']],
+  ['recordTradeExecuted', 'trading', 'recordTradeExecuted', ['coinbase', 'buy', 'BTC/USD']],
+  ['startTradeExecutionTimer', 'trading', 'startTradeExecutionTimer', ['binance']],
+  ['setExchangeConnections', 'trading', 'setExchangeConnections', ['binance', 2]],
+  ['recordExchangeApiCall', 'trading', 'recordExchangeApiCall', ['binance', '/orders', true]],
+  ['startExchangeApiTimer', 'trading', 'startExchangeApiTimer', ['binance', '/orders']],
+  ['recordTradeCooldownBlock', 'trading', 'recordTradeCooldownBlock', ['buy', 'BTC/USD']],
+  ['recordTradeCooldownClaim', 'trading', 'recordTradeCooldownClaim', ['sell', 'ETH/USD']],
+  ['recordTradeCooldownCleared', 'trading', 'recordTradeCooldownCleared', ['expired']],
+  ['recordSignalThrottleSuppressed', 'trading', 'recordSignalThrottleSuppressed', ['rsi', 5]],
+  ['recordSignalThrottlePassed', 'trading', 'recordSignalThrottlePassed', ['rsi', 'buy']],
+  ['recordRegimeGateBlock', 'trading', 'recordRegimeGateBlock', ['BEAR']],
+  ['recordDrawdownGateBlock', 'trading', 'recordDrawdownGateBlock', []],
+  ['recordDailyLossGateBlock', 'trading', 'recordDailyLossGateBlock', []],
+  ['recordConcentrationGateBlock', 'trading', 'recordConcentrationGateBlock', []],
+  ['recordLiveOrderPlaced', 'trading', 'recordLiveOrderPlaced', ['spot', 'buy']],
+
+  // Backtest
+  ['recordBacktestCompleted', 'backtest', 'recordBacktestCompleted', ['rsi', 'success']],
+  ['startBacktestTimer', 'backtest', 'startBacktestTimer', ['rsi']],
+  ['recordQuoteCurrencyFallback', 'backtest', 'recordQuoteCurrencyFallback', ['USD', 'USDT']],
+  ['recordBacktestCreated', 'backtest', 'recordBacktestCreated', ['historical', 'rsi']],
+  ['recordBacktestStarted', 'backtest', 'recordBacktestStarted', ['historical', 'rsi', false]],
+  ['recordBacktestCancelled', 'backtest', 'recordBacktestCancelled', ['rsi']],
+  ['incrementActiveBacktests', 'backtest', 'incrementActiveBacktests', ['historical']],
+  ['decrementActiveBacktests', 'backtest', 'decrementActiveBacktests', ['historical']],
+  ['startDataLoadTimer', 'backtest', 'startDataLoadTimer', ['postgres']],
+  ['recordDataRecordsLoaded', 'backtest', 'recordDataRecordsLoaded', ['postgres', 1000]],
+  ['recordTradeSimulated', 'backtest', 'recordTradeSimulated', ['rsi', 'buy', 'executed']],
+  ['recordSlippage', 'backtest', 'recordSlippage', ['rsi', 'buy', 5]],
+  ['recordAlgorithmExecution', 'backtest', 'recordAlgorithmExecution', ['rsi', 'success']],
+  ['recordSignalGenerated', 'backtest', 'recordSignalGenerated', ['rsi', 'buy']],
+  ['startPersistenceTimer', 'backtest', 'startPersistenceTimer', ['full']],
+  ['recordRecordsPersisted', 'backtest', 'recordRecordsPersisted', ['trades', 50]],
+  ['recordCoinResolution', 'backtest', 'recordCoinResolution', ['success']],
+  ['recordInstrumentsResolved', 'backtest', 'recordInstrumentsResolved', ['direct', 10]],
+  ['recordBacktestError', 'backtest', 'recordBacktestError', ['rsi', 'data_load_failed']],
+  [
+    'recordBacktestFinalMetrics',
+    'backtest',
+    'recordBacktestFinalMetrics',
+    ['rsi', { totalReturn: 0.1, sharpeRatio: 1.5, maxDrawdown: 0.2, tradeCount: 50 }]
+  ],
+  ['recordCheckpointSaved', 'backtest', 'recordCheckpointSaved', ['rsi']],
+  ['recordCheckpointResumed', 'backtest', 'recordCheckpointResumed', ['rsi']],
+  ['recordCheckpointOrphansCleaned', 'backtest', 'recordCheckpointOrphansCleaned', ['trades', 3]],
+  ['setCheckpointProgress', 'backtest', 'setCheckpointProgress', ['bt-1', 'rsi', 75]],
+  ['clearCheckpointProgress', 'backtest', 'clearCheckpointProgress', ['bt-1', 'rsi']],
+
+  // Strategy
+  ['setStrategyDeploymentsActive', 'strategy', 'setStrategyDeploymentsActive', ['trend', 'live', 2]],
+  ['recordStrategySignal', 'strategy', 'recordStrategySignal', ['rsi', 'buy']],
+  ['recordStrategyHeartbeat', 'strategy', 'recordStrategyHeartbeat', ['rsi', 'success']],
+  ['setStrategyHeartbeatAge', 'strategy', 'setStrategyHeartbeatAge', ['rsi', 'shadow', 120]],
+  ['setStrategyHeartbeatFailures', 'strategy', 'setStrategyHeartbeatFailures', ['rsi', 3]],
+  ['setStrategyHealthScore', 'strategy', 'setStrategyHealthScore', ['rsi', 'shadow', 85]],
+  ['setPortfolioTotalValue', 'strategy', 'setPortfolioTotalValue', ['user-1', 10000]],
+  ['setPortfolioAssetsCount', 'strategy', 'setPortfolioAssetsCount', ['user-1', 'binance', 5]],
+  ['calculateAndSetHealthScore', 'strategy', 'calculateAndSetHealthScore', ['rsi', 'shadow', 900, 3, 300]]
+];
+
+const mockMethods = (methods: string[]) =>
+  Object.fromEntries(methods.map((m) => [m, jest.fn()])) as Record<string, jest.Mock>;
 
 const buildService = () => {
-  const mocks = {
-    // HTTP Metrics
-    httpRequestDuration: createHistogramMock(),
-    httpRequestsTotal: createCounterMock(),
-    httpConnectionsActive: createGaugeMock(),
+  const backtest = mockMethods(
+    DELEGATION_MAP.filter(([, svc]) => svc === 'backtest').map(([, , m]) => m)
+  ) as unknown as BacktestMetricsService;
 
-    // Order Metrics
-    ordersSyncedTotal: createCounterMock(),
-    ordersSyncErrorsTotal: createCounterMock(),
-    orderSyncDuration: createHistogramMock(),
+  const trading = mockMethods(
+    DELEGATION_MAP.filter(([, svc]) => svc === 'trading').map(([, , m]) => m)
+  ) as unknown as TradingMetricsService;
 
-    // Trade Metrics
-    tradesExecutedTotal: createCounterMock(),
-    tradeExecutionDuration: createHistogramMock(),
+  const strategy = mockMethods(
+    DELEGATION_MAP.filter(([, svc]) => svc === 'strategy').map(([, , m]) => m)
+  ) as unknown as StrategyMetricsService;
 
-    // Exchange Metrics
-    exchangeConnections: createGaugeMock(),
-    exchangeApiCallsTotal: createCounterMock(),
-    exchangeApiLatency: createHistogramMock(),
+  const infra = mockMethods(
+    DELEGATION_MAP.filter(([, svc]) => svc === 'infra').map(([, , m]) => m)
+  ) as unknown as InfraMetricsService;
 
-    // Price Metrics
-    priceUpdatesTotal: createCounterMock(),
-    priceUpdateLag: createGaugeMock(),
-
-    // Backtest Metrics
-    backtestsCompletedTotal: createCounterMock(),
-    backtestDuration: createHistogramMock(),
-    quoteCurrencyFallbackTotal: createCounterMock(),
-
-    // Backtest Lifecycle Metrics
-    backtestCreatedTotal: createCounterMock(),
-    backtestStartedTotal: createCounterMock(),
-    backtestCancelledTotal: createCounterMock(),
-    backtestActiveCount: createGaugeMock(),
-
-    // Backtest Data Loading Metrics
-    backtestDataLoadDuration: createHistogramMock(),
-    backtestDataRecordsLoaded: createCounterMock(),
-
-    // Backtest Trade Execution Metrics
-    backtestTradesSimulated: createCounterMock(),
-    backtestSlippageBps: createHistogramMock(),
-
-    // Backtest Algorithm Execution Metrics
-    backtestAlgorithmExecutions: createCounterMock(),
-    backtestSignalsGenerated: createCounterMock(),
-
-    // Backtest Result Persistence Metrics
-    backtestPersistenceDuration: createHistogramMock(),
-    backtestRecordsPersisted: createCounterMock(),
-
-    // Backtest Resolution Metrics
-    backtestCoinResolution: createCounterMock(),
-    backtestInstrumentsResolved: createCounterMock(),
-
-    // Backtest Error Metrics
-    backtestErrors: createCounterMock(),
-
-    // Backtest Final Results Metrics
-    backtestTotalReturn: createHistogramMock(),
-    backtestSharpeRatio: createHistogramMock(),
-    backtestMaxDrawdown: createHistogramMock(),
-    backtestTradeCount: createHistogramMock(),
-
-    // Backtest Checkpoint Metrics
-    backtestCheckpointsSavedTotal: createCounterMock(),
-    backtestCheckpointsResumedTotal: createCounterMock(),
-    backtestCheckpointOrphansCleanedTotal: createCounterMock(),
-    backtestCheckpointProgress: createGaugeMock(),
-
-    // Queue Metrics
-    queueJobsWaiting: createGaugeMock(),
-    queueJobsActive: createGaugeMock(),
-    queueJobsCompletedTotal: createCounterMock(),
-    queueJobsFailedTotal: createCounterMock(),
-
-    // Portfolio Metrics
-    portfolioTotalValue: createGaugeMock(),
-    portfolioAssetsCount: createGaugeMock(),
-
-    // Strategy Metrics
-    strategyDeploymentsActive: createGaugeMock(),
-    strategySignalsTotal: createCounterMock(),
-
-    // Strategy Heartbeat Metrics
-    strategyHeartbeatAge: createGaugeMock(),
-    strategyHeartbeatTotal: createCounterMock(),
-    strategyHeartbeatFailures: createGaugeMock(),
-    strategyHealthScore: createGaugeMock(),
-
-    // Live Trading & Throttle Metrics
-    tradeCooldownBlocksTotal: createCounterMock(),
-    tradeCooldownClaimsTotal: createCounterMock(),
-    tradeCooldownClearedTotal: createCounterMock(),
-    signalThrottleSuppressedTotal: createCounterMock(),
-    signalThrottlePassedTotal: createCounterMock(),
-    regimeGateBlocksTotal: createCounterMock(),
-    drawdownGateBlocksTotal: createCounterMock(),
-    dailyLossGateBlocksTotal: createCounterMock(),
-    concentrationGateBlocksTotal: createCounterMock(),
-    liveOrdersPlacedTotal: createCounterMock()
-  };
-
-  const service = new MetricsService(
-    // HTTP Metrics
-    mocks.httpRequestDuration,
-    mocks.httpRequestsTotal,
-    mocks.httpConnectionsActive,
-    // Order Metrics
-    mocks.ordersSyncedTotal,
-    mocks.ordersSyncErrorsTotal,
-    mocks.orderSyncDuration,
-    // Trade Metrics
-    mocks.tradesExecutedTotal,
-    mocks.tradeExecutionDuration,
-    // Exchange Metrics
-    mocks.exchangeConnections,
-    mocks.exchangeApiCallsTotal,
-    mocks.exchangeApiLatency,
-    // Price Metrics
-    mocks.priceUpdatesTotal,
-    mocks.priceUpdateLag,
-    // Backtest Metrics
-    mocks.backtestsCompletedTotal,
-    mocks.backtestDuration,
-    mocks.quoteCurrencyFallbackTotal,
-    // Backtest Lifecycle Metrics
-    mocks.backtestCreatedTotal,
-    mocks.backtestStartedTotal,
-    mocks.backtestCancelledTotal,
-    mocks.backtestActiveCount,
-    // Backtest Data Loading Metrics
-    mocks.backtestDataLoadDuration,
-    mocks.backtestDataRecordsLoaded,
-    // Backtest Trade Execution Metrics
-    mocks.backtestTradesSimulated,
-    mocks.backtestSlippageBps,
-    // Backtest Algorithm Execution Metrics
-    mocks.backtestAlgorithmExecutions,
-    mocks.backtestSignalsGenerated,
-    // Backtest Result Persistence Metrics
-    mocks.backtestPersistenceDuration,
-    mocks.backtestRecordsPersisted,
-    // Backtest Resolution Metrics
-    mocks.backtestCoinResolution,
-    mocks.backtestInstrumentsResolved,
-    // Backtest Error Metrics
-    mocks.backtestErrors,
-    // Backtest Final Results Metrics
-    mocks.backtestTotalReturn,
-    mocks.backtestSharpeRatio,
-    mocks.backtestMaxDrawdown,
-    mocks.backtestTradeCount,
-    // Backtest Checkpoint Metrics
-    mocks.backtestCheckpointsSavedTotal,
-    mocks.backtestCheckpointsResumedTotal,
-    mocks.backtestCheckpointOrphansCleanedTotal,
-    mocks.backtestCheckpointProgress,
-    // Queue Metrics
-    mocks.queueJobsWaiting,
-    mocks.queueJobsActive,
-    mocks.queueJobsCompletedTotal,
-    mocks.queueJobsFailedTotal,
-    // Portfolio Metrics
-    mocks.portfolioTotalValue,
-    mocks.portfolioAssetsCount,
-    // Strategy Metrics
-    mocks.strategyDeploymentsActive,
-    mocks.strategySignalsTotal,
-    // Strategy Heartbeat Metrics
-    mocks.strategyHeartbeatAge,
-    mocks.strategyHeartbeatTotal,
-    mocks.strategyHeartbeatFailures,
-    mocks.strategyHealthScore,
-    // Live Trading & Throttle Metrics
-    mocks.tradeCooldownBlocksTotal,
-    mocks.tradeCooldownClaimsTotal,
-    mocks.tradeCooldownClearedTotal,
-    mocks.signalThrottleSuppressedTotal,
-    mocks.signalThrottlePassedTotal,
-    mocks.regimeGateBlocksTotal,
-    mocks.drawdownGateBlocksTotal,
-    mocks.dailyLossGateBlocksTotal,
-    mocks.concentrationGateBlocksTotal,
-    mocks.liveOrdersPlacedTotal
-  );
-
-  return { service, mocks };
+  const service = new MetricsService(backtest, trading, strategy, infra);
+  return { service, backtest, trading, strategy, infra };
 };
 
-describe('MetricsService', () => {
-  it('records HTTP requests and durations', () => {
-    const { service, mocks } = buildService();
+describe('MetricsService (facade)', () => {
+  it.each(DELEGATION_MAP)('%s delegates to %s.%s', (facadeMethod, subService, delegateMethod, args) => {
+    const deps = buildService();
+    const service = deps.service;
 
-    service.recordHttpRequest('GET', '/test', 200, 250);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (service as any)[facadeMethod](...args);
 
-    expect(mocks.httpRequestDuration.observe).toHaveBeenCalledWith(
-      { method: 'GET', route: '/test', status_code: '200' },
-      0.25
-    );
-    expect(mocks.httpRequestsTotal.inc).toHaveBeenCalledWith({ method: 'GET', route: '/test', status_code: '200' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mock = (deps[subService] as any)[delegateMethod] as jest.Mock;
+    expect(mock).toHaveBeenCalledWith(...args);
   });
 
-  it('handles order sync timers and counters', () => {
-    const { service, mocks } = buildService();
-    const end = jest.fn();
-    mocks.orderSyncDuration.startTimer.mockReturnValue(end);
+  it('covers every public method on MetricsService', () => {
+    const facadeMethods = Object.getOwnPropertyNames(MetricsService.prototype).filter((m) => m !== 'constructor');
+    const testedMethods = DELEGATION_MAP.map(([m]) => m);
 
-    const timer = service.startOrderSyncTimer('binance');
-    timer();
-
-    expect(mocks.orderSyncDuration.startTimer).toHaveBeenCalledWith({ exchange: 'binance' });
-    expect(end).toHaveBeenCalled();
-
-    service.recordOrdersSynced('binance', 'success', 3);
-    expect(mocks.ordersSyncedTotal.inc).toHaveBeenCalledWith({ exchange: 'binance', status: 'success' }, 3);
-
-    service.recordOrderSyncError('binance', 'network');
-    expect(mocks.ordersSyncErrorsTotal.inc).toHaveBeenCalledWith({ exchange: 'binance', error_type: 'network' });
+    expect(testedMethods.sort()).toEqual(facadeMethods.sort());
   });
 
-  it('records trades and exchanges metrics', () => {
-    const { service, mocks } = buildService();
-    const tradeEnd = jest.fn();
-    const apiEnd = jest.fn();
-    mocks.tradeExecutionDuration.startTimer.mockReturnValue(tradeEnd);
-    mocks.exchangeApiLatency.startTimer.mockReturnValue(apiEnd);
-
-    service.recordTradeExecuted('coinbase', 'buy', 'BTC/USD');
-    service.recordExchangeApiCall('coinbase', '/orders', true);
-    service.setExchangeConnections('coinbase', 4);
-    service.startTradeExecutionTimer('coinbase')();
-    service.startExchangeApiTimer('coinbase', '/orders')();
-
-    expect(mocks.tradesExecutedTotal.inc).toHaveBeenCalledWith({
-      exchange: 'coinbase',
-      side: 'buy',
-      symbol: 'BTC/USD'
-    });
-    expect(mocks.exchangeApiCallsTotal.inc).toHaveBeenCalledWith({
-      exchange: 'coinbase',
-      endpoint: '/orders',
-      success: 'true'
-    });
-    expect(mocks.exchangeConnections.set).toHaveBeenCalledWith({ exchange: 'coinbase' }, 4);
-    expect(tradeEnd).toHaveBeenCalled();
-    expect(apiEnd).toHaveBeenCalled();
-  });
-
-  it('records price, backtest, and queue metrics', () => {
-    const { service, mocks } = buildService();
-    const backtestEnd = jest.fn();
-    mocks.backtestDuration.startTimer.mockReturnValue(backtestEnd);
-
-    service.recordPriceUpdate('coingecko', 2);
-    service.setPriceUpdateLag('coingecko', 5);
-    service.recordBacktestCompleted('mean-reversion', 'success');
-    service.startBacktestTimer('mean-reversion')();
-    service.recordQuoteCurrencyFallback('USDT', 'USDC');
-    service.setQueueJobsWaiting('orders', 7);
-    service.setQueueJobsActive('orders', 3);
-    service.recordQueueJobCompleted('orders');
-    service.recordQueueJobFailed('orders', 'timeout');
-
-    expect(mocks.priceUpdatesTotal.inc).toHaveBeenCalledWith({ source: 'coingecko' }, 2);
-    expect(mocks.priceUpdateLag.set).toHaveBeenCalledWith({ source: 'coingecko' }, 5);
-    expect(mocks.backtestsCompletedTotal.inc).toHaveBeenCalledWith({ strategy: 'mean-reversion', status: 'success' });
-    expect(backtestEnd).toHaveBeenCalled();
-    expect(mocks.quoteCurrencyFallbackTotal.inc).toHaveBeenCalledWith({ preferred: 'USDT', actual: 'USDC' });
-    expect(mocks.queueJobsWaiting.set).toHaveBeenCalledWith({ queue: 'orders' }, 7);
-    expect(mocks.queueJobsActive.set).toHaveBeenCalledWith({ queue: 'orders' }, 3);
-    expect(mocks.queueJobsCompletedTotal.inc).toHaveBeenCalledWith({ queue: 'orders' });
-    expect(mocks.queueJobsFailedTotal.inc).toHaveBeenCalledWith({ queue: 'orders', error_type: 'timeout' });
-  });
-
-  it('records portfolio and strategy deployment metrics', () => {
-    const { service, mocks } = buildService();
-
-    service.setPortfolioTotalValue('user-1', 12000);
-    service.setPortfolioAssetsCount('user-1', 'binance', 5);
-    service.setStrategyDeploymentsActive('trend', 'live', 2);
-    service.recordStrategySignal('trend', 'buy');
-
-    expect(mocks.portfolioTotalValue.set).toHaveBeenCalledWith({ user_id: 'user-1' }, 12000);
-    expect(mocks.portfolioAssetsCount.set).toHaveBeenCalledWith({ user_id: 'user-1', exchange: 'binance' }, 5);
-    expect(mocks.strategyDeploymentsActive.set).toHaveBeenCalledWith({ strategy: 'trend', status: 'live' }, 2);
-    expect(mocks.strategySignalsTotal.inc).toHaveBeenCalledWith({ strategy: 'trend', signal_type: 'buy' });
-  });
-
-  it('records strategy heartbeat metrics and clamps health score', () => {
-    const { service, mocks } = buildService();
-
-    service.recordStrategyHeartbeat('scalper', 'success');
-    service.setStrategyHeartbeatAge('scalper', 'shadow', 42);
-    service.setStrategyHeartbeatFailures('scalper', 3);
-    service.setStrategyHealthScore('scalper', 'shadow', 150);
-    service.setStrategyHealthScore('scalper', 'shadow', -10);
-
-    expect(mocks.strategyHeartbeatTotal.inc).toHaveBeenCalledWith({ strategy: 'scalper', status: 'success' });
-    expect(mocks.strategyHeartbeatAge.set).toHaveBeenCalledWith({ strategy: 'scalper', shadow_status: 'shadow' }, 42);
-    expect(mocks.strategyHeartbeatFailures.set).toHaveBeenCalledWith({ strategy: 'scalper' }, 3);
-    expect(mocks.strategyHealthScore.set).toHaveBeenCalledWith({ strategy: 'scalper', shadow_status: 'shadow' }, 100);
-    expect(mocks.strategyHealthScore.set).toHaveBeenCalledWith({ strategy: 'scalper', shadow_status: 'shadow' }, 0);
-  });
-
-  it('calculates health score from heartbeat metrics', () => {
-    const { service } = buildService();
-    const clampSpy = jest.spyOn(service, 'setStrategyHealthScore').mockImplementation(jest.fn());
-
-    service.calculateAndSetHealthScore('scalper', 'shadow', 900, 3, 300);
-
-    expect(clampSpy).toHaveBeenCalledWith('scalper', 'shadow', 15);
+  it('has no duplicate delegation entries', () => {
+    const seen = new Set<string>();
+    for (const [method] of DELEGATION_MAP) {
+      expect(seen.has(method)).toBe(false);
+      seen.add(method);
+    }
   });
 });

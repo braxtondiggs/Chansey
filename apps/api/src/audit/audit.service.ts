@@ -1,12 +1,13 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 
 import { randomUUID } from 'crypto';
 
 import { AuditEventType, AuditTrailQuery, CreateAuditLogDto } from '@chansey/api-interfaces';
 
+import { verifyAuditEntryIntegrity } from './audit-integrity.util';
 import { AuditLog } from './entities/audit-log.entity';
 
 import { RequestContext } from '../common/cls/request-context.service';
@@ -72,9 +73,9 @@ export class AuditService {
     // Save first to get the ID, then generate and update chain hash
     const saved = await this.auditLogRepository.save(auditLog);
 
-    // Get the most recent previous audit log entry (by timestamp)
+    // Get the most recent previous audit log entry, excluding the one we just saved
     const previousEntry = await this.auditLogRepository.findOne({
-      where: {},
+      where: { id: Not(saved.id) },
       order: { timestamp: 'DESC' },
       select: ['chainHash']
     });
@@ -162,17 +163,7 @@ export class AuditService {
    * Verify integrity of an audit log entry
    */
   verifyIntegrity(auditLog: AuditLog): boolean {
-    return this.cryptoService.verifyAuditIntegrity({
-      eventType: auditLog.eventType,
-      entityType: auditLog.entityType,
-      entityId: auditLog.entityId,
-      userId: auditLog.userId,
-      timestamp: auditLog.timestamp,
-      beforeState: auditLog.beforeState,
-      afterState: auditLog.afterState,
-      metadata: auditLog.metadata,
-      integrity: auditLog.integrity
-    });
+    return verifyAuditEntryIntegrity(auditLog, this.cryptoService);
   }
 
   /**
@@ -262,96 +253,70 @@ export class AuditService {
   }
 
   // ============================================================================
-  // SPECIALIZED AUDIT LOGGING METHODS (T103-T105 Enhancement)
+  // SPECIALIZED AUDIT LOGGING METHODS
   // ============================================================================
 
   /**
    * Log strategy configuration change
    */
-  async logStrategyConfigChange(
-    strategyConfigId: string,
-    userId: string,
-    beforeState: any,
-    afterState: any,
-    reason?: string
-  ): Promise<AuditLog> {
+  async logStrategyConfigChange(opts: {
+    strategyConfigId: string;
+    userId: string;
+    beforeState: any;
+    afterState: any;
+    reason?: string;
+  }): Promise<AuditLog> {
     return this.createAuditLog({
       eventType: AuditEventType.STRATEGY_MODIFIED,
       entityType: 'StrategyConfig',
-      entityId: strategyConfigId,
-      userId,
-      beforeState,
-      afterState,
-      metadata: { reason, changeType: 'configuration' }
-    });
-  }
-
-  /**
-   * Log backtest execution
-   */
-  async logBacktestExecution(
-    backtestRunId: string,
-    strategyConfigId: string,
-    userId: string,
-    results: any,
-    correlationId?: string
-  ): Promise<AuditLog> {
-    return this.createAuditLog({
-      eventType: AuditEventType.BACKTEST_COMPLETED,
-      entityType: 'BacktestRun',
-      entityId: backtestRunId,
-      userId,
-      beforeState: undefined,
-      afterState: {
-        strategyConfigId,
-        totalReturn: results.totalReturn,
-        sharpeRatio: results.sharpeRatio,
-        maxDrawdown: results.maxDrawdown,
-        totalTrades: results.totalTrades
-      },
-      metadata: { fullResults: results },
-      correlationId
+      entityId: opts.strategyConfigId,
+      userId: opts.userId,
+      beforeState: opts.beforeState,
+      afterState: opts.afterState,
+      metadata: { reason: opts.reason, changeType: 'configuration' }
     });
   }
 
   /**
    * Log promotion gate evaluation
    */
-  async logPromotionGateEvaluation(
-    strategyConfigId: string,
-    userId: string,
-    evaluation: any,
-    correlationId?: string
-  ): Promise<AuditLog> {
+  async logPromotionGateEvaluation(opts: {
+    strategyConfigId: string;
+    userId?: string;
+    evaluation: any;
+    correlationId?: string;
+    metadata?: Record<string, any>;
+  }): Promise<AuditLog> {
     return this.createAuditLog({
       eventType: AuditEventType.GATE_EVALUATION,
       entityType: 'StrategyConfig',
-      entityId: strategyConfigId,
-      userId,
+      entityId: opts.strategyConfigId,
+      userId: opts.userId,
       beforeState: undefined,
       afterState: {
-        canPromote: evaluation.canPromote,
-        gatesPassed: evaluation.gatesPassed,
-        gatesFailed: evaluation.gatesFailed,
-        failedGates: evaluation.failedGates
+        canPromote: opts.evaluation.canPromote,
+        gatesPassed: opts.evaluation.gatesPassed,
+        gatesFailed: opts.evaluation.gatesFailed,
+        failedGates: opts.evaluation.failedGates
       },
-      metadata: { evaluation },
-      correlationId
+      metadata: { evaluation: opts.evaluation, ...opts.metadata },
+      correlationId: opts.correlationId
     });
   }
 
   /**
    * Log deployment lifecycle event
    */
-  async logDeploymentLifecycle(
-    deploymentId: string,
-    userId: string,
-    event: 'created' | 'activated' | 'paused' | 'resumed' | 'demoted' | 'terminated',
-    beforeState: any,
-    afterState: any,
-    reason?: string,
-    correlationId?: string
-  ): Promise<AuditLog> {
+  async logDeploymentLifecycle(opts: {
+    deploymentId: string;
+    userId: string | undefined;
+    event: 'created' | 'activated' | 'paused' | 'resumed' | 'demoted' | 'terminated';
+    beforeState: any;
+    afterState: any;
+    reason?: string;
+    correlationId?: string;
+    metadata?: Record<string, any>;
+  }): Promise<AuditLog> {
     const eventTypeMap = {
       created: AuditEventType.STRATEGY_PROMOTED,
       activated: AuditEventType.DEPLOYMENT_ACTIVATED,
@@ -362,334 +327,66 @@ export class AuditService {
     };
 
     return this.createAuditLog({
-      eventType: eventTypeMap[event],
+      eventType: eventTypeMap[opts.event],
       entityType: 'Deployment',
-      entityId: deploymentId,
-      userId,
-      beforeState,
-      afterState,
-      metadata: { reason, lifecycleEvent: event },
-      correlationId
-    });
-  }
-
-  /**
-   * Log risk breach event
-   */
-  async logRiskBreach(
-    deploymentId: string,
-    breachType: string,
-    details: any,
-    correlationId?: string
-  ): Promise<AuditLog> {
-    return this.createAuditLog({
-      eventType: AuditEventType.RISK_BREACH,
-      entityType: 'Deployment',
-      entityId: deploymentId,
-      beforeState: undefined,
-      afterState: details,
-      metadata: { breachType },
-      correlationId
+      entityId: opts.deploymentId,
+      userId: opts.userId,
+      beforeState: opts.beforeState,
+      afterState: opts.afterState,
+      metadata: { reason: opts.reason, lifecycleEvent: opts.event, ...opts.metadata },
+      correlationId: opts.correlationId
     });
   }
 
   /**
    * Log drift detection event
    */
-  async logDriftDetection(
-    deploymentId: string,
-    driftAlertId: string,
-    driftType: string,
-    severity: string,
-    details: any,
-    correlationId?: string
-  ): Promise<AuditLog> {
+  async logDriftDetection(opts: {
+    deploymentId: string;
+    driftAlertId: string;
+    driftType: string;
+    severity: string;
+    details: any;
+    correlationId?: string;
+  }): Promise<AuditLog> {
     return this.createAuditLog({
       eventType: AuditEventType.DRIFT_DETECTED,
       entityType: 'Deployment',
-      entityId: deploymentId,
+      entityId: opts.deploymentId,
       beforeState: undefined,
       afterState: {
-        driftAlertId,
-        driftType,
-        severity,
-        expectedValue: details.expectedValue,
-        actualValue: details.actualValue,
-        deviation: details.deviationPercent
+        driftAlertId: opts.driftAlertId,
+        driftType: opts.driftType,
+        severity: opts.severity,
+        expectedValue: opts.details.expectedValue,
+        actualValue: opts.details.actualValue,
+        deviation: opts.details.deviationPercent
       },
-      metadata: { details },
-      correlationId
+      metadata: { details: opts.details },
+      correlationId: opts.correlationId
     });
   }
 
   /**
    * Log allocation adjustment
    */
-  async logAllocationAdjustment(
-    deploymentId: string,
-    userId: string,
-    fromPercent: number,
-    toPercent: number,
-    reason: string,
-    correlationId?: string
-  ): Promise<AuditLog> {
+  async logAllocationAdjustment(opts: {
+    deploymentId: string;
+    userId: string | undefined;
+    fromPercent: number;
+    toPercent: number;
+    reason: string;
+    correlationId?: string;
+  }): Promise<AuditLog> {
     return this.createAuditLog({
       eventType: AuditEventType.ALLOCATION_ADJUSTED,
       entityType: 'Deployment',
-      entityId: deploymentId,
-      userId,
-      beforeState: { allocationPercent: fromPercent },
-      afterState: { allocationPercent: toPercent },
-      metadata: { reason, change: toPercent - fromPercent },
-      correlationId
+      entityId: opts.deploymentId,
+      userId: opts.userId,
+      beforeState: { allocationPercent: opts.fromPercent },
+      afterState: { allocationPercent: opts.toPercent },
+      metadata: { reason: opts.reason, change: opts.toPercent - opts.fromPercent },
+      correlationId: opts.correlationId
     });
-  }
-
-  /**
-   * Create audit trail for a complete workflow (with correlation ID)
-   */
-  async createWorkflowAudit(workflowName: string): Promise<{
-    correlationId: string;
-    log: (eventType: AuditEventType, details: Partial<CreateAuditLogDto>) => Promise<AuditLog>;
-  }> {
-    const correlationId = randomUUID();
-
-    return {
-      correlationId,
-      log: async (eventType: AuditEventType, details: Partial<CreateAuditLogDto>) => {
-        return this.createAuditLog({
-          eventType,
-          correlationId,
-          ...details
-        } as CreateAuditLogDto);
-      }
-    };
-  }
-
-  // ============================================================================
-  // CHAIN VERIFICATION METHODS (T110 Data Integrity)
-  // ============================================================================
-
-  /**
-   * Verify chain integrity between two consecutive audit log entries
-   *
-   * @param currentEntry - Current audit log entry
-   * @param previousEntry - Previous audit log entry (or null if first entry)
-   * @returns True if chain is valid, false if tampered
-   */
-  verifyChainIntegrity(currentEntry: AuditLog, previousEntry: AuditLog | null): boolean {
-    return this.cryptoService.verifyChainIntegrity(
-      {
-        id: currentEntry.id,
-        eventType: currentEntry.eventType,
-        entityType: currentEntry.entityType,
-        entityId: currentEntry.entityId,
-        timestamp: currentEntry.timestamp,
-        integrity: currentEntry.integrity,
-        chainHash: currentEntry.chainHash ?? undefined
-      },
-      previousEntry?.chainHash ? { chainHash: previousEntry.chainHash } : null
-    );
-  }
-
-  /**
-   * Verify integrity of an entire audit log chain
-   * Checks both individual entry integrity and chain linkage
-   *
-   * @param entries - Audit log entries in chronological order
-   * @returns Object with detailed verification results
-   */
-  verifyAuditChain(entries: AuditLog[]): {
-    valid: boolean;
-    totalEntries: number;
-    verifiedEntries: number;
-    brokenChainAt: number | null;
-    tamperedEntries: string[];
-    integrityFailures: string[];
-  } {
-    if (entries.length === 0) {
-      return {
-        valid: true,
-        totalEntries: 0,
-        verifiedEntries: 0,
-        brokenChainAt: null,
-        tamperedEntries: [],
-        integrityFailures: []
-      };
-    }
-
-    // First verify chain linkage
-    const chainResult = this.cryptoService.verifyAuditChain(
-      entries.map((entry) => ({
-        id: entry.id,
-        eventType: entry.eventType,
-        entityType: entry.entityType,
-        entityId: entry.entityId,
-        timestamp: entry.timestamp,
-        integrity: entry.integrity,
-        chainHash: entry.chainHash ?? undefined
-      }))
-    );
-
-    // Then verify individual entry integrity hashes
-    const integrityFailures: string[] = [];
-    for (const entry of entries) {
-      if (!this.verifyIntegrity(entry)) {
-        integrityFailures.push(entry.id);
-      }
-    }
-
-    // Combine results
-    const allTamperedEntries = [...new Set([...chainResult.tamperedEntries, ...integrityFailures])];
-
-    return {
-      valid: chainResult.valid && integrityFailures.length === 0,
-      totalEntries: chainResult.totalEntries,
-      verifiedEntries: chainResult.verifiedEntries,
-      brokenChainAt: chainResult.brokenChainAt,
-      tamperedEntries: allTamperedEntries,
-      integrityFailures
-    };
-  }
-
-  /**
-   * Verify the complete audit chain for a specific entity
-   * Retrieves all audit logs for the entity and verifies chain integrity
-   *
-   * @param entityType - Type of entity (e.g., 'StrategyConfig', 'Deployment')
-   * @param entityId - ID of the entity
-   * @returns Verification results with details
-   */
-  async verifyEntityAuditChain(
-    entityType: string,
-    entityId: string
-  ): Promise<{
-    valid: boolean;
-    totalEntries: number;
-    verifiedEntries: number;
-    brokenChainAt: number | null;
-    tamperedEntries: string[];
-    integrityFailures: string[];
-  }> {
-    const entries = await this.auditLogRepository.find({
-      where: { entityType, entityId },
-      order: { timestamp: 'ASC' } // Must be chronological for chain verification
-    });
-
-    return this.verifyAuditChain(entries);
-  }
-
-  /**
-   * Verify the global audit chain across all entries
-   * WARNING: This can be expensive for large audit logs
-   * Consider using pagination for production systems
-   *
-   * @param limit - Maximum number of entries to verify (default: 1000)
-   * @param offset - Offset for pagination
-   * @returns Verification results
-   */
-  async verifyGlobalAuditChain(
-    limit = 1000,
-    offset = 0
-  ): Promise<{
-    valid: boolean;
-    totalEntries: number;
-    verifiedEntries: number;
-    brokenChainAt: number | null;
-    tamperedEntries: string[];
-    integrityFailures: string[];
-  }> {
-    const entries = await this.auditLogRepository.find({
-      order: { timestamp: 'ASC' },
-      take: limit,
-      skip: offset
-    });
-
-    const result = this.verifyAuditChain(entries);
-
-    this.logger.log(
-      `Global audit chain verification: ${result.verifiedEntries}/${result.totalEntries} entries verified ` +
-        `(offset: ${offset}, limit: ${limit})`
-    );
-
-    if (!result.valid) {
-      this.logger.error(
-        `Audit chain integrity breach detected! ` +
-          `Broken at index: ${result.brokenChainAt}, ` +
-          `Tampered entries: ${result.tamperedEntries.length}, ` +
-          `Integrity failures: ${result.integrityFailures.length}`
-      );
-    }
-
-    return result;
-  }
-
-  /**
-   * Verify audit chain for a specific date range
-   * Useful for periodic integrity checks
-   *
-   * @param startDate - Start of date range
-   * @param endDate - End of date range
-   * @returns Verification results
-   */
-  async verifyAuditChainByDateRange(
-    startDate: Date,
-    endDate: Date
-  ): Promise<{
-    valid: boolean;
-    totalEntries: number;
-    verifiedEntries: number;
-    brokenChainAt: number | null;
-    tamperedEntries: string[];
-    integrityFailures: string[];
-  }> {
-    const entries = await this.auditLogRepository
-      .createQueryBuilder('audit')
-      .where('audit.timestamp >= :startDate', { startDate })
-      .andWhere('audit.timestamp <= :endDate', { endDate })
-      .orderBy('audit.timestamp', 'ASC')
-      .getMany();
-
-    const result = this.verifyAuditChain(entries);
-
-    this.logger.log(
-      `Audit chain verification for ${startDate.toISOString()} to ${endDate.toISOString()}: ` +
-        `${result.verifiedEntries}/${result.totalEntries} entries verified`
-    );
-
-    return result;
-  }
-
-  /**
-   * Run a scheduled integrity check on the audit log
-   * This should be called periodically (e.g., daily) to detect tampering
-   *
-   * @param hoursBack - Number of hours to check backwards from now (default: 24)
-   * @returns Verification results
-   */
-  async runScheduledIntegrityCheck(hoursBack = 24): Promise<{
-    valid: boolean;
-    totalEntries: number;
-    verifiedEntries: number;
-    brokenChainAt: number | null;
-    tamperedEntries: string[];
-    integrityFailures: string[];
-  }> {
-    const endDate = new Date();
-    const startDate = new Date(endDate.getTime() - hoursBack * 60 * 60 * 1000);
-
-    this.logger.log(`Running scheduled integrity check for last ${hoursBack} hours`);
-
-    const result = await this.verifyAuditChainByDateRange(startDate, endDate);
-
-    if (!result.valid) {
-      this.logger.error(
-        `CRITICAL: Audit log tampering detected during scheduled check! ` +
-          `Period: ${startDate.toISOString()} to ${endDate.toISOString()}`
-      );
-      // In production, this should trigger alerts (email, Slack, PagerDuty, etc.)
-    }
-
-    return result;
   }
 }

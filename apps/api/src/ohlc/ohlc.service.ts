@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { In, LessThan, type QueryDeepPartialEntity, Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
+import { type QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
-import { ExchangeSymbolMap } from './exchange-symbol-map.entity';
 import {
   OHLCCandle,
   OHLCSummaryByPeriod,
@@ -11,6 +11,7 @@ import {
   PriceSummaryByDay,
   PriceSummaryByHour
 } from './ohlc-candle.entity';
+import { ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
 
 /**
  * Valid price range values for querying historical data
@@ -76,8 +77,7 @@ export class OHLCService {
   constructor(
     @InjectRepository(OHLCCandle)
     private readonly ohlcRepository: Repository<OHLCCandle>,
-    @InjectRepository(ExchangeSymbolMap)
-    private readonly symbolMapRepository: Repository<ExchangeSymbolMap>
+    private readonly symbolMapService: ExchangeSymbolMapService
   ) {}
 
   // ==================== Core CRUD Operations ====================
@@ -289,99 +289,6 @@ export class OHLCService {
     return summaries.filter((s) => s.gapCount > 0);
   }
 
-  // ==================== Symbol Map Operations ====================
-
-  /**
-   * Get all active symbol mappings, optionally filtered by exchange
-   */
-  async getActiveSymbolMaps(exchangeId?: string): Promise<ExchangeSymbolMap[]> {
-    const where: Partial<ExchangeSymbolMap> = { isActive: true };
-    if (exchangeId) {
-      where.exchangeId = exchangeId;
-    }
-
-    return this.symbolMapRepository.find({
-      where,
-      order: { priority: 'ASC' },
-      relations: ['coin', 'exchange']
-    });
-  }
-
-  /**
-   * Get symbol mappings for specific coins
-   */
-  async getSymbolMapsForCoins(coinIds: string[]): Promise<ExchangeSymbolMap[]> {
-    if (coinIds.length === 0) return [];
-
-    return this.symbolMapRepository.find({
-      where: {
-        coinId: In(coinIds),
-        isActive: true
-      },
-      order: { priority: 'ASC' },
-      relations: ['coin', 'exchange']
-    });
-  }
-
-  /**
-   * Create or update a symbol mapping.
-   * Looks up by coinId only so a coin can be remapped to a different exchange.
-   */
-  async upsertSymbolMap(mapping: Partial<ExchangeSymbolMap>): Promise<ExchangeSymbolMap> {
-    const existing = await this.symbolMapRepository.findOne({
-      where: { coinId: mapping.coinId }
-    });
-
-    if (existing) {
-      await this.symbolMapRepository.update(existing.id, mapping as QueryDeepPartialEntity<ExchangeSymbolMap>);
-      return { ...existing, ...mapping } as ExchangeSymbolMap;
-    }
-
-    const created = this.symbolMapRepository.create(mapping);
-    return this.symbolMapRepository.save(created);
-  }
-
-  /**
-   * Update symbol map status
-   */
-  async updateSymbolMapStatus(id: string, isActive: boolean): Promise<void> {
-    await this.symbolMapRepository.update(id, { isActive });
-  }
-
-  /**
-   * Deactivate mappings that have never synced successfully and exceed a failure threshold.
-   * Returns the number of deactivated mappings.
-   */
-  async deactivateFailedMappings(minFailures: number): Promise<number> {
-    const result = await this.symbolMapRepository
-      .createQueryBuilder()
-      .update(ExchangeSymbolMap)
-      .set({ isActive: false })
-      .where('lastSyncAt IS NULL')
-      .andWhere('failureCount >= :minFailures', { minFailures })
-      .andWhere('isActive = true')
-      .execute();
-
-    return result.affected || 0;
-  }
-
-  /**
-   * Increment failure count for a symbol mapping
-   */
-  async incrementFailureCount(id: string): Promise<void> {
-    await this.symbolMapRepository.increment({ id }, 'failureCount', 1);
-  }
-
-  /**
-   * Reset failure count and update last sync time
-   */
-  async markSyncSuccess(id: string): Promise<void> {
-    await this.symbolMapRepository.update(id, {
-      failureCount: 0,
-      lastSyncAt: new Date()
-    });
-  }
-
   // ==================== Pruning ====================
 
   /**
@@ -406,7 +313,7 @@ export class OHLCService {
    * Get overall sync status for health monitoring
    */
   async getSyncStatus(): Promise<SyncStatus> {
-    const [totalCandles, coinsWithDataResult, oldestCandle, newestCandle, lastSyncResult] = await Promise.all([
+    const [totalCandles, coinsWithDataResult, oldestCandle, newestCandle, lastSyncTime] = await Promise.all([
       this.ohlcRepository.count(),
       this.ohlcRepository.createQueryBuilder('candle').select('COUNT(DISTINCT candle.coinId)', 'count').getRawOne(),
       this.ohlcRepository
@@ -421,11 +328,7 @@ export class OHLCService {
         .orderBy('candle.timestamp', 'DESC')
         .take(1)
         .getOne(),
-      this.symbolMapRepository.findOne({
-        where: { isActive: true },
-        order: { lastSyncAt: 'DESC' },
-        select: ['lastSyncAt']
-      })
+      this.symbolMapService.getLastSyncTime()
     ]);
 
     return {
@@ -433,24 +336,8 @@ export class OHLCService {
       coinsWithData: parseInt(coinsWithDataResult?.count || '0', 10),
       oldestCandle: oldestCandle?.timestamp || null,
       newestCandle: newestCandle?.timestamp || null,
-      lastSyncTime: lastSyncResult?.lastSyncAt || null
+      lastSyncTime
     };
-  }
-
-  /**
-   * Get stale coins (coins that haven't been synced recently)
-   */
-  async getStaleCoins(staleThresholdHours = 2): Promise<ExchangeSymbolMap[]> {
-    const cutoffDate = new Date();
-    cutoffDate.setHours(cutoffDate.getHours() - staleThresholdHours);
-
-    return this.symbolMapRepository
-      .createQueryBuilder('mapping')
-      .where('mapping.isActive = true')
-      .andWhere('(mapping.lastSyncAt IS NULL OR mapping.lastSyncAt < :cutoffDate)', { cutoffDate })
-      .leftJoinAndSelect('mapping.coin', 'coin')
-      .leftJoinAndSelect('mapping.exchange', 'exchange')
-      .getMany();
   }
 
   // ==================== Price Compatibility Methods ====================

@@ -75,11 +75,17 @@ export class DriftDetectionTask {
 
             // Log each drift alert to audit trail
             for (const alert of driftAlerts) {
-              await this.auditService.logDriftDetection(deployment.id, alert.id, alert.driftType, alert.severity, {
-                expectedValue: alert.expectedValue,
-                actualValue: alert.actualValue,
-                deviationPercent: Number(alert.deviationPercent),
-                failedChecks: [alert.driftType]
+              await this.auditService.logDriftDetection({
+                deploymentId: deployment.id,
+                driftAlertId: alert.id,
+                driftType: alert.driftType,
+                severity: alert.severity,
+                details: {
+                  expectedValue: alert.expectedValue,
+                  actualValue: alert.actualValue,
+                  deviationPercent: Number(alert.deviationPercent),
+                  failedChecks: [alert.driftType]
+                }
               });
             }
           } else {
@@ -121,11 +127,17 @@ export class DriftDetectionTask {
 
         // Log each drift alert to audit trail
         for (const alert of driftAlerts) {
-          await this.auditService.logDriftDetection(deploymentId, alert.id, alert.driftType, alert.severity, {
-            expectedValue: alert.expectedValue,
-            actualValue: alert.actualValue,
-            deviationPercent: Number(alert.deviationPercent),
-            failedChecks: [alert.driftType]
+          await this.auditService.logDriftDetection({
+            deploymentId,
+            driftAlertId: alert.id,
+            driftType: alert.driftType,
+            severity: alert.severity,
+            details: {
+              expectedValue: alert.expectedValue,
+              actualValue: alert.actualValue,
+              deviationPercent: Number(alert.deviationPercent),
+              failedChecks: [alert.driftType]
+            }
           });
         }
       } else {

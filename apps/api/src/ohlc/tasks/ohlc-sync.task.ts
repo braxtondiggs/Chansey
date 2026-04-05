@@ -13,6 +13,7 @@ import { toErrorInfo } from '../../shared/error.util';
 import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
 import { OHLCService } from '../ohlc.service';
 import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
+import { ExchangeSymbolMapService } from '../services/exchange-symbol-map.service';
 import { OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 @Processor('ohlc-sync-queue')
@@ -24,6 +25,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('ohlc-sync-queue') private readonly ohlcQueue: Queue,
     private readonly ohlcService: OHLCService,
+    private readonly symbolMapService: ExchangeSymbolMapService,
     private readonly exchangeOHLC: ExchangeOHLCService,
     @Inject(forwardRef(() => CoinService))
     private readonly coinService: CoinService,
@@ -96,7 +98,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
    */
   private async seedSymbolMapsIfEmpty(): Promise<void> {
     try {
-      const existing = await this.ohlcService.getActiveSymbolMaps();
+      const existing = await this.symbolMapService.getActiveSymbolMaps();
       if (existing.length > 0) {
         return;
       }
@@ -117,7 +119,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     try {
       // Deactivate mappings that have never synced and have accumulated failures
       // Uses the same threshold as runtime deactivation to avoid removing transiently-failed mappings
-      const deactivated = await this.ohlcService.deactivateFailedMappings(OHLCSyncTask.MAX_CONSECUTIVE_FAILURES);
+      const deactivated = await this.symbolMapService.deactivateFailedMappings(OHLCSyncTask.MAX_CONSECUTIVE_FAILURES);
       if (deactivated > 0) {
         this.logger.log(`Deactivated ${deactivated} failed symbol mappings before re-seeding`);
       }
@@ -147,7 +149,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       }
 
       // Track which coins already have symbol maps so we can detect newly mapped ones
-      const existingMaps = await this.ohlcService.getActiveSymbolMaps();
+      const existingMaps = await this.symbolMapService.getActiveSymbolMaps();
       const existingCoinIds = new Set(existingMaps.map((m) => m.coinId));
 
       let created = 0;
@@ -164,7 +166,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
 
             const symbols = await this.exchangeOHLC.getAvailableSymbols(slug, coin.symbol);
             if (symbols.length > 0) {
-              await this.ohlcService.upsertSymbolMap({
+              await this.symbolMapService.upsertSymbolMap({
                 coinId: coin.id,
                 exchangeId: exchange.id,
                 symbol: symbols[0], // Already sorted: /USD preferred over /USDT
@@ -288,7 +290,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       await job.updateProgress(10);
 
       // Get all active symbol mappings
-      const symbolMaps = await this.ohlcService.getActiveSymbolMaps();
+      const symbolMaps = await this.symbolMapService.getActiveSymbolMaps();
       await job.updateProgress(15);
 
       if (symbolMaps.length === 0) {
@@ -382,7 +384,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       const result = await this.exchangeOHLC.fetchOHLC(mapping.exchange.slug, mapping.symbol, since, 5);
 
       if (!result.success || !result.candles || result.candles.length === 0) {
-        await this.ohlcService.incrementFailureCount(mapping.id);
+        await this.symbolMapService.incrementFailureCount(mapping.id);
         await this.deactivateIfExceededThreshold(mapping);
         return { success: false };
       }
@@ -402,7 +404,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       await this.ohlcService.upsertCandles(candles);
 
       // Mark sync as successful
-      await this.ohlcService.markSyncSuccess(mapping.id);
+      await this.symbolMapService.markSyncSuccess(mapping.id);
 
       // Return the close price of the most recent candle
       const latestCandle = result.candles[result.candles.length - 1];
@@ -410,7 +412,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.warn(`Failed to sync ${mapping.symbol} from ${mapping.exchange?.slug}: ${err.message}`);
-      await this.ohlcService.incrementFailureCount(mapping.id);
+      await this.symbolMapService.incrementFailureCount(mapping.id);
       await this.deactivateIfExceededThreshold(mapping);
       return { success: false };
     }
@@ -424,7 +426,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.warn(
         `Deactivating ${mapping.symbol} on ${mapping.exchange?.slug} after ${OHLCSyncTask.MAX_CONSECUTIVE_FAILURES} consecutive failures`
       );
-      await this.ohlcService.updateSymbolMapStatus(mapping.id, false);
+      await this.symbolMapService.updateSymbolMapStatus(mapping.id, false);
     }
   }
 
