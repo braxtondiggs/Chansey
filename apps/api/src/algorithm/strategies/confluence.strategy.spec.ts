@@ -312,13 +312,14 @@ describe('ConfluenceStrategy', () => {
 
       expect(result.chartData?.btc).toHaveLength(50);
 
-      const lastPoint = result.chartData!.btc[49];
-      expect(lastPoint.metadata?.ema12).toBe(105);
-      expect(lastPoint.metadata?.ema26).toBe(100);
-      expect(lastPoint.metadata?.rsi).toBe(65);
-      expect(lastPoint.metadata?.atr).toBe(1.0);
-      expect(lastPoint.metadata?.percentB).toBe(0.85);
-      expect(lastPoint.metadata?.macd).toBeDefined();
+      const chartPoints = (result.chartData as Record<string, { metadata?: Record<string, unknown> }[]>).btc;
+      const metadata = chartPoints[49].metadata as Record<string, unknown>;
+      expect(metadata.ema12).toBe(105);
+      expect(metadata.ema26).toBe(100);
+      expect(metadata.rsi).toBe(65);
+      expect(metadata.atr).toBe(1.0);
+      expect(metadata.percentB).toBe(0.85);
+      expect(metadata.macd).toBeDefined();
     });
 
     it('should omit chart data in backtest mode', async () => {
@@ -520,6 +521,33 @@ describe('ConfluenceStrategy', () => {
       expect(agreeing).toContain('RSI');
       expect(agreeing).toContain('MACD');
       expect(agreeing).toContain('BB');
+    });
+
+    it('should include exitConfig with stop loss and take profit on signals', async () => {
+      setupBullishIndicators();
+
+      const result = await strategy.execute(buildContext({ minConfluence: 3 }));
+
+      expect(result.signals).toHaveLength(1);
+      const signal = result.signals[0];
+      const exitConfig = signal.exitConfig as Record<string, unknown>;
+      expect(exitConfig).toBeDefined();
+      expect(exitConfig.enableStopLoss).toBe(true);
+      expect(exitConfig.enableTakeProfit).toBe(true);
+      expect(exitConfig.stopLossValue).toBeGreaterThan(0);
+      expect(exitConfig.takeProfitValue).toBeGreaterThan(0);
+    });
+
+    it('should set confidence and strength between 0 and 1', async () => {
+      setupBullishIndicators();
+
+      const result = await strategy.execute(buildContext({ minConfluence: 3 }));
+
+      const signal = result.signals[0];
+      expect(signal.confidence).toBeGreaterThan(0);
+      expect(signal.confidence).toBeLessThanOrEqual(1);
+      expect(signal.strength).toBeGreaterThan(0);
+      expect(signal.strength).toBeLessThanOrEqual(1);
     });
   });
 });

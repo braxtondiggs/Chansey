@@ -1,9 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
+import {
+  calculateMinDataPoints,
+  getConfluenceConfigSchema,
+  getConfluenceConfigWithDefaults,
+  getConfluenceIndicatorRequirements,
+  getConfluenceParameterConstraints
+} from './confluence-config';
+import {
+  calculateArrayAverage,
+  evaluateATRSignal,
+  evaluateBollingerBandsSignal,
+  evaluateEMASignal,
+  evaluateMACDSignal,
+  evaluateRSISignal
+} from './confluence-evaluators.util';
+import { resolveIndicatorData } from './confluence-indicators.util';
+import { generateSignalFromConfluence } from './confluence-signals.util';
+
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
-import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -14,7 +31,6 @@ import {
   ConfluenceConfig,
   ConfluenceScore,
   IndicatorSignal,
-  SignalType,
   TradingSignal
 } from '../interfaces';
 
@@ -83,7 +99,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         // Generate trading signal if confluence is met
         const currentPrice = priceHistory[priceHistory.length - 1].avg;
         const isFuturesShort = config.enableShortSignals && context.metadata?.marketType === 'futures';
-        const tradingSignal = this.generateSignalFromConfluence(
+        const tradingSignal = generateSignalFromConfluence(
           coin.id,
           coin.symbol,
           currentPrice,
@@ -119,47 +135,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    * Get configuration with defaults
    */
   protected getConfigWithDefaults(config: Record<string, unknown>): ConfluenceConfig {
-    const minConfluence = (config.minConfluence as number) ?? 2;
-    return {
-      minConfluence,
-      minSellConfluence: (config.minSellConfluence as number) ?? minConfluence,
-      minConfidence: (config.minConfidence as number) ?? 0.5,
-      enableShortSignals: (config.enableShortSignals as boolean) ?? false,
-
-      ema: {
-        enabled: config.emaEnabled !== false,
-        fastPeriod: (config.emaFastPeriod as number) ?? 12,
-        slowPeriod: (config.emaSlowPeriod as number) ?? 26
-      },
-
-      rsi: {
-        enabled: config.rsiEnabled !== false,
-        period: (config.rsiPeriod as number) ?? 14,
-        buyThreshold: (config.rsiBuyThreshold as number) ?? 55,
-        sellThreshold: (config.rsiSellThreshold as number) ?? 45
-      },
-
-      macd: {
-        enabled: config.macdEnabled !== false,
-        fastPeriod: (config.macdFastPeriod as number) ?? 12,
-        slowPeriod: (config.macdSlowPeriod as number) ?? 26,
-        signalPeriod: (config.macdSignalPeriod as number) ?? 9
-      },
-
-      atr: {
-        enabled: config.atrEnabled !== false,
-        period: (config.atrPeriod as number) ?? 14,
-        volatilityThresholdMultiplier: (config.atrVolatilityMultiplier as number) ?? 2.0
-      },
-
-      bollingerBands: {
-        enabled: config.bbEnabled !== false,
-        period: (config.bbPeriod as number) ?? 20,
-        stdDev: (config.bbStdDev as number) ?? 2,
-        buyThreshold: (config.bbBuyThreshold as number) ?? 0.55,
-        sellThreshold: (config.bbSellThreshold as number) ?? 0.45
-      }
-    };
+    return getConfluenceConfigWithDefaults(config);
   }
 
   /**
@@ -169,32 +145,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     if (!priceHistory || priceHistory.length === 0) {
       return false;
     }
-
-    // Calculate minimum required data points for each enabled indicator
-    const requirements: number[] = [];
-
-    if (config.ema.enabled) {
-      requirements.push(config.ema.slowPeriod + 1);
-    }
-
-    if (config.rsi.enabled) {
-      requirements.push(config.rsi.period + 1);
-    }
-
-    if (config.macd.enabled) {
-      requirements.push(config.macd.slowPeriod + config.macd.signalPeriod - 1);
-    }
-
-    if (config.atr.enabled) {
-      requirements.push(config.atr.period + 1);
-    }
-
-    if (config.bollingerBands.enabled) {
-      requirements.push(config.bollingerBands.period + 1);
-    }
-
-    const minRequired = requirements.length > 0 ? Math.max(...requirements) : 1;
-    return priceHistory.length >= minRequired;
+    return priceHistory.length >= calculateMinDataPoints(config);
   }
 
   /**
@@ -212,142 +163,26 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     let buyCount = 0;
     let sellCount = 0;
     let totalEnabled = 0;
-    const windowLength = prices.length;
+    // Resolve all indicator data (precomputed fast-path or IndicatorService fallback)
+    const indicators = await resolveIndicatorData({
+      config,
+      coinId,
+      prices,
+      skipCache,
+      getPrecomputedSlice: this.getPrecomputedSlice.bind(this),
+      indicatorService: this.indicatorService,
+      indicatorProvider: this,
+      context
+    });
 
-    // Dual-path: try precomputed indicators first, fall back to IndicatorService
-
-    // --- EMA ---
-    let ema12Values: number[] | null = null;
-    let ema26Values: number[] | null = null;
-    if (config.ema.enabled) {
-      const preEma12 = this.getPrecomputedSlice(context, coinId, `ema_${config.ema.fastPeriod}`, windowLength);
-      const preEma26 = this.getPrecomputedSlice(context, coinId, `ema_${config.ema.slowPeriod}`, windowLength);
-      if (preEma12 && preEma26) {
-        ema12Values = preEma12;
-        ema26Values = preEma26;
-      }
-    }
-
-    // --- RSI ---
-    let rsiValues: number[] | null = null;
-    if (config.rsi.enabled) {
-      const preRsi = this.getPrecomputedSlice(context, coinId, `rsi_${config.rsi.period}`, windowLength);
-      if (preRsi) {
-        rsiValues = preRsi;
-      }
-    }
-
-    // --- MACD ---
-    let macdValues: number[] | null = null;
-    let macdSignalValues: number[] | null = null;
-    let macdHistogramValues: number[] | null = null;
-    if (config.macd.enabled) {
-      const macdKey = `macd_${config.macd.fastPeriod}_${config.macd.slowPeriod}_${config.macd.signalPeriod}`;
-      const preMacd = this.getPrecomputedSlice(context, coinId, `${macdKey}_macd`, windowLength);
-      const preMacdSignal = this.getPrecomputedSlice(context, coinId, `${macdKey}_signal`, windowLength);
-      const preMacdHistogram = this.getPrecomputedSlice(context, coinId, `${macdKey}_histogram`, windowLength);
-      if (preMacd && preMacdSignal && preMacdHistogram) {
-        macdValues = preMacd;
-        macdSignalValues = preMacdSignal;
-        macdHistogramValues = preMacdHistogram;
-      }
-    }
-
-    // --- ATR ---
-    let atrValues: number[] | null = null;
-    if (config.atr.enabled) {
-      const preAtr = this.getPrecomputedSlice(context, coinId, `atr_${config.atr.period}`, windowLength);
-      if (preAtr) {
-        atrValues = preAtr;
-      }
-    }
-
-    // --- Bollinger Bands ---
-    let bbPbValues: number[] | null = null;
-    let bbBandwidthValues: number[] | null = null;
-    if (config.bollingerBands.enabled) {
-      const bbKey = `bb_${config.bollingerBands.period}_${config.bollingerBands.stdDev}`;
-      const prePb = this.getPrecomputedSlice(context, coinId, `${bbKey}_pb`, windowLength);
-      const preBandwidth = this.getPrecomputedSlice(context, coinId, `${bbKey}_bandwidth`, windowLength);
-      if (prePb && preBandwidth) {
-        bbPbValues = prePb;
-        bbBandwidthValues = preBandwidth;
-      }
-    }
-
-    // Fall back to IndicatorService for any indicators not precomputed
-    const needsEma = config.ema.enabled && !ema12Values;
-    const needsRsi = config.rsi.enabled && !rsiValues;
-    const needsMacd = config.macd.enabled && !macdValues;
-    const needsAtr = config.atr.enabled && !atrValues;
-    const needsBb = config.bollingerBands.enabled && !bbPbValues;
-
-    if (needsEma || needsRsi || needsMacd || needsAtr || needsBb) {
-      const [ema12Result, ema26Result, rsiResult, macdResult, atrResult, bbResult] = await Promise.all([
-        needsEma
-          ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.fastPeriod, skipCache }, this)
-          : null,
-        needsEma
-          ? this.indicatorService.calculateEMA({ coinId, prices, period: config.ema.slowPeriod, skipCache }, this)
-          : null,
-        needsRsi
-          ? this.indicatorService.calculateRSI({ coinId, prices, period: config.rsi.period, skipCache }, this)
-          : null,
-        needsMacd
-          ? this.indicatorService.calculateMACD(
-              {
-                coinId,
-                prices,
-                fastPeriod: config.macd.fastPeriod,
-                slowPeriod: config.macd.slowPeriod,
-                signalPeriod: config.macd.signalPeriod,
-                skipCache
-              },
-              this
-            )
-          : null,
-        needsAtr
-          ? this.indicatorService.calculateATR({ coinId, prices, period: config.atr.period, skipCache }, this)
-          : null,
-        needsBb
-          ? this.indicatorService.calculateBollingerBands(
-              {
-                coinId,
-                prices,
-                period: config.bollingerBands.period,
-                stdDev: config.bollingerBands.stdDev,
-                skipCache
-              },
-              this
-            )
-          : null
-      ]);
-
-      if (needsEma && ema12Result && ema26Result) {
-        ema12Values = ema12Result.values;
-        ema26Values = ema26Result.values;
-      }
-      if (needsRsi && rsiResult) {
-        rsiValues = rsiResult.values;
-      }
-      if (needsMacd && macdResult) {
-        macdValues = macdResult.macd;
-        macdSignalValues = macdResult.signal;
-        macdHistogramValues = macdResult.histogram;
-      }
-      if (needsAtr && atrResult) {
-        atrValues = atrResult.values;
-      }
-      if (needsBb && bbResult) {
-        bbPbValues = bbResult.pb;
-        bbBandwidthValues = bbResult.bandwidth;
-      }
-    }
+    const { ema12: ema12Values, ema26: ema26Values, rsi: rsiValues } = indicators;
+    const { macd: macdValues, macdSignal: macdSignalValues, macdHistogram: macdHistogramValues } = indicators;
+    const { atr: atrValues, bbPb: bbPbValues, bbBandwidth: bbBandwidthValues } = indicators;
 
     // Evaluate EMA (Trend)
     if (config.ema.enabled && ema12Values && ema26Values) {
       totalEnabled++;
-      const emaSignal = this.evaluateEMASignal(ema12Values, ema26Values, currentIndex);
+      const emaSignal = evaluateEMASignal(ema12Values, ema26Values, currentIndex);
       signals.push(emaSignal);
       if (emaSignal.signal === 'bullish') buyCount++;
       else if (emaSignal.signal === 'bearish') sellCount++;
@@ -356,7 +191,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     // Evaluate RSI (Momentum)
     if (config.rsi.enabled && rsiValues) {
       totalEnabled++;
-      const rsiSignal = this.evaluateRSISignal(rsiValues, currentIndex, config.rsi);
+      const rsiSignal = evaluateRSISignal(rsiValues, currentIndex, config.rsi);
       signals.push(rsiSignal);
       if (rsiSignal.signal === 'bullish') buyCount++;
       else if (rsiSignal.signal === 'bearish') sellCount++;
@@ -366,8 +201,8 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     if (config.macd.enabled && macdValues && macdSignalValues && macdHistogramValues) {
       totalEnabled++;
       // Pre-calculate histogram average for strength normalization (more efficient than recalculating in method)
-      const histogramAvg = this.calculateArrayAverage(macdHistogramValues, currentIndex, 20, true);
-      const macdSignal = this.evaluateMACDSignal(
+      const histogramAvg = calculateArrayAverage(macdHistogramValues, currentIndex, 20, true);
+      const macdSignal = evaluateMACDSignal(
         macdValues,
         macdSignalValues,
         macdHistogramValues,
@@ -382,12 +217,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     // Evaluate Bollinger Bands (Trend Confirmation)
     if (config.bollingerBands.enabled && bbPbValues && bbBandwidthValues) {
       totalEnabled++;
-      const bbSignal = this.evaluateBollingerBandsSignal(
-        bbPbValues,
-        bbBandwidthValues,
-        currentIndex,
-        config.bollingerBands
-      );
+      const bbSignal = evaluateBollingerBandsSignal(bbPbValues, bbBandwidthValues, currentIndex, config.bollingerBands);
       signals.push(bbSignal);
       if (bbSignal.signal === 'bullish') buyCount++;
       else if (bbSignal.signal === 'bearish') sellCount++;
@@ -398,8 +228,8 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     if (config.atr.enabled && atrValues) {
       // Note: ATR does NOT increment totalEnabled because it's a filter, not a directional indicator
       // Pre-calculate ATR average for volatility comparison (more efficient than recalculating in method)
-      const atrAvg = this.calculateArrayAverage(atrValues, currentIndex, config.atr.period);
-      const atrSignal = this.evaluateATRSignal(atrValues, currentIndex, config.atr, atrAvg.average);
+      const atrAvg = calculateArrayAverage(atrValues, currentIndex, config.atr.period);
+      const atrSignal = evaluateATRSignal(atrValues, currentIndex, config.atr, atrAvg.average);
       signals.push(atrSignal);
 
       // ATR only filters - when volatility is too high, signals are blocked
@@ -422,12 +252,10 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       confluenceCount = sellCount;
     }
 
-    // Calculate average strength of agreeing signals
+    // Calculate average strength using only directional signals that agree with the final direction
+    // All non-directional signals (e.g., ATR filtered/neutral, RSI/BB neutral) are excluded
     const agreeingSignals = signals.filter(
-      (s) =>
-        (direction === 'buy' && s.signal === 'bullish') ||
-        (direction === 'sell' && s.signal === 'bearish') ||
-        s.signal === 'neutral' // ATR neutral counts for both
+      (s) => (direction === 'buy' && s.signal === 'bullish') || (direction === 'sell' && s.signal === 'bearish')
     );
     const averageStrength =
       agreeingSignals.length > 0 ? agreeingSignals.reduce((sum, s) => sum + s.strength, 0) / agreeingSignals.length : 0;
@@ -440,459 +268,6 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       averageStrength,
       isVolatilityFiltered
     };
-  }
-
-  /**
-   * Utility: Calculate average of valid (non-NaN) values in array slice
-   * Uses absolute values if specified (for histogram normalization)
-   */
-  private calculateArrayAverage(
-    values: number[],
-    endIndex: number,
-    lookback: number,
-    useAbsolute = false
-  ): { average: number; count: number } {
-    let sum = 0;
-    let count = 0;
-    const startIndex = Math.max(0, endIndex - lookback);
-
-    for (let i = startIndex; i <= endIndex; i++) {
-      const value = values[i];
-      if (!isNaN(value)) {
-        sum += useAbsolute ? Math.abs(value) : value;
-        count++;
-      }
-    }
-
-    return {
-      average: count > 0 ? sum / count : 0,
-      count
-    };
-  }
-
-  /**
-   * EMA Trend Evaluation
-   * Bullish: EMA12 > EMA26 (uptrend)
-   * Bearish: EMA12 < EMA26 (downtrend)
-   */
-  private evaluateEMASignal(ema12: number[], ema26: number[], currentIndex: number): IndicatorSignal {
-    const currentEma12 = ema12[currentIndex];
-    const currentEma26 = ema26[currentIndex];
-    const previousEma12 = ema12[currentIndex - 1];
-    const previousEma26 = ema26[currentIndex - 1];
-
-    if (isNaN(currentEma12) || isNaN(currentEma26)) {
-      return {
-        name: 'EMA',
-        signal: 'neutral',
-        strength: 0,
-        reason: 'Insufficient data for EMA calculation',
-        values: { ema12: currentEma12, ema26: currentEma26 }
-      };
-    }
-
-    const spread = (currentEma12 - currentEma26) / currentEma26;
-    const isCrossover =
-      !isNaN(previousEma12) &&
-      !isNaN(previousEma26) &&
-      ((previousEma12 <= previousEma26 && currentEma12 > currentEma26) ||
-        (previousEma12 >= previousEma26 && currentEma12 < currentEma26));
-
-    // Strength based on spread magnitude and crossover
-    const spreadStrength = Math.min(1, Math.abs(spread) * 20); // 5% spread = max
-    const crossoverBonus = isCrossover ? 0.2 : 0;
-    const strength = Math.min(1, spreadStrength + crossoverBonus);
-
-    if (currentEma12 > currentEma26) {
-      return {
-        name: 'EMA',
-        signal: 'bullish',
-        strength,
-        reason: `Bullish trend: EMA12 (${currentEma12.toFixed(2)}) > EMA26 (${currentEma26.toFixed(2)})`,
-        values: { ema12: currentEma12, ema26: currentEma26, spread: spread * 100 }
-      };
-    } else {
-      return {
-        name: 'EMA',
-        signal: 'bearish',
-        strength,
-        reason: `Bearish trend: EMA12 (${currentEma12.toFixed(2)}) < EMA26 (${currentEma26.toFixed(2)})`,
-        values: { ema12: currentEma12, ema26: currentEma26, spread: spread * 100 }
-      };
-    }
-  }
-
-  /**
-   * RSI Momentum Evaluation (trend-confirming mode)
-   * Bullish: RSI > buyThreshold (strong upward momentum confirms trend)
-   * Bearish: RSI < sellThreshold (weak momentum confirms downtrend)
-   *
-   * Note: Uses trend-confirming interpretation (RSI > threshold = bullish)
-   * rather than mean-reversion (RSI < threshold = oversold = bullish),
-   * so RSI agrees with trend-following indicators like EMA and MACD.
-   */
-  private evaluateRSISignal(
-    rsi: number[],
-    currentIndex: number,
-    config: { buyThreshold: number; sellThreshold: number }
-  ): IndicatorSignal {
-    const currentRSI = rsi[currentIndex];
-
-    if (isNaN(currentRSI)) {
-      return {
-        name: 'RSI',
-        signal: 'neutral',
-        strength: 0,
-        reason: 'Insufficient data for RSI calculation',
-        values: { rsi: currentRSI }
-      };
-    }
-
-    // Trend-confirming: RSI above buy threshold confirms bullish momentum
-    // RSI below sell threshold confirms bearish momentum
-    if (currentRSI > config.buyThreshold) {
-      const strength = (currentRSI - config.buyThreshold) / (100 - config.buyThreshold);
-      return {
-        name: 'RSI',
-        signal: 'bullish',
-        strength: Math.min(1, strength + 0.3),
-        reason: `Bullish momentum: RSI (${currentRSI.toFixed(2)}) > ${config.buyThreshold} (strong upward momentum)`,
-        values: { rsi: currentRSI, threshold: config.buyThreshold }
-      };
-    } else if (currentRSI < config.sellThreshold) {
-      const strength = (config.sellThreshold - currentRSI) / config.sellThreshold;
-      return {
-        name: 'RSI',
-        signal: 'bearish',
-        strength: Math.min(1, strength + 0.3),
-        reason: `Bearish momentum: RSI (${currentRSI.toFixed(2)}) < ${config.sellThreshold} (weak momentum)`,
-        values: { rsi: currentRSI, threshold: config.sellThreshold }
-      };
-    } else {
-      return {
-        name: 'RSI',
-        signal: 'neutral',
-        strength: 0.3,
-        reason: `Neutral momentum: RSI (${currentRSI.toFixed(2)}) in neutral zone`,
-        values: { rsi: currentRSI }
-      };
-    }
-  }
-
-  /**
-   * MACD Oscillator Evaluation
-   * Bullish: MACD > Signal (positive histogram) AND positive momentum
-   * Bearish: MACD < Signal (negative histogram) AND negative momentum
-   *
-   * @param avgHistogram Pre-calculated average histogram (absolute values) for normalization
-   */
-  private evaluateMACDSignal(
-    macd: number[],
-    signal: number[],
-    histogram: number[],
-    currentIndex: number,
-    avgHistogram: number
-  ): IndicatorSignal {
-    const currentMACD = macd[currentIndex];
-    const currentSignal = signal[currentIndex];
-    const currentHistogram = histogram[currentIndex];
-    const previousHistogram = histogram[currentIndex - 1];
-
-    if (isNaN(currentMACD) || isNaN(currentSignal) || isNaN(currentHistogram)) {
-      return {
-        name: 'MACD',
-        signal: 'neutral',
-        strength: 0,
-        reason: 'Insufficient data for MACD calculation',
-        values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
-      };
-    }
-
-    // Calculate histogram momentum (increasing or decreasing)
-    const histogramMomentum = !isNaN(previousHistogram) ? currentHistogram - previousHistogram : 0;
-
-    // Use pre-calculated average, fallback to current value if zero
-    const effectiveAvg = avgHistogram > 0 ? avgHistogram : Math.abs(currentHistogram);
-    const normalizedStrength = effectiveAvg > 0 ? Math.min(1, Math.abs(currentHistogram) / (effectiveAvg * 2)) : 0.5;
-
-    // Momentum bonus: add strength if histogram direction and momentum agree
-    const momentumBonus =
-      (currentHistogram > 0 && histogramMomentum >= 0) || (currentHistogram < 0 && histogramMomentum <= 0) ? 0.15 : 0;
-
-    if (currentHistogram > 0) {
-      return {
-        name: 'MACD',
-        signal: 'bullish',
-        strength: Math.min(1, normalizedStrength + 0.3 + momentumBonus),
-        reason: `Bullish oscillator: MACD histogram positive (${currentHistogram.toFixed(4)})${histogramMomentum >= 0 ? ' with upward momentum' : ''}`,
-        values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
-      };
-    } else if (currentHistogram < 0) {
-      return {
-        name: 'MACD',
-        signal: 'bearish',
-        strength: Math.min(1, normalizedStrength + 0.3 + momentumBonus),
-        reason: `Bearish oscillator: MACD histogram negative (${currentHistogram.toFixed(4)})${histogramMomentum <= 0 ? ' with downward momentum' : ''}`,
-        values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
-      };
-    } else {
-      return {
-        name: 'MACD',
-        signal: 'neutral',
-        strength: 0.3,
-        reason: `Neutral oscillator: MACD histogram at zero`,
-        values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
-      };
-    }
-  }
-
-  /**
-   * ATR Volatility Filter Evaluation
-   * Neutral: ATR <= average ATR * multiplier (allow signals)
-   * Filtered: ATR > average ATR * multiplier (filter out signals - market too choppy)
-   *
-   * @param preCalculatedAvgATR Pre-calculated average ATR for efficiency
-   */
-  private evaluateATRSignal(
-    atr: number[],
-    currentIndex: number,
-    config: { period: number; volatilityThresholdMultiplier: number },
-    preCalculatedAvgATR: number
-  ): IndicatorSignal {
-    const currentATR = atr[currentIndex];
-
-    if (isNaN(currentATR)) {
-      return {
-        name: 'ATR',
-        signal: 'neutral',
-        strength: 0.5,
-        reason: 'Insufficient data for ATR calculation',
-        values: { atr: currentATR }
-      };
-    }
-
-    // Use pre-calculated average, fallback to current value if zero
-    const avgATR = preCalculatedAvgATR > 0 ? preCalculatedAvgATR : currentATR;
-    const volatilityRatio = avgATR > 0 ? currentATR / avgATR : 1;
-    const threshold = config.volatilityThresholdMultiplier;
-
-    if (volatilityRatio > threshold) {
-      // High volatility - filter out signals
-      return {
-        name: 'ATR',
-        signal: 'filtered',
-        strength: 0,
-        reason: `High volatility: ATR (${currentATR.toFixed(4)}) is ${(volatilityRatio * 100).toFixed(0)}% of average (threshold: ${(threshold * 100).toFixed(0)}%)`,
-        values: { atr: currentATR, avgAtr: avgATR, ratio: volatilityRatio }
-      };
-    } else {
-      // Normal volatility - allow signals with strength based on stability
-      const stabilityStrength = 1 - volatilityRatio / threshold;
-      return {
-        name: 'ATR',
-        signal: 'neutral', // ATR doesn't indicate direction, just filters
-        strength: Math.max(0.4, stabilityStrength),
-        reason: `Normal volatility: ATR (${currentATR.toFixed(4)}) is ${(volatilityRatio * 100).toFixed(0)}% of average`,
-        values: { atr: currentATR, avgAtr: avgATR, ratio: volatilityRatio }
-      };
-    }
-  }
-
-  /**
-   * Bollinger Bands Trend Evaluation (trend-confirming mode)
-   * Bullish: %B > buyThreshold (price pushing toward upper band, strong uptrend)
-   * Bearish: %B < sellThreshold (price pushing toward lower band, strong downtrend)
-   *
-   * Note: Uses trend-confirming interpretation (%B > threshold = bullish breakout)
-   * rather than mean-reversion (%B < threshold = oversold = bullish),
-   * so BB agrees with trend-following indicators like EMA and MACD.
-   */
-  private evaluateBollingerBandsSignal(
-    pb: number[],
-    bandwidth: number[],
-    currentIndex: number,
-    config: { buyThreshold: number; sellThreshold: number }
-  ): IndicatorSignal {
-    const currentPB = pb[currentIndex];
-    const currentBandwidth = bandwidth[currentIndex];
-
-    if (isNaN(currentPB) || isNaN(currentBandwidth)) {
-      return {
-        name: 'BB',
-        signal: 'neutral',
-        strength: 0,
-        reason: 'Insufficient data for Bollinger Bands calculation',
-        values: { percentB: currentPB, bandwidth: currentBandwidth }
-      };
-    }
-
-    // Trend-confirming: %B above buy threshold = price pushing upper band = bullish breakout
-    // %B below sell threshold = price pushing lower band = bearish breakdown
-    if (currentPB > config.buyThreshold) {
-      const strength = (currentPB - config.buyThreshold) / (1 - config.buyThreshold);
-      return {
-        name: 'BB',
-        signal: 'bullish',
-        strength: Math.min(1, strength + 0.4),
-        reason: `Bullish breakout: %B (${currentPB.toFixed(2)}) > ${config.buyThreshold} (price pushing upper band)`,
-        values: { percentB: currentPB, bandwidth: currentBandwidth, threshold: config.buyThreshold }
-      };
-    } else if (currentPB < config.sellThreshold) {
-      const strength = (config.sellThreshold - currentPB) / config.sellThreshold;
-      return {
-        name: 'BB',
-        signal: 'bearish',
-        strength: Math.min(1, strength + 0.4),
-        reason: `Bearish breakdown: %B (${currentPB.toFixed(2)}) < ${config.sellThreshold} (price pushing lower band)`,
-        values: { percentB: currentPB, bandwidth: currentBandwidth, threshold: config.sellThreshold }
-      };
-    } else {
-      return {
-        name: 'BB',
-        signal: 'neutral',
-        strength: 0.3,
-        reason: `Neutral position: %B (${currentPB.toFixed(2)}) within bands`,
-        values: { percentB: currentPB, bandwidth: currentBandwidth }
-      };
-    }
-  }
-
-  /**
-   * Generate trading signal from confluence score.
-   *
-   * When `isFuturesShort` is true (enableShortSignals + futures marketType):
-   * - Bearish confluence emits SHORT_ENTRY instead of SELL
-   * - Bullish confluence emits SHORT_EXIT in addition to BUY (to close any open short)
-   *
-   * Returns a single signal or null. When a bullish confluence triggers both BUY
-   * and SHORT_EXIT, SHORT_EXIT is returned (closing a short is higher priority);
-   * the caller can still generate a BUY on the next evaluation cycle.
-   */
-  private generateSignalFromConfluence(
-    coinId: string,
-    coinSymbol: string,
-    price: number,
-    confluenceScore: ConfluenceScore,
-    config: ConfluenceConfig,
-    isFuturesShort = false
-  ): TradingSignal | null {
-    if (confluenceScore.direction === 'hold') {
-      return null;
-    }
-
-    const strength = this.calculateSignalStrength(confluenceScore);
-    const confidence = this.calculateConfidence(confluenceScore, config);
-
-    if (confidence < config.minConfidence) {
-      return null;
-    }
-
-    // Determine signal type based on direction and futures short mode
-    let signalType: SignalType;
-    if (confluenceScore.direction === 'buy') {
-      // Bullish confluence: in futures short mode, emit SHORT_EXIT to close any open short
-      signalType = isFuturesShort ? SignalType.SHORT_EXIT : SignalType.BUY;
-    } else {
-      // Bearish confluence: in futures short mode, emit SHORT_ENTRY instead of SELL
-      signalType = isFuturesShort ? SignalType.SHORT_ENTRY : SignalType.SELL;
-    }
-
-    // Build detailed reason from individual signals
-    const agreeingIndicators = confluenceScore.signals
-      .filter(
-        (s) =>
-          (confluenceScore.direction === 'buy' && s.signal === 'bullish') ||
-          (confluenceScore.direction === 'sell' && s.signal === 'bearish')
-      )
-      .map((s) => s.name);
-
-    const reason = `Confluence ${signalType}: ${confluenceScore.confluenceCount}/${confluenceScore.totalEnabled} indicators agree (${agreeingIndicators.join(', ')})`;
-
-    // Build metadata from all indicator values
-    const metadata: Record<string, unknown> = {
-      symbol: coinSymbol,
-      confluenceCount: confluenceScore.confluenceCount,
-      totalEnabled: confluenceScore.totalEnabled,
-      agreeingIndicators,
-      isVolatilityFiltered: confluenceScore.isVolatilityFiltered,
-      isFuturesShort,
-      indicatorBreakdown: confluenceScore.signals.map((s) => ({
-        name: s.name,
-        signal: s.signal,
-        strength: s.strength,
-        reason: s.reason,
-        values: s.values
-      }))
-    };
-
-    return {
-      type: signalType,
-      coinId,
-      strength,
-      price,
-      confidence,
-      reason,
-      metadata,
-      exitConfig: this.buildExitConfig(confluenceScore)
-    };
-  }
-
-  /**
-   * Build strategy-specific exit configuration scaled by confluence score.
-   * Higher confluence → tighter stops and wider take-profit (more confident trade).
-   */
-  private buildExitConfig(confluenceScore: ConfluenceScore): Partial<ExitConfig> {
-    const ratio =
-      confluenceScore.totalEnabled > 0 ? confluenceScore.confluenceCount / confluenceScore.totalEnabled : 0.5;
-
-    // Stop loss: 2-4% — tighter for higher confluence (more confident)
-    const stopLossValue = Math.max(1, 4 - ratio * 2); // ratio=1 → 2%, ratio=0.4 → 3.2%
-
-    // Take profit: 1.5:1 to 3:1 risk-reward scaled by confluence
-    const takeProfitRR = Math.max(1, 1.5 + ratio * 1.5); // ratio=1 → 3:1, ratio=0.4 → 2.1:1
-
-    return {
-      enableStopLoss: true,
-      stopLossType: StopLossType.PERCENTAGE,
-      stopLossValue,
-      enableTakeProfit: true,
-      takeProfitType: TakeProfitType.RISK_REWARD,
-      takeProfitValue: takeProfitRR,
-      enableTrailingStop: false,
-      useOco: true
-    };
-  }
-
-  /**
-   * Calculate signal strength from confluence score
-   */
-  private calculateSignalStrength(confluenceScore: ConfluenceScore): number {
-    // Strength based on:
-    // 1. Average strength of agreeing indicators
-    // 2. Confluence ratio (how many agree vs total)
-    const confluenceRatio =
-      confluenceScore.totalEnabled > 0 ? confluenceScore.confluenceCount / confluenceScore.totalEnabled : 0;
-
-    return Math.min(1, confluenceScore.averageStrength * 0.6 + confluenceRatio * 0.4);
-  }
-
-  /**
-   * Calculate confidence from confluence score
-   */
-  private calculateConfidence(confluenceScore: ConfluenceScore, config: ConfluenceConfig): number {
-    // Base confidence from confluence level
-    const confluenceRatio =
-      confluenceScore.totalEnabled > 0 ? confluenceScore.confluenceCount / confluenceScore.totalEnabled : 0;
-    const baseConfidence = 0.4 + confluenceRatio * 0.4; // 40% base + up to 40% from confluence
-
-    // Bonus for exceeding minimum confluence
-    const excessConfluence = Math.max(0, confluenceScore.confluenceCount - config.minConfluence);
-    const confluenceBonus = excessConfluence * 0.1; // 10% per extra agreeing indicator
-
-    // Strength contribution
-    const strengthBonus = confluenceScore.averageStrength * 0.2; // Up to 20% from strength
-
-    return Math.min(1, baseConfidence + confluenceBonus + strengthBonus);
   }
 
   /**
@@ -964,174 +339,23 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
     }));
   }
 
-  /**
-   * Get algorithm-specific configuration schema
-   */
   getConfigSchema(): Record<string, unknown> {
-    return {
-      ...super.getConfigSchema(),
-
-      // Core confluence settings
-      minConfluence: {
-        type: 'number',
-        default: 2,
-        min: 2,
-        max: 4,
-        description: 'Minimum number of directional indicators that must agree for BUY (2-4). ATR is a filter only.'
-      },
-      enableShortSignals: {
-        type: 'boolean',
-        default: false,
-        description:
-          'Enable SHORT_ENTRY/SHORT_EXIT signals for futures markets. When true and marketType is futures, bearish confluence emits SHORT_ENTRY and bullish confluence emits SHORT_EXIT.'
-      },
-      minSellConfluence: {
-        type: 'number',
-        default: 2,
-        min: 2,
-        max: 4,
-        description:
-          'Minimum number of directional indicators that must agree for SELL (2-4). Defaults to same as minConfluence for symmetric thresholds.'
-      },
-      minConfidence: {
-        type: 'number',
-        default: 0.5,
-        min: 0,
-        max: 1,
-        description: 'Minimum confidence required to generate signal'
-      },
-
-      // EMA (Trend) settings
-      emaEnabled: { type: 'boolean', default: true, description: 'Enable EMA trend indicator' },
-      emaFastPeriod: { type: 'number', default: 12, min: 5, max: 20, description: 'Fast EMA period' },
-      emaSlowPeriod: { type: 'number', default: 26, min: 15, max: 50, description: 'Slow EMA period' },
-
-      // RSI (Momentum) settings
-      rsiEnabled: { type: 'boolean', default: true, description: 'Enable RSI momentum indicator' },
-      rsiPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'RSI calculation period' },
-      rsiBuyThreshold: {
-        type: 'number',
-        default: 55,
-        min: 40,
-        max: 70,
-        description: 'RSI threshold for bullish (RSI > threshold confirms upward momentum)'
-      },
-      rsiSellThreshold: {
-        type: 'number',
-        default: 45,
-        min: 30,
-        max: 60,
-        description: 'RSI threshold for bearish (RSI < threshold confirms weak momentum)'
-      },
-
-      // MACD (Oscillator) settings
-      macdEnabled: { type: 'boolean', default: true, description: 'Enable MACD oscillator indicator' },
-      macdFastPeriod: { type: 'number', default: 12, min: 5, max: 20, description: 'MACD fast EMA period' },
-      macdSlowPeriod: { type: 'number', default: 26, min: 15, max: 50, description: 'MACD slow EMA period' },
-      macdSignalPeriod: { type: 'number', default: 9, min: 5, max: 15, description: 'MACD signal line period' },
-
-      // ATR (Volatility) settings
-      atrEnabled: { type: 'boolean', default: true, description: 'Enable ATR volatility filter' },
-      atrPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'ATR calculation period' },
-      atrVolatilityMultiplier: {
-        type: 'number',
-        default: 2.0,
-        min: 1.0,
-        max: 3.0,
-        description: 'ATR threshold multiplier (filter when ATR > avg * multiplier)'
-      },
-
-      // Bollinger Bands (Trend Confirmation) settings
-      bbEnabled: { type: 'boolean', default: true, description: 'Enable Bollinger Bands trend confirmation indicator' },
-      bbPeriod: { type: 'number', default: 20, min: 10, max: 50, description: 'Bollinger Bands calculation period' },
-      bbStdDev: { type: 'number', default: 2, min: 1, max: 3, description: 'Standard deviation multiplier' },
-      bbBuyThreshold: {
-        type: 'number',
-        default: 0.55,
-        min: 0.3,
-        max: 1,
-        description: '%B threshold for bullish (> value = price pushing upper band, confirms uptrend)'
-      },
-      bbSellThreshold: {
-        type: 'number',
-        default: 0.45,
-        min: 0,
-        max: 0.7,
-        description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
-      }
-    };
+    return getConfluenceConfigSchema(super.getConfigSchema());
   }
 
   /**
    * Declare indicator requirements for precomputation during optimization.
    */
   getMinDataPoints(config: Record<string, unknown>): number {
-    const c = this.getConfigWithDefaults(config);
-    const requirements: number[] = [];
-    if (c.ema.enabled) requirements.push(c.ema.slowPeriod + 1);
-    if (c.rsi.enabled) requirements.push(c.rsi.period + 1);
-    if (c.macd.enabled) requirements.push(c.macd.slowPeriod + c.macd.signalPeriod - 1);
-    if (c.atr.enabled) requirements.push(c.atr.period + 1);
-    if (c.bollingerBands.enabled) requirements.push(c.bollingerBands.period + 1);
-    return requirements.length > 0 ? Math.max(...requirements) : 1;
+    return calculateMinDataPoints(this.getConfigWithDefaults(config));
   }
 
   getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
-    const reqs: IndicatorRequirement[] = [];
-    if (config.emaEnabled !== false) {
-      reqs.push({ type: 'EMA', paramKeys: ['emaFastPeriod'], defaultParams: { emaFastPeriod: 12 } });
-      reqs.push({ type: 'EMA', paramKeys: ['emaSlowPeriod'], defaultParams: { emaSlowPeriod: 26 } });
-    }
-    if (config.rsiEnabled !== false) {
-      reqs.push({ type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } });
-    }
-    if (config.macdEnabled !== false) {
-      reqs.push({
-        type: 'MACD',
-        paramKeys: ['macdFastPeriod', 'macdSlowPeriod', 'macdSignalPeriod'],
-        defaultParams: { macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9 }
-      });
-    }
-    if (config.atrEnabled !== false) {
-      reqs.push({ type: 'ATR', paramKeys: ['atrPeriod'], defaultParams: { atrPeriod: 14 } });
-    }
-    if (config.bbEnabled !== false) {
-      reqs.push({
-        type: 'BOLLINGER_BANDS',
-        paramKeys: ['bbPeriod', 'bbStdDev'],
-        defaultParams: { bbPeriod: 20, bbStdDev: 2 }
-      });
-    }
-    return reqs;
+    return getConfluenceIndicatorRequirements(config);
   }
 
   getParameterConstraints(): ParameterConstraint[] {
-    return [
-      {
-        type: 'less_than',
-        param1: 'emaFastPeriod',
-        param2: 'emaSlowPeriod',
-        message: 'emaFastPeriod must be less than emaSlowPeriod'
-      },
-      {
-        type: 'less_than',
-        param1: 'macdFastPeriod',
-        param2: 'macdSlowPeriod',
-        message: 'macdFastPeriod must be less than macdSlowPeriod'
-      },
-      {
-        type: 'less_than',
-        param1: 'rsiSellThreshold',
-        param2: 'rsiBuyThreshold',
-        message: 'rsiSellThreshold must be less than rsiBuyThreshold'
-      },
-      {
-        type: 'less_than',
-        param1: 'bbSellThreshold',
-        param2: 'bbBuyThreshold',
-        message: 'bbSellThreshold must be less than bbBuyThreshold'
-      }
-    ];
+    return getConfluenceParameterConstraints();
   }
 
   /**
