@@ -27,6 +27,8 @@ import { VolatilityCapGate } from './gates/volatility-cap.gate';
 import { WFAConsistencyGate } from './gates/wfa-consistency.gate';
 import { LiveSignalService } from './live-signal.service';
 import { LiveTradingService } from './live-trading.service';
+import { OpportunitySellingExecutionService } from './opportunity-selling-execution.service';
+import { OrderPlacementService } from './order-placement.service';
 import { PoolStatisticsService } from './pool-statistics.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
@@ -100,6 +102,8 @@ import { User } from '../users/users.entity';
     SignalThrottleService,
     LiveTradingService,
     LiveSignalService,
+    OrderPlacementService,
+    OpportunitySellingExecutionService,
     PreTradeRiskGateService,
     DailyLossLimitGateService,
     ConcentrationCheckService,
