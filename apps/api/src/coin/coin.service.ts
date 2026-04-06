@@ -96,13 +96,15 @@ export class CoinService {
     const uniqueIds = [...new Set(coinIds.filter((id) => id && typeof id === 'string' && id.trim().length > 0))];
     if (uniqueIds.length === 0) return [];
 
-    const qb = this.coin.createQueryBuilder('coin').where('coin.id IN (:...ids)', { ids: uniqueIds });
+    const qb = this.coin
+      .createQueryBuilder('coin')
+      .where('coin.id IN (:...ids)', { ids: uniqueIds })
+      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
+      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
+      .andWhere('coin.currentPrice IS NOT NULL');
 
     if (!options?.includeDelisted) {
-      qb.andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
-        .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
-        .andWhere('coin.currentPrice IS NOT NULL')
-        .andWhere('coin.delistedAt IS NULL');
+      qb.andWhere('coin.delistedAt IS NULL');
     }
 
     return qb.orderBy('coin.marketCap', 'DESC').getMany();
@@ -121,8 +123,10 @@ export class CoinService {
   ): Promise<{ coins: Coin[]; usedHistoricalData: boolean }> {
     if (coinIds.length === 0) return { coins: [], usedHistoricalData: false };
 
+    const dateStr = atDate.toISOString().split('T')[0];
+
     // Try historical snapshots first
-    const qualifiedIds = await this.snapshotService.getQualifiedCoinIdsAtDate(
+    const { qualifiedIds, hasSnapshots } = await this.snapshotService.getQualifiedCoinIdsAtDate(
       coinIds,
       atDate,
       minMarketCap,
@@ -130,19 +134,22 @@ export class CoinService {
     );
 
     if (qualifiedIds.length > 0) {
-      // Fetch full Coin entities for qualifying IDs (including delisted)
-      const coins = await this.coin.find({
-        where: { id: In(qualifiedIds) },
-        order: { marketCap: 'DESC' }
-      });
-      return { coins, usedHistoricalData: true };
+      // Fetch full Coin entities and preserve historical market cap order
+      const coins = await this.coin.find({ where: { id: In(qualifiedIds) } });
+      const sorted = qualifiedIds.map((id) => coins.find((c) => c.id === id)).filter(Boolean) as Coin[];
+      return { coins: sorted, usedHistoricalData: true };
     }
 
-    // No snapshots found for this date — fall back to current values
-    this.logger.warn(
-      `No historical snapshots found near ${atDate.toISOString().split('T')[0]} for ${coinIds.length} coins. ` +
-        `Falling back to current market data for quality filtering.`
-    );
+    if (hasSnapshots) {
+      // Snapshots exist but no coins met quality thresholds — return empty to preserve historical accuracy
+      this.logger.warn(
+        `Historical snapshots exist at ${dateStr} but no coins met quality thresholds — returning empty to preserve historical accuracy`
+      );
+      return { coins: [], usedHistoricalData: true };
+    }
+
+    // No snapshot data at all — fall back to current market data
+    this.logger.warn(`No snapshot data exists near ${dateStr} — falling back to current market data`);
     const coins = await this.getCoinsByIdsFiltered(coinIds, minMarketCap, minDailyVolume, { includeDelisted: true });
     return { coins, usedHistoricalData: false };
   }

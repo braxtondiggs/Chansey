@@ -340,6 +340,15 @@ describe('CoinService', () => {
       const callArg = coinRepository.find.mock.calls[0][0] as FindManyOptions<Coin>;
       expect(callArg.where).toEqual({});
     });
+
+    it('always applies quality filters regardless of includeDelisted', async () => {
+      await service.getCoinsByIdsFiltered(['id1'], 100_000_000, 1_000_000, { includeDelisted: true });
+      expect(mockQb.andWhere).toHaveBeenCalledWith('coin.marketCap >= :minMarketCap', { minMarketCap: 100_000_000 });
+      expect(mockQb.andWhere).toHaveBeenCalledWith('coin.totalVolume >= :minDailyVolume', {
+        minDailyVolume: 1_000_000
+      });
+      expect(mockQb.andWhere).toHaveBeenCalledWith('coin.currentPrice IS NOT NULL');
+    });
   });
 
   // ===========================================================================
@@ -549,9 +558,9 @@ describe('CoinService', () => {
   describe('getCoinsByIdsFilteredAtDate()', () => {
     const testDate = new Date('2024-06-15');
 
-    it('delegates to snapshotService and returns Coin entities for qualifying IDs', async () => {
-      const qualifiedIds = ['btc-id', 'eth-id'];
-      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue(qualifiedIds);
+    it('delegates to snapshotService and preserves historical order for qualifying IDs', async () => {
+      const qualifiedIds = ['eth-id', 'btc-id']; // historical market cap order
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue({ qualifiedIds, hasSnapshots: true });
       const coins = [createTestCoin({ id: 'btc-id' }), createTestCoin({ id: 'eth-id' })];
       coinRepository.find.mockResolvedValue(coins);
 
@@ -564,14 +573,24 @@ describe('CoinService', () => {
         1_000_000
       );
       expect(coinRepository.find).toHaveBeenCalledWith({
-        where: { id: In(qualifiedIds) },
-        order: { marketCap: 'DESC' }
+        where: { id: In(qualifiedIds) }
       });
-      expect(result).toEqual({ coins, usedHistoricalData: true });
+      // Order should match qualifiedIds (historical), not current marketCap
+      expect(result.coins.map((c) => c.id)).toEqual(['eth-id', 'btc-id']);
+      expect(result.usedHistoricalData).toBe(true);
     });
 
-    it('falls back to getCoinsByIdsFiltered when no qualifying coins from snapshots', async () => {
-      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue([]);
+    it('returns empty coins when snapshots exist but none qualify', async () => {
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue({ qualifiedIds: [], hasSnapshots: true });
+
+      const result = await service.getCoinsByIdsFilteredAtDate(['btc-id'], testDate);
+
+      expect(result).toEqual({ coins: [], usedHistoricalData: true });
+      expect(coinRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('falls back to getCoinsByIdsFiltered when no snapshots exist at all', async () => {
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue({ qualifiedIds: [], hasSnapshots: false });
 
       const mockQb = {
         where: jest.fn().mockReturnThis(),
@@ -583,8 +602,6 @@ describe('CoinService', () => {
 
       const result = await service.getCoinsByIdsFilteredAtDate(['btc-id'], testDate);
 
-      expect(snapshotService.getQualifiedCoinIdsAtDate).toHaveBeenCalled();
-      // Should have fallen back to getCoinsByIdsFiltered with includeDelisted: true
       expect(coinRepository.createQueryBuilder).toHaveBeenCalled();
       expect(result.coins).toHaveLength(1);
       expect(result.usedHistoricalData).toBe(false);

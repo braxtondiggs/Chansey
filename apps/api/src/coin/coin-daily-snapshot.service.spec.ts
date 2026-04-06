@@ -197,10 +197,10 @@ describe('CoinDailySnapshotService', () => {
 
       const result = await service.getQualifiedCoinIdsAtDate(['coin-1', 'coin-2', 'coin-3'], new Date('2025-06-15'));
 
-      expect(result).toEqual(['coin-1']);
+      expect(result).toEqual({ qualifiedIds: ['coin-1'], hasSnapshots: true });
     });
 
-    it('returns empty when no coins qualify', async () => {
+    it('returns hasSnapshots: true with empty qualifiedIds when snapshots exist but none qualify', async () => {
       const snapshots = [
         {
           coinId: 'coin-1',
@@ -214,13 +214,53 @@ describe('CoinDailySnapshotService', () => {
 
       const result = await service.getQualifiedCoinIdsAtDate(['coin-1'], new Date('2025-06-15'));
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({ qualifiedIds: [], hasSnapshots: true });
     });
 
-    it('returns empty array for empty coinIds', async () => {
+    it('returns hasSnapshots: false when no snapshots exist', async () => {
+      mockQb.getMany.mockResolvedValueOnce([]);
+
+      const result = await service.getQualifiedCoinIdsAtDate(['coin-1'], new Date('2025-06-15'));
+
+      expect(result).toEqual({ qualifiedIds: [], hasSnapshots: false });
+    });
+
+    it('sorts qualified IDs by historical marketCap DESC', async () => {
+      const snapshots = [
+        {
+          coinId: 'coin-small',
+          marketCap: 200_000_000,
+          totalVolume: 5_000_000,
+          currentPrice: 10
+        },
+        {
+          coinId: 'coin-large',
+          marketCap: 500_000_000_000,
+          totalVolume: 10_000_000_000,
+          currentPrice: 30000
+        },
+        {
+          coinId: 'coin-medium',
+          marketCap: 50_000_000_000,
+          totalVolume: 2_000_000_000,
+          currentPrice: 2000
+        }
+      ] as unknown as CoinDailySnapshot[];
+
+      mockQb.getMany.mockResolvedValueOnce(snapshots);
+
+      const result = await service.getQualifiedCoinIdsAtDate(
+        ['coin-small', 'coin-large', 'coin-medium'],
+        new Date('2025-06-15')
+      );
+
+      expect(result.qualifiedIds).toEqual(['coin-large', 'coin-medium', 'coin-small']);
+    });
+
+    it('returns empty for empty coinIds', async () => {
       const result = await service.getQualifiedCoinIdsAtDate([], new Date());
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({ qualifiedIds: [], hasSnapshots: false });
       expect(repo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });

@@ -83,12 +83,12 @@ export class CoinDailySnapshotService {
     date: Date,
     minMarketCap = 100_000_000,
     minDailyVolume = 1_000_000
-  ): Promise<string[]> {
-    if (coinIds.length === 0) return [];
+  ): Promise<{ qualifiedIds: string[]; hasSnapshots: boolean }> {
+    if (coinIds.length === 0) return { qualifiedIds: [], hasSnapshots: false };
 
     const snapshots = await this.getSnapshotsAtDate(coinIds, date);
 
-    return snapshots
+    const qualifiedIds = snapshots
       .filter(
         (s) =>
           s.marketCap != null &&
@@ -97,7 +97,10 @@ export class CoinDailySnapshotService {
           Number(s.totalVolume) >= minDailyVolume &&
           s.currentPrice != null
       )
+      .sort((a, b) => Number(b.marketCap ?? 0) - Number(a.marketCap ?? 0))
       .map((s) => s.coinId);
+
+    return { qualifiedIds, hasSnapshots: snapshots.length > 0 };
   }
 
   /**

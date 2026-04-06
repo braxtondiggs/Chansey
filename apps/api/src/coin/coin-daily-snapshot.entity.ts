@@ -1,4 +1,14 @@
-import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn, Relation, Unique } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Relation,
+  Unique
+} from 'typeorm';
 
 import { Coin } from './coin.entity';
 
@@ -12,6 +22,7 @@ export class CoinDailySnapshot {
   id: string;
 
   @ManyToOne(() => Coin, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'coinId' })
   coin: Relation<Coin>;
 
   @Column({ type: 'uuid' })
