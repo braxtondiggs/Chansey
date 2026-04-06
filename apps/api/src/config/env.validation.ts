@@ -74,6 +74,7 @@ const envSchema = z.object({
 
   // External API Keys (Optional)
   COINGECKO_API_KEY: z.string().optional(),
+  COINGECKO_DEMO_API_KEY: z.string().optional(),
   CCA_API_KEY: z.string().optional(),
   CHANSEY_API_KEY: z.string().optional(),
 

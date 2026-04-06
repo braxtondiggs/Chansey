@@ -16,7 +16,7 @@
   },
   "enabledPlugins": {
     "nx@nx-claude-plugins": true,
-    "superpowers@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
     "impeccable@impeccable": true
   },

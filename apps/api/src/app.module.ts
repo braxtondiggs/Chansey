@@ -41,6 +41,7 @@ import { PipelineModule } from './pipeline/pipeline.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { RiskModule } from './risk/risk.module';
 import { ScoringModule } from './scoring/scoring.module';
+import { SharedCoinGeckoModule } from './shared/shared-coingecko.module';
 import { SharedLockModule } from './shared/shared-lock.module';
 import { SharedResilienceModule } from './shared/shared-resilience.module';
 import { QUEUE_NAMES } from './shutdown/queue-names.constant';
@@ -142,6 +143,7 @@ import { TradingModule } from './trading/trading.module';
     PortfolioModule,
     RiskModule,
     ScoringModule,
+    SharedCoinGeckoModule,
     SharedLockModule,
     SharedResilienceModule,
     ShutdownModule,
