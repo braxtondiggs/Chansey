@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { FindOptionsWhere, In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
+import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
@@ -35,7 +36,10 @@ export class CoinService {
     });
   }
 
-  constructor(@InjectRepository(Coin) private readonly coin: Repository<Coin>) {}
+  constructor(
+    @InjectRepository(Coin) private readonly coin: Repository<Coin>,
+    private readonly snapshotService: CoinDailySnapshotService
+  ) {}
 
   async getCoins(options?: { includeDelisted?: boolean }) {
     const where: FindOptionsWhere<Coin> = {};
@@ -92,16 +96,63 @@ export class CoinService {
     const uniqueIds = [...new Set(coinIds.filter((id) => id && typeof id === 'string' && id.trim().length > 0))];
     if (uniqueIds.length === 0) return [];
 
-    const qb = this.coin.createQueryBuilder('coin').where('coin.id IN (:...ids)', { ids: uniqueIds });
+    const qb = this.coin
+      .createQueryBuilder('coin')
+      .where('coin.id IN (:...ids)', { ids: uniqueIds })
+      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
+      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
+      .andWhere('coin.currentPrice IS NOT NULL');
 
     if (!options?.includeDelisted) {
-      qb.andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
-        .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
-        .andWhere('coin.currentPrice IS NOT NULL')
-        .andWhere('coin.delistedAt IS NULL');
+      qb.andWhere('coin.delistedAt IS NULL');
     }
 
     return qb.orderBy('coin.marketCap', 'DESC').getMany();
+  }
+
+  /**
+   * Date-aware quality filter: returns coins that met market cap/volume thresholds
+   * at the specified historical date, using daily snapshot data.
+   * Falls back to current values if no snapshots exist near the date.
+   */
+  async getCoinsByIdsFilteredAtDate(
+    coinIds: string[],
+    atDate: Date,
+    minMarketCap = 100_000_000,
+    minDailyVolume = 1_000_000
+  ): Promise<{ coins: Coin[]; usedHistoricalData: boolean }> {
+    if (coinIds.length === 0) return { coins: [], usedHistoricalData: false };
+
+    const dateStr = atDate.toISOString().split('T')[0];
+
+    // Try historical snapshots first
+    const { qualifiedIds, hasSnapshots } = await this.snapshotService.getQualifiedCoinIdsAtDate(
+      coinIds,
+      atDate,
+      minMarketCap,
+      minDailyVolume
+    );
+
+    if (qualifiedIds.length > 0) {
+      // Fetch full Coin entities and preserve historical market cap order
+      const coins = await this.coin.find({ where: { id: In(qualifiedIds) } });
+      const coinsById = new Map(coins.map((coin) => [coin.id, coin] as const));
+      const sorted = qualifiedIds.map((id) => coinsById.get(id)).filter(Boolean) as Coin[];
+      return { coins: sorted, usedHistoricalData: true };
+    }
+
+    if (hasSnapshots) {
+      // Snapshots exist but no coins met quality thresholds — return empty to preserve historical accuracy
+      this.logger.warn(
+        `Historical snapshots exist at ${dateStr} but no coins met quality thresholds — returning empty to preserve historical accuracy`
+      );
+      return { coins: [], usedHistoricalData: true };
+    }
+
+    // No snapshot data at all — fall back to current market data
+    this.logger.warn(`No snapshot data exists near ${dateStr} — falling back to current market data`);
+    const coins = await this.getCoinsByIdsFiltered(coinIds, minMarketCap, minDailyVolume, { includeDelisted: true });
+    return { coins, usedHistoricalData: false };
   }
 
   async getCoinBySymbol(

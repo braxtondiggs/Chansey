@@ -9,7 +9,9 @@ import { CoinDetailSyncService } from './coin-detail-sync.service';
 
 import { ExchangeService } from '../../exchange/exchange.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { CoinListingEventService } from '../coin-listing-event.service';
+import { CoinMarketDataService } from '../coin-market-data.service';
 import { CoinService } from '../coin.service';
 
 @Processor('coin-queue')
@@ -25,7 +27,9 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
     private readonly coin: CoinService,
     private readonly exchangeService: ExchangeService,
     private readonly listingEventService: CoinListingEventService,
-    private readonly coinDetailSync: CoinDetailSyncService
+    private readonly coinDetailSync: CoinDetailSyncService,
+    private readonly snapshotService: CoinDailySnapshotService,
+    private readonly coinMarketData: CoinMarketDataService
   ) {
     super();
   }
@@ -304,7 +308,56 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
    */
   async handleCoinDetail(job: Job) {
     try {
-      return await this.coinDetailSync.syncCoinDetails((percent) => job.updateProgress(percent));
+      const detailResult = await this.coinDetailSync.syncCoinDetails((percent) => job.updateProgress(percent));
+
+      const freshCoins = await this.coin.getCoins();
+
+      // Capture daily market data snapshots for all active coins
+      let snapshotsCaptured = 0;
+      try {
+        snapshotsCaptured = await this.snapshotService.captureSnapshots(freshCoins);
+        this.logger.log(`Captured ${snapshotsCaptured} daily market data snapshots`);
+      } catch (snapshotError: unknown) {
+        const { message } = toErrorInfo(snapshotError);
+        this.logger.error(`Failed to capture daily snapshots (non-fatal): ${message}`);
+      }
+
+      // Backfill historical snapshots for coins with insufficient data
+      try {
+        const allCoinIds = freshCoins.map((c) => c.id);
+        const coinsNeedingBackfill = await this.snapshotService.getCoinsNeedingBackfill(allCoinIds, 30);
+
+        if (coinsNeedingBackfill.length > 0) {
+          this.logger.log(`Backfilling historical snapshots for ${coinsNeedingBackfill.length} coins`);
+          const batchSize = 3;
+
+          for (let i = 0; i < coinsNeedingBackfill.length; i += batchSize) {
+            const batch = coinsNeedingBackfill.slice(i, i + batchSize);
+
+            await Promise.allSettled(
+              batch.map(async (coinId) => {
+                try {
+                  const historicalData = await this.coinMarketData.getCoinHistoricalData(coinId);
+                  const inserted = await this.snapshotService.backfillFromHistoricalData(coinId, historicalData);
+                  this.logger.debug(`Backfilled ${inserted} snapshots for coin ${coinId}`);
+                } catch (err: unknown) {
+                  const { message } = toErrorInfo(err);
+                  this.logger.warn(`Failed to backfill snapshots for coin ${coinId}: ${message}`);
+                }
+              })
+            );
+
+            if (i + batchSize < coinsNeedingBackfill.length) {
+              await new Promise((resolve) => setTimeout(resolve, this.API_RATE_LIMIT_DELAY));
+            }
+          }
+        }
+      } catch (backfillError: unknown) {
+        const { message } = toErrorInfo(backfillError);
+        this.logger.error(`Failed to backfill historical snapshots (non-fatal): ${message}`);
+      }
+
+      return { ...detailResult, snapshotsCaptured };
     } catch (e: unknown) {
       const errInfo = toErrorInfo(e);
       this.logger.error(`Failed to process coin details: ${errInfo.message}`, errInfo.stack);

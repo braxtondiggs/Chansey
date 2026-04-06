@@ -63,6 +63,8 @@ import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { IndicatorModule } from '../algorithm/indicators/indicator.module';
 import { BalanceModule } from '../balance/balance.module';
+import { CoinDailySnapshot } from '../coin/coin-daily-snapshot.entity';
+import { CoinDailySnapshotService } from '../coin/coin-daily-snapshot.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
@@ -112,6 +114,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
       AlgorithmActivation,
       AlgorithmPerformance,
       Coin,
+      CoinDailySnapshot,
       Order,
       OrderStatusHistory,
       OpportunitySellEvaluation,
@@ -165,6 +168,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestStreamService,
     BacktestResultService,
     BacktestGateway,
+    CoinDailySnapshotService,
     CoinResolverService,
     CoinService,
     DatasetValidatorService,

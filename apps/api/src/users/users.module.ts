@@ -2,6 +2,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { CoinDailySnapshot } from './../coin/coin-daily-snapshot.entity';
+import { CoinDailySnapshotService } from './../coin/coin-daily-snapshot.service';
 import { Coin } from './../coin/coin.entity';
 import { CoinService } from './../coin/coin.service';
 import { UsersTaskService } from './tasks/users.task';
@@ -22,7 +24,7 @@ import { StrategyModule } from '../strategy/strategy.module';
 @Module({
   controllers: [UserController],
   imports: [
-    TypeOrmModule.forFeature([Coin, Risk, User]),
+    TypeOrmModule.forFeature([Coin, CoinDailySnapshot, Risk, User]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => CoinSelectionModule),
@@ -33,7 +35,7 @@ import { StrategyModule } from '../strategy/strategy.module';
     StorageModule,
     BullModule.registerQueue({ name: 'user-queue' })
   ],
-  providers: [CoinService, UsersService, UsersTaskService],
+  providers: [CoinDailySnapshotService, CoinService, UsersService, UsersTaskService],
   exports: [UsersService]
 })
 export class UsersModule {}

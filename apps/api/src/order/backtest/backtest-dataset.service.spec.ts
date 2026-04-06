@@ -48,7 +48,8 @@ describe('BacktestService – default dataset', () => {
 
     coinService = {
       getCoinsByIds: jest.fn().mockResolvedValue(mockCoins),
-      getCoinsByIdsFiltered: jest.fn().mockResolvedValue(mockCoins)
+      getCoinsByIdsFiltered: jest.fn().mockResolvedValue(mockCoins),
+      getCoinsByIdsFilteredAtDate: jest.fn().mockResolvedValue({ coins: mockCoins, usedHistoricalData: true })
     };
 
     const queryBuilder = {
@@ -113,7 +114,10 @@ describe('BacktestService – default dataset', () => {
     });
 
     it('returns null when no valid coins found', async () => {
-      coinService.getCoinsByIdsFiltered.mockResolvedValue([{ id: 'btc', symbol: '' }]);
+      coinService.getCoinsByIdsFilteredAtDate.mockResolvedValue({
+        coins: [{ id: 'btc', symbol: '' }],
+        usedHistoricalData: true
+      });
 
       const result = await service.ensureDefaultDatasetExists();
 
@@ -122,9 +126,12 @@ describe('BacktestService – default dataset', () => {
 
     it('excludes low-quality coins below market cap and volume thresholds', async () => {
       // Only BTC passes the filter; meme coin is excluded
-      coinService.getCoinsByIdsFiltered.mockResolvedValue([
-        { id: 'btc', symbol: 'BTC', marketCap: 500_000_000_000, totalVolume: 20_000_000_000, currentPrice: 50000 }
-      ]);
+      coinService.getCoinsByIdsFilteredAtDate.mockResolvedValue({
+        coins: [
+          { id: 'btc', symbol: 'BTC', marketCap: 500_000_000_000, totalVolume: 20_000_000_000, currentPrice: 50000 }
+        ],
+        usedHistoricalData: true
+      });
       ohlcService.getCoinsWithCandleData.mockResolvedValue(['btc', 'memecoin']);
 
       const savedDataset = buildMockDataset({ instrumentUniverse: ['BTC'] });
@@ -132,9 +139,12 @@ describe('BacktestService – default dataset', () => {
 
       const result = await service.ensureDefaultDatasetExists();
 
-      expect(coinService.getCoinsByIdsFiltered).toHaveBeenCalledWith(['btc', 'memecoin'], 100_000_000, 1_000_000, {
-        includeDelisted: true
-      });
+      expect(coinService.getCoinsByIdsFilteredAtDate).toHaveBeenCalledWith(
+        ['btc', 'memecoin'],
+        mockDateRange.start,
+        100_000_000,
+        1_000_000
+      );
       expect(result).toBeTruthy();
       expect(marketDataSetRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -144,7 +154,7 @@ describe('BacktestService – default dataset', () => {
     });
 
     it('returns null when all coins are below quality thresholds', async () => {
-      coinService.getCoinsByIdsFiltered.mockResolvedValue([]);
+      coinService.getCoinsByIdsFilteredAtDate.mockResolvedValue({ coins: [], usedHistoricalData: true });
 
       const result = await service.ensureDefaultDatasetExists();
 
@@ -173,10 +183,13 @@ describe('BacktestService – default dataset', () => {
 
     it('computes checksum using sorted instrument universe', async () => {
       marketDataSetRepo.save.mockResolvedValue(buildMockDataset());
-      coinService.getCoinsByIdsFiltered.mockResolvedValue([
-        { id: 'eth', symbol: 'ETH', marketCap: 200_000_000_000, totalVolume: 10_000_000_000, currentPrice: 3000 },
-        { id: 'btc', symbol: 'BTC', marketCap: 500_000_000_000, totalVolume: 20_000_000_000, currentPrice: 50000 }
-      ]);
+      coinService.getCoinsByIdsFilteredAtDate.mockResolvedValue({
+        coins: [
+          { id: 'eth', symbol: 'ETH', marketCap: 200_000_000_000, totalVolume: 10_000_000_000, currentPrice: 3000 },
+          { id: 'btc', symbol: 'BTC', marketCap: 500_000_000_000, totalVolume: 20_000_000_000, currentPrice: 50000 }
+        ],
+        usedHistoricalData: true
+      });
 
       await service.ensureDefaultDatasetExists();
 

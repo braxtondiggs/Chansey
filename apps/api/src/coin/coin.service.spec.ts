@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { FindManyOptions, FindOneOptions, In, IsNull, Repository } from 'typeorm';
 
+import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 
@@ -37,6 +38,7 @@ const mockQueryBuilder = () => {
 describe('CoinService', () => {
   let service: CoinService;
   let coinRepository: jest.Mocked<Repository<Coin>>;
+  let snapshotService: { getQualifiedCoinIdsAtDate: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -53,12 +55,19 @@ describe('CoinService', () => {
             delete: jest.fn(),
             insert: jest.fn()
           }
+        },
+        {
+          provide: CoinDailySnapshotService,
+          useValue: {
+            getQualifiedCoinIdsAtDate: jest.fn().mockResolvedValue({ qualifiedIds: [], hasSnapshots: false })
+          }
         }
       ]
     }).compile();
 
     service = module.get<CoinService>(CoinService);
     coinRepository = module.get(getRepositoryToken(Coin));
+    snapshotService = module.get(CoinDailySnapshotService);
   });
 
   afterEach(() => {
@@ -224,9 +233,7 @@ describe('CoinService', () => {
       coinRepository.createQueryBuilder.mockReturnValue(qb as any);
 
       await service.getCoinsByIdsFiltered(['id1'], 100_000_000, 1_000_000, { includeDelisted: true });
-      const delistedCalls = qb.andWhere.mock.calls.filter(
-        (call: unknown[]) => call[0] === 'coin.delistedAt IS NULL'
-      );
+      const delistedCalls = qb.andWhere.mock.calls.filter((call: unknown[]) => call[0] === 'coin.delistedAt IS NULL');
       expect(delistedCalls).toHaveLength(0);
     });
   });
@@ -330,6 +337,23 @@ describe('CoinService', () => {
       await service.getCoins({ includeDelisted: true });
       const callArg = coinRepository.find.mock.calls[0][0] as FindManyOptions<Coin>;
       expect(callArg.where).toEqual({});
+    });
+  });
+
+  // ===========================================================================
+  // getCoinsByIdsFiltered — includeDelisted quality filters
+  // ===========================================================================
+  describe('getCoinsByIdsFiltered includeDelisted quality', () => {
+    it('always applies quality filters regardless of includeDelisted', async () => {
+      const qb = mockQueryBuilder();
+      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
+
+      await service.getCoinsByIdsFiltered(['id1'], 100_000_000, 1_000_000, { includeDelisted: true });
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.marketCap >= :minMarketCap', { minMarketCap: 100_000_000 });
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.totalVolume >= :minDailyVolume', {
+        minDailyVolume: 1_000_000
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.currentPrice IS NOT NULL');
     });
   });
 
@@ -531,6 +555,69 @@ describe('CoinService', () => {
     it('calls actual delete', async () => {
       await service.hardRemoveMany(['id1', 'id2']);
       expect(coinRepository.delete).toHaveBeenCalledWith({ id: In(['id1', 'id2']) });
+    });
+  });
+
+  // ===========================================================================
+  // getCoinsByIdsFilteredAtDate()
+  // ===========================================================================
+  describe('getCoinsByIdsFilteredAtDate()', () => {
+    const testDate = new Date('2024-06-15');
+
+    it('delegates to snapshotService and preserves historical order for qualifying IDs', async () => {
+      const qualifiedIds = ['eth-id', 'btc-id']; // historical market cap order
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue({ qualifiedIds, hasSnapshots: true });
+      const coins = [createTestCoin({ id: 'btc-id' }), createTestCoin({ id: 'eth-id' })];
+      coinRepository.find.mockResolvedValue(coins);
+
+      const result = await service.getCoinsByIdsFilteredAtDate(['btc-id', 'eth-id', 'doge-id'], testDate);
+
+      expect(snapshotService.getQualifiedCoinIdsAtDate).toHaveBeenCalledWith(
+        ['btc-id', 'eth-id', 'doge-id'],
+        testDate,
+        100_000_000,
+        1_000_000
+      );
+      expect(coinRepository.find).toHaveBeenCalledWith({
+        where: { id: In(qualifiedIds) }
+      });
+      // Order should match qualifiedIds (historical), not current marketCap
+      expect(result.coins.map((c) => c.id)).toEqual(['eth-id', 'btc-id']);
+      expect(result.usedHistoricalData).toBe(true);
+    });
+
+    it('returns empty coins when snapshots exist but none qualify', async () => {
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue({ qualifiedIds: [], hasSnapshots: true });
+
+      const result = await service.getCoinsByIdsFilteredAtDate(['btc-id'], testDate);
+
+      expect(result).toEqual({ coins: [], usedHistoricalData: true });
+      expect(coinRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('falls back to getCoinsByIdsFiltered when no snapshots exist at all', async () => {
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue({ qualifiedIds: [], hasSnapshots: false });
+
+      const mockQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([createTestCoin({ id: 'btc-id' })])
+      };
+      coinRepository.createQueryBuilder.mockReturnValue(mockQb as any);
+
+      const result = await service.getCoinsByIdsFilteredAtDate(['btc-id'], testDate);
+
+      expect(coinRepository.createQueryBuilder).toHaveBeenCalled();
+      expect(result.coins).toHaveLength(1);
+      expect(result.usedHistoricalData).toBe(false);
+    });
+
+    it('returns empty array for empty coinIds input', async () => {
+      const result = await service.getCoinsByIdsFilteredAtDate([], testDate);
+
+      expect(result).toEqual({ coins: [], usedHistoricalData: false });
+      expect(snapshotService.getQualifiedCoinIdsAtDate).not.toHaveBeenCalled();
     });
   });
 
