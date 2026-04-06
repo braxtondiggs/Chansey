@@ -366,10 +366,20 @@ export class BacktestService implements OnModuleInit, OnModuleDestroy {
         return null;
       }
 
-      // Get coin symbols for the instrument universe (filtered by quality)
-      const coins = await this.coinService.getCoinsByIdsFiltered(coinIds, 100_000_000, 1_000_000, {
-        includeDelisted: true
-      });
+      // Get coin symbols for the instrument universe (filtered by historical quality at backtest start date)
+      const { coins, usedHistoricalData } = await this.coinService.getCoinsByIdsFilteredAtDate(
+        coinIds,
+        dateRange.start,
+        100_000_000,
+        1_000_000
+      );
+
+      if (!usedHistoricalData) {
+        this.logger.warn(
+          'Default dataset quality filter used current market data instead of historical snapshots — results may include survivorship bias'
+        );
+      }
+
       const instrumentUniverse = coins.map((c) => c.symbol).filter(Boolean);
 
       if (instrumentUniverse.length === 0) {

@@ -17,6 +17,8 @@ import { KrakenFuturesService } from './kraken/kraken-futures.service';
 import { KrakenService } from './kraken/kraken.service';
 import { ExchangeSyncTask } from './tasks/exchange-sync.task';
 
+import { CoinDailySnapshot } from '../coin/coin-daily-snapshot.entity';
+import { CoinDailySnapshotService } from '../coin/coin-daily-snapshot.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
@@ -26,7 +28,7 @@ import { SharedCacheModule } from '../shared-cache.module';
 @Module({
   controllers: [ExchangeController],
   imports: [
-    TypeOrmModule.forFeature([Coin, Exchange, ExchangeKey, TickerPairs]),
+    TypeOrmModule.forFeature([Coin, CoinDailySnapshot, Exchange, ExchangeKey, TickerPairs]),
     forwardRef(() => ExchangeKeyModule),
     SharedCacheModule,
     BullModule.registerQueue({ name: 'exchange-queue' })
@@ -37,6 +39,7 @@ import { SharedCacheModule } from '../shared-cache.module';
     CoinbaseExchangeService,
     KrakenService,
     KrakenFuturesService,
+    CoinDailySnapshotService,
     CoinService,
     ExchangeService,
     {

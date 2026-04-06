@@ -29,6 +29,8 @@ import { SimpleMovingAverageCrossoverStrategy } from './strategies/simple-moving
 import { TripleEMAStrategy } from './strategies/triple-ema.strategy';
 import { PerformanceRankingTask } from './tasks/performance-ranking.task';
 
+import { CoinDailySnapshot } from '../coin/coin-daily-snapshot.entity';
+import { CoinDailySnapshotService } from '../coin/coin-daily-snapshot.service';
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
@@ -50,6 +52,7 @@ import { UsersModule } from '../users/users.module';
       AlgorithmPerformance,
       Backtest,
       Coin,
+      CoinDailySnapshot,
       Order,
       TickerPairs
     ]),
@@ -69,6 +72,7 @@ import { UsersModule } from '../users/users.module';
     AlgorithmPerformanceService,
     AlgorithmRegistry,
     AlgorithmContextBuilder,
+    CoinDailySnapshotService,
     CoinService,
     TickerPairService,
     ExponentialMovingAverageStrategy,

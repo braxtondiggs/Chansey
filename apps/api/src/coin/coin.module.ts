@@ -2,6 +2,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { CoinDailySnapshot } from './coin-daily-snapshot.entity';
+import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
 import { CoinListingEvent } from './coin-listing-event.entity';
 import { CoinListingEventService } from './coin-listing-event.service';
 import { CoinMarketDataService } from './coin-market-data.service';
@@ -10,6 +12,7 @@ import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 import { SimplePriceController } from './simple-price.controller';
 import { CoinDetailSyncService } from './tasks/coin-detail-sync.service';
+import { CoinSnapshotPruneTask } from './tasks/coin-snapshot-prune.task';
 import { CoinSyncTask } from './tasks/coin-sync.task';
 import { TickerPairSyncTask } from './ticker-pairs/tasks/ticker-pairs-sync.task';
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
@@ -24,22 +27,25 @@ import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   controllers: [CoinController, CoinsController, SimplePriceController],
-  exports: [CoinService, CoinListingEventService, CoinMarketDataService, TickerPairService, TickerPairSyncTask],
+  exports: [CoinService, CoinDailySnapshotService, CoinListingEventService, CoinMarketDataService, TickerPairService, TickerPairSyncTask],
   imports: [
-    TypeOrmModule.forFeature([Coin, CoinSelection, TickerPairs, CoinListingEvent]),
+    TypeOrmModule.forFeature([Coin, CoinDailySnapshot, CoinSelection, TickerPairs, CoinListingEvent]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OrderModule),
     RiskModule,
     SharedCacheModule,
     BullModule.registerQueue({ name: 'coin-queue' }),
+    BullModule.registerQueue({ name: 'coin-snapshot-prune-queue' }),
     BullModule.registerQueue({ name: 'ticker-pairs-queue' })
   ],
   providers: [
     CoinService,
+    CoinDailySnapshotService,
     CoinListingEventService,
     CoinMarketDataService,
     CoinDetailSyncService,
+    CoinSnapshotPruneTask,
     CoinSyncTask,
     TickerPairService,
     TickerPairSyncTask

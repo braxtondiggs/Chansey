@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { FindOptionsWhere, In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
+import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
@@ -35,7 +36,10 @@ export class CoinService {
     });
   }
 
-  constructor(@InjectRepository(Coin) private readonly coin: Repository<Coin>) {}
+  constructor(
+    @InjectRepository(Coin) private readonly coin: Repository<Coin>,
+    private readonly snapshotService: CoinDailySnapshotService
+  ) {}
 
   async getCoins(options?: { includeDelisted?: boolean }) {
     const where: FindOptionsWhere<Coin> = {};
@@ -102,6 +106,45 @@ export class CoinService {
     }
 
     return qb.orderBy('coin.marketCap', 'DESC').getMany();
+  }
+
+  /**
+   * Date-aware quality filter: returns coins that met market cap/volume thresholds
+   * at the specified historical date, using daily snapshot data.
+   * Falls back to current values if no snapshots exist near the date.
+   */
+  async getCoinsByIdsFilteredAtDate(
+    coinIds: string[],
+    atDate: Date,
+    minMarketCap = 100_000_000,
+    minDailyVolume = 1_000_000
+  ): Promise<{ coins: Coin[]; usedHistoricalData: boolean }> {
+    if (coinIds.length === 0) return { coins: [], usedHistoricalData: false };
+
+    // Try historical snapshots first
+    const qualifiedIds = await this.snapshotService.getQualifiedCoinIdsAtDate(
+      coinIds,
+      atDate,
+      minMarketCap,
+      minDailyVolume
+    );
+
+    if (qualifiedIds.length > 0) {
+      // Fetch full Coin entities for qualifying IDs (including delisted)
+      const coins = await this.coin.find({
+        where: { id: In(qualifiedIds) },
+        order: { marketCap: 'DESC' }
+      });
+      return { coins, usedHistoricalData: true };
+    }
+
+    // No snapshots found for this date — fall back to current values
+    this.logger.warn(
+      `No historical snapshots found near ${atDate.toISOString().split('T')[0]} for ${coinIds.length} coins. ` +
+        `Falling back to current market data for quality filtering.`
+    );
+    const coins = await this.getCoinsByIdsFiltered(coinIds, minMarketCap, minDailyVolume, { includeDelisted: true });
+    return { coins, usedHistoricalData: false };
   }
 
   async getCoinBySymbol(

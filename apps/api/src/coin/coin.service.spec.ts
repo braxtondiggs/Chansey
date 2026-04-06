@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { FindManyOptions, FindOneOptions, In, IsNull, Repository } from 'typeorm';
 
+import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
 import { Coin } from './coin.entity';
 import { CoinService } from './coin.service';
 
@@ -37,6 +38,7 @@ const mockQueryBuilder = () => {
 describe('CoinService', () => {
   let service: CoinService;
   let coinRepository: jest.Mocked<Repository<Coin>>;
+  let snapshotService: { getQualifiedCoinIdsAtDate: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -53,12 +55,19 @@ describe('CoinService', () => {
             delete: jest.fn(),
             insert: jest.fn()
           }
+        },
+        {
+          provide: CoinDailySnapshotService,
+          useValue: {
+            getQualifiedCoinIdsAtDate: jest.fn().mockResolvedValue([])
+          }
         }
       ]
     }).compile();
 
     service = module.get<CoinService>(CoinService);
     coinRepository = module.get(getRepositoryToken(Coin));
+    snapshotService = module.get(CoinDailySnapshotService);
   });
 
   afterEach(() => {
@@ -531,6 +540,61 @@ describe('CoinService', () => {
     it('calls actual delete', async () => {
       await service.hardRemoveMany(['id1', 'id2']);
       expect(coinRepository.delete).toHaveBeenCalledWith({ id: In(['id1', 'id2']) });
+    });
+  });
+
+  // ===========================================================================
+  // getCoinsByIdsFilteredAtDate()
+  // ===========================================================================
+  describe('getCoinsByIdsFilteredAtDate()', () => {
+    const testDate = new Date('2024-06-15');
+
+    it('delegates to snapshotService and returns Coin entities for qualifying IDs', async () => {
+      const qualifiedIds = ['btc-id', 'eth-id'];
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue(qualifiedIds);
+      const coins = [createTestCoin({ id: 'btc-id' }), createTestCoin({ id: 'eth-id' })];
+      coinRepository.find.mockResolvedValue(coins);
+
+      const result = await service.getCoinsByIdsFilteredAtDate(['btc-id', 'eth-id', 'doge-id'], testDate);
+
+      expect(snapshotService.getQualifiedCoinIdsAtDate).toHaveBeenCalledWith(
+        ['btc-id', 'eth-id', 'doge-id'],
+        testDate,
+        100_000_000,
+        1_000_000
+      );
+      expect(coinRepository.find).toHaveBeenCalledWith({
+        where: { id: In(qualifiedIds) },
+        order: { marketCap: 'DESC' }
+      });
+      expect(result).toEqual({ coins, usedHistoricalData: true });
+    });
+
+    it('falls back to getCoinsByIdsFiltered when no qualifying coins from snapshots', async () => {
+      snapshotService.getQualifiedCoinIdsAtDate.mockResolvedValue([]);
+
+      const mockQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([createTestCoin({ id: 'btc-id' })])
+      };
+      coinRepository.createQueryBuilder.mockReturnValue(mockQb as any);
+
+      const result = await service.getCoinsByIdsFilteredAtDate(['btc-id'], testDate);
+
+      expect(snapshotService.getQualifiedCoinIdsAtDate).toHaveBeenCalled();
+      // Should have fallen back to getCoinsByIdsFiltered with includeDelisted: true
+      expect(coinRepository.createQueryBuilder).toHaveBeenCalled();
+      expect(result.coins).toHaveLength(1);
+      expect(result.usedHistoricalData).toBe(false);
+    });
+
+    it('returns empty array for empty coinIds input', async () => {
+      const result = await service.getCoinsByIdsFilteredAtDate([], testDate);
+
+      expect(result).toEqual({ coins: [], usedHistoricalData: false });
+      expect(snapshotService.getQualifiedCoinIdsAtDate).not.toHaveBeenCalled();
     });
   });
 
