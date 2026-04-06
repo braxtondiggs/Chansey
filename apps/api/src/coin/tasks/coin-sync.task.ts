@@ -310,10 +310,11 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
     try {
       const detailResult = await this.coinDetailSync.syncCoinDetails((percent) => job.updateProgress(percent));
 
+      const freshCoins = await this.coin.getCoins();
+
       // Capture daily market data snapshots for all active coins
       let snapshotsCaptured = 0;
       try {
-        const freshCoins = await this.coin.getCoins();
         snapshotsCaptured = await this.snapshotService.captureSnapshots(freshCoins);
         this.logger.log(`Captured ${snapshotsCaptured} daily market data snapshots`);
       } catch (snapshotError: unknown) {
@@ -323,7 +324,6 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       // Backfill historical snapshots for coins with insufficient data
       try {
-        const freshCoins = await this.coin.getCoins();
         const allCoinIds = freshCoins.map((c) => c.id);
         const coinsNeedingBackfill = await this.snapshotService.getCoinsNeedingBackfill(allCoinIds, 30);
 

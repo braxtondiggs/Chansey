@@ -136,7 +136,8 @@ export class CoinService {
     if (qualifiedIds.length > 0) {
       // Fetch full Coin entities and preserve historical market cap order
       const coins = await this.coin.find({ where: { id: In(qualifiedIds) } });
-      const sorted = qualifiedIds.map((id) => coins.find((c) => c.id === id)).filter(Boolean) as Coin[];
+      const coinsById = new Map(coins.map((coin) => [coin.id, coin] as const));
+      const sorted = qualifiedIds.map((id) => coinsById.get(id)).filter(Boolean) as Coin[];
       return { coins: sorted, usedHistoricalData: true };
     }
 

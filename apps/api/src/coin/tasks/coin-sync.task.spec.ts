@@ -26,11 +26,11 @@ describe('CoinSyncTask', () => {
     Pick<CoinService, 'getCoins' | 'createMany' | 'update' | 'removeMany' | 'relistMany' | 'clearRank'>
   >;
   let exchangeService: jest.Mocked<Pick<ExchangeService, 'getExchanges'>>;
-  let listingEventService: jest.Mocked<
-    Pick<CoinListingEventService, 'recordBulkDelistings' | 'recordBulkRelistings'>
-  >;
+  let listingEventService: jest.Mocked<Pick<CoinListingEventService, 'recordBulkDelistings' | 'recordBulkRelistings'>>;
   let coinDetailSync: jest.Mocked<Pick<CoinDetailSyncService, 'syncCoinDetails'>>;
-  let snapshotService: jest.Mocked<Pick<CoinDailySnapshotService, 'captureSnapshots' | 'getCoinsNeedingBackfill' | 'backfillFromHistoricalData'>>;
+  let snapshotService: jest.Mocked<
+    Pick<CoinDailySnapshotService, 'captureSnapshots' | 'getCoinsNeedingBackfill' | 'backfillFromHistoricalData'>
+  >;
   let coinMarketData: jest.Mocked<Pick<CoinMarketDataService, 'getCoinHistoricalData'>>;
 
   const originalEnv = process.env;
@@ -285,7 +285,13 @@ describe('CoinSyncTask', () => {
     it('re-lists previously delisted coins and records listing events', async () => {
       const existingCoins = [
         { id: 'id-1', slug: 'bitcoin', symbol: 'btc', name: 'Bitcoin', delistedAt: null },
-        { id: 'id-relisted', slug: 'relisted-coin', symbol: 'rls', name: 'RelistedCoin', delistedAt: new Date('2026-01-01') }
+        {
+          id: 'id-relisted',
+          slug: 'relisted-coin',
+          symbol: 'rls',
+          name: 'RelistedCoin',
+          delistedAt: new Date('2026-01-01')
+        }
       ];
       coinService.getCoins.mockResolvedValue(existingCoins as any);
 
@@ -420,15 +426,15 @@ describe('CoinSyncTask', () => {
   });
 
   describe('handleCoinDetail', () => {
-    it('delegates to CoinDetailSyncService and returns its result', async () => {
-      const expected = { totalCoins: 5, updatedSuccessfully: 4, errors: 1 };
-      coinDetailSync.syncCoinDetails.mockResolvedValue(expected);
+    it('delegates to CoinDetailSyncService and returns its result with snapshots', async () => {
+      const detailResult = { totalCoins: 5, updatedSuccessfully: 4, errors: 1 };
+      coinDetailSync.syncCoinDetails.mockResolvedValue(detailResult);
 
       const job = { updateProgress: jest.fn(), name: 'coin-detail', id: 'detail-1' } as unknown as Job;
       const result = await task.handleCoinDetail(job);
 
       expect(coinDetailSync.syncCoinDetails).toHaveBeenCalledWith(expect.any(Function));
-      expect(result).toEqual(expected);
+      expect(result).toEqual({ ...detailResult, snapshotsCaptured: 5 });
     });
 
     it('forwards progress to job.updateProgress', async () => {

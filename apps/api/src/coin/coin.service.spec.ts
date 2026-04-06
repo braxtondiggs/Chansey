@@ -59,7 +59,7 @@ describe('CoinService', () => {
         {
           provide: CoinDailySnapshotService,
           useValue: {
-            getQualifiedCoinIdsAtDate: jest.fn().mockResolvedValue([])
+            getQualifiedCoinIdsAtDate: jest.fn().mockResolvedValue({ qualifiedIds: [], hasSnapshots: false })
           }
         }
       ]
@@ -233,9 +233,7 @@ describe('CoinService', () => {
       coinRepository.createQueryBuilder.mockReturnValue(qb as any);
 
       await service.getCoinsByIdsFiltered(['id1'], 100_000_000, 1_000_000, { includeDelisted: true });
-      const delistedCalls = qb.andWhere.mock.calls.filter(
-        (call: unknown[]) => call[0] === 'coin.delistedAt IS NULL'
-      );
+      const delistedCalls = qb.andWhere.mock.calls.filter((call: unknown[]) => call[0] === 'coin.delistedAt IS NULL');
       expect(delistedCalls).toHaveLength(0);
     });
   });
@@ -340,14 +338,22 @@ describe('CoinService', () => {
       const callArg = coinRepository.find.mock.calls[0][0] as FindManyOptions<Coin>;
       expect(callArg.where).toEqual({});
     });
+  });
 
+  // ===========================================================================
+  // getCoinsByIdsFiltered — includeDelisted quality filters
+  // ===========================================================================
+  describe('getCoinsByIdsFiltered includeDelisted quality', () => {
     it('always applies quality filters regardless of includeDelisted', async () => {
+      const qb = mockQueryBuilder();
+      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
+
       await service.getCoinsByIdsFiltered(['id1'], 100_000_000, 1_000_000, { includeDelisted: true });
-      expect(mockQb.andWhere).toHaveBeenCalledWith('coin.marketCap >= :minMarketCap', { minMarketCap: 100_000_000 });
-      expect(mockQb.andWhere).toHaveBeenCalledWith('coin.totalVolume >= :minDailyVolume', {
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.marketCap >= :minMarketCap', { minMarketCap: 100_000_000 });
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.totalVolume >= :minDailyVolume', {
         minDailyVolume: 1_000_000
       });
-      expect(mockQb.andWhere).toHaveBeenCalledWith('coin.currentPrice IS NOT NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.currentPrice IS NOT NULL');
     });
   });
 
