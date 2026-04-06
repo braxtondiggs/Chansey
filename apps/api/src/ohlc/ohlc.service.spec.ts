@@ -187,6 +187,34 @@ describe('OHLCService', () => {
     expect(result).toEqual(['btc']);
   });
 
+  it('getCoinsWithCandleDataInRange filters by date range', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawMany.mockResolvedValue([{ coinId: 'btc' }, { coinId: 'eth' }, { coinId: '' }]);
+    (ohlcRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+    const startDate = new Date('2022-01-01');
+    const endDate = new Date('2022-12-31');
+    const result = await service.getCoinsWithCandleDataInRange(startDate, endDate);
+
+    expect(result).toEqual(['btc', 'eth']);
+    expect(qb.where).toHaveBeenCalledWith('candle.timestamp >= :startDate', { startDate });
+    expect(qb.andWhere).toHaveBeenCalledWith('candle.timestamp <= :endDate', { endDate });
+  });
+
+  it('getCoinsWithCandleDataInRange filters by coinIds when provided', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawMany.mockResolvedValue([{ coinId: 'btc' }]);
+    (ohlcRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+    const startDate = new Date('2022-01-01');
+    const endDate = new Date('2022-12-31');
+    const coinIds = ['btc', 'eth'];
+    const result = await service.getCoinsWithCandleDataInRange(startDate, endDate, coinIds);
+
+    expect(result).toEqual(['btc']);
+    expect(qb.andWhere).toHaveBeenCalledWith('candle.coinId IN (:...coinIds)', { coinIds });
+  });
+
   it('getCandleDataDateRange returns null when no data', async () => {
     const qb = createQueryBuilder();
     qb.getRawOne.mockResolvedValue(null);

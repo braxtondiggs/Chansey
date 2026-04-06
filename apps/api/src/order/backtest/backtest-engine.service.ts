@@ -75,6 +75,7 @@ import {
 } from '../../algorithm/indicators/calculators';
 import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
+import { CoinListingEventService } from '../../coin/coin-listing-event.service';
 import { Coin } from '../../coin/coin.entity';
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
 import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
@@ -177,6 +178,11 @@ interface ExecuteOptions {
 
   /** AbortSignal from ShutdownSignalService — checked at yield points to trigger emergency checkpoint */
   abortSignal?: AbortSignal;
+
+  /** Enable forced exit when a coin is delisted mid-backtest (default: true) */
+  enableDelistingExit?: boolean;
+  /** Delisting penalty as a fraction (0-1). Default: 0.90 meaning 90% loss (position closed at 10% of last price) */
+  delistingPenalty?: number;
 }
 
 interface MetricsAccumulator {
@@ -431,7 +437,8 @@ export class BacktestEngine {
     private readonly signalThrottle: SignalThrottleService,
     private readonly regimeGateService: RegimeGateService,
     private readonly volatilityCalculator: VolatilityCalculator,
-    private readonly signalFilterChain: SignalFilterChainService
+    private readonly signalFilterChain: SignalFilterChainService,
+    private readonly coinListingEventService: CoinListingEventService
   ) {}
 
   /**
@@ -715,6 +722,19 @@ export class BacktestEngine {
     // Drop reference to the full candles array — objects still live in pricesByTimestamp
     historicalPrices = [];
 
+    // Pre-load delisting dates for survivorship bias correction
+    const delistingDates =
+      options.enableDelistingExit !== false
+        ? await this.coinListingEventService.getActiveDelistingsAsOf(coinIds, tradingEndDate)
+        : new Map<string, Date>();
+
+    if (delistingDates.size > 0) {
+      this.logger.log(`Loaded ${delistingDates.size} delisting events for forced-exit simulation`);
+    }
+
+    // Track last known prices for delisting penalty calculation
+    const lastKnownPrices = new Map<string, number>();
+
     // Calculate warmup vs trading boundaries
     const tradingStartIndex = timestamps.findIndex((ts) => new Date(ts) >= tradingStartDate);
     const tradingEndIdx = (() => {
@@ -860,10 +880,40 @@ export class BacktestEngine {
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       // Check for liquidated positions after price update
-      const liquidationTrades = this.checkAndApplyLiquidations(portfolio, marketData, backtest.tradingFee);
+      const liquidationTrades = this.checkAndApplyLiquidations(
+        portfolio,
+        marketData,
+        backtest.tradingFee,
+        coinMap,
+        quoteCoin
+      );
       for (const liqTrade of liquidationTrades) {
         liqTrade.executedAt = timestamp;
         trades.push(liqTrade as Partial<BacktestTrade>);
+      }
+
+      // Update last known prices for delisting penalty calculation
+      for (const [coinId, price] of marketData.prices) {
+        lastKnownPrices.set(coinId, price);
+      }
+
+      // Check for delisting forced exits
+      if (delistingDates.size > 0) {
+        const delistingTrades = this.checkAndApplyDelistingExits(
+          portfolio,
+          delistingDates,
+          lastKnownPrices,
+          timestamp,
+          options.delistingPenalty ?? 0.9,
+          exitTracker,
+          coinMap,
+          quoteCoin
+        );
+        for (const dt of delistingTrades) {
+          dt.executedAt = timestamp;
+          dt.backtest = backtest;
+          trades.push(dt);
+        }
       }
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
@@ -1539,6 +1589,19 @@ export class BacktestEngine {
     // Drop reference to the full candles array — objects still live in pricesByTimestamp
     historicalPrices = [];
 
+    // Pre-load delisting dates for survivorship bias correction
+    const lrDelistingDates =
+      options.enableDelistingExit !== false
+        ? await this.coinListingEventService.getActiveDelistingsAsOf(coinIds, tradingEndDate)
+        : new Map<string, Date>();
+
+    if (lrDelistingDates.size > 0) {
+      this.logger.log(`Loaded ${lrDelistingDates.size} delisting events for forced-exit simulation (live-replay)`);
+    }
+
+    // Track last known prices for delisting penalty calculation
+    const lrLastKnownPrices = new Map<string, number>();
+
     // Calculate warmup vs trading boundaries
     const tradingStartIndex = timestamps.findIndex((ts) => new Date(ts) >= tradingStartDate);
     const tradingEndIdx = (() => {
@@ -1806,10 +1869,40 @@ export class BacktestEngine {
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       // Check for liquidated positions after price update
-      const liquidationTrades = this.checkAndApplyLiquidations(portfolio, marketData, backtest.tradingFee);
+      const liquidationTrades = this.checkAndApplyLiquidations(
+        portfolio,
+        marketData,
+        backtest.tradingFee,
+        coinMap,
+        quoteCoin
+      );
       for (const liqTrade of liquidationTrades) {
         liqTrade.executedAt = timestamp;
         trades.push(liqTrade as Partial<BacktestTrade>);
+      }
+
+      // Update last known prices for delisting penalty calculation
+      for (const [coinId, price] of marketData.prices) {
+        lrLastKnownPrices.set(coinId, price);
+      }
+
+      // Check for delisting forced exits
+      if (lrDelistingDates.size > 0) {
+        const delistingTrades = this.checkAndApplyDelistingExits(
+          portfolio,
+          lrDelistingDates,
+          lrLastKnownPrices,
+          timestamp,
+          options.delistingPenalty ?? 0.9,
+          exitTracker,
+          coinMap,
+          quoteCoin
+        );
+        for (const dt of delistingTrades) {
+          dt.executedAt = timestamp;
+          dt.backtest = backtest;
+          trades.push(dt);
+        }
       }
 
       const priceData = this.advancePriceWindows(priceCtx, coins, timestamp);
@@ -3044,7 +3137,9 @@ export class BacktestEngine {
   private checkAndApplyLiquidations(
     portfolio: Portfolio,
     marketData: MarketData,
-    tradingFee: number
+    tradingFee: number,
+    coinMap: Map<string, Coin>,
+    quoteCoin: Coin
   ): Partial<BacktestTrade>[] {
     const liquidationTrades: Partial<BacktestTrade>[] = [];
     const positionsToDelete: string[] = [];
@@ -3072,6 +3167,8 @@ export class BacktestEngine {
           leverage: position.leverage,
           liquidationPrice: position.liquidationPrice,
           marginUsed: marginLost,
+          baseCoin: coinMap.get(coinId),
+          quoteCoin,
           metadata: { liquidated: true }
         });
 
@@ -3098,6 +3195,87 @@ export class BacktestEngine {
     }
 
     return liquidationTrades;
+  }
+
+  /**
+   * Force-close open positions for coins that have been delisted.
+   * Applies a penalty price (default: 90% loss) to simulate the near-total loss
+   * that typically accompanies a delisting event.
+   */
+  private checkAndApplyDelistingExits(
+    portfolio: Portfolio,
+    delistingDates: Map<string, Date>,
+    lastKnownPrices: Map<string, number>,
+    timestamp: Date,
+    delistingPenalty: number,
+    exitTracker: BacktestExitTracker | null,
+    coinMap: Map<string, Coin>,
+    quoteCoin: Coin
+  ): Partial<BacktestTrade>[] {
+    const delistingTrades: Partial<BacktestTrade>[] = [];
+    const positionsToDelete: string[] = [];
+
+    // Clamp to [0, 1] to guard against misconfigured snapshot/config values.
+    // A value outside this range would produce negative or inflated prices and
+    // violate @Min(0) constraints on BacktestTrade.price/totalValue.
+    const safePenalty = Number.isFinite(delistingPenalty) ? Math.min(1, Math.max(0, delistingPenalty)) : 0.9;
+
+    for (const [coinId, position] of portfolio.positions) {
+      const delistingDate = delistingDates.get(coinId);
+      if (!delistingDate || timestamp < delistingDate) continue;
+
+      const lastPrice = lastKnownPrices.get(coinId) ?? position.averagePrice;
+      const penaltyPrice = lastPrice * (1 - safePenalty);
+      const totalValue = position.quantity * penaltyPrice;
+      const costBasis = position.averagePrice * position.quantity;
+      const realizedPnL =
+        position.side === 'short'
+          ? costBasis - totalValue // Short: profit when price drops
+          : totalValue - costBasis; // Long: loss when price drops
+      const realizedPnLPercent = costBasis > 0 ? realizedPnL / costBasis : 0;
+
+      delistingTrades.push({
+        type: position.side === 'short' ? TradeType.BUY : TradeType.SELL,
+        quantity: position.quantity,
+        price: penaltyPrice,
+        totalValue,
+        fee: 0, // No exchange to charge fees on a delisting
+        realizedPnL,
+        realizedPnLPercent,
+        costBasis: position.averagePrice,
+        positionSide: position.side,
+        leverage: position.leverage,
+        baseCoin: coinMap.get(coinId),
+        quoteCoin,
+        metadata: {
+          delistingExit: true,
+          delistingDate: delistingDate.toISOString(),
+          lastKnownPrice: lastPrice,
+          penaltyRate: safePenalty
+        }
+      });
+
+      // Credit the penalty value to cash
+      portfolio.cashBalance += totalValue;
+      positionsToDelete.push(coinId);
+
+      this.logger.debug(
+        `Delisting forced exit: ${coinId} ${position.side} at penalty price ${penaltyPrice.toFixed(4)} (${(safePenalty * 100).toFixed(0)}% loss from ${lastPrice.toFixed(4)})`
+      );
+    }
+
+    // Remove positions and clean up exit tracker
+    for (const coinId of positionsToDelete) {
+      portfolio.positions.delete(coinId);
+      exitTracker?.removePosition(coinId);
+    }
+
+    if (positionsToDelete.length > 0) {
+      portfolio.totalValue =
+        portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, new Map());
+    }
+
+    return delistingTrades;
   }
 
   /**
