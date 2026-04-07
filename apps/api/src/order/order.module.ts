@@ -3,9 +3,15 @@ import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { BacktestComparisonService } from './backtest/backtest-comparison.service';
+import { BacktestCoreRepository } from './backtest/backtest-core-repository.service';
+import { BacktestDatasetService } from './backtest/backtest-dataset.service';
 import { BacktestEngine } from './backtest/backtest-engine.service';
+import { BacktestLifecycleService } from './backtest/backtest-lifecycle.service';
+import { BacktestMapper } from './backtest/backtest-mapper.service';
 import { BacktestPauseService } from './backtest/backtest-pause.service';
 import { BacktestPerformanceSnapshot } from './backtest/backtest-performance-snapshot.entity';
+import { BacktestQueryService } from './backtest/backtest-query.service';
 import { BacktestRecoveryService } from './backtest/backtest-recovery.service';
 import { BacktestResultService } from './backtest/backtest-result.service';
 import { BacktestSignal } from './backtest/backtest-signal.entity';
@@ -98,6 +104,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OrderSyncTask,
     TradeExecutionService,
     BacktestService,
+    BacktestDatasetService,
+    BacktestLifecycleService,
     BacktestEngine,
     BacktestStreamService,
     BacktestResultService,
@@ -170,6 +178,12 @@ const BACKTEST_DEFAULTS = backtestConfig();
     LiveReplayProcessor,
     BacktestPauseService,
     BacktestService,
+    BacktestCoreRepository,
+    BacktestMapper,
+    BacktestDatasetService,
+    BacktestComparisonService,
+    BacktestLifecycleService,
+    BacktestQueryService,
     BacktestStreamService,
     BacktestResultService,
     BacktestGateway,

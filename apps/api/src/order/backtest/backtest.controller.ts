@@ -23,6 +23,10 @@ import {
   SimulatedOrderFillCollection
 } from '@chansey/api-interfaces';
 
+import { BacktestComparisonService } from './backtest-comparison.service';
+import { BacktestDatasetService } from './backtest-dataset.service';
+import { BacktestLifecycleService } from './backtest-lifecycle.service';
+import { BacktestQueryService } from './backtest-query.service';
 import { Backtest } from './backtest.entity';
 import { BacktestService } from './backtest.service';
 import {
@@ -48,7 +52,13 @@ import { User } from '../../users/users.entity';
 @Roles(Role.ADMIN)
 @Controller('backtests')
 export class BacktestController {
-  constructor(private readonly backtestService: BacktestService) {}
+  constructor(
+    private readonly backtestService: BacktestService,
+    private readonly datasetService: BacktestDatasetService,
+    private readonly queryService: BacktestQueryService,
+    private readonly lifecycleService: BacktestLifecycleService,
+    private readonly comparisonService: BacktestComparisonService
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all backtests with optional filtering' })
@@ -63,7 +73,7 @@ export class BacktestController {
   @Get('datasets')
   @ApiOperation({ summary: 'List available market data sets for backtesting' })
   async getDatasets() {
-    return this.backtestService.getDatasets();
+    return this.datasetService.getDatasets();
   }
 
   @Get(':id')
@@ -86,7 +96,7 @@ export class BacktestController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Query(new ValidationPipe({ transform: true })) query: BacktestSignalQueryDto
   ): Promise<BacktestSignalCollection> {
-    return this.backtestService.getBacktestSignals(user, id, query);
+    return this.queryService.getBacktestSignals(user, id, query);
   }
 
   @Get(':id/trades')
@@ -97,7 +107,7 @@ export class BacktestController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Query(new ValidationPipe({ transform: true })) query: BacktestTradesQueryDto
   ): Promise<SimulatedOrderFillCollection> {
-    return this.backtestService.getBacktestTrades(user, id, query);
+    return this.queryService.getBacktestTrades(user, id, query);
   }
 
   @Put(':id')
@@ -129,7 +139,7 @@ export class BacktestController {
   @ApiResponse({ status: HttpStatus.OK, type: BacktestPerformanceDto })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Backtest not found' })
   async getBacktestPerformance(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.backtestService.getBacktestPerformance(user, id);
+    return this.queryService.getBacktestPerformance(user, id);
   }
 
   @Post('compare')
@@ -139,7 +149,7 @@ export class BacktestController {
     @GetUser() user: User,
     @Body(new ValidationPipe({ transform: true })) comparisonDto: BacktestComparisonDto
   ) {
-    return this.backtestService.compareBacktests(user, comparisonDto);
+    return this.comparisonService.compareBacktests(user, comparisonDto);
   }
 
   @Get(':id/progress')
@@ -147,7 +157,7 @@ export class BacktestController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: HttpStatus.OK, type: BacktestProgressDto })
   async getBacktestProgress(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.backtestService.getBacktestProgress(user, id);
+    return this.lifecycleService.getBacktestProgress(user, id);
   }
 }
 
@@ -157,7 +167,7 @@ export class BacktestController {
 @Roles(Role.ADMIN)
 @Controller('comparison-reports')
 export class ComparisonReportController {
-  constructor(private readonly backtestService: BacktestService) {}
+  constructor(private readonly comparisonService: BacktestComparisonService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a comparison report' })
@@ -165,12 +175,12 @@ export class ComparisonReportController {
     @GetUser() user: User,
     @Body(new ValidationPipe({ transform: true })) dto: CreateComparisonReportDto
   ) {
-    return this.backtestService.createComparisonReport(user, dto);
+    return this.comparisonService.createComparisonReport(user, dto);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve a comparison report' })
   async getReport(@GetUser() user: User, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.backtestService.getComparisonReport(user, id);
+    return this.comparisonService.getComparisonReport(user, id);
   }
 }

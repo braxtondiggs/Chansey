@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 
 import { BacktestAbortedError } from './backtest-aborted.error';
 import { BacktestCheckpointState } from './backtest-checkpoint.interface';
+import { BacktestDatasetService } from './backtest-dataset.service';
 import { BacktestEngine } from './backtest-engine.service';
 import { CheckpointResults, DEFAULT_LIVE_REPLAY_CHECKPOINT_INTERVAL, ReplaySpeed } from './backtest-pacing.interface';
 import { BacktestPauseService } from './backtest-pause.service';
@@ -16,7 +17,6 @@ import { BacktestStreamService } from './backtest-stream.service';
 import { backtestConfig } from './backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { BacktestJobData } from './backtest.job-data';
-import { BacktestService } from './backtest.service';
 import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
@@ -42,7 +42,7 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
     private readonly backtestStream: BacktestStreamService,
     private readonly backtestResultService: BacktestResultService,
     private readonly backtestPauseService: BacktestPauseService,
-    private readonly backtestService: BacktestService,
+    private readonly backtestDatasetService: BacktestDatasetService,
     private readonly metricsService: MetricsService,
     private readonly configService: ConfigService,
     private readonly shutdownSignal: ShutdownSignalService,
@@ -292,7 +292,7 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
       endTimer();
 
       // Release cached dataset reference so it can be garbage-collected
-      this.backtestService.clearDatasetCache();
+      this.backtestDatasetService.clearDatasetCache();
 
       // Request V8 to perform a full GC and release memory back to the OS.
       // Requires --expose-gc flag (set in start:prod script).
