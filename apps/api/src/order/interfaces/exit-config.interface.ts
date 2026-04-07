@@ -187,7 +187,7 @@ export enum PositionExitStatus {
  */
 export interface PlaceExitOrderParams {
   userId: string;
-  exchangeKeyId: string;
+  exchangeKeyId?: string;
   symbol: string;
   side: 'BUY' | 'SELL';
   quantity: number;
@@ -319,12 +319,12 @@ export interface ExchangeMarketLimits {
   minAmount: number;
   /** Maximum order quantity */
   maxAmount: number;
-  /** Quantity step size (precision) */
+  /** Normalized step size (e.g. 0.001) — already mode-aware */
   amountStep: number;
   /** Minimum order value (notional) in quote currency */
   minCost: number;
-  /** Price precision */
+  /** Integer count of decimal places for price */
   pricePrecision: number;
-  /** Amount precision (decimal places) */
+  /** Integer count of decimal places for amount, derived from step size */
   amountPrecision: number;
 }

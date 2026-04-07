@@ -159,7 +159,7 @@ enum PositionExitStatus {
 
 ### Exit Price Calculation
 
-The `PositionManagementService.calculateExitPrices()` method computes exit prices:
+The `ExitPriceService.calculateExitPrices()` method computes exit prices:
 
 ```typescript
 // For LONG positions (side = 'BUY'):
