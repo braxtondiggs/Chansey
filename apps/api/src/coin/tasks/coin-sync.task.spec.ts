@@ -4,20 +4,15 @@ import { CoinDetailSyncService } from './coin-detail-sync.service';
 import { CoinSyncTask } from './coin-sync.task';
 
 import { ExchangeService } from '../../exchange/exchange.service';
+import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { CoinListingEventService } from '../coin-listing-event.service';
 import { CoinMarketDataService } from '../coin-market-data.service';
 import { CoinService } from '../coin.service';
 
-// Mock coingecko-api-v3
+// Mock CoinGecko SDK calls
 const mockCoinList = jest.fn();
 const mockExchangeIdTickers = jest.fn();
-jest.mock('coingecko-api-v3', () => ({
-  CoinGeckoClient: jest.fn().mockImplementation(() => ({
-    coinList: mockCoinList,
-    exchangeIdTickers: mockExchangeIdTickers
-  }))
-}));
 
 describe('CoinSyncTask', () => {
   let task: CoinSyncTask;
@@ -32,6 +27,7 @@ describe('CoinSyncTask', () => {
     Pick<CoinDailySnapshotService, 'captureSnapshots' | 'getCoinsNeedingBackfill' | 'backfillFromHistoricalData'>
   >;
   let coinMarketData: jest.Mocked<Pick<CoinMarketDataService, 'getCoinHistoricalData'>>;
+  let geckoService: CoinGeckoClientService;
 
   const originalEnv = process.env;
 
@@ -82,6 +78,17 @@ describe('CoinSyncTask', () => {
       getCoinHistoricalData: jest.fn().mockResolvedValue([])
     } as any;
 
+    geckoService = {
+      client: {
+        coins: {
+          list: { get: mockCoinList }
+        },
+        exchanges: {
+          tickers: { get: mockExchangeIdTickers }
+        }
+      }
+    } as unknown as CoinGeckoClientService;
+
     task = new CoinSyncTask(
       queue as any,
       coinService as any,
@@ -89,7 +96,8 @@ describe('CoinSyncTask', () => {
       listingEventService as any,
       coinDetailSync as any,
       snapshotService as any,
-      coinMarketData as any
+      coinMarketData as any,
+      geckoService
     );
   });
 
@@ -375,7 +383,7 @@ describe('CoinSyncTask', () => {
 
       await task.handleSyncCoins(makeJob());
 
-      expect(mockExchangeIdTickers).toHaveBeenCalledWith(expect.objectContaining({ id: 'gdax' }));
+      expect(mockExchangeIdTickers).toHaveBeenCalledWith('gdax', expect.objectContaining({ page: 1 }));
     });
 
     it('collects both base and target coin IDs from tickers', async () => {

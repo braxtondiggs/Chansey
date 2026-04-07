@@ -3,11 +3,11 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
-import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { CoinDetailSyncService } from './coin-detail-sync.service';
 
 import { ExchangeService } from '../../exchange/exchange.service';
+import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { CoinListingEventService } from '../coin-listing-event.service';
@@ -17,7 +17,6 @@ import { CoinService } from '../coin.service';
 @Processor('coin-queue')
 @Injectable()
 export class CoinSyncTask extends WorkerHost implements OnModuleInit {
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinSyncTask.name);
   private jobScheduled = false;
   private readonly API_RATE_LIMIT_DELAY = 2500;
@@ -29,7 +28,8 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
     private readonly listingEventService: CoinListingEventService,
     private readonly coinDetailSync: CoinDetailSyncService,
     private readonly snapshotService: CoinDailySnapshotService,
-    private readonly coinMarketData: CoinMarketDataService
+    private readonly coinMarketData: CoinMarketDataService,
+    private readonly gecko: CoinGeckoClientService
   ) {
     super();
   }
@@ -119,7 +119,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
           try {
             const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
-            const response = await this.gecko.exchangeIdTickers({ id, page });
+            const response = await this.gecko.client.exchanges.tickers.get(id, { page });
 
             tickers = response.tickers || [];
 
@@ -173,7 +173,7 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
       this.logger.log('Fetching data from CoinGecko and database...');
       const [geckoCoins, existingCoins, supportedExchanges] = await Promise.all([
-        this.gecko.coinList({ include_platform: false }),
+        this.gecko.client.coins.list.get({ include_platform: false }),
         this.coin.getCoins({ includeDelisted: true }),
         this.exchangeService.getExchanges({ supported: true })
       ]);

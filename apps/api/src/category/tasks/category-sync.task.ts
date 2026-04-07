@@ -2,16 +2,13 @@ import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
+import type { CategoryGetListResponse } from '@coingecko/coingecko-typescript/resources/coins/categories';
 import { Job, Queue } from 'bullmq';
 
+import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { CategoryService } from '../category.service';
-
-interface CoinGeckoCategoryItem {
-  category_id: string;
-  name: string;
-}
 
 @Processor('category-queue')
 @Injectable()
@@ -21,63 +18,54 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue('category-queue') private readonly categoryQueue: Queue,
-    private readonly category: CategoryService
+    private readonly category: CategoryService,
+    private readonly gecko: CoinGeckoClientService
   ) {
     super();
   }
 
-  /**
-   * Lifecycle hook that runs once when the module is initialized
-   * This ensures the cron job is only scheduled once when the application starts
-   */
   async onModuleInit() {
-    // Skip scheduling jobs in local development
     if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
       this.logger.log('Category sync jobs disabled for local development');
       return;
     }
 
     if (!this.jobScheduled) {
-      await this.scheduleCronJob();
+      await this.scheduleRepeatableJob('category-sync', CronExpression.EVERY_WEEK);
       this.jobScheduled = true;
     }
   }
 
-  /**
-   * Schedule the recurring job for category synchronization
-   */
-  private async scheduleCronJob() {
-    // Check if there's already a scheduled job with the same name
+  private async scheduleRepeatableJob(name: string, pattern: string): Promise<void> {
     const repeatedJobs = await this.categoryQueue.getRepeatableJobs();
-    const existingJob = repeatedJobs.find((job) => job.name === 'category-sync');
+    const existingJob = repeatedJobs.find((job) => job.name === name);
 
     if (existingJob) {
-      this.logger.log(`Category sync job already scheduled with pattern: ${existingJob.pattern}`);
+      this.logger.log(`${name} job already scheduled with pattern: ${existingJob.pattern}`);
       return;
     }
 
     await this.categoryQueue.add(
-      'category-sync',
+      name,
       {
         timestamp: new Date().toISOString(),
-        description: 'Scheduled category sync job'
+        description: `Scheduled ${name} job`
       },
       {
-        repeat: { pattern: CronExpression.EVERY_WEEK },
+        repeat: { pattern },
         attempts: 3,
         backoff: {
           type: 'exponential',
           delay: 5000
         },
-        removeOnComplete: 100, // keep the last 100 completed jobs
-        removeOnFail: 50 // keep the last 50 failed jobs
+        removeOnComplete: 100,
+        removeOnFail: 50
       }
     );
 
-    this.logger.log('Category sync job scheduled with weekly cron pattern');
+    this.logger.log(`${name} job scheduled with pattern: ${pattern}`);
   }
 
-  // BullMQ: log job start, completion, and errors inside process/handler
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
     try {
@@ -93,20 +81,10 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
     }
   }
 
-  private async fetchCategories() {
+  private async fetchCategories(): Promise<CategoryGetListResponse[]> {
     return withRateLimitRetryThrow(
-      async () => {
-        const response = await fetch('https://api.coingecko.com/api/v3/coins/categories/list', {
-          signal: AbortSignal.timeout(10000)
-        });
-        if (!response.ok) {
-          const body = await response.text().catch(() => '');
-          throw new Error(
-            `CoinGecko API error: ${response.status} ${response.statusText}${body ? ` - ${body.slice(0, 200)}` : ''}`
-          );
-        }
-        return (await response.json()) as CoinGeckoCategoryItem[];
-      },
+      // SDK types getList() as a single object, but the API returns an array
+      async () => this.gecko.client.coins.categories.getList() as unknown as Promise<CategoryGetListResponse[]>,
       { operationName: 'fetchCategories' }
     );
   }
@@ -126,16 +104,21 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
         throw new Error('Invalid API response format');
       }
 
-      const apiCategories = apiResponse;
       await job.updateProgress(50);
 
-      const newCategories = apiCategories
+      const existingSlugs = new Set(existingCategories.map((c) => c.slug));
+      const validItems = apiResponse.filter((c): c is Required<CategoryGetListResponse> => !!c.category_id && !!c.name);
+      // Build deletion set from ALL items with a category_id (independent of name)
+      // so that items with a valid id but missing name aren't incorrectly deleted.
+      const apiSlugs = new Set(apiResponse.filter((c) => !!c.category_id).map((c) => c.category_id as string));
+
+      const newCategories = validItems
         .map((c) => ({ slug: c.category_id, name: c.name }))
-        .filter((category) => !existingCategories.find((existing) => existing.slug === category.slug));
+        .filter((category) => !existingSlugs.has(category.slug));
       await job.updateProgress(70);
 
       const missingCategories = existingCategories
-        .filter((existing) => !apiCategories.find((api) => api.category_id === existing.slug))
+        .filter((existing) => !apiSlugs.has(existing.slug))
         .map((category) => category.id);
       await job.updateProgress(80);
 
@@ -156,7 +139,7 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
       return {
         added: newCategories.length,
         removed: missingCategories.length,
-        total: apiCategories.length
+        total: validItems.length
       };
     } catch (e: unknown) {
       const err = toErrorInfo(e);

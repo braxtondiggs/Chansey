@@ -2,8 +2,10 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { NotFoundError, RateLimitError } from '@coingecko/coingecko-typescript';
+import type { CoinGetIDResponse } from '@coingecko/coingecko-typescript/resources/coins/coins';
+import type { MarketChartGetResponse } from '@coingecko/coingecko-typescript/resources/coins/market-chart';
 import { Cache } from 'cache-manager';
-import { CoinGeckoClient } from 'coingecko-api-v3';
 import { Repository } from 'typeorm';
 
 import { CoinDetailResponseDto, MarketChartResponseDto, TimePeriod } from '@chansey/api-interfaces';
@@ -13,7 +15,7 @@ import { CoinService } from './coin.service';
 
 import { CoinNotFoundException } from '../common/exceptions/resource';
 import { CircuitBreakerService, CircuitOpenError } from '../shared';
-import { extractCoinGeckoStatusCode } from '../shared/coingecko-error.util';
+import { CoinGeckoClientService } from '../shared/coingecko-client.service';
 import { stripHtml } from '../utils/strip-html.util';
 
 interface HistoricalDataPoint {
@@ -23,30 +25,8 @@ interface HistoricalDataPoint {
   marketCap?: number;
 }
 
-interface CoinGeckoCoinDetail {
-  description?: {
-    en?: string;
-  };
-  links?: {
-    homepage?: string[];
-    blockchain_site?: string[];
-    official_forum_url?: string[];
-    subreddit_url?: string | null;
-    repos_url?: {
-      github?: string[];
-    };
-  };
-}
-
-interface CoinGeckoMarketChart {
-  prices: [number, number][];
-  market_caps?: [number, number][];
-  total_volumes?: [number, number][];
-}
-
 @Injectable()
 export class CoinMarketDataService {
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinMarketDataService.name);
 
   private static readonly CIRCUIT_KEY = 'coingecko-chart';
@@ -55,7 +35,8 @@ export class CoinMarketDataService {
     @InjectRepository(Coin) private readonly coin: Repository<Coin>,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly circuitBreaker: CircuitBreakerService,
-    private readonly coinService: CoinService
+    private readonly coinService: CoinService,
+    private readonly gecko: CoinGeckoClientService
   ) {
     this.circuitBreaker.configure(CoinMarketDataService.CIRCUIT_KEY, {
       failureThreshold: 3,
@@ -67,25 +48,24 @@ export class CoinMarketDataService {
     const coin = await this.coinService.getCoinById(coinId);
 
     try {
-      const geckoData = await this.gecko.coinIdMarketChart({
-        id: coin.slug,
+      const geckoData = await this.gecko.client.coins.marketChart.get(coin.slug, {
         vs_currency: 'usd',
-        days: 365, // !NOTE: Max value w/o paying money
+        days: '365', // !NOTE: Max value w/o paying money
         interval: 'daily'
       });
 
       if (geckoData?.prices && geckoData.prices.length > 0) {
-        return geckoData.prices.map((point: number[], index: number) => ({
+        return geckoData.prices.map((point, index) => ({
           timestamp: point[0],
           price: point[1],
-          volume: (geckoData.total_volumes as number[][] | undefined)?.[index]?.[1] ?? 0,
-          marketCap: (geckoData.market_caps as number[][] | undefined)?.[index]?.[1] ?? 0
+          volume: geckoData.total_volumes?.[index]?.[1] ?? 0,
+          marketCap: geckoData.market_caps?.[index]?.[1] ?? 0
         }));
       }
 
       return [];
     } catch (error: unknown) {
-      if (extractCoinGeckoStatusCode(error) === 404) {
+      if (error instanceof NotFoundError) {
         throw new CoinNotFoundException(coinId);
       }
       this.logger.error(
@@ -121,7 +101,7 @@ export class CoinMarketDataService {
     const metadataAge = coin.metadataLastUpdated ? now.getTime() - coin.metadataLastUpdated.getTime() : Infinity;
     const metadataStale = metadataAge > METADATA_STALE_HOURS * 60 * 60 * 1000;
 
-    let geckoData: CoinGeckoCoinDetail | null = null;
+    let geckoData: CoinGetIDResponse | null = null;
 
     // Fetch additional data from CoinGecko if metadata is stale
     if (metadataStale && coin.slug) {
@@ -225,11 +205,11 @@ export class CoinMarketDataService {
       coinSlug: coin.slug,
       period,
       prices:
-        chartData.prices?.map((point: [number, number]) => ({
+        chartData.prices?.map((point) => ({
           timestamp: point[0],
           price: point[1]
         })) || [],
-      timestamps: chartData.prices?.map((point: [number, number]) => point[0]) || [],
+      timestamps: chartData.prices?.map((point) => point[0]) || [],
       generatedAt: new Date()
     };
 
@@ -239,13 +219,13 @@ export class CoinMarketDataService {
   /**
    * T016/T036: Fetch coin detail from CoinGecko API with Redis caching
    */
-  private async fetchCoinDetail(coinGeckoId: string): Promise<CoinGeckoCoinDetail> {
+  private async fetchCoinDetail(coinGeckoId: string): Promise<CoinGetIDResponse> {
     const cacheKey = `coingecko:detail:${coinGeckoId}`;
     const CACHE_TTL = 300; // 5 minutes in seconds
 
     try {
       // Try to get from cache first
-      const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
+      const cached = await this.cacheManager.get<CoinGetIDResponse>(cacheKey);
       if (cached) {
         this.logger.debug(`CoinGecko detail cache HIT for ${coinGeckoId}`);
         return cached;
@@ -254,14 +234,13 @@ export class CoinMarketDataService {
       this.logger.debug(`CoinGecko detail cache MISS for ${coinGeckoId}, fetching from API`);
 
       // Fetch from API
-      const coinDetail = (await this.gecko.coinId({
-        id: coinGeckoId,
+      const coinDetail = await this.gecko.client.coins.getID(coinGeckoId, {
         localization: false,
         tickers: false,
         market_data: true,
         community_data: false,
         developer_data: false
-      })) as CoinGeckoCoinDetail;
+      });
 
       // Cache the result
       await this.cacheManager.set(cacheKey, coinDetail, CACHE_TTL);
@@ -269,12 +248,10 @@ export class CoinMarketDataService {
 
       return coinDetail;
     } catch (error: unknown) {
-      const status = extractCoinGeckoStatusCode(error);
-
       // Handle rate limiting (429) by trying to return cached data
-      if (status === 429) {
+      if (error instanceof RateLimitError) {
         this.logger.warn(`CoinGecko rate limit hit for ${coinGeckoId}, attempting to use cached data`);
-        const cached = await this.cacheManager.get<CoinGeckoCoinDetail>(cacheKey);
+        const cached = await this.cacheManager.get<CoinGetIDResponse>(cacheKey);
         if (cached) {
           this.logger.debug(`Returning stale cached data for ${coinGeckoId} due to rate limit`);
           return cached;
@@ -282,7 +259,7 @@ export class CoinMarketDataService {
       }
 
       // Handle 404 - coin not found
-      if (status === 404) {
+      if (error instanceof NotFoundError) {
         throw new CoinNotFoundException(coinGeckoId, 'slug');
       }
 
@@ -293,7 +270,7 @@ export class CoinMarketDataService {
   /**
    * T016/T036: Fetch market chart data from CoinGecko API with Redis caching
    */
-  private async fetchMarketChart(coinGeckoId: string, days: number): Promise<CoinGeckoMarketChart> {
+  private async fetchMarketChart(coinGeckoId: string, days: number): Promise<MarketChartGetResponse> {
     const cacheKey = `coingecko:chart:${coinGeckoId}:${days}d`;
     const staleCacheKey = `coingecko:chart:stale:${coinGeckoId}:${days}d`;
     const CACHE_TTL_MAP: Record<number, number> = { 1: 300, 7: 900, 30: 1800, 365: 3600 };
@@ -302,7 +279,7 @@ export class CoinMarketDataService {
 
     try {
       // Try to get from cache first
-      const cached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+      const cached = await this.cacheManager.get<MarketChartGetResponse>(cacheKey);
       if (cached) {
         this.logger.debug(`CoinGecko chart cache HIT for ${coinGeckoId} (${days}d)`);
         return cached;
@@ -319,13 +296,10 @@ export class CoinMarketDataService {
       // Fetch from API with timeout
       const timeoutMs = 30000; // 30 second timeout (CoinGecko can be slow)
 
-      const requestParams = {
-        id: coinGeckoId,
+      const chartDataPromise = this.gecko.client.coins.marketChart.get(coinGeckoId, {
         vs_currency: 'usd',
-        days
-      };
-
-      const chartDataPromise = this.gecko.coinIdMarketChart(requestParams) as Promise<CoinGeckoMarketChart>;
+        days: String(days)
+      });
 
       let timeoutId: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -354,7 +328,7 @@ export class CoinMarketDataService {
       }
 
       // For any failure, try primary cache first, then stale fallback
-      const primaryCached = await this.cacheManager.get<CoinGeckoMarketChart>(cacheKey);
+      const primaryCached = await this.cacheManager.get<MarketChartGetResponse>(cacheKey);
       if (primaryCached) {
         this.logger.warn(`Returning cached chart for ${coinGeckoId} (${days}d) after error: ${errMsg}`);
         return primaryCached;
@@ -372,8 +346,8 @@ export class CoinMarketDataService {
     staleCacheKey: string,
     coinGeckoId: string,
     days: number
-  ): Promise<CoinGeckoMarketChart> {
-    const stale = await this.cacheManager.get<CoinGeckoMarketChart>(staleCacheKey);
+  ): Promise<MarketChartGetResponse> {
+    const stale = await this.cacheManager.get<MarketChartGetResponse>(staleCacheKey);
     if (stale) {
       this.logger.warn(`Returning 24h stale cache for ${coinGeckoId} (${days}d)`);
       return stale;

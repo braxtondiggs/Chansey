@@ -2,6 +2,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { NotFoundError, RateLimitError } from '@coingecko/coingecko-typescript';
 import { Repository } from 'typeorm';
 
 import { CoinMarketDataService } from './coin-market-data.service';
@@ -10,6 +11,7 @@ import { CoinService } from './coin.service';
 
 import { CoinNotFoundException } from '../common/exceptions/resource';
 import { CircuitBreakerService } from '../shared';
+import { CoinGeckoClientService } from '../shared/coingecko-client.service';
 
 const originalSetTimeout = global.setTimeout;
 
@@ -26,8 +28,12 @@ const createTestCoin = (overrides: Partial<Coin> & Record<string, unknown> = {})
   } as Coin;
 };
 
-const makeCoinGeckoError = (status: number, statusText: string, code?: string) =>
-  code ? new Error(`Connection refused (${code})`) : new Error(`got error from coin gecko. status code: ${status}`);
+const makeCoinGeckoError = (status: number, _statusText: string, code?: string) => {
+  if (code) return new Error(`Connection refused (${code})`);
+  if (status === 404) return new NotFoundError(404, undefined, `Not Found`, undefined as unknown as Headers);
+  if (status === 429) return new RateLimitError(429, undefined, `Too Many Requests`, undefined as unknown as Headers);
+  return new Error(`got error from coin gecko. status code: ${status}`);
+};
 
 describe('CoinMarketDataService', () => {
   let service: CoinMarketDataService;
@@ -38,7 +44,7 @@ describe('CoinMarketDataService', () => {
     set: jest.Mock<Promise<void>, [string, any, number?]>;
     del: jest.Mock<Promise<void>, [string]>;
   };
-  let geckoMock: { coinId: jest.Mock; coinIdMarketChart: jest.Mock };
+  let geckoMock: { getID: jest.Mock; marketChartGet: jest.Mock };
   let circuitBreaker: { isOpen: jest.Mock; recordSuccess: jest.Mock; recordFailure: jest.Mock };
   let setTimeoutSpy: jest.SpyInstance;
 
@@ -77,6 +83,10 @@ describe('CoinMarketDataService', () => {
           useValue: {
             getCoinById: jest.fn()
           }
+        },
+        {
+          provide: CoinGeckoClientService,
+          useValue: { client: null } // replaced below after compile
         }
       ]
     }).compile();
@@ -88,7 +98,7 @@ describe('CoinMarketDataService', () => {
     circuitBreaker = (service as any).circuitBreaker;
 
     geckoMock = {
-      coinId: jest.fn().mockResolvedValue({
+      getID: jest.fn().mockResolvedValue({
         id: 'bitcoin',
         name: 'Bitcoin',
         symbol: 'btc',
@@ -111,14 +121,22 @@ describe('CoinMarketDataService', () => {
           max_supply: 21000000
         }
       }),
-      coinIdMarketChart: jest.fn().mockResolvedValue({
+      marketChartGet: jest.fn().mockResolvedValue({
         prices: [[Date.now(), 43000]],
         market_caps: [[Date.now(), 800000000000]],
         total_volumes: [[Date.now(), 35000000000]]
       })
     };
 
-    (service as any).gecko = geckoMock;
+    // Wire mock into the service's injected CoinGeckoClientService
+    (service as any).gecko = {
+      client: {
+        coins: {
+          getID: geckoMock.getID,
+          marketChart: { get: geckoMock.marketChartGet }
+        }
+      }
+    };
 
     setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((
       handler: (...args: any[]) => void,
@@ -150,7 +168,7 @@ describe('CoinMarketDataService', () => {
 
     it('returns mapped historical data points from CoinGecko', async () => {
       const ts = Date.now();
-      geckoMock.coinIdMarketChart.mockResolvedValueOnce({
+      geckoMock.marketChartGet.mockResolvedValueOnce({
         prices: [
           [ts, 43000],
           [ts + 86400000, 44000]
@@ -175,26 +193,27 @@ describe('CoinMarketDataService', () => {
         volume: 36000000000,
         marketCap: 810000000000
       });
-      expect(geckoMock.coinIdMarketChart).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'bitcoin', vs_currency: 'usd', days: 365, interval: 'daily' })
+      expect(geckoMock.marketChartGet).toHaveBeenCalledWith(
+        'bitcoin',
+        expect.objectContaining({ vs_currency: 'usd', days: '365', interval: 'daily' })
       );
     });
 
     it('returns empty array when CoinGecko returns no prices', async () => {
-      geckoMock.coinIdMarketChart.mockResolvedValueOnce({ prices: [] });
+      geckoMock.marketChartGet.mockResolvedValueOnce({ prices: [] });
 
       const result = await service.getCoinHistoricalData('coin-123');
       expect(result).toEqual([]);
     });
 
     it('throws CoinNotFoundException on 404 from CoinGecko', async () => {
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeCoinGeckoError(404, 'Not Found'));
+      geckoMock.marketChartGet.mockRejectedValueOnce(makeCoinGeckoError(404, 'Not Found'));
 
       await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow(CoinNotFoundException);
     });
 
     it('re-throws non-404 errors', async () => {
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('Network error'));
+      geckoMock.marketChartGet.mockRejectedValueOnce(new Error('Network error'));
 
       await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow('Network error');
     });
@@ -218,13 +237,13 @@ describe('CoinMarketDataService', () => {
       const result = await (service as any).fetchCoinDetail('bitcoin');
 
       expect(result).toBe(cached);
-      expect(geckoMock.coinId).not.toHaveBeenCalled();
+      expect(geckoMock.getID).not.toHaveBeenCalled();
     });
 
     it('falls back to cached data on 429 rate limit', async () => {
       const cachedDetail = { id: 'bitcoin', description: { en: 'cached' } };
       cacheManager.get.mockResolvedValueOnce(null); // first check: miss
-      geckoMock.coinId.mockRejectedValueOnce(makeCoinGeckoError(429, 'Too Many Requests'));
+      geckoMock.getID.mockRejectedValueOnce(makeCoinGeckoError(429, 'Too Many Requests'));
       cacheManager.get.mockResolvedValueOnce(cachedDetail); // fallback check: hit
 
       const result = await (service as any).fetchCoinDetail('bitcoin');
@@ -233,14 +252,14 @@ describe('CoinMarketDataService', () => {
 
     it('throws CoinNotFoundException on 404', async () => {
       cacheManager.get.mockResolvedValueOnce(null);
-      geckoMock.coinId.mockRejectedValueOnce(makeCoinGeckoError(404, 'Not Found'));
+      geckoMock.getID.mockRejectedValueOnce(makeCoinGeckoError(404, 'Not Found'));
 
       await expect((service as any).fetchCoinDetail('invalid-coin')).rejects.toThrow(CoinNotFoundException);
     });
 
     it('re-throws non-CoinGecko errors', async () => {
       cacheManager.get.mockResolvedValueOnce(null);
-      geckoMock.coinId.mockRejectedValueOnce(new Error('Network error'));
+      geckoMock.getID.mockRejectedValueOnce(new Error('Network error'));
 
       await expect((service as any).fetchCoinDetail('bitcoin')).rejects.toThrow('Network error');
     });
@@ -255,8 +274,9 @@ describe('CoinMarketDataService', () => {
 
       expect(result.prices).toBeInstanceOf(Array);
       expect(result.prices[0]).toHaveLength(2);
-      expect(geckoMock.coinIdMarketChart).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'bitcoin', vs_currency: 'usd', days: 7 })
+      expect(geckoMock.marketChartGet).toHaveBeenCalledWith(
+        'bitcoin',
+        expect.objectContaining({ vs_currency: 'usd', days: '7' })
       );
       expect(cacheManager.set).toHaveBeenCalledWith('coingecko:chart:bitcoin:7d', result, 900);
       expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('coingecko-chart');
@@ -268,13 +288,13 @@ describe('CoinMarketDataService', () => {
 
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
       expect(result).toBe(cached);
-      expect(geckoMock.coinIdMarketChart).not.toHaveBeenCalled();
+      expect(geckoMock.marketChartGet).not.toHaveBeenCalled();
     });
 
     it('falls back to cached data and records failure on API error', async () => {
       const cachedChart = { prices: [[Date.now(), 42000]] };
       cacheManager.get.mockResolvedValueOnce(null); // primary cache: miss
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeCoinGeckoError(429, 'Too Many Requests'));
+      geckoMock.marketChartGet.mockRejectedValueOnce(makeCoinGeckoError(429, 'Too Many Requests'));
       cacheManager.get.mockResolvedValueOnce(cachedChart); // catch-block primary cache retry: hit
 
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
@@ -284,7 +304,7 @@ describe('CoinMarketDataService', () => {
 
     it('throws user-friendly error when all cache layers miss', async () => {
       cacheManager.get.mockResolvedValue(null);
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(makeCoinGeckoError(0, 'Connection refused', 'ECONNREFUSED'));
+      geckoMock.marketChartGet.mockRejectedValueOnce(makeCoinGeckoError(0, 'Connection refused', 'ECONNREFUSED'));
 
       await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
         'Unable to fetch chart data. Please try again later.'
@@ -301,7 +321,7 @@ describe('CoinMarketDataService', () => {
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
 
       expect(result).toBe(staleChart);
-      expect(geckoMock.coinIdMarketChart).not.toHaveBeenCalled();
+      expect(geckoMock.marketChartGet).not.toHaveBeenCalled();
     });
 
     it('throws when circuit breaker is open and no stale cache exists', async () => {
@@ -311,7 +331,7 @@ describe('CoinMarketDataService', () => {
       await expect((service as any).fetchMarketChart('bitcoin', 7)).rejects.toThrow(
         'Unable to fetch chart data. Please try again later.'
       );
-      expect(geckoMock.coinIdMarketChart).not.toHaveBeenCalled();
+      expect(geckoMock.marketChartGet).not.toHaveBeenCalled();
     });
 
     it('falls back to stale cache when primary cache retry also misses', async () => {
@@ -320,7 +340,7 @@ describe('CoinMarketDataService', () => {
         .mockResolvedValueOnce(null) // primary cache: miss
         .mockResolvedValueOnce(null) // catch-block primary cache retry: miss
         .mockResolvedValueOnce(staleChart); // stale cache: hit
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('API down'));
+      geckoMock.marketChartGet.mockRejectedValueOnce(new Error('API down'));
 
       const result = await (service as any).fetchMarketChart('bitcoin', 7);
       expect(result).toBe(staleChart);
@@ -355,7 +375,7 @@ describe('CoinMarketDataService', () => {
         description: 'Bitcoin is digital money',
         links: expect.objectContaining({ homepage: ['https://bitcoin.org'] })
       });
-      expect(geckoMock.coinId).not.toHaveBeenCalled();
+      expect(geckoMock.getID).not.toHaveBeenCalled();
     });
 
     it('fetches CoinGecko data and updates DB when metadata is stale', async () => {
@@ -369,7 +389,7 @@ describe('CoinMarketDataService', () => {
 
       const result = await (service as any).getCoinDetailBySlug('bitcoin');
 
-      expect(geckoMock.coinId).toHaveBeenCalled();
+      expect(geckoMock.getID).toHaveBeenCalled();
       expect(coinRepository.update).toHaveBeenCalledWith(
         staleCoin.id,
         expect.objectContaining({ description: 'Bitcoin mock description' })
@@ -391,7 +411,7 @@ describe('CoinMarketDataService', () => {
         metadataLastUpdated: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
       });
       coinRepository.findOne.mockResolvedValue(staleCoin);
-      geckoMock.coinId.mockRejectedValueOnce(new Error('API down'));
+      geckoMock.getID.mockRejectedValueOnce(new Error('API down'));
 
       const result = await (service as any).getCoinDetailBySlug('bitcoin');
 
@@ -442,7 +462,7 @@ describe('CoinMarketDataService', () => {
 
     it('propagates error when CoinGecko fails and no cache exists', async () => {
       coinRepository.findOne.mockResolvedValue(mockCoin());
-      geckoMock.coinIdMarketChart.mockRejectedValueOnce(new Error('API down'));
+      geckoMock.marketChartGet.mockRejectedValueOnce(new Error('API down'));
       cacheManager.get.mockResolvedValue(null); // no cache
 
       await expect((service as any).getMarketChart('bitcoin', '7d')).rejects.toThrow(

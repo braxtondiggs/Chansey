@@ -1,16 +1,11 @@
 import { CoinDetailSyncService } from './coin-detail-sync.service';
 
+import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { CoinService } from '../coin.service';
 
-// Mock coingecko-api-v3
+// Mock CoinGecko SDK calls
 const mockCoinId = jest.fn();
 const mockTrending = jest.fn();
-jest.mock('coingecko-api-v3', () => ({
-  CoinGeckoClient: jest.fn().mockImplementation(() => ({
-    coinId: mockCoinId,
-    trending: mockTrending
-  }))
-}));
 
 // Mock withRetry to pass through
 jest.mock('../../shared/retry.util', () => ({
@@ -35,6 +30,7 @@ jest.useFakeTimers();
 describe('CoinDetailSyncService', () => {
   let service: CoinDetailSyncService;
   let coinService: jest.Mocked<Pick<CoinService, 'getCoins' | 'update' | 'clearRank'>>;
+  let geckoService: CoinGeckoClientService;
 
   const makeCoin = (overrides: Partial<{ id: string; slug: string; symbol: string; geckoRank: number | null }> = {}) =>
     ({
@@ -53,7 +49,18 @@ describe('CoinDetailSyncService', () => {
       clearRank: jest.fn()
     } as any;
 
-    service = new CoinDetailSyncService(coinService as any);
+    geckoService = {
+      client: {
+        coins: {
+          getID: mockCoinId
+        },
+        search: {
+          trending: { get: mockTrending }
+        }
+      }
+    } as unknown as CoinGeckoClientService;
+
+    service = new CoinDetailSyncService(coinService as any, geckoService);
   });
 
   afterEach(() => {
@@ -95,8 +102,8 @@ describe('CoinDetailSyncService', () => {
     coinService.getCoins.mockResolvedValue([btc, eth]);
     mockTrending.mockResolvedValue({
       coins: [
-        { item: { id: 'bitcoin', score: 3 } },
-        { item: { id: 'unknown-coin', score: 1 } } // no match — should be ignored
+        { id: 'bitcoin', score: 3 },
+        { id: 'unknown-coin', score: 1 } // no match — should be ignored
       ]
     });
     mockCoinId.mockResolvedValue({ market_data: {} });
@@ -113,7 +120,7 @@ describe('CoinDetailSyncService', () => {
     const btc = makeCoin({ slug: 'bitcoin' });
     coinService.getCoins.mockResolvedValue([btc]);
     mockTrending.mockResolvedValue({
-      coins: [{ item: {} }, { item: { id: 'bitcoin', score: 5 } }]
+      coins: [{}, { id: 'bitcoin', score: 5 }]
     });
     mockCoinId.mockResolvedValue({ market_data: {} });
 
@@ -139,19 +146,17 @@ describe('CoinDetailSyncService', () => {
     expect(coinService.update).toHaveBeenCalledWith('c1', { description: 'mapped' });
   });
 
-  it('processes coins in batches of 3', async () => {
-    const coins = Array.from({ length: 5 }, (_, i) => makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `sym${i}` }));
-    coinService.getCoins.mockResolvedValue(coins);
+  it('skips coin update when withRetry reports failure', async () => {
+    coinService.getCoins.mockResolvedValue([makeCoin({ id: 'c1', slug: 'fail-coin', symbol: 'fail' })]);
     mockTrending.mockResolvedValue({ coins: [] });
-    mockCoinId.mockResolvedValue({ market_data: {} });
+    mockCoinId.mockRejectedValue(new Error('Rate limited'));
 
     const promise = service.syncCoinDetails();
     jest.runAllTimersAsync();
-    await promise;
+    const result = await promise;
 
-    expect(coinService.update).toHaveBeenCalledTimes(5);
-    // Verify batching by checking coinId call order (first 3 called together, then 2)
-    expect(mockCoinId).toHaveBeenCalledTimes(5);
+    expect(coinService.update).not.toHaveBeenCalled();
+    expect(result).toEqual({ totalCoins: 1, updatedSuccessfully: 0, errors: 1 });
   });
 
   it('returns correct counts on mixed success/failure', async () => {
@@ -162,7 +167,7 @@ describe('CoinDetailSyncService', () => {
     coinService.getCoins.mockResolvedValue(coins);
     mockTrending.mockResolvedValue({ coins: [] });
 
-    mockCoinId.mockImplementation(({ id }: { id: string }) => {
+    mockCoinId.mockImplementation((id: string) => {
       if (id === 'bad-coin') throw new Error('API error');
       return { market_data: {} };
     });

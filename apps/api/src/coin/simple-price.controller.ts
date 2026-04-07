@@ -10,11 +10,12 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { CoinGeckoClient } from 'coingecko-api-v3';
+import { APIError, RateLimitError } from '@coingecko/coingecko-typescript';
+import type { PriceGetResponse } from '@coingecko/coingecko-typescript/resources/simple/price';
 
-import { SimplePriceRequestDto, SimplePriceResponseDto } from './dto/simple-price-request.dto';
+import { SimplePriceRequestDto } from './dto/simple-price-request.dto';
 
-import { extractCoinGeckoStatusCode } from '../shared/coingecko-error.util';
+import { CoinGeckoClientService } from '../shared/coingecko-client.service';
 import { toErrorInfo } from '../shared/error.util';
 import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
 import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
@@ -23,8 +24,9 @@ import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.inter
 @Controller('simple')
 export class SimplePriceController {
   private readonly logger = new Logger(SimplePriceController.name);
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly MAX_COINS_PER_REQUEST = 50; // CoinGecko's documented limit
+
+  constructor(private readonly gecko: CoinGeckoClientService) {}
 
   @Get('price')
   @UseInterceptors(CustomCacheInterceptor)
@@ -133,7 +135,7 @@ export class SimplePriceController {
     status: 500,
     description: 'Internal server error - failed to fetch prices from CoinGecko'
   })
-  async getSimplePrice(@Query() query: SimplePriceRequestDto): Promise<SimplePriceResponseDto> {
+  async getSimplePrice(@Query() query: SimplePriceRequestDto): Promise<PriceGetResponse> {
     try {
       // Parse and validate coin IDs
       const coinIds = query.coinIds;
@@ -159,7 +161,7 @@ export class SimplePriceController {
       this.logger.log(`Fetching prices for ${uniqueCoinIds.length} coins: ${uniqueCoinIds.join(', ')}`);
 
       // Call CoinGecko simplePrice API
-      const priceData = await this.gecko.simplePrice({
+      const priceData = await this.gecko.client.simple.price.get({
         ids: uniqueCoinIds.join(','),
         vs_currencies: query.vs_currencies || 'usd',
         include_24hr_vol: query.include_24hr_vol || false,
@@ -189,14 +191,13 @@ export class SimplePriceController {
       }
 
       // Handle CoinGecko API errors
-      const status = extractCoinGeckoStatusCode(error);
-      if (status === 429) {
+      if (error instanceof RateLimitError) {
         throw new InternalServerErrorException(
           'Rate limit exceeded. Please wait a moment before making another request.'
         );
       }
 
-      if (status && status >= 400 && status < 500) {
+      if (error instanceof APIError && error.status >= 400 && error.status < 500) {
         throw new BadRequestException(`Invalid request to CoinGecko API: ${err.message}`);
       }
 

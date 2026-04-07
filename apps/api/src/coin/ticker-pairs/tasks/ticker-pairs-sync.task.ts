@@ -3,9 +3,9 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
-import { CoinGeckoClient } from 'coingecko-api-v3';
 
 import { ExchangeService } from '../../../exchange/exchange.service';
+import { CoinGeckoClientService } from '../../../shared/coingecko-client.service';
 import { toErrorInfo } from '../../../shared/error.util';
 import { CoinService } from '../../coin.service';
 import { TickerPairStatus, TickerPairs } from '../ticker-pairs.entity';
@@ -19,7 +19,6 @@ const DEFAULT_MARGIN_TRADING_ALLOWED = false;
 @Processor('ticker-pairs-queue')
 @Injectable()
 export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(TickerPairSyncTask.name);
   private jobScheduled = false;
 
@@ -27,7 +26,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
     @InjectQueue('ticker-pairs-queue') private readonly tickerPairQueue: Queue,
     private readonly coin: CoinService,
     private readonly exchange: ExchangeService,
-    private readonly tickerPair: TickerPairService
+    private readonly tickerPair: TickerPairService,
+    private readonly gecko: CoinGeckoClientService
   ) {
     super();
   }
@@ -158,10 +158,7 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
 
             try {
               // Get tickers from CoinGecko for this exchange
-              const response = await this.gecko.exchangeIdTickers({
-                id,
-                page
-              });
+              const response = await this.gecko.client.exchanges.tickers.get(id, { page });
 
               tickers = response.tickers || [];
 

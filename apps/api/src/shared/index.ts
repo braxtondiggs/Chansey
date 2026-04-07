@@ -38,5 +38,4 @@ export {
   withRetry,
   withRetryThrow
 } from './retry.util';
-export { extractCoinGeckoStatusCode } from './coingecko-error.util';
 export { SharedResilienceModule } from './shared-resilience.module';

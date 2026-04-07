@@ -1,9 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { CoinGeckoClient } from 'coingecko-api-v3';
-
 import { mapCoinGeckoDetailToUpdate } from './map-coingecko-detail.util';
 
+import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRetry } from '../../shared/retry.util';
 import { Coin } from '../coin.entity';
@@ -11,11 +10,13 @@ import { CoinService } from '../coin.service';
 
 @Injectable()
 export class CoinDetailSyncService {
-  private readonly gecko = new CoinGeckoClient({ timeout: 10000, autoRetry: true });
   private readonly logger = new Logger(CoinDetailSyncService.name);
   private readonly API_RATE_LIMIT_DELAY = 2500;
 
-  constructor(private readonly coinService: CoinService) {}
+  constructor(
+    private readonly coinService: CoinService,
+    private readonly gecko: CoinGeckoClientService
+  ) {}
 
   /**
    * Syncs detailed coin information from CoinGecko for all coins in the database.
@@ -71,13 +72,13 @@ export class CoinDetailSyncService {
   private async applyTrendingRanks(coins: Coin[]): Promise<void> {
     this.logger.log('Fetching trending coins from CoinGecko...');
     try {
-      const trendingResponse = await this.gecko.trending();
+      const trendingResponse = await this.gecko.client.search.trending.get();
       for (const trendingCoin of trendingResponse.coins ?? []) {
-        const itemId = trendingCoin.item?.id;
+        const itemId = trendingCoin.id;
         if (!itemId) continue;
         const existingCoin = coins.find((coin) => coin.slug === itemId);
         if (existingCoin) {
-          existingCoin.geckoRank = trendingCoin.item?.score;
+          existingCoin.geckoRank = trendingCoin.score;
         }
       }
     } catch (error: unknown) {
@@ -97,8 +98,7 @@ export class CoinDetailSyncService {
 
           const retryResult = await withRetry(
             () =>
-              this.gecko.coinId({
-                id: slug,
+              this.gecko.client.coins.getID(slug, {
                 localization: false,
                 tickers: false
               }),

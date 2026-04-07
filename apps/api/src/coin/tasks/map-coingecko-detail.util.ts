@@ -4,6 +4,10 @@ import { UpdateCoinDto } from '../dto/update-coin.dto';
 /**
  * Maps a CoinGecko coin detail response to an UpdateCoinDto.
  * Pure function — no side effects, no DI dependencies.
+ *
+ * Note: We use `Record<string, any>` instead of the SDK's `CoinGetIDResponse` because:
+ * 1. The SDK type omits several fields the API returns (coingecko_rank, developer_score, etc.)
+ * 2. The SDK types date fields as `string` while our DTO expects `Date`
  */
 export function mapCoinGeckoDetailToUpdate(
   coin: Record<string, any>,
