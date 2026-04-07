@@ -197,6 +197,26 @@ export class OHLCService {
   }
 
   /**
+   * Get unique coin IDs that have candle data within a specific date range.
+   * Used by the coin resolver to determine which coins were tradeable during a backtest period.
+   */
+  async getCoinsWithCandleDataInRange(startDate: Date, endDate: Date, coinIds?: string[]): Promise<string[]> {
+    const qb = this.ohlcRepository
+      .createQueryBuilder('candle')
+      .select('DISTINCT candle.coinId', 'coinId')
+      .where('candle.timestamp >= :startDate', { startDate })
+      .andWhere('candle.timestamp <= :endDate', { endDate });
+
+    if (coinIds?.length) {
+      qb.andWhere('candle.coinId IN (:...coinIds)', { coinIds });
+    }
+
+    const result = await qb.getRawMany();
+
+    return result.map((row) => row.coinId).filter(Boolean);
+  }
+
+  /**
    * Get the date range of available candle data
    * @returns Object with start and end dates, or null if no data exists
    */

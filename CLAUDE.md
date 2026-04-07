@@ -72,6 +72,8 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - Import order: Angular → NestJS → third-party → internal → relative
 - **Lint warnings are NOT acceptable for the chansey (frontend) project** — all warnings must be resolved before
   committing
+- **Fix lint errors and warnings in files you change** — when modifying a file, resolve any lint warnings in that file
+  before committing, even pre-existing ones. Do not introduce or leave warnings in touched files.
 
 ### Testing
 

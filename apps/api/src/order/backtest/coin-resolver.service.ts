@@ -6,6 +6,7 @@ import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
 import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
 import { MetricsService } from '../../metrics/metrics.service';
+import { OHLCService } from '../../ohlc/ohlc.service';
 
 const MIN_BASE_SYMBOL_LENGTH = 3;
 
@@ -24,6 +25,17 @@ export interface CoinResolverOptions {
    * When provided, only coins whose symbols match this list will be included.
    */
   symbolFilter?: string[];
+
+  /**
+   * Backtest start date — when provided with endDate, enables date-aware filtering:
+   * only coins with OHLC data in the range and meeting historical quality thresholds are included.
+   */
+  startDate?: Date;
+
+  /**
+   * Backtest end date — used together with startDate for date-aware filtering.
+   */
+  endDate?: Date;
 }
 
 @Injectable()
@@ -32,6 +44,7 @@ export class CoinResolverService {
 
   constructor(
     private readonly coinService: CoinService,
+    private readonly ohlcService: OHLCService,
     @Optional() private readonly metricsService?: MetricsService
   ) {}
 
@@ -149,6 +162,26 @@ export class CoinResolverService {
       const filterSet = new Set(options.symbolFilter.map((s) => s.toUpperCase()));
       const filtered = resolved.filter((c) => filterSet.has(c.symbol.toUpperCase()));
       resolved = filtered;
+    }
+
+    // Date-aware filtering: only keep coins that were tradeable and met quality thresholds during the backtest period
+    if (options.startDate && options.endDate) {
+      const tradeableCoinIds = await this.ohlcService.getCoinsWithCandleDataInRange(
+        options.startDate,
+        options.endDate,
+        resolved.map((c) => c.id)
+      );
+      const tradeableSet = new Set(tradeableCoinIds);
+      const tradeableCoins = resolved.filter((c) => tradeableSet.has(c.id));
+
+      const { coins: qualityFiltered } = await this.coinService.getCoinsByIdsFilteredAtDate(
+        tradeableCoins.map((c) => c.id),
+        options.startDate,
+        100_000_000,
+        1_000_000
+      );
+      const qualifiedIdSet = new Set(qualityFiltered.map((c) => c.id));
+      resolved = tradeableCoins.filter((c) => qualifiedIdSet.has(c.id));
     }
 
     // Compute unresolved instruments

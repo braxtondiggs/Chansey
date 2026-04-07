@@ -83,7 +83,8 @@ describe('BacktestEngine storage flow', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
   };
 

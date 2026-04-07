@@ -55,7 +55,8 @@ describe('BacktestEngine.executeTrade', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   const createMarketData = (coinId: string, price: number): MarketData => ({
@@ -688,7 +689,8 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   const createCandles = (coinId: string) => [
@@ -781,7 +783,8 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
@@ -938,7 +941,8 @@ describe('BacktestEngine.precomputeWindowData', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   it('should pre-compute window data from candles', () => {
@@ -1057,7 +1061,8 @@ describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   it('returns neutral metrics when pre-computed data has no candles', async () => {
@@ -1249,7 +1254,8 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   const createCandles = () => [
@@ -2204,7 +2210,8 @@ describe('BacktestEngine checkpointing', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   const createCheckpoint = (engine: BacktestEngine) => {
@@ -2322,7 +2329,8 @@ describe('BacktestEngine warmup / date range separation', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   it('does not trade before backtest.startDate when dataset is broader', async () => {
@@ -2704,7 +2712,8 @@ describe('BacktestEngine hard stop-loss', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   const noSlippage = { type: SlippageModelType.NONE };
@@ -2836,7 +2845,8 @@ describe('BacktestEngine per-run allocation overrides', () => {
       signalThrottle,
       regimeGateService,
       volatilityCalculator,
-      signalFilterChain
+      signalFilterChain,
+      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
     );
 
   it('respects custom maxAllocation and minAllocation passed to executeTrade', async () => {

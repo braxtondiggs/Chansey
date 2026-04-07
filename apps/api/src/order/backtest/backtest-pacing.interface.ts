@@ -134,6 +134,11 @@ export interface LiveReplayExecuteOptions {
 
   /** AbortSignal from ShutdownSignalService — checked at yield points to trigger emergency checkpoint */
   abortSignal?: AbortSignal;
+
+  /** Enable forced exit when a coin is delisted mid-backtest (default: true) */
+  enableDelistingExit?: boolean;
+  /** Delisting penalty as a fraction (0-1). Default: 0.90 meaning 90% loss (position closed at 10% of last price) */
+  delistingPenalty?: number;
 }
 
 /**

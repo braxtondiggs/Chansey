@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { QueryDeepPartialEntity, Repository } from 'typeorm';
+import { In, LessThanOrEqual, QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { CoinListingEvent, CoinListingEventType } from './coin-listing-event.entity';
 
@@ -72,5 +72,58 @@ export class CoinListingEventService {
       where: { coinId },
       order: { eventDate: 'DESC' }
     });
+  }
+
+  /**
+   * Returns coins currently delisted as of `asOfDate` (most recent DELISTED event with no
+   * subsequent RELISTED before `asOfDate`).
+   * Returns a Map of coinId → delistingDate for use in backtest forced-exit logic.
+   */
+  async getActiveDelistingsAsOf(coinIds: string[], asOfDate: Date): Promise<Map<string, Date>> {
+    if (coinIds.length === 0) return new Map();
+
+    // Fetch all DELISTED and RELISTED events for the given coins up to asOfDate
+    const events = await this.repo.find({
+      where: [
+        { coinId: In(coinIds), eventType: CoinListingEventType.DELISTED, eventDate: LessThanOrEqual(asOfDate) },
+        { coinId: In(coinIds), eventType: CoinListingEventType.RELISTED, eventDate: LessThanOrEqual(asOfDate) }
+      ],
+      order: { eventDate: 'ASC' }
+    });
+
+    // Group events by coin
+    const eventsByCoin = new Map<string, CoinListingEvent[]>();
+    for (const event of events) {
+      const existing = eventsByCoin.get(event.coinId) ?? [];
+      existing.push(event);
+      eventsByCoin.set(event.coinId, existing);
+    }
+
+    const result = new Map<string, Date>();
+
+    for (const [coinId, coinEvents] of eventsByCoin) {
+      // Find the latest DELISTED event within the range
+      let latestDelisting: Date | null = null;
+
+      for (const event of coinEvents) {
+        if (event.eventType === CoinListingEventType.DELISTED && event.eventDate <= asOfDate) {
+          latestDelisting = event.eventDate;
+        }
+      }
+
+      if (!latestDelisting) continue;
+
+      // Check if a RELISTED event exists after the delisting and before asOfDate
+      const wasRelisted = coinEvents.some(
+        (e) =>
+          e.eventType === CoinListingEventType.RELISTED && e.eventDate > latestDelisting! && e.eventDate <= asOfDate
+      );
+
+      if (!wasRelisted) {
+        result.set(coinId, latestDelisting);
+      }
+    }
+
+    return result;
   }
 }

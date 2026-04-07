@@ -134,7 +134,9 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
       });
 
       const { coins, warnings } = await this.coinResolver.resolveCoins(dataset, {
-        symbolFilter: backtest.configSnapshot?.coinSymbolFilter
+        symbolFilter: backtest.configSnapshot?.coinSymbolFilter,
+        startDate: backtest.startDate,
+        endDate: backtest.endDate
       });
 
       // Merge warnings from coin resolution with existing backtest warnings
@@ -206,6 +208,7 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
       };
 
       const regimeConfig = backtest.configSnapshot?.regime;
+      const delistingConfig = backtest.configSnapshot?.delisting;
       const results = await this.backtestEngine.executeHistoricalBacktest(backtest, coins, {
         dataset,
         deterministicSeed,
@@ -218,7 +221,9 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
         enableRegimeGate: regimeConfig?.enableRegimeGate,
         enableRegimeScaledSizing: regimeConfig?.enableRegimeScaledSizing,
         riskLevel: regimeConfig?.riskLevel,
-        abortSignal: this.shutdownSignal.signal
+        abortSignal: this.shutdownSignal.signal,
+        enableDelistingExit: delistingConfig?.enableDelistingExit,
+        delistingPenalty: delistingConfig?.delistingPenalty
       });
 
       // Clear checkpoint on successful completion
