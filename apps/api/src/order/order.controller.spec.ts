@@ -1,10 +1,10 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { OrderDto } from './dto/order.dto';
 import { OrderController } from './order.controller';
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
+import { ManualOrderService } from './services/manual-order.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
@@ -13,12 +13,11 @@ import { User } from '../users/users.entity';
 describe('OrderController', () => {
   let controller: OrderController;
   let orderService: jest.Mocked<OrderService>;
+  let manualOrderService: jest.Mocked<ManualOrderService>;
+  let slippageAnalysisService: jest.Mocked<SlippageAnalysisService>;
+  let stateMachineService: jest.Mocked<OrderStateMachineService>;
 
-  const mockUser: User = {
-    id: 'user-123',
-    email: 'test@example.com'
-  } as User;
-
+  const mockUser: User = { id: 'user-123', email: 'test@example.com' } as User;
   const mockOrder: Order = {
     id: 'order-123',
     symbol: 'BTC/USDT',
@@ -26,9 +25,7 @@ describe('OrderController', () => {
     type: OrderType.MARKET,
     quantity: 0.1,
     price: 50000,
-    status: OrderStatus.FILLED,
-    createdAt: new Date(),
-    updatedAt: new Date()
+    status: OrderStatus.FILLED
   } as Order;
 
   beforeEach(async () => {
@@ -37,10 +34,14 @@ describe('OrderController', () => {
       providers: [
         {
           provide: OrderService,
+          useValue: { getOrders: jest.fn(), getOrder: jest.fn() }
+        },
+        {
+          provide: ManualOrderService,
           useValue: {
-            createOrder: jest.fn(),
-            getOrders: jest.fn(),
-            getOrder: jest.fn()
+            placeManualOrder: jest.fn(),
+            previewManualOrder: jest.fn(),
+            cancelManualOrder: jest.fn()
           }
         },
         {
@@ -49,59 +50,28 @@ describe('OrderController', () => {
             getSlippageSummary: jest.fn(),
             getSlippageBySymbol: jest.fn(),
             getSlippageTrends: jest.fn(),
-            getHighSlippagePairs: jest.fn(),
-            getSlippageForSymbol: jest.fn()
+            getHighSlippagePairs: jest.fn()
           }
         },
         {
           provide: OrderStateMachineService,
-          useValue: {
-            getOrderHistory: jest.fn().mockResolvedValue([]),
-            transitionStatus: jest.fn().mockResolvedValue({ valid: true }),
-            isValidTransition: jest.fn().mockReturnValue(true),
-            isTerminalState: jest.fn().mockReturnValue(false)
-          }
+          useValue: { getOrderHistory: jest.fn() }
         }
       ]
     }).compile();
 
     controller = module.get<OrderController>(OrderController);
     orderService = module.get(OrderService);
+    manualOrderService = module.get(ManualOrderService);
+    slippageAnalysisService = module.get(SlippageAnalysisService);
+    stateMachineService = module.get(OrderStateMachineService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  describe('createOrder', () => {
-    const mockOrderDto: OrderDto = {
-      side: OrderSide.BUY,
-      type: OrderType.MARKET,
-      baseCoinId: 'coin-btc',
-      exchangeId: 'binance_us',
-      quantity: '0.1'
-    };
-
-    it('should create an order successfully', async () => {
-      orderService.createOrder.mockResolvedValue(mockOrder);
-
-      const result = await controller.createOrder(mockOrderDto, mockUser);
-
-      expect(orderService.createOrder).toHaveBeenCalledWith(mockOrderDto, mockUser);
-      expect(result).toEqual(mockOrder);
-    });
-
-    it('should throw BadRequestException when service throws error', async () => {
-      orderService.createOrder.mockRejectedValue(new BadRequestException('Invalid order'));
-
-      await expect(controller.createOrder(mockOrderDto, mockUser)).rejects.toThrow(BadRequestException);
-    });
-  });
+  afterEach(() => jest.clearAllMocks());
 
   describe('getOrders', () => {
-    it('should return orders with no filters', async () => {
-      const mockOrders = [mockOrder];
-      orderService.getOrders.mockResolvedValue(mockOrders);
+    it('applies default limit=50 when no filters provided', async () => {
+      orderService.getOrders.mockResolvedValue([mockOrder]);
 
       const result = await controller.getOrders(mockUser);
 
@@ -112,69 +82,13 @@ describe('OrderController', () => {
         isManual: undefined,
         limit: 50
       });
-      expect(result).toEqual(mockOrders);
+      expect(result).toEqual([mockOrder]);
     });
 
-    it('should return orders with status filter', async () => {
-      const mockOrders = [mockOrder];
-      orderService.getOrders.mockResolvedValue(mockOrders);
+    it('forwards all filter params to the service', async () => {
+      orderService.getOrders.mockResolvedValue([mockOrder]);
 
-      const result = await controller.getOrders(mockUser, OrderStatus.FILLED);
-
-      expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
-        status: OrderStatus.FILLED,
-        side: undefined,
-        orderType: undefined,
-        isManual: undefined,
-        limit: 50
-      });
-      expect(result).toEqual(mockOrders);
-    });
-
-    it('should return orders with side filter', async () => {
-      const mockOrders = [mockOrder];
-      orderService.getOrders.mockResolvedValue(mockOrders);
-
-      const result = await controller.getOrders(mockUser, undefined, OrderSide.BUY);
-
-      expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
-        status: undefined,
-        side: OrderSide.BUY,
-        orderType: undefined,
-        isManual: undefined,
-        limit: 50
-      });
-      expect(result).toEqual(mockOrders);
-    });
-
-    it('should return orders with custom limit', async () => {
-      const mockOrders = [mockOrder];
-      orderService.getOrders.mockResolvedValue(mockOrders);
-
-      const result = await controller.getOrders(mockUser, undefined, undefined, undefined, undefined, 25);
-
-      expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
-        status: undefined,
-        side: undefined,
-        orderType: undefined,
-        isManual: undefined,
-        limit: 25
-      });
-      expect(result).toEqual(mockOrders);
-    });
-
-    it('should return orders with all filters', async () => {
-      const mockOrders = [mockOrder];
-      orderService.getOrders.mockResolvedValue(mockOrders);
-
-      const result = await controller.getOrders(
-        mockUser,
-        OrderStatus.FILLED,
-        OrderSide.BUY,
-        OrderType.MARKET,
-        true,
-        10
-      );
+      await controller.getOrders(mockUser, OrderStatus.FILLED, OrderSide.BUY, OrderType.MARKET, true, 10);
 
       expect(orderService.getOrders).toHaveBeenCalledWith(mockUser, {
         status: OrderStatus.FILLED,
@@ -183,12 +97,11 @@ describe('OrderController', () => {
         isManual: true,
         limit: 10
       });
-      expect(result).toEqual(mockOrders);
     });
   });
 
   describe('getOrder', () => {
-    it('should return a specific order', async () => {
+    it('returns the order from the service', async () => {
       orderService.getOrder.mockResolvedValue(mockOrder);
 
       const result = await controller.getOrder('order-123', mockUser);
@@ -196,27 +109,13 @@ describe('OrderController', () => {
       expect(orderService.getOrder).toHaveBeenCalledWith(mockUser, 'order-123');
       expect(result).toEqual(mockOrder);
     });
-
-    it('should throw NotFoundException when order not found', async () => {
-      orderService.getOrder.mockRejectedValue(new NotFoundException('Order not found'));
-
-      await expect(controller.getOrder('non-existent', mockUser)).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw BadRequestException for invalid UUID', async () => {
-      // This would be caught by the ParseUUIDPipe in real usage
-      // but we can test the service call
-      orderService.getOrder.mockRejectedValue(new BadRequestException('Invalid UUID'));
-
-      await expect(controller.getOrder('invalid-uuid', mockUser)).rejects.toThrow(BadRequestException);
-    });
   });
 
   describe('getOrderHistory', () => {
-    it('should return order history with summary', async () => {
-      const mockTransitions = [
+    it('composes order status with transition history', async () => {
+      const transitions = [
         {
-          id: 'history-1',
+          id: 'h1',
           orderId: 'order-123',
           fromStatus: null,
           toStatus: OrderStatus.NEW,
@@ -225,7 +124,7 @@ describe('OrderController', () => {
           metadata: {}
         },
         {
-          id: 'history-2',
+          id: 'h2',
           orderId: 'order-123',
           fromStatus: OrderStatus.NEW,
           toStatus: OrderStatus.FILLED,
@@ -234,10 +133,8 @@ describe('OrderController', () => {
           metadata: {}
         }
       ];
-
       orderService.getOrder.mockResolvedValue(mockOrder);
-      const stateMachineService = (controller as any).stateMachineService;
-      stateMachineService.getOrderHistory.mockResolvedValue(mockTransitions);
+      stateMachineService.getOrderHistory.mockResolvedValue(transitions as never);
 
       const result = await controller.getOrderHistory('order-123', mockUser);
 
@@ -247,14 +144,88 @@ describe('OrderController', () => {
         orderId: 'order-123',
         currentStatus: OrderStatus.FILLED,
         transitionCount: 2,
-        transitions: mockTransitions
+        transitions
       });
     });
 
-    it('should throw NotFoundException when order not found', async () => {
+    it('propagates NotFoundException when the order does not exist', async () => {
       orderService.getOrder.mockRejectedValue(new NotFoundException('Order not found'));
 
-      await expect(controller.getOrderHistory('non-existent', mockUser)).rejects.toThrow(NotFoundException);
+      await expect(controller.getOrderHistory('missing', mockUser)).rejects.toThrow(NotFoundException);
+      expect(stateMachineService.getOrderHistory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('placeManualOrder', () => {
+    it('delegates to ManualOrderService with dto and user', async () => {
+      const dto = { symbol: 'BTC/USDT' } as never;
+      manualOrderService.placeManualOrder.mockResolvedValue(mockOrder as never);
+
+      const result = await controller.placeManualOrder(dto, mockUser);
+
+      expect(manualOrderService.placeManualOrder).toHaveBeenCalledWith(dto, mockUser);
+      expect(result).toBe(mockOrder);
+    });
+  });
+
+  describe('previewManualOrder', () => {
+    it('delegates to ManualOrderService with dto and user', async () => {
+      const dto = { symbol: 'BTC/USDT' } as never;
+      const preview = { estimatedCost: 5000 } as never;
+      manualOrderService.previewManualOrder.mockResolvedValue(preview);
+
+      const result = await controller.previewManualOrder(dto, mockUser);
+
+      expect(manualOrderService.previewManualOrder).toHaveBeenCalledWith(dto, mockUser);
+      expect(result).toBe(preview);
+    });
+  });
+
+  describe('cancelOrder', () => {
+    it('delegates to ManualOrderService.cancelManualOrder with id and user', async () => {
+      manualOrderService.cancelManualOrder.mockResolvedValue(mockOrder as never);
+
+      const result = await controller.cancelOrder('order-123', mockUser);
+
+      expect(manualOrderService.cancelManualOrder).toHaveBeenCalledWith('order-123', mockUser);
+      expect(result).toBe(mockOrder);
+    });
+  });
+
+  describe('slippage analytics', () => {
+    it('getSlippageSummary passes user.id', async () => {
+      const summary = { avgSlippageBps: 10 } as never;
+      slippageAnalysisService.getSlippageSummary.mockResolvedValue(summary);
+
+      const result = await controller.getSlippageSummary(mockUser);
+
+      expect(slippageAnalysisService.getSlippageSummary).toHaveBeenCalledWith('user-123');
+      expect(result).toBe(summary);
+    });
+
+    it('getSlippageBySymbol passes user.id', async () => {
+      slippageAnalysisService.getSlippageBySymbol.mockResolvedValue([] as never);
+
+      await controller.getSlippageBySymbol(mockUser);
+
+      expect(slippageAnalysisService.getSlippageBySymbol).toHaveBeenCalledWith('user-123');
+    });
+
+    it('getSlippageTrends forwards period from query', async () => {
+      slippageAnalysisService.getSlippageTrends.mockResolvedValue([] as never);
+
+      await controller.getSlippageTrends(mockUser, { period: '7d' } as never);
+
+      expect(slippageAnalysisService.getSlippageTrends).toHaveBeenCalledWith('user-123', '7d');
+    });
+
+    it('getHighSlippagePairs forwards thresholdBps from query', async () => {
+      slippageAnalysisService.getHighSlippagePairs.mockResolvedValue(['BTC/USDT']);
+
+      const result = await controller.getHighSlippagePairs({ thresholdBps: 75 } as never);
+
+      expect(slippageAnalysisService.getHighSlippagePairs).toHaveBeenCalledWith(75);
+      expect(result).toEqual(['BTC/USDT']);
     });
   });
 });

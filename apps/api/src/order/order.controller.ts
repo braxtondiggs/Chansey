@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   HttpStatus,
-  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -13,20 +12,14 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import {
-  OrderDto,
-  OrderResponseDto,
-  SlippageQueryDto,
-  SlippageStatsDto,
-  SlippageSummaryDto,
-  SlippageTrendDto
-} from './dto';
+import { OrderResponseDto, SlippageQueryDto, SlippageStatsDto, SlippageSummaryDto, SlippageTrendDto } from './dto';
 import { OrderPreviewRequestDto } from './dto/order-preview-request.dto';
 import { OrderPreviewDto } from './dto/order-preview.dto';
 import { OrderHistoryResponseDto } from './dto/order-status-history.dto';
 import { PlaceManualOrderDto } from './dto/place-manual-order.dto';
 import { OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
+import { ManualOrderService } from './services/manual-order.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
@@ -39,10 +32,9 @@ import { User } from '../users/users.entity';
 @UseGuards(JwtAuthenticationGuard)
 @Controller('order')
 export class OrderController {
-  private readonly logger = new Logger(OrderController.name);
-
   constructor(
     private readonly orderService: OrderService,
+    private readonly manualOrderService: ManualOrderService,
     private readonly slippageAnalysisService: SlippageAnalysisService,
     private readonly stateMachineService: OrderStateMachineService
   ) {}
@@ -148,37 +140,6 @@ export class OrderController {
     };
   }
 
-  @Post()
-  @ApiOperation({ summary: 'Create a new order (buy or sell)' })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Order created successfully',
-    type: OrderResponseDto
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid order data or insufficient funds'
-  })
-  async createOrder(@Body() orderDto: OrderDto, @GetUser() user: User) {
-    return this.orderService.createOrder(orderDto, user);
-  }
-
-  @Post('preview')
-  @ApiOperation({ summary: 'Preview an order to calculate fees and validate parameters' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Order preview with fee calculations and validation',
-    type: OrderPreviewDto
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid order data or exchange connection error'
-  })
-  async previewOrder(@Body() orderDto: OrderDto, @GetUser() user: User) {
-    this.logger.log('Previewing order:', orderDto);
-    return this.orderService.previewOrder(orderDto, user);
-  }
-
   @Post('manual')
   @ApiOperation({
     summary: 'Place a manual order on the exchange',
@@ -203,7 +164,7 @@ export class OrderController {
     description: 'Exchange API unavailable'
   })
   async placeManualOrder(@Body() dto: PlaceManualOrderDto, @GetUser() user: User) {
-    return this.orderService.placeManualOrder(dto, user);
+    return this.manualOrderService.placeManualOrder(dto, user);
   }
 
   @Post('manual/preview')
@@ -225,7 +186,7 @@ export class OrderController {
     description: 'Exchange key or trading pair not found'
   })
   async previewManualOrder(@Body() dto: OrderPreviewRequestDto, @GetUser() user: User) {
-    return this.orderService.previewManualOrder(dto, user);
+    return this.manualOrderService.previewManualOrder(dto, user);
   }
 
   @Delete(':id')
@@ -258,7 +219,7 @@ export class OrderController {
     description: 'User does not own this order'
   })
   async cancelOrder(@Param('id', new ParseUUIDPipe()) id: string, @GetUser() user: User) {
-    return this.orderService.cancelManualOrder(id, user);
+    return this.manualOrderService.cancelManualOrder(id, user);
   }
 
   // ==================== SLIPPAGE ANALYTICS ENDPOINTS ====================
