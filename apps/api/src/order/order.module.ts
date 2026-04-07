@@ -35,6 +35,8 @@ import { OrderController } from './order.controller';
 import { Order } from './order.entity';
 import { OrderService } from './order.service';
 import { PaperTradingModule } from './paper-trading/paper-trading.module';
+import { ExitOrderPlacementService } from './services/exit-order-placement.service';
+import { ExitPriceService } from './services/exit-price.service';
 import { LiquidationMonitorService } from './services/liquidation-monitor.service';
 import { OpportunitySellService } from './services/opportunity-sell.service';
 import { OrderCalculationService } from './services/order-calculation.service';
@@ -168,6 +170,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     CoinResolverService,
     CoinService,
     DatasetValidatorService,
+    ExitOrderPlacementService,
+    ExitPriceService,
     LiquidationMonitorService,
     LiquidationMonitorTask,
     MarketDataReaderService,
