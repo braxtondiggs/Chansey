@@ -1,4 +1,13 @@
 /**
+ * BullMQ job data for pipeline stage execution
+ */
+export interface PipelineJobData {
+  pipelineId: string;
+  userId: string;
+  stage: PipelineStage;
+}
+
+/**
  * Pipeline Status Enum
  * Tracks the overall state of the pipeline execution
  */

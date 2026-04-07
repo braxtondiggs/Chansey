@@ -1,0 +1,421 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+
+import { Repository } from 'typeorm';
+
+import { PipelineProgressionService } from './pipeline-progression.service';
+import { PipelineStageExecutionService } from './pipeline-stage-execution.service';
+
+import { MarketRegimeService } from '../../market-regime/market-regime.service';
+import { ScoringService } from '../../scoring/scoring.service';
+import { User } from '../../users/users.entity';
+import { Pipeline } from '../entities/pipeline.entity';
+import {
+  DEFAULT_PROGRESSION_RULES,
+  DeploymentRecommendation,
+  PIPELINE_EVENTS,
+  PipelineStage,
+  PipelineStatus
+} from '../interfaces';
+
+describe('PipelineProgressionService', () => {
+  let service: PipelineProgressionService;
+  let pipelineRepository: jest.Mocked<Repository<Pipeline>>;
+  let stageExecutionService: jest.Mocked<PipelineStageExecutionService>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
+  let scoringService: jest.Mocked<ScoringService>;
+  let marketRegimeService: jest.Mocked<MarketRegimeService>;
+
+  const mockUser: User = { id: 'user-123' } as User;
+
+  const basePipeline: Pipeline = {
+    id: 'pipeline-123',
+    name: 'Test Pipeline',
+    status: PipelineStatus.RUNNING,
+    currentStage: PipelineStage.OPTIMIZE,
+    strategyConfigId: 'strategy-123',
+    stageConfig: {
+      historical: { startDate: '2023-01-01', endDate: '2024-01-01', initialCapital: 10000 },
+      liveReplay: { startDate: '2024-01-01', endDate: '2024-03-01', initialCapital: 10000 },
+      paperTrading: { initialCapital: 10000, duration: '7d' }
+    },
+    progressionRules: DEFAULT_PROGRESSION_RULES,
+    stageResults: {},
+    user: mockUser
+  } as Pipeline;
+
+  const makePipeline = (overrides: Partial<Pipeline> = {}): Pipeline => ({ ...basePipeline, ...overrides }) as Pipeline;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PipelineProgressionService,
+        {
+          provide: getRepositoryToken(Pipeline),
+          useValue: { save: jest.fn() }
+        },
+        {
+          provide: PipelineStageExecutionService,
+          useValue: { enqueueStageJob: jest.fn() }
+        },
+        {
+          provide: EventEmitter2,
+          useValue: { emit: jest.fn() }
+        },
+        {
+          provide: ScoringService,
+          useValue: { calculateScoreFromMetrics: jest.fn() }
+        },
+        {
+          provide: MarketRegimeService,
+          useValue: { getCurrentRegime: jest.fn() }
+        }
+      ]
+    }).compile();
+
+    service = module.get(PipelineProgressionService);
+    pipelineRepository = module.get(getRepositoryToken(Pipeline));
+    stageExecutionService = module.get(PipelineStageExecutionService);
+    eventEmitter = module.get(EventEmitter2);
+    scoringService = module.get(ScoringService);
+    marketRegimeService = module.get(MarketRegimeService);
+  });
+
+  describe('evaluateOptimizationProgression', () => {
+    it('passes when improvement meets threshold', () => {
+      const { passed, failures } = service.evaluateOptimizationProgression(
+        makePipeline(),
+        DEFAULT_PROGRESSION_RULES.optimization.minImprovement
+      );
+      expect(passed).toBe(true);
+      expect(failures).toHaveLength(0);
+    });
+
+    it('fails when improvement is below threshold', () => {
+      const { passed, failures } = service.evaluateOptimizationProgression(makePipeline(), 0);
+      expect(passed).toBe(false);
+      expect(failures).toHaveLength(1);
+    });
+  });
+
+  describe('evaluateStageProgression', () => {
+    const goodMetrics = {
+      sharpeRatio: 1.5,
+      totalReturn: 0.2,
+      maxDrawdown: 0.1,
+      winRate: 0.6,
+      totalTrades: 50
+    };
+
+    it('passes when all metrics meet thresholds', () => {
+      const { passed } = service.evaluateStageProgression(goodMetrics, DEFAULT_PROGRESSION_RULES.paperTrading);
+      expect(passed).toBe(true);
+    });
+
+    it('fails when sharpe ratio is below minimum', () => {
+      const { passed, failures } = service.evaluateStageProgression(
+        { ...goodMetrics, sharpeRatio: -1 },
+        DEFAULT_PROGRESSION_RULES.paperTrading
+      );
+      expect(passed).toBe(false);
+      expect(failures.some((f) => f.includes('Sharpe'))).toBe(true);
+    });
+
+    it('fails when drawdown exceeds maximum', () => {
+      const { passed, failures } = service.evaluateStageProgression(
+        { ...goodMetrics, maxDrawdown: 0.99 },
+        DEFAULT_PROGRESSION_RULES.paperTrading
+      );
+      expect(passed).toBe(false);
+      expect(failures.some((f) => f.includes('drawdown'))).toBe(true);
+    });
+
+    it('fails when total return is below minimum', () => {
+      const { passed, failures } = service.evaluateStageProgression(
+        { ...goodMetrics, totalReturn: -0.5 },
+        DEFAULT_PROGRESSION_RULES.paperTrading
+      );
+      expect(passed).toBe(false);
+      expect(failures.some((f) => f.includes('return'))).toBe(true);
+    });
+
+    it('fails when win rate is below minimum', () => {
+      const { passed, failures } = service.evaluateStageProgression(
+        { ...goodMetrics, winRate: 0.01 },
+        { ...DEFAULT_PROGRESSION_RULES.paperTrading, minWinRate: 0.5 }
+      );
+      expect(passed).toBe(false);
+      expect(failures.some((f) => f.includes('Win rate'))).toBe(true);
+    });
+
+    it('fails when total trades is below minimum', () => {
+      const { passed, failures } = service.evaluateStageProgression(
+        { ...goodMetrics, totalTrades: 1 },
+        { ...DEFAULT_PROGRESSION_RULES.paperTrading, minTotalTrades: 30 }
+      );
+      expect(passed).toBe(false);
+      expect(failures.some((f) => f.includes('Total trades'))).toBe(true);
+    });
+
+    it('passes when all thresholds are undefined', () => {
+      const { passed } = service.evaluateStageProgression(goodMetrics, {});
+      expect(passed).toBe(true);
+    });
+  });
+
+  describe('calculatePipelineScore', () => {
+    const metrics = {
+      sharpeRatio: 1.2,
+      totalReturn: 0.15,
+      maxDrawdown: 0.1,
+      winRate: 0.55,
+      totalTrades: 40,
+      profitFactor: 1.8,
+      volatility: 0.2
+    };
+
+    beforeEach(() => {
+      scoringService.calculateScoreFromMetrics.mockReturnValue({
+        overallScore: 75,
+        grade: 'B',
+        componentScores: {},
+        warnings: [],
+        regimeModifier: 0
+      } as never);
+    });
+
+    it('computes degradation from historical return and passes to scoring service', async () => {
+      marketRegimeService.getCurrentRegime.mockResolvedValue({ regime: 'BULL' } as never);
+      const pipeline = makePipeline({ stageResults: { historical: { totalReturn: 0.3 } } as never });
+
+      const result = await service.calculatePipelineScore(pipeline, metrics);
+
+      // degradation = (0.3 - 0.15) / 0.3 * 100 = 50
+      expect(result.degradation).toBeCloseTo(50);
+      expect(result.regime).toBe('BULL');
+      expect(result.overallScore).toBe(75);
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(
+        expect.objectContaining({ calmarRatio: expect.closeTo(1.5) }),
+        50,
+        { marketRegime: 'BULL' }
+      );
+    });
+
+    it('falls back to unknown regime when market regime lookup fails', async () => {
+      marketRegimeService.getCurrentRegime.mockRejectedValue(new Error('boom'));
+      const pipeline = makePipeline({ stageResults: {} });
+
+      const result = await service.calculatePipelineScore(pipeline, metrics);
+
+      expect(result.regime).toBe('unknown');
+      expect(result.degradation).toBe(0);
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 0, {
+        marketRegime: undefined
+      });
+    });
+
+    it('passes degradation clamped at 0 when return improved over historical', async () => {
+      marketRegimeService.getCurrentRegime.mockResolvedValue(null as never);
+      const pipeline = makePipeline({ stageResults: { historical: { totalReturn: 0.05 } } as never });
+
+      await service.calculatePipelineScore(pipeline, metrics);
+
+      // raw degradation negative; clamped to 0 for scoring
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 0, expect.any(Object));
+    });
+
+    it('uses calmarRatio of 0 when drawdown is 0', async () => {
+      marketRegimeService.getCurrentRegime.mockResolvedValue({ regime: 'NEUTRAL' } as never);
+      const pipeline = makePipeline({ stageResults: {} });
+
+      await service.calculatePipelineScore(pipeline, { ...metrics, maxDrawdown: 0 });
+
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(
+        expect.objectContaining({ calmarRatio: 0 }),
+        expect.any(Number),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('generateRecommendation', () => {
+    it('returns DO_NOT_DEPLOY when stageResults is undefined', () => {
+      expect(service.generateRecommendation(undefined)).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+    });
+
+    it('returns DEPLOY when pipeline score >= 70', () => {
+      const result = service.generateRecommendation({ scoring: { overallScore: 85 } } as never);
+      expect(result).toBe(DeploymentRecommendation.DEPLOY);
+    });
+
+    it('returns NEEDS_REVIEW when pipeline score between 30 and 70', () => {
+      const result = service.generateRecommendation({ scoring: { overallScore: 50 } } as never);
+      expect(result).toBe(DeploymentRecommendation.NEEDS_REVIEW);
+    });
+
+    it('returns DO_NOT_DEPLOY when pipeline score < 30', () => {
+      const result = service.generateRecommendation({ scoring: { overallScore: 10 } } as never);
+      expect(result).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+    });
+
+    it('returns DO_NOT_DEPLOY when not all stages passed', () => {
+      const result = service.generateRecommendation({
+        historical: { status: 'COMPLETED' },
+        liveReplay: { status: 'FAILED' },
+        paperTrading: { status: 'COMPLETED' }
+      } as never);
+      expect(result).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+    });
+
+    it('returns DEPLOY for strong metrics with low degradation', () => {
+      const result = service.generateRecommendation({
+        historical: { status: 'COMPLETED', totalReturn: 0.2 },
+        liveReplay: { status: 'COMPLETED' },
+        paperTrading: {
+          status: 'COMPLETED',
+          totalReturn: 0.18,
+          sharpeRatio: 1.2,
+          maxDrawdown: 0.15,
+          winRate: 0.6
+        }
+      } as never);
+      expect(result).toBe(DeploymentRecommendation.DEPLOY);
+    });
+
+    it('returns NEEDS_REVIEW for moderate metrics', () => {
+      const result = service.generateRecommendation({
+        historical: { status: 'COMPLETED', totalReturn: 0.15 },
+        liveReplay: { status: 'COMPLETED' },
+        paperTrading: {
+          status: 'COMPLETED',
+          totalReturn: 0.12,
+          sharpeRatio: 0.6,
+          maxDrawdown: 0.3,
+          winRate: 0.45
+        }
+      } as never);
+      expect(result).toBe(DeploymentRecommendation.NEEDS_REVIEW);
+    });
+
+    it('returns DO_NOT_DEPLOY for weak metrics', () => {
+      const result = service.generateRecommendation({
+        historical: { status: 'COMPLETED', totalReturn: 0.2 },
+        liveReplay: { status: 'COMPLETED' },
+        paperTrading: {
+          status: 'COMPLETED',
+          totalReturn: 0.01,
+          sharpeRatio: 0.2,
+          maxDrawdown: 0.5,
+          winRate: 0.3
+        }
+      } as never);
+      expect(result).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+    });
+
+    it('accepts STOPPED as a valid paper trading terminal state', () => {
+      const result = service.generateRecommendation({
+        historical: { status: 'COMPLETED', totalReturn: 0.2 },
+        liveReplay: { status: 'COMPLETED' },
+        paperTrading: {
+          status: 'STOPPED',
+          totalReturn: 0.18,
+          sharpeRatio: 1.2,
+          maxDrawdown: 0.15,
+          winRate: 0.6
+        }
+      } as never);
+      expect(result).toBe(DeploymentRecommendation.DEPLOY);
+    });
+  });
+
+  describe('advanceToNextStage', () => {
+    it('advances from OPTIMIZE to HISTORICAL and enqueues job', async () => {
+      const pipeline = makePipeline({ currentStage: PipelineStage.OPTIMIZE });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.advanceToNextStage(pipeline);
+
+      expect(pipeline.currentStage).toBe(PipelineStage.HISTORICAL);
+      expect(pipelineRepository.save).toHaveBeenCalled();
+      expect(stageExecutionService.enqueueStageJob).toHaveBeenCalledWith(
+        pipeline,
+        PipelineStage.HISTORICAL,
+        mockUser.id
+      );
+    });
+
+    it('calls completePipeline when advancing past PAPER_TRADE', async () => {
+      const pipeline = makePipeline({ currentStage: PipelineStage.PAPER_TRADE });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+      jest.spyOn(service, 'completePipeline').mockResolvedValue();
+
+      await service.advanceToNextStage(pipeline);
+
+      expect(service.completePipeline).toHaveBeenCalledWith(pipeline);
+    });
+
+    it('emits PIPELINE_STAGE_TRANSITION event', async () => {
+      const pipeline = makePipeline({ currentStage: PipelineStage.OPTIMIZE });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.advanceToNextStage(pipeline);
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        PIPELINE_EVENTS.PIPELINE_STAGE_TRANSITION,
+        expect.objectContaining({
+          pipelineId: pipeline.id,
+          previousStage: PipelineStage.OPTIMIZE,
+          newStage: PipelineStage.HISTORICAL
+        })
+      );
+    });
+
+    it('throws when stage is unknown', async () => {
+      const pipeline = makePipeline({ currentStage: 'INVALID_STAGE' as PipelineStage });
+
+      await expect(service.advanceToNextStage(pipeline)).rejects.toThrow(/unknown stage/);
+    });
+
+    it('throws when already at COMPLETED stage', async () => {
+      const pipeline = makePipeline({ currentStage: PipelineStage.COMPLETED });
+
+      await expect(service.advanceToNextStage(pipeline)).rejects.toThrow(/already at final stage/);
+    });
+
+    it('throws when advancing to a non-terminal stage without a user relation', async () => {
+      const pipeline = makePipeline({ currentStage: PipelineStage.OPTIMIZE, user: undefined as never });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await expect(service.advanceToNextStage(pipeline)).rejects.toThrow(/missing user relation/);
+      expect(stageExecutionService.enqueueStageJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('failPipeline', () => {
+    it('marks pipeline as FAILED and emits event', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.failPipeline(pipeline, 'test failure');
+
+      expect(pipeline.status).toBe(PipelineStatus.FAILED);
+      expect(pipeline.failureReason).toBe('test failure');
+      expect(pipeline.recommendation).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+      expect(eventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_FAILED, expect.any(Object));
+    });
+  });
+
+  describe('completePipeline', () => {
+    it('marks pipeline as COMPLETED and emits event', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.completePipeline(pipeline);
+
+      expect(pipeline.status).toBe(PipelineStatus.COMPLETED);
+      expect(pipeline.currentStage).toBe(PipelineStage.COMPLETED);
+      expect(eventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_COMPLETED, expect.any(Object));
+    });
+  });
+});

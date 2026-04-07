@@ -7,8 +7,8 @@ import { Repository } from 'typeorm';
 
 import { toErrorInfo } from '../../shared/error.util';
 import { Pipeline } from '../entities/pipeline.entity';
-import { PipelineStatus } from '../interfaces';
-import { PipelineJobData, PipelineOrchestratorService } from '../services/pipeline-orchestrator.service';
+import { PipelineJobData, PipelineStatus } from '../interfaces';
+import { PipelineOrchestratorService } from '../services/pipeline-orchestrator.service';
 
 @Injectable()
 @Processor('pipeline')
