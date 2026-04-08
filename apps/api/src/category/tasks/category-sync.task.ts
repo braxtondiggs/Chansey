@@ -6,11 +6,16 @@ import type { CategoryGetListResponse } from '@coingecko/coingecko-typescript/re
 import { Job, Queue } from 'bullmq';
 
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
+import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRateLimitRetryThrow } from '../../shared/retry.util';
 import { CategoryService } from '../category.service';
 
-@Processor('category-queue')
+// BullMQ auto-renews its internal worker lock every `lockDuration / 2` ms, so
+// a short value here gives fast stall detection. Exclusivity is enforced by
+// the distributed lock, not by this setting.
+@Processor('category-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
 export class CategorySyncTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CategorySyncTask.name);
@@ -19,7 +24,8 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('category-queue') private readonly categoryQueue: Queue,
     private readonly category: CategoryService,
-    private readonly gecko: CoinGeckoClientService
+    private readonly gecko: CoinGeckoClientService,
+    private readonly lockService: DistributedLockService
   ) {
     super();
   }
@@ -68,6 +74,16 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
 
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
+
+    const lock = await this.lockService.acquire({
+      key: LOCK_KEYS.CATEGORY_SYNC,
+      ttlMs: LOCK_DEFAULTS.CATEGORY_SYNC_TTL_MS
+    });
+    if (!lock.acquired) {
+      this.logger.warn(`Could not acquire lock for ${job.name}, skipping`);
+      return { skipped: true, reason: 'lock_not_acquired' };
+    }
+
     try {
       if (job.name === 'category-sync') {
         const result = await this.handleSyncCategories(job);
@@ -78,6 +94,8 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    } finally {
+      await this.lockService.release(LOCK_KEYS.CATEGORY_SYNC, lock.token);
     }
   }
 

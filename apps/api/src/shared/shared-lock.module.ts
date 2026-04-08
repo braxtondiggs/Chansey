@@ -5,11 +5,12 @@ import Redis from 'ioredis';
 import { DistributedLockService } from './distributed-lock.service';
 import { toErrorInfo } from './error.util';
 import { LOCK_REDIS, lockRedisProvider } from './lock-redis.provider';
+import { StaleLockSweepService } from './stale-lock-sweep.service';
 import { TradeCooldownService } from './trade-cooldown.service';
 
 @Global()
 @Module({
-  providers: [lockRedisProvider, DistributedLockService, TradeCooldownService],
+  providers: [lockRedisProvider, DistributedLockService, TradeCooldownService, StaleLockSweepService],
   exports: [LOCK_REDIS, DistributedLockService, TradeCooldownService]
 })
 export class SharedLockModule implements OnModuleDestroy {

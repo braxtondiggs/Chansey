@@ -124,7 +124,7 @@ describe('DistributedLockService', () => {
 
       expect(result).toBe(false);
       expect(redisMock.eval).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no lockId provided'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no token provided'));
     });
 
     it('handles Redis errors during release', async () => {

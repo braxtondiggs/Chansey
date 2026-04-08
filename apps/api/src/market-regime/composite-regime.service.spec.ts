@@ -7,22 +7,30 @@ import { CompositeRegimeService } from './composite-regime.service';
 import { MarketRegimeService } from './market-regime.service';
 
 import { AuditService } from '../audit/audit.service';
-import { CoinMarketDataService } from '../coin/coin-market-data.service';
+import { CoinService } from '../coin/coin.service';
+import { OHLCService } from '../ohlc/ohlc.service';
 
 describe('CompositeRegimeService', () => {
   let service: CompositeRegimeService;
   let mockMarketRegimeService: jest.Mocked<Pick<MarketRegimeService, 'getCurrentRegime'>>;
-  let mockCoinMarketDataService: jest.Mocked<Pick<CoinMarketDataService, 'getMarketChart'>>;
+  let mockOhlcService: jest.Mocked<Pick<OHLCService, 'findAllByDay'>>;
+  let mockCoinService: jest.Mocked<Pick<CoinService, 'getCoinBySlug'>>;
   let mockAuditService: jest.Mocked<Pick<AuditService, 'createAuditLog'>>;
   let mockCacheManager: { get: jest.Mock; set: jest.Mock; del: jest.Mock };
+
+  const BTC_COIN_ID = 'btc-uuid';
 
   beforeEach(async () => {
     mockMarketRegimeService = {
       getCurrentRegime: jest.fn()
     };
 
-    mockCoinMarketDataService = {
-      getMarketChart: jest.fn()
+    mockOhlcService = {
+      findAllByDay: jest.fn()
+    };
+
+    mockCoinService = {
+      getCoinBySlug: jest.fn().mockResolvedValue({ id: BTC_COIN_ID, slug: 'bitcoin' })
     };
 
     mockAuditService = {
@@ -39,7 +47,8 @@ describe('CompositeRegimeService', () => {
       providers: [
         CompositeRegimeService,
         { provide: MarketRegimeService, useValue: mockMarketRegimeService },
-        { provide: CoinMarketDataService, useValue: mockCoinMarketDataService },
+        { provide: OHLCService, useValue: mockOhlcService },
+        { provide: CoinService, useValue: mockCoinService },
         { provide: AuditService, useValue: mockAuditService },
         { provide: CACHE_MANAGER, useValue: mockCacheManager }
       ]
@@ -75,7 +84,8 @@ describe('CompositeRegimeService', () => {
     it('should return fallback defaults before any refresh', () => {
       const freshService = new CompositeRegimeService(
         mockMarketRegimeService as any,
-        mockCoinMarketDataService as any,
+        mockOhlcService as any,
+        mockCoinService as any,
         mockAuditService as any,
         mockCacheManager as any
       );
@@ -85,10 +95,11 @@ describe('CompositeRegimeService', () => {
     });
 
     it('should return cached values after a successful refresh', async () => {
-      const prices = generatePriceData(250, 50000, 0.001);
-      prices[prices.length - 1].price = 70000;
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      // Set the first element (newest in descending order) to a high price
+      summaries[0].close = 70000;
 
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
       mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
         regime: MarketRegimeType.LOW_VOLATILITY
       } as any);
@@ -106,8 +117,8 @@ describe('CompositeRegimeService', () => {
   // ---------------------------------------------------------------------------
   describe('refresh', () => {
     it('should keep previous regime when fewer than 200 data points', async () => {
-      const prices = generatePriceData(100, 50000, 0.001);
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      const summaries = generatePriceSummaries(100, 50000, 0.001);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
 
       const result = await service.refresh();
 
@@ -116,10 +127,11 @@ describe('CompositeRegimeService', () => {
     });
 
     it('should default to NORMAL volatility when getCurrentRegime returns null', async () => {
-      const prices = generatePriceData(250, 40000, 0.0005);
-      prices[prices.length - 1].price = 60000;
+      const summaries = generatePriceSummaries(250, 40000, 0.0005);
+      // Set the first element (newest in descending order) to a high price
+      summaries[0].close = 60000;
 
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
       mockMarketRegimeService.getCurrentRegime.mockResolvedValue(null);
 
       const result = await service.refresh();
@@ -129,27 +141,28 @@ describe('CompositeRegimeService', () => {
     });
 
     it('should keep previous regime when SMA or price is non-finite', async () => {
-      const prices = generatePriceData(250, 50000, 0.001);
-      // Inject NaN values at the end to produce a non-finite SMA
-      for (let i = prices.length - 10; i < prices.length; i++) {
-        prices[i].price = NaN;
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      // Inject NaN values at the beginning (newest in descending order)
+      for (let i = 0; i < 10; i++) {
+        summaries[i].close = NaN;
       }
 
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
 
       const result = await service.refresh();
 
-      // NaN prices are filtered out by the .filter(Number.isFinite) in source,
+      // NaN closes are filtered out by the .filter(Number.isFinite) in source,
       // so this should still compute if enough valid points remain.
       // With 240 valid points (250 - 10 NaN), it proceeds normally.
       expect(result).toBeDefined();
     });
 
     it('should detect BEAR regime when high volatility + below SMA', async () => {
-      const prices = generatePriceData(250, 50000, 0.001);
-      prices[prices.length - 1].price = 10000;
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      // Set the first element (newest in descending order) to a low price
+      summaries[0].close = 10000;
 
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
       mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
         regime: MarketRegimeType.HIGH_VOLATILITY
       } as any);
@@ -159,10 +172,18 @@ describe('CompositeRegimeService', () => {
       expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
     });
 
-    it('should propagate errors from dependencies', async () => {
-      mockCoinMarketDataService.getMarketChart.mockRejectedValue(new Error('CoinGecko API down'));
+    it('should keep previous regime when BTC coin not found', async () => {
+      mockCoinService.getCoinBySlug.mockResolvedValue(null);
 
-      await expect(service.refresh()).rejects.toThrow('CoinGecko API down');
+      const result = await service.refresh();
+
+      expect(result).toBe(CompositeRegimeType.NEUTRAL);
+    });
+
+    it('should propagate errors from dependencies', async () => {
+      mockOhlcService.findAllByDay.mockRejectedValue(new Error('Database unavailable'));
+
+      await expect(service.refresh()).rejects.toThrow('Database unavailable');
     });
   });
 
@@ -173,12 +194,13 @@ describe('CompositeRegimeService', () => {
     it('should not throw when refresh fails during init', async () => {
       const freshService = new CompositeRegimeService(
         mockMarketRegimeService as any,
-        mockCoinMarketDataService as any,
+        mockOhlcService as any,
+        mockCoinService as any,
         mockAuditService as any,
         mockCacheManager as any
       );
 
-      mockCoinMarketDataService.getMarketChart.mockRejectedValue(new Error('Startup failure'));
+      mockOhlcService.findAllByDay.mockRejectedValue(new Error('Startup failure'));
 
       await expect(freshService.onModuleInit()).resolves.toBeUndefined();
     });
@@ -186,13 +208,14 @@ describe('CompositeRegimeService', () => {
     it('should not throw when Redis override restore fails', async () => {
       const freshService = new CompositeRegimeService(
         mockMarketRegimeService as any,
-        mockCoinMarketDataService as any,
+        mockOhlcService as any,
+        mockCoinService as any,
         mockAuditService as any,
         mockCacheManager as any
       );
 
       mockCacheManager.get.mockRejectedValue(new Error('Redis unavailable'));
-      mockCoinMarketDataService.getMarketChart.mockRejectedValue(new Error('Also fails'));
+      mockOhlcService.findAllByDay.mockRejectedValue(new Error('Also fails'));
 
       await expect(freshService.onModuleInit()).resolves.toBeUndefined();
     });
@@ -288,13 +311,14 @@ describe('CompositeRegimeService', () => {
       };
       mockCacheManager.get.mockResolvedValue(saved);
 
-      const prices = generatePriceData(250, 50000, 0.001);
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
       mockMarketRegimeService.getCurrentRegime.mockResolvedValue({ regime: MarketRegimeType.NORMAL } as any);
 
       const freshService = new CompositeRegimeService(
         mockMarketRegimeService as any,
-        mockCoinMarketDataService as any,
+        mockOhlcService as any,
+        mockCoinService as any,
         mockAuditService as any,
         mockCacheManager as any
       );
@@ -312,7 +336,8 @@ describe('CompositeRegimeService', () => {
     it('should return correct shape when no cache and no override', () => {
       const freshService = new CompositeRegimeService(
         mockMarketRegimeService as any,
-        mockCoinMarketDataService as any,
+        mockOhlcService as any,
+        mockCoinService as any,
         mockAuditService as any,
         mockCacheManager as any
       );
@@ -331,10 +356,11 @@ describe('CompositeRegimeService', () => {
     });
 
     it('should include cached data after refresh', async () => {
-      const prices = generatePriceData(250, 50000, 0.001);
-      prices[prices.length - 1].price = 70000;
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      // Set the first element (newest in descending order) to a high price
+      summaries[0].close = 70000;
 
-      mockCoinMarketDataService.getMarketChart.mockResolvedValue({ prices } as any);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
       mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
         regime: MarketRegimeType.LOW_VOLATILITY
       } as any);
@@ -370,24 +396,41 @@ describe('CompositeRegimeService', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Generate deterministic price data for testing.
- * Creates a stable, slightly upward-trending price series.
+ * Generate deterministic PriceSummary data for testing.
+ * Returns data in descending order (newest first) to match findAllByDay() behavior.
  */
-function generatePriceData(count: number, basePrice: number, drift: number): { timestamp: number; price: number }[] {
-  const data: { timestamp: number; price: number }[] = [];
-  let price = basePrice;
+function generatePriceSummaries(
+  count: number,
+  basePrice: number,
+  drift: number
+): { coin: string; date: Date; avg: number; high: number; low: number; close: number; open: number; volume: number }[] {
+  const data: {
+    coin: string;
+    date: Date;
+    avg: number;
+    high: number;
+    low: number;
+    close: number;
+    open: number;
+    volume: number;
+  }[] = [];
   const startTime = Date.now() - count * 86400000;
 
   for (let i = 0; i < count; i++) {
-    // Small deterministic drift to keep prices near basePrice
-    // Using a simple sine wave to avoid random number generation
     const oscillation = Math.sin(i * 0.1) * basePrice * 0.01;
-    price = basePrice + oscillation + i * drift * basePrice;
+    const price = basePrice + oscillation + i * drift * basePrice;
     data.push({
-      timestamp: startTime + i * 86400000,
-      price
+      coin: 'btc-uuid',
+      date: new Date(startTime + i * 86400000),
+      avg: price,
+      high: price * 1.01,
+      low: price * 0.99,
+      close: price,
+      open: price,
+      volume: 1000
     });
   }
 
-  return data;
+  // Return descending (newest first) to match findAllByDay() behavior
+  return data.reverse();
 }

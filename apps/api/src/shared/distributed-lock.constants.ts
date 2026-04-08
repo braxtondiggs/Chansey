@@ -1,12 +1,29 @@
 export const LOCK_KEYS = {
   LIVE_TRADING: 'live-trading:execution-lock',
   OHLC_SYNC_SCHEDULE: 'ohlc-sync:schedule-lock',
-  SYMBOL_MAP_REFRESH: 'ohlc-sync:symbol-map-refresh-lock'
+  SYMBOL_MAP_REFRESH: 'ohlc-sync:symbol-map-refresh-lock',
+  COIN_SYNC: 'coin-sync:lock',
+  COIN_DETAIL: 'coin-detail:lock',
+  TICKER_PAIRS_SYNC: 'ticker-pairs-sync:lock',
+  CATEGORY_SYNC: 'category-sync:lock',
+  EXCHANGE_SYNC: 'exchange-sync:lock'
 } as const;
 
+// INVARIANT: Distributed-lock TTLs here are INDEPENDENT of BullMQ `lockDuration`.
+// BullMQ auto-renews its internal worker lock every `lockDuration / 2` ms for as
+// long as the worker process is alive — so `lockDuration` only needs to survive
+// a single renewal cycle, NOT the total job runtime. Prefer short `lockDuration`
+// values (e.g. 60s) so stall detection stays fast for all jobs on the queue.
+// The distributed lock (SET NX PX) below is the true barrier against concurrent
+// execution, and its TTL should bound the expected job runtime with buffer.
 export const LOCK_DEFAULTS = {
   LIVE_TRADING_TTL_MS: 5 * 60 * 1000, // 5 minutes
   SCHEDULE_LOCK_TTL_MS: 30 * 1000, // 30 seconds for scheduling operations
+  COIN_SYNC_TTL_MS: 45 * 60 * 1000, // 45 minutes — observed ~34.8 min, ~30% buffer
+  COIN_DETAIL_TTL_MS: 5 * 60 * 60 * 1000, // 5 hours — observed runtime ~3h 46m (1500 coins × 2.5s/batch + 429 retries); ~33% buffer
+  TICKER_PAIRS_SYNC_TTL_MS: 30 * 60 * 1000, // 30 minutes — paginated ticker fetching, 1s between pages
+  CATEGORY_SYNC_TTL_MS: 2 * 60 * 1000, // 2 minutes — single API call with retry
+  EXCHANGE_SYNC_TTL_MS: 10 * 60 * 1000, // 10 minutes — observed ~5.3 min, ~90% buffer
   DEFAULT_RETRY_DELAY_MS: 100,
   DEFAULT_MAX_RETRIES: 0
 } as const;

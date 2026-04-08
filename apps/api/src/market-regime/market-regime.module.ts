@@ -11,6 +11,7 @@ import { VolatilityCalculator } from './volatility.calculator';
 
 import { AuditModule } from '../audit/audit.module';
 import { CoinModule } from '../coin/coin.module';
+import { OHLCModule } from '../ohlc/ohlc.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { Deployment } from '../strategy/entities/deployment.entity';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
@@ -19,6 +20,7 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
   imports: [
     TypeOrmModule.forFeature([MarketRegime, StrategyConfig, Deployment]),
     forwardRef(() => CoinModule),
+    forwardRef(() => OHLCModule),
     AuditModule,
     SharedCacheModule
   ],

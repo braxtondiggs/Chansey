@@ -4,8 +4,10 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
-import { CoinMarketDataService } from '../coin/coin-market-data.service';
+import { CoinService } from '../coin/coin.service';
+import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
+import { OHLCService } from '../ohlc/ohlc.service';
 import { toErrorInfo } from '../shared/error.util';
 
 /**
@@ -23,7 +25,9 @@ export class MarketRegimeTask {
   constructor(
     @InjectQueue('regime-check-queue') private regimeQueue: Queue,
     private readonly marketRegimeService: MarketRegimeService,
-    private readonly coinMarketDataService: CoinMarketDataService
+    private readonly compositeRegimeService: CompositeRegimeService,
+    private readonly ohlcService: OHLCService,
+    private readonly coinService: CoinService
   ) {}
 
   /**
@@ -36,6 +40,14 @@ export class MarketRegimeTask {
 
     for (const asset of this.monitoredAssets) {
       await this.queueRegimeCheck(asset);
+    }
+
+    try {
+      await this.compositeRegimeService.refresh();
+      this.logger.log('Composite regime refreshed');
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to refresh composite regime: ${err.message}`);
     }
   }
 
@@ -92,14 +104,13 @@ export class MarketRegimeTask {
   }
 
   /**
-   * Fetch historical price data for asset using CoinMarketDataService
+   * Fetch historical price data for asset from local OHLC candles.
    * @param asset Asset symbol (e.g., 'BTC', 'ETH')
    * @param days Number of days of historical data
-   * @returns Array of historical prices
+   * @returns Array of daily closing prices in chronological order
    */
   private async fetchPriceData(asset: string, days: number): Promise<number[]> {
     try {
-      // Map asset symbol to coin slug (CoinGecko format)
       const assetSlugMap: Record<string, string> = {
         BTC: 'bitcoin',
         ETH: 'ethereum',
@@ -113,28 +124,32 @@ export class MarketRegimeTask {
         return this.generateFallbackPriceData(days);
       }
 
-      // Map days to appropriate period
-      let period: '24h' | '7d' | '30d' | '1y' = '1y';
-      if (days <= 1) period = '24h';
-      else if (days <= 7) period = '7d';
-      else if (days <= 30) period = '30d';
-
-      const chartData = await this.coinMarketDataService.getMarketChart(slug, period);
-
-      if (!chartData.prices || chartData.prices.length === 0) {
-        this.logger.warn(`No price data returned for ${asset}, using fallback`);
+      const coin = await this.coinService.getCoinBySlug(slug);
+      if (!coin) {
+        this.logger.warn(`Coin not found for slug ${slug}, using fallback price data`);
         return this.generateFallbackPriceData(days);
       }
 
-      // Extract prices from chart data and limit to requested days
-      const prices = chartData.prices.map((p) => p.price);
+      const summaries = await this.ohlcService.findAllByDay(coin.id, '1y');
+      const coinSummaries = summaries[coin.id];
 
-      // If we have more data than requested, take the last N days
-      if (prices.length > days) {
-        return prices.slice(-days);
+      if (!coinSummaries || coinSummaries.length === 0) {
+        this.logger.warn(`No OHLC data for ${asset}, using fallback`);
+        return this.generateFallbackPriceData(days);
       }
 
-      return prices;
+      // findAllByDay returns descending order — reverse to chronological
+      const closes = coinSummaries
+        .map((s) => s.close)
+        .filter((v): v is number => Number.isFinite(v))
+        .reverse();
+
+      // Trim to requested days
+      if (closes.length > days) {
+        return closes.slice(-days);
+      }
+
+      return closes;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch price data for ${asset}: ${err.message}`);

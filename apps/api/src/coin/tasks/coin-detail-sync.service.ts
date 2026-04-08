@@ -40,6 +40,8 @@ export class CoinDetailSyncService {
     let updatedCount = 0;
     let errorCount = 0;
     const batchSize = 3;
+    const startedAt = Date.now();
+    let batchIndex = 0;
 
     for (let i = 0; i < allCoins.length; i += batchSize) {
       const batch = allCoins.slice(i, i + batchSize);
@@ -47,6 +49,16 @@ export class CoinDetailSyncService {
 
       updatedCount += results.filter((r) => r.success).length;
       errorCount += results.filter((r) => !r.success).length;
+
+      // Heartbeat every 30 batches (~75s). Gives Loki enough datapoints to
+      // alert via `absent_over_time` with a tight window, without spamming.
+      batchIndex++;
+      if (batchIndex % 30 === 0) {
+        const elapsedMinutes = ((Date.now() - startedAt) / 60_000).toFixed(1);
+        this.logger.log(
+          `coin-detail progress: ${Math.min(i + batchSize, allCoins.length)}/${allCoins.length} (${elapsedMinutes}m elapsed)`
+        );
+      }
 
       const progressPercent = Math.min(35 + Math.floor(((i + batchSize) / allCoins.length) * 60), 95);
       await onProgress?.(progressPercent);

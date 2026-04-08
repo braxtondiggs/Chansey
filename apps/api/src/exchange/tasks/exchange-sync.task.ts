@@ -5,8 +5,11 @@ import { CronExpression } from '@nestjs/schedule';
 import { Job, Queue } from 'bullmq';
 
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
+import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { withRateLimitRetryThrow } from '../../shared/retry.util';
+import { withTimeout } from '../../shared/with-timeout.util';
 import { Exchange } from '../exchange.entity';
 import { ExchangeService } from '../exchange.service';
 
@@ -36,7 +39,10 @@ interface CoinGeckoExchangeItem {
   centralized: boolean;
 }
 
-@Processor('exchange-queue')
+// BullMQ auto-renews its internal worker lock every `lockDuration / 2` ms, so
+// a short value here gives fast stall detection. Exclusivity is enforced by
+// the distributed lock, not by this setting.
+@Processor('exchange-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
 export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ExchangeSyncTask.name);
@@ -46,7 +52,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('exchange-queue') private readonly exchangeQueue: Queue,
     private readonly exchange: ExchangeService,
-    private readonly gecko: CoinGeckoClientService
+    private readonly gecko: CoinGeckoClientService,
+    private readonly lockService: DistributedLockService
   ) {
     super();
   }
@@ -92,9 +99,21 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
 
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
+
+    const lock = await this.lockService.acquire({
+      key: LOCK_KEYS.EXCHANGE_SYNC,
+      ttlMs: LOCK_DEFAULTS.EXCHANGE_SYNC_TTL_MS
+    });
+    if (!lock.acquired) {
+      this.logger.warn(`Could not acquire lock for ${job.name}, skipping`);
+      return { skipped: true, reason: 'lock_not_acquired' };
+    }
+
     try {
       if (job.name === 'exchange-sync') {
-        const result = await this.handleSyncExchanges(job);
+        // Timeout must fire before EXCHANGE_SYNC_TTL_MS (10m) expires so the
+        // lock is released by the finally block before another run can claim it.
+        const result = await withTimeout(this.handleSyncExchanges(job), 8 * 60 * 1000, 'exchange-sync');
         this.logger.log(`Job ${job.id} completed with result: ${JSON.stringify(result)}`);
         return result;
       }
@@ -102,6 +121,8 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    } finally {
+      await this.lockService.release(LOCK_KEYS.EXCHANGE_SYNC, lock.token);
     }
   }
 

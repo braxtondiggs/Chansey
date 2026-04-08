@@ -6,6 +6,8 @@ import { Job, Queue } from 'bullmq';
 
 import { ExchangeService } from '../../../exchange/exchange.service';
 import { CoinGeckoClientService } from '../../../shared/coingecko-client.service';
+import { LOCK_DEFAULTS, LOCK_KEYS } from '../../../shared/distributed-lock.constants';
+import { DistributedLockService } from '../../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../../shared/error.util';
 import { CoinService } from '../../coin.service';
 import { TickerPairStatus, TickerPairs } from '../ticker-pairs.entity';
@@ -16,7 +18,10 @@ const DEFAULT_STATUS = TickerPairStatus.TRADING;
 const DEFAULT_SPOT_TRADING_ALLOWED = true;
 const DEFAULT_MARGIN_TRADING_ALLOWED = false;
 
-@Processor('ticker-pairs-queue')
+// BullMQ auto-renews its internal worker lock every `lockDuration / 2` ms, so
+// a short value here gives fast stall detection. Exclusivity is enforced by
+// the distributed lock, not by this setting.
+@Processor('ticker-pairs-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
 export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(TickerPairSyncTask.name);
@@ -27,7 +32,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
     private readonly coin: CoinService,
     private readonly exchange: ExchangeService,
     private readonly tickerPair: TickerPairService,
-    private readonly gecko: CoinGeckoClientService
+    private readonly gecko: CoinGeckoClientService,
+    private readonly lockService: DistributedLockService
   ) {
     super();
   }
@@ -88,6 +94,16 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
    */
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
+
+    const lock = await this.lockService.acquire({
+      key: LOCK_KEYS.TICKER_PAIRS_SYNC,
+      ttlMs: LOCK_DEFAULTS.TICKER_PAIRS_SYNC_TTL_MS
+    });
+    if (!lock.acquired) {
+      this.logger.warn(`Could not acquire lock for ${job.name}, skipping`);
+      return { skipped: true, reason: 'lock_not_acquired' };
+    }
+
     try {
       if (job.name === 'ticker-pair-sync') {
         const result = await this.handleSyncTickerPairs(job);
@@ -98,6 +114,8 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    } finally {
+      await this.lockService.release(LOCK_KEYS.TICKER_PAIRS_SYNC, lock.token);
     }
   }
 
