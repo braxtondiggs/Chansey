@@ -28,6 +28,7 @@ import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 import { toErrorInfo } from '../../shared/error.util';
 import {
+  PAPER_TRADING_DEFAULT_THROTTLE_CONFIG,
   Portfolio,
   SerializableExitTrackerState,
   SignalFilterChainService,
@@ -218,7 +219,7 @@ export class PaperTradingEngineService {
 
   /** Apply throttle + regime filter chain; persist rejected signals. */
   private async filterSignals(session: PaperTradingSession, signals: TradingSignal[]): Promise<FilteredSignals> {
-    const throttleConfig = this.signalThrottle.resolveConfig(session.algorithmConfig);
+    const throttleConfig = this.signalThrottle.resolveConfig(session.algorithmConfig, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
     const { accepted: throttleAccepted, rejected: throttledSignals } = this.throttleService.filter(
       session.id,
       signals,

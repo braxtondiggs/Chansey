@@ -1,4 +1,8 @@
-import { DEFAULT_THROTTLE_CONFIG, SignalThrottleConfig } from './signal-throttle.interface';
+import {
+  DEFAULT_THROTTLE_CONFIG,
+  PAPER_TRADING_DEFAULT_THROTTLE_CONFIG,
+  SignalThrottleConfig
+} from './signal-throttle.interface';
 import { SignalThrottleService } from './signal-throttle.service';
 
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
@@ -169,12 +173,21 @@ describe('SignalThrottleService', () => {
       });
     });
 
-    describe('bypass signals (STOP_LOSS / TAKE_PROFIT)', () => {
+    describe('bypass signals (STOP_LOSS / TAKE_PROFIT / SHORT_EXIT)', () => {
+      const makeShortExit = (coinId = 'btc'): TradingSignal => ({
+        action: 'CLOSE_SHORT',
+        coinId,
+        reason: 'short exit triggered',
+        confidence: 1.0,
+        originalType: AlgoSignalType.SHORT_EXIT
+      });
+
       const strictConfig: SignalThrottleConfig = { cooldownMs: ONE_DAY, maxTradesPerDay: 1, minSellPercent: 0.5 };
 
       it.each([
         ['STOP_LOSS', AlgoSignalType.STOP_LOSS, () => makeStopLoss('btc')],
-        ['TAKE_PROFIT', AlgoSignalType.TAKE_PROFIT, () => makeTakeProfit('btc')]
+        ['TAKE_PROFIT', AlgoSignalType.TAKE_PROFIT, () => makeTakeProfit('btc')],
+        ['SHORT_EXIT', AlgoSignalType.SHORT_EXIT, () => makeShortExit('btc')]
       ] as const)('%s bypasses daily limit', (_label, expectedType, makeSignal) => {
         const state = service.createState();
         // Fill daily cap with a normal trade
@@ -343,6 +356,18 @@ describe('SignalThrottleService', () => {
         minSellPercent: -Infinity
       });
       expect(config).toEqual({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 });
+    });
+
+    it('uses paper trading defaults when passed as second argument', () => {
+      const config = service.resolveConfig(undefined, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
+      expect(config.cooldownMs).toBe(0);
+      expect(config.maxTradesPerDay).toBe(6);
+      expect(config.minSellPercent).toBe(0.5);
+    });
+
+    it('PAPER_TRADING_DEFAULT_THROTTLE_CONFIG: explicit param overrides default cooldownMs=0', () => {
+      const config = service.resolveConfig({ cooldownMs: 3_600_000 }, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
+      expect(config.cooldownMs).toBe(3_600_000);
     });
   });
 

@@ -43,15 +43,18 @@ export class SignalThrottleService {
    * Resolve throttle config from strategy/algorithm parameters, falling back to defaults.
    * Clamps each value to its valid range.
    */
-  resolveConfig(params?: Record<string, unknown>): SignalThrottleConfig {
+  resolveConfig(
+    params?: Record<string, unknown>,
+    defaults: SignalThrottleConfig = DEFAULT_THROTTLE_CONFIG
+  ): SignalThrottleConfig {
     const clamp = (val: unknown, fallback: number, min: number, max: number): number => {
       const n = typeof val === 'number' && isFinite(val) ? val : fallback;
       return Math.max(min, Math.min(max, n));
     };
     return {
-      cooldownMs: clamp(params?.cooldownMs, DEFAULT_THROTTLE_CONFIG.cooldownMs, 0, 604_800_000),
-      maxTradesPerDay: clamp(params?.maxTradesPerDay, DEFAULT_THROTTLE_CONFIG.maxTradesPerDay, 0, 50),
-      minSellPercent: clamp(params?.minSellPercent, DEFAULT_THROTTLE_CONFIG.minSellPercent, 0, 1)
+      cooldownMs: clamp(params?.cooldownMs, defaults.cooldownMs, 0, 604_800_000),
+      maxTradesPerDay: clamp(params?.maxTradesPerDay, defaults.maxTradesPerDay, 0, 50),
+      minSellPercent: clamp(params?.minSellPercent, defaults.minSellPercent, 0, 1)
     };
   }
 

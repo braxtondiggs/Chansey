@@ -3,6 +3,7 @@ import { CompositeRegimeType, MarketRegimeType, SignalReasonCode } from '@chanse
 import { PaperTradingEngineService } from './paper-trading-engine.service';
 
 import { SignalType } from '../../algorithm/interfaces';
+import { PAPER_TRADING_DEFAULT_THROTTLE_CONFIG } from '../backtest/shared';
 
 /**
  * Engine-level orchestration tests only.
@@ -25,6 +26,7 @@ interface Overrides {
   compositeRegime?: CompositeRegimeType;
   signalFilterChainApply?: jest.Mock;
   exitOrdersExecuted?: number;
+  signalThrottle?: Record<string, jest.Mock>;
 }
 
 const createService = (overrides: Overrides = {}) => {
@@ -135,7 +137,7 @@ const createService = (overrides: Overrides = {}) => {
       }))
   };
 
-  const signalThrottle = { resolveConfig: jest.fn().mockReturnValue({}) };
+  const signalThrottle = overrides.signalThrottle ?? { resolveConfig: jest.fn().mockReturnValue({}) };
 
   const service = new PaperTradingEngineService(
     marketDataService as any,
@@ -452,5 +454,63 @@ describe('PaperTradingEngineService', () => {
       expect(orderExecutor.execute).toHaveBeenCalledTimes(1);
       expect(result.ordersExecuted).toBe(1);
     });
+  });
+
+  it('passes PAPER_TRADING_DEFAULT_THROTTLE_CONFIG as defaults to resolveConfig', async () => {
+    const signalThrottle = {
+      createState: jest.fn().mockReturnValue({ lastSignalTime: {}, tradeTimestamps: [] }),
+      filterSignals: jest.fn().mockImplementation((signals: any[]) => ({ accepted: signals, rejected: [] })),
+      resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 0, maxTradesPerDay: 6, minSellPercent: 0.5 }),
+      toThrottleSignal: jest.fn().mockImplementation((s: any) => s)
+    };
+    const { service, marketDataService, algorithmRegistry } = createService({ signalThrottle });
+
+    marketDataService.getPrices.mockResolvedValue(new Map([['BTC/USD', { price: 50000 }]]));
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+    const session = {
+      id: 'session-throttle-check',
+      initialCapital: 10000,
+      tickCount: 1,
+      user: { id: 'user-1' }
+    } as any;
+    await service.processTick(session, { exchange: { slug: 'binance' } } as any);
+
+    expect(signalThrottle.resolveConfig).toHaveBeenCalledWith(
+      session.algorithmConfig,
+      PAPER_TRADING_DEFAULT_THROTTLE_CONFIG
+    );
+  });
+
+  it('does not produce duplicate signals when multiple symbols share a base currency', async () => {
+    const prices = { 'ETH/USDT': 1900, 'ETH/BTC': 0.05 };
+    const accounts = [{ currency: 'USDT', available: 10000, total: 10000 }];
+    const { service, marketDataService, algorithmRegistry } = createService({
+      accounts,
+      prices,
+      quoteCurrency: 'USDT'
+    });
+
+    // Override getPrices to return both ETH symbols
+    marketDataService.getPrices.mockResolvedValue(
+      new Map([
+        ['ETH/USDT', { price: 1900 }],
+        ['ETH/BTC', { price: 0.05 }]
+      ])
+    );
+
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+    const session = { id: 'session-dedup', initialCapital: 10000, tickCount: 5, user: { id: 'user-1' } } as any;
+    const exchangeKey = { exchange: { slug: 'binance' } } as any;
+
+    await service.processTick(session, exchangeKey);
+
+    // Algorithm should receive only one coin entry for ETH, not two
+    const algorithmCall = algorithmRegistry.executeAlgorithm.mock.calls[0];
+    const context = algorithmCall[1]; // second argument is the AlgorithmContext
+    const ethCoins = context.coins.filter((c: any) => c.id === 'ETH');
+
+    expect(ethCoins).toHaveLength(1);
   });
 });

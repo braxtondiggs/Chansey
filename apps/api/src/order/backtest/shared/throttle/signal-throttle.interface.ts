@@ -26,6 +26,11 @@ export const DEFAULT_THROTTLE_CONFIG: Readonly<SignalThrottleConfig> = {
   minSellPercent: 0.5
 };
 
+export const PAPER_TRADING_DEFAULT_THROTTLE_CONFIG: Readonly<SignalThrottleConfig> = {
+  ...DEFAULT_THROTTLE_CONFIG,
+  cooldownMs: 0 // No cooldown — paper trading ticks frequently (default 30s), not daily candles
+};
+
 /** Key for per-coin per-direction cooldown tracking */
 export type CooldownKey = `${string}:${'BUY' | 'SELL'}`;
 
@@ -57,7 +62,8 @@ export interface ThrottleResult {
 /** Algorithm signal types that bypass throttling (risk-control signals). */
 export const THROTTLE_BYPASS_TYPES: ReadonlySet<AlgoSignalType> = new Set([
   AlgoSignalType.STOP_LOSS,
-  AlgoSignalType.TAKE_PROFIT
+  AlgoSignalType.TAKE_PROFIT,
+  AlgoSignalType.SHORT_EXIT
 ]);
 
 /** Maps each algorithm signal type to the backtest TradingSignal action. */
