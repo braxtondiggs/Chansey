@@ -9,8 +9,11 @@ import { PipelineEventListener } from './listeners/pipeline-event.listener';
 import { pipelineConfig } from './pipeline.config';
 import { PipelineController } from './pipeline.controller';
 import { PipelineProcessor } from './processors/pipeline.processor';
+import { PipelineEventHandlerService } from './services/pipeline-event-handler.service';
 import { PipelineOrchestratorService } from './services/pipeline-orchestrator.service';
+import { PipelineProgressionService } from './services/pipeline-progression.service';
 import { PipelineReportService } from './services/pipeline-report.service';
+import { PipelineStageExecutionService } from './services/pipeline-stage-execution.service';
 
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuthenticationModule } from '../authentication/authentication.module';
@@ -42,7 +45,15 @@ const PIPELINE_CONFIG = pipelineConfig();
     ExchangeSelectionModule
   ],
   controllers: [PipelineController],
-  providers: [PipelineOrchestratorService, PipelineProcessor, PipelineEventListener, PipelineReportService],
+  providers: [
+    PipelineOrchestratorService,
+    PipelineStageExecutionService,
+    PipelineProgressionService,
+    PipelineEventHandlerService,
+    PipelineProcessor,
+    PipelineEventListener,
+    PipelineReportService
+  ],
   exports: [PipelineOrchestratorService]
 })
 export class PipelineModule {}

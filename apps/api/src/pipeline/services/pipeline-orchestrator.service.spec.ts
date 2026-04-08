@@ -1,110 +1,50 @@
-import { getQueueToken } from '@nestjs/bullmq';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConfigType } from '@nestjs/config';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 
-import { StrategyGrade } from '@chansey/api-interfaces';
-
+import { PipelineEventHandlerService } from './pipeline-event-handler.service';
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
+import { PipelineProgressionService } from './pipeline-progression.service';
+import { PipelineStageExecutionService } from './pipeline-stage-execution.service';
 
-import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
-import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
-import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
-import { MarketRegimeService } from '../../market-regime/market-regime.service';
-import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
-import { BacktestService } from '../../order/backtest/backtest.service';
-import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
-import { ScoringService } from '../../scoring/scoring.service';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { User } from '../../users/users.entity';
 import { CreatePipelineInput } from '../dto';
 import { Pipeline } from '../entities/pipeline.entity';
-import { DEFAULT_PROGRESSION_RULES, DeploymentRecommendation, PipelineStage, PipelineStatus } from '../interfaces';
-import { pipelineConfig } from '../pipeline.config';
+import { DEFAULT_PROGRESSION_RULES, PipelineStage, PipelineStatus } from '../interfaces';
 
 describe('PipelineOrchestratorService', () => {
   let service: PipelineOrchestratorService;
   let pipelineRepository: jest.Mocked<Repository<Pipeline>>;
   let strategyConfigRepository: jest.Mocked<Repository<StrategyConfig>>;
-  let pipelineQueue: jest.Mocked<Queue>;
-  let eventEmitter: jest.Mocked<EventEmitter2>;
-  let scoringService: jest.Mocked<ScoringService>;
-  let marketRegimeService: jest.Mocked<MarketRegimeService>;
-  let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
+  let stageExecutionService: jest.Mocked<PipelineStageExecutionService>;
+  let progressionService: jest.Mocked<PipelineProgressionService>;
 
-  const mockUser: User = {
-    id: 'user-123',
-    email: 'test@example.com'
-  } as User;
+  const mockUser: User = { id: 'user-123', email: 'test@example.com' } as User;
 
-  const mockStrategyConfig = {
-    id: 'strategy-123',
-    name: 'Test Strategy',
-    algorithmId: 'algo-123',
-    parameters: { param1: 10 }
-  } as unknown as StrategyConfig;
-
-  const mockPipeline: Pipeline = {
+  const basePipeline: Pipeline = {
     id: 'pipeline-123',
     name: 'Test Pipeline',
     status: PipelineStatus.PENDING,
     currentStage: PipelineStage.OPTIMIZE,
     strategyConfigId: 'strategy-123',
     stageConfig: {
-      optimization: {
-        trainDays: 90,
-        testDays: 30,
-        stepDays: 30,
-        objectiveMetric: 'sharpe_ratio'
-      },
-      historical: {
-        startDate: '2023-01-01',
-        endDate: '2024-01-01',
-        initialCapital: 10000
-      },
-      liveReplay: {
-        startDate: '2024-01-01',
-        endDate: '2024-03-01',
-        initialCapital: 10000
-      },
-      paperTrading: {
-        initialCapital: 10000,
-        duration: '7d'
-      }
+      historical: { startDate: '2023-01-01', endDate: '2024-01-01', initialCapital: 10000 },
+      liveReplay: { startDate: '2024-01-01', endDate: '2024-03-01', initialCapital: 10000 },
+      paperTrading: { initialCapital: 10000, duration: '7d' }
     },
     progressionRules: DEFAULT_PROGRESSION_RULES,
-    user: mockUser,
-    strategyConfig: mockStrategyConfig,
-    createdAt: new Date(),
-    updatedAt: new Date()
+    user: mockUser
   } as Pipeline;
+
+  const makePipeline = (overrides: Partial<Pipeline> = {}): Pipeline => ({ ...basePipeline, ...overrides }) as Pipeline;
 
   const mockCreateDto: CreatePipelineInput = {
     name: 'Test Pipeline',
     strategyConfigId: 'strategy-123',
-    stageConfig: mockPipeline.stageConfig
-  };
-
-  /** Default mock score result returned by ScoringService.calculateScoreFromMetrics */
-  const mockScoreResult = {
-    overallScore: 55,
-    grade: StrategyGrade.C,
-    componentScores: {
-      sharpeRatio: { value: 1.0, score: 75, weight: 0.25, percentile: 0 },
-      calmarRatio: { value: 1.0, score: 75, weight: 0.15, percentile: 0 },
-      winRate: { value: 0.5, score: 50, weight: 0.1, percentile: 0 },
-      profitFactor: { value: 1.0, score: 25, weight: 0.1, percentile: 0 },
-      wfaDegradation: { value: 10, score: 100, weight: 0.2, percentile: 0 },
-      stability: { value: 50, score: 75, weight: 0.1, percentile: 0 },
-      correlation: { value: 0, score: 100, weight: 0.1, percentile: 0 }
-    },
-    warnings: [],
-    regimeModifier: 0
+    stageConfig: basePipeline.stageConfig
   };
 
   beforeEach(async () => {
@@ -118,1086 +58,212 @@ describe('PipelineOrchestratorService', () => {
             save: jest.fn(),
             findOne: jest.fn(),
             findAndCount: jest.fn(),
-            update: jest.fn(),
             remove: jest.fn()
           }
         },
         {
           provide: getRepositoryToken(StrategyConfig),
-          useValue: {
-            findOne: jest.fn()
-          }
-        },
-        {
-          provide: getQueueToken('pipeline'),
-          useValue: {
-            add: jest.fn(),
-            remove: jest.fn()
-          }
-        },
-        {
-          provide: pipelineConfig.KEY,
-          useValue: {
-            queue: 'pipeline',
-            telemetryStream: 'pipeline:telemetry',
-            telemetryStreamMaxLen: 50000,
-            concurrency: 2,
-            timeoutMs: 3600000,
-            defaultProgressionRules: DEFAULT_PROGRESSION_RULES
-          } as ConfigType<typeof pipelineConfig>
-        },
-        {
-          provide: OptimizationOrchestratorService,
-          useValue: {
-            startOptimization: jest.fn(),
-            cancelOptimization: jest.fn()
-          }
-        },
-        {
-          provide: BacktestService,
-          useValue: {
-            createBacktest: jest.fn(),
-            pauseBacktest: jest.fn(),
-            resumeBacktest: jest.fn(),
-            cancelBacktest: jest.fn()
-          }
-        },
-        {
-          provide: PaperTradingService,
-          useValue: {
-            startFromPipeline: jest.fn(),
-            pause: jest.fn(),
-            resume: jest.fn(),
-            stop: jest.fn()
-          }
-        },
-        {
-          provide: ScoringService,
-          useValue: {
-            calculateScoreFromMetrics: jest.fn().mockReturnValue(mockScoreResult)
-          }
-        },
-        {
-          provide: MarketRegimeService,
-          useValue: {
-            getCurrentRegime: jest.fn().mockResolvedValue({ regime: 'normal' })
-          }
-        },
-        {
-          provide: AlgorithmRegistry,
-          useValue: {
-            getStrategyForAlgorithm: jest.fn()
-          }
-        },
-        {
-          provide: EventEmitter2,
-          useValue: {
-            emit: jest.fn()
-          }
+          useValue: { findOne: jest.fn() }
         },
         {
           provide: DataSource,
+          useValue: { transaction: jest.fn((cb) => cb({ save: jest.fn() })) }
+        },
+        {
+          provide: PipelineStageExecutionService,
           useValue: {
-            transaction: jest.fn((cb) => cb({ save: jest.fn() }))
+            executeStage: jest.fn(),
+            pauseCurrentStage: jest.fn(),
+            resumeCurrentStage: jest.fn(),
+            cancelCurrentStage: jest.fn(),
+            enqueueStageJob: jest.fn(),
+            removeStageJob: jest.fn()
           }
         },
         {
-          provide: ExchangeSelectionService,
+          provide: PipelineEventHandlerService,
           useValue: {
-            selectForBuy: jest.fn().mockResolvedValue({ id: 'exchange-key-123', exchange: { slug: 'binance_us' } }),
-            selectForSell: jest.fn().mockResolvedValue({ id: 'exchange-key-123', exchange: { slug: 'binance_us' } })
+            handleOptimizationComplete: jest.fn(),
+            handleOptimizationFailed: jest.fn(),
+            handleBacktestComplete: jest.fn(),
+            handlePaperTradingComplete: jest.fn()
           }
         },
         {
-          provide: CoinSelectionService,
-          useValue: {
-            getManualCoinSelectionSymbols: jest.fn().mockResolvedValue([])
-          }
+          provide: PipelineProgressionService,
+          useValue: { advanceToNextStage: jest.fn() }
         }
       ]
     }).compile();
 
-    service = module.get<PipelineOrchestratorService>(PipelineOrchestratorService);
+    service = module.get(PipelineOrchestratorService);
     pipelineRepository = module.get(getRepositoryToken(Pipeline));
     strategyConfigRepository = module.get(getRepositoryToken(StrategyConfig));
-    pipelineQueue = module.get(getQueueToken('pipeline'));
-    eventEmitter = module.get(EventEmitter2);
-    scoringService = module.get(ScoringService);
-    marketRegimeService = module.get(MarketRegimeService);
-    algorithmRegistry = module.get(AlgorithmRegistry);
+    stageExecutionService = module.get(PipelineStageExecutionService);
+    progressionService = module.get(PipelineProgressionService);
   });
 
   describe('createPipeline', () => {
-    it('should create a pipeline successfully', async () => {
-      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      pipelineRepository.create.mockReturnValue(mockPipeline);
-      pipelineRepository.save.mockResolvedValue(mockPipeline);
-      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
+    it('creates a pipeline when strategy config exists', async () => {
+      strategyConfigRepository.findOne.mockResolvedValue({ id: 'strategy-123' } as StrategyConfig);
+      pipelineRepository.create.mockReturnValue(basePipeline);
+      pipelineRepository.save.mockResolvedValue(basePipeline);
+      pipelineRepository.findOne.mockResolvedValue(basePipeline);
 
       const result = await service.createPipeline(mockCreateDto, mockUser);
 
-      expect(result).toEqual(mockPipeline);
-      expect(strategyConfigRepository.findOne).toHaveBeenCalledWith({
-        where: { id: mockCreateDto.strategyConfigId }
-      });
-      expect(pipelineRepository.create).toHaveBeenCalled();
+      expect(result).toEqual(basePipeline);
+      expect(pipelineRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: mockCreateDto.name,
+          strategyConfigId: 'strategy-123',
+          status: PipelineStatus.PENDING,
+          currentStage: PipelineStage.OPTIMIZE,
+          user: mockUser
+        })
+      );
       expect(pipelineRepository.save).toHaveBeenCalled();
     });
 
-    it('should throw NotFoundException if strategy config not found', async () => {
+    it('throws NotFoundException if strategy config missing', async () => {
       strategyConfigRepository.findOne.mockResolvedValue(null);
-
       await expect(service.createPipeline(mockCreateDto, mockUser)).rejects.toThrow(NotFoundException);
-    });
-
-    it('should use initialStage when provided', async () => {
-      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      pipelineRepository.create.mockReturnValue(mockPipeline);
-      pipelineRepository.save.mockResolvedValue(mockPipeline);
-      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
-
-      await service.createPipeline({ ...mockCreateDto, initialStage: PipelineStage.HISTORICAL }, mockUser);
-
-      expect(pipelineRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ currentStage: PipelineStage.HISTORICAL })
-      );
-    });
-
-    it('should default to OPTIMIZE when initialStage not provided', async () => {
-      strategyConfigRepository.findOne.mockResolvedValue(mockStrategyConfig);
-      pipelineRepository.create.mockReturnValue(mockPipeline);
-      pipelineRepository.save.mockResolvedValue(mockPipeline);
-      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
-
-      await service.createPipeline(mockCreateDto, mockUser);
-
-      expect(pipelineRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ currentStage: PipelineStage.OPTIMIZE })
-      );
     });
   });
 
-  describe('recordOptimizationSkipped', () => {
-    it('should write synthetic SKIPPED optimization result', async () => {
-      pipelineRepository.findOne.mockResolvedValue({ ...mockPipeline, stageResults: {} } as Pipeline);
-      pipelineRepository.save.mockResolvedValue(mockPipeline);
-
-      await service.recordOptimizationSkipped('pipeline-123');
-
-      expect(pipelineRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          stageResults: expect.objectContaining({
-            optimization: expect.objectContaining({
-              runId: 'skipped',
-              status: 'COMPLETED',
-              bestScore: 0,
-              improvement: 0
-            })
-          })
-        })
-      );
+  describe('findOne', () => {
+    it('returns pipeline when found', async () => {
+      pipelineRepository.findOne.mockResolvedValue(basePipeline);
+      await expect(service.findOne('pipeline-123', mockUser)).resolves.toEqual(basePipeline);
     });
 
-    it('should do nothing when pipeline not found', async () => {
+    it('throws NotFoundException when missing', async () => {
       pipelineRepository.findOne.mockResolvedValue(null);
-
-      await service.recordOptimizationSkipped('nonexistent');
-
-      expect(pipelineRepository.save).not.toHaveBeenCalled();
+      await expect(service.findOne('missing', mockUser)).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('startPipeline', () => {
-    it('should start a pending pipeline', async () => {
-      const pendingPipeline = { ...mockPipeline, status: PipelineStatus.PENDING };
-      pipelineRepository.findOne.mockResolvedValue(pendingPipeline);
-
-      const result = await service.startPipeline('pipeline-123', mockUser);
-
-      expect(pipelineQueue.add).toHaveBeenCalledWith(
-        'execute-stage',
-        expect.objectContaining({
-          pipelineId: 'pipeline-123',
-          stage: PipelineStage.OPTIMIZE
-        }),
-        expect.any(Object)
+    it('queues first stage when starting a pending pipeline', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline());
+      await service.startPipeline('pipeline-123', mockUser);
+      expect(stageExecutionService.enqueueStageJob).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'pipeline-123' }),
+        PipelineStage.OPTIMIZE,
+        mockUser.id
       );
     });
 
-    it('should throw BadRequestException if pipeline is already running', async () => {
-      const runningPipeline = { ...mockPipeline, status: PipelineStatus.RUNNING };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-
-      await expect(service.startPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
-    });
-
-    it('should throw BadRequestException if pipeline is completed', async () => {
-      const completedPipeline = { ...mockPipeline, status: PipelineStatus.COMPLETED };
-      pipelineRepository.findOne.mockResolvedValue(completedPipeline);
-
-      await expect(service.startPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
-    });
+    it.each([[PipelineStatus.RUNNING], [PipelineStatus.COMPLETED], [PipelineStatus.CANCELLED]])(
+      'throws BadRequest when status is %s',
+      async (status) => {
+        pipelineRepository.findOne.mockResolvedValue(makePipeline({ status }));
+        await expect(service.startPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
+        expect(stageExecutionService.enqueueStageJob).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('pausePipeline', () => {
-    it('should pause a running pipeline', async () => {
-      const runningPipeline = { ...mockPipeline, status: PipelineStatus.RUNNING };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue({
-        ...runningPipeline,
-        status: PipelineStatus.PAUSED
-      });
-
+    it('pauses a running pipeline and delegates to stage service', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.RUNNING }));
       await service.pausePipeline('pipeline-123', mockUser);
-
       expect(pipelineRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: PipelineStatus.PAUSED }));
+      expect(stageExecutionService.pauseCurrentStage).toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException if pipeline is not running', async () => {
-      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
-
+    it('throws if pipeline is not running', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.PENDING }));
       await expect(service.pausePipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('resumePipeline', () => {
-    it('should resume a paused pipeline', async () => {
-      const pausedPipeline = { ...mockPipeline, status: PipelineStatus.PAUSED };
-      pipelineRepository.findOne.mockResolvedValue(pausedPipeline);
-      pipelineRepository.save.mockResolvedValue({
-        ...pausedPipeline,
-        status: PipelineStatus.RUNNING
-      });
-
+    it('resumes a paused pipeline', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.PAUSED }));
       await service.resumePipeline('pipeline-123', mockUser);
-
       expect(pipelineRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: PipelineStatus.RUNNING }));
+      expect(stageExecutionService.resumeCurrentStage).toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException if pipeline is not paused', async () => {
-      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
-
+    it('throws if pipeline is not paused', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.RUNNING }));
       await expect(service.resumePipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('cancelPipeline', () => {
-    it('should cancel a running pipeline', async () => {
-      const runningPipeline = { ...mockPipeline, status: PipelineStatus.RUNNING };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-
+    it('delegates stage cancel and removes queued job', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.RUNNING }));
       await service.cancelPipeline('pipeline-123', mockUser);
-
-      expect(pipelineQueue.remove).toHaveBeenCalled();
+      expect(stageExecutionService.cancelCurrentStage).toHaveBeenCalled();
+      expect(stageExecutionService.removeStageJob).toHaveBeenCalledWith('pipeline-123', PipelineStage.OPTIMIZE);
     });
 
-    it('should throw BadRequestException if pipeline is already completed', async () => {
-      const completedPipeline = { ...mockPipeline, status: PipelineStatus.COMPLETED };
-      pipelineRepository.findOne.mockResolvedValue(completedPipeline);
-
-      await expect(service.cancelPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
-    });
-  });
-
-  describe('handleOptimizationComplete', () => {
-    it('should advance to historical stage on successful optimization', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.OPTIMIZE,
-        user: mockUser
-      };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handleOptimizationComplete(
-        'opt-run-123',
-        'strategy-123',
-        { param1: 15 },
-        1.5,
-        10 // 10% improvement
-      );
-
-      expect(pipelineRepository.save).toHaveBeenCalled();
-      expect(pipelineQueue.add).toHaveBeenCalledWith(
-        'execute-stage',
-        expect.objectContaining({
-          stage: PipelineStage.HISTORICAL
-        }),
-        expect.any(Object)
-      );
-    });
-
-    it('should fail pipeline if improvement threshold not met', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.OPTIMIZE,
-        progressionRules: { ...DEFAULT_PROGRESSION_RULES, optimization: { minImprovement: 10 } },
-        user: mockUser
-      };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handleOptimizationComplete(
-        'opt-run-123',
-        'strategy-123',
-        { param1: 15 },
-        1.5,
-        3 // Only 3% improvement, below 10% threshold
-      );
-
-      expect(pipelineRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: PipelineStatus.FAILED,
-          failureReason: expect.stringContaining('3.00% < min 10.00%')
-        })
-      );
-    });
-  });
-
-  describe('handleBacktestComplete', () => {
-    it.each([
-      {
-        scenario: 'good metrics',
-        backtestId: 'backtest-123',
-        metrics: {
-          sharpeRatio: 1.5,
-          totalReturn: 0.15,
-          maxDrawdown: 0.1,
-          winRate: 0.55,
-          totalTrades: 50,
-          winningTrades: 15,
-          losingTrades: 12,
-          profitFactor: 2.0,
-          volatility: 0.3
-        }
-      },
-      {
-        scenario: 'terrible metrics',
-        backtestId: 'backtest-bad',
-        metrics: {
-          sharpeRatio: -1,
-          totalReturn: -0.5,
-          maxDrawdown: 0.8,
-          winRate: 0.1,
-          totalTrades: 5,
-          winningTrades: 0,
-          losingTrades: 3,
-          profitFactor: 0.5,
-          volatility: 0.8
-        }
+    it.each([[PipelineStatus.COMPLETED], [PipelineStatus.CANCELLED]])(
+      'throws when pipeline already %s',
+      async (status) => {
+        pipelineRepository.findOne.mockResolvedValue(makePipeline({ status }));
+        await expect(service.cancelPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
+        expect(stageExecutionService.cancelCurrentStage).not.toHaveBeenCalled();
       }
-    ])('should auto-advance HISTORICAL to LIVE_REPLAY with $scenario', async ({ backtestId, metrics }) => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.HISTORICAL,
-        historicalBacktestId: backtestId,
-        user: mockUser
-      };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handleBacktestComplete(backtestId, 'HISTORICAL', metrics);
-
-      expect(pipelineRepository.save).toHaveBeenCalled();
-      expect(pipelineQueue.add).toHaveBeenCalledWith(
-        'execute-stage',
-        expect.objectContaining({ stage: PipelineStage.LIVE_REPLAY }),
-        expect.any(Object)
-      );
-      expect(scoringService.calculateScoreFromMetrics).not.toHaveBeenCalled();
-    });
-
-    it('should advance LIVE_REPLAY to PAPER_TRADE when score >= 30', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-lr-123',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.15 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-      scoringService.calculateScoreFromMetrics.mockReturnValue({
-        ...mockScoreResult,
-        overallScore: 55
-      });
-
-      await service.handleBacktestComplete('backtest-lr-123', 'LIVE_REPLAY', {
-        sharpeRatio: 1.0,
-        totalReturn: 0.12,
-        maxDrawdown: 0.15,
-        winRate: 0.5,
-        totalTrades: 50,
-        winningTrades: 15,
-        losingTrades: 15,
-        profitFactor: 1.5,
-        volatility: 0.25
-      });
-
-      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalled();
-      expect(pipelineQueue.add).toHaveBeenCalledWith(
-        'execute-stage',
-        expect.objectContaining({ stage: PipelineStage.PAPER_TRADE }),
-        expect.any(Object)
-      );
-    });
-
-    it('should fail LIVE_REPLAY when score < 30', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-lr-fail',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.15 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-      scoringService.calculateScoreFromMetrics.mockReturnValue({
-        ...mockScoreResult,
-        overallScore: 20,
-        grade: StrategyGrade.F
-      });
-
-      await service.handleBacktestComplete('backtest-lr-fail', 'LIVE_REPLAY', {
-        sharpeRatio: -0.5,
-        totalReturn: -0.3,
-        maxDrawdown: 0.6,
-        winRate: 0.2,
-        totalTrades: 10,
-        winningTrades: 1,
-        losingTrades: 4,
-        profitFactor: 0.3,
-        volatility: 0.7
-      });
-
-      expect(pipelineRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: PipelineStatus.FAILED,
-          failureReason: expect.stringContaining('score 20.0 < minimum 30')
-        })
-      );
-    });
-
-    it('should fail HISTORICAL pipeline when backtest produces 0 trades', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.HISTORICAL,
-        historicalBacktestId: 'backtest-zero-hist',
-        user: mockUser
-      };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handleBacktestComplete('backtest-zero-hist', 'HISTORICAL', {
-        sharpeRatio: 0,
-        totalReturn: 0,
-        maxDrawdown: 0,
-        winRate: 0,
-        totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
-        profitFactor: 0,
-        volatility: 0
-      });
-
-      expect(pipelineRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: PipelineStatus.FAILED,
-          failureReason: expect.stringContaining('0 trades')
-        })
-      );
-      expect(pipelineQueue.add).not.toHaveBeenCalled();
-      expect(scoringService.calculateScoreFromMetrics).not.toHaveBeenCalled();
-    });
-
-    it('should fail LIVE_REPLAY pipeline when backtest produces 0 trades', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-zero-lr',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.15 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handleBacktestComplete('backtest-zero-lr', 'LIVE_REPLAY', {
-        sharpeRatio: 0,
-        totalReturn: 0,
-        maxDrawdown: 0,
-        winRate: 0,
-        totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
-        profitFactor: 0,
-        volatility: 0
-      });
-
-      expect(pipelineRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: PipelineStatus.FAILED,
-          failureReason: expect.stringContaining('0 trades')
-        })
-      );
-      expect(pipelineQueue.add).not.toHaveBeenCalled();
-      expect(scoringService.calculateScoreFromMetrics).not.toHaveBeenCalled();
-    });
-
-    it('should apply regime modifier correctly', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-lr-regime',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.15 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      marketRegimeService.getCurrentRegime.mockResolvedValue({ regime: 'extreme' } as any);
-      scoringService.calculateScoreFromMetrics.mockReturnValue({
-        ...mockScoreResult,
-        overallScore: 20,
-        regimeModifier: -10
-      });
-
-      await service.handleBacktestComplete('backtest-lr-regime', 'LIVE_REPLAY', {
-        sharpeRatio: 0.5,
-        totalReturn: 0.05,
-        maxDrawdown: 0.2,
-        winRate: 0.45,
-        totalTrades: 30,
-        winningTrades: 8,
-        losingTrades: 10,
-        profitFactor: 1.1,
-        volatility: 0.35
-      });
-
-      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(
-        expect.objectContaining({ sharpeRatio: 0.5 }),
-        expect.any(Number),
-        { marketRegime: 'extreme' }
-      );
-    });
-
-    it('should gracefully handle regime service failure with modifier=0', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-lr-no-regime',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.15 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      marketRegimeService.getCurrentRegime.mockRejectedValue(new Error('Redis unavailable'));
-      scoringService.calculateScoreFromMetrics.mockReturnValue({
-        ...mockScoreResult,
-        overallScore: 55,
-        regimeModifier: 0
-      });
-
-      await service.handleBacktestComplete('backtest-lr-no-regime', 'LIVE_REPLAY', {
-        sharpeRatio: 1.0,
-        totalReturn: 0.12,
-        maxDrawdown: 0.15,
-        winRate: 0.5,
-        totalTrades: 50,
-        winningTrades: 15,
-        losingTrades: 15,
-        profitFactor: 1.5,
-        volatility: 0.25
-      });
-
-      // Should still work — calls scoring with undefined regime
-      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), expect.any(Number), {
-        marketRegime: undefined
-      });
-      // Should advance (score 55 >= 30)
-      expect(pipelineQueue.add).toHaveBeenCalledWith(
-        'execute-stage',
-        expect.objectContaining({ stage: PipelineStage.PAPER_TRADE }),
-        expect.any(Object)
-      );
-    });
-
-    it('should store score on pipeline entity', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-lr-store',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.15 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      scoringService.calculateScoreFromMetrics.mockReturnValue({
-        ...mockScoreResult,
-        overallScore: 72,
-        grade: StrategyGrade.B
-      });
-
-      await service.handleBacktestComplete('backtest-lr-store', 'LIVE_REPLAY', {
-        sharpeRatio: 1.5,
-        totalReturn: 0.2,
-        maxDrawdown: 0.1,
-        winRate: 0.6,
-        totalTrades: 80,
-        winningTrades: 30,
-        losingTrades: 20,
-        profitFactor: 2.5,
-        volatility: 0.2
-      });
-
-      expect(pipelineRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          pipelineScore: 72,
-          scoreGrade: StrategyGrade.B,
-          scoringRegime: 'normal'
-        })
-      );
-    });
-
-    it('should pass score exactly 30 (>= 30)', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.LIVE_REPLAY,
-        liveReplayBacktestId: 'backtest-lr-edge',
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.1 }
-        },
-        user: mockUser
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      scoringService.calculateScoreFromMetrics.mockReturnValue({
-        ...mockScoreResult,
-        overallScore: 30,
-        grade: StrategyGrade.F
-      });
-
-      await service.handleBacktestComplete('backtest-lr-edge', 'LIVE_REPLAY', {
-        sharpeRatio: 0.3,
-        totalReturn: 0.02,
-        maxDrawdown: 0.25,
-        winRate: 0.4,
-        totalTrades: 20,
-        winningTrades: 5,
-        losingTrades: 8,
-        profitFactor: 1.0,
-        volatility: 0.4
-      });
-
-      // Score exactly 30 should pass
-      expect(pipelineQueue.add).toHaveBeenCalledWith(
-        'execute-stage',
-        expect.objectContaining({ stage: PipelineStage.PAPER_TRADE }),
-        expect.any(Object)
-      );
-    });
+    );
   });
 
-  describe('recommendation based on score', () => {
-    it('should recommend DEPLOY when score >= 70', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.PAPER_TRADE,
-        progressionRules: {
-          ...DEFAULT_PROGRESSION_RULES,
-          paperTrading: { minSharpeRatio: 0.3, minTotalReturn: 0, maxDrawdown: 0.5, minWinRate: 0.3 }
-        },
-        stageResults: {
-          optimization: { status: 'COMPLETED' },
-          historical: { status: 'COMPLETED', totalReturn: 0.2 },
-          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 },
-          scoring: { overallScore: 75, grade: StrategyGrade.B }
-        }
-      } as Pipeline;
-
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handlePaperTradingComplete(
-        'session-1',
-        runningPipeline.id,
-        {
-          initialCapital: 10000,
-          currentPortfolioValue: 12000,
-          totalReturn: 0.17,
-          totalReturnPercent: 17,
-          maxDrawdown: 0.15,
-          sharpeRatio: 1.5,
-          winRate: 0.6,
-          totalTrades: 80,
-          winningTrades: 48,
-          losingTrades: 32,
-          totalFees: 10,
-          durationHours: 168
-        },
-        'duration_reached'
-      );
-
-      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DEPLOY);
+  describe('skipStage', () => {
+    it('cancels current stage and advances', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.RUNNING }));
+      await service.skipStage('pipeline-123', mockUser);
+      expect(stageExecutionService.cancelCurrentStage).toHaveBeenCalled();
+      expect(progressionService.advanceToNextStage).toHaveBeenCalled();
     });
 
-    it('should recommend DEPLOY even when optimization was skipped (no stageResults.optimization)', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.PAPER_TRADE,
-        progressionRules: {
-          ...DEFAULT_PROGRESSION_RULES,
-          paperTrading: { minSharpeRatio: 0.3, minTotalReturn: 0, maxDrawdown: 0.5, minWinRate: 0.3 }
-        },
-        stageResults: {
-          historical: { status: 'COMPLETED', totalReturn: 0.2 },
-          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 },
-          scoring: { overallScore: 75, grade: StrategyGrade.B }
-        }
-      } as Pipeline;
-
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handlePaperTradingComplete(
-        'session-skipped-opt',
-        runningPipeline.id,
-        {
-          initialCapital: 10000,
-          currentPortfolioValue: 12000,
-          totalReturn: 0.17,
-          totalReturnPercent: 17,
-          maxDrawdown: 0.15,
-          sharpeRatio: 1.5,
-          winRate: 0.6,
-          totalTrades: 80,
-          winningTrades: 48,
-          losingTrades: 32,
-          totalFees: 10,
-          durationHours: 168
-        },
-        'duration_reached'
-      );
-
-      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DEPLOY);
+    it('throws if pipeline is not running or paused', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.PENDING }));
+      await expect(service.skipStage('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
     });
 
-    it('should recommend NEEDS_REVIEW when score 30-69', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.PAPER_TRADE,
-        progressionRules: {
-          ...DEFAULT_PROGRESSION_RULES,
-          paperTrading: { minSharpeRatio: 0.3, minTotalReturn: 0, maxDrawdown: 0.5, minWinRate: 0.3 }
-        },
-        stageResults: {
-          optimization: { status: 'COMPLETED' },
-          historical: { status: 'COMPLETED', totalReturn: 0.1 },
-          liveReplay: { status: 'COMPLETED', totalReturn: 0.08 },
-          scoring: { overallScore: 50, grade: StrategyGrade.C }
-        }
-      } as Pipeline;
-
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handlePaperTradingComplete(
-        'session-2',
-        runningPipeline.id,
-        {
-          initialCapital: 10000,
-          currentPortfolioValue: 10800,
-          totalReturn: 0.07,
-          totalReturnPercent: 7,
-          maxDrawdown: 0.2,
-          sharpeRatio: 0.6,
-          winRate: 0.45,
-          totalTrades: 40,
-          winningTrades: 18,
-          losingTrades: 22,
-          totalFees: 5,
-          durationHours: 168
-        },
-        'duration_reached'
+    it('throws if already at COMPLETED stage', async () => {
+      pipelineRepository.findOne.mockResolvedValue(
+        makePipeline({ status: PipelineStatus.RUNNING, currentStage: PipelineStage.COMPLETED })
       );
-
-      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.NEEDS_REVIEW);
-    });
-  });
-
-  describe('executeStage', () => {
-    it('should skip execution when pipeline is not running', async () => {
-      const pausedPipeline = { ...mockPipeline, status: PipelineStatus.PAUSED } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(pausedPipeline);
-
-      await service.executeStage('pipeline-123', PipelineStage.OPTIMIZE);
-
-      expect((service as any).optimizationService.startOptimization).not.toHaveBeenCalled();
-    });
-
-    it('should execute optimization stage by building ParameterSpace at runtime', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.OPTIMIZE,
-        strategyConfig: mockStrategyConfig
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      // Mock strategy with config schema
-      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
-        id: 'ema-crossover-001',
-        getConfigSchema: () => ({
-          enabled: { type: 'boolean', default: true },
-          fastPeriod: { type: 'number', default: 12, min: 5, max: 50 },
-          slowPeriod: { type: 'number', default: 26, min: 10, max: 100 }
-        }),
-        getParameterConstraints: () => [{ type: 'less_than' as const, param1: 'fastPeriod', param2: 'slowPeriod' }]
-      } as any);
-
-      const optimizationService = (service as any).optimizationService as jest.Mocked<OptimizationOrchestratorService>;
-      optimizationService.startOptimization.mockResolvedValue({ id: 'opt-run-1' } as any);
-
-      await service.executeStage('pipeline-123', PipelineStage.OPTIMIZE);
-
-      expect(algorithmRegistry.getStrategyForAlgorithm).toHaveBeenCalledWith('algo-123');
-      expect(optimizationService.startOptimization).toHaveBeenCalledWith(
-        runningPipeline.strategyConfigId,
-        expect.objectContaining({
-          strategyType: 'ema-crossover-001',
-          parameters: expect.arrayContaining([
-            expect.objectContaining({ name: 'fastPeriod' }),
-            expect.objectContaining({ name: 'slowPeriod' })
-          ])
-        }),
-        expect.objectContaining({
-          method: 'random_search',
-          objective: expect.objectContaining({ metric: runningPipeline.stageConfig.optimization!.objectiveMetric })
-        })
-      );
-      expect(pipelineRepository.save).toHaveBeenCalledWith(expect.objectContaining({ optimizationRunId: 'opt-run-1' }));
-    });
-
-    it('should throw when optimization stage config is missing', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.OPTIMIZE,
-        strategyConfig: mockStrategyConfig,
-        stageConfig: {
-          ...mockPipeline.stageConfig,
-          optimization: undefined
-        }
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-
-      await expect(service.executeStage('pipeline-123', PipelineStage.OPTIMIZE)).rejects.toThrow(
-        'optimization stage config is missing'
-      );
-    });
-
-    it('should throw when strategy not found in registry for OPTIMIZE stage', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.OPTIMIZE,
-        strategyConfig: mockStrategyConfig
-      } as Pipeline;
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-
-      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue(undefined);
-
-      await expect(service.executeStage('pipeline-123', PipelineStage.OPTIMIZE)).rejects.toThrow(
-        'strategy not found or has no config schema'
-      );
-    });
-  });
-
-  describe('handlePaperTradingComplete', () => {
-    it('completes pipeline and publishes recommendation when thresholds pass', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.PAPER_TRADE,
-        progressionRules: {
-          ...DEFAULT_PROGRESSION_RULES,
-          paperTrading: {
-            minSharpeRatio: 0.5,
-            minTotalReturn: 0,
-            maxDrawdown: 0.5,
-            minWinRate: 0.4
-          }
-        },
-        stageResults: {
-          optimization: { status: 'COMPLETED' },
-          historical: { status: 'COMPLETED', totalReturn: 0.2 },
-          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 }
-        }
-      } as Pipeline;
-
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handlePaperTradingComplete(
-        'session-1',
-        runningPipeline.id,
-        {
-          initialCapital: 10000,
-          currentPortfolioValue: 12000,
-          totalReturn: 0.17,
-          totalReturnPercent: 17,
-          maxDrawdown: 0.2,
-          sharpeRatio: 1.2,
-          winRate: 0.6,
-          totalTrades: 50,
-          winningTrades: 30,
-          losingTrades: 20,
-          totalFees: 10,
-          durationHours: 24
-        },
-        'duration_reached'
-      );
-
-      expect(runningPipeline.status).toBe(PipelineStatus.COMPLETED);
-      expect(eventEmitter.emit).toHaveBeenCalled();
-    });
-
-    it('treats min_trades_reached as COMPLETED status', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.PAPER_TRADE,
-        progressionRules: {
-          ...DEFAULT_PROGRESSION_RULES,
-          paperTrading: {
-            minSharpeRatio: 0.5,
-            minTotalReturn: 0,
-            maxDrawdown: 0.5,
-            minWinRate: 0.4
-          }
-        },
-        stageResults: {
-          optimization: { status: 'COMPLETED' },
-          historical: { status: 'COMPLETED', totalReturn: 0.2 },
-          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 }
-        }
-      } as Pipeline;
-
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handlePaperTradingComplete(
-        'session-min-trades',
-        runningPipeline.id,
-        {
-          initialCapital: 10000,
-          currentPortfolioValue: 12000,
-          totalReturn: 0.17,
-          totalReturnPercent: 17,
-          maxDrawdown: 0.2,
-          sharpeRatio: 1.2,
-          winRate: 0.6,
-          totalTrades: 50,
-          winningTrades: 30,
-          losingTrades: 20,
-          totalFees: 10,
-          durationHours: 24
-        },
-        'min_trades_reached'
-      );
-
-      expect(runningPipeline.status).toBe(PipelineStatus.COMPLETED);
-      expect(eventEmitter.emit).toHaveBeenCalled();
-    });
-
-    it('should fail pipeline when paper trading thresholds not met', async () => {
-      const runningPipeline = {
-        ...mockPipeline,
-        status: PipelineStatus.RUNNING,
-        currentStage: PipelineStage.PAPER_TRADE,
-        progressionRules: {
-          ...DEFAULT_PROGRESSION_RULES,
-          paperTrading: { minSharpeRatio: 1.0, minTotalReturn: 0.05, maxDrawdown: 0.2, minWinRate: 0.5 }
-        },
-        stageResults: {
-          optimization: { status: 'COMPLETED' },
-          historical: { status: 'COMPLETED', totalReturn: 0.2 },
-          liveReplay: { status: 'COMPLETED', totalReturn: 0.18 }
-        }
-      } as Pipeline;
-
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-      pipelineRepository.save.mockResolvedValue(runningPipeline);
-
-      await service.handlePaperTradingComplete(
-        'session-fail',
-        runningPipeline.id,
-        {
-          initialCapital: 10000,
-          currentPortfolioValue: 9000,
-          totalReturn: -0.1,
-          totalReturnPercent: -10,
-          maxDrawdown: 0.35,
-          sharpeRatio: 0.2,
-          winRate: 0.3,
-          totalTrades: 20,
-          winningTrades: 6,
-          losingTrades: 14,
-          totalFees: 5,
-          durationHours: 168
-        },
-        'duration_reached'
-      );
-
-      expect(runningPipeline.status).toBe(PipelineStatus.FAILED);
-      expect(runningPipeline.failureReason).toContain('Paper trading did not meet thresholds');
-      expect(runningPipeline.recommendation).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+      await expect(service.skipStage('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('deletePipeline', () => {
-    it('should delete a pending pipeline', async () => {
-      pipelineRepository.findOne.mockResolvedValue(mockPipeline);
-
+    it('removes a non-running pipeline', async () => {
+      const pipeline = makePipeline({ status: PipelineStatus.PENDING });
+      pipelineRepository.findOne.mockResolvedValue(pipeline);
       await service.deletePipeline('pipeline-123', mockUser);
-
-      expect(pipelineRepository.remove).toHaveBeenCalledWith(mockPipeline);
+      expect(pipelineRepository.remove).toHaveBeenCalledWith(pipeline);
     });
 
-    it('should throw BadRequestException if pipeline is running', async () => {
-      const runningPipeline = { ...mockPipeline, status: PipelineStatus.RUNNING };
-      pipelineRepository.findOne.mockResolvedValue(runningPipeline);
-
+    it('throws when trying to delete a running pipeline', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.RUNNING }));
       await expect(service.deletePipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
+      expect(pipelineRepository.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordOptimizationSkipped', () => {
+    it('persists a skipped optimization result', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.findOne.mockResolvedValue(pipeline);
+      await service.recordOptimizationSkipped('pipeline-123');
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stageResults: expect.objectContaining({
+            optimization: expect.objectContaining({ runId: 'skipped', status: 'COMPLETED' })
+          })
+        })
+      );
+    });
+
+    it('is a no-op when pipeline is missing', async () => {
+      pipelineRepository.findOne.mockResolvedValue(null);
+      await service.recordOptimizationSkipped('missing');
+      expect(pipelineRepository.save).not.toHaveBeenCalled();
     });
   });
 });
