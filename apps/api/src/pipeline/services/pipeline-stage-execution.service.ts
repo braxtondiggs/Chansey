@@ -12,6 +12,8 @@ import { CoinSelectionService } from '../../coin-selection/coin-selection.servic
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { OptimizationOrchestratorService } from '../../optimization/services/optimization-orchestrator.service';
 import { buildParameterSpace } from '../../optimization/utils/parameter-space-builder';
+import { BacktestDatasetService } from '../../order/backtest/backtest-dataset.service';
+import { BacktestLifecycleService } from '../../order/backtest/backtest-lifecycle.service';
 import { BacktestStatus, BacktestType } from '../../order/backtest/backtest.entity';
 import { BacktestService } from '../../order/backtest/backtest.service';
 import { PaperTradingService } from '../../order/paper-trading/paper-trading.service';
@@ -40,6 +42,10 @@ export class PipelineStageExecutionService {
     private readonly optimizationService: OptimizationOrchestratorService,
     @Inject(forwardRef(() => BacktestService))
     private readonly backtestService: BacktestService,
+    @Inject(forwardRef(() => BacktestDatasetService))
+    private readonly backtestDatasetService: BacktestDatasetService,
+    @Inject(forwardRef(() => BacktestLifecycleService))
+    private readonly backtestLifecycleService: BacktestLifecycleService,
     @Inject(forwardRef(() => PaperTradingService))
     private readonly paperTradingService: PaperTradingService,
     @Inject(forwardRef(() => AlgorithmRegistry))
@@ -190,7 +196,7 @@ export class PipelineStageExecutionService {
     backtestType: BacktestType,
     label: string
   ): Promise<void> {
-    const marketDataSetId = config.marketDataSetId ?? (await this.backtestService.getDefaultDatasetId());
+    const marketDataSetId = config.marketDataSetId ?? (await this.backtestDatasetService.getDefaultDatasetId());
     if (!marketDataSetId) {
       throw new Error('No market data set configured and no auto-generated dataset available');
     }
@@ -277,7 +283,7 @@ export class PipelineStageExecutionService {
       case PipelineStage.LIVE_REPLAY: {
         const backtestId = this.getStageBacktestId(pipeline);
         if (backtestId) {
-          await this.backtestService.pauseBacktest(pipeline.user as User, backtestId);
+          await this.backtestLifecycleService.pauseBacktest(pipeline.user as User, backtestId);
         }
         break;
       }
@@ -326,7 +332,7 @@ export class PipelineStageExecutionService {
           await this.progressionService.advanceToNextStage(pipeline);
           break;
         }
-        await this.backtestService.resumeBacktest(user, backtestId);
+        await this.backtestLifecycleService.resumeBacktest(user, backtestId);
         break;
       }
       case PipelineStage.PAPER_TRADE:
@@ -352,7 +358,7 @@ export class PipelineStageExecutionService {
       case PipelineStage.LIVE_REPLAY: {
         const backtestId = this.getStageBacktestId(pipeline);
         if (backtestId) {
-          await this.backtestService.cancelBacktest(pipeline.user as User, backtestId);
+          await this.backtestLifecycleService.cancelBacktest(pipeline.user as User, backtestId);
         }
         break;
       }

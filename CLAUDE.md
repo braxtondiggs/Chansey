@@ -75,6 +75,15 @@ This is an Nx monorepo with Angular frontend and NestJS API backend:
 - **Fix lint errors and warnings in files you change** — when modifying a file, resolve any lint warnings in that file
   before committing, even pre-existing ones. Do not introduce or leave warnings in touched files.
 
+### File Size Limits
+
+- **Backend** (services, strategies, tasks, entities): Soft limit **500 lines**, hard limit **750 lines**
+- **Frontend** (components): Soft limit **250 lines**, hard limit **400 lines**
+- **Frontend** (services): Soft limit **300 lines**, hard limit **450 lines**
+- At the soft limit, consider extracting responsibilities into focused services or components. At the hard limit,
+  refactoring is required before adding more logic.
+- When creating new functionality, prefer adding a new focused service/component over expanding an existing one.
+
 ### Testing
 
 - Jest for unit tests

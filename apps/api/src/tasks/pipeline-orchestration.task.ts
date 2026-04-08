@@ -17,7 +17,7 @@ import { Queue } from 'bullmq';
 import { PIPELINE_STAGGER_INTERVAL_MS, PipelineOrchestrationJobData } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
-import { BacktestService } from '../order/backtest/backtest.service';
+import { BacktestDatasetService } from '../order/backtest/backtest-dataset.service';
 import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -29,7 +29,7 @@ export class PipelineOrchestrationTask {
     @InjectQueue('pipeline-orchestration')
     private readonly orchestrationQueue: Queue<PipelineOrchestrationJobData>,
     private readonly orchestrationService: PipelineOrchestrationService,
-    private readonly backtestService: BacktestService
+    private readonly backtestDatasetService: BacktestDatasetService
   ) {}
 
   /**
@@ -42,7 +42,7 @@ export class PipelineOrchestrationTask {
 
     try {
       // Ensure default dataset exists before creating pipelines
-      await this.backtestService.ensureDefaultDatasetExists();
+      await this.backtestDatasetService.ensureDefaultDatasetExists();
 
       // Seed strategy configs from active algorithms (global, not user-scoped)
       await this.orchestrationService.seedStrategyConfigsFromAlgorithms();

@@ -2,16 +2,16 @@ import { QueryFailedError } from 'typeorm';
 
 import { createHash } from 'node:crypto';
 
-import { BacktestService } from './backtest.service';
+import { BacktestDatasetService } from './backtest-dataset.service';
 import { MarketDataSource, MarketDataTimeframe } from './market-data-set.entity';
 
 /**
- * Focused tests for default dataset management in BacktestService:
+ * Focused tests for default dataset management:
  * - ensureDefaultDatasetExists()
  * - getDefaultDatasetId()
  */
-describe('BacktestService – default dataset', () => {
-  let service: BacktestService;
+describe('BacktestDatasetService', () => {
+  let service: BacktestDatasetService;
   let marketDataSetRepo: Record<string, jest.Mock>;
   let ohlcService: Record<string, jest.Mock>;
   let coinService: Record<string, jest.Mock>;
@@ -66,28 +66,7 @@ describe('BacktestService – default dataset', () => {
       find: jest.fn().mockResolvedValue([])
     };
 
-    // Construct BacktestService with minimal mocks — only dataset-related deps matter
-    service = new BacktestService(
-      {} as any, // algorithmService
-      coinService as any, // coinService
-      ohlcService as any, // ohlcService
-      {} as any, // backtestEngine
-      {} as any, // backtestStream
-      {} as any, // backtestResultService
-      {} as any, // datasetValidator
-      {} as any, // backtestRepository
-      {} as any, // backtestTradeRepository
-      {} as any, // backtestSnapshotRepository
-      marketDataSetRepo as any, // marketDataSetRepository
-      {} as any, // backtestSignalRepository
-      {} as any, // simulatedFillRepository
-      {} as any, // comparisonReportRepository
-      {} as any, // comparisonReportRunRepository
-      {} as any, // historicalQueue
-      {} as any, // replayQueue
-      {} as any, // backtestPauseService
-      undefined // metricsService
-    );
+    service = new BacktestDatasetService(marketDataSetRepo as any, ohlcService as any, coinService as any);
   });
 
   describe('ensureDefaultDatasetExists', () => {
@@ -125,7 +104,6 @@ describe('BacktestService – default dataset', () => {
     });
 
     it('excludes low-quality coins below market cap and volume thresholds', async () => {
-      // Only BTC passes the filter; meme coin is excluded
       coinService.getCoinsByIdsFilteredAtDate.mockResolvedValue({
         coins: [
           { id: 'btc', symbol: 'BTC', marketCap: 500_000_000_000, totalVolume: 20_000_000_000, currentPrice: 50000 }
@@ -227,19 +205,16 @@ describe('BacktestService – default dataset', () => {
     it('handles concurrent insert by catching unique constraint violation', async () => {
       const concurrentDataset = buildMockDataset({ id: 'concurrent-uuid' });
 
-      // First call: queryBuilder finds nothing
       let callCount = 0;
       const queryBuilder = {
         where: jest.fn().mockReturnThis(),
         getOne: jest.fn().mockImplementation(() => {
           callCount++;
-          // First call returns null (no existing), second call returns the concurrently-created dataset
           return callCount === 1 ? null : concurrentDataset;
         })
       };
       marketDataSetRepo.createQueryBuilder.mockReturnValue(queryBuilder);
 
-      // save throws unique constraint violation (must be QueryFailedError for isUniqueConstraintViolation)
       const driverError = { code: '23505' };
       const uniqueError = new QueryFailedError('INSERT INTO ...', [], driverError as unknown as Error);
       marketDataSetRepo.save.mockRejectedValue(uniqueError);
@@ -253,7 +228,6 @@ describe('BacktestService – default dataset', () => {
       const savedDataset = buildMockDataset();
       marketDataSetRepo.save.mockResolvedValue(savedDataset);
 
-      // First call populates cache
       await service.ensureDefaultDatasetExists();
 
       const newDateRange = { start: new Date('2024-02-01'), end: new Date('2025-02-01') };
@@ -265,23 +239,15 @@ describe('BacktestService – default dataset', () => {
       expect(marketDataSetRepo.createQueryBuilder).toHaveBeenCalled();
     });
 
-    it('returns cached dataset on subsequent calls within TTL', async () => {
-      const savedDataset = buildMockDataset();
-      marketDataSetRepo.save.mockResolvedValue(savedDataset);
+    it('warns when quality filter falls back to current market data', async () => {
+      const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+      coinService.getCoinsByIdsFilteredAtDate.mockResolvedValue({ coins: mockCoins, usedHistoricalData: false });
+      marketDataSetRepo.save.mockResolvedValue(buildMockDataset());
 
-      // First call populates cache
       await service.ensureDefaultDatasetExists();
 
-      // Reset mocks to verify no DB calls on second invocation
-      marketDataSetRepo.createQueryBuilder.mockClear();
-      ohlcService.getCoinsWithCandleData.mockClear();
-
-      // Second call should hit cache
-      const result = await service.ensureDefaultDatasetExists();
-
-      expect(result).toEqual(savedDataset);
-      // Still calls OHLC service to check data freshness (checksum comparison)
-      // but should not query for existing dataset if checksum matches
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('survivorship bias'));
+      warnSpy.mockRestore();
     });
 
     it('returns null and does not throw on DB error', async () => {
@@ -324,33 +290,11 @@ describe('BacktestService – default dataset', () => {
       expect(result).toBe('found-uuid');
     });
 
-    it('populates cache after DB lookup', async () => {
-      const dataset = buildMockDataset({ id: 'cached-uuid', checksum: 'xyz' });
-      const queryBuilder = {
-        where: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(dataset)
-      };
-      marketDataSetRepo.createQueryBuilder.mockReturnValue(queryBuilder);
-
-      // First call hits DB
-      await service.getDefaultDatasetId();
-
-      // Clear mocks, second call should use cache
-      marketDataSetRepo.createQueryBuilder.mockClear();
-
-      const result = await service.getDefaultDatasetId();
-
-      expect(result).toBe('cached-uuid');
-      expect(marketDataSetRepo.createQueryBuilder).not.toHaveBeenCalled();
-    });
-
     it('returns cached ID when cache is still valid', async () => {
-      // Prime the cache via ensureDefaultDatasetExists
       const savedDataset = buildMockDataset({ id: 'primed-uuid' });
       marketDataSetRepo.save.mockResolvedValue(savedDataset);
       await service.ensureDefaultDatasetExists();
 
-      // Clear mocks
       marketDataSetRepo.createQueryBuilder.mockClear();
 
       const result = await service.getDefaultDatasetId();
@@ -373,7 +317,6 @@ describe('BacktestService – default dataset', () => {
       };
       marketDataSetRepo.createQueryBuilder.mockReturnValue(queryBuilder);
 
-      // Advance time beyond cache TTL (5 minutes)
       nowSpy.mockReturnValue(1_000_000 + 6 * 60 * 1000);
 
       const result = await service.getDefaultDatasetId();
@@ -382,6 +325,39 @@ describe('BacktestService – default dataset', () => {
       expect(marketDataSetRepo.createQueryBuilder).toHaveBeenCalled();
 
       nowSpy.mockRestore();
+    });
+  });
+
+  describe('getDatasets', () => {
+    it('ensures default exists then returns datasets ordered by createdAt DESC', async () => {
+      const datasets = [buildMockDataset({ id: 'a' }), buildMockDataset({ id: 'b' })];
+      marketDataSetRepo.save.mockResolvedValue(buildMockDataset());
+      marketDataSetRepo.find.mockResolvedValue(datasets);
+
+      const result = await service.getDatasets();
+
+      expect(ohlcService.getCoinsWithCandleData).toHaveBeenCalled();
+      expect(marketDataSetRepo.find).toHaveBeenCalledWith({ order: { createdAt: 'DESC' } });
+      expect(result).toEqual(datasets);
+    });
+  });
+
+  describe('clearDatasetCache', () => {
+    it('clears cache so next getDefaultDatasetId hits the DB', async () => {
+      marketDataSetRepo.save.mockResolvedValue(buildMockDataset({ id: 'primed' }));
+      await service.ensureDefaultDatasetExists();
+
+      service.clearDatasetCache();
+
+      const queryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(buildMockDataset({ id: 'primed' }))
+      };
+      marketDataSetRepo.createQueryBuilder.mockReturnValue(queryBuilder);
+
+      await service.getDefaultDatasetId();
+
+      expect(queryBuilder.getOne).toHaveBeenCalled();
     });
   });
 });

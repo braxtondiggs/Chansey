@@ -15,7 +15,7 @@ import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestWatchdogService } from './backtest-watchdog.service';
 import { BACKTEST_STAGGER_INTERVAL_MS, OrchestrationJobData } from './dto/backtest-orchestration.dto';
 
-import { BacktestService } from '../order/backtest/backtest.service';
+import { BacktestDatasetService } from '../order/backtest/backtest-dataset.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
@@ -27,7 +27,7 @@ export class BacktestOrchestrationTask {
     @InjectQueue('backtest-orchestration')
     private readonly orchestrationQueue: Queue<OrchestrationJobData>,
     private readonly orchestrationService: BacktestOrchestrationService,
-    private readonly backtestService: BacktestService,
+    private readonly backtestDatasetService: BacktestDatasetService,
     private readonly watchdog: BacktestWatchdogService
   ) {}
 
@@ -41,7 +41,7 @@ export class BacktestOrchestrationTask {
 
     try {
       // Ensure a database-backed dataset exists before orchestrating
-      await this.backtestService.ensureDefaultDatasetExists();
+      await this.backtestDatasetService.ensureDefaultDatasetExists();
 
       const eligibleUsers = await this.orchestrationService.getEligibleUsers();
       this.logger.log(`Found ${eligibleUsers.length} eligible users for orchestration`);

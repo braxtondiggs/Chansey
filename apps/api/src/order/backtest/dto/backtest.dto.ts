@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -577,6 +578,8 @@ export class BacktestPerformanceDto {
 }
 
 export class BacktestComparisonDto {
+  @IsArray()
+  @ArrayUnique()
   @IsUUID('4', { each: true })
   @IsNotEmpty()
   @ApiProperty({
@@ -611,6 +614,8 @@ export class CreateComparisonReportDto {
   @ApiProperty({ description: 'Name of the comparison report' })
   name: string;
 
+  @IsArray()
+  @ArrayUnique()
   @IsUUID('4', { each: true })
   @IsNotEmpty()
   @ApiProperty({

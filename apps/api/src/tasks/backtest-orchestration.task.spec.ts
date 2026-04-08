@@ -8,7 +8,7 @@ import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { BacktestWatchdogService } from './backtest-watchdog.service';
 import { BACKTEST_STAGGER_INTERVAL_MS } from './dto/backtest-orchestration.dto';
 
-import { BacktestService } from '../order/backtest/backtest.service';
+import { BacktestDatasetService } from '../order/backtest/backtest-dataset.service';
 
 describe('BacktestOrchestrationTask', () => {
   let task: BacktestOrchestrationTask;
@@ -28,7 +28,7 @@ describe('BacktestOrchestrationTask', () => {
     getEligibleUsers: jest.fn()
   };
 
-  const mockBacktestService = {
+  const mockBacktestDatasetService = {
     ensureDefaultDatasetExists: jest.fn().mockResolvedValue(null)
   };
 
@@ -45,7 +45,7 @@ describe('BacktestOrchestrationTask', () => {
         BacktestOrchestrationTask,
         { provide: getQueueToken('backtest-orchestration'), useValue: mockQueue },
         { provide: BacktestOrchestrationService, useValue: mockService },
-        { provide: BacktestService, useValue: mockBacktestService },
+        { provide: BacktestDatasetService, useValue: mockBacktestDatasetService },
         { provide: BacktestWatchdogService, useValue: mockWatchdog }
       ]
     }).compile();
@@ -63,7 +63,7 @@ describe('BacktestOrchestrationTask', () => {
 
       await task.scheduleOrchestration();
 
-      expect(mockBacktestService.ensureDefaultDatasetExists).toHaveBeenCalledTimes(1);
+      expect(mockBacktestDatasetService.ensureDefaultDatasetExists).toHaveBeenCalledTimes(1);
       expect(orchestrationService.getEligibleUsers).toHaveBeenCalledTimes(1);
     });
 
