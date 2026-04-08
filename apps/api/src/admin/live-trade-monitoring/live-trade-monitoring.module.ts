@@ -1,8 +1,14 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { LiveTradeAlertsService } from './live-trade-alerts.service';
+import { LiveTradeAlgorithmsService } from './live-trade-algorithms.service';
+import { LiveTradeComparisonService } from './live-trade-comparison.service';
 import { LiveTradeMonitoringController } from './live-trade-monitoring.controller';
-import { LiveTradeMonitoringService } from './live-trade-monitoring.service';
+import { LiveTradeOrdersService } from './live-trade-orders.service';
+import { LiveTradeOverviewService } from './live-trade-overview.service';
+import { LiveTradeSlippageService } from './live-trade-slippage.service';
+import { LiveTradeUserActivityService } from './live-trade-user-activity.service';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { AlgorithmPerformance } from '../../algorithm/algorithm-performance.entity';
@@ -37,7 +43,14 @@ import { User } from '../../users/users.entity';
     forwardRef(() => AlgorithmModule)
   ],
   controllers: [LiveTradeMonitoringController],
-  providers: [LiveTradeMonitoringService],
-  exports: [LiveTradeMonitoringService]
+  providers: [
+    LiveTradeOverviewService,
+    LiveTradeAlgorithmsService,
+    LiveTradeOrdersService,
+    LiveTradeComparisonService,
+    LiveTradeSlippageService,
+    LiveTradeUserActivityService,
+    LiveTradeAlertsService
+  ]
 })
 export class LiveTradeMonitoringModule {}

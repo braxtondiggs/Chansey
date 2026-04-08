@@ -8,4 +8,3 @@
 export * from './dto';
 export * from './live-trade-monitoring.controller';
 export * from './live-trade-monitoring.module';
-export * from './live-trade-monitoring.service';
