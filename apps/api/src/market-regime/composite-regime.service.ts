@@ -14,12 +14,13 @@ import {
 import { MarketRegimeService } from './market-regime.service';
 
 import { AuditService } from '../audit/audit.service';
-import { CoinMarketDataService } from '../coin/coin-market-data.service';
+import { CoinService } from '../coin/coin.service';
+import { OHLCService } from '../ohlc/ohlc.service';
 import { toErrorInfo } from '../shared/error.util';
 
 /** Minimum data points required to compute the 200-period SMA */
 const SMA_PERIOD = 200;
-/** CoinGecko slug for BTC — used to fetch daily close prices for 200-SMA */
+/** Slug for BTC — used to fetch daily close prices for 200-SMA */
 const BTC_COIN_SLUG = 'bitcoin';
 /** Redis key for persisting override state across restarts */
 const OVERRIDE_CACHE_KEY = 'regime:override';
@@ -57,7 +58,8 @@ export class CompositeRegimeService implements OnModuleInit {
 
   constructor(
     private readonly marketRegimeService: MarketRegimeService,
-    private readonly coinMarketDataService: CoinMarketDataService,
+    private readonly ohlcService: OHLCService,
+    private readonly coinService: CoinService,
     private readonly auditService: AuditService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
   ) {}
@@ -119,9 +121,21 @@ export class CompositeRegimeService implements OnModuleInit {
    */
   async refresh(): Promise<CompositeRegimeType> {
     try {
-      // 1. Fetch BTC daily prices (1y ≈ 365 data points, well above 200)
-      const chartData = await this.coinMarketDataService.getMarketChart(BTC_COIN_SLUG, '1y');
-      const closes = chartData.prices.map((p) => p.price).filter((v): v is number => Number.isFinite(v));
+      // 1. Fetch BTC daily prices from local OHLC candles (1y ≈ 365 data points, well above 200)
+      const btcCoin = await this.coinService.getCoinBySlug(BTC_COIN_SLUG);
+      if (!btcCoin) {
+        this.logger.warn('BTC coin not found in database — keeping previous regime');
+        return this.getCompositeRegime();
+      }
+
+      const summaries = await this.ohlcService.findAllByDay(btcCoin.id, '1y');
+      const coinSummaries = summaries[btcCoin.id];
+
+      // findAllByDay returns descending order — reverse to chronological
+      const closes = (coinSummaries ?? [])
+        .map((s) => s.close)
+        .filter((v): v is number => Number.isFinite(v))
+        .reverse();
 
       if (closes.length < SMA_PERIOD) {
         this.logger.warn(

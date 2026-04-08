@@ -39,7 +39,7 @@ const MAX_ERROR_STRIKES = 3;
 @Injectable()
 export class LiveTradingService implements OnApplicationShutdown {
   private readonly logger = new Logger(LiveTradingService.name);
-  private currentLockId: string | null = null;
+  private currentLockToken: string | null = null;
   /** Tracks consecutive error count per user for strike-based disabling */
   private readonly userErrorStrikes = new Map<string, number>();
 
@@ -83,7 +83,7 @@ export class LiveTradingService implements OnApplicationShutdown {
       return;
     }
 
-    this.currentLockId = lockResult.lockId;
+    this.currentLockToken = lockResult.token;
 
     try {
       const enrolledUsers = await this.userRepo.find({
@@ -126,8 +126,8 @@ export class LiveTradingService implements OnApplicationShutdown {
       const err = toErrorInfo(error);
       this.logger.error(`Live trading cycle failed: ${err.message}`, err.stack);
     } finally {
-      await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockId);
-      this.currentLockId = null;
+      await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockToken);
+      this.currentLockToken = null;
     }
   }
 
@@ -487,10 +487,10 @@ export class LiveTradingService implements OnApplicationShutdown {
   }
 
   async onApplicationShutdown(signal?: string): Promise<void> {
-    if (this.currentLockId) {
+    if (this.currentLockToken) {
       this.logger.log(`Releasing live trading lock on shutdown (signal: ${signal})`);
-      await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockId);
-      this.currentLockId = null;
+      await this.lockService.release(LOCK_KEYS.LIVE_TRADING, this.currentLockToken);
+      this.currentLockToken = null;
     }
   }
 }

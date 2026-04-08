@@ -89,7 +89,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
       this.logger.log('Running weekly symbol map refresh');
       await this.seedSymbolMaps();
     } finally {
-      await this.lockService.release(LOCK_KEYS.SYMBOL_MAP_REFRESH, lock.lockId);
+      await this.lockService.release(LOCK_KEYS.SYMBOL_MAP_REFRESH, lock.token);
     }
   }
 
@@ -265,7 +265,7 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
 
       this.logger.log(`OHLC sync job scheduled with pattern: ${cronPattern}`);
     } finally {
-      await this.lockService.release(LOCK_KEYS.OHLC_SYNC_SCHEDULE, lock.lockId);
+      await this.lockService.release(LOCK_KEYS.OHLC_SYNC_SCHEDULE, lock.token);
     }
   }
 

@@ -44,7 +44,10 @@ describe('ExchangeSyncTask', () => {
       }
     } as unknown as CoinGeckoClientService;
 
-    task = new ExchangeSyncTask(queue as any, exchangeService as any, geckoService);
+    task = new ExchangeSyncTask(queue as any, exchangeService as any, geckoService, {
+      acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test' }),
+      release: jest.fn()
+    } as any);
   });
 
   afterEach(() => {

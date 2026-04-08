@@ -186,7 +186,7 @@ describe('LiveTradingService', () => {
 
   /** Sets up the common happy path to reach signal execution */
   const setupSignalPath = (opts?: { user?: Record<string, unknown>; strategies?: any[] }): User => {
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1', token: 'lock-1' });
     const user = createUser(opts?.user);
     userRepo.find.mockResolvedValue([user]);
     balanceService.getUserBalances.mockResolvedValue({
@@ -208,7 +208,7 @@ describe('LiveTradingService', () => {
     });
 
     it('skips execution when lock is not acquired', async () => {
-      lockService.acquire.mockResolvedValue({ acquired: false, lockId: null });
+      lockService.acquire.mockResolvedValue({ acquired: false, lockId: null, token: null });
 
       await service.executeLiveTrading();
 
@@ -630,7 +630,7 @@ describe('LiveTradingService', () => {
 
   describe('error handling and resilience', () => {
     it('disables user after three consecutive errors', async () => {
-      lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
+      lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1', token: 'lock-1' });
       const user = createUser();
       userRepo.find.mockResolvedValue([user]);
       balanceService.getUserBalances.mockRejectedValue(new Error('Balance fetch failed'));
@@ -643,7 +643,7 @@ describe('LiveTradingService', () => {
     });
 
     it('resets error strikes after successful execution', async () => {
-      lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
+      lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1', token: 'lock-1' });
       const user = createUser();
       userRepo.find.mockResolvedValue([user]);
 
@@ -700,7 +700,7 @@ describe('LiveTradingService', () => {
     });
 
     it('releases lock even when cycle-level error occurs', async () => {
-      lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1' });
+      lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'lock-1', token: 'lock-1' });
       userRepo.find.mockRejectedValue(new Error('DB connection lost'));
 
       await service.executeLiveTrading();
@@ -722,7 +722,7 @@ describe('LiveTradingService', () => {
 
   describe('onApplicationShutdown', () => {
     it('releases lock on shutdown when held', async () => {
-      (service as any).currentLockId = 'shutdown-lock';
+      (service as any).currentLockToken = 'shutdown-lock';
 
       await service.onApplicationShutdown('SIGTERM');
 

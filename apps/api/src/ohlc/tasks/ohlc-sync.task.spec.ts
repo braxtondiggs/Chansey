@@ -162,7 +162,7 @@ describe('OHLCSyncTask', () => {
     process.env.NODE_ENV = 'production';
     process.env.DISABLE_BACKGROUND_TASKS = 'false';
     configService.get.mockReturnValue(undefined);
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'refresh-lock' });
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'refresh-lock', token: 'refresh-lock' });
     exchangeService.getExchanges.mockResolvedValue([]);
 
     await task.refreshSymbolMaps();
@@ -184,7 +184,7 @@ describe('OHLCSyncTask', () => {
   });
 
   it('scheduleOHLCSyncJob skips when job already scheduled', async () => {
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'schedule-lock' });
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'schedule-lock', token: 'schedule-lock' });
     queue.getRepeatableJobs.mockResolvedValue([{ name: 'ohlc-sync', pattern: '0 * * * *' }]);
 
     await (task as any).scheduleOHLCSyncJob();
@@ -194,7 +194,7 @@ describe('OHLCSyncTask', () => {
   });
 
   it('scheduleOHLCSyncJob schedules with configured cron pattern', async () => {
-    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'schedule-lock' });
+    lockService.acquire.mockResolvedValue({ acquired: true, lockId: 'schedule-lock', token: 'schedule-lock' });
     queue.getRepeatableJobs.mockResolvedValue([]);
     configService.get.mockReturnValue('*/15 * * * *');
 

@@ -8,13 +8,21 @@ import { CoinDetailSyncService } from './coin-detail-sync.service';
 
 import { ExchangeService } from '../../exchange/exchange.service';
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
+import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { withTimeout } from '../../shared/with-timeout.util';
 import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { CoinListingEventService } from '../coin-listing-event.service';
 import { CoinMarketDataService } from '../coin-market-data.service';
 import { CoinService } from '../coin.service';
 
-@Processor('coin-queue')
+// BullMQ auto-renews its internal worker lock every `lockDuration / 2` ms, so
+// a short value here gives fast stall detection without affecting long-running
+// jobs. Concurrency/exclusivity of coin-detail vs coin-sync is enforced by the
+// distributed lock (see DistributedLockService), not by this setting. Soft
+// timeouts in process() bound runtime independently.
+@Processor('coin-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
 export class CoinSyncTask extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CoinSyncTask.name);
@@ -29,7 +37,8 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
     private readonly coinDetailSync: CoinDetailSyncService,
     private readonly snapshotService: CoinDailySnapshotService,
     private readonly coinMarketData: CoinMarketDataService,
-    private readonly gecko: CoinGeckoClientService
+    private readonly gecko: CoinGeckoClientService,
+    private readonly lockService: DistributedLockService
   ) {
     super();
   }
@@ -79,13 +88,26 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
 
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
+
+    const lockKey = job.name === 'coin-detail' ? LOCK_KEYS.COIN_DETAIL : LOCK_KEYS.COIN_SYNC;
+    const lockTtl = job.name === 'coin-detail' ? LOCK_DEFAULTS.COIN_DETAIL_TTL_MS : LOCK_DEFAULTS.COIN_SYNC_TTL_MS;
+
+    const lock = await this.lockService.acquire({ key: lockKey, ttlMs: lockTtl });
+    if (!lock.acquired) {
+      this.logger.warn(`Could not acquire lock for ${job.name}, skipping`);
+      return { skipped: true, reason: 'lock_not_acquired' };
+    }
+
     try {
       let result: Record<string, unknown>;
 
+      // Timeouts must fire before the distributed-lock TTL expires so the
+      // finally block can release the lock before another run claims it.
+      // coin-sync TTL 45m → 40m timeout; coin-detail TTL 5h → 4h timeout.
       if (job.name === 'coin-sync') {
-        result = await this.handleSyncCoins(job);
+        result = await withTimeout(this.handleSyncCoins(job), 40 * 60 * 1000, 'coin-sync');
       } else if (job.name === 'coin-detail') {
-        result = await this.handleCoinDetail(job);
+        result = await withTimeout(this.handleCoinDetail(job), 4 * 60 * 60 * 1000, 'coin-detail');
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
@@ -96,6 +118,8 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
+    } finally {
+      await this.lockService.release(lockKey, lock.token);
     }
   }
 
