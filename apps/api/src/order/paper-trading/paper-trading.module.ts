@@ -32,6 +32,8 @@ import { PaperTradingService } from './paper-trading.service';
 import { Algorithm } from '../../algorithm/algorithm.entity';
 import { AlgorithmModule } from '../../algorithm/algorithm.module';
 import { AuthenticationModule } from '../../authentication/authentication.module';
+import { CoinModule } from '../../coin/coin.module';
+import { CoinSelectionModule } from '../../coin-selection/coin-selection.module';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyModule } from '../../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../../exchange/exchange.module';
@@ -67,6 +69,8 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     forwardRef(() => UsersModule),
     forwardRef(() => OHLCModule),
     forwardRef(() => MarketRegimeModule),
+    forwardRef(() => CoinModule),
+    forwardRef(() => CoinSelectionModule),
     MetricsModule
   ],
   controllers: [PaperTradingController],

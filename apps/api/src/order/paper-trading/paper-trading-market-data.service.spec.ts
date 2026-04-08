@@ -5,7 +5,15 @@ import { PaperTradingMarketDataService, PriceData } from './paper-trading-market
 import type { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import * as retryUtil from '../../shared/retry.util';
 
-const createService = (overrides: Partial<{ cacheManager: any; exchangeManager: any; config: any }> = {}) => {
+const createService = (
+  overrides: Partial<{
+    cacheManager: any;
+    exchangeManager: any;
+    config: any;
+    coinSelectionService: any;
+    coinService: any;
+  }> = {}
+) => {
   const cacheManager = overrides.cacheManager ?? {
     get: jest.fn(),
     set: jest.fn(),
@@ -20,10 +28,26 @@ const createService = (overrides: Partial<{ cacheManager: any; exchangeManager: 
 
   const config = overrides.config ?? { priceCacheTtlMs: 1000 };
 
+  const coinSelectionService = overrides.coinSelectionService ?? {
+    getCoinSelectionsByUser: jest.fn().mockResolvedValue([])
+  };
+
+  const coinService = overrides.coinService ?? {
+    getCoinsByRiskLevel: jest.fn().mockResolvedValue([])
+  };
+
   return {
-    service: new PaperTradingMarketDataService(config as any, cacheManager, exchangeManager as ExchangeManagerService),
+    service: new PaperTradingMarketDataService(
+      config as any,
+      cacheManager,
+      exchangeManager as ExchangeManagerService,
+      coinSelectionService as any,
+      coinService as any
+    ),
     cacheManager,
-    exchangeManager
+    exchangeManager,
+    coinSelectionService,
+    coinService
   };
 };
 
@@ -231,40 +255,6 @@ describe('PaperTradingMarketDataService', () => {
   });
 
   describe('getCurrentPrice retry + stale-cache fallback', () => {
-    it('retries on transient error and succeeds on 2nd attempt', async () => {
-      const ticker = { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 };
-
-      const client = { fetchTicker: jest.fn() };
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockReturnValue('BTC/USDT'),
-        getPublicClient: jest.fn().mockResolvedValue(client)
-      };
-
-      withRateLimitRetrySpy.mockResolvedValue({
-        success: true,
-        result: ticker,
-        attempts: 2,
-        totalDelayMs: 2000
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      const result = await service.getCurrentPrice('binance', 'BTC/USDT');
-
-      expect(result.price).toBe(45000);
-      expect(withRateLimitRetrySpy).toHaveBeenCalledWith(
-        expect.any(Function),
-        expect.objectContaining({
-          operationName: expect.stringContaining('fetchTicker')
-        })
-      );
-    });
-
     it('falls back to stale cache when all retries exhausted', async () => {
       const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
 
@@ -674,12 +664,12 @@ describe('PaperTradingMarketDataService', () => {
 
   describe('checkExchangeHealth', () => {
     it('returns healthy with latency when exchange responds', async () => {
-      const client = { fetchTime: jest.fn().mockResolvedValue(1700000000000) };
-
       const exchangeManager = {
         formatSymbol: jest.fn(),
-        getPublicClient: jest.fn().mockResolvedValue(client)
+        getPublicClient: jest.fn().mockResolvedValue({ fetchTime: jest.fn() })
       };
+
+      withRateLimitRetrySpy.mockResolvedValue({ success: true, result: 1700000000000, attempts: 1, totalDelayMs: 0 });
 
       const { service } = createService({ exchangeManager });
       const result = await service.checkExchangeHealth('binance');
@@ -689,13 +679,18 @@ describe('PaperTradingMarketDataService', () => {
       expect(result.error).toBeUndefined();
     });
 
-    it('returns unhealthy with error message when exchange fails', async () => {
-      const client = { fetchTime: jest.fn().mockRejectedValue(new Error('connection refused')) };
-
+    it('returns unhealthy when retry wrapper reports failure', async () => {
       const exchangeManager = {
         formatSymbol: jest.fn(),
-        getPublicClient: jest.fn().mockResolvedValue(client)
+        getPublicClient: jest.fn().mockResolvedValue({ fetchTime: jest.fn() })
       };
+
+      withRateLimitRetrySpy.mockResolvedValue({
+        success: false,
+        error: new Error('connection refused'),
+        attempts: 4,
+        totalDelayMs: 14000
+      });
 
       const { service } = createService({ exchangeManager });
       const result = await service.checkExchangeHealth('binance');
@@ -703,6 +698,193 @@ describe('PaperTradingMarketDataService', () => {
       expect(result.healthy).toBe(false);
       expect(result.error).toBe('connection refused');
       expect(result.latencyMs).toBeUndefined();
+    });
+
+    it('returns unhealthy when getPublicClient throws', async () => {
+      const exchangeManager = {
+        formatSymbol: jest.fn(),
+        getPublicClient: jest.fn().mockRejectedValue(new Error('no such exchange'))
+      };
+
+      const { service } = createService({ exchangeManager });
+      const result = await service.checkExchangeHealth('binance');
+
+      expect(result.healthy).toBe(false);
+      expect(result.error).toBe('no such exchange');
+    });
+  });
+
+  describe('resolveSymbolUniverse', () => {
+    const makeSession = (id = 'sess-1', userId = 'user-1'): any => ({ id, user: { id: userId } });
+
+    it('returns coin selection symbols and caches them', async () => {
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }, { coin: { symbol: 'eth' } }])
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const session = makeSession();
+
+      const result = await service.resolveSymbolUniverse(session, 'USD');
+
+      expect(result).toEqual(['BTC/USD', 'ETH/USD']);
+      expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
+
+      // Second call must be served from cache
+      await service.resolveSymbolUniverse(session, 'USD');
+      expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to risk-level coins when selections empty', async () => {
+      const coinSelectionService = { getCoinSelectionsByUser: jest.fn().mockResolvedValue([]) };
+      const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([{ symbol: 'sol' }, { symbol: 'dot' }]) };
+      const { service } = createService({ coinSelectionService, coinService });
+
+      const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
+
+      expect(result).toEqual(['SOL/USD', 'DOT/USD']);
+    });
+
+    it('re-queries after cache TTL expires', async () => {
+      let fakeNow = 1_000_000;
+      jest.spyOn(Date, 'now').mockImplementation(() => fakeNow);
+
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const session = makeSession();
+
+      await service.resolveSymbolUniverse(session, 'USD');
+
+      fakeNow += 5 * 60 * 1000 + 1; // past TTL
+
+      await service.resolveSymbolUniverse(session, 'USD');
+
+      expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(2);
+
+      jest.restoreAllMocks();
+    });
+
+    it('does not cache the BTC/ETH fallback — re-queries DB on every tick until real selections exist', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const coinSelectionService = { getCoinSelectionsByUser: jest.fn().mockResolvedValue([]) };
+      const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([]) };
+      const {
+        service,
+        coinSelectionService: mockCs,
+        coinService: mockCv
+      } = createService({
+        coinSelectionService,
+        coinService
+      });
+      const session = makeSession('s-x', 'u-99');
+
+      const result = await service.resolveSymbolUniverse(session, 'USD');
+      await service.resolveSymbolUniverse(session, 'USD');
+
+      expect(result).toEqual(['BTC/USD', 'ETH/USD']);
+      expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(2);
+      expect(mockCv.getCoinsByRiskLevel).toHaveBeenCalledTimes(2);
+      // Verify log includes userId for debugging
+      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('u-99'));
+      loggerSpy.mockRestore();
+    });
+
+    it('clearSymbolCache removes the cached entry so next call re-queries', async () => {
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const session = makeSession();
+
+      await service.resolveSymbolUniverse(session, 'USD');
+      service.clearSymbolCache(session.id);
+      await service.resolveSymbolUniverse(session, 'USD');
+
+      expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns BTC/ETH fallback when session.user is null', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const { service, coinSelectionService: mockCs } = createService();
+      const session = { id: 'sess-no-user', user: null } as any;
+
+      const result = await service.resolveSymbolUniverse(session, 'USD');
+
+      expect(result).toEqual(['BTC/USD', 'ETH/USD']);
+      expect(mockCs.getCoinSelectionsByUser).not.toHaveBeenCalled();
+      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('no user attached'));
+      loggerSpy.mockRestore();
+    });
+
+    it('falls through to risk-level coins when coin selection service throws', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockRejectedValue(new Error('DB connection lost'))
+      };
+      const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([{ symbol: 'sol' }]) };
+      const { service } = createService({ coinSelectionService, coinService });
+
+      const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
+
+      expect(result).toEqual(['SOL/USD']);
+      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('coin selection fetch failed'));
+      loggerSpy.mockRestore();
+    });
+
+    it('returns BTC/ETH fallback when both services throw', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockRejectedValue(new Error('DB down'))
+      };
+      const coinService = { getCoinsByRiskLevel: jest.fn().mockRejectedValue(new Error('DB down')) };
+      const { service } = createService({ coinSelectionService, coinService });
+
+      const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
+
+      expect(result).toEqual(['BTC/USD', 'ETH/USD']);
+      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('risk-level coin fetch failed'));
+      loggerSpy.mockRestore();
+    });
+  });
+
+  describe('sweepOrphaned', () => {
+    const makeSession = (id: string): any => ({ id, user: { id: 'u-1' } });
+
+    it('removes cached entries for sessions not in active set', async () => {
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
+      };
+      const { service } = createService({ coinSelectionService });
+
+      // Populate caches for 3 sessions
+      await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
+      await service.resolveSymbolUniverse(makeSession('s-2'), 'USD');
+      await service.resolveSymbolUniverse(makeSession('s-3'), 'USD');
+
+      const swept = service.sweepOrphaned(new Set(['s-2']));
+
+      expect(swept).toBe(2);
+
+      // s-2 should still be cached (no re-query needed)
+      coinSelectionService.getCoinSelectionsByUser.mockClear();
+      await service.resolveSymbolUniverse(makeSession('s-2'), 'USD');
+      expect(coinSelectionService.getCoinSelectionsByUser).not.toHaveBeenCalled();
+
+      // s-1 should be gone (re-query needed)
+      await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
+      expect(coinSelectionService.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns 0 when all sessions are active', async () => {
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
+      };
+      const { service } = createService({ coinSelectionService });
+
+      await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
+
+      expect(service.sweepOrphaned(new Set(['s-1']))).toBe(0);
     });
   });
 

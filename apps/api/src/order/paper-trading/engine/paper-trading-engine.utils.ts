@@ -1,7 +1,7 @@
 import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
 import { CandleData } from '../../../ohlc/ohlc-candle.entity';
 import { DEFAULT_OPPORTUNITY_SELLING_CONFIG, OpportunitySellingUserConfig } from '../../backtest/shared';
-import { PaperTradingExitType, PaperTradingOrder, PaperTradingSignalType } from '../entities';
+import { PaperTradingAccount, PaperTradingExitType, PaperTradingOrder, PaperTradingSignalType } from '../entities';
 
 // ─── Public Types ───────────────────────────────────────────────────────────
 
@@ -32,6 +32,27 @@ export type ExecuteOrderStatus = 'success' | 'insufficient_funds' | 'no_price' |
 export interface ExecuteOrderResult {
   status: ExecuteOrderStatus;
   order: PaperTradingOrder | null;
+}
+
+// ─── Engine-Internal Result Types ───────────────────────────────────────────
+
+export interface EngineMarketData {
+  accounts: PaperTradingAccount[];
+  quoteCurrency: string;
+  exchangeSlug: string;
+  priceMap: Record<string, number>;
+  historicalCandles: Record<string, CandleData[]>;
+  allSymbols: string[];
+}
+
+export interface FilteredSignals {
+  signals: TradingSignal[];
+  allocation: { maxAllocation: number; minAllocation: number };
+}
+
+export interface SignalLoopResult {
+  ordersExecuted: number;
+  errors: string[];
 }
 
 // ─── Exit Type Helpers ──────────────────────────────────────────────────────

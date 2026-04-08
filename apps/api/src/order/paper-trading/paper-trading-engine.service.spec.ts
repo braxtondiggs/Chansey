@@ -27,6 +27,7 @@ interface Overrides {
   signalFilterChainApply?: jest.Mock;
   exitOrdersExecuted?: number;
   signalThrottle?: Record<string, jest.Mock>;
+  resolveSymbolUniverse?: jest.Mock;
 }
 
 const createService = (overrides: Overrides = {}) => {
@@ -113,7 +114,16 @@ const createService = (overrides: Overrides = {}) => {
 
   const marketDataService = {
     getPrices: jest.fn().mockResolvedValue(new Map(Object.entries(prices).map(([sym, p]) => [sym, { price: p }]))),
-    getHistoricalCandles: jest.fn().mockResolvedValue([])
+    getHistoricalCandles: jest.fn().mockResolvedValue([]),
+    resolveSymbolUniverse:
+      overrides.resolveSymbolUniverse ??
+      jest
+        .fn()
+        .mockResolvedValue(
+          Object.keys(prices).length > 0 ? Object.keys(prices) : [`BTC/${quoteCurrency}`, `ETH/${quoteCurrency}`]
+        ),
+    clearSymbolCache: jest.fn(),
+    sweepOrphaned: jest.fn().mockReturnValue(0)
   };
 
   const algorithmRegistry = {
@@ -217,13 +227,49 @@ describe('PaperTradingEngineService', () => {
   });
 
   it('defaults to BTC/ETH symbols when no holdings or config and takes a snapshot on interval ticks', async () => {
-    const { service, marketDataService, snapshotService } = createService({ accounts: [] });
+    const resolveSymbolUniverse = jest.fn().mockResolvedValue(['BTC/USD', 'ETH/USD']);
+    const prices = { 'BTC/USD': 50000, 'ETH/USD': 3000 };
+    const { service, marketDataService, snapshotService } = createService({
+      accounts: [],
+      prices,
+      resolveSymbolUniverse
+    });
 
     const result = await service.processTick(makeSession({ tickCount: 10 }), exchangeKey);
 
+    expect(resolveSymbolUniverse).toHaveBeenCalledTimes(1);
     expect(marketDataService.getPrices).toHaveBeenCalledWith('binance', ['BTC/USD', 'ETH/USD']);
     expect(snapshotService.save).toHaveBeenCalledTimes(1);
     expect(result.processed).toBe(true);
+  });
+
+  it('uses resolved symbols from marketDataService when no holdings', async () => {
+    const resolveSymbolUniverse = jest.fn().mockResolvedValue(['BNB/USD', 'BTC/USD', 'ETH/USD']);
+    const prices = { 'BNB/USD': 300, 'BTC/USD': 50000, 'ETH/USD': 3000 };
+    const { service, marketDataService } = createService({ accounts: [], prices, resolveSymbolUniverse });
+
+    await service.processTick(makeSession(), exchangeKey);
+
+    expect(resolveSymbolUniverse).toHaveBeenCalledTimes(1);
+    expect(marketDataService.getPrices).toHaveBeenCalledWith(
+      'binance',
+      expect.arrayContaining(['BNB/USD', 'BTC/USD', 'ETH/USD'])
+    );
+  });
+
+  describe('validSymbols exchange filtering', () => {
+    it('only fetches candles for symbols present in the price map', async () => {
+      // Exchange returns prices only for BTC/USD; UNKNOWN/USD is absent from the price response
+      const resolveSymbolUniverse = jest.fn().mockResolvedValue(['BTC/USD', 'UNKNOWN/USD']);
+      const prices = { 'BTC/USD': 50000 }; // UNKNOWN/USD intentionally absent
+      const { service, marketDataService } = createService({ accounts: [], prices, resolveSymbolUniverse });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      const candleCalls = marketDataService.getHistoricalCandles.mock.calls.map((c: any[]) => c[1]);
+      expect(candleCalls).toContain('BTC/USD');
+      expect(candleCalls).not.toContain('UNKNOWN/USD');
+    });
   });
 
   it('refreshes portfolio before running the algorithm when exits executed', async () => {
