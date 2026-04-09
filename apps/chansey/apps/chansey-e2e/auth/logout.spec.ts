@@ -46,10 +46,11 @@ test.describe('Logout Flow', () => {
       );
 
       await authenticatedPage.getByTestId('profile-menu-trigger').click();
+      const failedLogoutResponse = authenticatedPage.waitForResponse(
+        (r) => r.url().includes('/api/auth/logout') && r.status() === 500
+      );
       await authenticatedPage.getByTestId('profile-logout').click();
-
-      // Wait for the failed mutation to settle before asserting
-      await authenticatedPage.waitForTimeout(1000);
+      await failedLogoutResponse;
 
       // When logout API fails, the user stays on the current page
       await expect(authenticatedPage).toHaveURL(/\/app\/dashboard/);

@@ -1,6 +1,6 @@
 # E2E Tests Workflow
 # Runs Playwright auth E2E tests against real API with PostgreSQL and Redis
-# Triggered on PRs and pushes to master when frontend or API code changes
+# Uses Nx affected to skip when chansey (and its graph) is unchanged
 
 name: E2E Tests
 
@@ -9,6 +9,7 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,12 +20,52 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: "22"
   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
 jobs:
+  affected:
+    name: Check affected
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - uses: nrwl/nx-set-shas@v4
+
+      - name: Determine if chansey is affected
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          AFFECTED=$(npx nx show projects --affected --base=$NX_BASE --head=$NX_HEAD)
+          echo "Affected projects:"
+          echo "$AFFECTED"
+          if echo "$AFFECTED" | grep -qx "chansey"; then
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
     name: Playwright E2E
+    needs: affected
+    if: needs.affected.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -49,13 +90,14 @@ jobs:
 
     env:
       PGHOST: localhost
-      PGPORT: '5432'
+      PGPORT: "5432"
       PGUSER: chansey
       PGPASSWORD: chansey
       PGDATABASE: chansey_test
       REDIS_HOST: localhost
-      REDIS_PORT: '6379'
+      REDIS_PORT: "6379"
       REDIS_URL: redis://localhost:6379
+      # TEST-ONLY placeholders — never reuse in any other workflow or environment
       JWT_SECRET: e2e-test-jwt-secret-do-not-use-in-production
       JWT_REFRESH_SECRET: e2e-test-jwt-refresh-secret-do-not-use-in-production
       COOKIE_SECRET: e2e-test-cookie-secret-do-not-use-in-production!!
@@ -74,18 +116,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: package-lock.json
 
-      - name: Cache node_modules
-        id: cache-node-modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
-
       - name: Install dependencies
-        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci --prefer-offline --no-audit
 
       - name: Cache Playwright browsers
@@ -103,9 +137,10 @@ jobs:
         run: npx nx build api
 
       - name: Start API server
-        run: node dist/api/main.js &
+        run: node dist/api/src/main.js > api.log 2>&1 &
         env:
           HOST: 0.0.0.0
+          NODE_PATH: dist/libs
 
       - name: Wait for API
         run: |
@@ -121,11 +156,16 @@ jobs:
           echo "API failed to start!"
           exit 1
 
+      - name: Run database migrations
+        run: npx nx run api:migration:run || echo "No migration target configured; relying on synchronize"
+
       - name: Seed E2E test user
         run: node apps/api/scripts/seed-e2e-user.js
 
+      - uses: nrwl/nx-set-shas@v4
+
       - name: Run E2E tests
-        run: npx nx e2e chansey --configuration=ci
+        run: npx nx affected -t e2e --configuration=ci --base=$NX_BASE --head=$NX_HEAD
         env:
           CI: true
           BASE_URL: http://localhost:4200
@@ -146,5 +186,14 @@ jobs:
         with:
           name: playwright-test-results
           path: dist/.playwright/apps/chansey/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: api.log
           retention-days: 7
           if-no-files-found: ignore

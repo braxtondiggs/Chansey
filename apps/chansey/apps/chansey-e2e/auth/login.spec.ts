@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/auth.fixture';
+import { test, expect, passwordInput } from '../fixtures/auth.fixture';
 
 test.describe('Login Flow', () => {
   test.beforeEach(async ({ page, context }) => {
@@ -9,7 +9,7 @@ test.describe('Login Flow', () => {
   test.describe('Real API Integration', () => {
     test('should login with valid credentials and redirect to dashboard', async ({ page, testUser }) => {
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill(testUser.password);
+      await passwordInput(page, 'login-password').fill(testUser.password);
       await page.getByTestId('login-submit').click();
 
       await page.waitForURL('**/app/dashboard');
@@ -22,7 +22,7 @@ test.describe('Login Flow', () => {
 
     test('should login with remember me checked', async ({ page, testUser }) => {
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill(testUser.password);
+      await passwordInput(page, 'login-password').fill(testUser.password);
       await page.getByTestId('login-remember').locator('input').check();
       await page.getByTestId('login-submit').click();
 
@@ -34,7 +34,7 @@ test.describe('Login Flow', () => {
 
     test('should show error for invalid credentials', async ({ page }) => {
       await page.getByTestId('login-email').fill('nonexistent@example.com');
-      await page.getByTestId('login-password').locator('input').fill('WrongPass123!');
+      await passwordInput(page, 'login-password').fill('WrongPass123!');
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByTestId('login-message')).toBeVisible();
@@ -43,7 +43,7 @@ test.describe('Login Flow', () => {
 
     test('should show error for wrong password', async ({ page, testUser }) => {
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill('WrongPassword123!');
+      await passwordInput(page, 'login-password').fill('WrongPassword123!');
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByTestId('login-message')).toBeVisible();
@@ -53,7 +53,7 @@ test.describe('Login Flow', () => {
 
   test.describe('Client-Side Validation', () => {
     test('should show error for empty email', async ({ page }) => {
-      await page.getByTestId('login-password').locator('input').fill('Password123!');
+      await passwordInput(page, 'login-password').fill('Password123!');
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByText('Email is required')).toBeVisible();
@@ -61,7 +61,7 @@ test.describe('Login Flow', () => {
 
     test('should show error for invalid email format', async ({ page }) => {
       await page.getByTestId('login-email').fill('not-an-email');
-      await page.getByTestId('login-password').locator('input').fill('Password123!');
+      await passwordInput(page, 'login-password').fill('Password123!');
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByText('Please enter a valid email')).toBeVisible();
@@ -91,7 +91,7 @@ test.describe('Login Flow', () => {
       );
 
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill(testUser.password);
+      await passwordInput(page, 'login-password').fill(testUser.password);
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByTestId('login-message')).toBeVisible();
@@ -113,7 +113,7 @@ test.describe('Login Flow', () => {
       );
 
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill(testUser.password);
+      await passwordInput(page, 'login-password').fill(testUser.password);
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByTestId('login-message')).toBeVisible();
@@ -135,7 +135,7 @@ test.describe('Login Flow', () => {
       );
 
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill(testUser.password);
+      await passwordInput(page, 'login-password').fill(testUser.password);
       await page.getByTestId('login-submit').click();
 
       // OTP required response redirects to the OTP verification page
@@ -146,7 +146,7 @@ test.describe('Login Flow', () => {
       await page.route('**/api/auth/login', (route) => route.abort());
 
       await page.getByTestId('login-email').fill(testUser.email);
-      await page.getByTestId('login-password').locator('input').fill(testUser.password);
+      await passwordInput(page, 'login-password').fill(testUser.password);
       await page.getByTestId('login-submit').click();
 
       await expect(page.getByTestId('login-message')).toBeVisible();

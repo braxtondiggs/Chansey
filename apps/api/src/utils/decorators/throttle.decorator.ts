@@ -10,13 +10,17 @@ export const AuthThrottle = () =>
       : { short: { limit: 3, ttl: 1000 }, medium: { limit: 5, ttl: 60000 }, long: { limit: 20, ttl: 3600000 } }
   );
 
-// Moderate rate limiting for API endpoints
+// Moderate rate limiting for API endpoints (relaxed in test/E2E mode)
 export const ApiThrottle = () =>
-  Throttle({
-    short: { limit: 5, ttl: 1000 }, // 5 requests per second
-    medium: { limit: 50, ttl: 60000 }, // 50 requests per minute
-    long: { limit: 500, ttl: 3600000 } // 500 requests per hour
-  });
+  Throttle(
+    isTest
+      ? { short: { limit: 1000, ttl: 1000 }, medium: { limit: 5000, ttl: 60000 }, long: { limit: 50000, ttl: 3600000 } }
+      : {
+          short: { limit: 5, ttl: 1000 }, // 5 requests per second
+          medium: { limit: 50, ttl: 60000 }, // 50 requests per minute
+          long: { limit: 500, ttl: 3600000 } // 500 requests per hour
+        }
+  );
 
 // Strict rate limiting for file upload endpoints
 export const UploadThrottle = () =>

@@ -1,4 +1,4 @@
-import { type Page, test as base, expect } from '@playwright/test';
+import { type Locator, type Page, test as base, expect } from '@playwright/test';
 
 const TEST_USER = {
   email: 'e2e-test@chansey.local',
@@ -8,6 +8,28 @@ const TEST_USER = {
 };
 
 const API_URL = process.env['API_URL'] || 'http://localhost:3000';
+
+export type RegisterFormData = {
+  givenName: string;
+  familyName: string;
+  email: string;
+  password: string;
+  confirmPassword?: string;
+};
+
+/**
+ * PrimeNG password fields wrap a native `<input>`. Use this helper to target
+ * the actual input without repeating `.locator('input')` in every test.
+ */
+export const passwordInput = (page: Page, testId: string): Locator => page.getByTestId(testId).locator('input');
+
+export const fillRegisterForm = async (page: Page, data: RegisterFormData): Promise<void> => {
+  await page.getByTestId('register-given-name').fill(data.givenName);
+  await page.getByTestId('register-family-name').fill(data.familyName);
+  await page.getByTestId('register-email').fill(data.email);
+  await passwordInput(page, 'register-password').fill(data.password);
+  await passwordInput(page, 'register-confirm-password').fill(data.confirmPassword ?? data.password);
+};
 
 type AuthFixtures = {
   testUser: typeof TEST_USER;
@@ -34,21 +56,6 @@ export const test = base.extend<AuthFixtures>({
       if (!response.ok()) {
         const body = await response.text();
         throw new Error(`loginViaAPI failed: ${response.status()} ${response.statusText()} - ${body}`);
-      }
-
-      // Extract cookies from the API response and add them to the browser context
-      const cookies = await context.cookies(API_URL);
-      if (cookies.length > 0) {
-        const frontendCookies = cookies
-          .filter((c) => c.name === 'chansey_access' || c.name === 'chansey_refresh')
-          .map((c) => ({
-            ...c,
-            domain: 'localhost',
-            path: '/'
-          }));
-        if (frontendCookies.length > 0) {
-          await context.addCookies(frontendCookies);
-        }
       }
     };
 

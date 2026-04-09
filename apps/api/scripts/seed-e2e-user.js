@@ -3,7 +3,16 @@
  * Used by the CI E2E workflow after the API starts (schema created via synchronize).
  *
  * Requires PG* env vars (PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT).
+ * Locally, either source your .env beforehand, or run with `node --env-file=.env`.
+ * CI sets env vars directly in the job env block.
  */
+try {
+  require('dotenv').config();
+} catch (err) {
+  if (err.code !== 'MODULE_NOT_FOUND') throw err;
+  /* dotenv not installed — rely on process env (CI or pre-sourced shell) */
+}
+
 const bcrypt = require('bcrypt');
 const { Client } = require('pg');
 
@@ -13,32 +22,46 @@ async function seed() {
 
   const hash = await bcrypt.hash('Test123!@#', 12);
 
-  await client.query(
-    `INSERT INTO "user" (
-      email, given_name, family_name, "passwordHash", "emailVerified",
-      roles, "failedLoginAttempts", "otpEnabled", "otpFailedAttempts",
-      hide_balance, "algoTradingEnabled", "algoCapitalAllocationPercentage",
-      "createdAt", "updatedAt"
-    ) VALUES (
-      'e2e-test@chansey.local', 'E2E', 'Test',
-      $1, true, '{user}', 0, false, 0, false, false, 25.00, NOW(), NOW()
-    )
-    ON CONFLICT (email) DO UPDATE SET
-      "passwordHash" = $1,
-      "emailVerified" = true,
-      "failedLoginAttempts" = 0`,
-    [hash]
-  );
+  try {
+    await client.query('BEGIN');
 
-  // Clean up orphan users from previous test runs
-  const { rowCount } = await client.query(
-    `DELETE FROM "user" WHERE email LIKE 'e2e-register-%@chansey.local' OR email LIKE 'e2e-new-%@chansey.local'`
-  );
-  if (rowCount > 0) {
-    console.log(`Cleaned up ${rowCount} orphan test user(s)`);
+    await client.query(
+      `INSERT INTO "user" (
+        email, given_name, family_name, "passwordHash", "emailVerified",
+        roles, "failedLoginAttempts", "otpEnabled", "otpFailedAttempts",
+        hide_balance, "algoTradingEnabled", "algoCapitalAllocationPercentage",
+        "createdAt", "updatedAt"
+      ) VALUES (
+        'e2e-test@chansey.local', 'E2E', 'Test',
+        $1, true, '{user}', 0, false, 0, false, false, 25.00, NOW(), NOW()
+      )
+      ON CONFLICT (email) DO UPDATE SET
+        "passwordHash" = $1,
+        "emailVerified" = true,
+        "failedLoginAttempts" = 0,
+        "lockedUntil" = NULL`,
+      [hash]
+    );
+
+    // Clean up orphan users from previous test runs, but only ones older than
+    // 1 hour so we don't race concurrent CI jobs.
+    const { rowCount } = await client.query(
+      `DELETE FROM "user"
+       WHERE (email LIKE 'e2e-register-%@chansey.local' OR email LIKE 'e2e-new-%@chansey.local')
+         AND "createdAt" < NOW() - INTERVAL '1 hour'`
+    );
+    if (rowCount > 0) {
+      console.log(`Cleaned up ${rowCount} orphan test user(s)`);
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    await client.end();
   }
 
-  await client.end();
   console.log('E2E test user seeded successfully');
 }
 

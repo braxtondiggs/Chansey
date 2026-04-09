@@ -1,7 +1,7 @@
 <app-auth-page-shell illustration="register">
   <h5 class="title-h5 text-center lg:text-left">Register</h5>
   <p class="body-small mt-4 text-center lg:text-left">Let's get started! Create your account.</p>
-  <app-auth-messages [messages]="messages()" />
+  <app-auth-messages [messages]="messages()" testid="register-message" />
   <p-fluid>
     <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="mt-8">
       <div class="flex gap-4">

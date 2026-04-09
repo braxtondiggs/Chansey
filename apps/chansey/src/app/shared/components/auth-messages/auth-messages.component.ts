@@ -13,6 +13,7 @@ import { AuthMessage } from './auth-message.interface';
     <div class="flex flex-col">
       @for (message of messages(); track message.content) {
         <p-message
+          [attr.data-testid]="testid()"
           [severity]="message.severity"
           [text]="message.content"
           [icon]="'pi ' + message.icon"
@@ -25,4 +26,5 @@ import { AuthMessage } from './auth-message.interface';
 })
 export class AuthMessagesComponent {
   messages = input.required<AuthMessage[]>();
+  testid = input<string | null>(null);
 }

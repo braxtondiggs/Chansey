@@ -104,23 +104,19 @@ import { TradingModule } from './trading/trading.module';
       adapter: FastifyAdapter
     }),
     BullBoardModule.forFeature(...QUEUE_NAMES.map((name) => ({ name, adapter: BullMQAdapter }))),
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000, // 1 second
-        limit: 10 // 10 requests per second
-      },
-      {
-        name: 'medium',
-        ttl: 60000, // 1 minute
-        limit: 100 // 100 requests per minute
-      },
-      {
-        name: 'long',
-        ttl: 3600000, // 1 hour
-        limit: 1000 // 1000 requests per hour
-      }
-    ]),
+    ThrottlerModule.forRoot(
+      process.env['NODE_ENV'] === 'test'
+        ? [
+            { name: 'short', ttl: 1000, limit: 10000 },
+            { name: 'medium', ttl: 60000, limit: 100000 },
+            { name: 'long', ttl: 3600000, limit: 1000000 }
+          ]
+        : [
+            { name: 'short', ttl: 1000, limit: 10 },
+            { name: 'medium', ttl: 60000, limit: 100 },
+            { name: 'long', ttl: 3600000, limit: 1000 }
+          ]
+    ),
     ScheduleModule.forRoot(),
     AdminModule,
     AlgorithmModule,
