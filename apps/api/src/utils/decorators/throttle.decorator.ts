@@ -1,20 +1,26 @@
 import { Throttle } from '@nestjs/throttler';
 
-// Strict rate limiting for authentication endpoints
-export const AuthThrottle = () =>
-  Throttle({
-    short: { limit: 3, ttl: 1000 }, // 3 requests per second
-    medium: { limit: 5, ttl: 60000 }, // 5 requests per minute
-    long: { limit: 20, ttl: 3600000 } // 20 requests per hour
-  });
+const isTest = process.env['NODE_ENV'] === 'test';
 
-// Moderate rate limiting for API endpoints
+// Strict rate limiting for authentication endpoints (relaxed in test/E2E mode)
+export const AuthThrottle = () =>
+  Throttle(
+    isTest
+      ? { short: { limit: 100, ttl: 1000 }, medium: { limit: 100, ttl: 60000 }, long: { limit: 1000, ttl: 3600000 } }
+      : { short: { limit: 3, ttl: 1000 }, medium: { limit: 5, ttl: 60000 }, long: { limit: 20, ttl: 3600000 } }
+  );
+
+// Moderate rate limiting for API endpoints (relaxed in test/E2E mode)
 export const ApiThrottle = () =>
-  Throttle({
-    short: { limit: 5, ttl: 1000 }, // 5 requests per second
-    medium: { limit: 50, ttl: 60000 }, // 50 requests per minute
-    long: { limit: 500, ttl: 3600000 } // 500 requests per hour
-  });
+  Throttle(
+    isTest
+      ? { short: { limit: 1000, ttl: 1000 }, medium: { limit: 5000, ttl: 60000 }, long: { limit: 50000, ttl: 3600000 } }
+      : {
+          short: { limit: 5, ttl: 1000 }, // 5 requests per second
+          medium: { limit: 50, ttl: 60000 }, // 50 requests per minute
+          long: { limit: 500, ttl: 3600000 } // 500 requests per hour
+        }
+  );
 
 // Strict rate limiting for file upload endpoints
 export const UploadThrottle = () =>
