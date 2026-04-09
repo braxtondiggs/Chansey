@@ -7,14 +7,14 @@ import { CoinsController } from './coin.controller';
 import { CoinService } from './coin.service';
 
 import { BalanceService } from '../balance/balance.service';
-import { OrderService } from '../order/order.service';
+import { OrderHoldingsService } from '../order/services/order-holdings.service';
 import { RiskService } from '../risk/risk.service';
 
 describe('CoinsController', () => {
   let controller: CoinsController;
   let coinService: jest.Mocked<CoinService>;
   let coinMarketDataService: jest.Mocked<CoinMarketDataService>;
-  let orderService: jest.Mocked<OrderService>;
+  let orderHoldingsService: jest.Mocked<OrderHoldingsService>;
   let balanceService: jest.Mocked<BalanceService>;
   let riskService: jest.Mocked<RiskService>;
 
@@ -59,7 +59,7 @@ describe('CoinsController', () => {
           }
         },
         {
-          provide: OrderService,
+          provide: OrderHoldingsService,
           useValue: {
             getHoldingsByCoin: jest.fn()
           }
@@ -83,7 +83,7 @@ describe('CoinsController', () => {
     controller = module.get<CoinsController>(CoinsController);
     coinService = module.get(CoinService) as jest.Mocked<CoinService>;
     coinMarketDataService = module.get(CoinMarketDataService) as jest.Mocked<CoinMarketDataService>;
-    orderService = module.get(OrderService) as jest.Mocked<OrderService>;
+    orderHoldingsService = module.get(OrderHoldingsService) as jest.Mocked<OrderHoldingsService>;
     balanceService = module.get(BalanceService) as jest.Mocked<BalanceService>;
     riskService = module.get(RiskService) as jest.Mocked<RiskService>;
   });
@@ -123,7 +123,7 @@ describe('CoinsController', () => {
         entity: mockCoin
       } as any);
       balanceService.getHoldingsForCoin.mockResolvedValue(mockBalanceHoldings as any);
-      orderService.getHoldingsByCoin.mockResolvedValue(mockOrderHoldings as any);
+      orderHoldingsService.getHoldingsByCoin.mockResolvedValue(mockOrderHoldings as any);
 
       const result = await controller.getCoinDetail('bitcoin', mockUser);
 
@@ -175,7 +175,7 @@ describe('CoinsController', () => {
         entity: mockCoin
       } as any);
       balanceService.getHoldingsForCoin.mockResolvedValue(mockBalanceHoldings as any);
-      orderService.getHoldingsByCoin.mockRejectedValue(new Error('no orders'));
+      orderHoldingsService.getHoldingsByCoin.mockRejectedValue(new Error('no orders'));
 
       const result = await controller.getCoinDetail('bitcoin', mockUser);
 
@@ -212,7 +212,7 @@ describe('CoinsController', () => {
         entity: mockCoin
       } as any);
       balanceService.getHoldingsForCoin.mockResolvedValue(mockBalanceHoldings as any);
-      orderService.getHoldingsByCoin.mockResolvedValue(mockOrderHoldings as any);
+      orderHoldingsService.getHoldingsByCoin.mockResolvedValue(mockOrderHoldings as any);
 
       const result = await controller.getCoinDetail('bitcoin', mockUser);
 
@@ -263,7 +263,7 @@ describe('CoinsController', () => {
 
       coinService.getCoinBySlug.mockResolvedValue(mockCoin as any);
       balanceService.getHoldingsForCoin.mockResolvedValue(mockBalanceHoldings as any);
-      orderService.getHoldingsByCoin.mockResolvedValue(mockOrderHoldings as any);
+      orderHoldingsService.getHoldingsByCoin.mockResolvedValue(mockOrderHoldings as any);
 
       const result = await controller.getHoldings('bitcoin', mockUser as any);
 

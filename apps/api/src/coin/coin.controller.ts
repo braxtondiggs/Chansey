@@ -31,7 +31,7 @@ import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { OptionalJwtAuthenticationGuard } from '../authentication/guard/optional-jwt-authentication.guard';
 import { BalanceService } from '../balance/balance.service';
-import { OrderService } from '../order/order.service';
+import { OrderHoldingsService } from '../order/services/order-holdings.service';
 import { RiskService } from '../risk/risk.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
@@ -44,8 +44,7 @@ import { User } from '../users/users.entity';
 export class CoinController {
   constructor(
     private readonly coin: CoinService,
-    private readonly coinMarketData: CoinMarketDataService,
-    private readonly orderService: OrderService
+    private readonly coinMarketData: CoinMarketDataService
   ) {}
 
   @Get()
@@ -194,7 +193,7 @@ export class CoinsController implements OnModuleInit {
   constructor(
     private readonly coinService: CoinService,
     private readonly coinMarketDataService: CoinMarketDataService,
-    private readonly orderService: OrderService,
+    private readonly orderHoldingsService: OrderHoldingsService,
     private readonly riskService: RiskService,
     private readonly moduleRef: ModuleRef
   ) {}
@@ -414,7 +413,7 @@ export class CoinsController implements OnModuleInit {
 
     // Enrich with order-based cost basis for P&L
     try {
-      const orderHoldings = await this.orderService.getHoldingsByCoin(user, coin);
+      const orderHoldings = await this.orderHoldingsService.getHoldingsByCoin(user, coin);
       if (orderHoldings.averageBuyPrice > 0) {
         balanceHoldings.averageBuyPrice = orderHoldings.averageBuyPrice;
         const invested = balanceHoldings.totalAmount * orderHoldings.averageBuyPrice;

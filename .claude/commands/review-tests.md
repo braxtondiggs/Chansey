@@ -1,12 +1,24 @@
 ---
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob
-argument-hint: [test-file-path]
+argument-hint: [test-file-path] [--audit|--optimize|--trim|--full]
 description: Review tests for usefulness, optimize coverage, and trim redundant or low-value tests
 ---
 
 # Test Review & Optimization
 
 Review and optimize tests for: $ARGUMENTS
+
+## Mode Selection
+
+Parse `$ARGUMENTS` for a mode flag and skip the interactive prompt if present:
+
+- `--audit` or `audit` → Mode 1 only (default if no flag)
+- `--optimize` or `optimize` → Mode 2 only
+- `--trim` or `trim` → Mode 3 only
+- `--full` or `full` → All three modes in sequence
+
+If no flag is provided, ask the user which mode(s) to run. Otherwise proceed directly with the selected mode(s) and
+treat the remaining argument as the test file path.
 
 ## Context Gathering
 

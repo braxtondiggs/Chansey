@@ -12,7 +12,7 @@ import { TradingStateService } from './trading-state.service';
 
 import { AuditService } from '../../audit/audit.service';
 import { Order, OrderStatus } from '../../order/order.entity';
-import { OrderService } from '../../order/order.service';
+import { ManualOrderService } from '../../order/services/manual-order.service';
 import { DeploymentService } from '../../strategy/deployment.service';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
@@ -50,7 +50,7 @@ describe('TradingStateService', () => {
   let orderRepo: MockRepo<Order>;
   let auditService: jest.Mocked<AuditService>;
   let deploymentService: jest.Mocked<DeploymentService>;
-  let orderService: jest.Mocked<OrderService>;
+  let manualOrderService: jest.Mocked<ManualOrderService>;
 
   beforeEach(async () => {
     tradingStateRepo = {
@@ -72,9 +72,9 @@ describe('TradingStateService', () => {
       pauseDeployment: jest.fn()
     } as unknown as jest.Mocked<DeploymentService>;
 
-    orderService = {
+    manualOrderService = {
       cancelManualOrder: jest.fn()
-    } as unknown as jest.Mocked<OrderService>;
+    } as unknown as jest.Mocked<ManualOrderService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -83,7 +83,7 @@ describe('TradingStateService', () => {
         { provide: getRepositoryToken(Order), useValue: orderRepo },
         { provide: AuditService, useValue: auditService },
         { provide: DeploymentService, useValue: deploymentService },
-        { provide: OrderService, useValue: orderService }
+        { provide: ManualOrderService, useValue: manualOrderService }
       ]
     }).compile();
 
@@ -238,7 +238,7 @@ describe('TradingStateService', () => {
         failedCancellations: 0,
         errors: []
       });
-      expect(orderService.cancelManualOrder).not.toHaveBeenCalled();
+      expect(manualOrderService.cancelManualOrder).not.toHaveBeenCalled();
       expect(auditService.createAuditLog).not.toHaveBeenCalled();
     });
 
@@ -249,8 +249,8 @@ describe('TradingStateService', () => {
         createOrder({ id: 'order-3', user: { id: 'user-2' } as any })
       ];
       orderRepo.find.mockResolvedValueOnce(openOrders);
-      orderService.cancelManualOrder.mockResolvedValueOnce({} as Order);
-      orderService.cancelManualOrder.mockRejectedValueOnce(new Error('Exchange rejected'));
+      manualOrderService.cancelManualOrder.mockResolvedValueOnce({} as Order);
+      manualOrderService.cancelManualOrder.mockRejectedValueOnce(new Error('Exchange rejected'));
 
       const result = await service.cancelAllOpenOrders('admin-1');
 
@@ -259,9 +259,9 @@ describe('TradingStateService', () => {
           relations: ['user', 'exchange']
         })
       );
-      expect(orderService.cancelManualOrder).toHaveBeenCalledTimes(2);
-      expect(orderService.cancelManualOrder).toHaveBeenCalledWith('order-1', openOrders[0].user);
-      expect(orderService.cancelManualOrder).toHaveBeenCalledWith('order-3', openOrders[2].user);
+      expect(manualOrderService.cancelManualOrder).toHaveBeenCalledTimes(2);
+      expect(manualOrderService.cancelManualOrder).toHaveBeenCalledWith('order-1', openOrders[0].user);
+      expect(manualOrderService.cancelManualOrder).toHaveBeenCalledWith('order-3', openOrders[2].user);
       expect(result.totalOrders).toBe(3);
       expect(result.successfulCancellations).toBe(1);
       expect(result.failedCancellations).toBe(2);

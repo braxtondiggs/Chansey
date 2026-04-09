@@ -44,10 +44,14 @@ import { PaperTradingModule } from './paper-trading/paper-trading.module';
 import { ExitOrderPlacementService } from './services/exit-order-placement.service';
 import { ExitPriceService } from './services/exit-price.service';
 import { LiquidationMonitorService } from './services/liquidation-monitor.service';
+import { ManualOrderValidatorService } from './services/manual-order-validator.service';
+import { ManualOrderService } from './services/manual-order.service';
+import { OcoOrderService } from './services/oco-order.service';
 import { OpportunitySellService } from './services/opportunity-sell.service';
 import { OrderCalculationService } from './services/order-calculation.service';
 import { OrderCleanupService } from './services/order-cleanup.service';
 import { OrderConversionService } from './services/order-conversion.service';
+import { OrderHoldingsService } from './services/order-holdings.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
@@ -58,6 +62,7 @@ import { SlippageAnalysisService } from './services/slippage-analysis.service';
 import { TradeExecutionService } from './services/trade-execution.service';
 import { TradeOrchestratorService } from './services/trade-orchestrator.service';
 import { TradeSignalGeneratorService } from './services/trade-signal-generator.service';
+import { TradingFeesService } from './services/trading-fees.service';
 import { LiquidationMonitorTask } from './tasks/liquidation-monitor.task';
 import { OrderSyncTask } from './tasks/order-sync.task';
 import { PositionMonitorTask } from './tasks/position-monitor.task';
@@ -101,6 +106,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
   controllers: [OrderController, BacktestController, ComparisonReportController],
   exports: [
     OrderService,
+    ManualOrderService,
+    OrderHoldingsService,
     OrderSyncTask,
     TradeExecutionService,
     BacktestService,
@@ -196,12 +203,16 @@ const BACKTEST_DEFAULTS = backtestConfig();
     ExitPriceService,
     LiquidationMonitorService,
     LiquidationMonitorTask,
+    ManualOrderService,
+    ManualOrderValidatorService,
+    OcoOrderService,
     MarketDataReaderService,
     QuoteCurrencyResolverService,
     OpportunitySellService,
     OrderCalculationService,
     OrderCleanupService,
     OrderConversionService,
+    OrderHoldingsService,
     OrderService,
     OrderStateMachineService,
     OrderSyncService,
@@ -216,6 +227,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     TradeExecutionTask,
     TradeOrchestratorService,
     TradeSignalGeneratorService,
+    TradingFeesService,
     TickerPairService
   ]
 })

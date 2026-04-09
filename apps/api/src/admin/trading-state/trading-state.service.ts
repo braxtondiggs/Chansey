@@ -12,7 +12,7 @@ import { TradingState } from './trading-state.entity';
 
 import { AuditService } from '../../audit/audit.service';
 import { Order, OrderStatus } from '../../order/order.entity';
-import { OrderService } from '../../order/order.service';
+import { ManualOrderService } from '../../order/services/manual-order.service';
 import { DeploymentService } from '../../strategy/deployment.service';
 
 /**
@@ -37,7 +37,7 @@ export class TradingStateService implements OnModuleInit {
     private readonly orderRepo: Repository<Order>,
     private readonly auditService: AuditService,
     private readonly deploymentService: DeploymentService,
-    private readonly orderService: OrderService
+    private readonly manualOrderService: ManualOrderService
   ) {}
 
   /**
@@ -224,7 +224,7 @@ export class TradingStateService implements OnModuleInit {
           continue;
         }
 
-        await this.orderService.cancelManualOrder(order.id, order.user);
+        await this.manualOrderService.cancelManualOrder(order.id, order.user);
         result.successfulCancellations++;
       } catch (error: unknown) {
         result.failedCancellations++;
