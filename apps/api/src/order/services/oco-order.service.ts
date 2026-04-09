@@ -39,15 +39,11 @@ export class OcoOrderService {
     exchange: ccxt.Exchange,
     exchangeKey: ExchangeKey
   ): Promise<Order> {
-    const queryRunner = this.dataSource.createQueryRunner();
-
     let takeProfitExchangeOrder: ccxt.Order | null = null;
     let stopLossExchangeOrder: ccxt.Order | null = null;
 
+    // --- Phase 1: external exchange calls (no DB connection held) ---
     try {
-      await queryRunner.connect();
-      await queryRunner.startTransaction();
-
       takeProfitExchangeOrder = await exchange.createOrder(
         dto.symbol,
         'limit',
@@ -79,18 +75,30 @@ export class OcoOrderService {
         }
         throw stopLossError;
       }
+    } catch (exchangeError: unknown) {
+      const err = toErrorInfo(exchangeError);
+      this.logger.error(`OCO exchange order creation failed: ${err.message}`, err.stack);
+      throw mapCcxtError(exchangeError, exchangeKey.exchange.name);
+    }
 
-      const [baseSymbol, quoteSymbol] = dto.symbol.split('/');
-      let baseCoin: Coin | null = null;
-      let quoteCoin: Coin | null = null;
+    // --- Phase 2: coin resolution (no DB connection held) ---
+    const [baseSymbol, quoteSymbol] = dto.symbol.split('/');
+    let baseCoin: Coin | null = null;
+    let quoteCoin: Coin | null = null;
 
-      try {
-        const coins = await this.coinService.getMultipleCoinsBySymbol([baseSymbol, quoteSymbol]);
-        baseCoin = coins.find((c) => c.symbol.toLowerCase() === baseSymbol.toLowerCase()) || null;
-        quoteCoin = coins.find((c) => c.symbol.toLowerCase() === quoteSymbol.toLowerCase()) || null;
-      } catch {
-        this.logger.warn('Could not find coins for OCO order');
-      }
+    try {
+      const coins = await this.coinService.getMultipleCoinsBySymbol([baseSymbol, quoteSymbol]);
+      baseCoin = coins.find((c) => c.symbol.toLowerCase() === baseSymbol.toLowerCase()) || null;
+      quoteCoin = coins.find((c) => c.symbol.toLowerCase() === quoteSymbol.toLowerCase()) || null;
+    } catch {
+      this.logger.warn('Could not find coins for OCO order');
+    }
+
+    // --- Phase 3: DB transaction (short-lived, connection held only for DB I/O) ---
+    const queryRunner = this.dataSource.createQueryRunner();
+    try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
 
       const tpOrder = queryRunner.manager.create(Order, {
         orderId: takeProfitExchangeOrder.id?.toString() || '',
@@ -147,45 +155,39 @@ export class OcoOrderService {
 
       this.logger.log(`OCO order pair created: TP=${savedTpOrder.id}, SL=${savedSlOrder.id}`);
       return savedTpOrder;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
+    } catch (dbError: unknown) {
+      const err = toErrorInfo(dbError);
       await queryRunner.rollbackTransaction();
 
-      if (takeProfitExchangeOrder || stopLossExchangeOrder) {
-        // Best-effort cleanup of any live exchange orders to avoid orphans on DB failure.
-        if (takeProfitExchangeOrder) {
-          try {
-            await exchange.cancelOrder(takeProfitExchangeOrder.id, dto.symbol);
-          } catch (cancelError: unknown) {
-            const cErr = toErrorInfo(cancelError);
-            this.logger.error(
-              `Failed to cancel take-profit exchange order during DB rollback ` +
-                `(symbol=${dto.symbol}, orderId=${takeProfitExchangeOrder.id}): ${cErr.message}`
-            );
-          }
-        }
-        if (stopLossExchangeOrder) {
-          try {
-            await exchange.cancelOrder(stopLossExchangeOrder.id, dto.symbol);
-          } catch (cancelError: unknown) {
-            const cErr = toErrorInfo(cancelError);
-            this.logger.error(
-              `Failed to cancel stop-loss exchange order during DB rollback ` +
-                `(symbol=${dto.symbol}, orderId=${stopLossExchangeOrder.id}): ${cErr.message}`
-            );
-          }
-        }
-
+      // Both exchange orders exist (Phase 1 succeeded). Best-effort cleanup.
+      try {
+        await exchange.cancelOrder(takeProfitExchangeOrder.id, dto.symbol);
+      } catch (cancelError: unknown) {
+        const cErr = toErrorInfo(cancelError);
         this.logger.error(
-          `CRITICAL: OCO orders may exist on exchange but failed to save to database. ` +
-            `TP Order ID: ${takeProfitExchangeOrder?.id || 'N/A'}, SL Order ID: ${stopLossExchangeOrder?.id || 'N/A'}. ` +
-            `Manual reconciliation required.`,
-          err.stack
+          `Failed to cancel take-profit exchange order during DB rollback ` +
+            `(symbol=${dto.symbol}, orderId=${takeProfitExchangeOrder.id}): ${cErr.message}`
+        );
+      }
+      try {
+        await exchange.cancelOrder(stopLossExchangeOrder.id, dto.symbol);
+      } catch (cancelError: unknown) {
+        const cErr = toErrorInfo(cancelError);
+        this.logger.error(
+          `Failed to cancel stop-loss exchange order during DB rollback ` +
+            `(symbol=${dto.symbol}, orderId=${stopLossExchangeOrder.id}): ${cErr.message}`
         );
       }
 
-      this.logger.error(`OCO order creation failed: ${err.message}`, err.stack);
-      throw mapCcxtError(error, exchangeKey.exchange.name);
+      this.logger.error(
+        `CRITICAL: OCO orders exist on exchange but failed to save to database. ` +
+          `TP Order ID: ${takeProfitExchangeOrder.id}, SL Order ID: ${stopLossExchangeOrder.id}. ` +
+          `Manual reconciliation required.`,
+        err.stack
+      );
+
+      this.logger.error(`OCO order DB persistence failed: ${err.message}`, err.stack);
+      throw mapCcxtError(dbError, exchangeKey.exchange.name);
     } finally {
       await queryRunner.release();
     }

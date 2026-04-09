@@ -84,7 +84,8 @@ describe('ManualOrderService', () => {
           provide: getRepositoryToken(Order),
           useValue: {
             findOne: jest.fn(),
-            save: jest.fn()
+            save: jest.fn((o: any) => Promise.resolve(o)),
+            create: jest.fn((data: any) => ({ id: 'order-new', ...data }))
           }
         },
         {
@@ -230,9 +231,6 @@ describe('ManualOrderService', () => {
       const result = await service.placeManualOrder(placeDto, mockUser);
 
       expect(stub.createOrder).toHaveBeenCalledWith('BTC/USDT', 'market', 'buy', 0.01, undefined, {});
-      expect(queryRunner.commitTransaction).toHaveBeenCalled();
-      expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
-      expect(queryRunner.release).toHaveBeenCalled();
       expect(result.isManual).toBe(true);
       expect(result.orderId).toBe('ex-order-1');
       expect(result.status).toBe(OrderStatus.NEW);
@@ -280,16 +278,14 @@ describe('ManualOrderService', () => {
       expect(result).toEqual({ id: 'oco-1' });
     });
 
-    it('rolls back and logs CRITICAL when DB save fails after exchange order', async () => {
+    it('logs CRITICAL when DB save fails after exchange order', async () => {
       const stub = makeExchangeStub();
       exchangeManagerService.getExchangeClient.mockResolvedValue(stub as any);
-      queryRunner.manager.save.mockRejectedValueOnce(new Error('db down'));
+      (orderRepository.save as jest.Mock).mockRejectedValueOnce(new Error('db down'));
 
       await expect(service.placeManualOrder(placeDto, mockUser)).rejects.toThrow();
-      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
       const criticalCalls = loggerErrorSpy.mock.calls.filter((c) => String(c[0]).includes('CRITICAL'));
       expect(criticalCalls.length).toBeGreaterThan(0);
-      expect(queryRunner.release).toHaveBeenCalled();
     });
 
     it('does not fail order if exit config attachment fails', async () => {

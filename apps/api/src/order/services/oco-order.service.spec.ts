@@ -131,8 +131,10 @@ describe('OcoOrderService', () => {
     await expect(service.createOcoOrder(baseDto, mockUser, stub as any, mockExchangeKey)).rejects.toThrow();
 
     expect(stub.cancelOrder).toHaveBeenCalledWith('tp-1', 'BTC/USDT');
-    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
-    expect(queryRunner.release).toHaveBeenCalled();
+    // SL fails in Phase 1 (before transaction). No DB connection should be opened.
+    expect(queryRunner.connect).not.toHaveBeenCalled();
+    expect(queryRunner.startTransaction).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
   });
 
   it('logs CRITICAL when TP cancel also fails after SL failure', async () => {
