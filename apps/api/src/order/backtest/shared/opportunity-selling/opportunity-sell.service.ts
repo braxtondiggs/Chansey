@@ -203,6 +203,8 @@ export class OpportunitySellService {
     let totalSellValue = 0;
     let sellExecuted = false;
 
+    const priceMap = currentPrices ? new Map(currentPrices.map((c) => [c.coinId, c])) : undefined;
+
     for (const candidate of candidates) {
       if (remainingShortfall <= 0 || totalSellValue >= maxSellValue) break;
 
@@ -232,24 +234,20 @@ export class OpportunitySellService {
 
       // Use minHoldMs=0 so the sell isn't blocked by hold period (already checked by scoring)
       const spreadCtx =
-        currentPrices && prevCandleMap
-          ? buildSpreadContextFn(currentPrices, candidate.coinId, prevCandleMap)
-          : undefined;
+        priceMap && prevCandleMap ? buildSpreadContextFn(priceMap, candidate.coinId, prevCandleMap) : undefined;
       const candidateDailyVolume =
-        extractDailyVolumeFn && currentPrices ? extractDailyVolumeFn(currentPrices, candidate.coinId) : undefined;
-      const sellResult = await executeTradeFn(
-        sellSignal,
+        extractDailyVolumeFn && priceMap ? extractDailyVolumeFn(priceMap, candidate.coinId) : undefined;
+      const sellResult = await executeTradeFn({
+        signal: sellSignal,
         portfolio,
         marketData,
         tradingFee,
         slippageConfig,
-        candidateDailyVolume,
-        0,
-        undefined,
-        undefined,
-        1,
-        spreadCtx
-      );
+        dailyVolume: candidateDailyVolume,
+        minHoldMs: 0,
+        defaultLeverage: 1,
+        spreadContext: spreadCtx
+      });
       if (sellResult) {
         const { trade, slippageBps, fillStatus } = sellResult;
         if (fillStatus === SimulatedOrderStatus.CANCELLED) {
@@ -286,8 +284,12 @@ export class OpportunitySellService {
             backtest
           });
 
-          totalSellValue += (trade.quantity ?? 0) * (trade.price ?? 0);
-          remainingShortfall -= (trade.quantity ?? 0) * (trade.price ?? 0);
+          if (trade.price == null || trade.quantity == null) {
+            this.logger.warn(`Trade result missing price/quantity for ${candidate.coinId}`);
+            continue;
+          }
+          totalSellValue += trade.quantity * trade.price;
+          remainingShortfall -= trade.quantity * trade.price;
           sellExecuted = true;
         }
       }

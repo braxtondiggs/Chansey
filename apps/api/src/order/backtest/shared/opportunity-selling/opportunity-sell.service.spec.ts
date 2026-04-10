@@ -469,7 +469,8 @@ describe('OpportunitySellService', () => {
       const trades: Partial<BacktestTrade>[] = [];
       const fills: Partial<SimulatedOrderFill>[] = [];
 
-      const mockExecuteTrade = jest.fn().mockImplementation((signal: TradingSignal) => {
+      const mockExecuteTrade = jest.fn().mockImplementation((params: { signal: TradingSignal }) => {
+        const { signal } = params;
         const price = signal.coinId === 'coin-a' ? 300 : signal.coinId === 'coin-b' ? 400 : 500;
         return Promise.resolve({
           trade: { quantity: signal.quantity, price, fee: 0, metadata: {} },

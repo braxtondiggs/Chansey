@@ -41,33 +41,11 @@ export class PriceWindowService {
   }
 
   initPriceTracking(historicalPrices: OHLCCandle[], coinIds: string[]): PriceTrackingContext {
-    const timestampsByCoin = new Map<string, Date[]>();
-    const summariesByCoin = new Map<string, PriceSummary[]>();
+    const { timestampsByCoin, summariesByCoin } = this.groupAndSortByCoins(historicalPrices, coinIds);
     const indexByCoin = new Map<string, number>();
     const windowsByCoin = new Map<string, RingBuffer<PriceSummary>>();
 
-    const pricesByCoin = new Map<string, OHLCCandle[]>();
-    for (const candle of historicalPrices) {
-      let group = pricesByCoin.get(candle.coinId);
-      if (!group) {
-        group = [];
-        pricesByCoin.set(candle.coinId, group);
-      }
-      group.push(candle);
-    }
-
     for (const coinId of coinIds) {
-      const history = (pricesByCoin.get(coinId) ?? []).sort(
-        (a, b) => this.getPriceTimestamp(a).getTime() - this.getPriceTimestamp(b).getTime()
-      );
-      timestampsByCoin.set(
-        coinId,
-        history.map((price) => this.getPriceTimestamp(price))
-      );
-      summariesByCoin.set(
-        coinId,
-        history.map((price) => this.buildPriceSummary(price))
-      );
       indexByCoin.set(coinId, -1);
       windowsByCoin.set(coinId, new RingBuffer<PriceSummary>(MAX_WINDOW_SIZE));
     }
@@ -76,6 +54,13 @@ export class PriceWindowService {
   }
 
   buildImmutablePriceData(historicalPrices: OHLCCandle[], coinIds: string[]): ImmutablePriceTrackingData {
+    return this.groupAndSortByCoins(historicalPrices, coinIds);
+  }
+
+  private groupAndSortByCoins(
+    historicalPrices: OHLCCandle[],
+    coinIds: string[]
+  ): { timestampsByCoin: Map<string, Date[]>; summariesByCoin: Map<string, PriceSummary[]> } {
     const timestampsByCoin = new Map<string, Date[]>();
     const summariesByCoin = new Map<string, PriceSummary[]>();
 

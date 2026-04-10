@@ -1,4 +1,5 @@
 export * from './backtest-bar-processor.service';
+export * from './backtest-context-factory.service';
 export * from './backtest-loop-context';
 export * from './backtest-loop-runner.service';
 export * from './backtest-signal-trade.service';

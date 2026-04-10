@@ -16,7 +16,7 @@ import { type MetricsAccumulator } from '../metrics-accumulator';
 import { type Portfolio } from '../portfolio';
 import { type PriceTrackingContext } from '../price-window';
 import { type SlippageConfig } from '../slippage';
-import { type ThrottleState } from '../throttle';
+import { type SignalThrottleConfig, type ThrottleState } from '../throttle';
 
 /** Persisted counts across checkpoints for incremental persistence */
 export interface PersistedCounts {
@@ -60,7 +60,7 @@ export interface LoopContextInit {
   maxDrawdown: number;
   exitTracker: BacktestExitTracker | null;
   throttleState: ThrottleState;
-  throttleConfig: ReturnType<import('../throttle').SignalThrottleService['resolveConfig']>;
+  throttleConfig: SignalThrottleConfig;
   // Accumulators
   totalPersistedCounts: PersistedCounts;
   metricsAcc: MetricsAccumulator;
@@ -117,7 +117,7 @@ export class LoopContext {
   maxDrawdown: number;
   exitTracker: BacktestExitTracker | null;
   throttleState: ThrottleState;
-  throttleConfig: ReturnType<import('../throttle').SignalThrottleService['resolveConfig']>;
+  throttleConfig: SignalThrottleConfig;
 
   // Accumulators
   trades: Partial<BacktestTrade>[] = [];

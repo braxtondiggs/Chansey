@@ -30,6 +30,7 @@ import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver.service';
+import { BacktestContextFactory } from './backtest/shared/execution/backtest-context-factory.service';
 import { BacktestLoopRunner } from './backtest/shared/execution/backtest-loop-runner.service';
 import { OptimizationCoreService } from './backtest/shared/optimization/optimization-core.service';
 import { OptimizationIndicatorPrecomputeService } from './backtest/shared/optimization/optimization-indicator-precompute.service';
@@ -182,6 +183,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
   ],
   providers: [
     AlgorithmService,
+    BacktestContextFactory,
     BacktestEngine,
     BacktestLoopRunner,
     OptimizationCoreService,

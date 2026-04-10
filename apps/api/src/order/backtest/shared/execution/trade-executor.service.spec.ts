@@ -34,26 +34,26 @@ describe('TradeExecutorService', () => {
   describe('signal guards', () => {
     it('returns null for HOLD signal', async () => {
       const portfolio = createPortfolio();
-      const result = await service.executeTrade(
-        { action: 'HOLD', coinId: 'BTC', reason: 'neutral' },
+      const result = await service.executeTrade({
+        signal: { action: 'HOLD', coinId: 'BTC', reason: 'neutral' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
       expect(portfolio.cashBalance).toBe(10000);
     });
 
     it('returns null when no market price for coin', async () => {
       const portfolio = createPortfolio();
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        { timestamp: new Date(), prices: new Map() },
-        0,
-        noSlippage
-      );
+        marketData: { timestamp: new Date(), prices: new Map() },
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
       expect(portfolio.cashBalance).toBe(10000);
     });
@@ -62,13 +62,13 @@ describe('TradeExecutorService', () => {
   describe('BUY execution', () => {
     it('sizes position using confidence-based allocation', async () => {
       const portfolio = createPortfolio({ cashBalance: 1000, totalValue: 1000 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', confidence: 1.0, reason: 'strong entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', confidence: 1.0, reason: 'strong entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       // Default HISTORICAL risk-3 limits: max 12% of $1000 = $120 / $100 = 1.2 BTC
@@ -78,13 +78,13 @@ describe('TradeExecutorService', () => {
 
     it('sizes position using signal.percentage', async () => {
       const portfolio = createPortfolio({ cashBalance: 1000, totalValue: 1000 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', percentage: 0.1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', percentage: 0.1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result?.trade.quantity).toBeCloseTo(1); // 10% of $1000 / $100
       expect(result?.trade.totalValue).toBeCloseTo(100);
@@ -92,13 +92,13 @@ describe('TradeExecutorService', () => {
 
     it('falls back to minAllocation when no sizing info provided', async () => {
       const portfolio = createPortfolio({ cashBalance: 1000, totalValue: 1000 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       // minAllocation default 3% of $1000 = $30 / $100 = 0.3 BTC
@@ -107,13 +107,13 @@ describe('TradeExecutorService', () => {
 
     it('applies slippage to execution price and records metadata', async () => {
       const portfolio = createPortfolio({ cashBalance: 200, totalValue: 200 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0.01,
-        { type: SlippageModelType.FIXED, fixedBps: 100 }
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0.01,
+        slippageConfig: { type: SlippageModelType.FIXED, fixedBps: 100 }
+      });
 
       // 100 bps = 1% slippage → price 101 for buy
       expect(result?.trade.price).toBeCloseTo(101);
@@ -125,14 +125,14 @@ describe('TradeExecutorService', () => {
 
     it('handles partial fills with volume-based slippage', async () => {
       const portfolio = createPortfolio({ cashBalance: 10000, totalValue: 10000 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        50 // very low daily volume
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
+        dailyVolume: 50 // very low daily volume
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.quantity).toBeGreaterThan(0);
@@ -142,13 +142,13 @@ describe('TradeExecutorService', () => {
   describe('insufficient funds', () => {
     it('rejects BUY when cash cannot cover trade value plus fees', async () => {
       const portfolio = createPortfolio({ cashBalance: 100, totalValue: 100 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0.01, // 1% fee → need 101 total
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0.01, // 1% fee → need 101 total
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeNull();
       expect(portfolio.cashBalance).toBe(100);
@@ -156,13 +156,13 @@ describe('TradeExecutorService', () => {
 
     it('allows BUY when cash covers both trade value and fees', async () => {
       const portfolio = createPortfolio({ cashBalance: 101, totalValue: 101 });
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0.01,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0.01,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       expect(portfolio.cashBalance).toBeCloseTo(0);
@@ -180,25 +180,25 @@ describe('TradeExecutorService', () => {
       });
 
     it('returns null when no existing position', async () => {
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', reason: 'exit' },
-        createPortfolio(),
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', reason: 'exit' },
+        portfolio: createPortfolio(),
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
     });
 
     it('calculates realized P&L correctly', async () => {
       const portfolio = createLongPortfolio(10, 10);
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 4, reason: 'take-profit', confidence: 1 },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', quantity: 4, reason: 'take-profit', confidence: 1 },
         portfolio,
-        createMarketData('BTC', 15),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 15),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.realizedPnL).toBeCloseTo(20); // (15 - 10) * 4
@@ -214,13 +214,13 @@ describe('TradeExecutorService', () => {
         positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100 }]])
       });
 
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 1, reason: 'exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', quantity: 1, reason: 'exit' },
         portfolio,
-        createMarketData('BTC', 200),
-        0.01,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 200),
+        tradingFee: 0.01,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       expect(portfolio.cashBalance).toBeCloseTo(198); // 200 proceeds - 2 fee
@@ -229,26 +229,26 @@ describe('TradeExecutorService', () => {
 
     it('uses signal.percentage for partial sell', async () => {
       const portfolio = createLongPortfolio(10, 100);
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', percentage: 0.5, reason: 'partial exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', percentage: 0.5, reason: 'partial exit' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result?.trade.quantity).toBeCloseTo(5); // 50% of 10
     });
 
     it('removes position from portfolio when fully sold', async () => {
       const portfolio = createLongPortfolio(5, 100);
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       expect(portfolio.positions.has('BTC')).toBe(false);
@@ -267,15 +267,14 @@ describe('TradeExecutorService', () => {
 
     it('rejects SELL when position held less than minHoldMs', async () => {
       const portfolio = createHeldPortfolio();
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
         portfolio,
-        createMarketData('BTC', 120, new Date('2024-01-01T12:00:00.000Z')), // 12h after entry
-        0,
-        noSlippage,
-        undefined,
-        TWENTY_FOUR_HOURS_MS
-      );
+        marketData: createMarketData('BTC', 120, new Date('2024-01-01T12:00:00.000Z')), // 12h after entry
+        tradingFee: 0,
+        slippageConfig: noSlippage,
+        minHoldMs: TWENTY_FOUR_HOURS_MS
+      });
 
       expect(result).toBeNull();
       expect(portfolio.positions.get('BTC')?.quantity).toBe(10);
@@ -286,15 +285,14 @@ describe('TradeExecutorService', () => {
       { type: SignalType.TAKE_PROFIT, label: 'TAKE_PROFIT' }
     ])('allows $label SELL even within min hold period', async ({ type }) => {
       const portfolio = createHeldPortfolio();
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 10, reason: 'risk exit', originalType: type },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', quantity: 10, reason: 'risk exit', originalType: type },
         portfolio,
-        createMarketData('BTC', 80, new Date('2024-01-01T01:00:00.000Z')), // 1h after entry
-        0,
-        noSlippage,
-        undefined,
-        TWENTY_FOUR_HOURS_MS
-      );
+        marketData: createMarketData('BTC', 80, new Date('2024-01-01T01:00:00.000Z')), // 1h after entry
+        tradingFee: 0,
+        slippageConfig: noSlippage,
+        minHoldMs: TWENTY_FOUR_HOURS_MS
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.quantity).toBe(10);
@@ -302,15 +300,14 @@ describe('TradeExecutorService', () => {
 
     it('allows SELL after min hold period has elapsed', async () => {
       const portfolio = createHeldPortfolio();
-      const result = await service.executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
         portfolio,
-        createMarketData('BTC', 120, new Date('2024-01-02T01:00:00.000Z')), // 25h after entry
-        0,
-        noSlippage,
-        undefined,
-        TWENTY_FOUR_HOURS_MS
-      );
+        marketData: createMarketData('BTC', 120, new Date('2024-01-02T01:00:00.000Z')), // 25h after entry
+        tradingFee: 0,
+        slippageConfig: noSlippage,
+        minHoldMs: TWENTY_FOUR_HOURS_MS
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.quantity).toBe(5);
@@ -323,13 +320,13 @@ describe('TradeExecutorService', () => {
         positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100 }]])
       });
 
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
     });
 
@@ -338,13 +335,13 @@ describe('TradeExecutorService', () => {
         positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100, side: 'short' }]])
       });
 
-      const result = await service.executeTrade(
-        { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
     });
 
@@ -353,13 +350,13 @@ describe('TradeExecutorService', () => {
         positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100 }]])
       });
 
-      const result = await service.executeTrade(
-        { action: 'OPEN_SHORT', coinId: 'BTC', quantity: 1, reason: 'entry' },
+      const result = await service.executeTrade({
+        signal: { action: 'OPEN_SHORT', coinId: 'BTC', quantity: 1, reason: 'entry' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
     });
   });
@@ -367,18 +364,14 @@ describe('TradeExecutorService', () => {
   describe('OPEN_SHORT execution', () => {
     it('opens short position with correct margin, leverage, and liquidation price', async () => {
       const portfolio = createPortfolio({ cashBalance: 5000, totalValue: 5000 });
-      const result = await service.executeTrade(
-        { action: 'OPEN_SHORT', coinId: 'BTC', quantity: 2, reason: 'bearish signal' },
+      const result = await service.executeTrade({
+        signal: { action: 'OPEN_SHORT', coinId: 'BTC', quantity: 2, reason: 'bearish signal' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        2 // 2x leverage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage,
+        defaultLeverage: 2 // 2x leverage
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.quantity).toBe(2);
@@ -398,18 +391,14 @@ describe('TradeExecutorService', () => {
 
     it('rejects OPEN_SHORT when cash cannot cover margin plus fees', async () => {
       const portfolio = createPortfolio({ cashBalance: 50, totalValue: 50 });
-      const result = await service.executeTrade(
-        { action: 'OPEN_SHORT', coinId: 'BTC', quantity: 2, reason: 'bearish' },
+      const result = await service.executeTrade({
+        signal: { action: 'OPEN_SHORT', coinId: 'BTC', quantity: 2, reason: 'bearish' },
         portfolio,
-        createMarketData('BTC', 100),
-        0.01, // 1% fee on notional (200) = 2
-        noSlippage,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        1 // 1x leverage → margin = 200
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0.01, // 1% fee on notional (200) = 2
+        slippageConfig: noSlippage,
+        defaultLeverage: 1 // 1x leverage → margin = 200
+      });
 
       expect(result).toBeNull();
       expect(portfolio.cashBalance).toBe(50);
@@ -444,13 +433,13 @@ describe('TradeExecutorService', () => {
     };
 
     it('returns null when no short position exists', async () => {
-      const result = await service.executeTrade(
-        { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 1, reason: 'exit' },
-        createPortfolio(),
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+      const result = await service.executeTrade({
+        signal: { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 1, reason: 'exit' },
+        portfolio: createPortfolio(),
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
     });
 
@@ -458,26 +447,26 @@ describe('TradeExecutorService', () => {
       const portfolio = createPortfolio({
         positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100 }]])
       });
-      const result = await service.executeTrade(
-        { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 1, reason: 'exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 1, reason: 'exit' },
         portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 100),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
       expect(result).toBeNull();
     });
 
     it('closes profitable short and returns margin with P&L', async () => {
       const portfolio = createShortPortfolio(10, 100, 2);
       // Short at 100, close at 80 → profit = (100-80)*qty
-      const result = await service.executeTrade(
-        { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 10, reason: 'take profit' },
+      const result = await service.executeTrade({
+        signal: { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 10, reason: 'take profit' },
         portfolio,
-        createMarketData('BTC', 80),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 80),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.quantity).toBe(10);
@@ -493,13 +482,13 @@ describe('TradeExecutorService', () => {
 
     it('partially closes short and updates remaining margin', async () => {
       const portfolio = createShortPortfolio(10, 100, 2);
-      const result = await service.executeTrade(
-        { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 4, reason: 'partial exit' },
+      const result = await service.executeTrade({
+        signal: { action: 'CLOSE_SHORT', coinId: 'BTC', quantity: 4, reason: 'partial exit' },
         portfolio,
-        createMarketData('BTC', 90),
-        0,
-        noSlippage
-      );
+        marketData: createMarketData('BTC', 90),
+        tradingFee: 0,
+        slippageConfig: noSlippage
+      });
 
       expect(result).toBeTruthy();
       expect(result?.trade.quantity).toBe(4);

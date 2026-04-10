@@ -30,7 +30,7 @@ import { FeeCalculatorService } from '../fees';
 import { Portfolio, PortfolioStateService } from '../portfolio';
 import { Position } from '../positions';
 import { DEFAULT_SLIPPAGE_CONFIG, SlippageConfig, SlippageService, SpreadEstimationContext } from '../slippage';
-import { MarketData, TradingSignal } from '../types';
+import { ExecuteTradeParams, TradingSignal } from '../types';
 
 /**
  * Trade Executor Service
@@ -61,22 +61,23 @@ export class TradeExecutorService {
    * Mutates the portfolio in-place (cash balance, positions, margin tracking).
    * Returns null if the trade cannot be executed (HOLD, no price, insufficient funds, etc.).
    */
-  async executeTrade(
-    signal: TradingSignal,
-    portfolio: Portfolio,
-    marketData: MarketData,
-    tradingFee: number,
-    slippageConfig: SlippageConfig = DEFAULT_SLIPPAGE_CONFIG,
-    dailyVolume?: number,
-    minHoldMs: number = DEFAULT_MIN_HOLD_MS,
-    maxAllocation: number = getAllocationLimits().maxAllocation,
-    minAllocation: number = getAllocationLimits().minAllocation,
-    defaultLeverage = 1,
-    spreadContext?: SpreadEstimationContext
-  ): Promise<ExecuteTradeResult | null> {
+  async executeTrade(params: ExecuteTradeParams): Promise<ExecuteTradeResult | null> {
+    const {
+      signal,
+      portfolio,
+      marketData,
+      tradingFee,
+      slippageConfig = DEFAULT_SLIPPAGE_CONFIG,
+      dailyVolume,
+      minHoldMs = DEFAULT_MIN_HOLD_MS,
+      maxAllocation = getAllocationLimits().maxAllocation,
+      minAllocation = getAllocationLimits().minAllocation,
+      defaultLeverage = 1,
+      spreadContext
+    } = params;
     const marketPrice = marketData.prices.get(signal.coinId);
     if (!marketPrice) {
-      this.logger.warn(`No price data available for coin ${signal.coinId}`);
+      this.logger.debug(`No price data available for coin ${signal.coinId}`);
       return null;
     }
 

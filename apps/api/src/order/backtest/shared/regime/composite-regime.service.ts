@@ -16,7 +16,6 @@ import { IncrementalSma } from '../../incremental-sma';
 import { SignalFilterChainService, SignalFilterContext } from '../filters';
 import { Portfolio } from '../portfolio';
 import { PriceTrackingContext } from '../price-window';
-import { SlippageModelType } from '../slippage';
 import { MarketData, TradingSignal } from '../types';
 
 /** SMA period used for BTC trend detection in regime classification. */
@@ -37,25 +36,6 @@ export class CompositeRegimeService {
     private readonly volatilityCalculator: VolatilityCalculator,
     private readonly signalFilterChain: SignalFilterChainService
   ) {}
-
-  /**
-   * Map legacy slippage model type string to shared enum
-   */
-  mapSlippageModelType(model?: string): SlippageModelType {
-    switch (model) {
-      case 'none':
-        return SlippageModelType.NONE;
-      case 'volume-based':
-        return SlippageModelType.VOLUME_BASED;
-      case 'historical':
-        return SlippageModelType.HISTORICAL;
-      case 'spread-adjusted':
-        return SlippageModelType.SPREAD_ADJUSTED;
-      case 'fixed':
-      default:
-        return SlippageModelType.FIXED;
-    }
-  }
 
   /**
    * Compute the composite regime (trend + volatility) from BTC price data.

@@ -11,7 +11,6 @@ import { IncrementalSma } from '../../incremental-sma';
 import { RingBuffer } from '../../ring-buffer';
 import { SignalFilterChainService } from '../filters';
 import { type PriceTrackingContext } from '../price-window';
-import { SlippageModelType } from '../slippage';
 import { type MarketData, type TradingSignal } from '../types';
 
 describe('CompositeRegimeService', () => {
@@ -56,26 +55,6 @@ describe('CompositeRegimeService', () => {
     regimeGateService = module.get(RegimeGateService);
     volatilityCalculator = module.get(VolatilityCalculator);
     signalFilterChain = module.get(SignalFilterChainService);
-  });
-
-  describe('mapSlippageModelType', () => {
-    it.each([
-      ['none', SlippageModelType.NONE],
-      ['volume-based', SlippageModelType.VOLUME_BASED],
-      ['historical', SlippageModelType.HISTORICAL],
-      ['spread-adjusted', SlippageModelType.SPREAD_ADJUSTED],
-      ['fixed', SlippageModelType.FIXED]
-    ])('should map "%s" to %s', (input, expected) => {
-      expect(service.mapSlippageModelType(input)).toBe(expected);
-    });
-
-    it('should default to FIXED for undefined', () => {
-      expect(service.mapSlippageModelType(undefined)).toBe(SlippageModelType.FIXED);
-    });
-
-    it('should default to FIXED for unknown string', () => {
-      expect(service.mapSlippageModelType('unknown')).toBe(SlippageModelType.FIXED);
-    });
   });
 
   describe('computeCompositeRegime', () => {

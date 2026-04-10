@@ -45,7 +45,6 @@ const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
 @Injectable()
 export class BacktestBarProcessor {
   private readonly logger = new Logger(BacktestBarProcessor.name);
-  private readonly reusablePriceMap = new Map<string, number>();
 
   constructor(
     @Optional() private readonly backtestStream: BacktestStreamService,
@@ -83,13 +82,13 @@ export class BacktestBarProcessor {
     const currentPrices = ctx.pricesByTimestamp[ctx.timestamps[i]];
     const isWarmup = i < ctx.effectiveTradingStartIndex;
 
-    this.reusablePriceMap.clear();
+    const priceMap = new Map<string, number>();
     for (const price of currentPrices) {
-      this.reusablePriceMap.set(price.coinId, this.priceWindow.getPriceValue(price));
+      priceMap.set(price.coinId, this.priceWindow.getPriceValue(price));
     }
     const marketData: MarketData = {
       timestamp,
-      prices: this.reusablePriceMap
+      prices: priceMap
     };
 
     // Always update portfolio values and advance price windows (needed for indicator warmup)
@@ -481,24 +480,24 @@ export class BacktestBarProcessor {
    */
   private buildCheckpointSnapshot(ctx: LoopContext, index: number, timestampStr: string): BacktestCheckpointState {
     const currentSells = this.checkpointSvc.countSells(ctx.trades);
-    return this.checkpointSvc.buildCheckpointState(
-      index,
-      timestampStr,
-      ctx.portfolio,
-      ctx.peakValue,
-      ctx.maxDrawdown,
-      ctx.rng.getState(),
-      ctx.totalPersistedCounts.trades + ctx.trades.length,
-      ctx.totalPersistedCounts.signals + ctx.signals.length,
-      ctx.totalPersistedCounts.fills + ctx.simulatedFills.length,
-      ctx.totalPersistedCounts.snapshots + ctx.snapshots.length,
-      ctx.metricsAcc.totalSellCount + currentSells.sells,
-      ctx.metricsAcc.totalWinningSellCount + currentSells.winningSells,
-      this.signalThrottle.serialize(ctx.throttleState),
-      ctx.metricsAcc.grossProfit + currentSells.grossProfit,
-      ctx.metricsAcc.grossLoss + currentSells.grossLoss,
-      ctx.exitTracker?.serialize()
-    );
+    return this.checkpointSvc.buildCheckpointState({
+      lastProcessedIndex: index,
+      lastProcessedTimestamp: timestampStr,
+      portfolio: ctx.portfolio,
+      peakValue: ctx.peakValue,
+      maxDrawdown: ctx.maxDrawdown,
+      rngState: ctx.rng.getState(),
+      tradesCount: ctx.totalPersistedCounts.trades + ctx.trades.length,
+      signalsCount: ctx.totalPersistedCounts.signals + ctx.signals.length,
+      fillsCount: ctx.totalPersistedCounts.fills + ctx.simulatedFills.length,
+      snapshotsCount: ctx.totalPersistedCounts.snapshots + ctx.snapshots.length,
+      sellsCount: ctx.metricsAcc.totalSellCount + currentSells.sells,
+      winningSellsCount: ctx.metricsAcc.totalWinningSellCount + currentSells.winningSells,
+      serializedThrottleState: this.signalThrottle.serialize(ctx.throttleState),
+      grossProfit: ctx.metricsAcc.grossProfit + currentSells.grossProfit,
+      grossLoss: ctx.metricsAcc.grossLoss + currentSells.grossLoss,
+      exitTrackerState: ctx.exitTracker?.serialize()
+    });
   }
 
   /**
