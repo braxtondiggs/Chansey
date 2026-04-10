@@ -6,7 +6,7 @@ import {
 import { SignalThrottleService } from './signal-throttle.service';
 
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
-import { TradingSignal } from '../../backtest-engine.service';
+import { TradingSignal } from '../types';
 
 describe('SignalThrottleService', () => {
   let service: SignalThrottleService;

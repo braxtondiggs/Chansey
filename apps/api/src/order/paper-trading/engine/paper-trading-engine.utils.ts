@@ -1,21 +1,16 @@
 import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
 import { CandleData } from '../../../ohlc/ohlc-candle.entity';
-import { DEFAULT_OPPORTUNITY_SELLING_CONFIG, OpportunitySellingUserConfig } from '../../backtest/shared';
+import { TradingSignal as BacktestTradingSignal } from '../../backtest/shared/types/backtest-signal.interface';
+import {
+  DEFAULT_OPPORTUNITY_SELLING_CONFIG,
+  OpportunitySellingUserConfig
+} from '../../interfaces/opportunity-selling.interface';
 import { PaperTradingAccount, PaperTradingExitType, PaperTradingOrder, PaperTradingSignalType } from '../entities';
 
 // ─── Public Types ───────────────────────────────────────────────────────────
 
-export interface TradingSignal {
-  action: 'BUY' | 'SELL' | 'HOLD' | 'OPEN_SHORT' | 'CLOSE_SHORT';
-  coinId: string;
+export interface TradingSignal extends BacktestTradingSignal {
   symbol: string;
-  quantity?: number;
-  percentage?: number;
-  reason: string;
-  confidence?: number;
-  metadata?: Record<string, any>;
-  /** Preserves the original algorithm signal type (e.g. STOP_LOSS, TAKE_PROFIT) */
-  originalType?: AlgoSignalType;
 }
 
 export interface TickResult {
@@ -98,7 +93,7 @@ export const mapStrategySignal = (signal: StrategySignal, quoteCurrency: string)
     percentage: signal.strength,
     reason: signal.reason,
     confidence: signal.confidence,
-    metadata: signal.metadata as Record<string, any>,
+    metadata: signal.metadata as Record<string, unknown>,
     originalType: signal.type
   };
 };
