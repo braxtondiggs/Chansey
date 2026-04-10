@@ -6,7 +6,10 @@ import {
   buildPriceDataContext,
   extractCoinsFromPrices,
   extractSymbolsFromConfig,
+  EngineMarketData,
+  FilteredSignals,
   mapStrategySignal,
+  SignalLoopResult,
   TickResult,
   TradingSignal
 } from './engine/paper-trading-engine.utils';
@@ -36,25 +39,6 @@ import {
   SignalThrottleService
 } from '../backtest/shared';
 
-interface MarketData {
-  accounts: PaperTradingAccount[];
-  quoteCurrency: string;
-  exchangeSlug: string;
-  priceMap: Record<string, number>;
-  historicalCandles: Record<string, CandleData[]>;
-  allSymbols: string[];
-}
-
-interface FilteredSignals {
-  signals: TradingSignal[];
-  allocation: { maxAllocation: number; minAllocation: number };
-}
-
-interface SignalLoopResult {
-  ordersExecuted: number;
-  errors: string[];
-}
-
 @Injectable()
 export class PaperTradingEngineService {
   private readonly logger = new Logger(PaperTradingEngineService.name);
@@ -74,6 +58,10 @@ export class PaperTradingEngineService {
     private readonly opportunitySelling: PaperTradingOpportunitySellingService
   ) {}
 
+  clearSymbolCache(sessionId: string): void {
+    this.marketDataService.clearSymbolCache(sessionId);
+  }
+
   /** Process a single tick for a paper trading session. */
   async processTick(session: PaperTradingSession, exchangeKey: ExchangeKey): Promise<TickResult> {
     const errors: string[] = [];
@@ -89,7 +77,7 @@ export class PaperTradingEngineService {
       const updatedPortfolio = this.portfolioService.updateWithPrices(portfolio, priceMap, quoteCurrency);
 
       this.exitExecutor.getOrCreate(session);
-      const exitOrdersExecuted = await this.runExits(
+      const exitOrdersExecuted = await this.exitExecutor.checkAndExecute(
         session,
         priceMap,
         historicalCandles,
@@ -165,7 +153,7 @@ export class PaperTradingEngineService {
   }
 
   /** Fetch accounts, prices, and historical candles for the tick. */
-  private async fetchMarketData(session: PaperTradingSession, exchangeKey: ExchangeKey): Promise<MarketData> {
+  private async fetchMarketData(session: PaperTradingSession, exchangeKey: ExchangeKey): Promise<EngineMarketData> {
     const accounts = await this.portfolioService.loadAccounts(session.id);
     const quoteCurrency = this.portfolioService.getQuoteCurrency(accounts);
 
@@ -175,7 +163,8 @@ export class PaperTradingEngineService {
     const configSymbols = extractSymbolsFromConfig(session.algorithmConfig);
     const allSymbols = [...new Set([...holdingSymbols, ...configSymbols])];
     if (allSymbols.length === 0) {
-      allSymbols.push(`BTC/${quoteCurrency}`, `ETH/${quoteCurrency}`);
+      const resolved = await this.marketDataService.resolveSymbolUniverse(session, quoteCurrency);
+      allSymbols.push(...resolved);
     }
 
     const exchangeSlug = exchangeKey.exchange?.slug ?? 'binance_us';
@@ -185,9 +174,12 @@ export class PaperTradingEngineService {
       priceMap[symbol] = priceData.price;
     }
 
+    // Filter to symbols the exchange actually prices — implicitly validates against exchange symbol map
+    const validSymbols = allSymbols.filter((s) => s in priceMap);
+
     const historicalCandles: Record<string, CandleData[]> = {};
     const candleResults = await Promise.all(
-      allSymbols.map(async (symbol) => {
+      validSymbols.map(async (symbol) => {
         const candles = await this.marketDataService.getHistoricalCandles(
           exchangeSlug,
           symbol,
@@ -202,19 +194,7 @@ export class PaperTradingEngineService {
       if (candles.length > 0) historicalCandles[symbol] = candles;
     }
 
-    return { accounts, quoteCurrency, exchangeSlug, priceMap, historicalCandles, allSymbols };
-  }
-
-  /** Thin delegate to exit executor. */
-  private async runExits(
-    session: PaperTradingSession,
-    priceMap: Record<string, number>,
-    historicalCandles: Record<string, CandleData[]>,
-    quoteCurrency: string,
-    exchangeSlug: string,
-    now: Date
-  ): Promise<number> {
-    return this.exitExecutor.checkAndExecute(session, priceMap, historicalCandles, quoteCurrency, exchangeSlug, now);
+    return { accounts, quoteCurrency, exchangeSlug, priceMap, historicalCandles, allSymbols: validSymbols };
   }
 
   /** Apply throttle + regime filter chain; persist rejected signals. */
@@ -236,7 +216,10 @@ export class PaperTradingEngineService {
     }
 
     const compositeRegime = this.compositeRegimeService.getCompositeRegime();
-    const { maxAllocation, minAllocation } = this.getSessionAllocationLimits(session);
+    const { maxAllocation, minAllocation } = getAllocationLimits(
+      PipelineStage.PAPER_TRADE,
+      session.riskLevel ?? DEFAULT_RISK_LEVEL
+    );
     const regimeResult = this.signalFilterChain.apply(
       throttleAccepted,
       {
@@ -466,10 +449,6 @@ export class PaperTradingEngineService {
     return this.snapshotService.calculateSessionMetrics(session);
   }
 
-  private getSessionAllocationLimits(session: PaperTradingSession) {
-    return getAllocationLimits(PipelineStage.PAPER_TRADE, session.riskLevel ?? DEFAULT_RISK_LEVEL);
-  }
-
   clearThrottleState(sessionId: string): void {
     this.throttleService.clear(sessionId);
   }
@@ -501,6 +480,7 @@ export class PaperTradingEngineService {
   sweepOrphanedState(activeSessionIds: Set<string>): number {
     let swept = this.exitExecutor.sweep(activeSessionIds);
     swept += this.throttleService.sweepOrphaned(activeSessionIds);
+    swept += this.marketDataService.sweepOrphaned(activeSessionIds);
     return swept;
   }
 }

@@ -4,8 +4,12 @@ import { ConfigType } from '@nestjs/config';
 
 import { Cache } from 'cache-manager';
 
+import { PaperTradingSession } from './entities';
 import { paperTradingConfig } from './paper-trading.config';
 
+import { CoinService } from '../../coin/coin.service';
+import { CoinSelectionRelations } from '../../coin-selection/coin-selection.entity';
+import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
@@ -43,13 +47,89 @@ export interface RealisticSlippageResult {
 export class PaperTradingMarketDataService {
   private readonly logger = new Logger(PaperTradingMarketDataService.name);
   private readonly cacheTtlMs: number;
+  private readonly symbolUniverseCache = new Map<string, { symbols: string[]; cachedAt: number }>();
+  private readonly SYMBOL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     @Inject(paperTradingConfig.KEY) private readonly config: ConfigType<typeof paperTradingConfig>,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-    private readonly exchangeManager: ExchangeManagerService
+    private readonly exchangeManager: ExchangeManagerService,
+    private readonly coinSelectionService: CoinSelectionService,
+    private readonly coinService: CoinService
   ) {
     this.cacheTtlMs = config.priceCacheTtlMs;
+  }
+
+  /** Resolve symbol universe from user's coin selections, falling back to risk-level coins. */
+  async resolveSymbolUniverse(session: PaperTradingSession, quoteCurrency: string): Promise<string[]> {
+    const fallback = [`BTC/${quoteCurrency}`, `ETH/${quoteCurrency}`];
+
+    const cacheKey = `${session.id}:${quoteCurrency}`;
+    const cached = this.symbolUniverseCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < this.SYMBOL_CACHE_TTL_MS) {
+      return cached.symbols;
+    }
+
+    if (!session.user) {
+      this.logger.warn(`Session ${session.id}: no user attached, using BTC/ETH fallback`);
+      return fallback;
+    }
+
+    // Tier 1: user's explicit coin selections
+    try {
+      const selections = await this.coinSelectionService.getCoinSelectionsByUser(session.user, [
+        CoinSelectionRelations.COIN
+      ]);
+      if (selections.length > 0) {
+        const symbols = selections.map((s) => `${s.coin.symbol.toUpperCase()}/${quoteCurrency}`);
+        this.symbolUniverseCache.set(cacheKey, { symbols, cachedAt: Date.now() });
+        return symbols;
+      }
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Session ${session.id}: coin selection fetch failed (${err.message}), trying risk-level coins`);
+    }
+
+    // Tier 2: risk-level based coins
+    try {
+      const coins = await this.coinService.getCoinsByRiskLevel(session.user);
+      if (coins.length > 0) {
+        const symbols = coins.map((c) => `${c.symbol.toUpperCase()}/${quoteCurrency}`);
+        this.symbolUniverseCache.set(cacheKey, { symbols, cachedAt: Date.now() });
+        return symbols;
+      }
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Session ${session.id}: risk-level coin fetch failed (${err.message}), using BTC/ETH fallback`);
+      return fallback;
+    }
+
+    this.logger.warn(
+      `Session ${session.id} (user: ${session.user?.id}): no coin selections or risk-level coins found, using BTC/ETH fallback`
+    );
+    // Do not cache the fallback — retry next tick so real selections are picked up
+    return fallback;
+  }
+
+  /** Remove cached symbol universes for sessions that are no longer active. */
+  sweepOrphaned(activeSessionIds: Set<string>): number {
+    let swept = 0;
+    for (const key of this.symbolUniverseCache.keys()) {
+      const sessionId = key.split(':')[0];
+      if (!activeSessionIds.has(sessionId)) {
+        this.symbolUniverseCache.delete(key);
+        swept++;
+      }
+    }
+    return swept;
+  }
+
+  clearSymbolCache(sessionId: string): void {
+    for (const key of this.symbolUniverseCache.keys()) {
+      if (key.startsWith(`${sessionId}:`)) {
+        this.symbolUniverseCache.delete(key);
+      }
+    }
   }
 
   /**
