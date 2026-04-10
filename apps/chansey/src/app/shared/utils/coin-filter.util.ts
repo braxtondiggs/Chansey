@@ -1,4 +1,4 @@
-import { Coin } from '@chansey/api-interfaces';
+import { type Coin } from '@chansey/api-interfaces';
 
 export function filterCoinSuggestions(coins: Coin[], query: string, excludeSlugs: Set<string>, limit = 10): Coin[] {
   const q = query.toLowerCase();

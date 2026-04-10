@@ -120,7 +120,7 @@ describe('OrderCleanupService', () => {
     mockTxDeleteQb.execute.mockResolvedValue({ affected: 0 });
 
     // Default transaction implementation: execute the callback
-    mockDataSource.transaction.mockImplementation((cb: any) => cb(mockTransactionManager));
+    mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
 
     // Default transaction manager query builder behavior
     // Calls 1-3 = UPDATE (null out SL, TP, trailing FKs), calls 4-5 = DELETE PositionExits + Orders

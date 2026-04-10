@@ -8,10 +8,10 @@
 
 import * as dayjs from 'dayjs';
 
-import { OptimizationBacktestResult } from './optimization-backtest.interface';
+import { type OptimizationBacktestResult } from './optimization-backtest.interface';
 
-import { BacktestTrade, TradeType } from '../../backtest-trade.entity';
-import { MetricsCalculatorService, TimeframeType } from '../metrics';
+import { type BacktestTrade, TradeType } from '../../backtest-trade.entity';
+import { type MetricsCalculatorService, TimeframeType } from '../metrics';
 
 /**
  * Calculate final metrics for an optimization backtest run.

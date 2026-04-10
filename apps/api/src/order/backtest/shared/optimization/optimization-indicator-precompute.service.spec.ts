@@ -1,10 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { OptimizationBacktestConfig } from './optimization-backtest.interface';
+import { type OptimizationBacktestConfig } from './optimization-backtest.interface';
 import { OptimizationIndicatorPrecomputeService } from './optimization-indicator-precompute.service';
 
 import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
-import { PriceTrackingContext } from '../price-window';
+import { type PriceTrackingContext } from '../price-window';
 
 describe('OptimizationIndicatorPrecomputeService', () => {
   let service: OptimizationIndicatorPrecomputeService;

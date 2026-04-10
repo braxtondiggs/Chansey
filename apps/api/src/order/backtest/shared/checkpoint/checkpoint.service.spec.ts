@@ -1,7 +1,7 @@
 import { CheckpointService } from './checkpoint.service';
 
-import { BacktestTrade, TradeType } from '../../backtest-trade.entity';
-import { Portfolio } from '../portfolio';
+import { type BacktestTrade, TradeType } from '../../backtest-trade.entity';
+import { type Portfolio } from '../portfolio';
 
 describe('CheckpointService', () => {
   let service: CheckpointService;

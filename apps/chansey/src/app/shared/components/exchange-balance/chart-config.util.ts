@@ -1,6 +1,6 @@
-import { ChartData, ChartOptions } from 'chart.js';
+import { type ChartData, type ChartOptions } from 'chart.js';
 
-import { AccountValueDataPoint } from '@chansey/api-interfaces';
+import { type AccountValueDataPoint } from '@chansey/api-interfaces';
 
 import { createExternalChartTooltip } from '../../utils/chart-tooltip.util';
 

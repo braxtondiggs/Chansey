@@ -5,7 +5,12 @@ import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
   type OpportunitySellingUserConfig
 } from '../../interfaces/opportunity-selling.interface';
-import { PaperTradingAccount, PaperTradingExitType, type PaperTradingOrder, PaperTradingSignalType } from '../entities';
+import {
+  type PaperTradingAccount,
+  PaperTradingExitType,
+  type PaperTradingOrder,
+  PaperTradingSignalType
+} from '../entities';
 
 // ─── Public Types ───────────────────────────────────────────────────────────
 

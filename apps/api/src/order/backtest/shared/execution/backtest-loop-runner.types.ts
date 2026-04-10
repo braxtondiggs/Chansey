@@ -1,13 +1,13 @@
-import { PipelineStage } from '@chansey/api-interfaces';
+import { type PipelineStage } from '@chansey/api-interfaces';
 
-import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../../../algorithm/interfaces';
-import { ExitConfig } from '../../../interfaces/exit-config.interface';
-import { OpportunitySellingUserConfig } from '../../../interfaces/opportunity-selling.interface';
-import { BacktestCheckpointState } from '../../backtest-checkpoint.interface';
-import { CheckpointResults, LiveReplayExecuteOptions } from '../../backtest-pacing.interface';
+import { SignalType as AlgoSignalType, type TradingSignal as StrategySignal } from '../../../../algorithm/interfaces';
+import { type ExitConfig } from '../../../interfaces/exit-config.interface';
+import { type OpportunitySellingUserConfig } from '../../../interfaces/opportunity-selling.interface';
+import { type BacktestCheckpointState } from '../../backtest-checkpoint.interface';
+import { type CheckpointResults, type LiveReplayExecuteOptions } from '../../backtest-pacing.interface';
 import { SignalType } from '../../backtest-signal.entity';
-import { MarketDataSet } from '../../market-data-set.entity';
-import { TradingSignal } from '../types';
+import { type MarketDataSet } from '../../market-data-set.entity';
+import { type TradingSignal } from '../types';
 
 export interface ExecuteOptions {
   dataset: MarketDataSet;

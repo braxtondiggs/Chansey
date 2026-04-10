@@ -1,7 +1,7 @@
-import { TickerPairStatus } from './ticker-pair-status.enum';
+import { type TickerPairStatus } from './ticker-pair-status.enum';
 
-import { Coin } from '../coin/coin.interface';
-import { Exchange } from '../exchange/exchange.interface';
+import { type Coin } from '../coin/coin.interface';
+import { type Exchange } from '../exchange/exchange.interface';
 
 export interface TickerPair {
   id: string;

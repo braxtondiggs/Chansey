@@ -347,7 +347,7 @@ describe('ManualOrderService', () => {
       exchangeKeyService.findOne.mockResolvedValue(mockExchangeKey);
       const stub = makeExchangeStub();
       exchangeManagerService.getExchangeClient.mockResolvedValue(stub as any);
-      orderRepository.save.mockImplementation((o: any) => o);
+      orderRepository.save.mockImplementation(async (o: any) => o);
 
       const result = await service.cancelManualOrder('order-1', mockUser);
 

@@ -1,9 +1,9 @@
-import { MetricsAccumulatorService, MetricsAccumulator } from './metrics-accumulator.service';
+import { MetricsAccumulatorService, type MetricsAccumulator } from './metrics-accumulator.service';
 
-import { BacktestPerformanceSnapshot } from '../../backtest-performance-snapshot.entity';
-import { BacktestTrade, TradeType } from '../../backtest-trade.entity';
+import { type BacktestPerformanceSnapshot } from '../../backtest-performance-snapshot.entity';
+import { type BacktestTrade, TradeType } from '../../backtest-trade.entity';
 import { CheckpointService } from '../checkpoint';
-import { MetricsCalculatorService } from '../metrics';
+import { type MetricsCalculatorService } from '../metrics';
 
 describe('MetricsAccumulatorService', () => {
   let service: MetricsAccumulatorService;

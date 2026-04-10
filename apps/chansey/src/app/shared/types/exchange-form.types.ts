@@ -1,4 +1,4 @@
-import { FormControl, FormGroup } from '@angular/forms';
+import { type FormControl, type FormGroup } from '@angular/forms';
 
 export interface ExchangeFormState {
   form: FormGroup<{ apiKey: FormControl<string>; secretKey: FormControl<string> }>;

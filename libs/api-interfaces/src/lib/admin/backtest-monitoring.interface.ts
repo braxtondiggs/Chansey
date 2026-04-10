@@ -5,13 +5,17 @@
  */
 
 import {
-  BacktestStatus,
-  BacktestType,
-  ReplaySpeed,
-  SignalDirection,
-  SignalType
+  type BacktestStatus,
+  type BacktestType,
+  type ReplaySpeed,
+  type SignalDirection,
+  type SignalType
 } from '../backtesting/backtesting.interface';
-import { PaperTradingSignalDirection, PaperTradingSignalType, PaperTradingStatus } from '../paper-trading';
+import {
+  type PaperTradingSignalDirection,
+  type PaperTradingSignalType,
+  type PaperTradingStatus
+} from '../paper-trading';
 
 // ===========================================================================
 // Monitoring-specific Enums

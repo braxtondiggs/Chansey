@@ -1,8 +1,8 @@
 import { Decimal } from 'decimal.js';
 
-import { AlertThresholdsDto } from './dto/alerts.dto';
-import { AlgorithmSortField, LiveTradeFiltersDto, OrderSortField } from './dto/filters.dto';
-import { LiveSlippageStatsDto } from './dto/slippage-analysis.dto';
+import { type AlertThresholdsDto } from './dto/alerts.dto';
+import { AlgorithmSortField, type LiveTradeFiltersDto, OrderSortField } from './dto/filters.dto';
+import { type LiveSlippageStatsDto } from './dto/slippage-analysis.dto';
 
 /** Maximum number of records to export to prevent DoS */
 export const MAX_EXPORT_LIMIT = 10000;

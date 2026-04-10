@@ -244,7 +244,7 @@ describe('OptimizationRecoveryService', () => {
       callOrder.push('db-update');
       return { affected: 1, raw: [], generatedMaps: [] };
     });
-    queue.add.mockImplementation(() => {
+    queue.add.mockImplementation(async () => {
       callOrder.push('queue-add');
       return {} as any;
     });

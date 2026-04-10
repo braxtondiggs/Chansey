@@ -1,12 +1,12 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { type AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import {
   ExitTrailingType,
   StopLossType,
   TakeProfitType,
-  TickerPair,
+  type TickerPair,
   TrailingActivationType
 } from '@chansey/api-interfaces';
 

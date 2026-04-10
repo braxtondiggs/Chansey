@@ -57,6 +57,9 @@ export class OptimizationProcessor extends WorkerHost implements OnModuleInit {
       try {
         if (job.token) {
           await job.extendLock(job.token, 14_400_000);
+        } else {
+          this.logger.warn(`Skipping lock renewal for job ${job.id}: no token available`);
+          clearInterval(lockRenewal);
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);

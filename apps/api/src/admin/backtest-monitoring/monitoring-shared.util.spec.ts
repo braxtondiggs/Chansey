@@ -1,5 +1,4 @@
-import { Repository } from 'typeorm';
-import type { SelectQueryBuilder } from 'typeorm';
+import { type Repository, type SelectQueryBuilder } from 'typeorm';
 
 import {
   applyBacktestFilters,
@@ -15,10 +14,10 @@ import {
   resolveInstrumentSymbols
 } from './monitoring-shared.util';
 
-import { Coin } from '../../coin/coin.entity';
-import { BacktestType, Backtest, BacktestStatus } from '../../order/backtest/backtest.entity';
+import { type Coin } from '../../coin/coin.entity';
+import { BacktestType, type Backtest, BacktestStatus } from '../../order/backtest/backtest.entity';
 import {
-  PaperTradingSession,
+  type PaperTradingSession,
   PaperTradingStatus
 } from '../../order/paper-trading/entities/paper-trading-session.entity';
 

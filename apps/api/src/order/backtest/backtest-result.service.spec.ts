@@ -539,7 +539,7 @@ describe('BacktestResultService', () => {
         .mockReturnValueOnce(mockSnapshotRepo); // Fourth call for BacktestPerformanceSnapshot
 
       // Make transaction execute the callback with mock manager
-      mockDataSource.transaction.mockImplementation((cb: any) => cb(mockTransactionManager));
+      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
 
       const result = await service.cleanupOrphanedResults('backtest-1', {
         trades: 2,

@@ -1,4 +1,4 @@
-import { LiveTradeFiltersDto } from './dto/filters.dto';
+import { type LiveTradeFiltersDto } from './dto/filters.dto';
 import {
   calculateDeviationPercent,
   convertToCsv,

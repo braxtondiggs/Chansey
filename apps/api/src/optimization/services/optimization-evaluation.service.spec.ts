@@ -404,7 +404,7 @@ describe('OptimizationEvaluationService', () => {
 
     it('should populate windowResults with correct date strings and index', async () => {
       backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(createMockMetrics());
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.1, overfittingDetected: false } as any);
+      windowProcessor.processWindow.mockReturnValue({ degradation: 0.1, overfittingDetected: false } as any);
 
       const result = await service.evaluateCombination({
         strategyConfig: { id: 'strategy-1', algorithmId: 'algo-1' },

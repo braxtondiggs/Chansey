@@ -1,9 +1,9 @@
-import { MarketData, TradingSignal } from './backtest-signal.interface';
+import { type MarketData, type TradingSignal } from './backtest-signal.interface';
 
-import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
-import { ExecuteTradeResult } from '../execution/trade-executor.helpers';
-import { Portfolio } from '../portfolio';
-import { SlippageConfig, SpreadEstimationContext } from '../slippage';
+import { type OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
+import { type ExecuteTradeResult } from '../execution/trade-executor.helpers';
+import { type Portfolio } from '../portfolio';
+import { type SlippageConfig, type SpreadEstimationContext } from '../slippage';
 
 /**
  * Callback type for executing a trade on the in-memory portfolio.

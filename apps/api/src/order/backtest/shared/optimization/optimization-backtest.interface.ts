@@ -1,6 +1,6 @@
-import { OHLCCandle, PriceSummary } from '../../../../ohlc/ohlc-candle.entity';
-import { ExitConfig } from '../../../interfaces/exit-config.interface';
-import { SlippageConfig } from '../slippage';
+import { type OHLCCandle, type PriceSummary } from '../../../../ohlc/ohlc-candle.entity';
+import { type ExitConfig } from '../../../interfaces/exit-config.interface';
+import { type SlippageConfig } from '../slippage';
 
 /**
  * Configuration for running an optimization backtest

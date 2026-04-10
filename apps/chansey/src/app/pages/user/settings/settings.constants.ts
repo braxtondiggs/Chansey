@@ -1,6 +1,6 @@
 import { NotificationEventType } from '@chansey/api-interfaces';
 
-import { MenuModeOption, NotificationEventOption, ThemeColorOption } from './settings.types';
+import { type MenuModeOption, type NotificationEventOption, type ThemeColorOption } from './settings.types';
 
 export const SURFACE_PALETTES: ThemeColorOption[] = [
   {

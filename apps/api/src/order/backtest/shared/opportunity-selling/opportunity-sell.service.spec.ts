@@ -1,17 +1,17 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { OpportunitySellService } from './opportunity-sell.service';
 
-import { Coin } from '../../../../coin/coin.entity';
-import { OpportunitySellingUserConfig } from '../../../interfaces/opportunity-selling.interface';
+import { type Coin } from '../../../../coin/coin.entity';
+import { type OpportunitySellingUserConfig } from '../../../interfaces/opportunity-selling.interface';
 import { PositionAnalysisService } from '../../../services/position-analysis.service';
-import { BacktestTrade } from '../../backtest-trade.entity';
-import { Backtest } from '../../backtest.entity';
-import { SimulatedOrderFill, SimulatedOrderStatus } from '../../simulated-order-fill.entity';
+import { type BacktestTrade } from '../../backtest-trade.entity';
+import { type Backtest } from '../../backtest.entity';
+import { type SimulatedOrderFill, SimulatedOrderStatus } from '../../simulated-order-fill.entity';
 import { FeeCalculatorService } from '../fees';
-import { Portfolio } from '../portfolio';
-import { SlippageConfig, SlippageModelType } from '../slippage';
-import { MarketData, TradingSignal } from '../types';
+import { type Portfolio } from '../portfolio';
+import { type SlippageConfig, SlippageModelType } from '../slippage';
+import { type MarketData, type TradingSignal } from '../types';
 
 describe('OpportunitySellService', () => {
   let service: OpportunitySellService;

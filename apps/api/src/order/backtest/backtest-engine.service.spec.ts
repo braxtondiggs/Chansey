@@ -16,7 +16,7 @@ import {
   OpportunitySellService,
   OptimizationCoreService,
   OptimizationIndicatorPrecomputeService,
-  Portfolio,
+  type Portfolio,
   PortfolioStateService,
   PositionManagerService,
   PriceWindowService,
@@ -633,7 +633,8 @@ describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
     // Results should match (both have no trades, same initial capital)
     expect(precomputedResult.totalReturn).toBe(legacyResult.totalReturn);
     expect(precomputedResult.tradeCount).toBe(legacyResult.tradeCount);
-    expect(precomputedResult.finalValue).toBeCloseTo(legacyResult.finalValue ?? 0);
+    expect(legacyResult.finalValue).toBeDefined();
+    expect(precomputedResult.finalValue).toBeCloseTo(legacyResult.finalValue as number);
     expect(precomputedResult.maxDrawdown).toBe(legacyResult.maxDrawdown);
     expect(precomputedResult.profitFactor).toBe(legacyResult.profitFactor);
   });

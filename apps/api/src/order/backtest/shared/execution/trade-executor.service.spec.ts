@@ -2,9 +2,9 @@ import { TradeExecutorService } from './trade-executor.service';
 
 import { SignalType } from '../../../../algorithm/interfaces';
 import { FeeCalculatorService } from '../fees';
-import { Portfolio, PortfolioStateService } from '../portfolio';
+import { type Portfolio, PortfolioStateService } from '../portfolio';
 import { SlippageModelType, SlippageService } from '../slippage';
-import { MarketData } from '../types';
+import { type MarketData } from '../types';
 
 const slippageService = new SlippageService();
 const feeCalculator = new FeeCalculatorService();

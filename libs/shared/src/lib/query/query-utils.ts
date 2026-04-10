@@ -1,11 +1,11 @@
 import { inject } from '@angular/core';
 
 import {
-  CreateMutationOptions,
-  CreateQueryOptions,
-  CreateQueryResult,
+  type CreateMutationOptions,
+  type CreateQueryOptions,
+  type CreateQueryResult,
   QueryClient,
-  QueryKey,
+  type QueryKey,
   injectMutation,
   injectQuery,
   injectQueryClient

@@ -18,8 +18,8 @@ describe('PaperTradingExitExecutorService', () => {
       })
     };
     signalService = {
-      save: jest.fn(() => ({ id: 'sig-1' })),
-      markProcessed: jest.fn((e) => e)
+      save: jest.fn(async () => ({ id: 'sig-1' })),
+      markProcessed: jest.fn(async (e) => e)
     };
     orderExecutor = { execute: jest.fn() };
 

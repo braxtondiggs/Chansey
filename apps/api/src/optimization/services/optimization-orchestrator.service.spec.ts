@@ -362,7 +362,7 @@ describe('OptimizationOrchestratorService', () => {
         config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
       });
       optimizationRunRepo.findOne.mockResolvedValue(run);
-      optimizationRunRepo.save.mockImplementation((r: any) => r);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       optimizationResultRepo.find.mockResolvedValue([
@@ -383,7 +383,7 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne
         .mockResolvedValueOnce(run) // initial load
         .mockResolvedValueOnce(run); // cancellation check
-      optimizationRunRepo.save.mockImplementation((r: any) => r);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       optimizationResultRepo.find.mockResolvedValue([
@@ -420,7 +420,7 @@ describe('OptimizationOrchestratorService', () => {
         config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
       });
       optimizationRunRepo.findOne.mockResolvedValue(run);
-      optimizationRunRepo.save.mockImplementation((r: any) => r);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       optimizationResultRepo.find.mockResolvedValue([
@@ -460,7 +460,7 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne
         .mockResolvedValueOnce(run) // initial load
         .mockResolvedValueOnce(run); // cancellation check
-      optimizationRunRepo.save.mockImplementation((r: any) => r);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       evaluationService.evaluateCombination.mockResolvedValue({
@@ -515,7 +515,7 @@ describe('OptimizationOrchestratorService', () => {
         .mockResolvedValueOnce(run) // cancellation check batch 1
         .mockResolvedValueOnce(run) // cancellation check batch 2
         .mockResolvedValueOnce(run); // cancellation check batch 3
-      optimizationRunRepo.save.mockImplementation((r: any) => r);
+      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       // Baseline sets bestScore; subsequent combos produce no improvement

@@ -1,12 +1,12 @@
 import {
   ExitSignalProcessorService,
-  ProcessExitSignalsCallbacks,
-  ResolveExitTrackerOptions
+  type ProcessExitSignalsCallbacks,
+  type ResolveExitTrackerOptions
 } from './exit-signal-processor.service';
 
 import { SimulatedOrderStatus } from '../../simulated-order-fill.entity';
 import { BacktestExitTracker } from '../exits';
-import { Portfolio } from '../portfolio';
+import { type Portfolio } from '../portfolio';
 import { DEFAULT_SLIPPAGE_CONFIG } from '../slippage';
 
 describe('ExitSignalProcessorService', () => {
