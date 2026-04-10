@@ -1,2 +1,2 @@
 npx lint-staged --relative
-npm test
+npx nx affected:test --base=HEAD~1

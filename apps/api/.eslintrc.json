@@ -8,7 +8,10 @@
     },
     {
       "files": ["*.ts", "*.tsx"],
-      "rules": {}
+      "rules": {
+        "@typescript-eslint/no-floating-promises": "warn",
+        "@typescript-eslint/require-await": "warn"
+      }
     },
     {
       "files": ["*.js", "*.jsx"],
