@@ -1,17 +1,30 @@
-import { CompositeRegimeType } from '@chansey/api-interfaces';
+import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 
-import { BacktestEngine, MarketData, Portfolio, TradingSignal } from './backtest-engine.service';
+import { BacktestEngine } from './backtest-engine.service';
 import { ReplaySpeed } from './backtest-pacing.interface';
 import {
+  BacktestBarProcessor,
+  BacktestLoopRunner,
+  BacktestSignalTradeService,
+  CheckpointService,
+  CompositeRegimeService,
+  ExitSignalProcessorService,
   FeeCalculatorService,
+  ForcedExitService,
+  MetricsAccumulatorService,
   MetricsCalculatorService,
+  OpportunitySellService,
+  OptimizationCoreService,
+  OptimizationIndicatorPrecomputeService,
+  Portfolio,
   PortfolioStateService,
   PositionManagerService,
+  PriceWindowService,
   SignalFilterChainService,
   SignalThrottleService,
-  SlippageConfig,
-  SlippageModelType,
-  SlippageService
+  SlippageContextService,
+  SlippageService,
+  TradeExecutorService
 } from './shared';
 
 import { SignalType } from '../../algorithm/interfaces';
@@ -37,661 +50,103 @@ const signalThrottle = new SignalThrottleService();
 const regimeGateService = new RegimeGateService();
 const volatilityCalculator = new VolatilityCalculator();
 const signalFilterChain = new SignalFilterChainService();
-
-describe('BacktestEngine.executeTrade', () => {
-  const createEngine = () =>
-    new BacktestEngine(
-      {} as any, // backtestStream
-      {} as any, // algorithmRegistry
-      {} as any, // ohlcService
-      {} as any, // marketDataReader
-      {} as any, // quoteCurrencyResolver
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
-
-  const createMarketData = (coinId: string, price: number): MarketData => ({
-    timestamp: new Date(),
-    prices: new Map([[coinId, price]])
-  });
-
-  const clonePortfolio = (portfolio: Portfolio): Portfolio => ({
-    ...portfolio,
-    positions: new Map(Array.from(portfolio.positions.entries()).map(([coinId, position]) => [coinId, { ...position }]))
-  });
-
-  const noSlippage = { type: SlippageModelType.NONE };
-
-  it('calculates realized P&L for partial sells', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 0,
-      totalValue: 100,
-      positions: new Map([
-        [
-          'BTC',
-          {
-            coinId: 'BTC',
-            quantity: 10,
-            averagePrice: 10,
-            totalValue: 100
-          }
-        ]
-      ])
-    };
-    const sellSignal: TradingSignal = {
-      action: 'SELL',
-      coinId: 'BTC',
-      quantity: 4,
-      reason: 'take-profit',
-      confidence: 1
-    };
-
-    const result = await (engine as any).executeTrade(
-      sellSignal,
-      portfolio,
-      createMarketData('BTC', 15),
-      0,
-      noSlippage
-    );
-
-    expect(result).toBeTruthy();
-    expect(result.trade.realizedPnL).toBeCloseTo(20);
-    expect(result.trade.realizedPnLPercent).toBeCloseTo(0.5);
-    expect(result.trade.costBasis).toBeCloseTo(10);
-
-    const position = portfolio.positions.get('BTC');
-    expect(position?.quantity).toBeCloseTo(6);
-  });
-
-  it('applies slippage and trading fees to BUY trades', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 200,
-      totalValue: 200,
-      positions: new Map()
-    };
-
-    const buySignal: TradingSignal = {
-      action: 'BUY',
-      coinId: 'BTC',
-      quantity: 1,
-      reason: 'entry',
-      confidence: 0.8
-    };
-
-    const result = await (engine as any).executeTrade(buySignal, portfolio, createMarketData('BTC', 100), 0.01, {
-      type: SlippageModelType.FIXED,
-      fixedBps: 100
-    });
-
-    expect(result?.trade.price).toBeCloseTo(101);
-    expect(result?.trade.fee).toBeCloseTo(1.01);
-    expect(result?.trade.metadata?.basePrice).toBe(100);
-    expect(result?.trade.metadata?.slippageBps).toBe(100);
-    expect(portfolio.cashBalance).toBeCloseTo(97.99);
-  });
-
-  it('uses slippage-adjusted price for SELL realized P&L', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 0,
-      totalValue: 80,
-      positions: new Map([
-        [
-          'BTC',
-          {
-            coinId: 'BTC',
-            quantity: 1,
-            averagePrice: 80,
-            totalValue: 80
-          }
-        ]
-      ])
-    };
-
-    const sellSignal: TradingSignal = {
-      action: 'SELL',
-      coinId: 'BTC',
-      quantity: 1,
-      reason: 'exit',
-      confidence: 1
-    };
-
-    const result = await (engine as any).executeTrade(sellSignal, portfolio, createMarketData('BTC', 100), 0.01, {
-      type: SlippageModelType.FIXED,
-      fixedBps: 100
-    });
-
-    expect(result?.trade.price).toBeCloseTo(99);
-    // Note: Fee is no longer subtracted from realizedPnL (bug fix: fee only affects cashBalance)
-    expect(result?.trade.realizedPnL).toBeCloseTo(19);
-    expect(result?.trade.costBasis).toBeCloseTo(80);
-  });
-
-  it('returns null when market data has no price for the coin', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 100,
-      totalValue: 100,
-      positions: new Map()
-    };
-
-    const result = await (engine as any).executeTrade(
-      { action: 'BUY', coinId: 'BTC', quantity: 1, reason: 'entry' },
-      portfolio,
-      { timestamp: new Date(), prices: new Map() },
-      0,
-      noSlippage
-    );
-
-    expect(result).toBeNull();
-    expect(portfolio.cashBalance).toBe(100);
-  });
-
-  describe('Bug Fix: Insufficient funds check includes fees', () => {
-    it('rejects BUY when cash equals trade value but cannot cover fees', async () => {
-      const engine = createEngine();
-      // Cash exactly equals trade value (100), but not enough for fee (1%)
-      const portfolio: Portfolio = {
-        cashBalance: 100,
-        totalValue: 100,
-        positions: new Map()
-      };
-
-      const buySignal: TradingSignal = {
-        action: 'BUY',
-        coinId: 'BTC',
-        quantity: 1,
-        reason: 'entry'
-      };
-
-      const result = await (engine as any).executeTrade(
-        buySignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0.01, // 1% fee means we need 101 total
-        noSlippage
-      );
-
-      expect(result).toBeNull();
-      expect(portfolio.cashBalance).toBe(100); // Unchanged
-    });
-
-    it('allows BUY when cash covers both trade value and fees', async () => {
-      const engine = createEngine();
-      // Cash = 101, trade = 100, fee = 1 (1%), total = 101
-      const portfolio: Portfolio = {
-        cashBalance: 101,
-        totalValue: 101,
-        positions: new Map()
-      };
-
-      const buySignal: TradingSignal = {
-        action: 'BUY',
-        coinId: 'BTC',
-        quantity: 1,
-        reason: 'entry'
-      };
-
-      const result = await (engine as any).executeTrade(
-        buySignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0.01, // 1% fee
-        noSlippage
-      );
-
-      expect(result).toBeTruthy();
-      expect(portfolio.cashBalance).toBeCloseTo(0); // 101 - 100 - 1 = 0
-    });
-  });
-
-  describe('Bug Fix: Volume passed to slippage calculation', () => {
-    it('passes dailyVolume to slippage calculation', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 10000,
-        totalValue: 10000,
-        positions: new Map()
-      };
-
-      const buySignal: TradingSignal = {
-        action: 'BUY',
-        coinId: 'BTC',
-        quantity: 1,
-        reason: 'entry'
-      };
-
-      // With volume-based slippage, higher volume = lower slippage
-      const highVolumeResult = await (engine as any).executeTrade(
-        buySignal,
-        { ...portfolio, cashBalance: 10000, positions: new Map() },
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        1000000000 // High volume
-      );
-
-      const lowVolumeResult = await (engine as any).executeTrade(
-        buySignal,
-        { ...portfolio, cashBalance: 10000, positions: new Map() },
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        1000 // Low volume
-      );
-
-      // Higher volume should result in lower slippage (lower price for buy)
-      expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
-    });
-  });
-
-  describe('SELL slippage uses actual position quantity', () => {
-    it('uses actual position quantity for SELL slippage calculation (percentage)', async () => {
-      const engine = createEngine();
-      // Large portfolio ($100,000) with small position (10 BTC @ $100 = $1,000)
-      // Selling 50% should estimate slippage for 5 BTC, not $10,000 worth
-      const portfolio: Portfolio = {
-        cashBalance: 99000,
-        totalValue: 100000,
-        positions: new Map([
-          [
-            'BTC',
-            {
-              coinId: 'BTC',
-              quantity: 10,
-              averagePrice: 100,
-              totalValue: 1000
-            }
-          ]
-        ])
-      };
-
-      const sellSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        percentage: 0.5, // Sell 50% of position
-        reason: 'partial exit'
-      };
-
-      // With volume-based slippage, the estimated quantity affects slippage calculation
-      // A $10,000 estimate (10% of portfolio) vs 5 BTC estimate (50% of position)
-      // would produce vastly different slippage in low-volume scenarios
-      const result = await (engine as any).executeTrade(
-        sellSignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        10000 // $1M daily volume
-      );
-
-      expect(result).toBeTruthy();
-      // Should sell 5 BTC (50% of 10)
-      expect(result.trade.quantity).toBeCloseTo(5);
-      // Slippage uses square-root model on actual quantity: 5 + 0.1 * sqrt(500/10000) * 10000 ≈ 228.6 bps
-      expect(result.trade.metadata?.slippageBps).toBeLessThanOrEqual(250);
-    });
-
-    it('calculates volume-based slippage correctly for SELL trades with no explicit quantity', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 5000,
-        totalValue: 10000,
-        positions: new Map([
-          [
-            'BTC',
-            {
-              coinId: 'BTC',
-              quantity: 50,
-              averagePrice: 100,
-              totalValue: 5000
-            }
-          ]
-        ])
-      };
-
-      // SELL with no quantity specified - should use 25% fallback (12.5 BTC) for slippage estimate
-      const sellSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        reason: 'exit'
-        // No quantity, percentage, or confidence - will use 25% conservative fallback
-      };
-
-      const lowVolumeResult = await (engine as any).executeTrade(
-        sellSignal,
-        clonePortfolio(portfolio),
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        1000 // Low volume
-      );
-
-      const highVolumeResult = await (engine as any).executeTrade(
-        sellSignal,
-        clonePortfolio(portfolio),
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        10000000 // High volume
-      );
-
-      // Higher volume should result in lower slippage
-      expect(highVolumeResult?.trade.metadata?.slippageBps).toBeLessThan(lowVolumeResult?.trade.metadata?.slippageBps);
-      // 25% of 50 BTC = 12.5 BTC (conservative fallback)
-      expect(highVolumeResult?.trade.quantity).toBeCloseTo(12.5);
-      expect(lowVolumeResult?.trade.quantity).toBeCloseTo(12.5);
-    });
-
-    it('deducts fee from cash balance on SELL trades', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 0,
-        totalValue: 1000,
-        positions: new Map([['BTC', { coinId: 'BTC', quantity: 1, averagePrice: 100, totalValue: 100 }]])
-      };
-
-      const sellSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        quantity: 1,
-        reason: 'exit'
-      };
-
-      const result = await (engine as any).executeTrade(
-        sellSignal,
-        portfolio,
-        createMarketData('BTC', 200),
-        0.01,
-        noSlippage
-      );
-
-      expect(result).toBeTruthy();
-      // Proceeds 200, fee 2, cash should be 198
-      expect(portfolio.cashBalance).toBeCloseTo(198);
-      expect(result?.trade.fee).toBeCloseTo(2);
-    });
-
-    it('handles SELL with no existing position gracefully', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 10000,
-        totalValue: 10000,
-        positions: new Map() // No positions
-      };
-
-      const sellSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        reason: 'exit'
-      };
-
-      const result = await (engine as any).executeTrade(
-        sellSignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0,
-        { type: SlippageModelType.VOLUME_BASED, baseSlippageBps: 5 },
-        10000
-      );
-
-      // Should return null since there's no position to sell
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('Bug Fix: Position sizing uses signal properties', () => {
-    it('uses signal.percentage for BUY position sizing', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 1000,
-        totalValue: 1000,
-        positions: new Map()
-      };
-
-      const buySignal: TradingSignal = {
-        action: 'BUY',
-        coinId: 'BTC',
-        percentage: 0.1, // 10% of portfolio
-        reason: 'entry'
-      };
-
-      const result = await (engine as any).executeTrade(
-        buySignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
-
-      // Should buy 100/100 = 1 BTC (10% of $1000)
-      expect(result?.trade.quantity).toBeCloseTo(1);
-      expect(result?.trade.totalValue).toBeCloseTo(100);
-    });
-
-    it('uses signal.confidence for BUY position sizing when percentage not set', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 1000,
-        totalValue: 1000,
-        positions: new Map()
-      };
-
-      const highConfidenceSignal: TradingSignal = {
-        action: 'BUY',
-        coinId: 'BTC',
-        confidence: 1.0, // Maximum confidence = HISTORICAL risk-3 max 12% allocation
-        reason: 'strong entry'
-      };
-
-      const lowConfidenceSignal: TradingSignal = {
-        action: 'BUY',
-        coinId: 'BTC',
-        confidence: 0.0, // Minimum confidence = HISTORICAL risk-3 min 3% allocation
-        reason: 'weak entry'
-      };
-
-      const highResult = await (engine as any).executeTrade(
-        highConfidenceSignal,
-        { ...portfolio, cashBalance: 1000, positions: new Map() },
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
-
-      const lowResult = await (engine as any).executeTrade(
-        lowConfidenceSignal,
-        { ...portfolio, cashBalance: 1000, positions: new Map() },
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
-
-      // High confidence should invest more than low confidence
-      expect(highResult?.trade.totalValue).toBeCloseTo(120); // 12% of $1000
-      expect(lowResult?.trade.totalValue).toBeCloseTo(30); // 3% of $1000
-    });
-
-    it('uses signal.percentage for SELL position sizing', async () => {
-      const engine = createEngine();
-      const portfolio: Portfolio = {
-        cashBalance: 0,
-        totalValue: 1000,
-        positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
-      };
-
-      const sellSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        percentage: 0.5, // Sell 50% of position
-        reason: 'partial exit'
-      };
-
-      const result = await (engine as any).executeTrade(
-        sellSignal,
-        portfolio,
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
-
-      // Should sell 5 BTC (50% of 10)
-      expect(result?.trade.quantity).toBeCloseTo(5);
-    });
-
-    it('uses signal.confidence for SELL position sizing when percentage not set', async () => {
-      const engine = createEngine();
-
-      const highConfidenceSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        confidence: 1.0, // Maximum confidence = 100% of position
-        reason: 'strong exit'
-      };
-
-      const lowConfidenceSignal: TradingSignal = {
-        action: 'SELL',
-        coinId: 'BTC',
-        confidence: 0.0, // Minimum confidence = 25% of position
-        reason: 'weak exit'
-      };
-
-      const highResult = await (engine as any).executeTrade(
-        highConfidenceSignal,
-        {
-          cashBalance: 0,
-          totalValue: 1000,
-          positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
-        },
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
-
-      const lowResult = await (engine as any).executeTrade(
-        lowConfidenceSignal,
-        {
-          cashBalance: 0,
-          totalValue: 1000,
-          positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
-        },
-        createMarketData('BTC', 100),
-        0,
-        noSlippage
-      );
-
-      // High confidence should sell 100%, low confidence should sell 25%
-      expect(highResult?.trade.quantity).toBeCloseTo(10);
-      expect(lowResult?.trade.quantity).toBeCloseTo(2.5);
-    });
-  });
-
-  describe('Min hold period enforcement', () => {
-    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-    const entryDate = new Date('2024-01-01T00:00:00.000Z');
-
-    const createHeldPortfolio = (): Portfolio => ({
-      cashBalance: 0,
-      totalValue: 1000,
-      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000, entryDate }]])
-    });
-
-    it('rejects SELL when position held less than minHoldMs', async () => {
-      const engine = createEngine();
-      const portfolio = createHeldPortfolio();
-      // 12 hours after entry — within the 24h default hold period
-      const sellTimestamp = new Date('2024-01-01T12:00:00.000Z');
-
-      const result = await (engine as any).executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
-        portfolio,
-        { timestamp: sellTimestamp, prices: new Map([['BTC', 120]]) },
-        0,
-        noSlippage,
-        undefined,
-        TWENTY_FOUR_HOURS_MS
-      );
-
-      expect(result).toBeNull();
-      expect(portfolio.positions.get('BTC')?.quantity).toBe(10); // Unchanged
-    });
-
-    it.each([
-      { type: SignalType.STOP_LOSS, label: 'STOP_LOSS' },
-      { type: SignalType.TAKE_PROFIT, label: 'TAKE_PROFIT' }
-    ])('allows $label SELL even within min hold period', async ({ type }) => {
-      const engine = createEngine();
-      const portfolio = createHeldPortfolio();
-      // 1 hour after entry — well within the 24h hold period
-      const sellTimestamp = new Date('2024-01-01T01:00:00.000Z');
-
-      const result = await (engine as any).executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 10, reason: 'risk exit', originalType: type },
-        portfolio,
-        { timestamp: sellTimestamp, prices: new Map([['BTC', 80]]) },
-        0,
-        noSlippage,
-        undefined,
-        TWENTY_FOUR_HOURS_MS
-      );
-
-      expect(result).toBeTruthy();
-      expect(result.trade.quantity).toBe(10);
-    });
-
-    it('allows SELL after min hold period has elapsed', async () => {
-      const engine = createEngine();
-      const portfolio = createHeldPortfolio();
-      // 25 hours after entry — beyond the 24h hold period
-      const sellTimestamp = new Date('2024-01-02T01:00:00.000Z');
-
-      const result = await (engine as any).executeTrade(
-        { action: 'SELL', coinId: 'BTC', quantity: 5, reason: 'exit' },
-        portfolio,
-        { timestamp: sellTimestamp, prices: new Map([['BTC', 120]]) },
-        0,
-        noSlippage,
-        undefined,
-        TWENTY_FOUR_HOURS_MS
-      );
-
-      expect(result).toBeTruthy();
-      expect(result.trade.quantity).toBe(5);
-    });
-  });
-});
+const priceWindowService = new PriceWindowService();
+const tradeExecutor = new TradeExecutorService(slippageService, feeCalculator, portfolioState);
+const checkpointService = new CheckpointService();
+const exitSignalProcessor = new ExitSignalProcessorService();
+const compositeRegimeService = new CompositeRegimeService(regimeGateService, volatilityCalculator, signalFilterChain);
+const slippageContextService = new SlippageContextService();
+const metricsAccumulatorService = new MetricsAccumulatorService(metricsCalculator, checkpointService);
+const opportunitySellService = new OpportunitySellService(feeCalculator, positionAnalysis);
+const forcedExitService = new ForcedExitService(positionManager, portfolioState);
+const signalTradeService = new BacktestSignalTradeService(
+  tradeExecutor,
+  slippageContextService,
+  opportunitySellService
+);
+
+/**
+ * Create an OptimizationCoreService instance for tests.
+ * Accepts an optional algorithmRegistry override; defaults to a stub.
+ */
+const createOptimizationCore = (algorithmRegistry: any = {}, ohlcService: any = {}) =>
+  new OptimizationCoreService(
+    portfolioState,
+    metricsCalculator,
+    algorithmRegistry,
+    priceWindowService,
+    exitSignalProcessor,
+    compositeRegimeService,
+    slippageContextService,
+    signalThrottle,
+    new OptimizationIndicatorPrecomputeService(algorithmRegistry),
+    tradeExecutor,
+    ohlcService
+  );
+
+const createTestEngine = (
+  algorithmRegistry: any,
+  ohlcService: any,
+  overrides: {
+    backtestStream?: any;
+    marketDataReader?: any;
+    quoteCurrencyResolver?: any;
+    coinListingEventService?: any;
+    optimizationCore?: any;
+  } = {}
+) => {
+  const backtestStream = overrides.backtestStream ?? ({ publishMetric: jest.fn(), publishStatus: jest.fn() } as any);
+  const marketDataReader =
+    overrides.marketDataReader ?? ({ hasStorageLocation: jest.fn().mockReturnValue(false) } as any);
+  const quoteCurrencyResolver =
+    overrides.quoteCurrencyResolver ??
+    ({ resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) } as any);
+  const coinListingEventService =
+    overrides.coinListingEventService ?? ({ getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any);
+
+  const barProcessor = new BacktestBarProcessor(
+    backtestStream,
+    algorithmRegistry,
+    portfolioState,
+    signalThrottle,
+    priceWindowService,
+    compositeRegimeService,
+    slippageContextService,
+    checkpointService,
+    exitSignalProcessor,
+    forcedExitService,
+    tradeExecutor,
+    metricsAccumulatorService,
+    opportunitySellService,
+    signalTradeService
+  );
+  const loopRunner = new BacktestLoopRunner(
+    backtestStream,
+    algorithmRegistry,
+    ohlcService,
+    marketDataReader,
+    quoteCurrencyResolver,
+    slippageService,
+    portfolioState,
+    signalThrottle,
+    coinListingEventService,
+    priceWindowService,
+    compositeRegimeService,
+    slippageContextService,
+    checkpointService,
+    exitSignalProcessor,
+    forcedExitService,
+    tradeExecutor,
+    metricsAccumulatorService,
+    opportunitySellService,
+    barProcessor
+  );
+  const optimizationCore = overrides.optimizationCore ?? ({} as any);
+  return new BacktestEngine(checkpointService, optimizationCore, loopRunner);
+};
 
 describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
-  const createEngine = (algorithmRegistry: any, ohlcService: any) =>
-    new BacktestEngine(
-      { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
-      algorithmRegistry,
-      ohlcService,
-      { hasStorageLocation: jest.fn().mockReturnValue(false) } as any,
-      { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) } as any,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+  const createEngine = (algorithmRegistry: any, ohlcService: any) => createTestEngine(algorithmRegistry, ohlcService);
 
   const createCandles = (coinId: string) => [
     new OHLCCandle({
@@ -768,24 +223,9 @@ describe('BacktestEngine mapStrategySignal: STOP_LOSS and TAKE_PROFIT', () => {
 
 describe('BacktestEngine.executeOptimizationBacktest', () => {
   const createEngine = (algorithmRegistry: any, ohlcService: any) =>
-    new BacktestEngine(
-      {} as any, // backtestStream
-      algorithmRegistry,
-      ohlcService,
-      {} as any, // marketDataReader
-      {} as any, // quoteCurrencyResolver
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+    createTestEngine(algorithmRegistry, ohlcService, {
+      optimizationCore: createOptimizationCore(algorithmRegistry, ohlcService)
+    });
 
   it('rethrows AlgorithmNotRegisteredException', async () => {
     const algorithmRegistry = {
@@ -894,7 +334,7 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
       })
     ];
 
-    jest.spyOn(engine as any, 'getHistoricalPrices').mockResolvedValue(candles);
+    ohlcService.getCandlesByDateRange.mockResolvedValue(candles);
 
     const result = await engine.executeOptimizationBacktest(
       {
@@ -925,25 +365,7 @@ describe('BacktestEngine.executeOptimizationBacktest', () => {
 });
 
 describe('BacktestEngine.precomputeWindowData', () => {
-  const createEngine = () =>
-    new BacktestEngine(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+  const createEngine = () => createTestEngine({} as any, {} as any, { optimizationCore: createOptimizationCore() });
 
   it('should pre-compute window data from candles', () => {
     const engine = createEngine();
@@ -1046,24 +468,9 @@ describe('BacktestEngine.precomputeWindowData', () => {
 
 describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
   const createEngine = (algorithmRegistry: any) =>
-    new BacktestEngine(
-      {} as any,
-      algorithmRegistry,
-      {} as any,
-      {} as any,
-      {} as any,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+    createTestEngine(algorithmRegistry, {} as any, {
+      optimizationCore: createOptimizationCore(algorithmRegistry)
+    });
 
   it('returns neutral metrics when pre-computed data has no candles', async () => {
     const engine = createEngine({ executeAlgorithm: jest.fn() });
@@ -1226,7 +633,7 @@ describe('BacktestEngine.runOptimizationBacktestWithPrecomputed', () => {
     // Results should match (both have no trades, same initial capital)
     expect(precomputedResult.totalReturn).toBe(legacyResult.totalReturn);
     expect(precomputedResult.tradeCount).toBe(legacyResult.tradeCount);
-    expect(precomputedResult.finalValue).toBeCloseTo(legacyResult.finalValue!);
+    expect(precomputedResult.finalValue).toBeCloseTo(legacyResult.finalValue ?? 0);
     expect(precomputedResult.maxDrawdown).toBe(legacyResult.maxDrawdown);
     expect(precomputedResult.profitFactor).toBe(legacyResult.profitFactor);
   });
@@ -1239,24 +646,10 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     ohlcService: any;
     quoteCurrencyResolver: any;
   }) =>
-    new BacktestEngine(
-      { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
-      deps.algorithmRegistry,
-      deps.ohlcService,
-      deps.marketDataReader,
-      deps.quoteCurrencyResolver,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+    createTestEngine(deps.algorithmRegistry, deps.ohlcService, {
+      marketDataReader: deps.marketDataReader,
+      quoteCurrencyResolver: deps.quoteCurrencyResolver
+    });
 
   const createCandles = () => [
     new OHLCCandle({
@@ -1663,15 +1056,16 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     expect(onPaused).toHaveBeenCalledTimes(1);
 
     // Verify pause checkpoint has cumulative counts, not just partial
-    const pausedCheckpoint = result.pausedCheckpoint!;
+    const pausedCheckpoint = result.pausedCheckpoint;
+    expect(pausedCheckpoint).toBeDefined();
     // Alternating BUY/SELL: iteration 0=BUY, 1=SELL, 2=BUY → 3 trades after 3 iterations
     // With checkpointInterval=1, arrays get cleared at checkpoints.
     // The bug was that pause used trades.length (partial) instead of totalPersistedCounts + trades.length (cumulative)
-    expect(pausedCheckpoint.persistedCounts.trades).toBe(3);
+    expect(pausedCheckpoint?.persistedCounts.trades).toBe(3);
 
     // One SELL executed (iteration 1), price unchanged so PnL=0 → not a winning sell
-    expect(pausedCheckpoint.persistedCounts.sells).toBe(1);
-    expect(pausedCheckpoint.persistedCounts.winningSells).toBe(0);
+    expect(pausedCheckpoint?.persistedCounts.sells).toBe(1);
+    expect(pausedCheckpoint?.persistedCounts.winningSells).toBe(0);
 
     // Final metrics should also reflect all trades across checkpoints
     expect(result.finalMetrics.totalTrades).toBe(3);
@@ -1932,10 +1326,11 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     );
 
     expect(phase1Result.paused).toBe(true);
-    const checkpoint = phase1Result.pausedCheckpoint!;
+    const checkpoint = phase1Result.pausedCheckpoint;
+    expect(checkpoint).toBeDefined();
     // Phase 1: 1 BUY + 1 SELL (winning) → sells=1, winningSells=1
-    expect(checkpoint.persistedCounts.sells).toBe(1);
-    expect(checkpoint.persistedCounts.winningSells).toBe(1);
+    expect(checkpoint?.persistedCounts.sells).toBe(1);
+    expect(checkpoint?.persistedCounts.winningSells).toBe(1);
 
     // Phase 2: Resume from checkpoint. Iterations 2,3 → BUY then losing SELL
     let phase2CallCount = 0;
@@ -2014,8 +1409,9 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
 
     // Spy on computeCompositeRegime to return BEAR regime
-    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
-      compositeRegime: CompositeRegimeType.BEAR
+    jest.spyOn(compositeRegimeService, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR,
+      volatilityRegime: MarketRegimeType.HIGH_VOLATILITY
     });
 
     const result = await engine.executeLiveReplayBacktest(
@@ -2063,8 +1459,9 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
 
     // Spy on computeCompositeRegime to return BEAR regime
-    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
-      compositeRegime: CompositeRegimeType.BEAR
+    jest.spyOn(compositeRegimeService, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR,
+      volatilityRegime: MarketRegimeType.HIGH_VOLATILITY
     });
 
     const result = await engine.executeLiveReplayBacktest(
@@ -2110,8 +1507,9 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
 
     // Spy on computeCompositeRegime to return BEAR regime
-    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
-      compositeRegime: CompositeRegimeType.BEAR
+    jest.spyOn(compositeRegimeService, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR,
+      volatilityRegime: MarketRegimeType.HIGH_VOLATILITY
     });
 
     const result = await engine.executeLiveReplayBacktest(
@@ -2158,8 +1556,9 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
     const engine = createEngine({ algorithmRegistry, marketDataReader, ohlcService, quoteCurrencyResolver });
 
     // Spy on computeCompositeRegime to return BEAR regime
-    jest.spyOn(engine as any, 'computeCompositeRegime').mockReturnValue({
-      compositeRegime: CompositeRegimeType.BEAR
+    jest.spyOn(compositeRegimeService, 'computeCompositeRegime').mockReturnValue({
+      compositeRegime: CompositeRegimeType.BEAR,
+      volatilityRegime: MarketRegimeType.HIGH_VOLATILITY
     });
 
     const result = await engine.executeLiveReplayBacktest(
@@ -2194,27 +1593,15 @@ describe('BacktestEngine.executeLiveReplayBacktest', () => {
 });
 
 describe('BacktestEngine checkpointing', () => {
-  const createEngine = () =>
-    new BacktestEngine(
-      {} as any, // backtestStream
-      {} as any, // algorithmRegistry
-      {} as any, // ohlcService
-      {} as any, // marketDataReader
-      {} as any, // quoteCurrencyResolver
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+  const createEngine = () => createTestEngine({} as any, {} as any);
 
-  const createCheckpoint = (engine: BacktestEngine) => {
+  let engine: BacktestEngine;
+
+  beforeEach(() => {
+    engine = createEngine();
+  });
+
+  const createCheckpoint = (_eng: BacktestEngine) => {
     const portfolio: Portfolio = {
       cashBalance: 1000,
       totalValue: 1200,
@@ -2231,7 +1618,7 @@ describe('BacktestEngine checkpointing', () => {
       ])
     };
 
-    return (engine as any).buildCheckpointState(
+    return checkpointService.buildCheckpointState(
       1,
       '2024-01-02T00:00:00.000Z',
       portfolio,
@@ -2248,7 +1635,6 @@ describe('BacktestEngine checkpointing', () => {
   };
 
   it('validates checkpoints with matching checksum', () => {
-    const engine = createEngine();
     const checkpoint = createCheckpoint(engine);
 
     const result = engine.validateCheckpoint(checkpoint, [
@@ -2261,7 +1647,6 @@ describe('BacktestEngine checkpointing', () => {
   });
 
   it('detects corrupted checkpoints via checksum', () => {
-    const engine = createEngine();
     const checkpoint = createCheckpoint(engine);
     checkpoint.portfolio.cashBalance += 10;
 
@@ -2272,7 +1657,6 @@ describe('BacktestEngine checkpointing', () => {
   });
 
   it('rejects checkpoints with timestamp mismatches', () => {
-    const engine = createEngine();
     const checkpoint = createCheckpoint(engine);
 
     const result = engine.validateCheckpoint(checkpoint, ['2024-01-01T00:00:00.000Z', '2024-01-04T00:00:00.000Z']);
@@ -2282,7 +1666,6 @@ describe('BacktestEngine checkpointing', () => {
   });
 
   it('rejects checkpoints that are out of bounds', () => {
-    const engine = createEngine();
     const checkpoint = createCheckpoint(engine);
     checkpoint.lastProcessedIndex = 5;
 
@@ -2313,25 +1696,7 @@ describe('BacktestEngine checkpointing', () => {
 });
 
 describe('BacktestEngine warmup / date range separation', () => {
-  const createEngine = (algorithmRegistry: any, ohlcService: any) =>
-    new BacktestEngine(
-      { publishMetric: jest.fn(), publishStatus: jest.fn() } as any,
-      algorithmRegistry,
-      ohlcService,
-      { hasStorageLocation: jest.fn().mockReturnValue(false) } as any,
-      { resolveQuoteCurrency: jest.fn().mockResolvedValue({ id: 'usdt', symbol: 'USDT' }) } as any,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
+  const createEngine = (algorithmRegistry: any, ohlcService: any) => createTestEngine(algorithmRegistry, ohlcService);
 
   it('does not trade before backtest.startDate when dataset is broader', async () => {
     // Dataset: Jan 1-4, Backtest trading window: Jan 3-4
@@ -2692,292 +2057,5 @@ describe('BacktestEngine warmup / date range separation', () => {
       );
     }
     expect(result.paused).toBe(false);
-  });
-});
-
-describe('BacktestEngine hard stop-loss', () => {
-  const createEngine = () =>
-    new BacktestEngine(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
-
-  const noSlippage = { type: SlippageModelType.NONE };
-
-  it('executeTrade fills at stop execution price instead of close for hard stop-loss', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 0,
-      totalValue: 1000,
-      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
-    };
-
-    // Close price is 80 (-20%), but the hard stop should fill at 95 (stop price)
-    const stopLossSignal: TradingSignal = {
-      action: 'SELL',
-      coinId: 'BTC',
-      quantity: 10,
-      reason: 'Hard stop-loss triggered',
-      confidence: 1,
-      originalType: SignalType.STOP_LOSS,
-      metadata: { hardStopLoss: true, stopExecutionPrice: 95, threshold: 0.05 }
-    };
-
-    const result = await (engine as any).executeTrade(
-      stopLossSignal,
-      portfolio,
-      { timestamp: new Date(), prices: new Map([['BTC', 80]]) },
-      0,
-      noSlippage,
-      undefined,
-      0
-    );
-
-    expect(result).toBeTruthy();
-    // Should fill at $95 (stop price), NOT $80 (close price)
-    expect(result.trade.price).toBeCloseTo(95);
-    expect(result.trade.realizedPnL).toBeCloseTo(-50); // (95 - 100) * 10
-    expect(result.trade.realizedPnLPercent).toBeCloseTo(-0.05);
-  });
-
-  it('hard stop-loss SELL bypasses minimum hold period', async () => {
-    const engine = createEngine();
-    const entryDate = new Date('2024-01-01T00:00:00.000Z');
-    const portfolio: Portfolio = {
-      cashBalance: 5000,
-      totalValue: 10000,
-      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000, entryDate }]])
-    };
-
-    // Only 1 hour after entry — within 24h hold period
-    const sellTimestamp = new Date('2024-01-01T01:00:00.000Z');
-
-    // Hard stop-loss signal has originalType STOP_LOSS which bypasses hold period
-    const stopLossSignal: TradingSignal = {
-      action: 'SELL',
-      coinId: 'BTC',
-      quantity: 10,
-      reason: 'Hard stop-loss triggered',
-      confidence: 1,
-      originalType: SignalType.STOP_LOSS,
-      metadata: { hardStopLoss: true }
-    };
-
-    const result = await (engine as any).executeTrade(
-      stopLossSignal,
-      portfolio,
-      { timestamp: sellTimestamp, prices: new Map([['BTC', 80]]) },
-      0,
-      noSlippage,
-      undefined,
-      0 // minHoldMs = 0 (hard stop-loss passes 0)
-    );
-
-    expect(result).toBeTruthy();
-    expect(result.trade.quantity).toBe(10);
-    expect(result.trade.type).toBe('SELL');
-  });
-
-  it('records hardStopLoss metadata in trade', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 5000,
-      totalValue: 10000,
-      positions: new Map([['BTC', { coinId: 'BTC', quantity: 10, averagePrice: 100, totalValue: 1000 }]])
-    };
-
-    const stopLossSignal: TradingSignal = {
-      action: 'SELL',
-      coinId: 'BTC',
-      quantity: 10,
-      reason: 'Hard stop-loss triggered',
-      confidence: 1,
-      originalType: SignalType.STOP_LOSS,
-      metadata: { hardStopLoss: true, unrealizedPnLPercent: -0.1, threshold: 0.05 }
-    };
-
-    const result = await (engine as any).executeTrade(
-      stopLossSignal,
-      portfolio,
-      { timestamp: new Date(), prices: new Map([['BTC', 90]]) },
-      0,
-      noSlippage,
-      undefined,
-      0
-    );
-
-    expect(result).toBeTruthy();
-    expect(result.trade.metadata?.hardStopLoss).toBe(true);
-    expect(result.trade.metadata?.unrealizedPnLPercent).toBe(-0.1);
-  });
-});
-
-describe('BacktestEngine per-run allocation overrides', () => {
-  const noSlippage = { type: SlippageModelType.NONE };
-
-  const createEngine = () =>
-    new BacktestEngine(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      slippageService,
-      feeCalculator,
-      positionManager,
-      metricsCalculator,
-      portfolioState,
-      positionAnalysis,
-      signalThrottle,
-      regimeGateService,
-      volatilityCalculator,
-      signalFilterChain,
-      { getActiveDelistingsAsOf: jest.fn().mockResolvedValue(new Map()) } as any
-    );
-
-  it('respects custom maxAllocation and minAllocation passed to executeTrade', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 10000,
-      totalValue: 10000,
-      positions: new Map()
-    };
-
-    // With confidence=1.0 and custom max=0.30, should allocate 30%
-    const highConfidenceSignal: TradingSignal = {
-      action: 'BUY',
-      coinId: 'BTC',
-      confidence: 1.0,
-      reason: 'entry'
-    };
-
-    const result = await (engine as any).executeTrade(
-      highConfidenceSignal,
-      portfolio,
-      { timestamp: new Date(), prices: new Map([['BTC', 100]]) },
-      0,
-      noSlippage,
-      undefined,
-      0, // minHoldMs
-      0.3, // maxAllocation override
-      0.05 // minAllocation override
-    );
-
-    // confidence=1.0 → allocation = minAlloc + 1.0 * (maxAlloc - minAlloc) = 0.05 + 0.25 = 0.30
-    expect(result?.trade.totalValue).toBeCloseTo(3000); // 30% of $10,000
-  });
-
-  it('uses custom minAllocation for zero-confidence signals', async () => {
-    const engine = createEngine();
-    const portfolio: Portfolio = {
-      cashBalance: 10000,
-      totalValue: 10000,
-      positions: new Map()
-    };
-
-    const lowConfidenceSignal: TradingSignal = {
-      action: 'BUY',
-      coinId: 'BTC',
-      confidence: 0.0,
-      reason: 'weak entry'
-    };
-
-    const result = await (engine as any).executeTrade(
-      lowConfidenceSignal,
-      portfolio,
-      { timestamp: new Date(), prices: new Map([['BTC', 100]]) },
-      0,
-      noSlippage,
-      undefined,
-      0,
-      0.2, // maxAllocation
-      0.08 // minAllocation override
-    );
-
-    // confidence=0.0 → allocation = minAlloc = 0.08
-    expect(result?.trade.totalValue).toBeCloseTo(800); // 8% of $10,000
-  });
-});
-
-describe('SPREAD_ADJUSTED slippage integration', () => {
-  it('should apply spread-based slippage that varies with candle range', () => {
-    const spreadConfig: SlippageConfig = {
-      type: SlippageModelType.SPREAD_ADJUSTED,
-      spreadCalibrationFactor: 1.0,
-      minSpreadBps: 2,
-      maxSlippageBps: 500
-    };
-
-    // Narrow range candle
-    const narrowResult = slippageService.calculateSlippage(
-      {
-        price: 50000,
-        quantity: 1,
-        isBuy: true,
-        spreadContext: {
-          high: 50100,
-          low: 49900,
-          close: 50000,
-          volume: 1000000
-        }
-      },
-      spreadConfig
-    );
-
-    // Wide range candle
-    const wideResult = slippageService.calculateSlippage(
-      {
-        price: 50000,
-        quantity: 1,
-        isBuy: true,
-        spreadContext: {
-          high: 52000,
-          low: 48000,
-          close: 50000,
-          volume: 1000000
-        }
-      },
-      spreadConfig
-    );
-
-    // Wide candle should have higher slippage
-    expect(wideResult.slippageBps).toBeGreaterThan(narrowResult.slippageBps);
-    // Both should be positive
-    expect(narrowResult.slippageBps).toBeGreaterThan(0);
-    expect(wideResult.slippageBps).toBeGreaterThan(0);
-  });
-
-  it('should not affect FIXED model results (backward compatibility)', () => {
-    const fixedConfig: SlippageConfig = {
-      type: SlippageModelType.FIXED,
-      fixedBps: 5
-    };
-
-    const result = slippageService.calculateSlippage(
-      {
-        price: 50000,
-        quantity: 1,
-        isBuy: true,
-        spreadContext: { high: 51000, low: 49000, close: 50000 }
-      },
-      fixedConfig
-    );
-
-    // FIXED model ignores spreadContext entirely
-    expect(result.slippageBps).toBe(5);
   });
 });

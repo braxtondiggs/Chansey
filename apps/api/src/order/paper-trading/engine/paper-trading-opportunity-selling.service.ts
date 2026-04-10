@@ -9,7 +9,8 @@ import { PaperTradingSignalService } from './paper-trading-signal.service';
 
 import { DEFAULT_RISK_LEVEL } from '../../../risk/risk.constants';
 import { toErrorInfo } from '../../../shared/error.util';
-import { FeeCalculatorService, PositionAnalysisService } from '../../backtest/shared';
+import { FeeCalculatorService } from '../../backtest/shared';
+import { PositionAnalysisService } from '../../services/position-analysis.service';
 import { PaperTradingSession, PaperTradingSignalStatus } from '../entities';
 
 /**

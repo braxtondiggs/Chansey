@@ -42,7 +42,7 @@ import { MetricsModule } from '../../metrics/metrics.module';
 import { OHLCModule } from '../../ohlc/ohlc.module';
 import { SharedCacheModule } from '../../shared-cache.module';
 import { UsersModule } from '../../users/users.module';
-import { BacktestSharedModule } from '../backtest/shared';
+import { BacktestSharedModule } from '../backtest/shared/shared.module';
 
 const PAPER_TRADING_CONFIG = paperTradingConfig();
 

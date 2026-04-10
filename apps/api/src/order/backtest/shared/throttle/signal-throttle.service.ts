@@ -12,7 +12,7 @@ import {
 } from './signal-throttle.interface';
 
 import { TradingSignal as AlgorithmTradingSignal } from '../../../../algorithm/interfaces/algorithm-result.interface';
-import { TradingSignal } from '../../backtest-engine.service';
+import { TradingSignal } from '../types';
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 

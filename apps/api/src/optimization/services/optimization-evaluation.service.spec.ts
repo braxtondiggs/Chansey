@@ -7,7 +7,8 @@ import { OptimizationEvaluationService } from './optimization-evaluation.service
 import { Coin } from '../../coin/coin.entity';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
-import { BacktestEngine, PrecomputedWindowData } from '../../order/backtest/backtest-engine.service';
+import { BacktestEngine } from '../../order/backtest/backtest-engine.service';
+import { PrecomputedWindowData } from '../../order/backtest/shared';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
 import { OptimizationConfig } from '../interfaces';
@@ -250,12 +251,13 @@ describe('OptimizationEvaluationService', () => {
     });
 
     it('should include minDataDays span condition when provided', async () => {
-      createMockQueryBuilder([{ id: 'btc' }] as Coin[]);
+      const qb = createMockQueryBuilder([{ id: 'btc' }] as Coin[]);
 
       await service.loadCoinsForOptimization(20, 90);
 
-      // andWhere called for marketRank + minDataDays span
-      expect(coinRepo.createQueryBuilder).toHaveBeenCalled();
+      // andWhere called for marketRank + minDataDays span (2 andWhere calls)
+      expect(qb.andWhere).toHaveBeenCalledTimes(2);
+      expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('EXTRACT(EPOCH'), { minDataDays: 90 });
     });
   });
 
@@ -379,6 +381,52 @@ describe('OptimizationEvaluationService', () => {
           })
         )
       ).rejects.toThrow('Insufficient windows');
+    });
+
+    it('should extend minDate backward by warmupDays for candle loading', async () => {
+      const windows = [createWindow(0, '2024-01-01', '2024-04-01', '2024-04-01', '2024-05-01')];
+      walkForwardService.generateWindows.mockReturnValue(windows);
+      ohlcService.getCandlesByDateRange.mockResolvedValue([]);
+      backtestEngine.precomputeWindowData.mockReturnValue(createPrecomputedData());
+
+      await service.prepareWalkForwardData(buildPrepareParams());
+
+      // Verify that the extended min date passed to getCandlesByDateRange is before the train start
+      const candleCallArgs = ohlcService.getCandlesByDateRange.mock.calls[0];
+      const extendedMinDate = candleCallArgs[1] as Date;
+      expect(extendedMinDate.getTime()).toBeLessThan(new Date('2024-01-01').getTime());
+    });
+  });
+
+  describe('evaluateCombination — windowResults structure', () => {
+    const defaultWindow = createWindow(0, '2024-01-01', '2024-04-01', '2024-04-01', '2024-05-01');
+    const coins = [{ id: 'btc' }] as Coin[];
+
+    it('should populate windowResults with correct date strings and index', async () => {
+      backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(createMockMetrics());
+      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.1, overfittingDetected: false } as any);
+
+      const result = await service.evaluateCombination({
+        strategyConfig: { id: 'strategy-1', algorithmId: 'algo-1' },
+        parameters: { period: 14 },
+        windows: [defaultWindow],
+        config: createValidConfig(),
+        coins,
+        preloadedCandlesByCoin: new Map<string, OHLCCandle[]>([['btc', []]])
+      });
+
+      expect(result.windowResults[0]).toEqual(
+        expect.objectContaining({
+          windowIndex: 0,
+          trainStartDate: '2024-01-01',
+          trainEndDate: '2024-04-01',
+          testStartDate: '2024-04-01',
+          testEndDate: '2024-05-01',
+          overfitting: false
+        })
+      );
+      expect(typeof result.windowResults[0].trainScore).toBe('number');
+      expect(typeof result.windowResults[0].testScore).toBe('number');
     });
   });
 });

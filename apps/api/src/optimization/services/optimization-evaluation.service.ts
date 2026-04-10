@@ -8,11 +8,8 @@ import { WindowMetrics } from '@chansey/api-interfaces';
 import { Coin } from '../../coin/coin.entity';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
-import {
-  BacktestEngine,
-  OptimizationBacktestConfig,
-  PrecomputedWindowData
-} from '../../order/backtest/backtest-engine.service';
+import { BacktestEngine } from '../../order/backtest/backtest-engine.service';
+import { OptimizationBacktestConfig, PrecomputedWindowData } from '../../order/backtest/shared';
 import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
 import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
 import { toErrorInfo } from '../../shared/error.util';

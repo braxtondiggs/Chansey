@@ -1,5 +1,5 @@
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
-import type { TradingSignal } from '../../backtest-engine.service';
+import type { TradingSignal } from '../types';
 
 /**
  * Configuration for signal throttling.

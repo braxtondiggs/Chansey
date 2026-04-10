@@ -30,7 +30,10 @@ import { LiveReplayProcessor } from './backtest/live-replay.processor';
 import { MarketDataReaderService } from './backtest/market-data-reader.service';
 import { MarketDataSet } from './backtest/market-data-set.entity';
 import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver.service';
-import { BacktestSharedModule } from './backtest/shared';
+import { BacktestLoopRunner } from './backtest/shared/execution/backtest-loop-runner.service';
+import { OptimizationCoreService } from './backtest/shared/optimization/optimization-core.service';
+import { OptimizationIndicatorPrecomputeService } from './backtest/shared/optimization/optimization-indicator-precompute.service';
+import { BacktestSharedModule } from './backtest/shared/shared.module';
 import { SimulatedOrderFill } from './backtest/simulated-order-fill.entity';
 import { orderCleanupConfig } from './config/order-cleanup.config';
 import { slippageLimitsConfig } from './config/slippage-limits.config';
@@ -55,7 +58,6 @@ import { OrderHoldingsService } from './services/order-holdings.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { OrderSyncService } from './services/order-sync.service';
 import { OrderValidationService } from './services/order-validation.service';
-import { PositionAnalysisService } from './services/position-analysis.service';
 import { PositionManagementService } from './services/position-management.service';
 import { PositionMonitorService } from './services/position-monitor.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
@@ -114,6 +116,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestDatasetService,
     BacktestLifecycleService,
     BacktestEngine,
+    BacktestLoopRunner,
+    OptimizationCoreService,
     BacktestStreamService,
     BacktestResultService,
     SlippageAnalysisService,
@@ -121,7 +125,6 @@ const BACKTEST_DEFAULTS = backtestConfig();
     PositionManagementService,
     OrderStateMachineService,
     OpportunitySellService,
-    PositionAnalysisService,
     BacktestSharedModule
   ],
   imports: [
@@ -180,6 +183,9 @@ const BACKTEST_DEFAULTS = backtestConfig();
   providers: [
     AlgorithmService,
     BacktestEngine,
+    BacktestLoopRunner,
+    OptimizationCoreService,
+    OptimizationIndicatorPrecomputeService,
     BacktestProcessor,
     BacktestRecoveryService,
     LiveReplayProcessor,
@@ -218,7 +224,6 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OrderSyncService,
     OrderSyncTask,
     OrderValidationService,
-    PositionAnalysisService,
     PositionManagementService,
     PositionMonitorService,
     PositionMonitorTask,

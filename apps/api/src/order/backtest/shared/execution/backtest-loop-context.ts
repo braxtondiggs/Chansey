@@ -1,0 +1,202 @@
+import { LoopRunnerOptions } from './backtest-loop-runner.types';
+
+import { Coin } from '../../../../coin/coin.entity';
+import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
+import { OpportunitySellingUserConfig } from '../../../interfaces/opportunity-selling.interface';
+import { AlgorithmWatchdog } from '../../algorithm-watchdog';
+import { LiveReplayExecuteOptions, ReplaySpeed } from '../../backtest-pacing.interface';
+import { BacktestPerformanceSnapshot } from '../../backtest-performance-snapshot.entity';
+import { BacktestSignal } from '../../backtest-signal.entity';
+import { BacktestTrade } from '../../backtest-trade.entity';
+import { Backtest } from '../../backtest.entity';
+import { SeededRandom } from '../../seeded-random';
+import { SimulatedOrderFill } from '../../simulated-order-fill.entity';
+import { BacktestExitTracker } from '../exits';
+import { MetricsAccumulator } from '../metrics-accumulator';
+import { Portfolio } from '../portfolio';
+import { PriceTrackingContext } from '../price-window';
+import { SlippageConfig } from '../slippage';
+import { ThrottleState } from '../throttle';
+
+/** Persisted counts across checkpoints for incremental persistence */
+export interface PersistedCounts {
+  trades: number;
+  signals: number;
+  fills: number;
+  snapshots: number;
+  sells?: number;
+  winningSells?: number;
+  grossProfit?: number;
+  grossLoss?: number;
+}
+
+/**
+ * All required fields for constructing a LoopContext.
+ * Used by the factory method to ensure compile-time completeness.
+ */
+export interface LoopContextInit {
+  // Mode & config
+  isLiveReplay: boolean;
+  liveReplayOpts: (LiveReplayExecuteOptions & { mode: 'live-replay' }) | null;
+  checkpointInterval: number;
+  delayMs: number;
+  slippageConfig: SlippageConfig;
+  minHoldMs: number;
+  maxAllocation: number;
+  minAllocation: number;
+  oppSellingEnabled: boolean;
+  oppSellingConfig: OpportunitySellingUserConfig;
+  algoMetadata: Record<string, unknown>;
+  replaySpeed: ReplaySpeed;
+  // Regime
+  enableRegimeScaledSizing: boolean;
+  riskLevel: number;
+  regimeGateEnabled: boolean;
+  btcCoin: Coin | undefined;
+  // Mutable state
+  rng: SeededRandom;
+  portfolio: Portfolio;
+  peakValue: number;
+  maxDrawdown: number;
+  exitTracker: BacktestExitTracker | null;
+  throttleState: ThrottleState;
+  throttleConfig: ReturnType<import('../throttle').SignalThrottleService['resolveConfig']>;
+  // Accumulators
+  totalPersistedCounts: PersistedCounts;
+  metricsAcc: MetricsAccumulator;
+  lastCheckpointCounts: PersistedCounts;
+  // Iteration tracking
+  lastCheckpointIndex: number;
+  watchdog: AlgorithmWatchdog;
+  // Data references
+  backtest: Backtest;
+  coins: Coin[];
+  coinMap: Map<string, Coin>;
+  quoteCoin: Coin;
+  priceCtx: PriceTrackingContext;
+  pricesByTimestamp: Record<string, OHLCCandle[]>;
+  timestamps: string[];
+  delistingDates: Map<string, Date>;
+  // Boundaries
+  effectiveTradingStartIndex: number;
+  effectiveTimestampCount: number;
+  tradingTimestampCount: number;
+  options: LoopRunnerOptions;
+}
+
+/**
+ * Bundles all loop-scoped mutable state for a backtest run.
+ * Eliminates 15+ parameter method signatures by grouping
+ * initialization state, accumulators, and data references.
+ */
+export class LoopContext {
+  // Mode & config
+  isLiveReplay: boolean;
+  liveReplayOpts: (LiveReplayExecuteOptions & { mode: 'live-replay' }) | null;
+  checkpointInterval: number;
+  delayMs: number;
+  slippageConfig: SlippageConfig;
+  minHoldMs: number;
+  maxAllocation: number;
+  minAllocation: number;
+  oppSellingEnabled: boolean;
+  oppSellingConfig: OpportunitySellingUserConfig;
+  algoMetadata: Record<string, unknown>;
+  replaySpeed: ReplaySpeed;
+
+  // Regime
+  enableRegimeScaledSizing: boolean;
+  riskLevel: number;
+  regimeGateEnabled: boolean;
+  btcCoin: Coin | undefined;
+
+  // Mutable state
+  rng: SeededRandom;
+  portfolio: Portfolio;
+  peakValue: number;
+  maxDrawdown: number;
+  exitTracker: BacktestExitTracker | null;
+  throttleState: ThrottleState;
+  throttleConfig: ReturnType<import('../throttle').SignalThrottleService['resolveConfig']>;
+
+  // Accumulators
+  trades: Partial<BacktestTrade>[] = [];
+  signals: Partial<BacktestSignal>[] = [];
+  simulatedFills: Partial<SimulatedOrderFill>[] = [];
+  snapshots: Partial<BacktestPerformanceSnapshot>[] = [];
+  totalPersistedCounts: PersistedCounts;
+  metricsAcc: MetricsAccumulator;
+  lastCheckpointCounts: PersistedCounts;
+
+  // Iteration tracking
+  lastCheckpointIndex: number;
+  consecutiveErrors = 0;
+  watchdog: AlgorithmWatchdog;
+  lastHeartbeatTime = Date.now();
+  consecutivePauseFailures = 0;
+  prevCandleMap = new Map<string, OHLCCandle>();
+
+  // Data references
+  backtest: Backtest;
+  coins: Coin[];
+  coinMap: Map<string, Coin>;
+  quoteCoin: Coin;
+  priceCtx: PriceTrackingContext;
+  pricesByTimestamp: Record<string, OHLCCandle[]>;
+  timestamps: string[];
+  delistingDates: Map<string, Date>;
+  lastKnownPrices = new Map<string, number>();
+
+  // Boundaries
+  effectiveTradingStartIndex: number;
+  effectiveTimestampCount: number;
+  tradingTimestampCount: number;
+  options: LoopRunnerOptions;
+
+  private constructor(init: LoopContextInit) {
+    this.isLiveReplay = init.isLiveReplay;
+    this.liveReplayOpts = init.liveReplayOpts;
+    this.checkpointInterval = init.checkpointInterval;
+    this.delayMs = init.delayMs;
+    this.slippageConfig = init.slippageConfig;
+    this.minHoldMs = init.minHoldMs;
+    this.maxAllocation = init.maxAllocation;
+    this.minAllocation = init.minAllocation;
+    this.oppSellingEnabled = init.oppSellingEnabled;
+    this.oppSellingConfig = init.oppSellingConfig;
+    this.algoMetadata = init.algoMetadata;
+    this.replaySpeed = init.replaySpeed;
+    this.enableRegimeScaledSizing = init.enableRegimeScaledSizing;
+    this.riskLevel = init.riskLevel;
+    this.regimeGateEnabled = init.regimeGateEnabled;
+    this.btcCoin = init.btcCoin;
+    this.rng = init.rng;
+    this.portfolio = init.portfolio;
+    this.peakValue = init.peakValue;
+    this.maxDrawdown = init.maxDrawdown;
+    this.exitTracker = init.exitTracker;
+    this.throttleState = init.throttleState;
+    this.throttleConfig = init.throttleConfig;
+    this.totalPersistedCounts = init.totalPersistedCounts;
+    this.metricsAcc = init.metricsAcc;
+    this.lastCheckpointCounts = init.lastCheckpointCounts;
+    this.lastCheckpointIndex = init.lastCheckpointIndex;
+    this.watchdog = init.watchdog;
+    this.backtest = init.backtest;
+    this.coins = init.coins;
+    this.coinMap = init.coinMap;
+    this.quoteCoin = init.quoteCoin;
+    this.priceCtx = init.priceCtx;
+    this.pricesByTimestamp = init.pricesByTimestamp;
+    this.timestamps = init.timestamps;
+    this.delistingDates = init.delistingDates;
+    this.effectiveTradingStartIndex = init.effectiveTradingStartIndex;
+    this.effectiveTimestampCount = init.effectiveTimestampCount;
+    this.tradingTimestampCount = init.tradingTimestampCount;
+    this.options = init.options;
+  }
+
+  static create(init: LoopContextInit): LoopContext {
+    return new LoopContext(init);
+  }
+}
