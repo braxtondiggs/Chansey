@@ -20,7 +20,13 @@ import {
   SlippageAnalysisDto,
   UserActivityQueryDto
 } from './dto';
-import { LiveTradeMonitoringService } from './live-trade-monitoring.service';
+import { LiveTradeAlertsService } from './live-trade-alerts.service';
+import { LiveTradeAlgorithmsService } from './live-trade-algorithms.service';
+import { LiveTradeComparisonService } from './live-trade-comparison.service';
+import { LiveTradeOrdersService } from './live-trade-orders.service';
+import { LiveTradeOverviewService } from './live-trade-overview.service';
+import { LiveTradeSlippageService } from './live-trade-slippage.service';
+import { LiveTradeUserActivityService } from './live-trade-user-activity.service';
 
 import { Roles } from '../../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../../authentication/guard/jwt-authentication.guard';
@@ -41,7 +47,15 @@ import { RolesGuard } from '../../authentication/guard/roles.guard';
 @UseGuards(JwtAuthenticationGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class LiveTradeMonitoringController {
-  constructor(private readonly monitoringService: LiveTradeMonitoringService) {}
+  constructor(
+    private readonly overview: LiveTradeOverviewService,
+    private readonly algorithms: LiveTradeAlgorithmsService,
+    private readonly orders: LiveTradeOrdersService,
+    private readonly comparison: LiveTradeComparisonService,
+    private readonly slippage: LiveTradeSlippageService,
+    private readonly userActivity: LiveTradeUserActivityService,
+    private readonly alerts: LiveTradeAlertsService
+  ) {}
 
   /**
    * Get overview metrics for the live trade monitoring dashboard
@@ -60,7 +74,7 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getOverview(@Query() filters: LiveTradeFiltersDto): Promise<LiveTradeOverviewDto> {
-    return this.monitoringService.getOverview(filters);
+    return this.overview.getOverview(filters);
   }
 
   /**
@@ -80,7 +94,7 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getAlgorithms(@Query() query: AlgorithmListQueryDto): Promise<PaginatedAlgorithmListDto> {
-    return this.monitoringService.getAlgorithms(query);
+    return this.algorithms.getAlgorithms(query);
   }
 
   /**
@@ -99,7 +113,7 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getOrders(@Query() query: OrderListQueryDto): Promise<PaginatedOrderListDto> {
-    return this.monitoringService.getOrders(query);
+    return this.orders.getOrders(query);
   }
 
   /**
@@ -125,7 +139,7 @@ export class LiveTradeMonitoringController {
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Algorithm not found' })
   async getComparison(@Param('algorithmId', ParseUUIDPipe) algorithmId: string): Promise<ComparisonDto> {
-    return this.monitoringService.getComparison(algorithmId);
+    return this.comparison.getComparison(algorithmId);
   }
 
   /**
@@ -145,7 +159,7 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getSlippageAnalysis(@Query() filters: LiveTradeFiltersDto): Promise<SlippageAnalysisDto> {
-    return this.monitoringService.getSlippageAnalysis(filters);
+    return this.slippage.getSlippageAnalysis(filters);
   }
 
   /**
@@ -163,7 +177,7 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getUserActivity(@Query() query: UserActivityQueryDto): Promise<PaginatedUserActivityDto> {
-    return this.monitoringService.getUserActivity(query);
+    return this.userActivity.getUserActivity(query);
   }
 
   /**
@@ -183,7 +197,7 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async getAlerts(@Query() filters: LiveTradeFiltersDto): Promise<AlertsDto> {
-    return this.monitoringService.getAlerts(filters);
+    return this.alerts.getAlerts(filters);
   }
 
   /**
@@ -207,20 +221,13 @@ export class LiveTradeMonitoringController {
   })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires admin role' })
   async exportOrders(
-    @Query() filters: LiveTradeFiltersDto,
+    @Query() query: OrderListQueryDto,
     @Query('format') format: ExportFormat = ExportFormat.CSV,
     @Res() res: Response
   ): Promise<void> {
-    const data = await this.monitoringService.exportOrders(filters, format);
-
-    if (format === ExportFormat.JSON) {
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', 'attachment; filename="algorithmic-orders.json"');
-      res.send(data);
-    } else {
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="algorithmic-orders.csv"');
-      res.send(data);
-    }
+    const { contentType, filename, body } = await this.orders.exportOrders(query, format);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(body);
   }
 }
