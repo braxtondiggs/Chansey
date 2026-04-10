@@ -74,14 +74,18 @@ describe('DeploymentService', () => {
       componentScores: { sharpeRatio: { value: 0.25 } }
     };
 
-    it('should create a deployment with correct risk limits', async () => {
-      strategyConfigRepo.findOne.mockResolvedValue(validStrategy);
-      strategyScoreRepo.findOne.mockResolvedValue(validScore);
-      deploymentRepo.findOne.mockResolvedValue(null); // no existing deployment
+    function setupHappyPath(overrides?: { score?: typeof validScore; strategy?: typeof validStrategy }) {
+      strategyConfigRepo.findOne.mockResolvedValue(overrides?.strategy ?? validStrategy);
+      strategyScoreRepo.findOne.mockResolvedValue(overrides?.score ?? validScore);
+      deploymentRepo.findOne.mockResolvedValue(null);
       deploymentRepo.count.mockResolvedValue(0);
       deploymentRepo.create.mockImplementation((dto) => dto);
       deploymentRepo.save.mockImplementation((d) => Promise.resolve({ id: 'dep-1', ...d }));
       auditService.createAuditLog.mockResolvedValue({});
+    }
+
+    it('should create a deployment with correct risk limits (default risk level 3)', async () => {
+      setupHappyPath();
 
       const result = await service.createDeployment('sc-1', 10, 'High score', 'user-1');
 
@@ -89,20 +93,42 @@ describe('DeploymentService', () => {
       expect(result.allocationPercent).toBe(10);
       // maxDrawdownLimit = min(0.25 * 1.5, 0.4) = 0.375
       expect(result.maxDrawdownLimit).toBeCloseTo(0.375);
-      expect(result.dailyLossLimit).toBe(0.05);
-      expect(result.positionSizeLimit).toBe(0.1);
+      // Defaults to risk level 3 (moderate): dailyLossLimit=10%, maxSinglePosition=35%
+      expect(result.dailyLossLimit).toBe(0.1);
+      expect(result.positionSizeLimit).toBe(0.35);
       expect(result.approvedBy).toBe('user-1');
     });
 
+    it.each([
+      [1, 0.05, 0.25],
+      [2, 0.075, 0.3],
+      [3, 0.1, 0.35],
+      [4, 0.125, 0.45],
+      [5, 0.15, 0.55]
+    ])(
+      'should use correct limits for risk level %i (dailyLoss=%s, positionSize=%s)',
+      async (riskLevel, expectedDailyLoss, expectedPositionSize) => {
+        setupHappyPath();
+
+        const result = await service.createDeployment('sc-1', 10, 'High score', 'user-1', riskLevel);
+
+        expect(result.dailyLossLimit).toBe(expectedDailyLoss);
+        expect(result.positionSizeLimit).toBe(expectedPositionSize);
+      }
+    );
+
+    it('should fallback to default risk level when invalid risk level is provided', async () => {
+      setupHappyPath();
+
+      const result = await service.createDeployment('sc-1', 10, 'High score', 'user-1', 99);
+
+      // Invalid risk level falls back to DEFAULT_RISK_LEVEL (3)
+      expect(result.dailyLossLimit).toBe(0.1);
+      expect(result.positionSizeLimit).toBe(0.35);
+    });
+
     it('should cap maxDrawdownLimit at 0.4', async () => {
-      const highSharpe = { ...validScore, componentScores: { sharpeRatio: { value: 0.5 } } };
-      strategyConfigRepo.findOne.mockResolvedValue(validStrategy);
-      strategyScoreRepo.findOne.mockResolvedValue(highSharpe);
-      deploymentRepo.findOne.mockResolvedValue(null);
-      deploymentRepo.count.mockResolvedValue(0);
-      deploymentRepo.create.mockImplementation((dto) => dto);
-      deploymentRepo.save.mockImplementation((d) => Promise.resolve({ id: 'dep-1', ...d }));
-      auditService.createAuditLog.mockResolvedValue({});
+      setupHappyPath({ score: { ...validScore, componentScores: { sharpeRatio: { value: 0.5 } } } });
 
       const result = await service.createDeployment('sc-1', 10, 'High score');
 
