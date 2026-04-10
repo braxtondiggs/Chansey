@@ -41,7 +41,6 @@ import { Risk } from '../risk/risk.entity';
 import { ScoringModule } from '../scoring/scoring.module';
 import { BacktestRun } from '../strategy/entities/backtest-run.entity';
 import { Deployment } from '../strategy/entities/deployment.entity';
-import { PerformanceMetric } from '../strategy/entities/performance-metric.entity';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 import { StrategyModule } from '../strategy/strategy.module';
 import { User } from '../users/users.entity';
@@ -74,7 +73,6 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
       StrategyConfig,
       BacktestRun,
       Deployment,
-      PerformanceMetric,
       Risk,
       User,
       AlgorithmActivation,

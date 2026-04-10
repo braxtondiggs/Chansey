@@ -29,6 +29,7 @@ import { LiveSignalService } from './live-signal.service';
 import { LiveTradingService } from './live-trading.service';
 import { OpportunitySellingExecutionService } from './opportunity-selling-execution.service';
 import { OrderPlacementService } from './order-placement.service';
+import { PerformanceCalculationService } from './performance-calculation.service';
 import { PoolStatisticsService } from './pool-statistics.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
@@ -52,6 +53,8 @@ import { AdminModule } from '../admin/admin.module';
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { BalanceModule } from '../balance/balance.module';
+import { DrawdownCalculator } from '../common/metrics/drawdown.calculator';
+import { SharpeRatioCalculator } from '../common/metrics/sharpe-ratio.calculator';
 import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { FailedJobModule } from '../failed-jobs/failed-job.module';
@@ -127,7 +130,10 @@ import { User } from '../users/users.entity';
     VolatilitySpikeCheck,
     SharpeDegradationCheck,
     LiveSignalCleanupTask,
-    EntryGateService
+    EntryGateService,
+    PerformanceCalculationService,
+    SharpeRatioCalculator,
+    DrawdownCalculator
   ],
   controllers: [StrategyController, DeploymentController, AdminPoolController],
   exports: [
@@ -143,7 +149,8 @@ import { User } from '../users/users.entity';
     UserPerformanceService,
     DailyLossLimitGateService,
     ConcentrationGateService,
-    EntryGateService
+    EntryGateService,
+    PerformanceCalculationService
   ]
 })
 export class StrategyModule {}
