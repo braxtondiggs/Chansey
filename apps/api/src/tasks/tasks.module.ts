@@ -18,6 +18,7 @@ import { PromotionTask } from './promotion.task';
 import { RedisMaintenanceTask } from './redis-maintenance.task';
 import { RiskMonitoringTask } from './risk-monitoring.task';
 import { StrategyEvaluationProcessor } from './strategy-evaluation.processor';
+import { StrategyEvaluationService } from './strategy-evaluation.service';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
 
 import { AlgorithmActivation } from '../algorithm/algorithm-activation.entity';
@@ -110,6 +111,7 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
   ],
   providers: [
     StrategyEvaluationTask,
+    StrategyEvaluationService,
     StrategyEvaluationProcessor,
     MarketRegimeTask,
     MarketRegimeProcessor,

@@ -125,7 +125,8 @@ const BACKTEST_DEFAULTS = backtestConfig();
     PositionManagementService,
     OrderStateMachineService,
     OpportunitySellService,
-    BacktestSharedModule
+    BacktestSharedModule,
+    CoinResolverService
   ],
   imports: [
     ConfigModule.forFeature(backtestConfig),
