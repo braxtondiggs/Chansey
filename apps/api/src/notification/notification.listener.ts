@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { InjectRepository } from '@nestjs/typeorm';
 
-import { NotificationEventType } from '@chansey/api-interfaces';
+import { Repository } from 'typeorm';
+
+import { NotificationEventType, Role } from '@chansey/api-interfaces';
 
 import {
   DailyLossLimitNotification,
   DailySummaryNotification,
   DriftAlertNotification,
   NOTIFICATION_EVENTS,
+  RegimeStaleNotification,
   RiskBreachNotification,
   StrategyDemotedNotification,
   StrategyDeployedNotification,
@@ -18,12 +22,16 @@ import {
 import { NotificationService } from './notification.service';
 
 import { toErrorInfo } from '../shared/error.util';
+import { User } from '../users/users.entity';
 
 @Injectable()
 export class NotificationListener {
   private readonly logger = new Logger(NotificationListener.name);
 
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    @InjectRepository(User) private readonly userRepo: Repository<User>
+  ) {}
 
   @OnEvent(NOTIFICATION_EVENTS.TRADE_EXECUTED, { async: true })
   async handleTradeExecuted(payload: TradeExecutedNotification): Promise<void> {
@@ -176,6 +184,40 @@ export class NotificationListener {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to handle daily loss limit notification: ${err.message}`, err.stack);
+    }
+  }
+
+  @OnEvent(NOTIFICATION_EVENTS.REGIME_STALE, { async: true })
+  async handleRegimeStale(payload: RegimeStaleNotification): Promise<void> {
+    try {
+      const admins = await this.userRepo
+        .createQueryBuilder('user')
+        .where(':role = ANY(user.roles)', { role: Role.ADMIN })
+        .getMany();
+
+      const lastRefreshText = payload.lastRefreshAt
+        ? (payload.lastRefreshAt instanceof Date
+            ? payload.lastRefreshAt
+            : new Date(payload.lastRefreshAt)
+          ).toISOString()
+        : 'never';
+      const body = `Market regime data is stale — last successful refresh: ${lastRefreshText}. ${payload.consecutiveFailures} consecutive refresh failures. Cached regime: ${payload.cachedRegime}. BUY signals will fall back to NEUTRAL after 4 hours.`;
+
+      await Promise.allSettled(
+        admins.map((admin) =>
+          this.notificationService.send(
+            admin.id,
+            NotificationEventType.REGIME_STALE,
+            'Market Regime Data Stale',
+            body,
+            'critical',
+            payload
+          )
+        )
+      );
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to handle regime stale notification: ${err.message}`, err.stack);
     }
   }
 }
