@@ -4,10 +4,13 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
+import { DEFAULT_VOLATILITY_CONFIG } from '@chansey/api-interfaces';
+
 import { CoinService } from '../coin/coin.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
 import { OHLCService } from '../ohlc/ohlc.service';
+import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 import { toErrorInfo } from '../shared/error.util';
 
 /**
@@ -27,7 +30,8 @@ export class MarketRegimeTask {
     private readonly marketRegimeService: MarketRegimeService,
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly ohlcService: OHLCService,
-    private readonly coinService: CoinService
+    private readonly coinService: CoinService,
+    private readonly backfillService: OHLCBackfillService
   ) {}
 
   /**
@@ -125,6 +129,7 @@ export class MarketRegimeTask {
 
       if (!coinSummaries || coinSummaries.length === 0) {
         this.logger.warn(`No OHLC data for ${asset}`);
+        await this.triggerBackfillIfNeeded(coin.id, asset, 0);
         return null;
       }
 
@@ -134,9 +139,16 @@ export class MarketRegimeTask {
         .filter((v): v is number => Number.isFinite(v))
         .reverse();
 
-      // Trim to 365 days for percentile calculation
-      if (closes.length > 365) {
-        return closes.slice(-365);
+      const requiredDays = DEFAULT_VOLATILITY_CONFIG.lookbackDays;
+
+      if (closes.length < requiredDays) {
+        await this.triggerBackfillIfNeeded(coin.id, asset, closes.length);
+        return null;
+      }
+
+      // Trim to required days for percentile calculation
+      if (closes.length > requiredDays) {
+        return closes.slice(-requiredDays);
       }
 
       return closes;
@@ -144,6 +156,34 @@ export class MarketRegimeTask {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch price data for ${asset}: ${err.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Trigger OHLC backfill if no backfill is already pending or in progress.
+   */
+  private async triggerBackfillIfNeeded(coinId: string, asset: string, count: number): Promise<void> {
+    const required = DEFAULT_VOLATILITY_CONFIG.lookbackDays;
+    try {
+      const progress = await this.backfillService.getProgress(coinId);
+      if (
+        progress &&
+        (progress.status === 'pending' || progress.status === 'in_progress' || progress.status === 'failed')
+      ) {
+        this.logger.warn(
+          `Insufficient OHLC data for ${asset} (${count}/${required} days) — backfill already ${progress.status}`
+        );
+        return;
+      }
+
+      this.logger.warn(`Insufficient OHLC data for ${asset} (${count}/${required} days) — backfill triggered`);
+      this.backfillService.startBackfill(coinId).catch((error: unknown) => {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Failed to trigger backfill for ${asset}: ${err.message}`);
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to check backfill progress for ${asset}: ${err.message}`);
     }
   }
 

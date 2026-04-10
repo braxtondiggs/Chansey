@@ -4,6 +4,7 @@ import { CoinService } from '../coin/coin.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
 import { OHLCService } from '../ohlc/ohlc.service';
+import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 
 describe('MarketRegimeTask', () => {
   let task: MarketRegimeTask;
@@ -12,6 +13,7 @@ describe('MarketRegimeTask', () => {
   let compositeRegimeService: jest.Mocked<Pick<CompositeRegimeService, 'refresh'>>;
   let ohlcService: jest.Mocked<Pick<OHLCService, 'findAllByDay'>>;
   let coinService: jest.Mocked<Pick<CoinService, 'getCoinBySymbol'>>;
+  let backfillService: jest.Mocked<Pick<OHLCBackfillService, 'getProgress' | 'startBackfill'>>;
 
   const mockCoin = { id: 'btc-id' } as any;
 
@@ -36,13 +38,18 @@ describe('MarketRegimeTask', () => {
     compositeRegimeService = { refresh: jest.fn().mockResolvedValue(undefined) } as any;
     ohlcService = { findAllByDay: jest.fn().mockResolvedValue({}) } as any;
     coinService = { getCoinBySymbol: jest.fn().mockResolvedValue(null) } as any;
+    backfillService = {
+      getProgress: jest.fn().mockResolvedValue(null),
+      startBackfill: jest.fn().mockResolvedValue('job-id')
+    } as any;
 
     task = new MarketRegimeTask(
       regimeQueue as any,
       marketRegimeService as any,
       compositeRegimeService as any,
       ohlcService as any,
-      coinService as any
+      coinService as any,
+      backfillService as any
     );
   });
 
@@ -60,13 +67,14 @@ describe('MarketRegimeTask', () => {
       expect(coinService.getCoinBySymbol).toHaveBeenCalledWith('BTC', [], false);
     });
 
-    it('returns null when no OHLC data', async () => {
+    it('returns null and triggers backfill when no OHLC data', async () => {
       coinService.getCoinBySymbol.mockResolvedValue(mockCoin);
       ohlcService.findAllByDay.mockResolvedValue({ 'btc-id': [] });
 
       const result = await (task as any).fetchPriceData('BTC');
 
       expect(result).toBeNull();
+      expect(backfillService.startBackfill).toHaveBeenCalledWith('btc-id');
     });
 
     it('returns null on service error', async () => {
@@ -88,28 +96,65 @@ describe('MarketRegimeTask', () => {
       expect(result[364]).toBe(400);
     });
 
-    it('returns all closes when count is within 365', async () => {
+    it('returns null and triggers backfill when insufficient data', async () => {
       coinService.getCoinBySymbol.mockResolvedValue(mockCoin);
       ohlcService.findAllByDay.mockResolvedValue({ 'btc-id': makeSummaries(100) });
 
       const result = await (task as any).fetchPriceData('BTC');
 
-      expect(result).toHaveLength(100);
-      // Reversed: ascending [1, 2, ..., 100]
-      expect(result[0]).toBe(1);
-      expect(result[99]).toBe(100);
+      expect(result).toBeNull();
+      expect(backfillService.startBackfill).toHaveBeenCalledWith('btc-id');
     });
 
-    it('filters out non-finite close values', async () => {
-      const mixedCloses = [100, NaN, 200, Infinity, 300, -Infinity];
+    it('skips backfill when one is already in progress', async () => {
       coinService.getCoinBySymbol.mockResolvedValue(mockCoin);
-      ohlcService.findAllByDay.mockResolvedValue({
-        'btc-id': makeSummaries(mixedCloses.length, (i) => mixedCloses[i])
-      });
+      ohlcService.findAllByDay.mockResolvedValue({ 'btc-id': makeSummaries(100) });
+      backfillService.getProgress.mockResolvedValue({ status: 'in_progress' } as any);
 
       const result = await (task as any).fetchPriceData('BTC');
 
-      expect(result).toEqual([300, 200, 100]); // reversed finite values only
+      expect(result).toBeNull();
+      expect(backfillService.startBackfill).not.toHaveBeenCalled();
+    });
+
+    it('skips backfill when previous backfill failed (cooldown via Redis TTL)', async () => {
+      coinService.getCoinBySymbol.mockResolvedValue(mockCoin);
+      ohlcService.findAllByDay.mockResolvedValue({ 'btc-id': makeSummaries(100) });
+      backfillService.getProgress.mockResolvedValue({ status: 'failed' } as any);
+
+      const result = await (task as any).fetchPriceData('BTC');
+
+      expect(result).toBeNull();
+      expect(backfillService.startBackfill).not.toHaveBeenCalled();
+    });
+
+    it('returns null without triggering backfill when getProgress throws', async () => {
+      coinService.getCoinBySymbol.mockResolvedValue(mockCoin);
+      ohlcService.findAllByDay.mockResolvedValue({ 'btc-id': makeSummaries(100) });
+      backfillService.getProgress.mockRejectedValue(new Error('Redis down'));
+
+      const result = await (task as any).fetchPriceData('BTC');
+
+      expect(result).toBeNull();
+      expect(backfillService.startBackfill).not.toHaveBeenCalled();
+    });
+
+    it('filters out non-finite close values', async () => {
+      // 370 valid closes + 3 non-finite = 373 total summaries, 370 finite >= 365
+      const summaries = makeSummaries(373, (i) => {
+        if (i === 5) return NaN;
+        if (i === 10) return Infinity;
+        if (i === 15) return -Infinity;
+        return 373 - i;
+      });
+      coinService.getCoinBySymbol.mockResolvedValue(mockCoin);
+      ohlcService.findAllByDay.mockResolvedValue({ 'btc-id': summaries });
+
+      const result = await (task as any).fetchPriceData('BTC');
+
+      expect(result).not.toBeNull();
+      expect(result).toHaveLength(365);
+      expect((result as number[]).every((v: number) => Number.isFinite(v))).toBe(true);
     });
   });
 
