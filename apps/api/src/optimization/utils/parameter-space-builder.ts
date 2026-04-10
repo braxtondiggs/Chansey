@@ -75,10 +75,10 @@ function toParameterDefinition(name: string, field: ConfigSchemaField): Paramete
     };
   }
 
-  // Numeric: integer vs float
+  // Numeric: integer vs float (min/max guaranteed by isOptimizable check)
   const isInteger = isIntegerField(field);
-  const min = field.min!;
-  const max = field.max!;
+  const min = field.min ?? 0;
+  const max = field.max ?? 0;
   const range = max - min;
 
   let step: number;

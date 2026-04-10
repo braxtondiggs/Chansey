@@ -28,7 +28,7 @@ export class WFAConsistencyGate implements IPromotionGate {
     strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
-    context?: PromotionGateContext
+    _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     const wfaDegradation = Number(strategyScore.componentScores.wfaDegradation.value || 0);
     const passed = wfaDegradation < this.MAXIMUM_DEGRADATION;

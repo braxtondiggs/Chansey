@@ -137,9 +137,12 @@ export class PositionManagementService {
         exchangeSlug = exchangeKey.exchange.slug;
         try {
           exchangeClient = await this.exitOrderPlacementService.getExchangeClient(exchangeSlug, user);
+          const client = exchangeClient;
           await this.exitOrderPlacementService.executeWithResilience(
             exchangeSlug,
-            () => exchangeClient!.loadMarkets(),
+            async () => {
+              await client.loadMarkets();
+            },
             'loadMarkets'
           );
           marketLimits = this.exitOrderPlacementService.getMarketLimits(exchangeClient, entryOrder.symbol);

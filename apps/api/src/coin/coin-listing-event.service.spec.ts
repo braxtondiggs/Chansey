@@ -17,7 +17,6 @@ describe('CoinListingEventService', () => {
     insert: jest.fn().mockResolvedValue(undefined)
   };
 
-  const startDate = new Date('2025-01-01');
   const endDate = new Date('2025-06-01');
 
   beforeEach(async () => {

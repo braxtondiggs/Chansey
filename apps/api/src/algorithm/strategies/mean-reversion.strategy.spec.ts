@@ -143,9 +143,9 @@ describe('MeanReversionStrategy', () => {
 
       // Chart z-score should be NaN, not Infinity
       const chartData = result.chartData?.['btc'];
-      expect(chartData).toBeDefined();
-      const lastPoint = chartData![chartData!.length - 1];
-      expect(lastPoint.metadata!['zScore']).toBeNaN();
+      if (!chartData) throw new Error('expected chartData for btc');
+      const lastPoint = chartData[chartData.length - 1];
+      expect((lastPoint.metadata as Record<string, unknown>)['zScore']).toBeNaN();
     });
 
     it('should skip coins with insufficient data', async () => {

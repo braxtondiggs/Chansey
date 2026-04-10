@@ -109,17 +109,19 @@ export class CircuitBreakerService {
    * Get or create a circuit for a given key
    */
   private getCircuit(key: string, options?: CircuitBreakerOptions): CircuitData {
-    if (!this.circuits.has(key)) {
-      this.circuits.set(key, {
+    let circuit = this.circuits.get(key);
+    if (!circuit) {
+      circuit = {
         state: CircuitState.CLOSED,
         failures: [],
         consecutiveSuccesses: 0,
         lastFailureTime: null,
         openedAt: null,
         options: { ...DEFAULT_CIRCUIT_BREAKER_OPTIONS, ...options }
-      });
+      };
+      this.circuits.set(key, circuit);
     }
-    return this.circuits.get(key)!;
+    return circuit;
   }
 
   /**

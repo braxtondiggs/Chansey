@@ -298,7 +298,7 @@ export class AlgorithmPerformanceService {
         const id = perf.algorithmActivationId;
         if (frozen.has(id)) continue;
 
-        const alloc = allocations.get(id)!;
+        const alloc = allocations.get(id) ?? 0;
         if (alloc < minAllocation) {
           surplus += alloc - minAllocation; // negative (deficit)
           allocations.set(id, minAllocation);
@@ -320,7 +320,7 @@ export class AlgorithmPerformanceService {
       for (const perf of performanceRecords) {
         const id = perf.algorithmActivationId;
         if (frozen.has(id)) continue;
-        const alloc = allocations.get(id)!;
+        const alloc = allocations.get(id) ?? 0;
         allocations.set(id, alloc + (alloc / unfrozenTotal) * surplus);
       }
     }
@@ -329,7 +329,7 @@ export class AlgorithmPerformanceService {
     for (let i = 0; i < performanceRecords.length; i++) {
       const rank = i + 1;
       const performance = performanceRecords[i];
-      const allocationPercentage = allocations.get(performance.algorithmActivationId)!;
+      const allocationPercentage = allocations.get(performance.algorithmActivationId) ?? 0;
 
       // Update rank in performance record
       performance.rank = rank;

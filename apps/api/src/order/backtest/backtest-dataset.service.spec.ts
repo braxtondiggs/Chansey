@@ -199,7 +199,8 @@ describe('BacktestDatasetService', () => {
       );
       expect(marketDataSetRepo.save).not.toHaveBeenCalled();
       expect(result).toBeTruthy();
-      expect(result!.id).toBe('existing-uuid');
+      if (!result) throw new Error('expected result');
+      expect(result.id).toBe('existing-uuid');
     });
 
     it('handles concurrent insert by catching unique constraint violation', async () => {

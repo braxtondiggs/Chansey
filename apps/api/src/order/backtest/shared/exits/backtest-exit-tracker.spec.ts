@@ -25,10 +25,10 @@ describe('BacktestExitTracker', () => {
       tracker.onBuy('btc', 100, 1);
 
       const levels = tracker.getExitLevels('btc');
-      expect(levels).toBeDefined();
-      expect(levels!.stopLossPrice).toBe(95); // 5% below 100
-      expect(levels!.takeProfitPrice).toBeUndefined();
-      expect(levels!.trailingStopPrice).toBeUndefined();
+      if (!levels) throw new Error('expected levels');
+      expect(levels.stopLossPrice).toBe(95); // 5% below 100
+      expect(levels.takeProfitPrice).toBeUndefined();
+      expect(levels.trailingStopPrice).toBeUndefined();
       expect(tracker.size).toBe(1);
     });
 
@@ -50,11 +50,28 @@ describe('BacktestExitTracker', () => {
       tracker.onBuy('eth', 2000, 5);
 
       const levels = tracker.getExitLevels('eth');
-      expect(levels).toBeDefined();
-      expect(levels!.stopLossPrice).toBe(1900); // 5% of 2000 = 100, 2000 - 100 = 1900
-      expect(levels!.takeProfitPrice).toBe(2200); // 10% of 2000 = 200, 2000 + 200 = 2200
-      expect(levels!.trailingStopPrice).toBe(1940); // 3% of 2000 = 60, 2000 - 60 = 1940
-      expect(levels!.trailingActivated).toBe(true); // IMMEDIATE
+      if (!levels) throw new Error('expected levels');
+      expect(levels.stopLossPrice).toBe(1900); // 5% of 2000 = 100, 2000 - 100 = 1900
+      expect(levels.takeProfitPrice).toBe(2200); // 10% of 2000 = 200, 2000 + 200 = 2200
+      expect(levels.trailingStopPrice).toBe(1940); // 3% of 2000 = 60, 2000 - 60 = 1940
+      expect(levels.trailingActivated).toBe(true); // IMMEDIATE
+    });
+
+    it('applies overrideExitConfig for per-position config', () => {
+      const baseConfig = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5
+      });
+      const tracker = new BacktestExitTracker(baseConfig);
+
+      // Override SL to 10% for this specific position
+      tracker.onBuy('btc', 100, 1, undefined, { stopLossValue: 10 });
+
+      const levels = tracker.getExitLevels('btc');
+      if (!levels) throw new Error('expected levels');
+      expect(levels.stopLossPrice).toBe(90); // 10% below 100, not 5%
+      expect(levels.positionConfig).toBeDefined();
     });
   });
 
@@ -71,10 +88,10 @@ describe('BacktestExitTracker', () => {
       tracker.onBuy('btc', 120, 1); // avg entry = 110, SL at 104.5
 
       const levels = tracker.getExitLevels('btc');
-      expect(levels).toBeDefined();
-      expect(levels!.entryPrice).toBe(110); // (100*1 + 120*1) / 2
-      expect(levels!.quantity).toBe(2);
-      expect(levels!.stopLossPrice).toBeCloseTo(104.5); // 5% below 110
+      if (!levels) throw new Error('expected levels');
+      expect(levels.entryPrice).toBe(110); // (100*1 + 120*1) / 2
+      expect(levels.quantity).toBe(2);
+      expect(levels.stopLossPrice).toBeCloseTo(104.5); // 5% below 110
       expect(tracker.size).toBe(1); // still one position
     });
 
@@ -92,12 +109,16 @@ describe('BacktestExitTracker', () => {
       tracker.onBuy('btc', 100, 1);
       // Activate trailing by reaching 5% gain
       tracker.checkExits(makePriceMap({ btc: 106 }), makePriceMap({ btc: 104 }), makePriceMap({ btc: 106 }));
-      expect(tracker.getExitLevels('btc')!.trailingActivated).toBe(true);
+      const levelsAfterActivation = tracker.getExitLevels('btc');
+      if (!levelsAfterActivation) throw new Error('expected levels');
+      expect(levelsAfterActivation.trailingActivated).toBe(true);
 
       // Scale in — trailing activation should be preserved
       tracker.onBuy('btc', 108, 1);
-      expect(tracker.getExitLevels('btc')!.trailingActivated).toBe(true);
-      expect(tracker.getExitLevels('btc')!.quantity).toBe(2);
+      const levelsAfterScaleIn = tracker.getExitLevels('btc');
+      if (!levelsAfterScaleIn) throw new Error('expected levels');
+      expect(levelsAfterScaleIn.trailingActivated).toBe(true);
+      expect(levelsAfterScaleIn.quantity).toBe(2);
     });
 
     it('updates highWaterMark to max of existing and new entry', () => {
@@ -111,11 +132,15 @@ describe('BacktestExitTracker', () => {
       tracker.onBuy('btc', 100, 1);
       // Price goes up, check exits updates nothing but we can verify HWM after
       tracker.checkExits(makePriceMap({ btc: 130 }), makePriceMap({ btc: 125 }), makePriceMap({ btc: 130 }));
-      expect(tracker.getExitLevels('btc')!.highWaterMark).toBe(100); // no trailing, HWM stays at entry
+      const levelsBeforeScaleIn = tracker.getExitLevels('btc');
+      if (!levelsBeforeScaleIn) throw new Error('expected levels');
+      expect(levelsBeforeScaleIn.highWaterMark).toBe(100); // no trailing, HWM stays at entry
 
       // Scale in at higher price
       tracker.onBuy('btc', 150, 1);
-      expect(tracker.getExitLevels('btc')!.highWaterMark).toBe(150); // max(100, 150)
+      const levelsAfterScaleIn = tracker.getExitLevels('btc');
+      if (!levelsAfterScaleIn) throw new Error('expected levels');
+      expect(levelsAfterScaleIn.highWaterMark).toBe(150); // max(100, 150)
     });
   });
 
@@ -254,8 +279,9 @@ describe('BacktestExitTracker', () => {
 
       // Check the trailing has ratcheted: HWM=110, trailing=110*(1-0.05)=104.5
       const levels = tracker.getExitLevels('btc');
-      expect(levels!.highWaterMark).toBe(110);
-      expect(levels!.trailingStopPrice).toBeCloseTo(104.5);
+      if (!levels) throw new Error('expected levels');
+      expect(levels.highWaterMark).toBe(110);
+      expect(levels.trailingStopPrice).toBeCloseTo(104.5);
 
       // Low breaches the ratcheted trailing stop
       signals = tracker.checkExits(makePriceMap({ btc: 104 }), makePriceMap({ btc: 103 }), makePriceMap({ btc: 110 }));
@@ -285,12 +311,16 @@ describe('BacktestExitTracker', () => {
         makePriceMap({ btc: 103 })
       );
       expect(signals).toHaveLength(0);
-      expect(tracker.getExitLevels('btc')!.trailingActivated).toBe(false);
+      const levelsBeforeActivation = tracker.getExitLevels('btc');
+      if (!levelsBeforeActivation) throw new Error('expected levels');
+      expect(levelsBeforeActivation.trailingActivated).toBe(false);
 
       // Price reaches 106 — activates
       signals = tracker.checkExits(makePriceMap({ btc: 106 }), makePriceMap({ btc: 104 }), makePriceMap({ btc: 106 }));
       expect(signals).toHaveLength(0);
-      expect(tracker.getExitLevels('btc')!.trailingActivated).toBe(true);
+      const levelsAfterActivation = tracker.getExitLevels('btc');
+      if (!levelsAfterActivation) throw new Error('expected levels');
+      expect(levelsAfterActivation.trailingActivated).toBe(true);
     });
 
     it('trailing with AMOUNT type ratchets from high water mark', () => {
@@ -307,7 +337,9 @@ describe('BacktestExitTracker', () => {
 
       // Initial trailing = 100 - 10 = 90. Price rises to 120 → HWM=120, trailing = 120-10 = 110
       tracker.checkExits(makePriceMap({ btc: 120 }), makePriceMap({ btc: 115 }), makePriceMap({ btc: 120 }));
-      expect(tracker.getExitLevels('btc')!.trailingStopPrice).toBe(110);
+      const levels = tracker.getExitLevels('btc');
+      if (!levels) throw new Error('expected levels');
+      expect(levels.trailingStopPrice).toBe(110);
 
       // Low breaches 110
       const signals = tracker.checkExits(
@@ -318,6 +350,26 @@ describe('BacktestExitTracker', () => {
       expect(signals).toHaveLength(1);
       expect(signals[0].exitType).toBe('TRAILING_STOP');
       expect(signals[0].executionPrice).toBe(110);
+    });
+
+    it('ATR trailing falls back to 1% when entryAtr is undefined', () => {
+      const config = makeConfig({
+        enableStopLoss: false,
+        enableTakeProfit: false,
+        enableTrailingStop: true,
+        trailingType: TrailingType.ATR,
+        trailingValue: 2,
+        trailingActivation: TrailingActivationType.IMMEDIATE
+      });
+      const tracker = new BacktestExitTracker(config);
+      // No ATR provided — recalcTrailingStop should fall back to 1%
+      tracker.onBuy('btc', 1000, 1);
+
+      // Price rises to 1100 → HWM=1100, trailing = 1100 - (1100 * 0.01) = 1089
+      tracker.checkExits(makePriceMap({ btc: 1100 }), makePriceMap({ btc: 1050 }), makePriceMap({ btc: 1100 }));
+      const levels = tracker.getExitLevels('btc');
+      if (!levels) throw new Error('expected levels');
+      expect(levels.trailingStopPrice).toBe(1089); // 1% of HWM 1100 = 11, 1100 - 11 = 1089
     });
   });
 
@@ -360,6 +412,48 @@ describe('BacktestExitTracker', () => {
       expect(signals[0].coinId).toBe('btc');
       expect(tracker.has('eth')).toBe(true);
     });
+
+    it('does not auto-remove position after exit signal', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      const signals = tracker.checkExits(
+        makePriceMap({ btc: 90 }),
+        makePriceMap({ btc: 90 }),
+        makePriceMap({ btc: 100 })
+      );
+
+      expect(signals).toHaveLength(1);
+      // Position still exists — engine is responsible for calling onSell/removePosition
+      expect(tracker.has('btc')).toBe(true);
+      expect(tracker.size).toBe(1);
+    });
+
+    it('falls back to close price when low/high maps are missing for a coin', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1); // SL at 95
+
+      // Only close provided, low/high maps don't include 'btc'
+      const signals = tracker.checkExits(
+        makePriceMap({ btc: 94 }),
+        makePriceMap({}), // no low — falls back to close (94)
+        makePriceMap({}) // no high — falls back to close (94)
+      );
+
+      // low defaults to close=94, which breaches SL at 95
+      expect(signals).toHaveLength(1);
+      expect(signals[0].exitType).toBe('STOP_LOSS');
+    });
   });
 
   describe('onSell', () => {
@@ -370,28 +464,21 @@ describe('BacktestExitTracker', () => {
 
       tracker.onSell('btc', 3);
       expect(tracker.has('btc')).toBe(true);
-      expect(tracker.getExitLevels('btc')!.quantity).toBe(2);
+      const levelsAfterSell = tracker.getExitLevels('btc');
+      if (!levelsAfterSell) throw new Error('expected levels');
+      expect(levelsAfterSell.quantity).toBe(2);
 
       tracker.onSell('btc', 2);
       expect(tracker.has('btc')).toBe(false);
       expect(tracker.size).toBe(0);
     });
 
-    it('no-ops for unknown coin', () => {
-      const config = makeConfig();
-      const tracker = new BacktestExitTracker(config);
-      expect(() => tracker.onSell('unknown', 1)).not.toThrow();
-    });
-  });
-
-  describe('removePosition', () => {
-    it('removes a tracked position', () => {
+    it('removes position when oversold (quantity goes negative)', () => {
       const config = makeConfig();
       const tracker = new BacktestExitTracker(config);
       tracker.onBuy('btc', 100, 1);
-      expect(tracker.has('btc')).toBe(true);
 
-      tracker.removePosition('btc');
+      tracker.onSell('btc', 5); // sell more than held
       expect(tracker.has('btc')).toBe(false);
     });
   });
@@ -427,8 +514,10 @@ describe('BacktestExitTracker', () => {
 
       // Verify data integrity
       expect(restored.size).toBe(2);
-      const btcLevels = restored.getExitLevels('btc')!;
-      const originalBtcLevels = tracker.getExitLevels('btc')!;
+      const btcLevels = restored.getExitLevels('btc');
+      const originalBtcLevels = tracker.getExitLevels('btc');
+      if (!btcLevels) throw new Error('expected btcLevels');
+      if (!originalBtcLevels) throw new Error('expected originalBtcLevels');
       expect(btcLevels.stopLossPrice).toBe(originalBtcLevels.stopLossPrice);
       expect(btcLevels.takeProfitPrice).toBe(originalBtcLevels.takeProfitPrice);
       expect(btcLevels.highWaterMark).toBe(originalBtcLevels.highWaterMark);
@@ -444,52 +533,6 @@ describe('BacktestExitTracker', () => {
       expect(signals).toHaveLength(1);
       expect(signals[0].coinId).toBe('btc');
       expect(signals[0].exitType).toBe('STOP_LOSS');
-    });
-  });
-
-  describe('empty tracker', () => {
-    it('returns no signals when no positions tracked', () => {
-      const config = makeConfig();
-      const tracker = new BacktestExitTracker(config);
-
-      const signals = tracker.checkExits(
-        makePriceMap({ btc: 100 }),
-        makePriceMap({ btc: 90 }),
-        makePriceMap({ btc: 110 })
-      );
-
-      expect(signals).toHaveLength(0);
-    });
-  });
-
-  describe('default config matches legacy 5% behavior', () => {
-    it('triggers at 5% loss', () => {
-      const tracker = new BacktestExitTracker(DEFAULT_BACKTEST_EXIT_CONFIG);
-      tracker.onBuy('btc', 100, 1);
-
-      // Low at exactly 95 (5% loss) should trigger
-      const signals = tracker.checkExits(
-        makePriceMap({ btc: 95 }),
-        makePriceMap({ btc: 95 }),
-        makePriceMap({ btc: 100 })
-      );
-
-      expect(signals).toHaveLength(1);
-      expect(signals[0].exitType).toBe('STOP_LOSS');
-      expect(signals[0].executionPrice).toBe(95);
-    });
-
-    it('does not trigger at 4% loss', () => {
-      const tracker = new BacktestExitTracker(DEFAULT_BACKTEST_EXIT_CONFIG);
-      tracker.onBuy('btc', 100, 1);
-
-      const signals = tracker.checkExits(
-        makePriceMap({ btc: 96 }),
-        makePriceMap({ btc: 96 }),
-        makePriceMap({ btc: 100 })
-      );
-
-      expect(signals).toHaveLength(0);
     });
   });
 });

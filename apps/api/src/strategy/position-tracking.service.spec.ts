@@ -334,12 +334,12 @@ describe('PositionTrackingService', () => {
       const result = await service.getAllUserPositionsBySymbol('user-1');
 
       const btc = result.get('BTC/USDT');
-      expect(btc).toBeDefined();
+      if (!btc) throw new Error('expected BTC/USDT position');
       // Total qty = 3, weighted avg = (1*50000 + 2*55000) / 3 ≈ 53333.33
-      expect(btc!.quantity).toBe(3);
-      expect(btc!.avgPrice).toBeCloseTo(53333.33, 1);
+      expect(btc.quantity).toBe(3);
+      expect(btc.avgPrice).toBeCloseTo(53333.33, 1);
       // Total PnL = (1000 + 500) + (200 + -100) = 1600
-      expect(btc!.pnl).toBe(1600);
+      expect(btc.pnl).toBe(1600);
     });
 
     it('separates different symbols into distinct map entries', async () => {

@@ -72,11 +72,21 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         const macdKey = `macd_${config.fastPeriod}_${config.slowPeriod}_${config.signalPeriod}`;
         const preMACD = this.getPrecomputedSlice(context, coin.id, `${macdKey}_macd`, priceHistory.length);
         let macd: number[], signal: number[], histogram: number[];
-        if (preMACD) {
+        const preSignal = preMACD
+          ? this.getPrecomputedSlice(context, coin.id, `${macdKey}_signal`, priceHistory.length)
+          : null;
+        const preHistogram = preMACD
+          ? this.getPrecomputedSlice(context, coin.id, `${macdKey}_histogram`, priceHistory.length)
+          : null;
+
+        if (preMACD && preSignal && preHistogram) {
           macd = preMACD;
-          signal = this.getPrecomputedSlice(context, coin.id, `${macdKey}_signal`, priceHistory.length)!;
-          histogram = this.getPrecomputedSlice(context, coin.id, `${macdKey}_histogram`, priceHistory.length)!;
+          signal = preSignal;
+          histogram = preHistogram;
         } else {
+          if (preMACD) {
+            this.logger.warn(`Partial MACD cache for ${coin.symbol} (${macdKey}), recalculating`);
+          }
           const macdResult = await this.indicatorService.calculateMACD(
             {
               coinId: coin.id,

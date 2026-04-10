@@ -28,7 +28,7 @@ export class VolatilityCapGate implements IPromotionGate {
     strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
-    context?: PromotionGateContext
+    _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     const volatility = Number(backtestRun.results?.volatility || 0);
     const passed = volatility < this.MAXIMUM_VOLATILITY;

@@ -114,9 +114,9 @@ export class CoinListingEventService {
       if (!latestDelisting) continue;
 
       // Check if a RELISTED event exists after the delisting and before asOfDate
+      const delistingDate = latestDelisting;
       const wasRelisted = coinEvents.some(
-        (e) =>
-          e.eventType === CoinListingEventType.RELISTED && e.eventDate > latestDelisting! && e.eventDate <= asOfDate
+        (e) => e.eventType === CoinListingEventType.RELISTED && e.eventDate > delistingDate && e.eventDate <= asOfDate
       );
 
       if (!wasRelisted) {

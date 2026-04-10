@@ -176,7 +176,7 @@ export class ExitOrderPlacementService {
         ccxtOrder = await this.executeWithResilience(
           exchangeSlug,
           () =>
-            exchangeClient!.createOrder(
+            exchangeClient.createOrder(
               params.symbol,
               'stop_loss',
               params.side.toLowerCase(),
@@ -241,7 +241,7 @@ export class ExitOrderPlacementService {
         ccxtOrder = await this.executeWithResilience(
           exchangeSlug,
           () =>
-            exchangeClient!.createOrder(
+            exchangeClient.createOrder(
               params.symbol,
               'limit',
               params.side.toLowerCase(),
@@ -288,9 +288,9 @@ export class ExitOrderPlacementService {
    * Link OCO orders natively on exchange (for exchanges that support it)
    */
   async linkOcoOrdersNative(
-    stopLossOrder: Order,
-    takeProfitOrder: Order,
-    exchangeClient: ccxt.Exchange
+    _stopLossOrder: Order,
+    _takeProfitOrder: Order,
+    _exchangeClient: ccxt.Exchange
   ): Promise<void> {
     // Most exchanges don't support modifying orders to link them after creation
     // This would typically require creating a native OCO order type

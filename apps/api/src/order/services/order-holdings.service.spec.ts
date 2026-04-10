@@ -220,10 +220,12 @@ describe('OrderHoldingsService', () => {
     const result = await service.getHoldingsByCoin(mockUser, mockBtcCoin as any);
 
     expect(result.exchanges).toHaveLength(2);
-    const binance = result.exchanges.find((e: any) => e.exchangeName === 'Binance')!;
+    const binance = result.exchanges.find((e: any) => e.exchangeName === 'Binance');
+    if (!binance) throw new Error('expected Binance exchange');
     expect(binance.amount).toBe(0.3);
     expect(binance.lastSynced).toEqual(new Date('2024-01-01'));
-    const coinbase = result.exchanges.find((e: any) => e.exchangeName === 'Coinbase')!;
+    const coinbase = result.exchanges.find((e: any) => e.exchangeName === 'Coinbase');
+    if (!coinbase) throw new Error('expected Coinbase exchange');
     expect(coinbase.amount).toBe(0.2);
   });
 

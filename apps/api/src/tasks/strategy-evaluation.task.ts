@@ -101,7 +101,8 @@ export class StrategyEvaluationTask {
 
     try {
       // Get strategy instance with merged parameters
-      const { strategy, config } = await this.strategyService.getStrategyInstance(strategyConfigId);
+      // TODO: Use returned strategy/config when full backtest implementation is added
+      await this.strategyService.getStrategyInstance(strategyConfigId);
 
       // Execute backtest using BacktestEngine
       // Note: This is a simplified version - full implementation would:

@@ -26,7 +26,7 @@ export class SharpeDegradationCheck implements IRiskCheck {
   async evaluate(
     deployment: Deployment,
     latestMetric: PerformanceMetric | null,
-    historicalMetrics?: PerformanceMetric[]
+    _historicalMetrics?: PerformanceMetric[]
   ): Promise<RiskCheckResult> {
     if (!latestMetric || latestMetric.sharpeRatio === null) {
       return {

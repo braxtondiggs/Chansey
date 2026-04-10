@@ -45,12 +45,6 @@ export class PoolStatisticsService {
       // Get users with this risk level
       const users = await this.riskPoolMapping.getUsersForRisk(riskId);
 
-      // Calculate average capital allocation percentage
-      const avgAllocationPercentage =
-        users.length > 0
-          ? users.reduce((sum, user) => sum + Number(user.algoCapitalAllocationPercentage || 0), 0) / users.length
-          : 0;
-
       // Note: Can't calculate total capital without fetching each user's balance
       const totalCapital = 0;
       const avgCapitalPerUser = 0;

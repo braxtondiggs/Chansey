@@ -159,8 +159,8 @@ export class PaperTradingMarketDataService {
       operationName: `fetchTicker(${exchangeSlug}:${symbol})`
     });
 
-    if (result.success) {
-      const ticker = result.result!;
+    if (result.success && result.result) {
+      const ticker = result.result;
       const priceData: PriceData = {
         symbol,
         price: ticker.last ?? ticker.close ?? 0,
@@ -238,8 +238,8 @@ export class PaperTradingMarketDataService {
       }
     );
 
-    if (result.success) {
-      const tickers = result.result!;
+    if (result.success && result.result) {
+      const tickers = result.result;
 
       for (const symbol of uncachedSymbols) {
         const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);

@@ -15,8 +15,8 @@ import { Order, OrderStatus } from '../order.entity';
 
 describe('PositionManagementService', () => {
   let service: PositionManagementService;
-  let positionExitRepo: Repository<PositionExit>;
-  let orderRepo: Repository<Order>;
+  let _positionExitRepo: Repository<PositionExit>;
+  let _orderRepo: Repository<Order>;
 
   const mockPositionExitRepo = {
     findOne: jest.fn(),
@@ -87,8 +87,8 @@ describe('PositionManagementService', () => {
     }).compile();
 
     service = module.get<PositionManagementService>(PositionManagementService);
-    positionExitRepo = module.get(getRepositoryToken(PositionExit));
-    orderRepo = module.get(getRepositoryToken(Order));
+    _positionExitRepo = module.get(getRepositoryToken(PositionExit));
+    _orderRepo = module.get(getRepositoryToken(Order));
 
     jest.clearAllMocks();
     mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);

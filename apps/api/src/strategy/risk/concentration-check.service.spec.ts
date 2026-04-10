@@ -49,7 +49,9 @@ describe('ConcentrationCheckService', () => {
       expect(result.breached).toBe(false);
       expect(result.warnings.length).toBe(3);
       expect(result.warnings.every((w) => w.softLimit === 0.3)).toBe(true);
-      expect(result.warnings.find((w) => w.symbol === 'BTC')!.concentration).toBe(0.32);
+      const btcWarning = result.warnings.find((w) => w.symbol === 'BTC');
+      if (!btcWarning) throw new Error('expected BTC warning');
+      expect(btcWarning.concentration).toBe(0.32);
     });
 
     it('should exclude stablecoins from concentration checks', () => {
@@ -142,20 +144,34 @@ describe('ConcentrationCheckService', () => {
       expect(result.reason).toContain('reduced to');
     });
 
-    it('should block when maxAdditionalUsd is zero despite being below hard limit', () => {
-      // Edge case: currentConcentration < hard but numerically no room
-      // Risk level 1: hard=0.25; BTC at 24.9%, but the math yields ~0
+    it('should return tiny adjusted quantity when barely below hard limit', () => {
+      // Risk level 1: hard=0.25; BTC at 24.99%, barely below hard limit
       const assets: AssetAllocation[] = [
         { symbol: 'BTC', usdValue: 2499 },
         { symbol: 'ETH', usdValue: 7501 }
       ];
 
-      // BTC at 24.99% < 25% hard, but adding $1000 → 3499/11000=31.8% > 25%
       // maxAdditional = (0.25*10000 - 2499) / 0.75 = 1/0.75 ≈ 1.33
       // adjustedQuantity = 1.33/1000 ≈ 0.00133 — very small but allowed
       const result = service.checkTradeAllowed(assets, 'BTC/USDT', 1000, 1, 'buy');
       expect(result.allowed).toBe(true);
       expect(result.adjustedQuantity).toBeLessThan(0.01);
+      expect(result.adjustedQuantity).toBeGreaterThan(0);
+      expect(result.reason).toContain('reduced to');
+    });
+
+    it('should block when maxAdditionalUsd is zero (at exact hard limit boundary)', () => {
+      // Risk level 1: hard=0.25; BTC at exactly 25% → already at hard limit
+      // but test the path where currentConcentration < hard but maxAdditional rounds to 0
+      const assets: AssetAllocation[] = [
+        { symbol: 'BTC', usdValue: 2500 },
+        { symbol: 'ETH', usdValue: 7500 }
+      ];
+
+      // BTC at exactly 25% = hard limit → blocked by the "already at hard limit" path
+      const result = service.checkTradeAllowed(assets, 'BTC/USDT', 1000, 1, 'buy');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('already at hard limit');
     });
 
     it('should warn when post-trade exceeds soft limit but not hard', () => {
@@ -188,6 +204,20 @@ describe('ConcentrationCheckService', () => {
 
     it('should allow any trade on empty portfolio', () => {
       const result = service.checkTradeAllowed([], 'BTC/USDT', 1000, 3, 'buy');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should respect overrideLimit when provided', () => {
+      const assets: AssetAllocation[] = [
+        { symbol: 'BTC', usdValue: 4000 },
+        { symbol: 'ETH', usdValue: 6000 }
+      ];
+
+      // Without override: risk 3, hard=0.35 → BTC at 40% → blocked
+      expect(service.checkTradeAllowed(assets, 'BTC/USDT', 500, 3, 'buy').allowed).toBe(false);
+
+      // With override: hard=0.50 → BTC at 40% → allowed (post-trade 4500/10500=42.9% < 50%)
+      const result = service.checkTradeAllowed(assets, 'BTC/USDT', 500, 3, 'buy', 0.5);
       expect(result.allowed).toBe(true);
     });
   });

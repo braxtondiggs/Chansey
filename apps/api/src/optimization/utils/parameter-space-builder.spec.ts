@@ -236,7 +236,7 @@ describe('buildParameterSpace', () => {
     const space = buildParameterSpace('test-001', schema, constraints);
 
     expect(space.constraints).toHaveLength(1);
-    expect(space.constraints![0].param1).toBe('fastPeriod');
+    expect((space.constraints as ParameterConstraint[])[0].param1).toBe('fastPeriod');
   });
 
   it('should preserve description from schema fields', () => {

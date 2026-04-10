@@ -105,17 +105,16 @@ export class UserPerformanceService {
 
       // Group orders by date and calculate daily metrics
       const dailyData = new Map<string, { pnl: number; portfolioValue: number }>();
-      let cumulativePnL = 0;
       let portfolioValue = 0;
 
       for (const order of filteredOrders) {
         const dateKey = new Date(order.createdAt).toISOString().split('T')[0];
 
-        if (!dailyData.has(dateKey)) {
-          dailyData.set(dateKey, { pnl: 0, portfolioValue: 0 });
+        let dayData = dailyData.get(dateKey);
+        if (!dayData) {
+          dayData = { pnl: 0, portfolioValue: 0 };
+          dailyData.set(dateKey, dayData);
         }
-
-        const dayData = dailyData.get(dateKey)!;
 
         if (order.side === OrderSide.BUY) {
           // Buying adds to portfolio value
@@ -125,7 +124,7 @@ export class UserPerformanceService {
           portfolioValue -= Number(order.price) * Number(order.quantity);
           if (order.gainLoss !== null && order.gainLoss !== undefined) {
             dayData.pnl += Number(order.gainLoss);
-            cumulativePnL += Number(order.gainLoss);
+            // P&L tracked via runningCumulativePnL below
           }
         }
 
