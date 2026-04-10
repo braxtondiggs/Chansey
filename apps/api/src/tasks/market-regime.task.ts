@@ -20,7 +20,7 @@ export class MarketRegimeTask {
   private readonly logger = new Logger(MarketRegimeTask.name);
 
   // Track assets to monitor
-  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'POL'];
+  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'POL'] as const;
 
   constructor(
     @InjectQueue('regime-check-queue') private regimeQueue: Queue,
@@ -89,8 +89,12 @@ export class MarketRegimeTask {
 
     try {
       // Fetch recent price data (last 365 days for percentile calculation)
-      // Note: This is simplified - full implementation would fetch actual historical prices
-      const priceData = await this.fetchPriceData(asset, 365);
+      const priceData = await this.fetchPriceData(asset);
+
+      if (!priceData) {
+        this.logger.warn(`No price data available for ${asset}, skipping regime detection`);
+        return;
+      }
 
       // Detect current regime
       await this.marketRegimeService.detectRegime(asset, priceData);
@@ -106,36 +110,22 @@ export class MarketRegimeTask {
   /**
    * Fetch historical price data for asset from local OHLC candles.
    * @param asset Asset symbol (e.g., 'BTC', 'ETH')
-   * @param days Number of days of historical data
-   * @returns Array of daily closing prices in chronological order
+   * @returns Array of daily closing prices in chronological order, or null if unavailable
    */
-  private async fetchPriceData(asset: string, days: number): Promise<number[]> {
+  private async fetchPriceData(asset: string): Promise<number[] | null> {
     try {
-      const assetSlugMap: Record<string, string> = {
-        BTC: 'bitcoin',
-        ETH: 'ethereum',
-        SOL: 'solana',
-        POL: 'polygon-ecosystem-token'
-      };
-
-      const slug = assetSlugMap[asset.toUpperCase()];
-      if (!slug) {
-        this.logger.warn(`Unknown asset ${asset}, using fallback price data`);
-        return this.generateFallbackPriceData(days);
-      }
-
-      const coin = await this.coinService.getCoinBySlug(slug);
+      const coin = await this.coinService.getCoinBySymbol(asset, [], false);
       if (!coin) {
-        this.logger.warn(`Coin not found for slug ${slug}, using fallback price data`);
-        return this.generateFallbackPriceData(days);
+        this.logger.warn(`Coin not found for symbol ${asset}, skipping regime check`);
+        return null;
       }
 
       const summaries = await this.ohlcService.findAllByDay(coin.id, '1y');
       const coinSummaries = summaries[coin.id];
 
       if (!coinSummaries || coinSummaries.length === 0) {
-        this.logger.warn(`No OHLC data for ${asset}, using fallback`);
-        return this.generateFallbackPriceData(days);
+        this.logger.warn(`No OHLC data for ${asset}`);
+        return null;
       }
 
       // findAllByDay returns descending order — reverse to chronological
@@ -144,38 +134,17 @@ export class MarketRegimeTask {
         .filter((v): v is number => Number.isFinite(v))
         .reverse();
 
-      // Trim to requested days
-      if (closes.length > days) {
-        return closes.slice(-days);
+      // Trim to 365 days for percentile calculation
+      if (closes.length > 365) {
+        return closes.slice(-365);
       }
 
       return closes;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch price data for ${asset}: ${err.message}`);
-      return this.generateFallbackPriceData(days);
+      return null;
     }
-  }
-
-  /**
-   * Generate fallback price data when API fails
-   * Uses a deterministic pattern based on date to avoid truly random values
-   */
-  private generateFallbackPriceData(days: number): number[] {
-    const prices: number[] = [];
-    const basePrice = 50000;
-    const today = new Date();
-
-    for (let i = days - 1; i >= 0; i--) {
-      // Use date-based deterministic variation instead of random
-      const dayOffset = new Date(today);
-      dayOffset.setDate(today.getDate() - i);
-      const dateHash = dayOffset.getFullYear() * 10000 + (dayOffset.getMonth() + 1) * 100 + dayOffset.getDate();
-      const variation = ((dateHash % 1000) - 500) / 50000; // ±1% variation based on date
-      prices.push(basePrice * (1 + variation));
-    }
-
-    return prices;
   }
 
   /**
@@ -183,27 +152,6 @@ export class MarketRegimeTask {
    */
   async triggerRegimeCheck(asset: string): Promise<void> {
     await this.queueRegimeCheck(asset);
-  }
-
-  /**
-   * Add asset to monitoring list
-   */
-  addMonitoredAsset(asset: string): void {
-    if (!this.monitoredAssets.includes(asset)) {
-      this.monitoredAssets.push(asset);
-      this.logger.log(`Added ${asset} to monitored assets`);
-    }
-  }
-
-  /**
-   * Remove asset from monitoring list
-   */
-  removeMonitoredAsset(asset: string): void {
-    const index = this.monitoredAssets.indexOf(asset);
-    if (index > -1) {
-      this.monitoredAssets.splice(index, 1);
-      this.logger.log(`Removed ${asset} from monitored assets`);
-    }
   }
 
   /**
@@ -216,7 +164,7 @@ export class MarketRegimeTask {
       active: jobCounts.active,
       completed: jobCounts.completed,
       failed: jobCounts.failed,
-      monitoredAssets: this.monitoredAssets
+      monitoredAssets: [...this.monitoredAssets]
     };
   }
 }
