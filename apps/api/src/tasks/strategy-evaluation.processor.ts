@@ -31,7 +31,7 @@ export class StrategyEvaluationProcessor extends WorkerHost {
         case 'evaluate-strategy': {
           const { strategyConfigId } = job.data as EvaluateStrategyJob;
           this.logger.log(`Processing strategy evaluation job ${job.id} for strategy ${strategyConfigId}`);
-          await this.strategyEvaluationTask.processStrategyEvaluation(strategyConfigId);
+          await this.strategyEvaluationTask.processStrategyEvaluation(strategyConfigId, job);
           break;
         }
 

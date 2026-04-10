@@ -3,25 +3,29 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Queue } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
 
+import { CRITICAL_FAIL_THRESHOLD, StrategyEvaluationService } from './strategy-evaluation.service';
+
 import { BaseAlgorithmStrategy } from '../algorithm/base/base-algorithm-strategy';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
-import { BacktestEngine } from '../order/backtest/backtest-engine.service';
 import { Risk } from '../risk/risk.entity';
-import { ScoringService } from '../scoring/scoring.service';
 import { toErrorInfo } from '../shared/error.util';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
-import { RiskPoolMappingService } from '../strategy/risk-pool-mapping.service';
+import { StrategyScore } from '../strategy/entities/strategy-score.entity';
 import { StrategyService } from '../strategy/strategy.service';
+
+/** Maximum number of live strategies allowed per risk level. */
+const MAX_STRATEGIES_PER_LEVEL = 30;
 
 /**
  * Strategy Evaluation Task
  * Automated background job for evaluating strategies
- * Injects AlgorithmRegistry and BacktestEngine to execute strategies
+ * Delegates actual evaluation to StrategyEvaluationService which runs
+ * a real backtest, persists results, and calculates a score.
  */
 @Injectable()
 export class StrategyEvaluationTask {
@@ -35,9 +39,7 @@ export class StrategyEvaluationTask {
     private readonly riskRepo: Repository<Risk>,
     private readonly strategyService: StrategyService,
     private readonly algorithmRegistry: AlgorithmRegistry,
-    private readonly backtestEngine: BacktestEngine,
-    private readonly scoringService: ScoringService,
-    private readonly riskPoolMapping: RiskPoolMappingService,
+    private readonly evaluationService: StrategyEvaluationService,
     private readonly dataSource: DataSource
   ) {}
 
@@ -93,35 +95,47 @@ export class StrategyEvaluationTask {
   }
 
   /**
-   * Process strategy evaluation job
-   * This would be called by a BullMQ processor
+   * Process strategy evaluation job.
+   * Delegates to StrategyEvaluationService which runs a real backtest,
+   * persists results, and calculates a score.
    */
-  async processStrategyEvaluation(strategyConfigId: string): Promise<void> {
+  async processStrategyEvaluation(strategyConfigId: string, job: Job): Promise<void> {
     this.logger.log(`Processing evaluation for strategy ${strategyConfigId}`);
 
     try {
-      // Get strategy instance with merged parameters
-      // TODO: Use returned strategy/config when full backtest implementation is added
-      await this.strategyService.getStrategyInstance(strategyConfigId);
+      const { score, passed, reason } = await this.evaluationService.evaluate(strategyConfigId);
 
-      // Execute backtest using BacktestEngine
-      // Note: This is a simplified version - full implementation would:
-      // 1. Load market data
-      // 2. Execute walk-forward analysis
-      // 3. Calculate scores
-      // 4. Store results
+      if (!score) {
+        this.logger.warn(
+          `No score produced for strategy ${strategyConfigId}, keeping in TESTING for next cycle` +
+            (reason ? ` (reason: ${reason})` : '')
+        );
+        return;
+      }
 
-      this.logger.log(`Strategy ${strategyConfigId} evaluation complete`);
+      const overallScore = Number(score.overallScore);
 
-      // Update strategy status to validated
-      await this.strategyService.updateStatus(strategyConfigId, StrategyStatus.VALIDATED);
-
-      // Assign strategy to risk pool based on performance metrics
-      await this.assignStrategyToRiskPool(strategyConfigId);
+      if (passed) {
+        await this.strategyService.updateStatus(strategyConfigId, StrategyStatus.VALIDATED);
+        await this.assignStrategyToRiskPool(strategyConfigId, score);
+      } else if (overallScore < CRITICAL_FAIL_THRESHOLD) {
+        this.logger.log(
+          `Strategy ${strategyConfigId} scored ${overallScore} (below ${CRITICAL_FAIL_THRESHOLD}), marking FAILED`
+        );
+        await this.strategyService.updateStatus(strategyConfigId, StrategyStatus.FAILED);
+      } else {
+        this.logger.log(`Strategy ${strategyConfigId} scored ${overallScore}, keeping in TESTING for retry`);
+      }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to evaluate strategy ${strategyConfigId}: ${err.message}`);
-      await this.strategyService.updateStatus(strategyConfigId, StrategyStatus.FAILED);
+
+      // Only mark FAILED on the final BullMQ attempt — earlier attempts should retry
+      const maxAttempts = job.opts?.attempts ?? 3;
+      if (job.attemptsMade >= maxAttempts) {
+        await this.strategyService.updateStatus(strategyConfigId, StrategyStatus.FAILED);
+      }
+
       throw error;
     }
   }
@@ -142,17 +156,10 @@ export class StrategyEvaluationTask {
    * 3. Check capacity limit (max 30 strategies per level)
    * 4. Update strategy with riskPoolId and set shadowStatus to 'live'
    */
-  private async assignStrategyToRiskPool(strategyConfigId: string): Promise<void> {
+  private async assignStrategyToRiskPool(strategyConfigId: string, score: StrategyScore): Promise<void> {
     this.logger.log(`Assigning strategy ${strategyConfigId} to risk level`);
 
     try {
-      // Get latest score
-      const score = await this.scoringService.getLatestScore(strategyConfigId);
-      if (!score) {
-        this.logger.warn(`No score found for strategy ${strategyConfigId}, skipping assignment`);
-        return;
-      }
-
       // Get strategy config
       const strategy = await this.strategyConfigRepo.findOne({
         where: { id: strategyConfigId },
@@ -187,8 +194,6 @@ export class StrategyEvaluationTask {
       }
 
       // Wrap capacity check + rotation/promotion in a transaction with pessimistic locking
-      const MAX_STRATEGIES_PER_LEVEL = 30;
-
       await this.dataSource.transaction(async (manager) => {
         // Lock all live strategies in pool with pessimistic_write (SELECT ... FOR UPDATE)
         // This serializes concurrent evaluations for the same risk level
