@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { SignalReasonCode, SignalStatus } from '@chansey/api-interfaces';

@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { MarketType, SignalReasonCode } from '@chansey/api-interfaces';
@@ -174,7 +174,7 @@ describe('TradeSignalGeneratorService', () => {
         timestamp: new Date()
       });
 
-      mockCoinService.getCoinById.mockImplementation(async (id: string) =>
+      mockCoinService.getCoinById.mockImplementation((id: string) =>
         id === 'coin-strong' ? { id, symbol: 'ETH' } : { id, symbol: 'BTC' }
       );
 

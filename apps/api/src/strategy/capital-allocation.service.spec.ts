@@ -1,9 +1,9 @@
 import { CompositeRegimeType } from '@chansey/api-interfaces';
 
-import { CapitalAllocationService, RegimeContext } from './capital-allocation.service';
-import { StrategyConfig } from './entities/strategy-config.entity';
+import { CapitalAllocationService, type RegimeContext } from './capital-allocation.service';
+import { type StrategyConfig } from './entities/strategy-config.entity';
 
-import { Order, OrderStatus } from '../order/order.entity';
+import { type Order, OrderStatus } from '../order/order.entity';
 
 // Helper to create a mock strategy
 const createStrategy = (id: string): StrategyConfig => ({ id }) as StrategyConfig;

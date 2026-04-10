@@ -24,7 +24,7 @@ export class CoinSelectionHistoricalPriceTask extends WorkerHost implements OnMo
     super();
   }
 
-  async onModuleInit() {
+  onModuleInit() {
     // Skip scheduling jobs in local development
     if (process.env.NODE_ENV === 'development' || process.env.DISABLE_BACKGROUND_TASKS === 'true') {
       this.logger.log('Coin selection historical price jobs disabled for local development');

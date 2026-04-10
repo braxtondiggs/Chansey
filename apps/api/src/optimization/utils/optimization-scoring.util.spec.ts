@@ -1,4 +1,4 @@
-import { WindowMetrics } from '@chansey/api-interfaces';
+import { type WindowMetrics } from '@chansey/api-interfaces';
 
 import {
   calculateCompositeScore,
@@ -9,7 +9,7 @@ import {
   ZERO_TRADE_PENALTY
 } from './optimization-scoring.util';
 
-import { OptimizationConfig } from '../interfaces';
+import { type OptimizationConfig } from '../interfaces';
 
 describe('optimization-scoring.util', () => {
   describe('calculateObjectiveScore', () => {

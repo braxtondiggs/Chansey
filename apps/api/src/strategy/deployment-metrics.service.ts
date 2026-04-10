@@ -154,7 +154,7 @@ export class DeploymentMetricsService {
   /**
    * Get deployments approaching risk limits
    */
-  async getDeploymentsAtRisk(activeDeployments: Deployment[]): Promise<Deployment[]> {
+  getDeploymentsAtRisk(activeDeployments: Deployment[]): Deployment[] {
     return activeDeployments.filter((d) => {
       const drawdownThreshold = Number(d.maxDrawdownLimit) * 0.8;
       return Number(d.currentDrawdown) >= drawdownThreshold;

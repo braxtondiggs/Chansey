@@ -1,17 +1,17 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { SignalReasonCode } from '@chansey/api-interfaces';
 
 import { OrderPlacementService } from './order-placement.service';
 import { PositionTrackingService } from './position-tracking.service';
-import { TradingSignal } from './strategy-executor.service';
+import { type TradingSignal } from './strategy-executor.service';
 
 import { ExchangeSelectionService } from '../exchange/exchange-selection/exchange-selection.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { OrderService } from '../order/order.service';
 import { TradeExecutionService } from '../order/services/trade-execution.service';
 import { TradeCooldownService } from '../shared/trade-cooldown.service';
-import { User } from '../users/users.entity';
+import { type User } from '../users/users.entity';
 
 const createUser = (overrides: Record<string, unknown> = {}): User =>
   ({

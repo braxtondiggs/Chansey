@@ -1,10 +1,10 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { CategorySyncTask } from './category-sync.task';
 
-import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { type CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { Category } from '../category.entity';
-import { CategoryService } from '../category.service';
+import { type CategoryService } from '../category.service';
 
 const mockGetList = jest.fn();
 

@@ -15,7 +15,7 @@ export class BacktestGateway {
       return;
     }
 
-    client.join(this.room(payload.backtestId));
+    void client.join(this.room(payload.backtestId));
     this.logger.debug(`Client ${client.id} subscribed to backtest ${payload.backtestId}`);
     client.emit('subscribed', { backtestId: payload.backtestId });
   }
@@ -26,7 +26,7 @@ export class BacktestGateway {
       client.emit('error', { message: 'Backtest ID is required' });
       return;
     }
-    client.leave(this.room(payload.backtestId));
+    void client.leave(this.room(payload.backtestId));
     this.logger.debug(`Client ${client.id} unsubscribed from backtest ${payload.backtestId}`);
     client.emit('unsubscribed', { backtestId: payload.backtestId });
   }

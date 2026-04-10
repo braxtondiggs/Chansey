@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddPaperTradingExitTracking1774932017000 implements MigrationInterface {
   name = 'AddPaperTradingExitTracking1774932017000';

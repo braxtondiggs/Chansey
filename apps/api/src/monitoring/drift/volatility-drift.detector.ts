@@ -24,7 +24,7 @@ export class VolatilityDriftDetector {
   private readonly HIGH_THRESHOLD = 1.0; // 100% increase (2x)
   private readonly CRITICAL_THRESHOLD = 1.5; // 150% increase (2.5x)
 
-  async detect(deployment: Deployment, latestMetric: PerformanceMetric): Promise<DriftAlert | null> {
+  detect(deployment: Deployment, latestMetric: PerformanceMetric): DriftAlert | null {
     const expectedVolatility = deployment.metadata?.backtestVolatility || 0.5; // Default 50% annualized
 
     if (!latestMetric.volatility) {

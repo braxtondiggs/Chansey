@@ -1,4 +1,4 @@
-import { IndicatorSignal } from '../interfaces';
+import { type IndicatorSignal } from '../interfaces';
 
 /**
  * Utility: Calculate average of valid (non-NaN) values in array slice

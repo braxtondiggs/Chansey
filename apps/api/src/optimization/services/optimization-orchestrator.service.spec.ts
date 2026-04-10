@@ -1,18 +1,18 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { type EventEmitter2 } from '@nestjs/event-emitter';
 
-import { Queue } from 'bullmq';
-import { DataSource, ObjectLiteral, Repository } from 'typeorm';
+import { type Queue } from 'bullmq';
+import { type DataSource, type ObjectLiteral, type Repository } from 'typeorm';
 
-import { GridSearchService } from './grid-search.service';
-import { OptimizationEvaluationService } from './optimization-evaluation.service';
+import { type GridSearchService } from './grid-search.service';
+import { type OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
-import { OptimizationQueryService } from './optimization-query.service';
+import { type OptimizationQueryService } from './optimization-query.service';
 
-import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
-import { OptimizationResult } from '../entities/optimization-result.entity';
-import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
-import { OptimizationConfig, ParameterSpace } from '../interfaces';
+import { type StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { type OptimizationResult } from '../entities/optimization-result.entity';
+import { type OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
+import { type OptimizationConfig, type ParameterSpace } from '../interfaces';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
@@ -362,7 +362,7 @@ describe('OptimizationOrchestratorService', () => {
         config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
       });
       optimizationRunRepo.findOne.mockResolvedValue(run);
-      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.save.mockImplementation((r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       optimizationResultRepo.find.mockResolvedValue([
@@ -383,7 +383,7 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne
         .mockResolvedValueOnce(run) // initial load
         .mockResolvedValueOnce(run); // cancellation check
-      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.save.mockImplementation((r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       optimizationResultRepo.find.mockResolvedValue([
@@ -420,7 +420,7 @@ describe('OptimizationOrchestratorService', () => {
         config: createValidConfig({ walkForward: { minWindowsRequired: 1 } as any })
       });
       optimizationRunRepo.findOne.mockResolvedValue(run);
-      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.save.mockImplementation((r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       optimizationResultRepo.find.mockResolvedValue([
@@ -460,7 +460,7 @@ describe('OptimizationOrchestratorService', () => {
       optimizationRunRepo.findOne
         .mockResolvedValueOnce(run) // initial load
         .mockResolvedValueOnce(run); // cancellation check
-      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.save.mockImplementation((r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       evaluationService.evaluateCombination.mockResolvedValue({
@@ -515,7 +515,7 @@ describe('OptimizationOrchestratorService', () => {
         .mockResolvedValueOnce(run) // cancellation check batch 1
         .mockResolvedValueOnce(run) // cancellation check batch 2
         .mockResolvedValueOnce(run); // cancellation check batch 3
-      optimizationRunRepo.save.mockImplementation(async (r: any) => r);
+      optimizationRunRepo.save.mockImplementation((r: any) => r);
       optimizationRunRepo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
 
       // Baseline sets bestScore; subsequent combos produce no improvement

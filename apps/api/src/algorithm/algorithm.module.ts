@@ -94,7 +94,7 @@ import { UsersModule } from '../users/users.module';
     // Strategy registration factory
     {
       provide: 'ALGORITHM_STRATEGIES_INIT',
-      useFactory: async (
+      useFactory: (
         emaStrategy: ExponentialMovingAverageStrategy,
         meanReversionStrategy: MeanReversionStrategy,
         smaCrossoverStrategy: SimpleMovingAverageCrossoverStrategy,

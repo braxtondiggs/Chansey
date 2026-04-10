@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { BacktestMonitoringAnalyticsService } from './backtest-monitoring-analytics.service';
 import { BacktestMonitoringService } from './backtest-monitoring.service';

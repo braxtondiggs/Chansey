@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddMaxInstrumentsToMarketDataSet1737000000000 implements MigrationInterface {
   name = 'AddMaxInstrumentsToMarketDataSet1737000000000';

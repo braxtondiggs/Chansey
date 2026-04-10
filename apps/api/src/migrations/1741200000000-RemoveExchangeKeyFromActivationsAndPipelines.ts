@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class RemoveExchangeKeyFromActivationsAndPipelines1741200000000 implements MigrationInterface {
   name = 'RemoveExchangeKeyFromActivationsAndPipelines1741200000000';

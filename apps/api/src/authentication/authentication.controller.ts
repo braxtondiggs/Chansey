@@ -168,7 +168,7 @@ export class AuthenticationController {
     description: 'User logged out successfully.',
     type: LogoutResponseDto
   })
-  async logOut(@Res() response: FastifyReply) {
+  logOut(@Res() response: FastifyReply) {
     // Clear the secure cookies
     const cookies = this.refreshTokenService.getCookiesForLogOut();
     cookies.forEach((cookie) => response.header('Set-Cookie', cookie));

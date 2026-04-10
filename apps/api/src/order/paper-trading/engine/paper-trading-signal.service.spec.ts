@@ -1,13 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { SignalReasonCode } from '@chansey/api-interfaces';
 
-import { TradingSignal } from './paper-trading-engine.utils';
+import { type TradingSignal } from './paper-trading-engine.utils';
 import { PaperTradingSignalService } from './paper-trading-signal.service';
 
 import {
-  PaperTradingSession,
+  type PaperTradingSession,
   PaperTradingSignal,
   PaperTradingSignalDirection,
   PaperTradingSignalStatus,

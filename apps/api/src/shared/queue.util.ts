@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 
-import { Queue } from 'bullmq';
+import { type Queue } from 'bullmq';
 
 import { toErrorInfo } from './error.util';
 

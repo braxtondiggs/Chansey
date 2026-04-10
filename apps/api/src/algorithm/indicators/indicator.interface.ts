@@ -1,4 +1,4 @@
-import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { type CandleData } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Base indicator calculator interface

@@ -1,14 +1,14 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type Repository } from 'typeorm';
 
 import { ExitOrderPlacementService } from './exit-order-placement.service';
 import { ExitPriceService } from './exit-price.service';
 import { PositionManagementService } from './position-management.service';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
-import { User } from '../../users/users.entity';
+import { type User } from '../../users/users.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import { PositionExitStatus, StopLossType, TrailingActivationType } from '../interfaces/exit-config.interface';
 import { Order, OrderStatus } from '../order.entity';

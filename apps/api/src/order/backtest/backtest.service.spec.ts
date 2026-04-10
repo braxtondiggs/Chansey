@@ -1,6 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import { BadRequestException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { Role } from '@chansey/api-interfaces';
@@ -151,7 +151,7 @@ describe('BacktestService', () => {
         warnings: ['partial overlap']
       });
 
-      backtestRepository.save.mockImplementation(async (entity: any) => ({
+      backtestRepository.save.mockImplementation((entity: any) => ({
         ...entity,
         id: 'backtest-1',
         status: BacktestStatus.PENDING,
@@ -254,7 +254,7 @@ describe('BacktestService', () => {
         updatedAt: new Date('2024-04-02T00:00:00.000Z')
       } as MarketDataSet);
 
-      backtestRepository.save.mockImplementation(async (entity: Backtest) =>
+      backtestRepository.save.mockImplementation((entity: Backtest) =>
         Object.assign(entity, {
           id: backtestId,
           createdAt: new Date('2024-04-03T00:00:00.000Z'),

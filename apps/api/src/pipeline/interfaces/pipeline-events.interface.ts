@@ -1,4 +1,4 @@
-import { PipelineStage, PipelineStatus } from './pipeline-config.interface';
+import { type PipelineStage, type PipelineStatus } from './pipeline-config.interface';
 
 /**
  * Event payload for optimization completion

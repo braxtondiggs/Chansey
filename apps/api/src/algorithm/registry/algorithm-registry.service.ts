@@ -22,7 +22,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.discoverStrategies();
+    this.discoverStrategies();
     await this.initializeActiveAlgorithms();
   }
 
@@ -106,7 +106,7 @@ export class AlgorithmRegistry implements OnModuleInit, OnModuleDestroy {
   /**
    * Discover strategies from the module
    */
-  private async discoverStrategies(): Promise<void> {
+  private discoverStrategies(): void {
     // This method should be implemented to discover strategies
     // For now, strategies need to be manually registered
     this.logger.log('Strategy discovery completed');

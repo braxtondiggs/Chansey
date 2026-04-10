@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddStrategyHeartbeatColumns1734400000000 implements MigrationInterface {
   name = 'AddStrategyHeartbeatColumns1734400000000';

@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddConcentrationLimit1741200000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {

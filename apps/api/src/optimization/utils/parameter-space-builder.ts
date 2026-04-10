@@ -1,4 +1,8 @@
-import { ParameterConstraint, ParameterDefinition, ParameterSpace } from '../interfaces/parameter-space.interface';
+import {
+  type ParameterConstraint,
+  type ParameterDefinition,
+  type ParameterSpace
+} from '../interfaces/parameter-space.interface';
 
 /**
  * Shape of a single field from getConfigSchema()

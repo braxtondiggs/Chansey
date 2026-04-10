@@ -1,4 +1,4 @@
-import { ScoringWeights } from '@chansey/api-interfaces';
+import { type ScoringWeights } from '@chansey/api-interfaces';
 
 /**
  * Scoring weights configuration

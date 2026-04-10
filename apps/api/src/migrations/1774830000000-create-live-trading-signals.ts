@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class CreateLiveTradingSignals1774830000000 implements MigrationInterface {
   name = 'CreateLiveTradingSignals1774830000000';

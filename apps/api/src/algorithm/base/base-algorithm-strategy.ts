@@ -175,7 +175,7 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   /**
    * Start cron job for scheduled execution
    */
-  protected async startCronJob(): Promise<void> {
+  protected startCronJob(): void {
     if (!this.algorithm?.cron) return;
 
     try {
@@ -220,10 +220,10 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
    * Restart the cron job for auto-recovery.
    * Safe to call even if the job is already running (idempotent via startCronJob).
    */
-  async restartCronJob(): Promise<void> {
+  restartCronJob(): void {
     if (this.shouldStartCronJob()) {
       this.logger.log(`Restarting cron job for algorithm "${this.algorithm?.name}"`);
-      await this.startCronJob();
+      this.startCronJob();
     }
   }
 
@@ -237,7 +237,7 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   /**
    * Override this method to implement scheduled execution logic
    */
-  protected async scheduledExecution(): Promise<void> {
+  protected scheduledExecution(): void {
     this.logger.log('Scheduled execution started');
     // Subclasses should implement their own scheduled execution logic
   }

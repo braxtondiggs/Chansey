@@ -1,8 +1,8 @@
 import { Decimal } from 'decimal.js';
 
-import { Portfolio, SerializablePortfolio } from './portfolio-state.interface';
+import { type Portfolio, type SerializablePortfolio } from './portfolio-state.interface';
 
-import { Position } from '../positions';
+import { type Position } from '../positions';
 
 /**
  * Calculate the value of a single position given an optional current price.

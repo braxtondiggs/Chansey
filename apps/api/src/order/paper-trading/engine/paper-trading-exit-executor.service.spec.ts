@@ -2,7 +2,7 @@ import { SignalReasonCode } from '@chansey/api-interfaces';
 
 import { PaperTradingExitExecutorService } from './paper-trading-exit-executor.service';
 
-import { PaperTradingSignalStatus, PaperTradingSession } from '../entities';
+import { PaperTradingSignalStatus, type PaperTradingSession } from '../entities';
 
 describe('PaperTradingExitExecutorService', () => {
   let service: PaperTradingExitExecutorService;
@@ -18,8 +18,8 @@ describe('PaperTradingExitExecutorService', () => {
       })
     };
     signalService = {
-      save: jest.fn(async () => ({ id: 'sig-1' })),
-      markProcessed: jest.fn(async (e) => e)
+      save: jest.fn(() => ({ id: 'sig-1' })),
+      markProcessed: jest.fn((e) => e)
     };
     orderExecutor = { execute: jest.fn() };
 

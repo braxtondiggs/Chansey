@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddCoinSoftDeleteAndListingEvents1775079189579 implements MigrationInterface {
   name = 'AddCoinSoftDeleteAndListingEvents1775079189579';

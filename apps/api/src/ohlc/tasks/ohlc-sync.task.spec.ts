@@ -1,14 +1,14 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { OHLCSyncTask } from './ohlc-sync.task';
 
-import { CoinService } from '../../coin/coin.service';
-import { ExchangeService } from '../../exchange/exchange.service';
-import { ExchangeSymbolMap } from '../exchange-symbol-map.entity';
-import { OHLCService } from '../ohlc.service';
-import { ExchangeOHLCService } from '../services/exchange-ohlc.service';
-import { ExchangeSymbolMapService } from '../services/exchange-symbol-map.service';
-import { OHLCBackfillService } from '../services/ohlc-backfill.service';
+import { type CoinService } from '../../coin/coin.service';
+import { type ExchangeService } from '../../exchange/exchange.service';
+import { type ExchangeSymbolMap } from '../exchange-symbol-map.entity';
+import { type OHLCService } from '../ohlc.service';
+import { type ExchangeOHLCService } from '../services/exchange-ohlc.service';
+import { type ExchangeSymbolMapService } from '../services/exchange-symbol-map.service';
+import { type OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 describe('OHLCSyncTask', () => {
   let task: OHLCSyncTask;

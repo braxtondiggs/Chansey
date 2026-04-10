@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { ObjectLiteral, Repository } from 'typeorm';
+import { type ObjectLiteral, type Repository } from 'typeorm';
 
 import { UserStrategyPosition } from './entities/user-strategy-position.entity';
 import { PositionTrackingService } from './position-tracking.service';

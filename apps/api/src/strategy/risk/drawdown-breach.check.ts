@@ -34,7 +34,7 @@ export class DrawdownBreachCheck implements IRiskCheck {
         passed: true,
         actualValue: 'N/A',
         threshold: 'N/A',
-        severity: 'low',
+        severity: 'low' as const,
         message: 'No metrics available yet'
       };
     }
@@ -50,7 +50,7 @@ export class DrawdownBreachCheck implements IRiskCheck {
       passed,
       actualValue: `${(currentDrawdown * 100).toFixed(2)}%`,
       threshold: `${(breachThreshold * 100).toFixed(2)}%`,
-      severity: passed ? 'low' : 'critical',
+      severity: passed ? ('low' as const) : ('critical' as const),
       message: passed
         ? `Drawdown of ${(currentDrawdown * 100).toFixed(2)}% within limits`
         : `CRITICAL: Drawdown of ${(currentDrawdown * 100).toFixed(2)}% exceeds breach threshold of ${(breachThreshold * 100).toFixed(2)}%`,

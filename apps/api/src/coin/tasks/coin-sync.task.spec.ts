@@ -1,14 +1,14 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
-import { CoinDetailSyncService } from './coin-detail-sync.service';
+import { type CoinDetailSyncService } from './coin-detail-sync.service';
 import { CoinSyncTask } from './coin-sync.task';
 
-import { ExchangeService } from '../../exchange/exchange.service';
-import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
-import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
-import { CoinListingEventService } from '../coin-listing-event.service';
-import { CoinMarketDataService } from '../coin-market-data.service';
-import { CoinService } from '../coin.service';
+import { type ExchangeService } from '../../exchange/exchange.service';
+import { type CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { type CoinDailySnapshotService } from '../coin-daily-snapshot.service';
+import { type CoinListingEventService } from '../coin-listing-event.service';
+import { type CoinMarketDataService } from '../coin-market-data.service';
+import { type CoinService } from '../coin.service';
 
 // Mock CoinGecko SDK calls
 const mockCoinList = jest.fn();

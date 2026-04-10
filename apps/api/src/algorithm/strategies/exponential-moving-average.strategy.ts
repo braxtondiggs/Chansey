@@ -313,7 +313,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   /**
    * Scheduled execution with context building
    */
-  protected async scheduledExecution(): Promise<void> {
+  protected scheduledExecution(): void {
     try {
       if (!this.algorithm) {
         this.logger.warn('Algorithm not initialized for scheduled execution');

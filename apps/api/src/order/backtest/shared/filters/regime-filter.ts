@@ -1,10 +1,10 @@
 import { CompositeRegimeType, getRegimeMultiplier } from '@chansey/api-interfaces';
 
 import {
-  FilterableSignal,
-  SignalFilter,
-  SignalFilterContext,
-  SignalFilterResult
+  type FilterableSignal,
+  type SignalFilter,
+  type SignalFilterContext,
+  type SignalFilterResult
 } from './signal-filter-chain.interface';
 
 /**

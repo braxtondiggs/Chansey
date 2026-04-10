@@ -1,10 +1,10 @@
 import { SchedulerRegistry } from '@nestjs/schedule';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { TripleEMAStrategy } from './triple-ema.strategy';
 
 import { IndicatorService } from '../indicators';
-import { AlgorithmContext, SignalType } from '../interfaces';
+import { type AlgorithmContext, SignalType } from '../interfaces';
 
 describe('TripleEMAStrategy', () => {
   let strategy: TripleEMAStrategy;

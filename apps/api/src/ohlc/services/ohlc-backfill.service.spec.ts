@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-import { Cache } from 'cache-manager';
+import { type Cache } from 'cache-manager';
 
-import { ExchangeOHLCService } from './exchange-ohlc.service';
-import { ExchangeSymbolMapService } from './exchange-symbol-map.service';
+import { type ExchangeOHLCService } from './exchange-ohlc.service';
+import { type ExchangeSymbolMapService } from './exchange-symbol-map.service';
 import { OHLCBackfillService } from './ohlc-backfill.service';
 
-import { CoinService } from '../../coin/coin.service';
-import { ExchangeService } from '../../exchange/exchange.service';
-import { OHLCService } from '../ohlc.service';
+import { type CoinService } from '../../coin/coin.service';
+import { type ExchangeService } from '../../exchange/exchange.service';
+import { type OHLCService } from '../ohlc.service';
 
 const createProgress = (overrides: Partial<any> = {}) => ({
   coinId: 'btc',

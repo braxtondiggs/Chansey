@@ -1,6 +1,6 @@
-import { ComponentScores, StrategyGrade } from '@chansey/api-interfaces';
+import { type ComponentScores, type StrategyGrade } from '@chansey/api-interfaces';
 
-import { DeploymentRecommendation, PipelineStage } from './pipeline-config.interface';
+import { type DeploymentRecommendation, type PipelineStage } from './pipeline-config.interface';
 
 /**
  * Common metrics across all trading stages

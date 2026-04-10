@@ -1,10 +1,10 @@
-import { Queue } from 'bullmq';
-import { In, Repository } from 'typeorm';
+import { type Queue } from 'bullmq';
+import { In, type Repository } from 'typeorm';
 
-import { GridSearchService } from './grid-search.service';
+import { type GridSearchService } from './grid-search.service';
 import { OptimizationRecoveryService } from './optimization-recovery.service';
 
-import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
+import { type OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 
 type MockRepo = jest.Mocked<Pick<Repository<OptimizationRun>, 'find' | 'update' | 'createQueryBuilder'>>;
 
@@ -244,7 +244,7 @@ describe('OptimizationRecoveryService', () => {
       callOrder.push('db-update');
       return { affected: 1, raw: [], generatedMaps: [] };
     });
-    queue.add.mockImplementation(async () => {
+    queue.add.mockImplementation(() => {
       callOrder.push('queue-add');
       return {} as any;
     });

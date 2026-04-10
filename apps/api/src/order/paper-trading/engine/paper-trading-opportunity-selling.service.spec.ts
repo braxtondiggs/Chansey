@@ -47,8 +47,8 @@ describe('PaperTradingOpportunitySellingService', () => {
       refresh: jest.fn()
     };
     signalService = {
-      save: jest.fn(async (_s, sig) => ({ id: 'sig-1', signal: sig })),
-      markProcessed: jest.fn(async (e) => e)
+      save: jest.fn((_s, sig) => ({ id: 'sig-1', signal: sig })),
+      markProcessed: jest.fn((e) => e)
     };
     feeCalculator = {
       fromFlatRate: jest.fn().mockReturnValue({ rate: 0.001 }),

@@ -1,4 +1,4 @@
-import * as ccxt from 'ccxt';
+import type * as ccxt from 'ccxt';
 
 import type { AssetBalanceDto } from '../../balance/dto/balance-response.dto';
 import type { User } from '../../users/users.entity';

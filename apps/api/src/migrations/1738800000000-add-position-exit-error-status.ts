@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddPositionExitErrorStatus1738800000000 implements MigrationInterface {
   name = 'AddPositionExitErrorStatus1738800000000';

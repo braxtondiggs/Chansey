@@ -1,7 +1,7 @@
-import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
+import { type CompositeRegimeType, type MarketRegimeType } from '@chansey/api-interfaces';
 
-import { CandleData } from '../../ohlc/ohlc-candle.entity';
-import { Order } from '../../order/order.entity';
+import { type CandleData } from '../../ohlc/ohlc-candle.entity';
+import { type Order } from '../../order/order.entity';
 
 /**
  * Context object containing all the data and services needed for algorithm execution

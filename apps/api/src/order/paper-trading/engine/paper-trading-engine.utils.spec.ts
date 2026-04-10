@@ -7,10 +7,10 @@ import {
   resolveMinHoldMs,
   resolveOpportunitySellingConfig,
   toExitType,
-  TradingSignal
+  type TradingSignal
 } from './paper-trading-engine.utils';
 
-import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
+import { SignalType as AlgoSignalType, type TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
 import { PaperTradingExitType, PaperTradingSignalType } from '../entities';
 
 describe('paper-trading-engine.utils', () => {

@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddKrakenFuturesExchange1741400000000 implements MigrationInterface {
   name = 'AddKrakenFuturesExchange1741400000000';

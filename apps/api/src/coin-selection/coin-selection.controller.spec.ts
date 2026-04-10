@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { CoinSelectionType } from './coin-selection-type.enum';
 import { CoinSelectionController } from './coin-selection.controller';

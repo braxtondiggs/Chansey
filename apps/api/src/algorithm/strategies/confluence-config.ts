@@ -1,6 +1,6 @@
-import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
-import { IndicatorRequirement } from '../indicators';
-import { ConfluenceConfig } from '../interfaces';
+import { type ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { type IndicatorRequirement } from '../indicators';
+import { type ConfluenceConfig } from '../interfaces';
 
 /**
  * Build a fully-defaulted ConfluenceConfig from a raw config record.

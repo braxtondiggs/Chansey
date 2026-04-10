@@ -77,7 +77,7 @@ export class PaperTradingGateway {
       return;
     }
 
-    client.join(this.room(payload.sessionId));
+    void client.join(this.room(payload.sessionId));
     this.logger.debug(
       `Client ${client.id} (user: ${user.id}) subscribed to paper trading session ${payload.sessionId}`
     );
@@ -93,7 +93,7 @@ export class PaperTradingGateway {
       return;
     }
 
-    client.leave(this.room(payload.sessionId));
+    void client.leave(this.room(payload.sessionId));
     this.logger.debug(`Client ${client.id} unsubscribed from paper trading session ${payload.sessionId}`);
     client.emit('unsubscribed', { sessionId: payload.sessionId });
   }

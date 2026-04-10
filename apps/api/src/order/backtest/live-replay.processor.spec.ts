@@ -1,11 +1,11 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { ReplaySpeed } from '@chansey/api-interfaces';
 
 import { BacktestStatus, BacktestType } from './backtest.entity';
-import { BacktestJobData } from './backtest.job-data';
+import { type BacktestJobData } from './backtest.job-data';
 import { LiveReplayProcessor } from './live-replay.processor';
-import { MarketDataSet } from './market-data-set.entity';
+import { type MarketDataSet } from './market-data-set.entity';
 
 import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
 

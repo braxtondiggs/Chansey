@@ -2,7 +2,7 @@ import { BadRequestException, InternalServerErrorException } from '@nestjs/commo
 
 import { DEFAULT_CHECKPOINT_CONFIG } from './backtest-checkpoint.interface';
 import { BacktestLifecycleService } from './backtest-lifecycle.service';
-import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
+import { type Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 
 import { NotFoundException } from '../../common/exceptions';
 

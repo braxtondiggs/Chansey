@@ -1,11 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { OrderHoldingsService } from './order-holdings.service';
 
-import { User } from '../../users/users.entity';
+import { type User } from '../../users/users.entity';
 import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
 
 describe('OrderHoldingsService', () => {

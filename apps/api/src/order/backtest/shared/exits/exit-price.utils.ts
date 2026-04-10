@@ -1,7 +1,7 @@
 import { ATR } from 'technicalindicators';
 
 import {
-  ExitConfig,
+  type ExitConfig,
   StopLossType,
   TakeProfitType,
   TrailingActivationType,

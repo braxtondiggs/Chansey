@@ -1,9 +1,9 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { NotFoundError, RateLimitError } from '@coingecko/coingecko-typescript';
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { CoinMarketDataService } from './coin-market-data.service';
 import { Coin } from './coin.entity';

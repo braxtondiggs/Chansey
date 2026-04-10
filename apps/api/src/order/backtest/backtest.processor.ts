@@ -110,7 +110,7 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
         );
 
         if (deleted.trades || deleted.signals || deleted.fills || deleted.snapshots) {
-          this.backtestStream.publishLog(
+          void this.backtestStream.publishLog(
             backtest.id,
             'warn',
             `Cleaned up ${deleted.trades + deleted.signals + deleted.fills + deleted.snapshots} orphaned records from previous run`
@@ -144,7 +144,7 @@ export class BacktestProcessor extends WorkerHost implements OnModuleInit {
         backtest.warningFlags = [...(backtest.warningFlags ?? []), ...warnings];
         await this.backtestRepository.save(backtest);
         for (const warning of warnings) {
-          this.backtestStream.publishLog(backtest.id, 'warn', `Warning: ${warning}`);
+          void this.backtestStream.publishLog(backtest.id, 'warn', `Warning: ${warning}`);
         }
       }
 

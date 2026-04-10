@@ -1,5 +1,5 @@
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
-import { UpdateCoinDto } from '../dto/update-coin.dto';
+import { type UpdateCoinDto } from '../dto/update-coin.dto';
 
 /**
  * Maps a CoinGecko coin detail response to an UpdateCoinDto.

@@ -1,18 +1,23 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { Response } from 'express';
+import { type Response } from 'express';
 
 import { BacktestMonitoringController } from './backtest-monitoring.controller';
 import { BacktestMonitoringService } from './backtest-monitoring.service';
-import { BacktestListQueryDto, ExportFormat, PaginatedBacktestListDto } from './dto/backtest-listing.dto';
-import { AverageMetricsDto, BacktestFiltersDto, BacktestOverviewDto, RecentActivityDto } from './dto/overview.dto';
-import { SignalAnalyticsDto, SignalOverallStatsDto } from './dto/signal-analytics.dto';
+import { type BacktestListQueryDto, ExportFormat, type PaginatedBacktestListDto } from './dto/backtest-listing.dto';
 import {
-  BacktestSlippageStatsDto,
-  ProfitabilityStatsDto,
-  TradeAnalyticsDto,
-  TradeDurationStatsDto,
-  TradeSummaryDto
+  type AverageMetricsDto,
+  type BacktestFiltersDto,
+  type BacktestOverviewDto,
+  type RecentActivityDto
+} from './dto/overview.dto';
+import { type SignalAnalyticsDto, type SignalOverallStatsDto } from './dto/signal-analytics.dto';
+import {
+  type BacktestSlippageStatsDto,
+  type ProfitabilityStatsDto,
+  type TradeAnalyticsDto,
+  type TradeDurationStatsDto,
+  type TradeSummaryDto
 } from './dto/trade-analytics.dto';
 
 import { BacktestStatus, BacktestType } from '../../order/backtest/backtest.entity';

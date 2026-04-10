@@ -1,6 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { TradeExecutionTask } from './trade-execution.task';
 

@@ -1,17 +1,17 @@
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { type Repository, type SelectQueryBuilder } from 'typeorm';
 
-import { WindowMetrics } from '@chansey/api-interfaces';
+import { type WindowMetrics } from '@chansey/api-interfaces';
 
 import { OptimizationEvaluationService } from './optimization-evaluation.service';
 
-import { Coin } from '../../coin/coin.entity';
-import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
-import { OHLCService } from '../../ohlc/ohlc.service';
-import { BacktestEngine } from '../../order/backtest/backtest-engine.service';
-import { PrecomputedWindowData } from '../../order/backtest/shared';
-import { WalkForwardService, WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
-import { WindowProcessor } from '../../scoring/walk-forward/window-processor';
-import { OptimizationConfig } from '../interfaces';
+import { type Coin } from '../../coin/coin.entity';
+import { type OHLCCandle } from '../../ohlc/ohlc-candle.entity';
+import { type OHLCService } from '../../ohlc/ohlc.service';
+import { type BacktestEngine } from '../../order/backtest/backtest-engine.service';
+import { type PrecomputedWindowData } from '../../order/backtest/shared';
+import { type WalkForwardService, type WalkForwardWindowConfig } from '../../scoring/walk-forward/walk-forward.service';
+import { type WindowProcessor } from '../../scoring/walk-forward/window-processor';
+import { type OptimizationConfig } from '../interfaces';
 
 describe('OptimizationEvaluationService', () => {
   let service: OptimizationEvaluationService;
@@ -141,7 +141,7 @@ describe('OptimizationEvaluationService', () => {
         callOrder.push(`${label}-end`);
         return createMockMetrics();
       });
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
+      windowProcessor.processWindow.mockReturnValue({ degradation: 0.05, overfittingDetected: false } as any);
 
       const result = await service.evaluateCombination(buildEvalParams());
 
@@ -154,7 +154,7 @@ describe('OptimizationEvaluationService', () => {
 
     it('should use pre-computed fast path when precomputedWindows are provided', async () => {
       backtestEngine.runOptimizationBacktestWithPrecomputed.mockResolvedValue(createMockMetrics());
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
+      windowProcessor.processWindow.mockReturnValue({ degradation: 0.05, overfittingDetected: false } as any);
 
       const precomputedWindows = new Map<string, PrecomputedWindowData>();
       const trainKey = `${defaultWindow.trainStartDate.getTime()}-${defaultWindow.trainEndDate.getTime()}`;
@@ -172,7 +172,7 @@ describe('OptimizationEvaluationService', () => {
 
     it('should fall back to bare executeOptimizationBacktest when no candles or precomputed data', async () => {
       backtestEngine.executeOptimizationBacktest.mockResolvedValue(createMockMetrics());
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
+      windowProcessor.processWindow.mockReturnValue({ degradation: 0.05, overfittingDetected: false } as any);
 
       const result = await service.evaluateCombination(
         buildEvalParams({ preloadedCandlesByCoin: undefined, precomputedWindows: undefined })
@@ -188,8 +188,8 @@ describe('OptimizationEvaluationService', () => {
       const window2 = createWindow(1, '2024-04-01', '2024-07-01', '2024-07-01', '2024-08-01');
       backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(createMockMetrics({ sharpeRatio: 2.0 }));
       windowProcessor.processWindow
-        .mockResolvedValueOnce({ degradation: 0.1, overfittingDetected: false } as any)
-        .mockResolvedValueOnce({ degradation: 0.4, overfittingDetected: true } as any);
+        .mockReturnValueOnce({ degradation: 0.1, overfittingDetected: false } as any)
+        .mockReturnValueOnce({ degradation: 0.4, overfittingDetected: true } as any);
 
       const result = await service.evaluateCombination(buildEvalParams({ windows: [defaultWindow, window2] }));
 
@@ -202,7 +202,7 @@ describe('OptimizationEvaluationService', () => {
 
     it('should invoke heartbeat callback for each window', async () => {
       backtestEngine.executeOptimizationBacktestWithData.mockResolvedValue(createMockMetrics());
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0.05, overfittingDetected: false } as any);
+      windowProcessor.processWindow.mockReturnValue({ degradation: 0.05, overfittingDetected: false } as any);
       const heartbeatFn = jest.fn().mockResolvedValue(undefined);
 
       await service.evaluateCombination(buildEvalParams({ heartbeatFn }));
@@ -212,7 +212,7 @@ describe('OptimizationEvaluationService', () => {
 
     it('should wrap backtest errors with date range context', async () => {
       backtestEngine.executeOptimizationBacktestWithData.mockRejectedValue(new Error('out of memory'));
-      windowProcessor.processWindow.mockResolvedValue({ degradation: 0, overfittingDetected: false } as any);
+      windowProcessor.processWindow.mockReturnValue({ degradation: 0, overfittingDetected: false } as any);
 
       await expect(service.evaluateCombination(buildEvalParams())).rejects.toThrow(
         /Backtest failed for.*out of memory/

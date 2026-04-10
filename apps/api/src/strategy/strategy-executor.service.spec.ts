@@ -1,16 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 
-import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-executor.service';
+import { type MarketData, StrategyExecutorService, type TradingSignal } from './strategy-executor.service';
 
 import {
-  TradingSignal as AlgorithmTradingSignal,
+  type TradingSignal as AlgorithmTradingSignal,
   SignalType
 } from '../algorithm/interfaces/algorithm-result.interface';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
-import { Coin } from '../coin/coin.entity';
+import { type Coin } from '../coin/coin.entity';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SignalThrottleService } from '../order/backtest/shared/throttle';

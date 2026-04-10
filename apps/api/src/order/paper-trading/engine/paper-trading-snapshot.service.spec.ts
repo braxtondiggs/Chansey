@@ -1,10 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { PaperTradingSnapshotService } from './paper-trading-snapshot.service';
 
-import { MetricsCalculatorService, Portfolio, TimeframeType } from '../../backtest/shared';
-import { PaperTradingOrder, PaperTradingOrderSide, PaperTradingSession, PaperTradingSnapshot } from '../entities';
+import { MetricsCalculatorService, type Portfolio, TimeframeType } from '../../backtest/shared';
+import { PaperTradingOrder, PaperTradingOrderSide, type PaperTradingSession, PaperTradingSnapshot } from '../entities';
 
 describe('PaperTradingSnapshotService', () => {
   let service: PaperTradingSnapshotService;

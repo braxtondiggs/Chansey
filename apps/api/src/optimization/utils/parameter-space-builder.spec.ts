@@ -1,6 +1,6 @@
 import { buildParameterSpace } from './parameter-space-builder';
 
-import { ParameterConstraint } from '../interfaces/parameter-space.interface';
+import { type ParameterConstraint } from '../interfaces/parameter-space.interface';
 
 describe('buildParameterSpace', () => {
   it('should convert integer numeric fields with step=1 and high priority', () => {

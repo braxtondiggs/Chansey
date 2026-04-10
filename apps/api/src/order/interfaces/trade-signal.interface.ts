@@ -1,6 +1,6 @@
-import { ExitConfig } from './exit-config.interface';
+import { type ExitConfig } from './exit-config.interface';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { type PriceSummary } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Trade signal interface for algorithm-generated signals

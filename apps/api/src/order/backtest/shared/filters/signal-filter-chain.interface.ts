@@ -1,4 +1,4 @@
-import { CompositeRegimeType } from '@chansey/api-interfaces';
+import { type CompositeRegimeType } from '@chansey/api-interfaces';
 
 export type TradingContext = 'paper' | 'backtest' | 'live';
 

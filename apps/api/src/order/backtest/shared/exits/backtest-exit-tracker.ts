@@ -5,7 +5,7 @@ import {
   calculateTrailingStopPrice
 } from './exit-price.utils';
 
-import { ExitConfig, TrailingActivationType, TrailingType } from '../../../interfaces/exit-config.interface';
+import { type ExitConfig, TrailingActivationType, TrailingType } from '../../../interfaces/exit-config.interface';
 import { resolveExitConfig } from '../../../utils/exit-config-merge.util';
 
 /**

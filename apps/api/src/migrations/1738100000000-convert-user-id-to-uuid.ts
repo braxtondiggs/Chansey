@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class ConvertUserIdToUuid1738100000000 implements MigrationInterface {
   name = 'ConvertUserIdToUuid1738100000000';

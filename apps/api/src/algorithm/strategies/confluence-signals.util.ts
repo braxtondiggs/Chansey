@@ -1,5 +1,5 @@
-import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
-import { ConfluenceConfig, ConfluenceScore, SignalType, TradingSignal } from '../interfaces';
+import { type ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
+import { type ConfluenceConfig, type ConfluenceScore, SignalType, type TradingSignal } from '../interfaces';
 
 /**
  * Generate trading signal from confluence score.

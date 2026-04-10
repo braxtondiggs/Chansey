@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class UpdateBacktestPrecisionAndIndexes1775195735827 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {

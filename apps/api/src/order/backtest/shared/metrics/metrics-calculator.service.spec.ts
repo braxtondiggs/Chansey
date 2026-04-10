@@ -1,6 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { getPeriodsPerYear, MetricsConfig, TimeframeType, TradeMetrics } from './metrics-calculator.interface';
+import {
+  getPeriodsPerYear,
+  type MetricsConfig,
+  TimeframeType,
+  type TradeMetrics
+} from './metrics-calculator.interface';
 import { MetricsCalculatorService } from './metrics-calculator.service';
 
 import { DrawdownCalculator } from '../../../../common/metrics/drawdown.calculator';

@@ -1,4 +1,4 @@
-import { NotificationEventType, NotificationSeverity } from '@chansey/api-interfaces';
+import { type NotificationEventType, type NotificationSeverity } from '@chansey/api-interfaces';
 
 /**
  * Event name constants for EventEmitter2

@@ -1,12 +1,12 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { ObjectLiteral, Repository } from 'typeorm';
+import { type ObjectLiteral, type Repository } from 'typeorm';
 
 import { AuditEventType } from '@chansey/api-interfaces';
 
-import { HaltTradingDto } from './dto/halt-trading.dto';
-import { ResumeTradingDto } from './dto/resume-trading.dto';
+import { type HaltTradingDto } from './dto/halt-trading.dto';
+import { type ResumeTradingDto } from './dto/resume-trading.dto';
 import { TradingState } from './trading-state.entity';
 import { TradingStateService } from './trading-state.service';
 

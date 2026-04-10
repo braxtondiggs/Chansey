@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddSlippageColumns1735900000000 implements MigrationInterface {
   name = 'AddSlippageColumns1735900000000';

@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { FailedJobSeverity } from './entities/failed-job-log.entity';
 import { FailedJobAlertService } from './failed-job-alert.service';

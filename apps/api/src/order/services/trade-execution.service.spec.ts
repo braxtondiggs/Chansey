@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { MarketType } from '@chansey/api-interfaces';
@@ -134,7 +134,7 @@ describe('TradeExecutionService', () => {
       convertCcxtOrderToEntity: jest
         .fn()
         .mockImplementation(
-          async (
+          (
             ccxtOrder: any,
             _user: any,
             _exchange: any,

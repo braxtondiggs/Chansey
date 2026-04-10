@@ -24,7 +24,7 @@ export class DrawdownDriftDetector {
   private readonly HIGH_THRESHOLD = 0.5; // 50% worse
   private readonly CRITICAL_THRESHOLD = 0.75; // 75% worse
 
-  async detect(deployment: Deployment, latestMetric: PerformanceMetric): Promise<DriftAlert | null> {
+  detect(deployment: Deployment, latestMetric: PerformanceMetric): DriftAlert | null {
     const expectedMaxDrawdown = deployment.metadata?.backtestMaxDrawdown || 0.3; // Default 30%
     const maxDrawdownLimit = Number(deployment.maxDrawdownLimit);
 

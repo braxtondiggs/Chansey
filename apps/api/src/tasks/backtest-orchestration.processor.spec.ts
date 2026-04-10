@@ -1,7 +1,7 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { BacktestOrchestrationProcessor } from './backtest-orchestration.processor';
-import { OrchestrationJobData, OrchestrationResult } from './dto/backtest-orchestration.dto';
+import { type OrchestrationJobData, type OrchestrationResult } from './dto/backtest-orchestration.dto';
 
 describe('BacktestOrchestrationProcessor', () => {
   const mockService = {

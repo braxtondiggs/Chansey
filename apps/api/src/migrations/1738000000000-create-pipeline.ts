@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class CreatePipeline1738000000000 implements MigrationInterface {
   name = 'CreatePipeline1738000000000';

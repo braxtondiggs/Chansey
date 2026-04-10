@@ -1,8 +1,8 @@
 import { getQueueToken } from '@nestjs/bullmq';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 import * as ccxt from 'ccxt';
 import { DataSource } from 'typeorm';
 
@@ -14,7 +14,7 @@ import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
   DEFAULT_EXIT_CONFIG,
-  ExitConfig,
+  type ExitConfig,
   PositionExitStatus,
   TrailingActivationType,
   TrailingType
@@ -104,7 +104,7 @@ describe('PositionMonitorTask', () => {
   };
 
   const mockDataSource = {
-    transaction: jest.fn((cb) => cb(mockManager))
+    transaction: jest.fn(async (cb) => cb(mockManager))
   };
 
   beforeEach(async () => {

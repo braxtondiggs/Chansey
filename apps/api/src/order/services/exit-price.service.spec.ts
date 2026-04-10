@@ -1,14 +1,14 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { ExitPriceService } from './exit-price.service';
 
 import { IndicatorService } from '../../algorithm/indicators/indicator.service';
 import {
-  CalculatedExitPrices,
+  type CalculatedExitPrices,
   DEFAULT_EXIT_CONFIG,
   DEFAULT_EXIT_PRICE_VALIDATION_LIMITS,
-  ExchangeMarketLimits,
-  ExitConfig,
+  type ExchangeMarketLimits,
+  type ExitConfig,
   ExitPriceValidationErrorCode,
   StopLossType,
   TakeProfitType,

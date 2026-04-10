@@ -86,7 +86,7 @@ export class AlgorithmController {
     status: HttpStatus.OK,
     description: 'List of strategies retrieved successfully.'
   })
-  async getStrategies() {
+  getStrategies() {
     const strategies = this.algorithmRegistry.getAllStrategies();
     return strategies.map((strategy) => ({
       id: strategy.id,

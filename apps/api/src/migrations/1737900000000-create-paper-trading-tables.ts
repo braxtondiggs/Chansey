@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class CreatePaperTradingTables1737900000000 implements MigrationInterface {
   name = 'CreatePaperTradingTables1737900000000';

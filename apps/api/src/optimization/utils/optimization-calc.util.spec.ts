@@ -1,6 +1,6 @@
 import { computeAdaptiveStepDays, computeWarmupDays, daysBetween } from './optimization-calc.util';
 
-import { ParameterSpace } from '../interfaces';
+import { type ParameterSpace } from '../interfaces';
 
 const createValidSpace = (overrides: Partial<ParameterSpace> = {}): ParameterSpace => ({
   strategyType: 'test-strategy',

@@ -1,6 +1,6 @@
 import { resolveExitConfig } from './exit-config-merge.util';
 
-import { DEFAULT_EXIT_CONFIG, ExitConfig, StopLossType } from '../interfaces/exit-config.interface';
+import { DEFAULT_EXIT_CONFIG, type ExitConfig, StopLossType } from '../interfaces/exit-config.interface';
 
 describe('resolveExitConfig', () => {
   it('should return DEFAULT_EXIT_CONFIG when called with no layers', () => {

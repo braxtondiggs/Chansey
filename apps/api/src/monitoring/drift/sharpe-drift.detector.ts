@@ -25,7 +25,7 @@ export class SharpeDriftDetector {
   private readonly HIGH_THRESHOLD = 0.5; // 50% degradation
   private readonly CRITICAL_THRESHOLD = 0.7; // 70% degradation
 
-  async detect(deployment: Deployment, latestMetric: PerformanceMetric): Promise<DriftAlert | null> {
+  detect(deployment: Deployment, latestMetric: PerformanceMetric): DriftAlert | null {
     const expectedSharpe = deployment.metadata?.backtestSharpe || deployment.liveSharpeRatio;
 
     if (!expectedSharpe || !latestMetric.sharpeRatio) {

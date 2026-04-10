@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { NotificationEventType } from '@chansey/api-interfaces';
 
@@ -9,7 +9,7 @@ import { EmailNotificationService } from './channels/email-notification.service'
 import { PushNotificationService } from './channels/push-notification.service';
 import { SmsNotificationService } from './channels/sms-notification.service';
 import { Notification } from './entities/notification.entity';
-import { NotificationJobData } from './interfaces/notification-events.interface';
+import { type NotificationJobData } from './interfaces/notification-events.interface';
 import { NotificationProcessor } from './notification.processor';
 
 function makeJobData(overrides: Partial<NotificationJobData> = {}): NotificationJobData {

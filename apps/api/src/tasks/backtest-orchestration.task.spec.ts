@@ -1,7 +1,7 @@
 import { getQueueToken } from '@nestjs/bullmq';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { Queue } from 'bullmq';
+import { type Queue } from 'bullmq';
 
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';

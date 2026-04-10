@@ -1,15 +1,15 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { PipelineProgressionService } from './pipeline-progression.service';
 import { PipelineStageExecutionService } from './pipeline-stage-execution.service';
 
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { ScoringService } from '../../scoring/scoring.service';
-import { User } from '../../users/users.entity';
+import { type User } from '../../users/users.entity';
 import { Pipeline } from '../entities/pipeline.entity';
 import {
   DEFAULT_PROGRESSION_RULES,

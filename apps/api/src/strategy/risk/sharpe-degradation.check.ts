@@ -34,7 +34,7 @@ export class SharpeDegradationCheck implements IRiskCheck {
         passed: true,
         actualValue: 'N/A',
         threshold: 'N/A',
-        severity: 'low',
+        severity: 'low' as const,
         message: 'Sharpe ratio data not available yet'
       };
     }

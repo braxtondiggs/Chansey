@@ -1,12 +1,12 @@
 import { Logger } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { DataSource } from 'typeorm';
 
 import { OcoOrderService } from './oco-order.service';
 
 import { CoinService } from '../../coin/coin.service';
-import { User } from '../../users/users.entity';
+import { type User } from '../../users/users.entity';
 import { OrderSide, OrderType } from '../order.entity';
 
 describe('OcoOrderService', () => {

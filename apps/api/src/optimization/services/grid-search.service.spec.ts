@@ -1,6 +1,6 @@
 import { GridSearchService } from './grid-search.service';
 
-import { ParameterConstraint, ParameterDefinition, ParameterSpace } from '../interfaces';
+import { type ParameterConstraint, type ParameterDefinition, type ParameterSpace } from '../interfaces';
 
 // Helper to create a valid ParameterDefinition with required fields
 const createParam = (

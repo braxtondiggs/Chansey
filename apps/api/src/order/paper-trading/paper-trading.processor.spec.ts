@@ -1,4 +1,4 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { PaperTradingStatus } from './entities';
 import { PaperTradingJobType } from './paper-trading.job-data';

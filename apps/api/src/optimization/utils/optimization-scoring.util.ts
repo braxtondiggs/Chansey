@@ -1,7 +1,7 @@
-import { WindowMetrics } from '@chansey/api-interfaces';
+import { type WindowMetrics } from '@chansey/api-interfaces';
 
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
-import { OptimizationConfig } from '../interfaces';
+import { type OptimizationConfig } from '../interfaces';
 
 export const ZERO_TRADE_PENALTY = -10;
 

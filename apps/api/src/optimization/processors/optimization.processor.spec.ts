@@ -1,10 +1,10 @@
-import { ConfigService } from '@nestjs/config';
+import { type ConfigService } from '@nestjs/config';
 
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { OptimizationProcessor } from './optimization.processor';
 
-import { OptimizationOrchestratorService } from '../services';
+import { type OptimizationOrchestratorService } from '../services';
 
 describe('OptimizationProcessor', () => {
   let processor: OptimizationProcessor;

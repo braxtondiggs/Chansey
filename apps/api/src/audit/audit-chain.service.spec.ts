@@ -1,7 +1,7 @@
 import { AuditEventType } from '@chansey/api-interfaces';
 
 import { AuditChainService } from './audit-chain.service';
-import { AuditLog } from './entities/audit-log.entity';
+import { type AuditLog } from './entities/audit-log.entity';
 
 import { CryptoService } from '../common/crypto.service';
 

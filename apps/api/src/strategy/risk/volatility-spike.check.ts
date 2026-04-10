@@ -34,7 +34,7 @@ export class VolatilitySpikeCheck implements IRiskCheck {
         passed: true,
         actualValue: 'N/A',
         threshold: 'N/A',
-        severity: 'low',
+        severity: 'low' as const,
         message: 'Volatility data not available yet'
       };
     }

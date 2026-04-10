@@ -1,6 +1,6 @@
 import { Decimal } from 'decimal.js';
 
-import { ExchangeBalanceDto } from '../balance/dto';
+import { type ExchangeBalanceDto } from '../balance/dto';
 
 /**
  * Calculate total free (available) USD value across all exchanges.

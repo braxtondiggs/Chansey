@@ -1,4 +1,4 @@
-import { BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, type Logger } from '@nestjs/common';
 
 import { NotFoundException } from '../../common/exceptions';
 import { toErrorInfo } from '../../shared/error.util';

@@ -3,7 +3,7 @@ import './instrumentation';
 
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import compression from '@fastify/compress';
@@ -265,4 +265,4 @@ async function startServer(app: NestFastifyApplication): Promise<void> {
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }
 
-bootstrap();
+void bootstrap();

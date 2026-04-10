@@ -1,6 +1,6 @@
-import * as ccxt from 'ccxt';
+import type * as ccxt from 'ccxt';
 
-import { Order } from '../order.entity';
+import { type Order } from '../order.entity';
 
 /**
  * Convert CCXT Trade objects to CCXT Order objects.

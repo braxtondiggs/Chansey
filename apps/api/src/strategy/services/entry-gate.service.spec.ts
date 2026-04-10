@@ -1,8 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { SignalReasonCode } from '@chansey/api-interfaces';
 
-import { EntryGateContext, EntryGateService } from './entry-gate.service';
+import { type EntryGateContext, EntryGateService } from './entry-gate.service';
 
 import { MetricsService } from '../../metrics/metrics.service';
 import { TradeCooldownService } from '../../shared/trade-cooldown.service';

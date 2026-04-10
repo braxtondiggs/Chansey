@@ -1,7 +1,7 @@
 import { CoinDetailSyncService } from './coin-detail-sync.service';
 
-import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
-import { CoinService } from '../coin.service';
+import { type CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { type CoinService } from '../coin.service';
 
 // Mock CoinGecko SDK calls
 const mockCoinId = jest.fn();
@@ -109,7 +109,7 @@ describe('CoinDetailSyncService', () => {
     mockCoinId.mockResolvedValue({ market_data: {} });
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     await promise;
 
     expect(btc.geckoRank).toBe(3);
@@ -125,7 +125,7 @@ describe('CoinDetailSyncService', () => {
     mockCoinId.mockResolvedValue({ market_data: {} });
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     await promise;
 
     expect(btc.geckoRank).toBe(5);
@@ -139,7 +139,7 @@ describe('CoinDetailSyncService', () => {
     mockCoinId.mockResolvedValue(geckoResponse);
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     await promise;
 
     expect(mockMapDetail).toHaveBeenCalledWith(geckoResponse, 7, 'btc');
@@ -152,7 +152,7 @@ describe('CoinDetailSyncService', () => {
     mockCoinId.mockRejectedValue(new Error('Rate limited'));
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     const result = await promise;
 
     expect(coinService.update).not.toHaveBeenCalled();
@@ -167,13 +167,13 @@ describe('CoinDetailSyncService', () => {
     coinService.getCoins.mockResolvedValue(coins);
     mockTrending.mockResolvedValue({ coins: [] });
 
-    mockCoinId.mockImplementation((id: string) => {
+    mockCoinId.mockImplementation(async (id: string) => {
       if (id === 'bad-coin') throw new Error('API error');
       return { market_data: {} };
     });
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     const result = await promise;
 
     expect(result).toEqual({
@@ -192,7 +192,7 @@ describe('CoinDetailSyncService', () => {
     coinService.update.mockRejectedValue(new Error('DB write failed'));
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     const result = await promise;
 
     expect(result).toEqual({ totalCoins: 1, updatedSuccessfully: 0, errors: 1 });
@@ -204,7 +204,7 @@ describe('CoinDetailSyncService', () => {
     mockCoinId.mockResolvedValue({ market_data: {} });
 
     const promise = service.syncCoinDetails();
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     const result = await promise;
 
     expect(result.updatedSuccessfully).toBe(1);
@@ -228,7 +228,7 @@ describe('CoinDetailSyncService', () => {
 
     const progress = jest.fn();
     const promise = service.syncCoinDetails(progress);
-    jest.runAllTimersAsync();
+    await jest.runAllTimersAsync();
     await promise;
 
     const calls = progress.mock.calls.map(([v]: [number]) => v);

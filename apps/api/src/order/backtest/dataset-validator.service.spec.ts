@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 
 import { DatasetValidatorService } from './dataset-validator.service';
-import { MarketDataSet } from './market-data-set.entity';
+import { type MarketDataSet } from './market-data-set.entity';
 
 describe('DatasetValidatorService', () => {
   let service: DatasetValidatorService;

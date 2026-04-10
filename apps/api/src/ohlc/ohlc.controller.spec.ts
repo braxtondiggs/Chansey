@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { OHLCController } from './ohlc.controller';
-import { OHLCService, SyncStatus } from './ohlc.service';
+import { OHLCService, type SyncStatus } from './ohlc.service';
 import { ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
 import { OHLCBackfillService } from './services/ohlc-backfill.service';
 

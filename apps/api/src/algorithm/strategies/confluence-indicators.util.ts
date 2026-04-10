@@ -1,6 +1,6 @@
-import { CandleData } from '../../ohlc/ohlc-candle.entity';
-import { IIndicatorProvider, IndicatorService } from '../indicators';
-import { AlgorithmContext, ConfluenceConfig } from '../interfaces';
+import { type CandleData } from '../../ohlc/ohlc-candle.entity';
+import { type IIndicatorProvider, type IndicatorService } from '../indicators';
+import { type AlgorithmContext, type ConfluenceConfig } from '../interfaces';
 
 export interface ResolvedIndicators {
   ema12: number[] | null;

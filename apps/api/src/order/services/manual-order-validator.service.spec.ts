@@ -1,6 +1,6 @@
 import { ManualOrderValidatorService } from './manual-order-validator.service';
 
-import { PlaceManualOrderDto } from '../dto/place-manual-order.dto';
+import { type PlaceManualOrderDto } from '../dto/place-manual-order.dto';
 import { OrderSide, OrderType, TrailingType } from '../order.entity';
 
 describe('ManualOrderValidatorService', () => {

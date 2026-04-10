@@ -28,14 +28,14 @@ export class BacktestDatasetService implements OnModuleInit, OnModuleDestroy {
     private readonly coinService: CoinService
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     // Create/update default dataset on startup (non-blocking)
     this.ensureDefaultDatasetExists().catch((err) => {
       this.logger.warn(`Failed to initialize default dataset on startup: ${err.message}`);
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): void {
     this.clearDatasetCache();
   }
 

@@ -65,7 +65,7 @@ export class BacktestPauseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy() {
+  onModuleDestroy() {
     // Don't close the connection - it's managed by BullMQ
     this.redis = null;
     this.logger.log('BacktestPauseService cleaned up');

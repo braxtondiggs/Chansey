@@ -1,8 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type Repository } from 'typeorm';
 
 import { PipelineEventHandlerService } from './pipeline-event-handler.service';
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
@@ -10,8 +10,8 @@ import { PipelineProgressionService } from './pipeline-progression.service';
 import { PipelineStageExecutionService } from './pipeline-stage-execution.service';
 
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
-import { User } from '../../users/users.entity';
-import { CreatePipelineInput } from '../dto';
+import { type User } from '../../users/users.entity';
+import { type CreatePipelineInput } from '../dto';
 import { Pipeline } from '../entities/pipeline.entity';
 import { DEFAULT_PROGRESSION_RULES, PipelineStage, PipelineStatus } from '../interfaces';
 

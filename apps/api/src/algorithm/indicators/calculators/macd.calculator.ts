@@ -2,7 +2,7 @@ import { MACD } from 'technicalindicators';
 
 import { BaseIndicatorCalculator } from './base-indicator.calculator';
 
-import { CalculatorMACDOptions, MACDDataPoint } from '../indicator.interface';
+import { type CalculatorMACDOptions, type MACDDataPoint } from '../indicator.interface';
 
 /**
  * Moving Average Convergence Divergence (MACD) Calculator

@@ -1,11 +1,11 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { DataSource } from 'typeorm';
 
 import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
-import { BacktestFinalMetrics, BacktestResultService } from './backtest-result.service';
+import { type BacktestFinalMetrics, BacktestResultService } from './backtest-result.service';
 import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
 import { BacktestTrade } from './backtest-trade.entity';
@@ -539,7 +539,7 @@ describe('BacktestResultService', () => {
         .mockReturnValueOnce(mockSnapshotRepo); // Fourth call for BacktestPerformanceSnapshot
 
       // Make transaction execute the callback with mock manager
-      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
+      mockDataSource.transaction.mockImplementation((cb: any) => cb(mockTransactionManager));
 
       const result = await service.cleanupOrphanedResults('backtest-1', {
         trades: 2,
@@ -597,7 +597,7 @@ describe('BacktestResultService', () => {
         .mockReturnValueOnce(mockFillRepo)
         .mockReturnValueOnce(mockSnapshotRepo);
 
-      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
+      mockDataSource.transaction.mockImplementation((cb: any) => cb(mockTransactionManager));
 
       const result = await service.cleanupOrphanedResults('backtest-2', {
         trades: 1,
@@ -637,7 +637,7 @@ describe('BacktestResultService', () => {
         .mockReturnValueOnce(mockSnapshotRepo);
 
       // Transaction should throw when callback throws
-      mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
+      mockDataSource.transaction.mockImplementation((cb: any) => cb(mockTransactionManager));
 
       await expect(
         service.cleanupOrphanedResults('backtest-3', {

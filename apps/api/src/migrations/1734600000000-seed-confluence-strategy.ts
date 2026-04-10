@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class SeedConfluenceStrategy1734600000000 implements MigrationInterface {
   name = 'SeedConfluenceStrategy1734600000000';

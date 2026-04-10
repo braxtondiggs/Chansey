@@ -1,8 +1,8 @@
 import { Logger, NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { In, Repository } from 'typeorm';
+import { In, type Repository } from 'typeorm';
 
 import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
@@ -11,7 +11,7 @@ import { OrderValidationService } from './services/order-validation.service';
 import { CoinService } from '../coin/coin.service';
 import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
-import { User } from '../users/users.entity';
+import { type User } from '../users/users.entity';
 
 describe('OrderService', () => {
   let service: OrderService;

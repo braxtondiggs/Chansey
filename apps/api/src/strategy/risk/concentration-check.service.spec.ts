@@ -1,4 +1,4 @@
-import { AssetAllocation, ConcentrationCheckService } from './concentration-check.service';
+import { type AssetAllocation, ConcentrationCheckService } from './concentration-check.service';
 
 describe('ConcentrationCheckService', () => {
   let service: ConcentrationCheckService;

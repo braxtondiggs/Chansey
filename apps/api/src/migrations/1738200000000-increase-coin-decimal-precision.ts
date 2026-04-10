@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class IncreaseCoinDecimalPrecision1738200000000 implements MigrationInterface {
   name = 'IncreaseCoinDecimalPrecision1738200000000';

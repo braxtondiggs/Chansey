@@ -1,6 +1,6 @@
 import { ExchangeOHLCService } from './exchange-ohlc.service';
 
-import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { type ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import * as retryUtil from '../../shared/retry.util';
 
 const createClient = (overrides: Partial<any> = {}) => ({
@@ -53,7 +53,7 @@ describe('ExchangeOHLCService', () => {
       [1700000000000, 1, 2, 0.5, 1.5, 10],
       [1700003600000, 1.5, 2.5, 1, 2, 12]
     ];
-    client.loadMarkets.mockImplementation(async () => {
+    client.loadMarkets.mockImplementation(() => {
       client.markets = { 'BTC/USD': {} };
     });
     client.fetchOHLCV.mockResolvedValue(candles as any);

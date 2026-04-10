@@ -8,11 +8,11 @@
 import { getMaxLeverage } from '@chansey/api-interfaces';
 
 import {
-  HistoricalStageConfig,
-  LiveReplayStageConfig,
-  OptimizationStageConfig,
-  PaperTradingStageConfig,
-  PipelineStageConfig
+  type HistoricalStageConfig,
+  type LiveReplayStageConfig,
+  type OptimizationStageConfig,
+  type PaperTradingStageConfig,
+  type PipelineStageConfig
 } from '../../pipeline/interfaces';
 import { DEFAULT_RISK_LEVEL } from '../../risk/risk.constants';
 

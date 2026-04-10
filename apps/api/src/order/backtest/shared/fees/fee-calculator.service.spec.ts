@@ -1,6 +1,6 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { DEFAULT_FEE_CONFIG, FeeConfig, FeeType } from './fee-calculator.interface';
+import { DEFAULT_FEE_CONFIG, type FeeConfig, FeeType } from './fee-calculator.interface';
 import { FeeCalculatorService } from './fee-calculator.service';
 
 describe('FeeCalculatorService', () => {

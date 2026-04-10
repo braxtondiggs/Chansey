@@ -1,8 +1,8 @@
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { DeploymentStatus } from '@chansey/api-interfaces';
 
-import { ConcentrationRiskCheck } from './concentration-risk.check';
+import { type ConcentrationRiskCheck } from './concentration-risk.check';
 import { ConsecutiveLossesCheck } from './consecutive-losses.check';
 import { DailyLossLimitCheck } from './daily-loss-limit.check';
 import { DrawdownBreachCheck } from './drawdown-breach.check';
@@ -10,10 +10,10 @@ import { RiskManagementService } from './risk-management.service';
 import { SharpeDegradationCheck } from './sharpe-degradation.check';
 import { VolatilitySpikeCheck } from './volatility-spike.check';
 
-import { AuditService } from '../../audit/audit.service';
-import { DeploymentService } from '../deployment.service';
-import { Deployment } from '../entities/deployment.entity';
-import { PerformanceMetric } from '../entities/performance-metric.entity';
+import { type AuditService } from '../../audit/audit.service';
+import { type DeploymentService } from '../deployment.service';
+import { type Deployment } from '../entities/deployment.entity';
+import { type PerformanceMetric } from '../entities/performance-metric.entity';
 
 // Mock factories
 const createDeployment = (overrides: Partial<Deployment> = {}): Deployment =>

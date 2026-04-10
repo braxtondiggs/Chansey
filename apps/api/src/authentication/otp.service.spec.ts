@@ -1,15 +1,15 @@
 import { NotFoundException } from '@nestjs/common';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
-import { SecurityAuditService } from './audit';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { type SecurityAuditService } from './audit';
+import { type VerifyOtpDto } from './dto/verify-otp.dto';
 import { OtpService } from './otp.service';
-import { PasswordService } from './password.service';
+import { type PasswordService } from './password.service';
 
-import { EmailService } from '../email/email.service';
-import { User } from '../users/users.entity';
-import { UsersService } from '../users/users.service';
+import { type EmailService } from '../email/email.service';
+import { type User } from '../users/users.entity';
+import { type UsersService } from '../users/users.service';
 
 const makeUser = (overrides: Partial<User> = {}): User =>
   ({

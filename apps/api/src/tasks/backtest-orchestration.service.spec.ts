@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import {
@@ -11,7 +11,7 @@ import {
   RISK_CONFIG_MATRIX
 } from './dto/backtest-orchestration.dto';
 
-import { Algorithm, AlgorithmCategory, AlgorithmStatus } from '../algorithm/algorithm.entity';
+import { type Algorithm, AlgorithmCategory, AlgorithmStatus } from '../algorithm/algorithm.entity';
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
@@ -19,7 +19,7 @@ import { BacktestService } from '../order/backtest/backtest.service';
 import { MarketDataSet, MarketDataTimeframe } from '../order/backtest/market-data-set.entity';
 import { SlippageModelType } from '../order/backtest/shared/slippage';
 import { DEFAULT_RISK_LEVEL } from '../risk/risk.constants';
-import { Risk } from '../risk/risk.entity';
+import { type Risk } from '../risk/risk.entity';
 import { User } from '../users/users.entity';
 import { UsersService } from '../users/users.service';
 

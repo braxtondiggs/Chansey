@@ -5,7 +5,7 @@
  * initialization, updates, snapshots, and checkpoint serialization.
  */
 
-import { Position } from '../positions';
+import { type Position } from '../positions';
 
 /**
  * Portfolio state representing current holdings and cash

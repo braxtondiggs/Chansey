@@ -1,11 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { DataSource } from 'typeorm';
 
 import { OrderCleanupService } from './order-cleanup.service';
 
-import { OrderCleanupConfig, orderCleanupConfig } from '../config/order-cleanup.config';
+import { type OrderCleanupConfig, orderCleanupConfig } from '../config/order-cleanup.config';
 import { OpportunitySellEvaluation } from '../entities/opportunity-sell-evaluation.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import { Order, OrderStatus } from '../order.entity';
@@ -120,7 +120,7 @@ describe('OrderCleanupService', () => {
     mockTxDeleteQb.execute.mockResolvedValue({ affected: 0 });
 
     // Default transaction implementation: execute the callback
-    mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
+    mockDataSource.transaction.mockImplementation((cb: any) => cb(mockTransactionManager));
 
     // Default transaction manager query builder behavior
     // Calls 1-3 = UPDATE (null out SL, TP, trailing FKs), calls 4-5 = DELETE PositionExits + Orders
@@ -174,7 +174,7 @@ describe('OrderCleanupService', () => {
       // Transaction: update returns 0 affected, delete PE returns 0, delete orders returns 3
       mockTxUpdateQb.execute.mockResolvedValue({ affected: 0 });
       let deleteCallCount = 0;
-      mockTxDeleteQb.execute.mockImplementation(async () => {
+      mockTxDeleteQb.execute.mockImplementation(() => {
         deleteCallCount++;
         if (deleteCallCount === 1) return { affected: 0 }; // PE deletes
         return { affected: 3 }; // Order deletes
@@ -199,7 +199,7 @@ describe('OrderCleanupService', () => {
       mockPeQb.getMany.mockResolvedValue([]);
 
       let deleteCallCount = 0;
-      mockTxDeleteQb.execute.mockImplementation(async () => {
+      mockTxDeleteQb.execute.mockImplementation(() => {
         deleteCallCount++;
         if (deleteCallCount === 1) return { affected: 0 };
         return { affected: 1 };
@@ -226,7 +226,7 @@ describe('OrderCleanupService', () => {
         .mockResolvedValueOnce({ affected: 1 })
         .mockResolvedValueOnce({ affected: 0 });
       let deleteCallCount = 0;
-      mockTxDeleteQb.execute.mockImplementation(async () => {
+      mockTxDeleteQb.execute.mockImplementation(() => {
         deleteCallCount++;
         if (deleteCallCount === 1) return { affected: 0 };
         return { affected: 1 };
@@ -247,7 +247,7 @@ describe('OrderCleanupService', () => {
 
       mockTxUpdateQb.execute.mockResolvedValue({ affected: 0 });
       let deleteCallCount = 0;
-      mockTxDeleteQb.execute.mockImplementation(async () => {
+      mockTxDeleteQb.execute.mockImplementation(() => {
         deleteCallCount++;
         if (deleteCallCount === 1) return { affected: 3 }; // PE deletes
         return { affected: 1 }; // Order deletes
@@ -280,7 +280,7 @@ describe('OrderCleanupService', () => {
       mockPeQb.getMany.mockResolvedValue([{ entryOrderId: 'order-1' }]);
 
       let deleteCallCount = 0;
-      mockTxDeleteQb.execute.mockImplementation(async () => {
+      mockTxDeleteQb.execute.mockImplementation(() => {
         deleteCallCount++;
         if (deleteCallCount === 1) return { affected: 0 };
         return { affected: 1 }; // Only order-2 deleted
@@ -340,7 +340,7 @@ describe('OrderCleanupService', () => {
       mockPeQb.getMany.mockResolvedValue([]);
 
       let txCallCount = 0;
-      mockDataSource.transaction.mockImplementation(async (cb: any) => {
+      mockDataSource.transaction.mockImplementation((cb: any) => {
         txCallCount++;
         // Reset the call count tracker for each transaction
         let innerCallCount = 0;

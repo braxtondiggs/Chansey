@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 

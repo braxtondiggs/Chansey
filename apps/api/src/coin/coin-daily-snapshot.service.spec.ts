@@ -1,11 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { CoinDailySnapshot } from './coin-daily-snapshot.entity';
 import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
-import { Coin } from './coin.entity';
+import { type Coin } from './coin.entity';
 
 const createTestCoin = (overrides: Partial<Coin> = {}): Coin =>
   ({

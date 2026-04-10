@@ -7,7 +7,7 @@ import { DeploymentStatus, StrategyStatus } from '@chansey/api-interfaces';
 import { DeploymentMetricsService } from './deployment-metrics.service';
 import { DeploymentService } from './deployment.service';
 import { Deployment } from './entities/deployment.entity';
-import { PerformanceMetric } from './entities/performance-metric.entity';
+import { type PerformanceMetric } from './entities/performance-metric.entity';
 import { StrategyConfig } from './entities/strategy-config.entity';
 import { StrategyScore } from './entities/strategy-score.entity';
 

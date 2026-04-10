@@ -1,6 +1,6 @@
-import { Deployment } from '../../strategy/entities/deployment.entity';
+import { type Deployment } from '../../strategy/entities/deployment.entity';
 import { escapeHtml } from '../../utils/sanitize.util';
-import { DriftAlert } from '../entities/drift-alert.entity';
+import { type DriftAlert } from '../entities/drift-alert.entity';
 
 /**
  * Drift Alert Templates

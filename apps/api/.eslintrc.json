@@ -9,8 +9,7 @@
     {
       "files": ["*.ts", "*.tsx"],
       "rules": {
-        "@typescript-eslint/no-floating-promises": "warn",
-        "@typescript-eslint/require-await": "warn"
+        "@typescript-eslint/no-floating-promises": "warn"
       }
     },
     {

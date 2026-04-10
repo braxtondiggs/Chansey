@@ -25,7 +25,7 @@ export class WinRateDriftDetector {
   private readonly CRITICAL_THRESHOLD = 0.4; // 40 percentage points
   private readonly MINIMUM_WIN_RATE = 0.4; // 40% absolute minimum
 
-  async detect(deployment: Deployment, latestMetric: PerformanceMetric): Promise<DriftAlert | null> {
+  detect(deployment: Deployment, latestMetric: PerformanceMetric): DriftAlert | null {
     const expectedWinRate = deployment.metadata?.backtestWinRate || 0.55; // Default 55%
 
     if (!latestMetric.winRate) {

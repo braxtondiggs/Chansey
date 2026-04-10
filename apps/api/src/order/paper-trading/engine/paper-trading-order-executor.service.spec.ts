@@ -1,4 +1,4 @@
-import { PaperTradingOrderExecutorService, ExecuteOrderContext } from './paper-trading-order-executor.service';
+import { PaperTradingOrderExecutorService, type ExecuteOrderContext } from './paper-trading-order-executor.service';
 
 import { SignalType as AlgoSignalType } from '../../../algorithm/interfaces';
 import { PaperTradingOrderSide } from '../entities';

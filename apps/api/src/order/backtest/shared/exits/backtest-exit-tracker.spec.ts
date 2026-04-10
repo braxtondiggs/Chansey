@@ -2,7 +2,7 @@ import { BacktestExitTracker } from './backtest-exit-tracker';
 import { DEFAULT_BACKTEST_EXIT_CONFIG } from './exit-price.utils';
 
 import {
-  ExitConfig,
+  type ExitConfig,
   StopLossType,
   TakeProfitType,
   TrailingActivationType,

@@ -1,6 +1,6 @@
 import { registerAs } from '@nestjs/config';
 
-import { DEFAULT_PROGRESSION_RULES, PipelineProgressionRules } from './interfaces/pipeline-config.interface';
+import { DEFAULT_PROGRESSION_RULES, type PipelineProgressionRules } from './interfaces/pipeline-config.interface';
 
 export interface PipelineConfig {
   queue: string;

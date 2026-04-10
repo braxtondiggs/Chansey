@@ -1,9 +1,9 @@
-import { SchedulerRegistry } from '@nestjs/schedule';
+import { type SchedulerRegistry } from '@nestjs/schedule';
 
 import { BaseAlgorithmStrategy } from './base-algorithm-strategy';
 
 import { AlgorithmStatus } from '../algorithm.entity';
-import { AlgorithmContext, AlgorithmResult, SignalType, TradingSignal } from '../interfaces';
+import { type AlgorithmContext, type AlgorithmResult, SignalType, type TradingSignal } from '../interfaces';
 
 /** Concrete subclass that exposes protected methods for testing. */
 class TestStrategy extends BaseAlgorithmStrategy {

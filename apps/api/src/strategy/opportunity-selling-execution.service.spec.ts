@@ -1,6 +1,6 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { UserStrategyPosition } from './entities/user-strategy-position.entity';
+import { type UserStrategyPosition } from './entities/user-strategy-position.entity';
 import { OpportunitySellingExecutionService } from './opportunity-selling-execution.service';
 import { PositionTrackingService } from './position-tracking.service';
 
@@ -11,7 +11,7 @@ import { OpportunitySellDecision } from '../order/interfaces/opportunity-selling
 import { OrderService } from '../order/order.service';
 import { OpportunitySellService } from '../order/services/opportunity-sell.service';
 import { TradeCooldownService } from '../shared/trade-cooldown.service';
-import { User } from '../users/users.entity';
+import { type User } from '../users/users.entity';
 
 const createUser = (overrides: Record<string, unknown> = {}): User =>
   ({
