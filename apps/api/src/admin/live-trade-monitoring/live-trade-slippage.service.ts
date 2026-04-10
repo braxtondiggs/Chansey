@@ -92,7 +92,7 @@ export class LiveTradeSlippageService {
     const qb = this.fillRepo.createQueryBuilder('f').leftJoin('f.backtest', 'b');
 
     if (filters.algorithmId) {
-      qb.andWhere('b.algorithm.id = :algorithmId', { algorithmId: filters.algorithmId });
+      qb.andWhere('b.algorithmId = :algorithmId', { algorithmId: filters.algorithmId });
     }
 
     const result = await qb

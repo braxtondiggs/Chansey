@@ -1,8 +1,17 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { BacktestMonitoringAnalyticsService } from './backtest-monitoring/backtest-monitoring-analytics.service';
+import { BacktestMonitoringQueryService } from './backtest-monitoring/backtest-monitoring-query.service';
 import { BacktestMonitoringController } from './backtest-monitoring/backtest-monitoring.controller';
 import { BacktestMonitoringService } from './backtest-monitoring/backtest-monitoring.service';
+import { LiveReplayMonitoringService } from './backtest-monitoring/live-replay-monitoring.service';
+import { MonitoringExportService } from './backtest-monitoring/monitoring-export.service';
+import { OptimizationAnalyticsService } from './backtest-monitoring/optimization-analytics.service';
+import { PaperTradingMonitoringService } from './backtest-monitoring/paper-trading-monitoring.service';
+import { SignalActivityFeedService } from './backtest-monitoring/signal-activity-feed.service';
+import { SignalAnalyticsService } from './backtest-monitoring/signal-analytics.service';
+import { TradeAnalyticsService } from './backtest-monitoring/trade-analytics.service';
 import { LiveTradeMonitoringModule } from './live-trade-monitoring/live-trade-monitoring.module';
 import { TradingStateController } from './trading-state/trading-state.controller';
 import { TradingState } from './trading-state/trading-state.entity';
@@ -58,7 +67,19 @@ import { TasksModule } from '../tasks/tasks.module';
     forwardRef(() => StrategyModule),
     forwardRef(() => TasksModule)
   ],
-  providers: [TradingStateService, BacktestMonitoringService],
+  providers: [
+    TradingStateService,
+    BacktestMonitoringService,
+    MonitoringExportService,
+    LiveReplayMonitoringService,
+    OptimizationAnalyticsService,
+    PaperTradingMonitoringService,
+    TradeAnalyticsService,
+    SignalAnalyticsService,
+    SignalActivityFeedService,
+    BacktestMonitoringAnalyticsService,
+    BacktestMonitoringQueryService
+  ],
   controllers: [TradingStateController, BacktestMonitoringController],
   exports: [TradingStateService]
 })
