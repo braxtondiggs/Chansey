@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { ExitOrderPlacementService } from './exit-order-placement.service';
@@ -8,7 +8,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { CircuitBreakerService, CircuitOpenError } from '../../shared/circuit-breaker.service';
 import { CCXT_DECIMAL_PLACES, CCXT_TICK_SIZE } from '../../shared/precision.util';
-import { Order, OrderStatus, OrderType } from '../order.entity';
+import { Order, OrderType } from '../order.entity';
 
 describe('ExitOrderPlacementService', () => {
   let service: ExitOrderPlacementService;

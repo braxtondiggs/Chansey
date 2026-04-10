@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { StrategyStatus } from '@chansey/api-interfaces';
 
@@ -444,11 +444,12 @@ describe('Pipeline Orchestration DTOs', () => {
       const config = buildStageConfigFromRisk(3);
 
       // Optimization
-      expect(config.optimization!.trainDays).toBe(90);
-      expect(config.optimization!.testDays).toBe(30);
-      expect(config.optimization!.objectiveMetric).toBe('sharpe_ratio');
-      expect(config.optimization!.maxCombinations).toBe(30);
-      expect(config.optimization!.earlyStop).toBe(true);
+      if (!config.optimization) throw new Error('expected optimization config');
+      expect(config.optimization.trainDays).toBe(90);
+      expect(config.optimization.testDays).toBe(30);
+      expect(config.optimization.objectiveMetric).toBe('sharpe_ratio');
+      expect(config.optimization.maxCombinations).toBe(30);
+      expect(config.optimization.earlyStop).toBe(true);
 
       // Historical
       expect(config.historical.initialCapital).toBe(PIPELINE_STANDARD_CAPITAL);
@@ -465,16 +466,19 @@ describe('Pipeline Orchestration DTOs', () => {
       // Paper trading
       expect(config.paperTrading.initialCapital).toBe(PIPELINE_STANDARD_CAPITAL);
       expect(config.paperTrading.duration).toBe('30d');
-      expect(config.paperTrading.stopConditions?.maxDrawdown).toBe(0.25);
-      expect(config.paperTrading.stopConditions?.targetReturn).toBe(0.5);
+      if (!config.paperTrading.stopConditions) throw new Error('expected stopConditions');
+      expect(config.paperTrading.stopConditions.maxDrawdown).toBe(0.25);
+      expect(config.paperTrading.stopConditions.targetReturn).toBe(0.5);
       expect(config.paperTrading.minTrades).toBe(40);
     });
 
     it('should produce date ranges where historical ends before live replay starts', () => {
       const config = buildStageConfigFromRisk(3);
 
-      const historicalEnd = new Date(config.historical.endDate!);
-      const liveReplayStart = new Date(config.liveReplay.startDate!);
+      if (!config.historical.endDate) throw new Error('expected historical endDate');
+      if (!config.liveReplay.startDate) throw new Error('expected liveReplay startDate');
+      const historicalEnd = new Date(config.historical.endDate);
+      const liveReplayStart = new Date(config.liveReplay.startDate);
 
       expect(historicalEnd.getTime()).toBeLessThanOrEqual(liveReplayStart.getTime());
     });

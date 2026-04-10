@@ -2,7 +2,7 @@ import { ATR } from 'technicalindicators';
 
 import { BaseIndicatorCalculator } from './base-indicator.calculator';
 
-import { CalculatorATROptions } from '../indicator.interface';
+import { type CalculatorATROptions } from '../indicator.interface';
 
 /**
  * Average True Range (ATR) Calculator

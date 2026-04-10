@@ -1,14 +1,14 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
-import { ComponentScores, StrategyGrade } from '@chansey/api-interfaces';
+import { type ComponentScores, StrategyGrade } from '@chansey/api-interfaces';
 
 import { PipelineEventHandlerService } from './pipeline-event-handler.service';
 import { PipelineProgressionService } from './pipeline-progression.service';
 
-import { User } from '../../users/users.entity';
+import { type User } from '../../users/users.entity';
 import { Pipeline } from '../entities/pipeline.entity';
 import { DEFAULT_PROGRESSION_RULES, PipelineStage, PipelineStatus } from '../interfaces';
 

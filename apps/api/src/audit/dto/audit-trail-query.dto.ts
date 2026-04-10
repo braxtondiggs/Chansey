@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsOptional, IsString, IsNumber, IsEnum, IsDateString, IsArray } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsDateString } from 'class-validator';
 
 /**
  * AuditTrailQuery DTO

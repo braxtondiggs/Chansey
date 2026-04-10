@@ -1,4 +1,4 @@
-import { ExchangeOrderTypeSupport, OrderType, TimeInForce } from './order.interface';
+import { type ExchangeOrderTypeSupport, OrderType, TimeInForce } from './order.interface';
 
 /** Shared config for Binance US variants */
 const BINANCE_US_CONFIG = {

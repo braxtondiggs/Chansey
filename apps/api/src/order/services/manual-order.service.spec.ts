@@ -1,8 +1,8 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type Repository } from 'typeorm';
 
 import { ManualOrderValidatorService } from './manual-order-validator.service';
 import { ManualOrderService } from './manual-order.service';
@@ -13,8 +13,8 @@ import { TradingFeesService } from './trading-fees.service';
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
-import { User } from '../../users/users.entity';
-import { PlaceManualOrderDto } from '../dto/place-manual-order.dto';
+import { type User } from '../../users/users.entity';
+import { type PlaceManualOrderDto } from '../dto/place-manual-order.dto';
 import { Order, OrderSide, OrderStatus, OrderType } from '../order.entity';
 
 describe('ManualOrderService', () => {
@@ -367,7 +367,7 @@ describe('ManualOrderService', () => {
       exchangeKeyService.findOne.mockResolvedValue(mockExchangeKey);
       const stub = makeExchangeStub();
       exchangeManagerService.getExchangeClient.mockResolvedValue(stub as any);
-      orderRepository.save.mockImplementation(async (o: any) => o);
+      orderRepository.save.mockImplementation((o: any) => o);
 
       await service.cancelManualOrder('order-1', mockUser);
 
@@ -390,7 +390,7 @@ describe('ManualOrderService', () => {
       const stub = makeExchangeStub();
       exchangeManagerService.getExchangeClient.mockResolvedValue(stub as any);
       const saved: Order[] = [];
-      orderRepository.save.mockImplementation(async (o: any) => {
+      orderRepository.save.mockImplementation((o: any) => {
         saved.push(o);
         return o;
       });

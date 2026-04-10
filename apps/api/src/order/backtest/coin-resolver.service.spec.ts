@@ -1,12 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 
 import { CoinResolverService } from './coin-resolver.service';
-import { MarketDataSet } from './market-data-set.entity';
+import { type MarketDataSet } from './market-data-set.entity';
 
-import { Coin } from '../../coin/coin.entity';
-import { CoinService } from '../../coin/coin.service';
+import { type Coin } from '../../coin/coin.entity';
+import { type CoinService } from '../../coin/coin.service';
 import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
-import { OHLCService } from '../../ohlc/ohlc.service';
+import { type OHLCService } from '../../ohlc/ohlc.service';
 
 describe('CoinResolverService', () => {
   const createDataset = (overrides: Partial<MarketDataSet>): MarketDataSet =>

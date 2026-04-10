@@ -1,5 +1,5 @@
-import { SerializableExitTrackerState } from './shared/exits/backtest-exit-tracker';
-import { SerializableThrottleState } from './shared/throttle/signal-throttle.interface';
+import { type SerializableExitTrackerState } from './shared/exits/backtest-exit-tracker';
+import { type SerializableThrottleState } from './shared/throttle/signal-throttle.interface';
 
 /**
  * Position state within a portfolio checkpoint.

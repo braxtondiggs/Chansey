@@ -1,4 +1,4 @@
-import { Coin } from '../coin/coin.interface';
+import { type Coin } from '../coin/coin.interface';
 
 export interface AssetBalanceDto {
   asset: string;

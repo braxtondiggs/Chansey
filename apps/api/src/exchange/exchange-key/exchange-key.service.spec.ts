@@ -1,6 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import { ConflictException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { ExchangeKey } from './exchange-key.entity';

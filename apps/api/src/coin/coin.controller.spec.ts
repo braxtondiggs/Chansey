@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { BadRequestException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { CoinMarketDataService } from './coin-market-data.service';
 import { CoinsController } from './coin.controller';

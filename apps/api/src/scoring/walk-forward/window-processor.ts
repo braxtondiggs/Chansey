@@ -24,11 +24,11 @@ export class WindowProcessor {
    * Process a single walk-forward window
    * Executes backtest on train and test periods, calculates degradation
    */
-  async processWindow(
+  processWindow(
     window: WalkForwardWindowConfig,
     trainResults: WindowMetrics,
     testResults: WindowMetrics
-  ): Promise<WindowProcessingResult> {
+  ): WindowProcessingResult {
     // Calculate degradation (performance drop from train to test)
     const degradation = this.calculateDegradation(trainResults, testResults);
 

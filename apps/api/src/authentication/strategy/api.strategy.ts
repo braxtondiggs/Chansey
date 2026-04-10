@@ -17,7 +17,7 @@ export class ApiKeyStrategy extends PassportStrategy(HeaderAPIKeyStrategy, 'api-
     );
   }
 
-  async validate(apiKey: string): Promise<{ apiKey: boolean }> {
+  validate(apiKey: string): { apiKey: boolean } {
     if (this.authentication.validateAPIKey(apiKey)) {
       return { apiKey: true };
     }

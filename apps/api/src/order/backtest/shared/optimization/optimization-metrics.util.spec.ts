@@ -1,7 +1,7 @@
 import { calculateOptimizationMetrics } from './optimization-metrics.util';
 
-import { BacktestTrade, TradeType } from '../../backtest-trade.entity';
-import { MetricsCalculatorService, TimeframeType } from '../metrics';
+import { type BacktestTrade, TradeType } from '../../backtest-trade.entity';
+import { type MetricsCalculatorService, TimeframeType } from '../metrics';
 
 describe('calculateOptimizationMetrics', () => {
   const mockMetricsCalculator = {

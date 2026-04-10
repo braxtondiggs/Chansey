@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddBacktestCheckpointColumns1737200000000 implements MigrationInterface {
   name = 'AddBacktestCheckpointColumns1737200000000';

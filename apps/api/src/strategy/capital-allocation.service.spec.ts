@@ -1,9 +1,9 @@
 import { CompositeRegimeType } from '@chansey/api-interfaces';
 
-import { CapitalAllocationService, RegimeContext } from './capital-allocation.service';
-import { StrategyConfig } from './entities/strategy-config.entity';
+import { CapitalAllocationService, type RegimeContext } from './capital-allocation.service';
+import { type StrategyConfig } from './entities/strategy-config.entity';
 
-import { Order, OrderStatus } from '../order/order.entity';
+import { type Order, OrderStatus } from '../order/order.entity';
 
 // Helper to create a mock strategy
 const createStrategy = (id: string): StrategyConfig => ({ id }) as StrategyConfig;
@@ -82,8 +82,9 @@ describe('CapitalAllocationService', () => {
       const result = await service.allocateCapitalByKelly(10000, [createStrategy('s1'), createStrategy('s2')]);
 
       expect(result.size).toBe(2);
-      const s1Amount = result.get('s1')!;
-      const s2Amount = result.get('s2')!;
+      const s1Amount = result.get('s1');
+      const s2Amount = result.get('s2');
+      if (s1Amount === undefined || s2Amount === undefined) throw new Error('expected allocations for s1 and s2');
 
       expect(s2Amount).toBeGreaterThanOrEqual(s1Amount);
       // Dynamic cap = max(15%, 1/2) = 50% = $5000; capped capital redistributed
@@ -143,7 +144,8 @@ describe('CapitalAllocationService', () => {
         createStrategy('s3')
       ]);
 
-      const s1Amount = result.get('s1')!;
+      const s1Amount = result.get('s1');
+      if (s1Amount === undefined) throw new Error('expected allocation for s1');
       expect(s1Amount).toBeGreaterThan(1500);
       expect(s1Amount).toBeLessThanOrEqual(3334);
 
@@ -189,9 +191,12 @@ describe('CapitalAllocationService', () => {
       const result = await service.allocateCapitalByKelly(10000, [createStrategy('s1'), createStrategy('s2')]);
 
       expect(result.size).toBe(2);
-      expect(result.get('s1')!).toBeGreaterThan(0);
-      expect(result.get('s2')!).toBeGreaterThan(0);
-      expect(result.get('s1')! + result.get('s2')!).toBeCloseTo(10000, 0);
+      const s1Val = result.get('s1');
+      const s2Val = result.get('s2');
+      if (s1Val === undefined || s2Val === undefined) throw new Error('expected allocations for s1 and s2');
+      expect(s1Val).toBeGreaterThan(0);
+      expect(s2Val).toBeGreaterThan(0);
+      expect(s1Val + s2Val).toBeCloseTo(10000, 0);
     });
 
     it('excludes fallback strategies with score below MIN_SCORE_THRESHOLD', async () => {
@@ -262,7 +267,9 @@ describe('CapitalAllocationService', () => {
       expect(result.size).toBe(4);
 
       // s0 should be capped at max(15%, 1/4=25%) = 25%
-      expect(result.get('s0')!).toBeLessThanOrEqual(2500 + 0.01);
+      const s0Amount = result.get('s0');
+      if (s0Amount === undefined) throw new Error('expected allocation for s0');
+      expect(s0Amount).toBeLessThanOrEqual(2500 + 0.01);
     });
 
     it('uses only resolved trades for Kelly when null/undefined gainLoss orders are present', async () => {

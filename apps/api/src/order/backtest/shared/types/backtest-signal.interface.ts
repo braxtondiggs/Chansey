@@ -1,5 +1,5 @@
-import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
-import { ExitConfig } from '../../../interfaces/exit-config.interface';
+import { type SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
+import { type ExitConfig } from '../../../interfaces/exit-config.interface';
 
 export interface MarketData {
   timestamp: Date;

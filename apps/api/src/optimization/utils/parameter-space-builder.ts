@@ -1,4 +1,8 @@
-import { ParameterConstraint, ParameterDefinition, ParameterSpace } from '../interfaces/parameter-space.interface';
+import {
+  type ParameterConstraint,
+  type ParameterDefinition,
+  type ParameterSpace
+} from '../interfaces/parameter-space.interface';
 
 /**
  * Shape of a single field from getConfigSchema()
@@ -75,10 +79,10 @@ function toParameterDefinition(name: string, field: ConfigSchemaField): Paramete
     };
   }
 
-  // Numeric: integer vs float
+  // Numeric: integer vs float (min/max guaranteed by isOptimizable check)
   const isInteger = isIntegerField(field);
-  const min = field.min!;
-  const max = field.max!;
+  const min = field.min ?? 0;
+  const max = field.max ?? 0;
   const range = max - min;
 
   let step: number;

@@ -1,8 +1,8 @@
-import { ObjectLiteral, Repository } from 'typeorm';
+import { type ObjectLiteral, type Repository } from 'typeorm';
 
-import { OHLCCandle } from './ohlc-candle.entity';
+import { type OHLCCandle } from './ohlc-candle.entity';
 import { OHLCService } from './ohlc.service';
-import { ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
+import { type ExchangeSymbolMapService } from './services/exchange-symbol-map.service';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 

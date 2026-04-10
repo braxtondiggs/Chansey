@@ -75,11 +75,18 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
         const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
         let bollingerBandsResult: BollingerBandsResult;
 
-        if (preUpper) {
-          const preMiddle = this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)!;
-          const preLower = this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)!;
-          const prePb = this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length)!;
-          const preBandwidth = this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)!;
+        const preMiddle = preUpper
+          ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)
+          : null;
+        const preLower = preUpper
+          ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)
+          : null;
+        const prePb = preUpper ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length) : null;
+        const preBandwidth = preUpper
+          ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)
+          : null;
+
+        if (preUpper && preMiddle && preLower && prePb && preBandwidth) {
           bollingerBandsResult = {
             upper: preUpper,
             middle: preMiddle,
@@ -92,6 +99,9 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
             fromCache: false
           };
         } else {
+          if (preUpper) {
+            this.logger.warn(`Partial BB cache for ${coin.symbol} (${bbKey}), recalculating`);
+          }
           bollingerBandsResult = await this.indicatorService.calculateBollingerBands(
             { coinId: coin.id, prices: priceHistory, period, stdDev: threshold },
             this // Pass this strategy as IIndicatorProvider for custom override support

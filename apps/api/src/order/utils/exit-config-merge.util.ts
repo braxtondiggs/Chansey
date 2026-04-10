@@ -1,4 +1,4 @@
-import { DEFAULT_EXIT_CONFIG, ExitConfig } from '../interfaces/exit-config.interface';
+import { DEFAULT_EXIT_CONFIG, type ExitConfig } from '../interfaces/exit-config.interface';
 
 /**
  * Merge multiple partial ExitConfig layers into a single resolved ExitConfig.

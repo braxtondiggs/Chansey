@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 
-import { BacktestCheckpointState } from './backtest-checkpoint.interface';
+import { type BacktestCheckpointState } from './backtest-checkpoint.interface';
 import { BacktestRecoveryService } from './backtest-recovery.service';
-import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
+import { type Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 
 function makeBacktest(overrides: Partial<Backtest> = {}): Backtest {
   return {

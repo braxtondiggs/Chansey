@@ -24,7 +24,7 @@ export class DailyLossLimitCheck implements IRiskCheck {
   async evaluate(
     deployment: Deployment,
     latestMetric: PerformanceMetric | null,
-    historicalMetrics?: PerformanceMetric[]
+    _historicalMetrics?: PerformanceMetric[]
   ): Promise<RiskCheckResult> {
     if (!latestMetric) {
       return {
@@ -32,7 +32,7 @@ export class DailyLossLimitCheck implements IRiskCheck {
         passed: true,
         actualValue: 'N/A',
         threshold: 'N/A',
-        severity: 'low',
+        severity: 'low' as const,
         message: 'No metrics available yet'
       };
     }
@@ -49,7 +49,7 @@ export class DailyLossLimitCheck implements IRiskCheck {
       passed,
       actualValue: `${(dailyReturn * 100).toFixed(2)}%`,
       threshold: `> -${(dailyLossLimit * 100).toFixed(2)}%`,
-      severity: passed ? 'low' : 'critical',
+      severity: passed ? ('low' as const) : ('critical' as const),
       message: passed
         ? isLoss
           ? `Daily loss of ${(lossAmount * 100).toFixed(2)}% within limits`

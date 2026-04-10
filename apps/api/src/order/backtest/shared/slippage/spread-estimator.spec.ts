@@ -1,4 +1,4 @@
-import { SpreadEstimationContext } from './slippage.interface';
+import { type SpreadEstimationContext } from './slippage.interface';
 import { estimateSpreadCorwinSchultz, estimateSpreadHighLow, estimateSpreadBps } from './spread-estimator';
 
 describe('Spread Estimator', () => {

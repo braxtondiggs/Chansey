@@ -1,5 +1,5 @@
-import { signal, WritableSignal } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal, type WritableSignal } from '@angular/core';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormBuilder } from '@angular/forms';
 import { Router } from '@angular/router';
 

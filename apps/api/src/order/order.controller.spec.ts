@@ -1,14 +1,14 @@
 import { NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { OrderController } from './order.controller';
-import { Order, OrderSide, OrderStatus, OrderType } from './order.entity';
+import { type Order, OrderSide, OrderStatus, OrderType } from './order.entity';
 import { OrderService } from './order.service';
 import { ManualOrderService } from './services/manual-order.service';
 import { OrderStateMachineService } from './services/order-state-machine.service';
 import { SlippageAnalysisService } from './services/slippage-analysis.service';
 
-import { User } from '../users/users.entity';
+import { type User } from '../users/users.entity';
 
 describe('OrderController', () => {
   let controller: OrderController;

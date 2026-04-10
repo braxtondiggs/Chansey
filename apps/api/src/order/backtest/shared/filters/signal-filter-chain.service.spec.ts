@@ -1,6 +1,6 @@
 import { CompositeRegimeType } from '@chansey/api-interfaces';
 
-import { FilterableSignal, SignalFilterContext } from './signal-filter-chain.interface';
+import { type FilterableSignal, type SignalFilterContext } from './signal-filter-chain.interface';
 import { SignalFilterChainService } from './signal-filter-chain.service';
 
 const makeSignal = (action: string, originalType?: string, coinId?: string): FilterableSignal => ({

@@ -59,7 +59,7 @@ describe('CircuitBreakerService', () => {
       jest.useRealTimers();
     });
 
-    it('should transition to HALF_OPEN after reset timeout', async () => {
+    it('should transition to HALF_OPEN after reset timeout', () => {
       service.configure('test-exchange', { failureThreshold: 1, resetTimeoutMs: 50 });
       service.recordFailure('test-exchange');
       expect(service.getState('test-exchange')).toBe(CircuitState.OPEN);
@@ -72,7 +72,7 @@ describe('CircuitBreakerService', () => {
       expect(service.getState('test-exchange')).toBe(CircuitState.HALF_OPEN);
     });
 
-    it('should close circuit after consecutive successes in HALF_OPEN', async () => {
+    it('should close circuit after consecutive successes in HALF_OPEN', () => {
       service.configure('test-exchange', { failureThreshold: 1, successThreshold: 2, resetTimeoutMs: 10 });
       service.recordFailure('test-exchange');
 
@@ -86,7 +86,7 @@ describe('CircuitBreakerService', () => {
       expect(service.getState('test-exchange')).toBe(CircuitState.CLOSED);
     });
 
-    it('should reopen circuit on failure during HALF_OPEN', async () => {
+    it('should reopen circuit on failure during HALF_OPEN', () => {
       service.configure('test-exchange', { failureThreshold: 1, resetTimeoutMs: 10 });
       service.recordFailure('test-exchange');
 
@@ -178,7 +178,7 @@ describe('CircuitBreakerService', () => {
       jest.useRealTimers();
     });
 
-    it('should expire old failures outside the window', async () => {
+    it('should expire old failures outside the window', () => {
       service.configure('test-exchange', { failureThreshold: 3, failureWindowMs: 50 });
 
       service.recordFailure('test-exchange');

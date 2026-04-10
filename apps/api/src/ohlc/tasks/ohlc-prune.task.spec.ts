@@ -1,8 +1,8 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { OHLCPruneTask } from './ohlc-prune.task';
 
-import { OHLCService } from '../ohlc.service';
+import { type OHLCService } from '../ohlc.service';
 
 describe('OHLCPruneTask', () => {
   let task: OHLCPruneTask;

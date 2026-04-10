@@ -1,4 +1,4 @@
-import { AbstractControl, ValidatorFn } from '@angular/forms';
+import { type AbstractControl, type ValidatorFn } from '@angular/forms';
 
 /**
  * Validates that a value is a multiple of the given step size.

@@ -1,9 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { DeploymentStatus } from '@chansey/api-interfaces';
 
 import { DeploymentService } from './deployment.service';
-import { Deployment } from './entities/deployment.entity';
+import { type Deployment } from './entities/deployment.entity';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 
 describe('PreTradeRiskGateService', () => {

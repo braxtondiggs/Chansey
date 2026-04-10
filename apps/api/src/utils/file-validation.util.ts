@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 
-import { MultipartFile } from '@fastify/multipart';
+import { type MultipartFile } from '@fastify/multipart';
 
 export interface FileValidationOptions {
   allowedMimeTypes: string[];

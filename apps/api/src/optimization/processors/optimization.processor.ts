@@ -55,7 +55,12 @@ export class OptimizationProcessor extends WorkerHost implements OnModuleInit {
     // Periodically extend the lock so BullMQ doesn't mark this job as stalled
     const lockRenewal = setInterval(async () => {
       try {
-        await job.extendLock(job.token!, 14_400_000);
+        if (job.token) {
+          await job.extendLock(job.token, 14_400_000);
+        } else {
+          this.logger.warn(`Skipping lock renewal for job ${job.id}: no token available`);
+          clearInterval(lockRenewal);
+        }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
         this.logger.warn(`Failed to extend lock for job ${job.id}: ${err.message}`);

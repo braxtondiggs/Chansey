@@ -1,18 +1,18 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 
 import { CompositeRegimeService, REGIME_SMA_PERIOD } from './composite-regime.service';
 
-import { Coin } from '../../../../coin/coin.entity';
+import { type Coin } from '../../../../coin/coin.entity';
 import { RegimeGateService } from '../../../../market-regime/regime-gate.service';
 import { VolatilityCalculator } from '../../../../market-regime/volatility.calculator';
 import { IncrementalSma } from '../../incremental-sma';
 import { RingBuffer } from '../../ring-buffer';
 import { SignalFilterChainService } from '../filters';
-import { PriceTrackingContext } from '../price-window';
+import { type PriceTrackingContext } from '../price-window';
 import { SlippageModelType } from '../slippage';
-import { MarketData, TradingSignal } from '../types';
+import { type MarketData, type TradingSignal } from '../types';
 
 describe('CompositeRegimeService', () => {
   let service: CompositeRegimeService;

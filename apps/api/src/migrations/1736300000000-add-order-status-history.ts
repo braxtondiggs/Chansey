@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddOrderStatusHistory1736300000000 implements MigrationInterface {
   name = 'AddOrderStatusHistory1736300000000';

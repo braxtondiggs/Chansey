@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { calculateMean, calculateStandardDeviation } from './metric-calculator';
+import { calculateMean } from './metric-calculator';
 
 export interface CorrelationMatrix {
   matrix: number[][];

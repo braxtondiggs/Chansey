@@ -1,5 +1,5 @@
 import { registerAs } from '@nestjs/config';
-import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { type TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 import { join } from 'path';
 

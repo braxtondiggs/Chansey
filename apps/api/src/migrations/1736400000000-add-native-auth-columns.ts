@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddNativeAuthColumns1736400000000 implements MigrationInterface {
   name = 'AddNativeAuthColumns1736400000000';

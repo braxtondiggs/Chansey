@@ -1,4 +1,4 @@
-import { SpreadEstimationContext } from './slippage.interface';
+import { type SpreadEstimationContext } from './slippage.interface';
 
 /**
  * Corwin-Schultz (2012) bid-ask spread estimator using two consecutive OHLC candles.

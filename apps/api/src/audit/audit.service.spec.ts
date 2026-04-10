@@ -1,9 +1,9 @@
 import { AuditEventType } from '@chansey/api-interfaces';
 
 import { AuditService } from './audit.service';
-import { AuditLog } from './entities/audit-log.entity';
+import { type AuditLog } from './entities/audit-log.entity';
 
-import { RequestContext } from '../common/cls/request-context.service';
+import { type RequestContext } from '../common/cls/request-context.service';
 import { CryptoService } from '../common/crypto.service';
 
 describe('AuditService', () => {

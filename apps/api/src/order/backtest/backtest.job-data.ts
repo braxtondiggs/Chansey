@@ -1,4 +1,4 @@
-import { BacktestType } from './backtest.entity';
+import { type BacktestType } from './backtest.entity';
 
 export interface BacktestJobData {
   backtestId: string;

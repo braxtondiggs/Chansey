@@ -1,7 +1,7 @@
 import { DEFAULT_QUOTE_CURRENCY_FALLBACK, QuoteCurrencyResolverService } from './quote-currency-resolver.service';
 
-import { Coin } from '../../coin/coin.entity';
-import { CoinService } from '../../coin/coin.service';
+import { type Coin } from '../../coin/coin.entity';
+import { type CoinService } from '../../coin/coin.service';
 import { QuoteCurrencyNotFoundException } from '../../common/exceptions/backtest';
 
 describe('QuoteCurrencyResolverService', () => {
@@ -28,7 +28,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('returns preferred currency when available', async () => {
       const usdt = createCoin('USDT');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => (symbol.toUpperCase() === 'USDT' ? usdt : null))
+        getCoinBySymbol: jest.fn((symbol: string) => (symbol.toUpperCase() === 'USDT' ? usdt : null))
       };
       const service = createService(coinService);
 
@@ -41,7 +41,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('uses fallback when preferred currency not found', async () => {
       const usdc = createCoin('USDC');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => (symbol.toUpperCase() === 'USDC' ? usdc : null))
+        getCoinBySymbol: jest.fn((symbol: string) => (symbol.toUpperCase() === 'USDC' ? usdc : null))
       };
       const service = createService(coinService);
 
@@ -58,7 +58,7 @@ describe('QuoteCurrencyResolverService', () => {
       const virtualUsdt = createVirtualCoin('USDT');
       const realUsdc = createCoin('USDC');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => {
+        getCoinBySymbol: jest.fn((symbol: string) => {
           if (symbol.toUpperCase() === 'USDT') return virtualUsdt;
           if (symbol.toUpperCase() === 'USDC') return realUsdc;
           return null;
@@ -77,7 +77,7 @@ describe('QuoteCurrencyResolverService', () => {
       const usdCoin = createCoin('USD', 'USD-virtual');
       const realUsdt = createCoin('USDT');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => {
+        getCoinBySymbol: jest.fn((symbol: string) => {
           if (symbol.toUpperCase() === 'USD') return usdCoin;
           if (symbol.toUpperCase() === 'USDT') return realUsdt;
           return null;
@@ -93,7 +93,7 @@ describe('QuoteCurrencyResolverService', () => {
 
     it('throws QuoteCurrencyNotFoundException when no quote currency can be resolved', async () => {
       const coinService = {
-        getCoinBySymbol: jest.fn(async () => null)
+        getCoinBySymbol: jest.fn(() => null)
       };
       const service = createService(coinService);
 
@@ -106,7 +106,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('uses default USDT when no preferred currency specified', async () => {
       const usdt = createCoin('USDT');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => (symbol.toUpperCase() === 'USDT' ? usdt : null))
+        getCoinBySymbol: jest.fn((symbol: string) => (symbol.toUpperCase() === 'USDT' ? usdt : null))
       };
       const service = createService(coinService);
 
@@ -119,7 +119,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('handles case-insensitive preferred currency', async () => {
       const usdt = createCoin('USDT');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => (symbol.toUpperCase() === 'USDT' ? usdt : null))
+        getCoinBySymbol: jest.fn((symbol: string) => (symbol.toUpperCase() === 'USDT' ? usdt : null))
       };
       const service = createService(coinService);
 
@@ -132,7 +132,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('does not duplicate preferred currency in fallback chain', async () => {
       const usdc = createCoin('USDC');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => {
+        getCoinBySymbol: jest.fn((symbol: string) => {
           if (symbol.toUpperCase() === 'USDT') return null;
           if (symbol.toUpperCase() === 'USDC') return usdc;
           return null;
@@ -153,7 +153,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('accepts custom fallback chain', async () => {
       const dai = createCoin('DAI');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => (symbol.toUpperCase() === 'DAI' ? dai : null))
+        getCoinBySymbol: jest.fn((symbol: string) => (symbol.toUpperCase() === 'DAI' ? dai : null))
       };
       const service = createService(coinService);
 
@@ -167,7 +167,7 @@ describe('QuoteCurrencyResolverService', () => {
     it('tries all fallback currencies in order before failing', async () => {
       const busd = createCoin('BUSD');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => (symbol.toUpperCase() === 'BUSD' ? busd : null))
+        getCoinBySymbol: jest.fn((symbol: string) => (symbol.toUpperCase() === 'BUSD' ? busd : null))
       };
       const service = createService(coinService);
 
@@ -182,7 +182,7 @@ describe('QuoteCurrencyResolverService', () => {
       const virtualUsdc = createVirtualCoin('USDC');
       const dai = createCoin('DAI');
       const coinService = {
-        getCoinBySymbol: jest.fn(async (symbol: string) => {
+        getCoinBySymbol: jest.fn((symbol: string) => {
           if (symbol.toUpperCase() === 'USDT') return null;
           if (symbol.toUpperCase() === 'USDC') return virtualUsdc;
           if (symbol.toUpperCase() === 'DAI') return dai;

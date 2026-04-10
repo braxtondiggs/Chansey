@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
@@ -65,11 +65,11 @@ describe('ExchangeKeyHealthService', () => {
     exchangeKeyRepo = {
       find: jest.fn(),
       findOne: jest.fn(),
-      save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+      save: jest.fn().mockImplementation(async (entity) => entity),
       createQueryBuilder: jest.fn()
     };
     healthLogRepo = {
-      save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+      save: jest.fn().mockImplementation(async (entity) => entity),
       create: jest.fn().mockImplementation((data) => data),
       findAndCount: jest.fn(),
       delete: jest.fn()

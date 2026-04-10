@@ -142,7 +142,7 @@ export class PaperTradingProcessor extends WorkerHost {
         await this.handleStopSession(job.data as StopSessionJobData);
         break;
       case PaperTradingJobType.NOTIFY_PIPELINE:
-        await this.handleNotifyPipeline(job.data as NotifyPipelineJobData);
+        this.handleNotifyPipeline(job.data as NotifyPipelineJobData);
         break;
       default:
         this.logger.warn(`Unknown job type: ${type}`);
@@ -405,7 +405,7 @@ export class PaperTradingProcessor extends WorkerHost {
    * Handle pipeline notification - emit event to pipeline orchestrator
    * This is processed as a job for reliable delivery even if the process crashes
    */
-  private async handleNotifyPipeline(data: NotifyPipelineJobData): Promise<void> {
+  private handleNotifyPipeline(data: NotifyPipelineJobData): void {
     const { sessionId, pipelineId, stoppedReason } = data;
     this.logger.log(`Notifying pipeline ${pipelineId} about session ${sessionId} completion`);
 

@@ -1,9 +1,9 @@
-import { Cache } from 'cache-manager';
+import { type Cache } from 'cache-manager';
 
 import { RealtimeTickerService } from './realtime-ticker.service';
 
-import { CoinService } from '../../coin/coin.service';
-import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { type CoinService } from '../../coin/coin.service';
+import { type ExchangeManagerService } from '../../exchange/exchange-manager.service';
 
 describe('RealtimeTickerService', () => {
   let service: RealtimeTickerService;
@@ -212,7 +212,7 @@ describe('RealtimeTickerService', () => {
       fetchTicker: jest.fn().mockResolvedValue({ last: 42 })
     };
 
-    exchangeManager.getPublicClient.mockImplementation(async (slug?: string) => {
+    exchangeManager.getPublicClient.mockImplementation((slug?: string) => {
       if (slug === 'binance_us') return binanceClient as any;
       if (slug === 'gdax') return gdaxClient as any;
       return krakenClient as any;

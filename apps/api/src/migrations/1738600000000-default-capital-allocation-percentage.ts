@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class DefaultCapitalAllocationPercentage1738600000000 implements MigrationInterface {
   name = 'DefaultCapitalAllocationPercentage1738600000000';

@@ -1,9 +1,9 @@
-import { CallHandler, ExecutionContext } from '@nestjs/common';
+import { type CallHandler, type ExecutionContext } from '@nestjs/common';
 
 import { of } from 'rxjs';
 
 import { ClsContextInterceptor } from './cls-context.interceptor';
-import { RequestContext } from './request-context.service';
+import { type RequestContext } from './request-context.service';
 
 describe('ClsContextInterceptor', () => {
   let interceptor: ClsContextInterceptor;

@@ -2,7 +2,7 @@ import { BollingerBands } from 'technicalindicators';
 
 import { BaseIndicatorCalculator } from './base-indicator.calculator';
 
-import { BollingerBandsDataPoint, CalculatorBollingerBandsOptions } from '../indicator.interface';
+import { type BollingerBandsDataPoint, type CalculatorBollingerBandsOptions } from '../indicator.interface';
 
 /**
  * Bollinger Bands Calculator

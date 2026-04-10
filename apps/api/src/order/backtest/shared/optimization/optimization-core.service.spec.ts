@@ -1,12 +1,12 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { OptimizationBacktestConfig } from './optimization-backtest.interface';
+import { type OptimizationBacktestConfig } from './optimization-backtest.interface';
 import { OptimizationCoreService } from './optimization-core.service';
 import { OptimizationIndicatorPrecomputeService } from './optimization-indicator-precompute.service';
 
 import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
 import { AlgorithmNotRegisteredException } from '../../../../common/exceptions';
-import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
+import { type OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../../../ohlc/ohlc.service';
 import { TradeExecutorService } from '../execution/trade-executor.service';
 import { ExitSignalProcessorService } from '../exit-signals/exit-signal-processor.service';

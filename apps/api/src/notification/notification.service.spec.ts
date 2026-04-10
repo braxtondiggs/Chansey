@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { NotificationEventType, NotificationPreferences } from '@chansey/api-interfaces';
+import { NotificationEventType, type NotificationPreferences } from '@chansey/api-interfaces';
 
 import { NOTIFICATION_REDIS } from './notification-redis.provider';
 import { NotificationService } from './notification.service';

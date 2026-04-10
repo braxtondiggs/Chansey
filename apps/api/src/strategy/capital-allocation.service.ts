@@ -202,7 +202,7 @@ export class CapitalAllocationService {
 
     if (regimeMultiplier !== 1.0) {
       this.logger.log(
-        `Regime scaling: ${regimeContext!.compositeRegime} (risk ${regimeContext!.riskLevel}) → ` +
+        `Regime scaling: ${regimeContext?.compositeRegime} (risk ${regimeContext?.riskLevel}) → ` +
           `${regimeMultiplier}x multiplier, effective capital $${effectiveCapital.toFixed(2)} (from $${userCapital.toFixed(2)})`
       );
     }
@@ -214,7 +214,8 @@ export class CapitalAllocationService {
     });
     const ordersByStrategy = new Map<string, Order[]>();
     for (const order of allOrders) {
-      const key = order.strategyConfigId!;
+      if (!order.strategyConfigId) continue;
+      const key = order.strategyConfigId;
       const group = ordersByStrategy.get(key);
       if (group) {
         group.push(order);
@@ -240,12 +241,13 @@ export class CapitalAllocationService {
         continue;
       }
 
-      const wins = resolvedOrders.filter((o) => o.gainLoss! > 0);
-      const losses = resolvedOrders.filter((o) => o.gainLoss! < 0);
+      const wins = resolvedOrders.filter((o) => (o.gainLoss ?? 0) > 0);
+      const losses = resolvedOrders.filter((o) => (o.gainLoss ?? 0) < 0);
 
       const p = wins.length / resolvedOrders.length;
-      const avgWin = wins.length > 0 ? wins.reduce((sum, o) => sum + o.gainLoss!, 0) / wins.length : 0;
-      const avgLoss = losses.length > 0 ? losses.reduce((sum, o) => sum + Math.abs(o.gainLoss!), 0) / losses.length : 0;
+      const avgWin = wins.length > 0 ? wins.reduce((sum, o) => sum + (o.gainLoss ?? 0), 0) / wins.length : 0;
+      const avgLoss =
+        losses.length > 0 ? losses.reduce((sum, o) => sum + Math.abs(o.gainLoss ?? 0), 0) / losses.length : 0;
 
       if (losses.length === 0) {
         // All wins, no losses — use full quarter-Kelly

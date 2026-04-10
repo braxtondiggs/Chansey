@@ -1,6 +1,6 @@
-import { Logger } from '@nestjs/common';
+import { type Logger } from '@nestjs/common';
 
-import { Queue } from 'bullmq';
+import { type Queue } from 'bullmq';
 
 import { QUEUE_NAMES } from './queue-names.constant';
 import { ShutdownService } from './shutdown.service';

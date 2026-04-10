@@ -1,9 +1,9 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { BacktestStatus, BacktestType } from './backtest.entity';
-import { BacktestJobData } from './backtest.job-data';
+import { type BacktestJobData } from './backtest.job-data';
 import { BacktestProcessor } from './backtest.processor';
-import { MarketDataSet } from './market-data-set.entity';
+import { type MarketDataSet } from './market-data-set.entity';
 
 import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
 

@@ -1,12 +1,12 @@
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { Role } from '@chansey/api-interfaces';
 
-import { SecurityAuditService } from './audit';
+import { type SecurityAuditService } from './audit';
 import { AuthenticationService } from './authentication.service';
-import { ChangePasswordDto } from './dto/change-password.dto';
-import { OtpService } from './otp.service';
-import { PasswordService } from './password.service';
+import { type ChangePasswordDto } from './dto/change-password.dto';
+import { type OtpService } from './otp.service';
+import { type PasswordService } from './password.service';
 
 import {
   AccountLockedException,
@@ -19,10 +19,10 @@ import {
   TokenExpiredException,
   ValidationException
 } from '../common/exceptions';
-import { EmailService } from '../email/email.service';
-import { CreateUserDto } from '../users/dto/create-user.dto';
-import { User } from '../users/users.entity';
-import { UsersService } from '../users/users.service';
+import { type EmailService } from '../email/email.service';
+import { type CreateUserDto } from '../users/dto/create-user.dto';
+import { type User } from '../users/users.entity';
+import { type UsersService } from '../users/users.service';
 
 jest.mock('uuid', () => ({
   v4: () => 'user-id-123'

@@ -1,6 +1,6 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpException, type HttpStatus } from '@nestjs/common';
 
-import { ErrorCode } from '../error-codes.enum';
+import { type ErrorCode } from '../error-codes.enum';
 
 /**
  * Base exception class for all application-specific exceptions.

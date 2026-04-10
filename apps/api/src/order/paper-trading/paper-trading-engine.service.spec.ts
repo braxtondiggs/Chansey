@@ -65,14 +65,14 @@ const createService = (overrides: Overrides = {}) => {
     buildFromAccounts: jest.fn((a: MockAccount[]) => buildPortfolio(a)),
     updateWithPrices: jest.fn((p: any) => p),
     buildPositionsContext: jest.fn(() => ({})),
-    refresh: jest.fn().mockImplementation(async () => ({
+    refresh: jest.fn().mockImplementation(() => ({
       accounts,
       portfolio: buildPortfolio(accounts)
     }))
   };
 
   const signalService = {
-    save: jest.fn().mockImplementation(async () => ({ status: null, rejectionCode: null })),
+    save: jest.fn().mockImplementation(() => ({ status: null, rejectionCode: null })),
     markRejected: jest.fn().mockResolvedValue(undefined),
     markProcessed: jest.fn().mockResolvedValue(undefined)
   };

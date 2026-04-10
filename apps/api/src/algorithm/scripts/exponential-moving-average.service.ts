@@ -23,7 +23,7 @@ export class ExponentialMovingAverageService {
     private readonly schedulerRegistry: SchedulerRegistry
   ) {}
 
-  async onInit(algorithm: Algorithm) {
+  onInit(algorithm: Algorithm) {
     if (process.env.NODE_ENV !== 'production') return;
     this.logger.log(`${algorithm.name}: Running Successfully!`);
     this.algorithm = algorithm;
@@ -37,7 +37,7 @@ export class ExponentialMovingAverageService {
     setTimeout(
       () => {
         job.start();
-        this.cronJob();
+        void this.cronJob();
       },
       process.env.NODE_ENV === 'production' ? 300000 : 0
     );

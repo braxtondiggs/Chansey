@@ -1,4 +1,4 @@
-import { UserWithExchanges } from '../../users/users.types';
+import { type UserWithExchanges } from '../../users/users.types';
 
 /**
  * Result returned from authentication operations that provide user data

@@ -1,6 +1,6 @@
 import { PartialType } from '@nestjs/mapped-types';
 
-import { UpdateRisk } from '@chansey/api-interfaces';
+import { type UpdateRisk } from '@chansey/api-interfaces';
 
 import { CreateRiskDto } from './create-risk.dto';
 

@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { TradingService } from './trading.service';
 
@@ -75,7 +75,7 @@ describe('TradingService', () => {
       const mockClient = {
         markets: market !== undefined ? { 'BTC/USDT': market } : null,
         precisionMode,
-        loadMarkets: jest.fn().mockImplementation(async function (this: any) {
+        loadMarkets: jest.fn().mockImplementation(function (this: any) {
           this.markets = { 'BTC/USDT': market };
         })
       };
@@ -148,7 +148,7 @@ describe('TradingService', () => {
         exchange: { slug: 'binance_us', name: 'Binance US' }
       } as any);
 
-      const loadMarkets = jest.fn().mockImplementation(async function (this: any) {
+      const loadMarkets = jest.fn().mockImplementation(function (this: any) {
         this.markets = { 'BTC/USDT': market };
       });
 
@@ -344,7 +344,7 @@ describe('TradingService', () => {
     });
 
     it('loads markets when not yet loaded', async () => {
-      const loadMarkets = jest.fn().mockImplementation(async function (this: any) {
+      const loadMarkets = jest.fn().mockImplementation(function (this: any) {
         this.markets = { 'BTC/USDT': { active: true } };
       });
       const mockClient = {

@@ -26,7 +26,7 @@ export class SharpeDegradationCheck implements IRiskCheck {
   async evaluate(
     deployment: Deployment,
     latestMetric: PerformanceMetric | null,
-    historicalMetrics?: PerformanceMetric[]
+    _historicalMetrics?: PerformanceMetric[]
   ): Promise<RiskCheckResult> {
     if (!latestMetric || latestMetric.sharpeRatio === null) {
       return {
@@ -34,7 +34,7 @@ export class SharpeDegradationCheck implements IRiskCheck {
         passed: true,
         actualValue: 'N/A',
         threshold: 'N/A',
-        severity: 'low',
+        severity: 'low' as const,
         message: 'Sharpe ratio data not available yet'
       };
     }

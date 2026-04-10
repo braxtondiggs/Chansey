@@ -1,7 +1,7 @@
 import { ConcentrationGateService } from './concentration-gate.service';
 import { ConcentrationCheckService } from './risk/concentration-check.service';
 
-import { ExchangeBalanceDto } from '../balance/dto';
+import { type ExchangeBalanceDto } from '../balance/dto';
 
 describe('ConcentrationGateService', () => {
   let service: ConcentrationGateService;

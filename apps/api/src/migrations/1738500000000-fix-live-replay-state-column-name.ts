@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class FixLiveReplayStateColumnName1738500000000 implements MigrationInterface {
   name = 'FixLiveReplayStateColumnName1738500000000';

@@ -2,7 +2,7 @@ import { EMA } from 'technicalindicators';
 
 import { BaseIndicatorCalculator } from './base-indicator.calculator';
 
-import { CalculatorPeriodOptions } from '../indicator.interface';
+import { type CalculatorPeriodOptions } from '../indicator.interface';
 
 /**
  * Exponential Moving Average (EMA) Calculator

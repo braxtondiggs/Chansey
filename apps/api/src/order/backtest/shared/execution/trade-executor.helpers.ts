@@ -9,11 +9,11 @@
 import { MAINTENANCE_MARGIN_RATE, MAX_LEVERAGE_CAP } from '@chansey/api-interfaces';
 
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
-import { BacktestTrade, TradeType } from '../../backtest-trade.entity';
+import { type BacktestTrade, TradeType } from '../../backtest-trade.entity';
 import { SimulatedOrderStatus } from '../../simulated-order-fill.entity';
-import { Portfolio } from '../portfolio';
-import { SlippageConfig, SpreadEstimationContext } from '../slippage';
-import { MarketData, TradingSignal } from '../types';
+import { type Portfolio } from '../portfolio';
+import { type SlippageConfig, type SpreadEstimationContext } from '../slippage';
+import { type MarketData, type TradingSignal } from '../types';
 
 /** Default minimum hold period: 24 hours in milliseconds */
 export const DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;

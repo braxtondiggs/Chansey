@@ -1,4 +1,4 @@
-import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { type CandleData } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Utility class for transforming data for use with the technicalindicators library

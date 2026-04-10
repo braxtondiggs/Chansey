@@ -1,9 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { type Repository } from 'typeorm';
 
 import { FailedJobLog, FailedJobSeverity, FailedJobStatus } from './entities/failed-job-log.entity';
 import { FailedJobAlertService } from './failed-job-alert.service';

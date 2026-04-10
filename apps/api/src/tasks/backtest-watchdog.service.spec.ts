@@ -1,6 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { BacktestWatchdogService } from './backtest-watchdog.service';

@@ -1,5 +1,5 @@
 import {
-  ExitConfigRequest,
+  type ExitConfigRequest,
   ExitTrailingType,
   OrderSide,
   OrderType,

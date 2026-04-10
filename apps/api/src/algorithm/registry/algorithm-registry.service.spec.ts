@@ -1,7 +1,7 @@
 import { AlgorithmRegistry } from './algorithm-registry.service';
 
 import { AlgorithmNotRegisteredException } from '../../common/exceptions';
-import { AlgorithmContext } from '../interfaces';
+import { type AlgorithmContext } from '../interfaces';
 
 describe('AlgorithmRegistry.executeAlgorithm', () => {
   it('throws when no strategy is registered for the algorithm', async () => {

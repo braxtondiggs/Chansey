@@ -155,7 +155,7 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
         backtest.warningFlags = [...(backtest.warningFlags ?? []), ...warnings];
         await this.backtestRepository.save(backtest);
         for (const warning of warnings) {
-          this.backtestStream.publishLog(backtest.id, 'warn', `Warning: ${warning}`);
+          void this.backtestStream.publishLog(backtest.id, 'warn', `Warning: ${warning}`);
         }
       }
 

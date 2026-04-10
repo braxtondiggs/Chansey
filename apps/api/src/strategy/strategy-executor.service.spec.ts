@@ -1,16 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 
-import { MarketData, StrategyExecutorService, TradingSignal } from './strategy-executor.service';
+import { type MarketData, StrategyExecutorService, type TradingSignal } from './strategy-executor.service';
 
 import {
-  TradingSignal as AlgorithmTradingSignal,
+  type TradingSignal as AlgorithmTradingSignal,
   SignalType
 } from '../algorithm/interfaces/algorithm-result.interface';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
-import { Coin } from '../coin/coin.entity';
+import { type Coin } from '../coin/coin.entity';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SignalThrottleService } from '../order/backtest/shared/throttle';
@@ -196,18 +196,18 @@ describe('StrategyExecutorService – per-trade position cap', () => {
   ])('$scenario', async ({ signalOverrides, availableCapital, price, expectedAction, expectedQuantity }) => {
     const result = await executeWithSignal(signalOverrides, availableCapital, price);
 
-    expect(result).not.toBeNull();
-    expect(result!.action).toBe(expectedAction);
-    expect(result!.quantity).toBeCloseTo(expectedQuantity, 8);
+    if (!result) throw new Error('expected result');
+    expect(result.action).toBe(expectedAction);
+    expect(result.quantity).toBeCloseTo(expectedQuantity, 8);
   });
 
   it('does not cap sell signals', async () => {
     // Sell with quantity that would exceed 20% cap — should pass through
     const result = await executeWithSignal({ type: SignalType.SELL, strength: 1.0, quantity: 0.5 }, 10000, 50000);
 
-    expect(result).not.toBeNull();
-    expect(result!.action).toBe('sell');
-    expect(result!.quantity).toBe(0.5); // Not capped
+    if (!result) throw new Error('expected result');
+    expect(result.action).toBe('sell');
+    expect(result.quantity).toBe(0.5); // Not capped
   });
 });
 
@@ -302,8 +302,8 @@ describe('StrategyExecutorService – signal throttle integration', () => {
 
     const result = await service.executeStrategy(strategy, marketData, [], 10000);
 
-    expect(result).not.toBeNull();
-    expect(result!.symbol).toBe('ETH/USDT');
+    if (!result) throw new Error('expected result');
+    expect(result.symbol).toBe('ETH/USDT');
   });
 
   it('preserves originalType for STOP_LOSS bypass', async () => {
@@ -606,8 +606,8 @@ describe('StrategyExecutorService – executeStrategy edge cases', () => {
 
     const result = await service.executeStrategy(strategy, marketData, [], 10000);
 
-    expect(result).not.toBeNull();
-    expect(result!.action).toBe('short_entry');
-    expect(result!.quantity).toBeCloseTo(0.04, 8); // 20% of 10000 / 50000
+    if (!result) throw new Error('expected result');
+    expect(result.action).toBe('short_entry');
+    expect(result.quantity).toBeCloseTo(0.04, 8); // 20% of 10000 / 50000
   });
 });

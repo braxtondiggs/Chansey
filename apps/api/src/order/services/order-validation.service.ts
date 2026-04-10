@@ -212,7 +212,7 @@ export class OrderValidationService {
   /**
    * Validate exchange requirements for an order
    */
-  async validateExchangeOrder(order: OrderDto, orderType: OrderType, symbolInfo: SymbolInfo): Promise<OrderDto> {
+  validateExchangeOrder(order: OrderDto, orderType: OrderType, symbolInfo: SymbolInfo): OrderDto {
     this.validateSymbolStatus(symbolInfo);
 
     const filters = this.getSymbolFilters(symbolInfo.filters);

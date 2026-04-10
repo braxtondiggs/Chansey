@@ -1,9 +1,9 @@
-import { ObjectLiteral, Repository } from 'typeorm';
+import { type ObjectLiteral, type Repository } from 'typeorm';
 
 import { OptimizationQueryService } from './optimization-query.service';
 
-import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
-import { OptimizationResult } from '../entities/optimization-result.entity';
+import { type StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { type OptimizationResult } from '../entities/optimization-result.entity';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 

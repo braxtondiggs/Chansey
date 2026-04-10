@@ -1,4 +1,4 @@
-import { ParameterSpace } from '../interfaces';
+import { type ParameterSpace } from '../interfaces';
 
 /** Regex matching parameter names that represent indicator lookback periods */
 const PERIOD_PARAM_PATTERN = /period|slow|fast|medium|signal|atr|lookback/i;

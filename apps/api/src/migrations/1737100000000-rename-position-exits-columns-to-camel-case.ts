@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class RenamePositionExitsColumnsToCamelCase1737100000000 implements MigrationInterface {
   name = 'RenamePositionExitsColumnsToCamelCase1737100000000';

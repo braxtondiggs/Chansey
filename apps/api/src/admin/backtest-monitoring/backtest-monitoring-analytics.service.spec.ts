@@ -1,12 +1,12 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
+import { type ObjectLiteral, type Repository, type SelectQueryBuilder } from 'typeorm';
 
 import { BacktestMonitoringAnalyticsService } from './backtest-monitoring-analytics.service';
 import { BacktestMonitoringQueryService } from './backtest-monitoring-query.service';
 import { BacktestSortField, SortOrder } from './dto/backtest-listing.dto';
-import { BacktestFiltersDto } from './dto/overview.dto';
+import { type BacktestFiltersDto } from './dto/overview.dto';
 
 import { Backtest, BacktestStatus, BacktestType } from '../../order/backtest/backtest.entity';
 

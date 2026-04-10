@@ -28,7 +28,7 @@ export class MaximumDrawdownGate implements IPromotionGate {
     strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
-    context?: PromotionGateContext
+    _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     const actualDrawdown = Math.abs(Number(backtestRun.results?.maxDrawdown || 0));
     const passed = actualDrawdown < this.MAXIMUM_DRAWDOWN;

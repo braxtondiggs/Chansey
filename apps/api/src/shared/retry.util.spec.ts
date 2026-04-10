@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { type Logger } from '@nestjs/common';
 
 import {
   extractRetryAfterMs,
@@ -144,7 +144,7 @@ describe('retry.util', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBeInstanceOf(Error);
-      expect(result.error!.message).toBe('string error');
+      expect((result.error as Error).message).toBe('string error');
     });
 
     it('should log retry attempts when logger provided', async () => {

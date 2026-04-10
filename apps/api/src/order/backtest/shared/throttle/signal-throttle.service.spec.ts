@@ -1,12 +1,12 @@
 import {
   DEFAULT_THROTTLE_CONFIG,
   PAPER_TRADING_DEFAULT_THROTTLE_CONFIG,
-  SignalThrottleConfig
+  type SignalThrottleConfig
 } from './signal-throttle.interface';
 import { SignalThrottleService } from './signal-throttle.service';
 
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
-import { TradingSignal } from '../types';
+import { type TradingSignal } from '../types';
 
 describe('SignalThrottleService', () => {
   let service: SignalThrottleService;

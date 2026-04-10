@@ -1,8 +1,8 @@
 import {
-  FilterableSignal,
-  SignalFilter,
-  SignalFilterContext,
-  SignalFilterResult
+  type FilterableSignal,
+  type SignalFilter,
+  type SignalFilterContext,
+  type SignalFilterResult
 } from './signal-filter-chain.interface';
 
 import { CONCENTRATION_LIMITS } from '../../../../strategy/risk/concentration.constants';

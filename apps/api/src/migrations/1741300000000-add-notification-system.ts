@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddNotificationSystem1741300000000 implements MigrationInterface {
   name = 'AddNotificationSystem1741300000000';

@@ -1,6 +1,6 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interfaces';
+import { type Order, OrderSide, OrderStatus, OrderType } from '@chansey/api-interfaces';
 
 import { ActiveOrdersComponent } from './active-orders.component';
 

@@ -1,6 +1,6 @@
 import { IndicatorDataTransformer } from './indicator-data-transformer';
 
-import { PriceSummary } from '../../ohlc/ohlc-candle.entity';
+import { type PriceSummary } from '../../ohlc/ohlc-candle.entity';
 
 describe('IndicatorDataTransformer', () => {
   // Sample test data

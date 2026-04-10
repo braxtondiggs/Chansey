@@ -25,7 +25,7 @@ export class ReturnDriftDetector {
   private readonly HIGH_THRESHOLD = 0.6; // 60% underperformance
   private readonly CRITICAL_THRESHOLD = 0.8; // 80% underperformance
 
-  async detect(deployment: Deployment, latestMetric: PerformanceMetric): Promise<DriftAlert | null> {
+  detect(deployment: Deployment, latestMetric: PerformanceMetric): DriftAlert | null {
     const expectedReturn = deployment.metadata?.backtestReturn || 0.2; // Default 20% if not set
 
     const actualReturn = Number(latestMetric.cumulativeReturn);

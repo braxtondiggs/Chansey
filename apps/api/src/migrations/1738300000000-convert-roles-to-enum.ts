@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class ConvertRolesToEnum1738300000000 implements MigrationInterface {
   name = 'ConvertRolesToEnum1738300000000';

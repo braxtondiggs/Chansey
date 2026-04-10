@@ -1,6 +1,6 @@
 import { SlippageContextService } from './slippage-context.service';
 
-import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
+import { type OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
 
 describe('SlippageContextService', () => {
   let service: SlippageContextService;

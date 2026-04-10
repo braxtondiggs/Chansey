@@ -1,6 +1,6 @@
-import { ComponentRef } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { type ComponentRef } from '@angular/core';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormBuilder, type FormGroup, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 
 import { OrderType } from '@chansey/api-interfaces';

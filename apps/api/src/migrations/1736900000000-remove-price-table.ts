@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class RemovePriceTable1736900000000 implements MigrationInterface {
   name = 'RemovePriceTable1736900000000';

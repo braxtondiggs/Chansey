@@ -6,7 +6,7 @@ import {
 } from './confluence-signals.util';
 
 import { StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
-import { ConfluenceConfig, ConfluenceScore, SignalType, TradingSignal } from '../interfaces';
+import { type ConfluenceConfig, type ConfluenceScore, SignalType, type TradingSignal } from '../interfaces';
 
 describe('Confluence Signals Utilities', () => {
   const makeConfig = (overrides: Partial<ConfluenceConfig> = {}): ConfluenceConfig =>

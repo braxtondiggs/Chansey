@@ -1,10 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import {
   DEFAULT_SLIPPAGE_CONFIG,
-  SlippageConfig,
+  type SlippageConfig,
   SlippageModelType,
-  SpreadEstimationContext
+  type SpreadEstimationContext
 } from './slippage.interface';
 import { SlippageService } from './slippage.service';
 

@@ -1,11 +1,16 @@
-import { SignalType as AlgoSignalType, TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
-import { CandleData } from '../../../ohlc/ohlc-candle.entity';
-import { TradingSignal as BacktestTradingSignal } from '../../backtest/shared/types/backtest-signal.interface';
+import { SignalType as AlgoSignalType, type TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
+import { type CandleData } from '../../../ohlc/ohlc-candle.entity';
+import { type TradingSignal as BacktestTradingSignal } from '../../backtest/shared/types/backtest-signal.interface';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
-  OpportunitySellingUserConfig
+  type OpportunitySellingUserConfig
 } from '../../interfaces/opportunity-selling.interface';
-import { PaperTradingAccount, PaperTradingExitType, PaperTradingOrder, PaperTradingSignalType } from '../entities';
+import {
+  type PaperTradingAccount,
+  PaperTradingExitType,
+  type PaperTradingOrder,
+  PaperTradingSignalType
+} from '../entities';
 
 // ─── Public Types ───────────────────────────────────────────────────────────
 

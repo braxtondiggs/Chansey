@@ -1,5 +1,5 @@
-import { Deployment } from '../entities/deployment.entity';
-import { PerformanceMetric } from '../entities/performance-metric.entity';
+import { type Deployment } from '../entities/deployment.entity';
+import { type PerformanceMetric } from '../entities/performance-metric.entity';
 
 /**
  * RiskCheckResult

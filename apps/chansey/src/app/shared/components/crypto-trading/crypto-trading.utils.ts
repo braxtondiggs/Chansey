@@ -1,10 +1,10 @@
-import { FormGroup } from '@angular/forms';
+import { type FormGroup } from '@angular/forms';
 
 import { Decimal } from 'decimal.js';
 
-import { Balance, OrderPreview, OrderStatus, OrderType, TickerPair } from '@chansey/api-interfaces';
+import { type Balance, type OrderPreview, OrderStatus, OrderType, type TickerPair } from '@chansey/api-interfaces';
 
-import { DEFAULT_FEE_RATE, OrderBookEntry } from '../../services/trading';
+import { DEFAULT_FEE_RATE, type OrderBookEntry } from '../../services/trading';
 
 /** 0.1% safety margin to prevent 100% orders from failing due to price movement */
 export const MAX_ORDER_SAFETY_MARGIN = 0.001;

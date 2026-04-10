@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 
-import { PaperTradingMarketDataService, PriceData } from './paper-trading-market-data.service';
+import { PaperTradingMarketDataService, type PriceData } from './paper-trading-market-data.service';
 
 import type { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import * as retryUtil from '../../shared/retry.util';

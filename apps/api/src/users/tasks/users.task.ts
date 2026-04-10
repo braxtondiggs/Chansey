@@ -85,7 +85,7 @@ export class UsersTaskService extends WorkerHost implements OnModuleInit {
         description: `Scheduled coin selection update for risk level ${risk.level} (${risk.name})`
       } satisfies SelectionUpdateJobData,
       {
-        repeat: { pattern: risk.selectionUpdateCron! },
+        repeat: { pattern: risk.selectionUpdateCron as string },
         attempts: 3,
         backoff: {
           type: 'exponential',

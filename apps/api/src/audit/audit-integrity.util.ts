@@ -1,6 +1,6 @@
-import { AuditLog } from './entities/audit-log.entity';
+import { type AuditLog } from './entities/audit-log.entity';
 
-import { CryptoService } from '../common/crypto.service';
+import { type CryptoService } from '../common/crypto.service';
 
 /**
  * Verify integrity of a single audit log entry by recomputing the integrity hash

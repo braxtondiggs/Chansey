@@ -1,4 +1,4 @@
-import { SurfacesType } from './surface-palettes';
+import { type SurfacesType } from './surface-palettes';
 
 export function getPresetExtension(
   primaryColors: SurfacesType[],

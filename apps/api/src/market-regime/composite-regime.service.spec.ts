@@ -1,5 +1,5 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { AuditEventType, CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
 

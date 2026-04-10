@@ -1,4 +1,4 @@
-import * as ccxt from 'ccxt';
+import type * as ccxt from 'ccxt';
 
 import { OrderValidationService } from './order-validation.service';
 

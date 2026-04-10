@@ -1,11 +1,11 @@
 import { ForcedExitService } from './forced-exit.service';
 
-import { Coin } from '../../../../coin/coin.entity';
-import { BacktestTrade, TradeType } from '../../backtest-trade.entity';
+import { type Coin } from '../../../../coin/coin.entity';
+import { type BacktestTrade, TradeType } from '../../backtest-trade.entity';
 import { BacktestExitTracker } from '../exits';
-import { Portfolio, PortfolioStateService } from '../portfolio';
+import { type Portfolio, PortfolioStateService } from '../portfolio';
 import { PositionManagerService } from '../positions';
-import { MarketData } from '../types';
+import { type MarketData } from '../types';
 
 describe('ForcedExitService', () => {
   let service: ForcedExitService;

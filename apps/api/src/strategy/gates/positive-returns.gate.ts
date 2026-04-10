@@ -26,7 +26,7 @@ export class PositiveReturnsGate implements IPromotionGate {
     strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
-    context?: PromotionGateContext
+    _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     const totalReturn = Number(backtestRun.results?.totalReturn || 0);
     const passed = totalReturn > 0;

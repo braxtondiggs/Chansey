@@ -2,8 +2,8 @@ import { DeploymentStatus } from '@chansey/api-interfaces';
 
 import { VolatilitySpikeCheck } from './volatility-spike.check';
 
-import { Deployment } from '../entities/deployment.entity';
-import { PerformanceMetric } from '../entities/performance-metric.entity';
+import { type Deployment } from '../entities/deployment.entity';
+import { type PerformanceMetric } from '../entities/performance-metric.entity';
 
 const createDeployment = (overrides: Partial<Deployment> = {}): Deployment =>
   ({

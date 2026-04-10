@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class MakeAlgorithmWeightComputed1738800000000 implements MigrationInterface {
   name = 'MakeAlgorithmWeightComputed1738800000000';

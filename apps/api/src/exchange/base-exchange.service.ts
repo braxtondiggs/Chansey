@@ -86,16 +86,14 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
               return pending;
             }
 
-            const creation = (async () => {
-              this.logger.debug(`Creating user-specific client for user ${user.id} on ${this.exchangeSlug}`);
-              const userClient = this.createExchangeClient(
-                decryptedApi.replace(/\\n/g, '\n').trim(),
-                decryptedSecret.replace(/\\n/g, '\n').trim()
-              );
-              this.pool.set(clientKey, userClient);
-              return userClient;
-            })();
+            this.logger.debug(`Creating user-specific client for user ${user.id} on ${this.exchangeSlug}`);
+            const userClient = this.createExchangeClient(
+              decryptedApi.replace(/\\n/g, '\n').trim(),
+              decryptedSecret.replace(/\\n/g, '\n').trim()
+            );
+            this.pool.set(clientKey, userClient);
 
+            const creation = Promise.resolve(userClient);
             this.pool.setPending(clientKey, creation);
             return creation.finally(() => this.pool.deletePending(clientKey));
           }
@@ -128,25 +126,21 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       return pending;
     }
 
-    const creation = (async () => {
-      if (!this.configService) {
-        throw new InternalServerErrorException(`ConfigService is not available in ${this.constructor.name}`);
-      }
-      const defaultApiKey = this.configService.get<string>(this.apiKeyConfigName);
-      const defaultApiSecret = this.configService.get<string>(this.apiSecretConfigName);
+    if (!this.configService) {
+      throw new InternalServerErrorException(`ConfigService is not available in ${this.constructor.name}`);
+    }
+    const defaultApiKey = this.configService.get<string>(this.apiKeyConfigName);
+    const defaultApiSecret = this.configService.get<string>(this.apiSecretConfigName);
 
-      if (!defaultApiKey || !defaultApiSecret) {
-        this.logger.error(`Default ${this.constructor.name} API keys are not set in configuration`);
-        throw new InternalServerErrorException(`${this.constructor.name} API keys are not configured`);
-      }
+    if (!defaultApiKey || !defaultApiSecret) {
+      this.logger.error(`Default ${this.constructor.name} API keys are not set in configuration`);
+      throw new InternalServerErrorException(`${this.constructor.name} API keys are not configured`);
+    }
 
-      const defaultClient = this.createExchangeClient(defaultApiKey, defaultApiSecret.replace(/\\n/g, '\n').trim());
-      this.pool.set('default', defaultClient);
-      return defaultClient;
-    })();
-
-    this.pool.setPending('default', creation);
-    return creation.finally(() => this.pool.deletePending('default'));
+    const defaultClient = this.createExchangeClient(defaultApiKey, defaultApiSecret.replace(/\\n/g, '\n').trim());
+    this.pool.set('default', defaultClient);
+    this.pool.deletePending('default');
+    return defaultClient;
   }
 
   /**
@@ -164,15 +158,11 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
       return pending;
     }
 
-    const creation = (async () => {
-      this.logger.debug(`Creating public-only client for ${this.exchangeSlug}`);
-      const publicClient = this.createExchangeClient();
-      this.pool.set('public', publicClient);
-      return publicClient;
-    })();
-
-    this.pool.setPending('public', creation);
-    return creation.finally(() => this.pool.deletePending('public'));
+    this.logger.debug(`Creating public-only client for ${this.exchangeSlug}`);
+    const publicClient = this.createExchangeClient();
+    this.pool.set('public', publicClient);
+    this.pool.deletePending('public');
+    return publicClient;
   }
 
   /**
@@ -472,7 +462,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * Override in subclass to provide real implementation.
    * @throws Error if exchange doesn't support futures
    */
-  async createFuturesOrder(
+  createFuturesOrder(
     _user: User,
     _symbol: string,
     _side: 'buy' | 'sell',
@@ -488,7 +478,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
    * Override in subclass to provide real implementation.
    * @throws Error if exchange doesn't support futures
    */
-  async getFuturesPositions(_user: User, _symbol?: string): Promise<ccxt.Position[]> {
+  getFuturesPositions(_user: User, _symbol?: string): Promise<ccxt.Position[]> {
     throw new Error(`${this.constructor.name} does not support futures trading`);
   }
 

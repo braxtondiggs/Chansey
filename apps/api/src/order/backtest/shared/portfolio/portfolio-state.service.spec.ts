@@ -1,6 +1,6 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { DrawdownState, Portfolio, SerializablePortfolio } from './portfolio-state.interface';
+import { type DrawdownState, type Portfolio, type SerializablePortfolio } from './portfolio-state.interface';
 import { PortfolioStateService } from './portfolio-state.service';
 
 describe('PortfolioStateService', () => {

@@ -2,7 +2,7 @@ import { SignalReasonCode } from '@chansey/api-interfaces';
 
 import { PaperTradingExitExecutorService } from './paper-trading-exit-executor.service';
 
-import { PaperTradingSignalStatus, PaperTradingSession } from '../entities';
+import { PaperTradingSignalStatus, type PaperTradingSession } from '../entities';
 
 describe('PaperTradingExitExecutorService', () => {
   let service: PaperTradingExitExecutorService;

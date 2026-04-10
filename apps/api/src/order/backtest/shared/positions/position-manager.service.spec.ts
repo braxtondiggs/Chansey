@@ -1,6 +1,6 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
-import { Position, PositionSizingConfig } from './position-manager.interface';
+import { type Position, type PositionSizingConfig } from './position-manager.interface';
 import { PositionManagerService } from './position-manager.service';
 
 describe('PositionManagerService', () => {

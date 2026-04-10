@@ -63,7 +63,7 @@ export class TickerPairService {
     });
   }
 
-  async createTickerPair(data: CreateTickerDto): Promise<TickerPairs> {
+  createTickerPair(data: CreateTickerDto): TickerPairs {
     return this.pairs.create(data);
   }
 

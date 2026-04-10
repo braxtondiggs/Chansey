@@ -1,18 +1,18 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { type EventEmitter2 } from '@nestjs/event-emitter';
 
-import { Queue } from 'bullmq';
-import { DataSource, ObjectLiteral, Repository } from 'typeorm';
+import { type Queue } from 'bullmq';
+import { type DataSource, type ObjectLiteral, type Repository } from 'typeorm';
 
-import { GridSearchService } from './grid-search.service';
-import { OptimizationEvaluationService } from './optimization-evaluation.service';
+import { type GridSearchService } from './grid-search.service';
+import { type OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
-import { OptimizationQueryService } from './optimization-query.service';
+import { type OptimizationQueryService } from './optimization-query.service';
 
-import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
-import { OptimizationResult } from '../entities/optimization-result.entity';
-import { OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
-import { OptimizationConfig, ParameterSpace } from '../interfaces';
+import { type StrategyConfig } from '../../strategy/entities/strategy-config.entity';
+import { type OptimizationResult } from '../entities/optimization-result.entity';
+import { type OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
+import { type OptimizationConfig, type ParameterSpace } from '../interfaces';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 

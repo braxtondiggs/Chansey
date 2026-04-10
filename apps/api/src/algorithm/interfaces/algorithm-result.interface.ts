@@ -1,4 +1,4 @@
-import { ExitConfig } from '../../order/interfaces/exit-config.interface';
+import { type ExitConfig } from '../../order/interfaces/exit-config.interface';
 
 /**
  * Types of signals an algorithm can generate

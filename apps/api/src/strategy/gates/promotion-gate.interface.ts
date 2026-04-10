@@ -1,6 +1,6 @@
-import { BacktestRun } from '../entities/backtest-run.entity';
-import { StrategyConfig } from '../entities/strategy-config.entity';
-import { StrategyScore } from '../entities/strategy-score.entity';
+import { type BacktestRun } from '../entities/backtest-run.entity';
+import { type StrategyConfig } from '../entities/strategy-config.entity';
+import { type StrategyScore } from '../entities/strategy-score.entity';
 
 /**
  * PromotionGateResult

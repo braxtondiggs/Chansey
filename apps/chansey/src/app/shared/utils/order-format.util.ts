@@ -1,4 +1,4 @@
-import { Order } from '@chansey/api-interfaces';
+import { type Order } from '@chansey/api-interfaces';
 
 export function isUsdQuote(transaction: Order): boolean {
   const coinSymbol = transaction.quoteCoin?.symbol?.toUpperCase();

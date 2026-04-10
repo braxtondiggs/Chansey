@@ -234,7 +234,7 @@ export class OpportunitySellingExecutionService {
               new Map(coinSourcePositions.map((sp) => [sp.strategyConfigId, sp.quantity]))
             );
           }
-          const remainingQty = remainingQtyByCoin.get(sellOrder.coinId)!;
+          const remainingQty = remainingQtyByCoin.get(sellOrder.coinId) ?? new Map<string, number>();
           let remainingSellQty = sellOrder.quantity;
           for (const srcPos of coinSourcePositions) {
             if (remainingSellQty <= 0) break;

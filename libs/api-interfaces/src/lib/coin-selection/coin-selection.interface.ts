@@ -1,6 +1,6 @@
-import { CoinSelectionType } from './coin-selection-type.enum';
+import { type CoinSelectionType } from './coin-selection-type.enum';
 
-import { Coin } from '../coin/coin.interface';
+import { type Coin } from '../coin/coin.interface';
 
 export interface CreateCoinSelectionDto {
   coinId: string;

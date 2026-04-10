@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class CreatePositionExitsTable1736000000000 implements MigrationInterface {
   name = 'CreatePositionExitsTable1736000000000';

@@ -1,4 +1,4 @@
-import { IIndicatorCalculator } from '../indicator.interface';
+import { type IIndicatorCalculator } from '../indicator.interface';
 
 /**
  * Abstract base class for all indicator calculators

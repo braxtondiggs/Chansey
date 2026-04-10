@@ -3,7 +3,7 @@
  * Used by both API and frontend for type consistency
  */
 
-import { ExitConfigRequest } from '../order/exit-config.interface';
+import { type ExitConfigRequest } from '../order/exit-config.interface';
 
 export enum PaperTradingStatus {
   ACTIVE = 'ACTIVE',

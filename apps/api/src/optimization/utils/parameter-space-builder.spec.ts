@@ -1,6 +1,6 @@
 import { buildParameterSpace } from './parameter-space-builder';
 
-import { ParameterConstraint } from '../interfaces/parameter-space.interface';
+import { type ParameterConstraint } from '../interfaces/parameter-space.interface';
 
 describe('buildParameterSpace', () => {
   it('should convert integer numeric fields with step=1 and high priority', () => {
@@ -236,7 +236,7 @@ describe('buildParameterSpace', () => {
     const space = buildParameterSpace('test-001', schema, constraints);
 
     expect(space.constraints).toHaveLength(1);
-    expect(space.constraints![0].param1).toBe('fastPeriod');
+    expect((space.constraints as ParameterConstraint[])[0].param1).toBe('fastPeriod');
   });
 
   it('should preserve description from schema fields', () => {

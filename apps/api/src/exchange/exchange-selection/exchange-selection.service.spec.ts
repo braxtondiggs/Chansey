@@ -1,12 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { ExchangeSelectionService } from './exchange-selection.service';
 
 import { Order } from '../../order/order.entity';
 import { UserStrategyPosition } from '../../strategy/entities/user-strategy-position.entity';
-import { ExchangeKey } from '../exchange-key/exchange-key.entity';
+import { type ExchangeKey } from '../exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../exchange-manager.service';
 

@@ -1,13 +1,13 @@
 import { Decimal } from 'decimal.js';
 
 import {
-  ExitConfigRequest,
+  type ExitConfigRequest,
   getExchangeOrderTypeSupport,
-  OrderSide,
-  OrderType,
-  PlaceOrderRequest,
-  TimeInForce,
-  TrailingType
+  type OrderSide,
+  type OrderType,
+  type PlaceOrderRequest,
+  type TimeInForce,
+  type TrailingType
 } from '@chansey/api-interfaces';
 
 /** Default fee rate used for trade estimates */

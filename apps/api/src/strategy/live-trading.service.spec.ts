@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { ObjectLiteral, Repository } from 'typeorm';
+import { type ObjectLiteral, type Repository } from 'typeorm';
 
 import { SignalReasonCode, SignalStatus } from '@chansey/api-interfaces';
 
@@ -11,11 +11,11 @@ import { DailyLossLimitGateService } from './daily-loss-limit-gate.service';
 import { LiveSignalService } from './live-signal.service';
 import { LiveTradingService } from './live-trading.service';
 import { OpportunitySellingExecutionService } from './opportunity-selling-execution.service';
-import { OrderPlacementService, PlaceOrderResult } from './order-placement.service';
+import { OrderPlacementService, type PlaceOrderResult } from './order-placement.service';
 import { PositionTrackingService } from './position-tracking.service';
 import { PreTradeRiskGateService } from './pre-trade-risk-gate.service';
 import { RiskPoolMappingService } from './risk-pool-mapping.service';
-import { StrategyExecutorService, TradingSignal } from './strategy-executor.service';
+import { StrategyExecutorService, type TradingSignal } from './strategy-executor.service';
 
 import { TradingStateService } from '../admin/trading-state/trading-state.service';
 import { BalanceService } from '../balance/balance.service';

@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 /**
  * Add standalone indexes on backtestId for backtest_signals and backtest_trades.

@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddLiveReplayState1737300000000 implements MigrationInterface {
   name = 'AddLiveReplayState1737300000000';

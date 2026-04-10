@@ -27,8 +27,8 @@ export class MinimumScoreGate implements IPromotionGate {
   async evaluate(
     strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
-    backtestRun: BacktestRun,
-    context?: PromotionGateContext
+    _backtestRun: BacktestRun,
+    _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     const actualScore = Number(strategyScore.overallScore);
     const passed = actualScore >= this.MINIMUM_SCORE;

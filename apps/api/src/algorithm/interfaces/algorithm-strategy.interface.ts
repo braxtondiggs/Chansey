@@ -1,9 +1,9 @@
-import { AlgorithmContext } from './algorithm-context.interface';
-import { AlgorithmResult } from './algorithm-result.interface';
+import { type AlgorithmContext } from './algorithm-context.interface';
+import { type AlgorithmResult } from './algorithm-result.interface';
 
-import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
-import { Algorithm } from '../algorithm.entity';
-import { IndicatorRequirement } from '../indicators/indicator-requirements.interface';
+import { type ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { type Algorithm } from '../algorithm.entity';
+import { type IndicatorRequirement } from '../indicators/indicator-requirements.interface';
 
 /**
  * Base interface for all algorithm strategies

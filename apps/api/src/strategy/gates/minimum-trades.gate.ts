@@ -28,7 +28,7 @@ export class MinimumTradesGate implements IPromotionGate {
     strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
-    context?: PromotionGateContext
+    _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     const actualTrades = backtestRun.results?.totalTrades || 0;
     const passed = actualTrades >= this.MINIMUM_TRADES;

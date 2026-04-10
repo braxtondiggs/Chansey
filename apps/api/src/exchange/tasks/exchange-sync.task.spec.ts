@@ -1,10 +1,10 @@
-import { Job } from 'bullmq';
+import { type Job } from 'bullmq';
 
 import { ExchangeSyncTask } from './exchange-sync.task';
 
-import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
+import { type CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { Exchange } from '../exchange.entity';
-import { ExchangeService } from '../exchange.service';
+import { type ExchangeService } from '../exchange.service';
 
 const mockExchangesGet = jest.fn();
 

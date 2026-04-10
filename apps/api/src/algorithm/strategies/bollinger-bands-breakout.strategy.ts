@@ -74,13 +74,27 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
         let upper: number[], middle: number[], lower: number[], pb: number[], bandwidth: number[];
 
-        if (preUpper) {
+        const preMiddle = preUpper
+          ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)
+          : null;
+        const preLower = preUpper
+          ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)
+          : null;
+        const prePb = preUpper ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length) : null;
+        const preBandwidth = preUpper
+          ? this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)
+          : null;
+
+        if (preUpper && preMiddle && preLower && prePb && preBandwidth) {
           upper = preUpper;
-          middle = this.getPrecomputedSlice(context, coin.id, `${bbKey}_middle`, priceHistory.length)!;
-          lower = this.getPrecomputedSlice(context, coin.id, `${bbKey}_lower`, priceHistory.length)!;
-          pb = this.getPrecomputedSlice(context, coin.id, `${bbKey}_pb`, priceHistory.length)!;
-          bandwidth = this.getPrecomputedSlice(context, coin.id, `${bbKey}_bandwidth`, priceHistory.length)!;
+          middle = preMiddle;
+          lower = preLower;
+          pb = prePb;
+          bandwidth = preBandwidth;
         } else {
+          if (preUpper) {
+            this.logger.warn(`Partial BB cache for ${coin.symbol} (${bbKey}), recalculating`);
+          }
           const bbResult = await this.indicatorService.calculateBollingerBands(
             {
               coinId: coin.id,

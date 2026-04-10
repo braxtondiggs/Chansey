@@ -1,24 +1,24 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-import { ObjectLiteral, Repository } from 'typeorm';
+import { type ObjectLiteral, type Repository } from 'typeorm';
 
 import {
   AuditEventType,
-  CreateStrategyConfigDto,
-  StrategyConfigListFilters,
+  type CreateStrategyConfigDto,
+  type StrategyConfigListFilters,
   StrategyStatus,
-  UpdateStrategyConfigDto
+  type UpdateStrategyConfigDto
 } from '@chansey/api-interfaces';
 
-import { BacktestRun } from './entities/backtest-run.entity';
-import { StrategyConfig } from './entities/strategy-config.entity';
-import { StrategyScore } from './entities/strategy-score.entity';
+import { type BacktestRun } from './entities/backtest-run.entity';
+import { type StrategyConfig } from './entities/strategy-config.entity';
+import { type StrategyScore } from './entities/strategy-score.entity';
 import { StrategyService } from './strategy.service';
 
-import { AlgorithmService } from '../algorithm/algorithm.service';
-import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
-import { AuditService } from '../audit/audit.service';
-import { MetricsService } from '../metrics/metrics.service';
+import { type AlgorithmService } from '../algorithm/algorithm.service';
+import { type AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
+import { type AuditService } from '../audit/audit.service';
+import { type MetricsService } from '../metrics/metrics.service';
 
 type MockRepo<T extends ObjectLiteral> = jest.Mocked<Repository<T>>;
 
@@ -188,7 +188,7 @@ describe('StrategyService', () => {
     it('updates a strategy and logs audit', async () => {
       const existing = createStrategy({ name: 'Old Name', parameters: { window: 5 }, status: StrategyStatus.DRAFT });
       strategyRepo.findOne.mockResolvedValue(existing);
-      strategyRepo.save.mockImplementation(async (value) => value as any);
+      strategyRepo.save.mockImplementation((value) => value as any);
 
       const dto: UpdateStrategyConfigDto = {
         name: 'New Name',
@@ -261,7 +261,7 @@ describe('StrategyService', () => {
     it('records successful heartbeat and resets failures', async () => {
       const strategy = createStrategy({ heartbeatFailures: 2, lastError: 'err' });
       strategyRepo.findOne.mockResolvedValue(strategy);
-      strategyRepo.save.mockImplementation(async (value) => value as any);
+      strategyRepo.save.mockImplementation((value) => value as any);
 
       await service.recordHeartbeat(strategy.id);
 
@@ -275,7 +275,7 @@ describe('StrategyService', () => {
     it('records failed heartbeat and increments failures', async () => {
       const strategy = createStrategy({ heartbeatFailures: 1 });
       strategyRepo.findOne.mockResolvedValue(strategy);
-      strategyRepo.save.mockImplementation(async (value) => value as any);
+      strategyRepo.save.mockImplementation((value) => value as any);
 
       await service.recordHeartbeatFailure(strategy.id, 'boom');
 

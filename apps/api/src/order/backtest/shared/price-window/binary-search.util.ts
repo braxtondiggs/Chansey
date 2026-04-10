@@ -1,4 +1,4 @@
-import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
+import { type OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
 
 /**
  * Find the index of the first candle with timestamp >= target.

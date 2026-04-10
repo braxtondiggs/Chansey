@@ -1,4 +1,4 @@
-import { TickerPair } from '../coin/ticker-pair.interface';
+import { type TickerPair } from '../coin/ticker-pair.interface';
 
 export interface Exchange {
   id: string;

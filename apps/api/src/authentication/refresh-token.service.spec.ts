@@ -1,13 +1,13 @@
 import { UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { type ConfigService } from '@nestjs/config';
+import { type JwtService } from '@nestjs/jwt';
 
 import { Role } from '@chansey/api-interfaces';
 
 import { RefreshTokenService } from './refresh-token.service';
 
-import { User } from '../users/users.entity';
-import { UsersService } from '../users/users.service';
+import { type User } from '../users/users.entity';
+import { type UsersService } from '../users/users.service';
 
 type TestUser = User & { roles?: Role[] };
 

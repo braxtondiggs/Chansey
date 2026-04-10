@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import { ExchangeController } from './exchange.controller';
 import { ExchangeService } from './exchange.service';
@@ -47,18 +47,18 @@ describe('ExchangeController', () => {
     });
   });
 
-  it('gets exchange by id', () => {
+  it('gets exchange by id', async () => {
     const id = 'a3bb189e-8bf9-3888-9912-ace4e6543002';
 
-    controller.getExchangeById(id);
+    await controller.getExchangeById(id);
 
     expect(exchangeService.getExchangeById).toHaveBeenCalledWith(id);
   });
 
-  it('gets exchange tickers by id', () => {
+  it('gets exchange tickers by id', async () => {
     const id = 'a3bb189e-8bf9-3888-9912-ace4e6543002';
 
-    controller.getExchangeTickers(id);
+    await controller.getExchangeTickers(id);
 
     expect(exchangeService.getExchangeTickers).toHaveBeenCalledWith(id);
   });

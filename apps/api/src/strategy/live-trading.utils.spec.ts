@@ -1,6 +1,6 @@
 import { calculateFreeUsdValue, estimatePortfolioCapital, extractCoinIdFromSymbol } from './live-trading.utils';
 
-import { ExchangeBalanceDto } from '../balance/dto';
+import { type ExchangeBalanceDto } from '../balance/dto';
 
 function makeExchange(balances: Array<{ free?: string; locked?: string; usdValue?: number }>): ExchangeBalanceDto {
   return {

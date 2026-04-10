@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 export class AddBacktestCompletedAt1736600000000 implements MigrationInterface {
   name = 'AddBacktestCompletedAt1736600000000';

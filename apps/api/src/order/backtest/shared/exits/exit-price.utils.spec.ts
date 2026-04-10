@@ -8,7 +8,7 @@ import {
 } from './exit-price.utils';
 
 import {
-  ExitConfig,
+  type ExitConfig,
   StopLossType,
   TakeProfitType,
   TrailingActivationType,
