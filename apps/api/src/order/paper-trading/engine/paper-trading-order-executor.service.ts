@@ -267,7 +267,7 @@ export class PaperTradingOrderExecutorService {
     const { txManager, baseCurrency, basePrice, executionPrice, slippageBps, quoteAccount, baseAccount } = args;
 
     if (!baseAccount || baseAccount.available <= 0) {
-      this.logger.warn(`No ${baseCurrency} position to sell`);
+      this.logger.debug(`No ${baseCurrency} position to sell`);
       return { status: 'no_position', order: null };
     }
 
