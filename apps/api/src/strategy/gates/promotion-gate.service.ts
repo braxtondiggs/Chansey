@@ -23,7 +23,6 @@ import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { BacktestRun } from '../entities/backtest-run.entity';
 import { Deployment } from '../entities/deployment.entity';
-import { StrategyConfig } from '../entities/strategy-config.entity';
 import { StrategyScore } from '../entities/strategy-score.entity';
 
 // Import all gate implementations
@@ -83,8 +82,7 @@ export class PromotionGateService {
     this.logger.log(`Evaluating promotion gates for strategy ${strategyConfigId}`);
 
     // Load required data
-    const [strategyConfig, latestScore, latestBacktest, context] = await Promise.all([
-      this.loadStrategyConfig(strategyConfigId),
+    const [latestScore, latestBacktest, context] = await Promise.all([
       this.loadLatestScore(strategyConfigId),
       this.loadLatestBacktest(strategyConfigId),
       this.buildGateContext()
@@ -111,7 +109,7 @@ export class PromotionGateService {
 
     for (const gate of this.gates) {
       try {
-        const result = await gate.evaluate(strategyConfig, latestScore, latestBacktest, context);
+        const result = await gate.evaluate(latestScore, latestBacktest, context);
         gateResults.push(result);
 
         this.logger.debug(`Gate ${gate.name}: ${result.passed ? 'PASS' : 'FAIL'} - ${result.message}`);
@@ -217,15 +215,6 @@ export class PromotionGateService {
       totalAllocation,
       currentMarketRegime
     };
-  }
-
-  /**
-   * Load strategy configuration
-   */
-  private async loadStrategyConfig(_strategyConfigId: string): Promise<StrategyConfig> {
-    // This would use StrategyService in real implementation
-    // For now, return a placeholder
-    return {} as StrategyConfig;
   }
 
   /**
