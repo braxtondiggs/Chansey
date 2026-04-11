@@ -126,7 +126,7 @@ export class OptimizationAnalyticsService {
 
   /** Status filter intentionally omitted — returns full status breakdown */
   private async getOptStatusCounts(
-    filters: OptimizationFiltersDto,
+    _filters: OptimizationFiltersDto,
     dateRange: DateRange
   ): Promise<Record<OptimizationStatus, number>> {
     const qb = this.optimizationRunRepo
@@ -166,7 +166,7 @@ export class OptimizationAnalyticsService {
   }
 
   private async getOptAvgMetrics(
-    filters: OptimizationFiltersDto,
+    _filters: OptimizationFiltersDto,
     dateRange: DateRange
   ): Promise<{ avgImprovement: number; avgBestScore: number; avgCombinationsTested: number }> {
     const qb = this.optimizationRunRepo
@@ -189,7 +189,7 @@ export class OptimizationAnalyticsService {
   }
 
   private async getOptTopStrategies(
-    filters: OptimizationFiltersDto,
+    _filters: OptimizationFiltersDto,
     dateRange: DateRange
   ): Promise<OptimizationAnalyticsDto['topStrategies']> {
     const qb = this.optimizationRunRepo
@@ -223,7 +223,7 @@ export class OptimizationAnalyticsService {
   }
 
   private async getOptResultSummary(
-    filters: OptimizationFiltersDto,
+    _filters: OptimizationFiltersDto,
     dateRange: DateRange
   ): Promise<OptimizationAnalyticsDto['resultSummary']> {
     const runSubQuery = this.optimizationRunRepo

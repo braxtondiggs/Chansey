@@ -99,8 +99,8 @@ describe('PositionMonitorTask', () => {
   };
 
   const mockManager = {
-    save: jest.fn((entityClass, entity) => Promise.resolve({ ...entity, id: entity.id || 'new-order-uuid' })),
-    create: jest.fn((entityClass, dto) => dto)
+    save: jest.fn((_entityClass, entity) => Promise.resolve({ ...entity, id: entity.id || 'new-order-uuid' })),
+    create: jest.fn((_entityClass, dto) => dto)
   };
 
   const mockDataSource = {

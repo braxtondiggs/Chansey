@@ -1,5 +1,4 @@
 import { type BacktestRun } from '../entities/backtest-run.entity';
-import { type StrategyConfig } from '../entities/strategy-config.entity';
 import { type StrategyScore } from '../entities/strategy-score.entity';
 
 /**
@@ -53,14 +52,12 @@ export interface IPromotionGate {
 
   /**
    * Evaluate the gate
-   * @param strategyConfig - Strategy configuration
    * @param strategyScore - Latest strategy score
    * @param backtestRun - Latest backtest run
    * @param context - Additional context for gate evaluation
    * @returns Gate evaluation result
    */
   evaluate(
-    strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
     context?: PromotionGateContext

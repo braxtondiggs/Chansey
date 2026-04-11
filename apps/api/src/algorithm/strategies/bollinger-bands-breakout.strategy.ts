@@ -301,7 +301,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
    * Calculate confidence based on bandwidth expansion and momentum
    */
   private calculateConfidence(
-    prices: CandleData[],
+    _prices: CandleData[],
     pb: number[],
     bandwidth: number[],
     direction: 'bullish' | 'bearish',

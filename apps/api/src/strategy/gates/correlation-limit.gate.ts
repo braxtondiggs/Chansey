@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { IPromotionGate, PromotionGateResult, PromotionGateContext } from './promotion-gate.interface';
 
 import { BacktestRun } from '../entities/backtest-run.entity';
-import { StrategyConfig } from '../entities/strategy-config.entity';
 import { StrategyScore } from '../entities/strategy-score.entity';
 
 /**
@@ -25,9 +24,8 @@ export class CorrelationLimitGate implements IPromotionGate {
   private readonly MAXIMUM_CORRELATION = 0.7;
 
   async evaluate(
-    strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
-    backtestRun: BacktestRun,
+    _backtestRun: BacktestRun,
     context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     // Get correlation score (calculated against existing deployments)

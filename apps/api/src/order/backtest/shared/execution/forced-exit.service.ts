@@ -30,7 +30,7 @@ export class ForcedExitService {
   checkAndApplyLiquidations(
     portfolio: Portfolio,
     marketData: MarketData,
-    tradingFee: number,
+    _tradingFee: number,
     coinMap: Map<string, Coin>,
     quoteCoin: Coin
   ): Partial<BacktestTrade>[] {

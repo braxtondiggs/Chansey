@@ -323,8 +323,8 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
    */
   private calculateSignalStrength(
     rsi: number[],
-    macd: number[],
-    macdSignalLine: number[],
+    _macd: number[],
+    _macdSignalLine: number[],
     histogram: number[],
     config: RSIMACDComboConfig,
     direction: 'bullish' | 'bearish',

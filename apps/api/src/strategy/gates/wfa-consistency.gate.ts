@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { IPromotionGate, PromotionGateResult, PromotionGateContext } from './promotion-gate.interface';
 
 import { BacktestRun } from '../entities/backtest-run.entity';
-import { StrategyConfig } from '../entities/strategy-config.entity';
 import { StrategyScore } from '../entities/strategy-score.entity';
 
 /**
@@ -25,7 +24,6 @@ export class WFAConsistencyGate implements IPromotionGate {
   private readonly MAXIMUM_DEGRADATION = 0.3; // 30%
 
   async evaluate(
-    strategyConfig: StrategyConfig,
     strategyScore: StrategyScore,
     backtestRun: BacktestRun,
     _context?: PromotionGateContext

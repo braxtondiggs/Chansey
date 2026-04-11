@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { IPromotionGate, PromotionGateResult, PromotionGateContext } from './promotion-gate.interface';
 
 import { BacktestRun } from '../entities/backtest-run.entity';
-import { StrategyConfig } from '../entities/strategy-config.entity';
 import { StrategyScore } from '../entities/strategy-score.entity';
 
 /**
@@ -25,8 +24,7 @@ export class MinimumTradesGate implements IPromotionGate {
   private readonly MINIMUM_TRADES = 30;
 
   async evaluate(
-    strategyConfig: StrategyConfig,
-    strategyScore: StrategyScore,
+    _strategyScore: StrategyScore,
     backtestRun: BacktestRun,
     _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {

@@ -52,7 +52,7 @@ export class AlgorithmPerformanceController {
   })
   async getPerformance(
     @Param('id', ParseUUIDPipe) algorithmId: string,
-    @Query() query: AlgorithmPerformanceQueryDto,
+    @Query() _query: AlgorithmPerformanceQueryDto,
     @Req() request: any
   ) {
     const userId = request.user.id;

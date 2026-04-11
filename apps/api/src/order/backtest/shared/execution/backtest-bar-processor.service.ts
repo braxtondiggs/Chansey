@@ -151,7 +151,7 @@ export class BacktestBarProcessor {
     i: number,
     timestamp: Date,
     priceData: ReturnType<PriceWindowService['advancePriceWindows']>,
-    marketData: MarketData,
+    _marketData: MarketData,
     currentPrices: OHLCCandle[]
   ): Promise<void> {
     const warmupRegime = ctx.btcCoin

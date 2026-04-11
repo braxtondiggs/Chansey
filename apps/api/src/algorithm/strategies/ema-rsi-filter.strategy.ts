@@ -309,8 +309,8 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
    */
   private calculateConfidence(
     prices: CandleData[],
-    fastEMA: number[],
-    slowEMA: number[],
+    _fastEMA: number[],
+    _slowEMA: number[],
     rsi: number[],
     config: EMARSIFilterConfig,
     direction: 'bullish' | 'bearish',
