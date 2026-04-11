@@ -1,9 +1,11 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
 import { Job, Queue } from 'bullmq';
 
 import { CoinService } from '../../coin/coin.service';
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { OHLCBackfillService } from '../../ohlc/services/ohlc-backfill.service';
 import { toErrorInfo } from '../../shared/error.util';
 
@@ -12,16 +14,17 @@ interface HistoricalPriceJobData {
 }
 @Processor('coin-selection-queue')
 @Injectable()
-export class CoinSelectionHistoricalPriceTask extends WorkerHost implements OnModuleInit {
+export class CoinSelectionHistoricalPriceTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CoinSelectionHistoricalPriceTask.name);
   private readonly DAYS_TO_FETCH = 90; // Fetch 90 days of historical data
 
   constructor(
     @InjectQueue('coin-selection-queue') private readonly coinSelectionQueue: Queue,
     private readonly coin: CoinService,
-    private readonly ohlcBackfill: OHLCBackfillService
+    private readonly ohlcBackfill: OHLCBackfillService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   onModuleInit() {

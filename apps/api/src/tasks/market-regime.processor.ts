@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { Job } from 'bullmq';
@@ -6,19 +6,22 @@ import { Job } from 'bullmq';
 import { MarketRegimeTask } from './market-regime.task';
 
 import { InsufficientDataException } from '../common/exceptions';
+import { FailSafeWorkerHost } from '../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
 @Processor('regime-check-queue')
-export class MarketRegimeProcessor extends WorkerHost {
+export class MarketRegimeProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(MarketRegimeProcessor.name);
 
   constructor(
     private readonly marketRegimeTask: MarketRegimeTask,
-    private readonly compositeRegimeService: CompositeRegimeService
+    private readonly compositeRegimeService: CompositeRegimeService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async process(job: Job<{ asset: string; timestamp: string }>): Promise<void> {

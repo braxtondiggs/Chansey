@@ -1,6 +1,7 @@
 import { type Job } from 'bullmq';
 
 import { PaperTradingStatus } from './entities';
+import { PaperTradingRetryService } from './paper-trading-retry.service';
 import { PaperTradingJobType } from './paper-trading.job-data';
 import { PaperTradingProcessor } from './paper-trading.processor';
 
@@ -50,25 +51,49 @@ describe('PaperTradingProcessor', () => {
       emit: jest.fn()
     };
 
+    const failedJobService = {
+      recordFailure: jest.fn()
+    };
+
     const config = { maxConsecutiveErrors: 2, maxRetryAttempts: 3, retryBackoffMs: 1000 };
+
+    const effectiveConfig = overrides.config ?? config;
+    const effectiveSessionRepository = overrides.sessionRepository ?? sessionRepository;
+    const effectivePaperTradingService = overrides.paperTradingService ?? paperTradingService;
+    const effectiveEngineService = overrides.engineService ?? engineService;
+    const effectiveStreamService = overrides.streamService ?? streamService;
+    const effectiveMetricsService = overrides.metricsService ?? metricsService;
+
+    const retryService = new PaperTradingRetryService(
+      effectiveConfig as any,
+      effectiveSessionRepository as any,
+      effectivePaperTradingService as any,
+      effectiveEngineService as any,
+      effectiveStreamService as any,
+      effectiveMetricsService as any
+    );
 
     return {
       processor: new PaperTradingProcessor(
-        (overrides.config ?? config) as any,
-        (overrides.sessionRepository ?? sessionRepository) as any,
+        effectiveConfig as any,
+        effectiveSessionRepository as any,
         (overrides.exchangeKeyRepository ?? exchangeKeyRepository) as any,
-        (overrides.paperTradingService ?? paperTradingService) as any,
-        (overrides.engineService ?? engineService) as any,
-        (overrides.streamService ?? streamService) as any,
-        (overrides.metricsService ?? metricsService) as any,
-        (overrides.eventEmitter ?? eventEmitter) as any
+        effectivePaperTradingService as any,
+        effectiveEngineService as any,
+        effectiveStreamService as any,
+        effectiveMetricsService as any,
+        (overrides.eventEmitter ?? eventEmitter) as any,
+        (overrides.failedJobService ?? failedJobService) as any,
+        retryService
       ),
       sessionRepository,
       paperTradingService,
       engineService,
       streamService,
       metricsService,
-      eventEmitter
+      eventEmitter,
+      failedJobService,
+      retryService
     };
   };
 
@@ -451,7 +476,7 @@ describe('PaperTradingProcessor', () => {
   });
 
   it('skips tick if session not found and removes jobs', async () => {
-    const { processor, sessionRepository, paperTradingService } = createProcessor();
+    const { processor, sessionRepository, paperTradingService, engineService } = createProcessor();
 
     sessionRepository.findOne.mockResolvedValue(null);
 
@@ -464,6 +489,7 @@ describe('PaperTradingProcessor', () => {
     await processor.process(job);
 
     expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-nonexistent');
+    expect(engineService.processTick).not.toHaveBeenCalled();
   });
 
   it('silently returns on subsequent ticks for a missing session (no repeated cleanup)', async () => {
@@ -772,6 +798,52 @@ describe('PaperTradingProcessor', () => {
     );
   });
 
+  it('onFailed records failure via failedJobService with job metadata', async () => {
+    const { processor, failedJobService } = createProcessor();
+
+    const job = {
+      id: 'job-42',
+      name: 'tick',
+      data: { type: PaperTradingJobType.TICK, sessionId: 'session-x', userId: 'user-x' },
+      attemptsMade: 5,
+      opts: { attempts: 5 }
+    } as unknown as Job<any>;
+
+    const error = new Error('worker exploded');
+    error.stack = 'stack-trace';
+
+    await processor.onFailed(job, error);
+
+    expect(failedJobService.recordFailure).toHaveBeenCalledWith({
+      queueName: 'paper-trading',
+      jobId: 'job-42',
+      jobName: 'tick',
+      jobData: job.data,
+      errorMessage: 'worker exploded',
+      stackTrace: 'stack-trace',
+      attemptsMade: 5,
+      maxAttempts: 5
+    });
+  });
+
+  it('onFailed swallows recordFailure errors (fail-safe)', async () => {
+    const { processor, failedJobService } = createProcessor();
+    failedJobService.recordFailure.mockRejectedValue(new Error('db down'));
+
+    const job = {
+      id: 'job-99',
+      name: 'tick',
+      data: {},
+      attemptsMade: 1,
+      opts: undefined
+    } as unknown as Job<any>;
+
+    // Must not throw even when recordFailure rejects.
+    // attemptsMade=1, missing opts → maxAttempts defaults to 1, so this is the terminal attempt.
+    await expect(processor.onFailed(job, new Error('boom'))).resolves.toBeUndefined();
+    expect(failedJobService.recordFailure).toHaveBeenCalledWith(expect.objectContaining({ maxAttempts: 1 }));
+  });
+
   it('restores throttle state from DB when engine has none in memory', async () => {
     const session = {
       id: 'session-throttle',
@@ -875,7 +947,16 @@ describe('PaperTradingProcessor', () => {
     expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-stop-dd', 'max_drawdown');
   });
 
-  it('triggers markCompleted when minTrades gate is met', async () => {
+  it.each([
+    { label: 'fires when minTrades gate is met', minTrades: 40, totalTrades: 38, ordersExecuted: 2, expected: true },
+    {
+      label: 'does not fire when minTrades is null',
+      minTrades: null,
+      totalTrades: 50,
+      ordersExecuted: 0,
+      expected: false
+    }
+  ])('minTrades gate $label', async ({ minTrades, totalTrades, ordersExecuted, expected }) => {
     const session = {
       id: 'session-min-trades',
       status: PaperTradingStatus.ACTIVE,
@@ -883,8 +964,8 @@ describe('PaperTradingProcessor', () => {
       peakPortfolioValue: 1000,
       consecutiveErrors: 0,
       tickCount: 20,
-      totalTrades: 38,
-      minTrades: 40
+      totalTrades,
+      minTrades: minTrades as number | null
     };
 
     const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
@@ -892,11 +973,11 @@ describe('PaperTradingProcessor', () => {
     sessionRepository.findOne.mockResolvedValue(session);
     engineService.processTick.mockResolvedValue({
       processed: true,
-      signalsReceived: 2,
-      ordersExecuted: 2,
+      signalsReceived: ordersExecuted,
+      ordersExecuted,
       errors: [],
       portfolioValue: 1050,
-      prices: { 'BTC/USD': 50000 }
+      prices: {}
     });
 
     const job = createJob({
@@ -907,44 +988,12 @@ describe('PaperTradingProcessor', () => {
 
     await processor.process(job);
 
-    // totalTrades should be 38 + 2 = 40, meeting minTrades
-    expect(session.totalTrades).toBe(40);
-    expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-min-trades', 'min_trades_reached');
-  });
-
-  it('does not trigger minTrades completion when minTrades is null (backward compat)', async () => {
-    const session = {
-      id: 'session-no-min',
-      status: PaperTradingStatus.ACTIVE,
-      initialCapital: 1000,
-      peakPortfolioValue: 1000,
-      consecutiveErrors: 0,
-      tickCount: 20,
-      totalTrades: 50,
-      minTrades: null as number | null
-    };
-
-    const { processor, sessionRepository, engineService, paperTradingService } = createProcessor();
-
-    sessionRepository.findOne.mockResolvedValue(session);
-    engineService.processTick.mockResolvedValue({
-      processed: true,
-      signalsReceived: 0,
-      ordersExecuted: 0,
-      errors: [],
-      portfolioValue: 1050,
-      prices: {}
-    });
-
-    const job = createJob({
-      type: PaperTradingJobType.TICK,
-      sessionId: 'session-no-min',
-      userId: 'user-nm'
-    });
-
-    await processor.process(job);
-
-    expect(paperTradingService.markCompleted).not.toHaveBeenCalled();
+    if (expected) {
+      expect(session.totalTrades).toBe(40);
+      expect(paperTradingService.markCompleted).toHaveBeenCalledWith('session-min-trades', 'min_trades_reached');
+    } else {
+      expect(paperTradingService.markCompleted).not.toHaveBeenCalled();
+    }
   });
 
   it('duration fires as hard cap even when minTrades is not met', async () => {
@@ -1051,7 +1100,6 @@ describe('PaperTradingProcessor', () => {
       sessionId: 'session-overflow',
       userId: 'user-1'
     });
-    await overflowJob;
     await processor.process(overflowJob);
     expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-overflow');
 

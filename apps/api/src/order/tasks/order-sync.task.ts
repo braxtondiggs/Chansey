@@ -1,4 +1,4 @@
-import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 
 import { OrderSyncService } from './../services/order-sync.service';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
 import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { UsersService } from '../../users/users.service';
@@ -13,7 +14,7 @@ import { OrderCleanupService } from '../services/order-cleanup.service';
 
 @Processor('order-queue')
 @Injectable()
-export class OrderSyncTask extends WorkerHost implements OnModuleInit {
+export class OrderSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OrderSyncTask.name);
   private jobScheduled = false;
 
@@ -22,9 +23,9 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
     private readonly orderCleanupService: OrderCleanupService,
     private readonly orderSyncService: OrderSyncService,
     private readonly usersService: UsersService,
-    private readonly failedJobService: FailedJobService
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   /**
@@ -134,24 +135,6 @@ export class OrderSyncTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
-    }
-  }
-
-  @OnWorkerEvent('failed')
-  async onFailed(job: Job, error: Error): Promise<void> {
-    try {
-      await this.failedJobService.recordFailure({
-        queueName: 'order-queue',
-        jobId: String(job.id),
-        jobName: job.name,
-        jobData: job.data,
-        errorMessage: error.message,
-        stackTrace: error.stack,
-        attemptsMade: job.attemptsMade,
-        maxAttempts: job.opts?.attempts ?? 0
-      });
-    } catch {
-      // fail-safe
     }
   }
 

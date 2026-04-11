@@ -5,7 +5,7 @@
  * Each job processes one user's strategy configs and creates full validation pipelines.
  */
 
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { Job } from 'bullmq';
@@ -13,15 +13,20 @@ import { Job } from 'bullmq';
 import { PipelineOrchestrationJobData, PipelineOrchestrationResult } from './dto/pipeline-orchestration.dto';
 import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
+import { FailSafeWorkerHost } from '../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
 @Processor('pipeline-orchestration')
-export class PipelineOrchestrationProcessor extends WorkerHost {
+export class PipelineOrchestrationProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PipelineOrchestrationProcessor.name);
 
-  constructor(private readonly orchestrationService: PipelineOrchestrationService) {
-    super();
+  constructor(
+    private readonly orchestrationService: PipelineOrchestrationService,
+    failedJobService: FailedJobService
+  ) {
+    super(failedJobService);
   }
 
   /**

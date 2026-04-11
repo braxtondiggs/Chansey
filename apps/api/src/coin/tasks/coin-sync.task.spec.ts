@@ -98,7 +98,8 @@ describe('CoinSyncTask', () => {
       snapshotService as any,
       coinMarketData as any,
       geckoService,
-      { acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test' }), release: jest.fn() } as any
+      { acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test' }), release: jest.fn() } as any,
+      { recordFailure: jest.fn() } as any
     );
   });
 

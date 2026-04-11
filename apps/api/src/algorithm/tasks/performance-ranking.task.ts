@@ -1,9 +1,11 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { AlgorithmActivationService } from '../services/algorithm-activation.service';
 import { AlgorithmPerformanceService } from '../services/algorithm-performance.service';
@@ -17,7 +19,7 @@ import { AlgorithmScoreService } from '../services/algorithm-score.service';
  */
 @Processor('performance-ranking')
 @Injectable()
-export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
+export class PerformanceRankingTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(PerformanceRankingTask.name);
   private jobScheduled = false;
 
@@ -25,9 +27,10 @@ export class PerformanceRankingTask extends WorkerHost implements OnModuleInit {
     @InjectQueue('performance-ranking') private readonly performanceRankingQueue: Queue,
     private readonly algorithmActivationService: AlgorithmActivationService,
     private readonly algorithmPerformanceService: AlgorithmPerformanceService,
-    private readonly algorithmScoreService: AlgorithmScoreService
+    private readonly algorithmScoreService: AlgorithmScoreService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   /**

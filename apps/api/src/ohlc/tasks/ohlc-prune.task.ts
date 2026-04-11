@@ -1,15 +1,17 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { OHLCService } from '../ohlc.service';
 
 @Processor('ohlc-prune-queue')
 @Injectable()
-export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
+export class OHLCPruneTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OHLCPruneTask.name);
   private jobScheduled = false;
   private readonly DEFAULT_RETENTION_DAYS = 365; // 1 year
@@ -17,9 +19,10 @@ export class OHLCPruneTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('ohlc-prune-queue') private readonly ohlcQueue: Queue,
     private readonly ohlcService: OHLCService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   /**

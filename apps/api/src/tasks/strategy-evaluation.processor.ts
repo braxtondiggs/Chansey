@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { Job } from 'bullmq';
@@ -6,6 +6,8 @@ import { Job } from 'bullmq';
 import { PromotionTask } from './promotion.task';
 import { StrategyEvaluationTask } from './strategy-evaluation.task';
 
+import { FailSafeWorkerHost } from '../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 type EvaluateStrategyJob = { strategyConfigId: string };
@@ -13,14 +15,15 @@ type ActivateDeploymentJob = { deploymentId: string; strategyName: string };
 
 @Injectable()
 @Processor('strategy-evaluation-queue')
-export class StrategyEvaluationProcessor extends WorkerHost {
+export class StrategyEvaluationProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(StrategyEvaluationProcessor.name);
 
   constructor(
     private readonly strategyEvaluationTask: StrategyEvaluationTask,
-    private readonly promotionTask: PromotionTask
+    private readonly promotionTask: PromotionTask,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async process(job: Job<EvaluateStrategyJob | ActivateDeploymentJob>): Promise<void> {

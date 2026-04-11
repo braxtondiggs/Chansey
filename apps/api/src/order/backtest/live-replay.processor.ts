@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,6 +20,8 @@ import { BacktestJobData } from './backtest.job-data';
 import { CoinResolverService } from './coin-resolver.service';
 import { MarketDataSet } from './market-data-set.entity';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { ShutdownSignalService } from '../../shutdown/shutdown-signal.service';
@@ -33,7 +35,7 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
   stalledInterval: 300_000,
   maxStalledCount: 2
 })
-export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
+export class LiveReplayProcessor extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(LiveReplayProcessor.name);
 
   constructor(
@@ -46,10 +48,11 @@ export class LiveReplayProcessor extends WorkerHost implements OnModuleInit {
     private readonly metricsService: MetricsService,
     private readonly configService: ConfigService,
     private readonly shutdownSignal: ShutdownSignalService,
+    failedJobService: FailedJobService,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(MarketDataSet) private readonly marketDataSetRepository: Repository<MarketDataSet>
   ) {
-    super();
+    super(failedJobService);
   }
 
   onModuleInit(): void {

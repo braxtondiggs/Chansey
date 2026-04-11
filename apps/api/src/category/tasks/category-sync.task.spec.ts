@@ -37,10 +37,16 @@ describe('CategorySyncTask', () => {
       }
     } as unknown as CoinGeckoClientService;
 
-    task = new CategorySyncTask(queue as any, categoryService as any, geckoService, {
-      acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test' }),
-      release: jest.fn()
-    } as any);
+    task = new CategorySyncTask(
+      queue as any,
+      categoryService as any,
+      geckoService,
+      {
+        acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test' }),
+        release: jest.fn()
+      } as any,
+      { recordFailure: jest.fn() } as any
+    );
   });
 
   afterEach(() => {

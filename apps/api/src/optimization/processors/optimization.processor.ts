@@ -1,9 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { Job } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { OptimizationOrchestratorService } from '../services';
 
@@ -31,14 +33,15 @@ const DEFAULT_CONCURRENCY = 3;
   stalledInterval: 14_400_000, // 4 hours
   maxStalledCount: 2
 })
-export class OptimizationProcessor extends WorkerHost implements OnModuleInit {
+export class OptimizationProcessor extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OptimizationProcessor.name);
 
   constructor(
     private readonly orchestratorService: OptimizationOrchestratorService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   onModuleInit(): void {

@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -11,21 +11,24 @@ import { SmsNotificationService } from './channels/sms-notification.service';
 import { Notification } from './entities/notification.entity';
 import { NotificationJobData } from './interfaces/notification-events.interface';
 
+import { FailSafeWorkerHost } from '../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Processor('notification')
 @Injectable()
-export class NotificationProcessor extends WorkerHost {
+export class NotificationProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(NotificationProcessor.name);
 
   constructor(
     private readonly emailService: EmailNotificationService,
     private readonly pushService: PushNotificationService,
     private readonly smsService: SmsNotificationService,
+    failedJobService: FailedJobService,
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>
   ) {
-    super();
+    super(failedJobService);
   }
 
   async process(job: Job<NotificationJobData>): Promise<void> {

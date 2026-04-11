@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { FailedJobLog } from './entities/failed-job-log.entity';
@@ -9,6 +9,7 @@ import { FailedJobService } from './failed-job.service';
 
 import { AuditModule } from '../audit/audit.module';
 
+@Global()
 @Module({
   imports: [TypeOrmModule.forFeature([FailedJobLog]), AuditModule],
   providers: [FailedJobService, FailedJobAlertService, FailedJobCleanupTask],

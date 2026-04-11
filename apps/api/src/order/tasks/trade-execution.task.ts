@@ -1,10 +1,11 @@
-import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
 import { TradingStateService } from '../../admin/trading-state/trading-state.service';
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
 import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { TradeOrchestratorService } from '../services/trade-orchestrator.service';
@@ -20,7 +21,7 @@ import { TradeOrchestratorService } from '../services/trade-orchestrator.service
  */
 @Processor('trade-execution')
 @Injectable()
-export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
+export class TradeExecutionTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(TradeExecutionTask.name);
   private jobScheduled = false;
 
@@ -28,9 +29,9 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
     @InjectQueue('trade-execution') private readonly tradeExecutionQueue: Queue,
     private readonly tradeOrchestrator: TradeOrchestratorService,
     private readonly tradingStateService: TradingStateService,
-    private readonly failedJobService: FailedJobService
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async onModuleInit() {
@@ -96,24 +97,6 @@ export class TradeExecutionTask extends WorkerHost implements OnModuleInit {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to process job ${job.id}: ${err.message}`, err.stack);
       throw error;
-    }
-  }
-
-  @OnWorkerEvent('failed')
-  async onFailed(job: Job, error: Error): Promise<void> {
-    try {
-      await this.failedJobService.recordFailure({
-        queueName: 'trade-execution',
-        jobId: String(job.id),
-        jobName: job.name,
-        jobData: job.data,
-        errorMessage: error.message,
-        stackTrace: error.stack,
-        attemptsMade: job.attemptsMade,
-        maxAttempts: job.opts?.attempts ?? 0
-      });
-    } catch {
-      // fail-safe
     }
   }
 }

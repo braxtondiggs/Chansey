@@ -27,7 +27,14 @@ import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
   controllers: [CoinController, CoinsController, SimplePriceController],
-  exports: [CoinService, CoinDailySnapshotService, CoinListingEventService, CoinMarketDataService, TickerPairService, TickerPairSyncTask],
+  exports: [
+    CoinService,
+    CoinDailySnapshotService,
+    CoinListingEventService,
+    CoinMarketDataService,
+    TickerPairService,
+    TickerPairSyncTask
+  ],
   imports: [
     TypeOrmModule.forFeature([Coin, CoinDailySnapshot, CoinSelection, TickerPairs, CoinListingEvent]),
     forwardRef(() => ExchangeModule),

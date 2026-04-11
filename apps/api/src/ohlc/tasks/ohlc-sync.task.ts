@@ -1,4 +1,4 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { forwardRef, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -7,6 +7,8 @@ import { Job, Queue } from 'bullmq';
 
 import { CoinService } from '../../coin/coin.service';
 import { ExchangeService } from '../../exchange/exchange.service';
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../shared/error.util';
@@ -18,7 +20,7 @@ import { OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 @Processor('ohlc-sync-queue')
 @Injectable()
-export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
+export class OHLCSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(OHLCSyncTask.name);
   private jobScheduled = false;
 
@@ -32,9 +34,10 @@ export class OHLCSyncTask extends WorkerHost implements OnModuleInit {
     private readonly exchangeService: ExchangeService,
     private readonly configService: ConfigService,
     private readonly lockService: DistributedLockService,
-    private readonly backfillService: OHLCBackfillService
+    private readonly backfillService: OHLCBackfillService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   /**
