@@ -9,7 +9,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { AuditEventType, type CreateAuditLogDto, DeploymentStatus, StrategyStatus } from '@chansey/api-interfaces';
+import {
+  AuditEventType,
+  type CreateAuditLogDto,
+  DEFAULT_RISK_LEVEL,
+  DeploymentStatus,
+  StrategyStatus,
+  TRADING_STYLE_PROFILES
+} from '@chansey/api-interfaces';
 
 import { DeploymentMetricsService } from './deployment-metrics.service';
 import { Deployment } from './entities/deployment.entity';
@@ -57,7 +64,8 @@ export class DeploymentService {
     strategyConfigId: string,
     allocationPercent: number,
     promotionReason: string,
-    approvedBy?: string
+    approvedBy?: string,
+    riskLevel?: number
   ): Promise<Deployment> {
     try {
       // Verify strategy exists and is eligible
@@ -110,15 +118,20 @@ export class DeploymentService {
       const sharpeValue = Number(latestScore.componentScores.sharpeRatio.value ?? 0.4);
       const maxDrawdownLimit = Math.min(sharpeValue * 1.5, 0.4); // Cap at 40%
 
-      // Create deployment with conservative risk limits
+      // Use risk-level-aware limits from TRADING_STYLE_PROFILES
+      const effectiveRiskLevel =
+        riskLevel != null && TRADING_STYLE_PROFILES[riskLevel] ? riskLevel : DEFAULT_RISK_LEVEL;
+      const profile = TRADING_STYLE_PROFILES[effectiveRiskLevel];
+
+      // Create deployment with risk-appropriate limits
       const deployment = this.deploymentRepo.create({
         strategyConfigId,
         status: DeploymentStatus.PENDING_APPROVAL,
         allocationPercent,
         initialAllocationPercent: allocationPercent,
         maxDrawdownLimit,
-        dailyLossLimit: 0.05, // 5% daily loss limit
-        positionSizeLimit: 0.1, // 10% position size limit
+        dailyLossLimit: profile.dailyLossLimit / 100,
+        positionSizeLimit: profile.maxSinglePosition / 100,
         maxLeverage: strategyConfig.parameters?.maxLeverage || null,
         promotionReason,
         approvedBy,
@@ -144,6 +157,9 @@ export class DeploymentService {
           allocationPercent,
           status: DeploymentStatus.PENDING_APPROVAL,
           maxDrawdownLimit,
+          dailyLossLimit: profile.dailyLossLimit / 100,
+          positionSizeLimit: profile.maxSinglePosition / 100,
+          riskLevel: effectiveRiskLevel,
           promotionReason
         },
         metadata: {

@@ -6,6 +6,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { DEFAULT_RISK_LEVEL } from '@chansey/api-interfaces';
+
 import { toErrorInfo } from '../shared/error.util';
 import { DeploymentService } from '../strategy/deployment.service';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
@@ -81,11 +83,13 @@ export class PromotionTask {
             }
 
             // Auto-promote with conservative 1% allocation
+            const riskLevel = strategy.riskPool?.level ?? DEFAULT_RISK_LEVEL;
             const deployment = await this.deploymentService.createDeployment(
               strategy.id,
               1.0, // 1% initial allocation
               `Automatic promotion: ${evaluation.summary}`,
-              'system'
+              'system',
+              riskLevel
             );
 
             this.logger.log(
@@ -176,11 +180,13 @@ export class PromotionTask {
 
     if (evaluation.canPromote) {
       // Create deployment (but don't auto-activate for manual requests)
+      const riskLevel = strategy.riskPool?.level ?? DEFAULT_RISK_LEVEL;
       const deployment = await this.deploymentService.createDeployment(
         strategyConfigId,
         1.0,
         `Manual promotion request by ${userId || 'system'}`,
-        userId
+        userId,
+        riskLevel
       );
 
       return {
