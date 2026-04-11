@@ -89,7 +89,7 @@ export class CoinService {
     coinIds: string[],
     minMarketCap = 100_000_000,
     minDailyVolume = 1_000_000,
-    options?: { includeDelisted?: boolean }
+    options?: { includeDelisted?: boolean; skipCurrentPriceCheck?: boolean }
   ): Promise<Coin[]> {
     if (coinIds.length === 0) return [];
 
@@ -100,8 +100,11 @@ export class CoinService {
       .createQueryBuilder('coin')
       .where('coin.id IN (:...ids)', { ids: uniqueIds })
       .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap })
-      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume })
-      .andWhere('coin.currentPrice IS NOT NULL');
+      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume });
+
+    if (!options?.skipCurrentPriceCheck) {
+      qb.andWhere('coin.currentPrice IS NOT NULL');
+    }
 
     if (!options?.includeDelisted) {
       qb.andWhere('coin.delistedAt IS NULL');
@@ -149,9 +152,15 @@ export class CoinService {
       return { coins: [], usedHistoricalData: true };
     }
 
-    // No snapshot data at all — fall back to current market data
+    // No snapshot data at all — fall back to current market data.
+    // Skip the currentPrice check: this path is only reached from backtest contexts where
+    // tradeability is already confirmed via OHLC candle data, and a stale/null currentPrice
+    // on the coin row should not exclude an otherwise qualifying coin.
     this.logger.warn(`No snapshot data exists near ${dateStr} — falling back to current market data`);
-    const coins = await this.getCoinsByIdsFiltered(coinIds, minMarketCap, minDailyVolume, { includeDelisted: true });
+    const coins = await this.getCoinsByIdsFiltered(coinIds, minMarketCap, minDailyVolume, {
+      includeDelisted: true,
+      skipCurrentPriceCheck: true
+    });
     return { coins, usedHistoricalData: false };
   }
 
