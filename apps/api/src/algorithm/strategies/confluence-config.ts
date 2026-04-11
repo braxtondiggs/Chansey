@@ -221,6 +221,28 @@ export function getConfluenceParameterConstraints(): ParameterConstraint[] {
       param1: 'bbSellThreshold',
       param2: 'bbBuyThreshold',
       message: 'bbSellThreshold must be less than bbBuyThreshold'
+    },
+    {
+      // Reject combinations whose minConfluence requirement exceeds the
+      // number of enabled directional indicators — these would never
+      // produce a buy signal and waste optimizer iterations on guaranteed
+      // zero-trade results. ATR is volatility-only and intentionally
+      // excluded from the count.
+      type: 'custom',
+      param1: 'minConfluence',
+      customValidator: (params) => {
+        const enabledDirectional = [
+          params.emaEnabled !== false,
+          params.rsiEnabled !== false,
+          params.macdEnabled !== false,
+          params.bbEnabled !== false
+        ].filter(Boolean).length;
+        const minBuy = (params.minConfluence as number) ?? 2;
+        const minSell = (params.minSellConfluence as number) ?? minBuy;
+        return minBuy <= enabledDirectional && minSell <= enabledDirectional;
+      },
+      message:
+        'minConfluence/minSellConfluence must not exceed the number of enabled directional indicators (EMA/RSI/MACD/BB; ATR is filter-only)'
     }
   ];
 }
