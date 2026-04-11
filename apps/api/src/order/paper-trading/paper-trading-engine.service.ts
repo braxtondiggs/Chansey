@@ -199,7 +199,10 @@ export class PaperTradingEngineService {
 
   /** Apply throttle + regime filter chain; persist rejected signals. */
   private async filterSignals(session: PaperTradingSession, signals: TradingSignal[]): Promise<FilteredSignals> {
-    const throttleConfig = this.signalThrottle.resolveConfig(session.algorithmConfig, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
+    const throttleConfig = this.signalThrottle.resolveConfig(
+      session.algorithmConfig,
+      PAPER_TRADING_DEFAULT_THROTTLE_CONFIG
+    );
     const { accepted: throttleAccepted, rejected: throttledSignals } = this.throttleService.filter(
       session.id,
       signals,
@@ -276,6 +279,11 @@ export class PaperTradingEngineService {
           this.logger.debug(`Skipped duplicate BUY for ${signal.symbol}: position already held`);
           continue;
         }
+      }
+
+      if (signal.action === 'SELL' && !heldCoins.has(signal.coinId)) {
+        this.logger.debug(`Skipping SELL for ${signal.symbol}: no position held`);
+        continue;
       }
 
       const signalEntity = await this.signalService.save(session, signal);
