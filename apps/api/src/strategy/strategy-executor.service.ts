@@ -93,9 +93,7 @@ export class StrategyExecutorService {
   ): Promise<TradingSignal | null> {
     try {
       // Build context from algorithm entity (coins + OHLC data)
-      const context = await this.algorithmContextBuilder.buildContext(strategy.algorithm, {
-        includePositions: false
-      });
+      const context = await this.algorithmContextBuilder.buildContext(strategy.algorithm);
 
       // Merge strategy-specific parameters into config
       context.config = { ...context.config, ...strategy.parameters };

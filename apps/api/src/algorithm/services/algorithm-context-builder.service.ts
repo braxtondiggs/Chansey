@@ -1,10 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
-import { OHLCService } from '../../ohlc/ohlc.service';
+import { OHLCService, PriceRange } from '../../ohlc/ohlc.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm } from '../algorithm.entity';
 import { AlgorithmContext } from '../interfaces';
+
+/** Maps a number of days to the closest PriceRange accepted by OHLCService. */
+function daysToRange(days: number): PriceRange {
+  if (days <= 1) return PriceRange['1d'];
+  if (days <= 7) return PriceRange['7d'];
+  if (days <= 14) return PriceRange['14d'];
+  if (days <= 30) return PriceRange['30d'];
+  if (days <= 90) return PriceRange['90d'];
+  if (days <= 180) return PriceRange['180d'];
+  if (days <= 365) return PriceRange['1y'];
+  if (days <= 1825) return PriceRange['5y'];
+  return PriceRange['all'];
+}
 
 /**
  * Service responsible for building algorithm execution context
@@ -26,11 +39,10 @@ export class AlgorithmContextBuilder {
     algorithm: Algorithm,
     options: {
       includePriceHistory?: boolean;
-      includePositions?: boolean;
       priceHistoryDays?: number;
     } = {}
   ): Promise<AlgorithmContext> {
-    const { includePriceHistory = true, includePositions = true, priceHistoryDays = 30 } = options;
+    const { includePriceHistory = true, priceHistoryDays = 30 } = options;
 
     try {
       this.logger.debug(`Building context for algorithm: ${algorithm.name}`);
@@ -41,22 +53,10 @@ export class AlgorithmContextBuilder {
       // Get price data if requested
       let priceData = {};
       if (includePriceHistory && coins.length > 0) {
-        priceData = await this.ohlcService.findAllByDay(coins.map((coin) => coin.id));
-      }
-
-      // Get current positions if requested - simplified
-      let positions = undefined;
-      if (includePositions) {
-        const portfolio = await this.coinSelectionService.getCoinSelections();
-        positions = portfolio.reduce(
-          (acc, item) => {
-            if (item.coin?.id) {
-              // For now, just track that we have a position in this coin
-              acc[item.coin.id] = 1;
-            }
-            return acc;
-          },
-          {} as Record<string, number>
+        const range = daysToRange(priceHistoryDays);
+        priceData = await this.ohlcService.findAllByDay(
+          coins.map((coin) => coin.id),
+          range
         );
       }
 
@@ -68,7 +68,6 @@ export class AlgorithmContextBuilder {
         priceData,
         timestamp: new Date(),
         config,
-        positions,
         metadata: {
           algorithmId: algorithm.id,
           algorithmName: algorithm.name,
@@ -92,7 +91,6 @@ export class AlgorithmContextBuilder {
   async buildMinimalContext(algorithm: Algorithm): Promise<AlgorithmContext> {
     return this.buildContext(algorithm, {
       includePriceHistory: true,
-      includePositions: false,
       priceHistoryDays: 7
     });
   }
