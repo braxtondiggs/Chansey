@@ -18,6 +18,7 @@ import { AuditService } from '../audit/audit.service';
 import { CoinService } from '../coin/coin.service';
 import { NOTIFICATION_EVENTS } from '../notification/interfaces/notification-events.interface';
 import { OHLCService } from '../ohlc/ohlc.service';
+import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 import { toErrorInfo } from '../shared/error.util';
 
 /** Minimum data points required to compute the 200-period SMA */
@@ -72,6 +73,7 @@ export class CompositeRegimeService implements OnModuleInit {
     private readonly ohlcService: OHLCService,
     private readonly coinService: CoinService,
     private readonly auditService: AuditService,
+    private readonly backfillService: OHLCBackfillService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly eventEmitter: EventEmitter2
   ) {}
@@ -168,6 +170,7 @@ export class CompositeRegimeService implements OnModuleInit {
           `Only ${closes.length} BTC price points available (need ${SMA_PERIOD}) — keeping previous regime`
         );
         this.trackFailure();
+        void this.triggerBackfillIfNeeded(btcCoin.id);
         return this.getCompositeRegime();
       }
 
@@ -329,6 +332,37 @@ export class CompositeRegimeService implements OnModuleInit {
         consecutiveFailures: this.consecutiveFailures,
         cachedRegime: this.cached?.regime ?? 'NONE'
       });
+    }
+  }
+
+  /**
+   * Fire-and-forget BTC OHLC backfill when insufficient data is available.
+   * Skips if a backfill is already pending, in progress, failed, or recently
+   * completed (Redis TTL acts as a 7-day cooldown).
+   */
+  private async triggerBackfillIfNeeded(coinId: string): Promise<void> {
+    try {
+      const progress = await this.backfillService.getProgress(coinId);
+
+      if (
+        progress &&
+        (progress.status === 'pending' ||
+          progress.status === 'in_progress' ||
+          progress.status === 'failed' ||
+          progress.status === 'completed')
+      ) {
+        this.logger.debug(`BTC backfill already ${progress.status} — skipping trigger`);
+        return;
+      }
+
+      this.logger.log('Triggering BTC OHLC backfill to gather sufficient data for 200-day SMA');
+      this.backfillService.startBackfill(coinId).catch((err: unknown) => {
+        const info = toErrorInfo(err);
+        this.logger.warn(`BTC backfill trigger failed: ${info.message}`);
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to check backfill progress: ${err.message}`);
     }
   }
 }

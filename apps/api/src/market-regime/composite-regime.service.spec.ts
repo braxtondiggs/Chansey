@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { CoinService } from '../coin/coin.service';
 import { NOTIFICATION_EVENTS } from '../notification/interfaces/notification-events.interface';
 import { OHLCService } from '../ohlc/ohlc.service';
+import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 
 describe('CompositeRegimeService', () => {
   let service: CompositeRegimeService;
@@ -18,10 +19,12 @@ describe('CompositeRegimeService', () => {
   let mockOhlcService: jest.Mocked<Pick<OHLCService, 'findAllByDay'>>;
   let mockCoinService: jest.Mocked<Pick<CoinService, 'getCoinBySlug'>>;
   let mockAuditService: jest.Mocked<Pick<AuditService, 'createAuditLog'>>;
+  let mockBackfillService: jest.Mocked<Pick<OHLCBackfillService, 'getProgress' | 'startBackfill'>>;
   let mockCacheManager: { get: jest.Mock; set: jest.Mock; del: jest.Mock };
   let mockEventEmitter: { emit: jest.Mock };
 
   const BTC_COIN_ID = 'btc-uuid';
+  const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
   beforeEach(async () => {
     mockMarketRegimeService = {
@@ -38,6 +41,11 @@ describe('CompositeRegimeService', () => {
 
     mockAuditService = {
       createAuditLog: jest.fn().mockResolvedValue(undefined)
+    };
+
+    mockBackfillService = {
+      getProgress: jest.fn().mockResolvedValue(null),
+      startBackfill: jest.fn().mockResolvedValue('job-123')
     };
 
     mockCacheManager = {
@@ -57,6 +65,7 @@ describe('CompositeRegimeService', () => {
         { provide: OHLCService, useValue: mockOhlcService },
         { provide: CoinService, useValue: mockCoinService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: OHLCBackfillService, useValue: mockBackfillService },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: EventEmitter2, useValue: mockEventEmitter }
       ]
@@ -90,6 +99,7 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
+        mockBackfillService as any,
         mockCacheManager as any,
         mockEventEmitter as any
       );
@@ -128,6 +138,55 @@ describe('CompositeRegimeService', () => {
 
       expect(result).toBe(CompositeRegimeType.NEUTRAL);
       expect(mockMarketRegimeService.getCurrentRegime).not.toHaveBeenCalled();
+    });
+
+    it('should trigger backfill when data is insufficient', async () => {
+      const summaries = generatePriceSummaries(100, 50000, 0.001);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+
+      await service.refresh();
+      await flushPromises();
+
+      expect(mockBackfillService.getProgress).toHaveBeenCalledWith(BTC_COIN_ID);
+      expect(mockBackfillService.startBackfill).toHaveBeenCalledWith(BTC_COIN_ID);
+    });
+
+    it.each(['pending', 'in_progress', 'failed', 'completed'] as const)(
+      'should skip backfill when status is %s',
+      async (status) => {
+        const summaries = generatePriceSummaries(100, 50000, 0.001);
+        mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+        mockBackfillService.getProgress.mockResolvedValue({ status } as any);
+
+        await service.refresh();
+        await flushPromises();
+
+        expect(mockBackfillService.startBackfill).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should not break refresh when startBackfill rejects', async () => {
+      const summaries = generatePriceSummaries(100, 50000, 0.001);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockBackfillService.startBackfill.mockRejectedValue(new Error('Queue unavailable'));
+
+      const result = await service.refresh();
+      await flushPromises();
+
+      expect(result).toBe(CompositeRegimeType.NEUTRAL);
+      expect(mockBackfillService.startBackfill).toHaveBeenCalledWith(BTC_COIN_ID);
+    });
+
+    it('should handle getProgress errors gracefully', async () => {
+      const summaries = generatePriceSummaries(100, 50000, 0.001);
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockBackfillService.getProgress.mockRejectedValue(new Error('Redis down'));
+
+      const result = await service.refresh();
+      await flushPromises();
+
+      expect(result).toBe(CompositeRegimeType.NEUTRAL);
+      expect(mockBackfillService.startBackfill).not.toHaveBeenCalled();
     });
 
     it('should default to NORMAL volatility when getCurrentRegime returns null', async () => {
@@ -228,6 +287,7 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
+        mockBackfillService as any,
         mockCacheManager as any,
         mockEventEmitter as any
       );
@@ -243,6 +303,7 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
+        mockBackfillService as any,
         mockCacheManager as any,
         mockEventEmitter as any
       );
@@ -277,12 +338,14 @@ describe('CompositeRegimeService', () => {
       });
     });
 
-    it('should store forceAllow=false correctly', async () => {
+    it('should persist forceAllow=false to Redis', async () => {
       await service.enableOverride('user-789', false, 'Test');
 
-      const status = service.getStatus();
-      expect(status.override.active).toBe(true);
-      expect(status.override.forceAllow).toBe(false);
+      expect(mockCacheManager.set).toHaveBeenCalledWith(
+        'regime:override',
+        expect.objectContaining({ forceAllow: false }),
+        86_400_000
+      );
     });
   });
 
@@ -348,6 +411,7 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
+        mockBackfillService as any,
         mockCacheManager as any,
         mockEventEmitter as any
       );
@@ -489,6 +553,7 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
+        mockBackfillService as any,
         mockCacheManager as any,
         mockEventEmitter as any
       );
