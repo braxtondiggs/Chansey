@@ -120,6 +120,33 @@ describe('BacktestWatchdogService', () => {
       );
     });
 
+    it('should emit BACKTEST_FAILED event so parent pipelines can transition to FAILED', async () => {
+      const staleBacktest = {
+        id: 'stale-bt-event',
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 100 * 60 * 1000),
+        processedTimestampCount: 500,
+        totalTimestampCount: 2000,
+        checkpointState: { lastProcessedIndex: 499 }
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([staleBacktest])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await service.detectStaleBacktests();
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        PIPELINE_EVENTS.BACKTEST_FAILED,
+        expect.objectContaining({
+          backtestId: 'stale-bt-event',
+          type: 'HISTORICAL',
+          reason: expect.stringContaining('Stale: no heartbeat progress for 90 min')
+        })
+      );
+    });
+
     it('should mark stale LIVE_REPLAY backtests as failed with 120-min threshold', async () => {
       const staleReplay = {
         id: 'stale-replay-1',
@@ -140,6 +167,33 @@ describe('BacktestWatchdogService', () => {
       expect(mockBacktestResultService.markFailed).toHaveBeenCalledWith(
         'stale-replay-1',
         expect.stringContaining('Stale: no heartbeat progress for 120 min')
+      );
+    });
+
+    it('should emit BACKTEST_FAILED with type LIVE_REPLAY for stale replay backtests', async () => {
+      const staleReplay = {
+        id: 'stale-replay-event',
+        type: BacktestType.LIVE_REPLAY,
+        status: BacktestStatus.RUNNING,
+        lastCheckpointAt: new Date(Date.now() - 130 * 60 * 1000),
+        processedTimestampCount: 300,
+        totalTimestampCount: 1000,
+        checkpointState: { lastProcessedIndex: 299 }
+      };
+      mockBacktestRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([staleReplay])
+        .mockResolvedValueOnce([]);
+
+      await service.detectStaleBacktests();
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        PIPELINE_EVENTS.BACKTEST_FAILED,
+        expect.objectContaining({
+          backtestId: 'stale-replay-event',
+          type: 'LIVE_REPLAY',
+          reason: expect.stringContaining('Stale: no heartbeat progress for 120 min')
+        })
       );
     });
 

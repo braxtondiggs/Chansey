@@ -18,7 +18,7 @@ import { BacktestResultService } from '../order/backtest/backtest-result.service
 import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
-import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
+import { BacktestFailedEvent, PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { toErrorInfo } from '../shared/error.util';
 
 const BACKTEST_QUEUE_NAMES = backtestConfig();
@@ -141,6 +141,15 @@ export class BacktestWatchdogService {
                 `progress: ${backtest.processedTimestampCount}/${backtest.totalTimestampCount})`)
         );
         await this.backtestResultService.markFailed(backtest.id, reason);
+
+        // Notify any parent pipeline so it can transition to FAILED instead of orphaning.
+        // markFailed() does not emit events, so this is the sole source for backtest.failed.
+        this.eventEmitter.emit(PIPELINE_EVENTS.BACKTEST_FAILED, {
+          backtestId: backtest.id,
+          type: this.toFailedEventType(backtest.type),
+          reason
+        } satisfies BacktestFailedEvent);
+
         marked++;
       } catch (error: unknown) {
         const err = toErrorInfo(error);
@@ -347,6 +356,24 @@ export class BacktestWatchdogService {
     } catch (error: unknown) {
       this.logger.warn(`Failed to check queue status for job ${jobId}: ${toErrorInfo(error).message}`);
       return false;
+    }
+  }
+
+  /**
+   * Map a backtest type to its BacktestFailedEvent `type` string.
+   * Exhaustive switch — TypeScript enforces handling every BacktestType member.
+   * Throws for types the watchdog should never see so misrouted rows fail loudly
+   * in logs (via the caller's try/catch) instead of emitting a bogus event.
+   */
+  private toFailedEventType(type: BacktestType): 'HISTORICAL' | 'LIVE_REPLAY' {
+    switch (type) {
+      case BacktestType.HISTORICAL:
+        return 'HISTORICAL';
+      case BacktestType.LIVE_REPLAY:
+        return 'LIVE_REPLAY';
+      case BacktestType.PAPER_TRADING:
+      case BacktestType.STRATEGY_OPTIMIZATION:
+        throw new Error(`BacktestWatchdog should never process ${type} — check stale detection query filters`);
     }
   }
 

@@ -108,6 +108,27 @@ export class PipelineEventHandlerService {
     await this.progressionService.failPipeline(pipeline, `Optimization failed: ${reason}`);
   }
 
+  async handleBacktestFailed(backtestId: string, type: 'HISTORICAL' | 'LIVE_REPLAY', reason: string): Promise<void> {
+    const whereClause =
+      type === 'HISTORICAL' ? { historicalBacktestId: backtestId } : { liveReplayBacktestId: backtestId };
+
+    const pipeline = await this.pipelineRepository.findOne({
+      where: {
+        ...whereClause,
+        status: In([PipelineStatus.RUNNING, PipelineStatus.PAUSED])
+      },
+      relations: ['user']
+    });
+
+    if (!pipeline) {
+      // Standalone backtest (not part of a pipeline) — nothing to do.
+      this.logger.debug(`No active pipeline found for failed ${type} backtest ${backtestId}`);
+      return;
+    }
+
+    await this.progressionService.failPipeline(pipeline, `${type} backtest ${backtestId} failed: ${reason}`);
+  }
+
   async handleBacktestComplete(
     backtestId: string,
     type: 'HISTORICAL' | 'LIVE_REPLAY',

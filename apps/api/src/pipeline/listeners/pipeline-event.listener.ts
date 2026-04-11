@@ -4,6 +4,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { toErrorInfo } from '../../shared/error.util';
 import {
   BacktestCompletedEvent,
+  BacktestFailedEvent,
   OptimizationCompletedEvent,
   OptimizationFailedEvent,
   PIPELINE_EVENTS,
@@ -67,6 +68,23 @@ export class PipelineEventListener {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to handle backtest completion for ${payload.backtestId}: ${err.message}`, err.stack);
+    }
+  }
+
+  /**
+   * Handle backtest failure event (stale watchdog or error)
+   */
+  @OnEvent(PIPELINE_EVENTS.BACKTEST_FAILED, { async: true })
+  async handleBacktestFailed(payload: BacktestFailedEvent): Promise<void> {
+    this.logger.log(
+      `Received backtest.failed event for backtest ${payload.backtestId} (type: ${payload.type}): ${payload.reason}`
+    );
+
+    try {
+      await this.orchestratorService.handleBacktestFailed(payload.backtestId, payload.type, payload.reason);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to handle backtest failure for ${payload.backtestId}: ${err.message}`, err.stack);
     }
   }
 
