@@ -4,6 +4,7 @@ export interface DrawdownResult {
   maxDrawdown: number;
   maxDrawdownPercentage: number;
   currentDrawdown: number;
+  currentDrawdownPercentage: number;
   drawdownDuration: number;
   peakDate?: number; // Index of peak
   troughDate?: number; // Index of trough
@@ -34,6 +35,7 @@ export class DrawdownCalculator {
         maxDrawdown: 0,
         maxDrawdownPercentage: 0,
         currentDrawdown: 0,
+        currentDrawdownPercentage: 0,
         drawdownDuration: 0
       };
     }
@@ -69,6 +71,9 @@ export class DrawdownCalculator {
       currentDrawdown = peak - value;
     }
 
+    const currentDrawdownPercentage =
+      peak !== 0 ? ((peak - cumulativeReturns[cumulativeReturns.length - 1]) / peak) * 100 : 0;
+
     // Calculate drawdown duration (from peak to trough)
     const drawdownDuration = troughIndex - peakIndex;
 
@@ -80,6 +85,7 @@ export class DrawdownCalculator {
       maxDrawdown,
       maxDrawdownPercentage,
       currentDrawdown,
+      currentDrawdownPercentage: Math.max(0, currentDrawdownPercentage),
       drawdownDuration,
       peakDate: peakIndex,
       troughDate: troughIndex,
