@@ -26,8 +26,8 @@ export class ConsecutiveLossesCheck implements IRiskCheck {
   private readonly CRITICAL_THRESHOLD = 15;
 
   async evaluate(
-    deployment: Deployment,
-    latestMetric: PerformanceMetric | null,
+    _deployment: Deployment,
+    _latestMetric: PerformanceMetric | null,
     historicalMetrics?: PerformanceMetric[]
   ): Promise<RiskCheckResult> {
     if (!historicalMetrics || historicalMetrics.length < this.WARNING_THRESHOLD) {

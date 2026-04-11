@@ -24,7 +24,7 @@ export class MinimumTradesGate implements IPromotionGate {
   private readonly MINIMUM_TRADES = 30;
 
   async evaluate(
-    strategyScore: StrategyScore,
+    _strategyScore: StrategyScore,
     backtestRun: BacktestRun,
     _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {

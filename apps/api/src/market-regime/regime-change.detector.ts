@@ -73,7 +73,7 @@ export class RegimeChangeDetector {
   /**
    * Find strategies that may be affected by regime change
    */
-  private async findAffectedStrategies(asset: string, newRegime: MarketRegimeType): Promise<StrategyConfig[]> {
+  private async findAffectedStrategies(_asset: string, newRegime: MarketRegimeType): Promise<StrategyConfig[]> {
     // Get all active deployments
     const activeDeployments = await this.deploymentRepo.find({
       where: { status: DeploymentStatus.ACTIVE },

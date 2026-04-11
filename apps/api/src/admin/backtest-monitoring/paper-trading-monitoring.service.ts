@@ -203,7 +203,7 @@ export class PaperTradingMonitoringService {
   }
 
   private async getPtTopAlgorithms(
-    filters: PaperTradingFiltersDto,
+    _filters: PaperTradingFiltersDto,
     dateRange: DateRange
   ): Promise<PaperTradingMonitoringDto['topAlgorithms']> {
     const qb = this.paperSessionRepo

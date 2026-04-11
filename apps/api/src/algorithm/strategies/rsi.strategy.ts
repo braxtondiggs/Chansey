@@ -205,7 +205,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
   /**
    * Calculate confidence based on RSI trend consistency
    */
-  private calculateConfidence(rsi: number[], config: RSIConfig, condition: 'oversold' | 'overbought'): number {
+  private calculateConfidence(rsi: number[], _config: RSIConfig, condition: 'oversold' | 'overbought'): number {
     const recentPeriod = 5;
     const startIndex = Math.max(0, rsi.length - recentPeriod);
 

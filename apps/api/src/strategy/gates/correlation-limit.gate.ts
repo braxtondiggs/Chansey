@@ -25,7 +25,7 @@ export class CorrelationLimitGate implements IPromotionGate {
 
   async evaluate(
     strategyScore: StrategyScore,
-    backtestRun: BacktestRun,
+    _backtestRun: BacktestRun,
     context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
     // Get correlation score (calculated against existing deployments)

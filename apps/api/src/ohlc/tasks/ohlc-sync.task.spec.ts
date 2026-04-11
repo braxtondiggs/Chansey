@@ -271,7 +271,7 @@ describe('OHLCSyncTask', () => {
     } as ExchangeSymbolMap;
 
     symbolMapService.getActiveSymbolMaps.mockResolvedValue([mappingLowPriority, mappingHighPriority]);
-    exchangeOHLC.fetchOHLC.mockImplementation(async (slug, symbol) => {
+    exchangeOHLC.fetchOHLC.mockImplementation(async (_slug, symbol) => {
       if (symbol === 'BTC/USD') {
         return {
           success: false,

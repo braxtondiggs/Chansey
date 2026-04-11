@@ -113,7 +113,7 @@ export class LiveTradeSlippageService {
   }
 
   private async getSlippageByAlgorithm(
-    filters: LiveTradeFiltersDto,
+    _filters: LiveTradeFiltersDto,
     dateRange: DateRange
   ): Promise<SlippageByAlgorithmDto[]> {
     const qb = this.orderRepo

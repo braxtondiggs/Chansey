@@ -24,7 +24,7 @@ export class MaximumDrawdownGate implements IPromotionGate {
   private readonly MAXIMUM_DRAWDOWN = 0.4; // 40%
 
   async evaluate(
-    strategyScore: StrategyScore,
+    _strategyScore: StrategyScore,
     backtestRun: BacktestRun,
     _context?: PromotionGateContext
   ): Promise<PromotionGateResult> {
