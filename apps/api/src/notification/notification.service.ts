@@ -6,7 +6,12 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 
-import { NotificationEventType, NotificationPreferences, NotificationSeverity } from '@chansey/api-interfaces';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  NotificationEventType,
+  NotificationPreferences,
+  NotificationSeverity
+} from '@chansey/api-interfaces';
 
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { NotificationJobData, NotificationPayload } from './interfaces/notification-events.interface';
@@ -60,7 +65,7 @@ export class NotificationService {
       const prefs = user.notificationPreferences;
 
       // Check if this event type is enabled
-      if (!prefs.events[eventType]) {
+      if (!(prefs.events[eventType] ?? DEFAULT_NOTIFICATION_PREFERENCES.events[eventType])) {
         this.logger.debug(`Notification ${eventType} disabled for user ${userId}`);
         return;
       }

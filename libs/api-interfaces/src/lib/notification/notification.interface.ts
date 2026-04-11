@@ -11,7 +11,8 @@ export enum NotificationEventType {
   DAILY_SUMMARY = 'daily_summary',
   STRATEGY_DEPLOYED = 'strategy_deployed',
   STRATEGY_DEMOTED = 'strategy_demoted',
-  DAILY_LOSS_LIMIT = 'daily_loss_limit'
+  DAILY_LOSS_LIMIT = 'daily_loss_limit',
+  REGIME_STALE = 'regime_stale'
 }
 
 export type NotificationSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -32,6 +33,7 @@ export interface NotificationEventPreferences {
   [NotificationEventType.STRATEGY_DEPLOYED]: boolean;
   [NotificationEventType.STRATEGY_DEMOTED]: boolean;
   [NotificationEventType.DAILY_LOSS_LIMIT]: boolean;
+  [NotificationEventType.REGIME_STALE]: boolean;
 }
 
 export interface QuietHoursConfig {
@@ -61,7 +63,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     [NotificationEventType.DAILY_SUMMARY]: true,
     [NotificationEventType.STRATEGY_DEPLOYED]: true,
     [NotificationEventType.STRATEGY_DEMOTED]: true,
-    [NotificationEventType.DAILY_LOSS_LIMIT]: true
+    [NotificationEventType.DAILY_LOSS_LIMIT]: true,
+    [NotificationEventType.REGIME_STALE]: true
   },
   quietHours: {
     enabled: false,

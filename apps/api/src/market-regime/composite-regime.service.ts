@@ -1,5 +1,6 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Cache } from 'cache-manager';
 import { SMA } from 'technicalindicators';
@@ -15,6 +16,7 @@ import { MarketRegimeService } from './market-regime.service';
 
 import { AuditService } from '../audit/audit.service';
 import { CoinService } from '../coin/coin.service';
+import { NOTIFICATION_EVENTS } from '../notification/interfaces/notification-events.interface';
 import { OHLCService } from '../ohlc/ohlc.service';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -26,6 +28,12 @@ const BTC_COIN_SLUG = 'bitcoin';
 const OVERRIDE_CACHE_KEY = 'regime:override';
 /** Override TTL — 24 hours (auto-expire as safety net) */
 const OVERRIDE_TTL_MS = 86_400_000;
+/** Staleness warning threshold — data older than this is reported as stale in getStatus() */
+const STALE_WARNING_MS = 2 * 60 * 60 * 1000; // 2 hours
+/** Staleness fallback threshold — return NEUTRAL instead of cached value after this duration */
+const STALE_FALLBACK_MS = 4 * 60 * 60 * 1000; // 4 hours
+/** Consecutive refresh failures before emitting a stale notification to admins */
+const MAX_CONSECUTIVE_FAILURES = 3;
 
 interface OverrideState {
   active: boolean;
@@ -55,13 +63,17 @@ export class CompositeRegimeService implements OnModuleInit {
   private readonly logger = new Logger(CompositeRegimeService.name);
   private cached: CachedComposite | null = null;
   private override: OverrideState | null = null;
+  private consecutiveFailures = 0;
+  private staleNotificationEmitted = false;
+  private staleLogEmitted = false;
 
   constructor(
     private readonly marketRegimeService: MarketRegimeService,
     private readonly ohlcService: OHLCService,
     private readonly coinService: CoinService,
     private readonly auditService: AuditService,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -86,10 +98,23 @@ export class CompositeRegimeService implements OnModuleInit {
 
   /**
    * Synchronous getter for the hot path. Returns cached composite regime.
-   * Falls back to NEUTRAL if not yet calculated.
+   * Falls back to NEUTRAL if not yet calculated or if data is stale (>4 hours).
    */
   getCompositeRegime(): CompositeRegimeType {
-    return this.cached?.regime ?? CompositeRegimeType.NEUTRAL;
+    if (!this.cached) return CompositeRegimeType.NEUTRAL;
+
+    const age = Date.now() - this.cached.updatedAt.getTime();
+    if (age > STALE_FALLBACK_MS) {
+      if (!this.staleLogEmitted) {
+        this.staleLogEmitted = true;
+        this.logger.warn(
+          `Regime data stale (${Math.round(age / 60_000)}min since last refresh) — falling back to NEUTRAL`
+        );
+      }
+      return CompositeRegimeType.NEUTRAL;
+    }
+
+    return this.cached.regime;
   }
 
   /**
@@ -125,6 +150,7 @@ export class CompositeRegimeService implements OnModuleInit {
       const btcCoin = await this.coinService.getCoinBySlug(BTC_COIN_SLUG);
       if (!btcCoin) {
         this.logger.warn('BTC coin not found in database — keeping previous regime');
+        this.trackFailure();
         return this.getCompositeRegime();
       }
 
@@ -141,6 +167,7 @@ export class CompositeRegimeService implements OnModuleInit {
         this.logger.warn(
           `Only ${closes.length} BTC price points available (need ${SMA_PERIOD}) — keeping previous regime`
         );
+        this.trackFailure();
         return this.getCompositeRegime();
       }
 
@@ -151,6 +178,7 @@ export class CompositeRegimeService implements OnModuleInit {
 
       if (!Number.isFinite(sma200) || !Number.isFinite(btcPrice)) {
         this.logger.warn(`Invalid SMA/price values (sma200=${sma200}, btcPrice=${btcPrice}) — keeping previous regime`);
+        this.trackFailure();
         return this.getCompositeRegime();
       }
 
@@ -173,6 +201,10 @@ export class CompositeRegimeService implements OnModuleInit {
         updatedAt: new Date()
       };
 
+      this.consecutiveFailures = 0;
+      this.staleNotificationEmitted = false;
+      this.staleLogEmitted = false;
+
       if (previous && previous !== composite) {
         this.logger.warn(`Composite regime changed: ${previous} → ${composite}`);
       } else {
@@ -185,6 +217,7 @@ export class CompositeRegimeService implements OnModuleInit {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to refresh composite regime: ${err.message}`);
+      this.trackFailure();
       throw error;
     }
   }
@@ -254,8 +287,14 @@ export class CompositeRegimeService implements OnModuleInit {
     btcPrice: number | null;
     sma200Value: number | null;
     updatedAt: Date | null;
+    isStale: boolean;
+    consecutiveFailures: number;
+    lastSuccessfulRefresh: Date | null;
     override: { active: boolean; forceAllow?: boolean; userId?: string; reason?: string; enabledAt?: Date };
   } {
+    const age = this.cached ? Date.now() - this.cached.updatedAt.getTime() : 0;
+    const isStale = this.cached !== null && age > STALE_WARNING_MS;
+
     return {
       compositeRegime: this.getCompositeRegime(),
       volatilityRegime: this.cached?.volatilityRegime ?? null,
@@ -263,6 +302,9 @@ export class CompositeRegimeService implements OnModuleInit {
       btcPrice: this.cached?.btcPrice ?? null,
       sma200Value: this.cached?.sma200Value ?? null,
       updatedAt: this.cached?.updatedAt ?? null,
+      isStale,
+      consecutiveFailures: this.consecutiveFailures,
+      lastSuccessfulRefresh: this.cached?.updatedAt ?? null,
       override: this.override
         ? {
             active: true,
@@ -273,5 +315,20 @@ export class CompositeRegimeService implements OnModuleInit {
           }
         : { active: false }
     };
+  }
+
+  private trackFailure(): void {
+    this.consecutiveFailures++;
+    if (this.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES && !this.staleNotificationEmitted) {
+      this.staleNotificationEmitted = true;
+      this.logger.error(
+        `Market regime refresh failed ${this.consecutiveFailures} consecutive times — emitting stale notification`
+      );
+      this.eventEmitter.emit(NOTIFICATION_EVENTS.REGIME_STALE, {
+        lastRefreshAt: this.cached?.updatedAt ?? null,
+        consecutiveFailures: this.consecutiveFailures,
+        cachedRegime: this.cached?.regime ?? 'NONE'
+      });
+    }
   }
 }

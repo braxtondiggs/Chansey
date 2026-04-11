@@ -19,7 +19,8 @@ const DEFAULT_PREFS: NotificationPreferences = {
     daily_summary: true,
     strategy_deployed: true,
     strategy_demoted: true,
-    daily_loss_limit: true
+    daily_loss_limit: true,
+    regime_stale: true
   },
   quietHours: { enabled: false, startHourUtc: 22, endHourUtc: 7 }
 };

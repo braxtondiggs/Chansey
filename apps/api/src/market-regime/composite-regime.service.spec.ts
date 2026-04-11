@@ -1,4 +1,5 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 
 import { AuditEventType, CompositeRegimeType, MarketRegimeType } from '@chansey/api-interfaces';
@@ -8,6 +9,7 @@ import { MarketRegimeService } from './market-regime.service';
 
 import { AuditService } from '../audit/audit.service';
 import { CoinService } from '../coin/coin.service';
+import { NOTIFICATION_EVENTS } from '../notification/interfaces/notification-events.interface';
 import { OHLCService } from '../ohlc/ohlc.service';
 
 describe('CompositeRegimeService', () => {
@@ -17,6 +19,7 @@ describe('CompositeRegimeService', () => {
   let mockCoinService: jest.Mocked<Pick<CoinService, 'getCoinBySlug'>>;
   let mockAuditService: jest.Mocked<Pick<AuditService, 'createAuditLog'>>;
   let mockCacheManager: { get: jest.Mock; set: jest.Mock; del: jest.Mock };
+  let mockEventEmitter: { emit: jest.Mock };
 
   const BTC_COIN_ID = 'btc-uuid';
 
@@ -43,6 +46,10 @@ describe('CompositeRegimeService', () => {
       del: jest.fn().mockResolvedValue(undefined)
     };
 
+    mockEventEmitter = {
+      emit: jest.fn()
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CompositeRegimeService,
@@ -50,7 +57,8 @@ describe('CompositeRegimeService', () => {
         { provide: OHLCService, useValue: mockOhlcService },
         { provide: CoinService, useValue: mockCoinService },
         { provide: AuditService, useValue: mockAuditService },
-        { provide: CACHE_MANAGER, useValue: mockCacheManager }
+        { provide: CACHE_MANAGER, useValue: mockCacheManager },
+        { provide: EventEmitter2, useValue: mockEventEmitter }
       ]
     }).compile();
 
@@ -65,15 +73,10 @@ describe('CompositeRegimeService', () => {
   // classify() — pure function, covers all 4 branches
   // ---------------------------------------------------------------------------
   describe('classify', () => {
-    it.each([
-      [MarketRegimeType.LOW_VOLATILITY, true, CompositeRegimeType.BULL],
-      [MarketRegimeType.NORMAL, true, CompositeRegimeType.BULL],
-      [MarketRegimeType.HIGH_VOLATILITY, true, CompositeRegimeType.NEUTRAL],
-      [MarketRegimeType.EXTREME, true, CompositeRegimeType.NEUTRAL],
-      [MarketRegimeType.LOW_VOLATILITY, false, CompositeRegimeType.BEAR],
-      [MarketRegimeType.EXTREME, false, CompositeRegimeType.EXTREME]
-    ])('classify(%s, aboveSma=%s) → %s', (volatility, aboveSma, expected) => {
-      expect(service.classify(volatility, aboveSma)).toBe(expected);
+    it('should delegate to classifyCompositeRegime', () => {
+      // Spot-check one case to verify delegation — exhaustive classify coverage belongs in api-interfaces
+      expect(service.classify(MarketRegimeType.EXTREME, false)).toBe(CompositeRegimeType.EXTREME);
+      expect(service.classify(MarketRegimeType.LOW_VOLATILITY, true)).toBe(CompositeRegimeType.BULL);
     });
   });
 
@@ -87,7 +90,8 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
-        mockCacheManager as any
+        mockCacheManager as any,
+        mockEventEmitter as any
       );
       expect(freshService.getCompositeRegime()).toBe(CompositeRegimeType.NEUTRAL);
       expect(freshService.getVolatilityRegime()).toBe(MarketRegimeType.NORMAL);
@@ -140,7 +144,7 @@ describe('CompositeRegimeService', () => {
       expect(result).toBe(CompositeRegimeType.BULL);
     });
 
-    it('should keep previous regime when SMA or price is non-finite', async () => {
+    it('should filter out NaN closes and still compute when enough valid points remain', async () => {
       const summaries = generatePriceSummaries(250, 50000, 0.001);
       // Inject NaN values at the beginning (newest in descending order)
       for (let i = 0; i < 10; i++) {
@@ -148,28 +152,39 @@ describe('CompositeRegimeService', () => {
       }
 
       mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.NORMAL
+      } as any);
 
       const result = await service.refresh();
 
-      // NaN closes are filtered out by the .filter(Number.isFinite) in source,
-      // so this should still compute if enough valid points remain.
-      // With 240 valid points (250 - 10 NaN), it proceeds normally.
-      expect(result).toBeDefined();
+      // 240 valid points (250 - 10 NaN) → proceeds normally
+      expect(result).not.toBe(CompositeRegimeType.NEUTRAL);
+      expect(service.getVolatilityRegime()).toBe(MarketRegimeType.NORMAL);
     });
 
-    it('should detect BEAR regime when high volatility + below SMA', async () => {
-      const summaries = generatePriceSummaries(250, 50000, 0.001);
-      // Set the first element (newest in descending order) to a low price
-      summaries[0].close = 10000;
+    it('should keep previous regime when too many NaN closes drop below SMA_PERIOD', async () => {
+      const summaries = generatePriceSummaries(210, 50000, 0.001);
+      // Remove enough valid points to drop below 200
+      for (let i = 0; i < 15; i++) {
+        summaries[i].close = NaN;
+      }
 
       mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
-      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
-        regime: MarketRegimeType.HIGH_VOLATILITY
-      } as any);
 
-      await service.refresh();
+      const result = await service.refresh();
 
-      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
+      expect(result).toBe(CompositeRegimeType.NEUTRAL);
+      expect(mockMarketRegimeService.getCurrentRegime).not.toHaveBeenCalled();
+    });
+
+    it('should keep previous regime when OHLC map has no data for BTC coin', async () => {
+      mockOhlcService.findAllByDay.mockResolvedValue({});
+
+      const result = await service.refresh();
+
+      expect(result).toBe(CompositeRegimeType.NEUTRAL);
+      expect(mockMarketRegimeService.getCurrentRegime).not.toHaveBeenCalled();
     });
 
     it('should keep previous regime when BTC coin not found', async () => {
@@ -185,6 +200,22 @@ describe('CompositeRegimeService', () => {
 
       await expect(service.refresh()).rejects.toThrow('Database unavailable');
     });
+
+    it('should increment failure counter when refresh throws', async () => {
+      mockOhlcService.findAllByDay.mockRejectedValue(new Error('DB timeout'));
+
+      for (let i = 0; i < 3; i++) {
+        await service.refresh().catch(() => {
+          // Intentionally suppressing error for test
+        });
+      }
+
+      expect((service as any).consecutiveFailures).toBe(3);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        NOTIFICATION_EVENTS.REGIME_STALE,
+        expect.objectContaining({ consecutiveFailures: 3 })
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -197,7 +228,8 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
-        mockCacheManager as any
+        mockCacheManager as any,
+        mockEventEmitter as any
       );
 
       mockOhlcService.findAllByDay.mockRejectedValue(new Error('Startup failure'));
@@ -211,7 +243,8 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
-        mockCacheManager as any
+        mockCacheManager as any,
+        mockEventEmitter as any
       );
 
       mockCacheManager.get.mockRejectedValue(new Error('Redis unavailable'));
@@ -225,7 +258,7 @@ describe('CompositeRegimeService', () => {
   // enableOverride() / disableOverride()
   // ---------------------------------------------------------------------------
   describe('enableOverride', () => {
-    it('should set override state and persist to Redis', async () => {
+    it('should set override state, persist to Redis, and audit log', async () => {
       await service.enableOverride('user-123', true, 'Emergency override');
 
       expect(service.isOverrideActive()).toBe(true);
@@ -234,17 +267,12 @@ describe('CompositeRegimeService', () => {
         expect.objectContaining({ active: true, forceAllow: true, userId: 'user-123' }),
         86_400_000
       );
-    });
-
-    it('should audit log the override with correct parameters', async () => {
-      await service.enableOverride('user-456', true, 'Market crash response');
-
       expect(mockAuditService.createAuditLog).toHaveBeenCalledWith({
         eventType: AuditEventType.MANUAL_INTERVENTION,
         entityType: 'CompositeRegime',
         entityId: 'override',
-        userId: 'user-456',
-        afterState: { forceAllow: true, reason: 'Market crash response' },
+        userId: 'user-123',
+        afterState: { forceAllow: true, reason: 'Emergency override' },
         metadata: { action: 'enable_regime_override' }
       });
     });
@@ -320,12 +348,134 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
-        mockCacheManager as any
+        mockCacheManager as any,
+        mockEventEmitter as any
       );
 
       await freshService.onModuleInit();
 
       expect(freshService.isOverrideActive()).toBe(true);
+      expect(mockCacheManager.get).toHaveBeenCalledWith('regime:override');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Staleness detection
+  // ---------------------------------------------------------------------------
+  describe('staleness detection', () => {
+    it('should return NEUTRAL when cached data is older than 4 hours', async () => {
+      // First, do a successful refresh to populate cache with BEAR regime
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 10000; // below SMA → BEAR
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.HIGH_VOLATILITY
+      } as any);
+
+      await service.refresh();
+      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
+
+      // Manually age the cache beyond 4 hours
+      const cached = (service as any).cached;
+      cached.updatedAt = new Date(Date.now() - 5 * 60 * 60 * 1000); // 5 hours ago
+
+      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.NEUTRAL);
+    });
+
+    it('should return cached regime when data is between 2h and 4h old', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 10000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.HIGH_VOLATILITY
+      } as any);
+
+      await service.refresh();
+      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
+
+      // Age the cache to 3 hours (between STALE_WARNING_MS and STALE_FALLBACK_MS)
+      const cached = (service as any).cached;
+      cached.updatedAt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+
+      // Should still return the cached BEAR regime, not NEUTRAL
+      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
+    });
+
+    it('should return cached regime when data is less than 2 hours old', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 10000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.HIGH_VOLATILITY
+      } as any);
+
+      await service.refresh();
+      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
+
+      // Age the cache to 1 hour (still fresh)
+      const cached = (service as any).cached;
+      cached.updatedAt = new Date(Date.now() - 1 * 60 * 60 * 1000);
+
+      expect(service.getCompositeRegime()).toBe(CompositeRegimeType.BEAR);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Failure tracking
+  // ---------------------------------------------------------------------------
+  describe('failure tracking', () => {
+    it('should emit REGIME_STALE after 3 consecutive failures', async () => {
+      mockCoinService.getCoinBySlug.mockResolvedValue(null);
+
+      await service.refresh();
+      await service.refresh();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+
+      await service.refresh();
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        NOTIFICATION_EVENTS.REGIME_STALE,
+        expect.objectContaining({
+          consecutiveFailures: 3,
+          cachedRegime: 'NONE'
+        })
+      );
+    });
+
+    it('should only emit REGIME_STALE once despite further failures', async () => {
+      mockCoinService.getCoinBySlug.mockResolvedValue(null);
+
+      for (let i = 0; i < 5; i++) {
+        await service.refresh();
+      }
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reset counters on successful refresh', async () => {
+      // 2 failures
+      mockCoinService.getCoinBySlug.mockResolvedValue(null);
+      await service.refresh();
+      await service.refresh();
+
+      // Then a success
+      mockCoinService.getCoinBySlug.mockResolvedValue({ id: BTC_COIN_ID, slug: 'bitcoin' } as any);
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+
+      await service.refresh();
+      expect((service as any).consecutiveFailures).toBe(0);
+      expect((service as any).staleNotificationEmitted).toBe(false);
+
+      // 3 more failures should emit again
+      mockCoinService.getCoinBySlug.mockResolvedValue(null);
+      await service.refresh();
+      await service.refresh();
+      await service.refresh();
+      expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -339,7 +489,8 @@ describe('CompositeRegimeService', () => {
         mockOhlcService as any,
         mockCoinService as any,
         mockAuditService as any,
-        mockCacheManager as any
+        mockCacheManager as any,
+        mockEventEmitter as any
       );
 
       const status = freshService.getStatus();
@@ -351,6 +502,9 @@ describe('CompositeRegimeService', () => {
         btcPrice: null,
         sma200Value: null,
         updatedAt: null,
+        isStale: false,
+        consecutiveFailures: 0,
+        lastSuccessfulRefresh: null,
         override: { active: false }
       });
     });
@@ -374,7 +528,29 @@ describe('CompositeRegimeService', () => {
       expect(status.btcPrice).toBeCloseTo(70000, 0);
       expect(status.sma200Value).toBeGreaterThan(0);
       expect(status.updatedAt).toBeInstanceOf(Date);
+      expect(status.isStale).toBe(false);
+      expect(status.consecutiveFailures).toBe(0);
+      expect(status.lastSuccessfulRefresh).toEqual(status.updatedAt);
       expect(status.override).toEqual({ active: false });
+    });
+
+    it('should report stale status when cache is older than 2 hours', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.LOW_VOLATILITY
+      } as any);
+
+      await service.refresh();
+
+      // Age the cache beyond 2 hours
+      const cached = (service as any).cached;
+      cached.updatedAt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+
+      const status = service.getStatus();
+      expect(status.isStale).toBe(true);
+      expect(status.lastSuccessfulRefresh).toEqual(cached.updatedAt);
     });
 
     it('should include override details when override is active', async () => {

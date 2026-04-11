@@ -12,7 +12,8 @@ export const NOTIFICATION_EVENTS = {
   DAILY_SUMMARY: 'notification.daily-summary',
   STRATEGY_DEPLOYED: 'notification.strategy-deployed',
   STRATEGY_DEMOTED: 'notification.strategy-demoted',
-  DAILY_LOSS_LIMIT: 'notification.daily-loss-limit'
+  DAILY_LOSS_LIMIT: 'notification.daily-loss-limit',
+  REGIME_STALE: 'notification.regime-stale'
 } as const;
 
 /**
@@ -82,6 +83,13 @@ export interface DailyLossLimitNotification extends BaseNotificationPayload {
   limitPercent: number;
 }
 
+/** Broadcast to all admins — no single userId, so intentionally does not extend BaseNotificationPayload */
+export interface RegimeStaleNotification {
+  lastRefreshAt: Date | null;
+  consecutiveFailures: number;
+  cachedRegime: string;
+}
+
 export type NotificationPayload =
   | TradeExecutedNotification
   | TradeErrorNotification
@@ -91,7 +99,8 @@ export type NotificationPayload =
   | DailySummaryNotification
   | StrategyDeployedNotification
   | StrategyDemotedNotification
-  | DailyLossLimitNotification;
+  | DailyLossLimitNotification
+  | RegimeStaleNotification;
 
 /**
  * BullMQ job data for the notification queue
