@@ -31,6 +31,7 @@ import {
   PaperTradingSnapshotFiltersDto,
   UpdatePaperTradingSessionDto
 } from './dto';
+import { PaperTradingQueryService } from './paper-trading-query.service';
 import { PaperTradingService } from './paper-trading.service';
 
 import GetUser from '../../authentication/decorator/get-user.decorator';
@@ -42,7 +43,10 @@ import { User } from '../../users/users.entity';
 @UseGuards(JwtAuthenticationGuard)
 @ApiBearerAuth('token')
 export class PaperTradingController {
-  constructor(private readonly paperTradingService: PaperTradingService) {}
+  constructor(
+    private readonly paperTradingService: PaperTradingService,
+    private readonly queryService: PaperTradingQueryService
+  ) {}
 
   @Post('sessions')
   @ApiOperation({ summary: 'Create a new paper trading session' })
@@ -64,7 +68,7 @@ export class PaperTradingController {
     @Query() filters: PaperTradingSessionFiltersDto,
     @GetUser() user: User
   ): Promise<PaperTradingListResponseDto> {
-    const { data, total } = await this.paperTradingService.findAll(user, filters);
+    const { data, total } = await this.queryService.findAll(user, filters);
     return {
       data: data.map((s) => this.toSummaryDto(s)),
       total,
@@ -79,7 +83,7 @@ export class PaperTradingController {
   @ApiResponse({ status: 200, description: 'Session retrieved successfully', type: PaperTradingSessionDetailDto })
   @ApiResponse({ status: 404, description: 'Session not found' })
   async findOne(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User): Promise<PaperTradingSessionDetailDto> {
-    const session = await this.paperTradingService.findOne(id, user);
+    const session = await this.queryService.findOne(id, user);
     return this.toDetailDto(session);
   }
 
@@ -163,7 +167,7 @@ export class PaperTradingController {
     @Query() filters: PaperTradingOrderFiltersDto,
     @GetUser() user: User
   ): Promise<{ data: PaperTradingOrderDto[]; total: number }> {
-    const { data, total } = await this.paperTradingService.getOrders(id, user, filters);
+    const { data, total } = await this.queryService.getOrders(id, user, filters);
     return {
       data: data.map((o) => ({
         id: o.id,
@@ -199,7 +203,7 @@ export class PaperTradingController {
     @Query() filters: PaperTradingSignalFiltersDto,
     @GetUser() user: User
   ): Promise<{ data: PaperTradingSignalDto[]; total: number }> {
-    const { data, total } = await this.paperTradingService.getSignals(id, user, filters);
+    const { data, total } = await this.queryService.getSignals(id, user, filters);
     return {
       data: data.map((s) => ({
         id: s.id,
@@ -224,7 +228,7 @@ export class PaperTradingController {
   @ApiResponse({ status: 200, description: 'Balances retrieved successfully', type: [PaperTradingBalanceDto] })
   @ApiResponse({ status: 404, description: 'Session not found' })
   async getBalance(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User): Promise<PaperTradingBalanceDto[]> {
-    const accounts = await this.paperTradingService.getBalances(id, user);
+    const accounts = await this.queryService.getBalances(id, user);
     return accounts.map((a) => ({
       currency: a.currency,
       available: a.available,
@@ -243,7 +247,7 @@ export class PaperTradingController {
     @Param('id', ParseUUIDPipe) id: string,
     @GetUser() user: User
   ): Promise<PaperTradingPositionDto[]> {
-    const positions = await this.paperTradingService.getPositions(id, user);
+    const positions = await this.queryService.getPositions(id, user);
     return positions.map((p) => ({
       symbol: p.symbol,
       quantity: p.quantity,
@@ -261,7 +265,7 @@ export class PaperTradingController {
   @ApiResponse({ status: 200, description: 'Metrics retrieved successfully', type: PaperTradingMetricsDto })
   @ApiResponse({ status: 404, description: 'Session not found' })
   async getPerformance(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User): Promise<PaperTradingMetricsDto> {
-    const metrics = await this.paperTradingService.getPerformance(id, user);
+    const metrics = await this.queryService.getPerformance(id, user);
     return {
       ...metrics,
       totalReturnPercent: metrics.totalReturnPercent ?? (metrics.totalReturn / metrics.initialCapital) * 100
@@ -278,7 +282,7 @@ export class PaperTradingController {
     @Query() filters: PaperTradingSnapshotFiltersDto,
     @GetUser() user: User
   ): Promise<PaperTradingSnapshotDto[]> {
-    const snapshots = await this.paperTradingService.getSnapshots(id, user, filters);
+    const snapshots = await this.queryService.getSnapshots(id, user, filters);
     return snapshots.map((s) => ({
       id: s.id,
       portfolioValue: s.portfolioValue,

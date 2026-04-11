@@ -130,20 +130,22 @@ export class PipelineOrchestrationService {
   }
 
   /**
-   * Check if a duplicate pipeline exists for this strategy config
-   * within the last 24 hours (excluding failed/cancelled).
+   * Returns true if an active pipeline already exists for this strategy config / user.
+   * "Active" = PENDING | RUNNING | PAUSED. Completed/failed/cancelled pipelines do NOT block.
+   *
+   * An in-flight pipeline is the natural rate-limit for re-runs: as long as the previous
+   * pipeline is still PENDING, RUNNING, or PAUSED, this guard prevents the daily 2 AM cron
+   * from spawning a duplicate. No cooldown is applied after COMPLETED/FAILED so legitimate
+   * retries (e.g. transient exchange-key error) are not delayed.
    */
   async checkDuplicate(strategyConfigId: string, userId: string): Promise<boolean> {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
     const existing = await this.pipelineRepository
       .createQueryBuilder('pipeline')
       .innerJoin('pipeline.user', 'user')
       .where('pipeline.strategyConfigId = :strategyConfigId', { strategyConfigId })
       .andWhere('user.id = :userId', { userId })
-      .andWhere('pipeline.createdAt >= :since', { since: twentyFourHoursAgo })
-      .andWhere('pipeline.status NOT IN (:...failedStatuses)', {
-        failedStatuses: [PipelineStatus.FAILED, PipelineStatus.CANCELLED]
+      .andWhere('pipeline.status IN (:...activeStatuses)', {
+        activeStatuses: [PipelineStatus.PENDING, PipelineStatus.RUNNING, PipelineStatus.PAUSED]
       })
       .getOne();
 
@@ -335,13 +337,14 @@ export class PipelineOrchestrationService {
     const strategyConfigId = strategyConfig.id;
     const strategyName = strategyConfig.name ?? 'Unknown';
 
-    // Check for duplicate pipeline in the last 24 hours
+    // Skip if an active pipeline already exists for this (user, strategyConfig) pair.
+    // The configured paper-trade duration naturally rate-limits re-runs while the pipeline is in flight.
     if (await this.checkDuplicate(strategyConfigId, user.id)) {
-      this.logger.debug(`Skipping duplicate pipeline for user ${user.id}, strategy ${strategyConfigId}`);
+      this.logger.debug(`Active pipeline already exists for user ${user.id}, strategy ${strategyConfigId}`);
       result.skippedConfigs.push({
         strategyConfigId,
         strategyName,
-        reason: 'Duplicate pipeline exists within 24 hours'
+        reason: 'Active pipeline already exists (PENDING/RUNNING/PAUSED)'
       });
       return;
     }
