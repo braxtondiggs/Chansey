@@ -4,10 +4,13 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { Queue } from 'bullmq';
 
+import { DEFAULT_VOLATILITY_CONFIG } from '@chansey/api-interfaces';
+
 import { CoinService } from '../coin/coin.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
 import { OHLCService } from '../ohlc/ohlc.service';
+import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 import { toErrorInfo } from '../shared/error.util';
 
 /**
@@ -20,14 +23,15 @@ export class MarketRegimeTask {
   private readonly logger = new Logger(MarketRegimeTask.name);
 
   // Track assets to monitor
-  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'POL'];
+  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'POL'] as const;
 
   constructor(
     @InjectQueue('regime-check-queue') private regimeQueue: Queue,
     private readonly marketRegimeService: MarketRegimeService,
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly ohlcService: OHLCService,
-    private readonly coinService: CoinService
+    private readonly coinService: CoinService,
+    private readonly backfillService: OHLCBackfillService
   ) {}
 
   /**
@@ -89,8 +93,12 @@ export class MarketRegimeTask {
 
     try {
       // Fetch recent price data (last 365 days for percentile calculation)
-      // Note: This is simplified - full implementation would fetch actual historical prices
-      const priceData = await this.fetchPriceData(asset, 365);
+      const priceData = await this.fetchPriceData(asset);
+
+      if (!priceData) {
+        this.logger.warn(`No price data available for ${asset}, skipping regime detection`);
+        return;
+      }
 
       // Detect current regime
       await this.marketRegimeService.detectRegime(asset, priceData);
@@ -106,36 +114,23 @@ export class MarketRegimeTask {
   /**
    * Fetch historical price data for asset from local OHLC candles.
    * @param asset Asset symbol (e.g., 'BTC', 'ETH')
-   * @param days Number of days of historical data
-   * @returns Array of daily closing prices in chronological order
+   * @returns Array of daily closing prices in chronological order, or null if unavailable
    */
-  private async fetchPriceData(asset: string, days: number): Promise<number[]> {
+  private async fetchPriceData(asset: string): Promise<number[] | null> {
     try {
-      const assetSlugMap: Record<string, string> = {
-        BTC: 'bitcoin',
-        ETH: 'ethereum',
-        SOL: 'solana',
-        POL: 'polygon-ecosystem-token'
-      };
-
-      const slug = assetSlugMap[asset.toUpperCase()];
-      if (!slug) {
-        this.logger.warn(`Unknown asset ${asset}, using fallback price data`);
-        return this.generateFallbackPriceData(days);
-      }
-
-      const coin = await this.coinService.getCoinBySlug(slug);
+      const coin = await this.coinService.getCoinBySymbol(asset, [], false);
       if (!coin) {
-        this.logger.warn(`Coin not found for slug ${slug}, using fallback price data`);
-        return this.generateFallbackPriceData(days);
+        this.logger.warn(`Coin not found for symbol ${asset}, skipping regime check`);
+        return null;
       }
 
       const summaries = await this.ohlcService.findAllByDay(coin.id, '1y');
       const coinSummaries = summaries[coin.id];
 
       if (!coinSummaries || coinSummaries.length === 0) {
-        this.logger.warn(`No OHLC data for ${asset}, using fallback`);
-        return this.generateFallbackPriceData(days);
+        this.logger.warn(`No OHLC data for ${asset}`);
+        await this.triggerBackfillIfNeeded(coin.id, asset, 0);
+        return null;
       }
 
       // findAllByDay returns descending order — reverse to chronological
@@ -144,38 +139,52 @@ export class MarketRegimeTask {
         .filter((v): v is number => Number.isFinite(v))
         .reverse();
 
-      // Trim to requested days
-      if (closes.length > days) {
-        return closes.slice(-days);
+      const requiredDays = DEFAULT_VOLATILITY_CONFIG.lookbackDays;
+
+      if (closes.length < requiredDays) {
+        await this.triggerBackfillIfNeeded(coin.id, asset, closes.length);
+        return null;
+      }
+
+      // Trim to required days for percentile calculation
+      if (closes.length > requiredDays) {
+        return closes.slice(-requiredDays);
       }
 
       return closes;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to fetch price data for ${asset}: ${err.message}`);
-      return this.generateFallbackPriceData(days);
+      return null;
     }
   }
 
   /**
-   * Generate fallback price data when API fails
-   * Uses a deterministic pattern based on date to avoid truly random values
+   * Trigger OHLC backfill if no backfill is already pending or in progress.
    */
-  private generateFallbackPriceData(days: number): number[] {
-    const prices: number[] = [];
-    const basePrice = 50000;
-    const today = new Date();
+  private async triggerBackfillIfNeeded(coinId: string, asset: string, count: number): Promise<void> {
+    const required = DEFAULT_VOLATILITY_CONFIG.lookbackDays;
+    try {
+      const progress = await this.backfillService.getProgress(coinId);
+      if (
+        progress &&
+        (progress.status === 'pending' || progress.status === 'in_progress' || progress.status === 'failed')
+      ) {
+        this.logger.warn(
+          `Insufficient OHLC data for ${asset} (${count}/${required} days) — backfill already ${progress.status}`
+        );
+        return;
+      }
 
-    for (let i = days - 1; i >= 0; i--) {
-      // Use date-based deterministic variation instead of random
-      const dayOffset = new Date(today);
-      dayOffset.setDate(today.getDate() - i);
-      const dateHash = dayOffset.getFullYear() * 10000 + (dayOffset.getMonth() + 1) * 100 + dayOffset.getDate();
-      const variation = ((dateHash % 1000) - 500) / 50000; // ±1% variation based on date
-      prices.push(basePrice * (1 + variation));
+      this.logger.warn(`Insufficient OHLC data for ${asset} (${count}/${required} days) — backfill triggered`);
+      this.backfillService.startBackfill(coinId).catch((error: unknown) => {
+        const err = toErrorInfo(error);
+        this.logger.warn(`Failed to trigger backfill for ${asset}: ${err.message}`);
+      });
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to check backfill progress for ${asset}: ${err.message}`);
     }
-
-    return prices;
   }
 
   /**
@@ -183,27 +192,6 @@ export class MarketRegimeTask {
    */
   async triggerRegimeCheck(asset: string): Promise<void> {
     await this.queueRegimeCheck(asset);
-  }
-
-  /**
-   * Add asset to monitoring list
-   */
-  addMonitoredAsset(asset: string): void {
-    if (!this.monitoredAssets.includes(asset)) {
-      this.monitoredAssets.push(asset);
-      this.logger.log(`Added ${asset} to monitored assets`);
-    }
-  }
-
-  /**
-   * Remove asset from monitoring list
-   */
-  removeMonitoredAsset(asset: string): void {
-    const index = this.monitoredAssets.indexOf(asset);
-    if (index > -1) {
-      this.monitoredAssets.splice(index, 1);
-      this.logger.log(`Removed ${asset} from monitored assets`);
-    }
   }
 
   /**
@@ -216,7 +204,7 @@ export class MarketRegimeTask {
       active: jobCounts.active,
       completed: jobCounts.completed,
       failed: jobCounts.failed,
-      monitoredAssets: this.monitoredAssets
+      monitoredAssets: [...this.monitoredAssets]
     };
   }
 }

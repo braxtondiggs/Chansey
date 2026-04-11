@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 
 import { VolatilityConfig, DEFAULT_VOLATILITY_CONFIG } from '@chansey/api-interfaces';
 
+import { InsufficientDataException } from '../common/exceptions';
+
 /**
  * Volatility Calculator
  * Calculates realized volatility and percentiles for market regime detection
@@ -14,7 +16,7 @@ export class VolatilityCalculator {
    */
   calculateRealizedVolatility(prices: number[], config: VolatilityConfig = DEFAULT_VOLATILITY_CONFIG): number {
     if (prices.length < config.rollingDays + 1) {
-      throw new Error(`Insufficient data: need at least ${config.rollingDays + 1} prices`);
+      throw new InsufficientDataException(config.rollingDays + 1, prices.length);
     }
 
     // Calculate returns
@@ -55,7 +57,7 @@ export class VolatilityCalculator {
     config: VolatilityConfig = DEFAULT_VOLATILITY_CONFIG
   ): number {
     if (prices.length < config.lookbackDays) {
-      throw new Error(`Insufficient data: need at least ${config.lookbackDays} prices for percentile calculation`);
+      throw new InsufficientDataException(config.lookbackDays, prices.length);
     }
 
     // Calculate rolling volatilities over lookback period

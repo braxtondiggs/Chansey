@@ -5,6 +5,7 @@ import { Job } from 'bullmq';
 
 import { MarketRegimeTask } from './market-regime.task';
 
+import { InsufficientDataException } from '../common/exceptions';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -44,6 +45,14 @@ export class MarketRegimeProcessor extends WorkerHost {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       const duration = Date.now() - startTime;
+
+      // Insufficient data is not transient — don't retry
+      if (error instanceof InsufficientDataException) {
+        this.logger.warn(`Regime check job ${job.id} discarded for ${asset} (insufficient data) after ${duration}ms`);
+        await job.moveToFailed(new Error(err.message), job.token ?? '0', false);
+        return;
+      }
+
       this.logger.error(
         `Regime check job ${job.id} failed for ${asset} after ${duration}ms: ${err.message}`,
         err.stack

@@ -6,6 +6,7 @@ export * from './auth';
 export * from './backtest';
 export * from './external';
 export * from './order';
+export * from './market-regime';
 export * from './resource';
 
 // Error codes
