@@ -9,10 +9,11 @@ import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.ent
 import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
 import { BacktestTrade } from './backtest-trade.entity';
-import { Backtest, BacktestStatus } from './backtest.entity';
+import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { BacktestFailedEvent, PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { toErrorInfo } from '../../shared/error.util';
 import { sanitizeNumericValue } from '../../utils/validators/numeric-sanitizer';
 
@@ -195,12 +196,40 @@ export class BacktestResultService {
   }
 
   async markFailed(backtestId: string, errorMessage: string): Promise<void> {
+    // Read first so we have the type for the event payload and can skip double-emit
+    // when multiple call sites (watchdog + processor catch block) race to fail the same backtest.
+    const backtest = await this.backtestRepository.findOne({
+      where: { id: backtestId },
+      select: ['id', 'type', 'status']
+    });
+
+    if (!backtest || backtest.status === BacktestStatus.FAILED) {
+      return;
+    }
+
     await this.backtestRepository.update(backtestId, {
       status: BacktestStatus.FAILED,
       errorMessage
     });
 
     await this.backtestStream.publishStatus(backtestId, 'failed', errorMessage);
+
+    // Emit failure event for pipeline orchestrator so parent pipelines can transition to FAILED.
+    // Mirrors the typeMapping pattern in persistSuccess — filters out PAPER_TRADING and
+    // STRATEGY_OPTIMIZATION, which have no corresponding pipeline stage.
+    const typeMapping: Record<string, 'HISTORICAL' | 'LIVE_REPLAY' | undefined> = {
+      [BacktestType.HISTORICAL]: 'HISTORICAL',
+      [BacktestType.LIVE_REPLAY]: 'LIVE_REPLAY'
+    };
+    const mappedType = typeMapping[backtest.type];
+
+    if (mappedType) {
+      this.eventEmitter.emit(PIPELINE_EVENTS.BACKTEST_FAILED, {
+        backtestId,
+        type: mappedType,
+        reason: errorMessage
+      } satisfies BacktestFailedEvent);
+    }
   }
 
   async markCancelled(backtest: Backtest, reason?: string): Promise<void> {

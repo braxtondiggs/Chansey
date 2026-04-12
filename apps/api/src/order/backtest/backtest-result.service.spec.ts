@@ -9,17 +9,19 @@ import { type BacktestFinalMetrics, BacktestResultService } from './backtest-res
 import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
 import { BacktestTrade } from './backtest-trade.entity';
-import { Backtest, BacktestStatus } from './backtest.entity';
+import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { SimulatedOrderFill } from './simulated-order-fill.entity';
 
 import { MetricsService } from '../../metrics/metrics.service';
+import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 
 describe('BacktestResultService', () => {
   let service: BacktestResultService;
 
   const mockBacktestRepository = {
     save: jest.fn(),
-    update: jest.fn()
+    update: jest.fn(),
+    findOne: jest.fn()
   };
 
   const mockBacktestStreamService = {
@@ -340,6 +342,11 @@ describe('BacktestResultService', () => {
     it('should update backtest status and publish failed state', async () => {
       const backtestId = 'backtest-456';
       const errorMessage = 'Strategy execution error';
+      mockBacktestRepository.findOne.mockResolvedValue({
+        id: backtestId,
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.RUNNING
+      });
 
       await service.markFailed(backtestId, errorMessage);
 
@@ -348,6 +355,80 @@ describe('BacktestResultService', () => {
         errorMessage
       });
       expect(mockBacktestStreamService.publishStatus).toHaveBeenCalledWith(backtestId, 'failed', errorMessage);
+    });
+
+    it('emits BACKTEST_FAILED for HISTORICAL backtest', async () => {
+      const backtestId = 'backtest-hist-1';
+      const errorMessage = 'Strategy crashed';
+      mockBacktestRepository.findOne.mockResolvedValue({
+        id: backtestId,
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.RUNNING
+      });
+
+      await service.markFailed(backtestId, errorMessage);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_FAILED, {
+        backtestId,
+        type: 'HISTORICAL',
+        reason: errorMessage
+      });
+    });
+
+    it('emits BACKTEST_FAILED for LIVE_REPLAY backtest', async () => {
+      const backtestId = 'backtest-lr-1';
+      const errorMessage = 'OOM';
+      mockBacktestRepository.findOne.mockResolvedValue({
+        id: backtestId,
+        type: BacktestType.LIVE_REPLAY,
+        status: BacktestStatus.RUNNING
+      });
+
+      await service.markFailed(backtestId, errorMessage);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_FAILED, {
+        backtestId,
+        type: 'LIVE_REPLAY',
+        reason: errorMessage
+      });
+    });
+
+    it('does not emit BACKTEST_FAILED for PAPER_TRADING backtest', async () => {
+      const backtestId = 'backtest-pt-1';
+      mockBacktestRepository.findOne.mockResolvedValue({
+        id: backtestId,
+        type: BacktestType.PAPER_TRADING,
+        status: BacktestStatus.RUNNING
+      });
+
+      await service.markFailed(backtestId, 'some error');
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_FAILED, expect.any(Object));
+    });
+
+    it('is idempotent — skips update and emit when backtest is already FAILED', async () => {
+      const backtestId = 'backtest-already-failed';
+      mockBacktestRepository.findOne.mockResolvedValue({
+        id: backtestId,
+        type: BacktestType.HISTORICAL,
+        status: BacktestStatus.FAILED
+      });
+
+      await service.markFailed(backtestId, 'duplicate failure');
+
+      expect(mockBacktestRepository.update).not.toHaveBeenCalled();
+      expect(mockBacktestStreamService.publishStatus).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when backtest does not exist', async () => {
+      mockBacktestRepository.findOne.mockResolvedValue(null);
+
+      await service.markFailed('missing-id', 'err');
+
+      expect(mockBacktestRepository.update).not.toHaveBeenCalled();
+      expect(mockBacktestStreamService.publishStatus).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 

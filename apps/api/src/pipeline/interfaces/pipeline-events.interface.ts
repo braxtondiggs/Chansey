@@ -39,6 +39,15 @@ export interface BacktestCompletedEvent {
 }
 
 /**
+ * Event payload for backtest failure (stale watchdog or error)
+ */
+export interface BacktestFailedEvent {
+  backtestId: string;
+  type: 'HISTORICAL' | 'LIVE_REPLAY';
+  reason: string;
+}
+
+/**
  * Event payload for paper trading completion
  */
 export interface PaperTradingCompletedEvent {
@@ -121,6 +130,7 @@ export const PIPELINE_EVENTS = {
   OPTIMIZATION_COMPLETED: 'optimization.completed',
   OPTIMIZATION_FAILED: 'optimization.failed',
   BACKTEST_COMPLETED: 'backtest.completed',
+  BACKTEST_FAILED: 'backtest.failed',
   PAPER_TRADING_COMPLETED: 'paper-trading.completed',
   PIPELINE_STAGE_TRANSITION: 'pipeline.stage-transition',
   PIPELINE_STATUS_CHANGE: 'pipeline.status-change',

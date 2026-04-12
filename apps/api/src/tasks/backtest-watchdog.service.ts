@@ -140,7 +140,10 @@ export class BacktestWatchdogService {
               : `(last heartbeat: ${backtest.lastCheckpointAt?.toISOString()}, ` +
                 `progress: ${backtest.processedTimestampCount}/${backtest.totalTimestampCount})`)
         );
+        // markFailed() now emits PIPELINE_EVENTS.BACKTEST_FAILED internally so the parent
+        // pipeline can transition to FAILED instead of orphaning.
         await this.backtestResultService.markFailed(backtest.id, reason);
+
         marked++;
       } catch (error: unknown) {
         const err = toErrorInfo(error);
@@ -331,6 +334,93 @@ export class BacktestWatchdogService {
 
     if (marked > 0) {
       this.logger.log(`Failed-optimization pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Detects RUNNING pipelines in HISTORICAL or LIVE_REPLAY stage whose linked backtest
+   * has already FAILED (or been deleted). This is the reconciliation safety net for cases
+   * where the BACKTEST_FAILED event was never delivered (process kill between DB commit
+   * and emit, listener exception, etc.) — mirrors detectFailedOptimizationPipelines.
+   */
+  async detectFailedBacktestPipelines(): Promise<void> {
+    if (this.isWithinBootGrace()) return;
+
+    const candidates = await this.pipelineRepository.find({
+      select: ['id', 'status', 'currentStage', 'historicalBacktestId', 'liveReplayBacktestId'],
+      where: [
+        {
+          status: PipelineStatus.RUNNING,
+          currentStage: PipelineStage.HISTORICAL,
+          historicalBacktestId: Not(IsNull())
+        },
+        {
+          status: PipelineStatus.RUNNING,
+          currentStage: PipelineStage.LIVE_REPLAY,
+          liveReplayBacktestId: Not(IsNull())
+        }
+      ]
+    });
+
+    // Batch-fetch the linked backtests for all candidates
+    const backtestIds = candidates
+      .map((p) => (p.currentStage === PipelineStage.HISTORICAL ? p.historicalBacktestId : p.liveReplayBacktestId))
+      .filter((id): id is string => id != null);
+    const backtests =
+      backtestIds.length > 0
+        ? await this.backtestRepository.find({
+            select: ['id', 'status', 'errorMessage'],
+            where: { id: In(backtestIds) }
+          })
+        : [];
+    const backtestsById = new Map(backtests.map((b) => [b.id, b]));
+
+    let marked = 0;
+    for (const pipeline of candidates) {
+      try {
+        const stage = pipeline.currentStage;
+        const linkedId =
+          stage === PipelineStage.HISTORICAL ? pipeline.historicalBacktestId : pipeline.liveReplayBacktestId;
+        if (!linkedId) continue;
+
+        const backtest = backtestsById.get(linkedId);
+
+        // Pipeline is invalid if its backtest is FAILED or missing entirely
+        if (backtest && backtest.status !== BacktestStatus.FAILED) {
+          continue;
+        }
+
+        const reason = backtest
+          ? `${stage} backtest ${backtest.id} FAILED: ${backtest.errorMessage || 'unknown error'}`
+          : `${stage} backtest ${linkedId} no longer exists`;
+
+        this.logger.warn(`Marking pipeline ${pipeline.id} as FAILED — ${reason}`);
+
+        // Include currentStage in the predicate so we don't fail a pipeline that advanced
+        // to a different stage between our find() and update().
+        const result = await this.pipelineRepository.update(
+          { id: pipeline.id, status: PipelineStatus.RUNNING, currentStage: stage },
+          {
+            status: PipelineStatus.FAILED,
+            failureReason: reason,
+            completedAt: new Date()
+          }
+        );
+
+        if (result.affected === 0) {
+          this.logger.log(`Pipeline ${pipeline.id} already transitioned — skipping`);
+          continue;
+        }
+
+        marked++;
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to mark pipeline ${pipeline.id} with failed backtest as FAILED: ${err.message}`);
+      }
+    }
+
+    if (marked > 0) {
+      this.logger.log(`Failed-backtest pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
     }
   }
 

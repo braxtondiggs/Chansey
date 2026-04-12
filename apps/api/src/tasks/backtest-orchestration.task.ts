@@ -150,6 +150,7 @@ export class BacktestOrchestrationTask {
       await this.watchdog.detectStaleOptimizationRuns();
       await this.watchdog.detectOrphanedOptimizePipelines();
       await this.watchdog.detectFailedOptimizationPipelines();
+      await this.watchdog.detectFailedBacktestPipelines();
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Watchdog checks failed: ${err.message}`, err.stack);

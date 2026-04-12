@@ -506,4 +506,146 @@ describe('BacktestWatchdogService', () => {
       expect(mockPipelineRepository.find).not.toHaveBeenCalled();
     });
   });
+
+  describe('detectFailedBacktestPipelines', () => {
+    it('should do nothing when no candidates exist', async () => {
+      mockPipelineRepository.find.mockResolvedValue([]);
+
+      await service.detectFailedBacktestPipelines();
+
+      expect(mockBacktestRepository.find).not.toHaveBeenCalled();
+      expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should mark HISTORICAL-stage pipeline as FAILED when backtest is FAILED', async () => {
+      const pipeline = {
+        id: 'pipeline-h-1',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.HISTORICAL,
+        historicalBacktestId: 'bt-h-1',
+        liveReplayBacktestId: null
+      };
+      const failedBacktest = {
+        id: 'bt-h-1',
+        status: BacktestStatus.FAILED,
+        errorMessage: 'Strategy crashed'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockBacktestRepository.find.mockResolvedValue([failedBacktest]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedBacktestPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-h-1', status: PipelineStatus.RUNNING, currentStage: PipelineStage.HISTORICAL },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('Strategy crashed')
+        })
+      );
+    });
+
+    it('should mark LIVE_REPLAY-stage pipeline as FAILED when backtest is FAILED', async () => {
+      const pipeline = {
+        id: 'pipeline-lr-1',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.LIVE_REPLAY,
+        historicalBacktestId: null,
+        liveReplayBacktestId: 'bt-lr-1'
+      };
+      const failedBacktest = {
+        id: 'bt-lr-1',
+        status: BacktestStatus.FAILED,
+        errorMessage: 'OOM'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockBacktestRepository.find.mockResolvedValue([failedBacktest]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedBacktestPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-lr-1', status: PipelineStatus.RUNNING, currentStage: PipelineStage.LIVE_REPLAY },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('OOM')
+        })
+      );
+    });
+
+    it('should mark pipeline as FAILED when linked backtest no longer exists', async () => {
+      const pipeline = {
+        id: 'pipeline-h-2',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.HISTORICAL,
+        historicalBacktestId: 'bt-deleted',
+        liveReplayBacktestId: null
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockBacktestRepository.find.mockResolvedValue([]); // backtest deleted
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedBacktestPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-h-2', status: PipelineStatus.RUNNING, currentStage: PipelineStage.HISTORICAL },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('no longer exists')
+        })
+      );
+    });
+
+    it('should skip pipeline when backtest is still RUNNING', async () => {
+      const pipeline = {
+        id: 'pipeline-h-3',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.HISTORICAL,
+        historicalBacktestId: 'bt-running',
+        liveReplayBacktestId: null
+      };
+      const runningBacktest = {
+        id: 'bt-running',
+        status: BacktestStatus.RUNNING,
+        errorMessage: null
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockBacktestRepository.find.mockResolvedValue([runningBacktest]);
+
+      await service.detectFailedBacktestPipelines();
+
+      expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should skip pipeline when atomic update reports affected === 0', async () => {
+      const pipeline = {
+        id: 'pipeline-h-4',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.HISTORICAL,
+        historicalBacktestId: 'bt-h-4',
+        liveReplayBacktestId: null
+      };
+      const failedBacktest = {
+        id: 'bt-h-4',
+        status: BacktestStatus.FAILED,
+        errorMessage: 'err'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockBacktestRepository.find.mockResolvedValue([failedBacktest]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 0 });
+
+      await expect(service.detectFailedBacktestPipelines()).resolves.toBeUndefined();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip during boot grace period', async () => {
+      (service as any).bootedAt = Date.now();
+
+      await service.detectFailedBacktestPipelines();
+
+      expect(mockPipelineRepository.find).not.toHaveBeenCalled();
+      expect(mockBacktestRepository.find).not.toHaveBeenCalled();
+    });
+  });
 });

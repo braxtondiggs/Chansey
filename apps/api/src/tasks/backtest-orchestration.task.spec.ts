@@ -36,7 +36,8 @@ describe('BacktestOrchestrationTask', () => {
     detectStaleBacktests: jest.fn().mockResolvedValue(undefined),
     detectStaleOptimizationRuns: jest.fn().mockResolvedValue(undefined),
     detectOrphanedOptimizePipelines: jest.fn().mockResolvedValue(undefined),
-    detectFailedOptimizationPipelines: jest.fn().mockResolvedValue(undefined)
+    detectFailedOptimizationPipelines: jest.fn().mockResolvedValue(undefined),
+    detectFailedBacktestPipelines: jest.fn().mockResolvedValue(undefined)
   };
 
   beforeEach(async () => {
@@ -168,6 +169,7 @@ describe('BacktestOrchestrationTask', () => {
       expect(mockWatchdog.detectStaleOptimizationRuns).toHaveBeenCalledTimes(1);
       expect(mockWatchdog.detectOrphanedOptimizePipelines).toHaveBeenCalledTimes(1);
       expect(mockWatchdog.detectFailedOptimizationPipelines).toHaveBeenCalledTimes(1);
+      expect(mockWatchdog.detectFailedBacktestPipelines).toHaveBeenCalledTimes(1);
     });
 
     it('should not run concurrently (re-entrant guard)', async () => {
