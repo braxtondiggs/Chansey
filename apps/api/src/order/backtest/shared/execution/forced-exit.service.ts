@@ -165,7 +165,7 @@ export class ForcedExitService {
 
     if (positionsToDelete.length > 0) {
       portfolio.totalValue =
-        portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, new Map());
+        portfolio.cashBalance + this.portfolioState.calculatePositionsValue(portfolio.positions, lastKnownPrices);
     }
 
     return delistingTrades;

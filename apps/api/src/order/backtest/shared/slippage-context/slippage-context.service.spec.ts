@@ -26,48 +26,50 @@ describe('SlippageContextService', () => {
     } as OHLCCandle;
   };
 
+  const toMap = (candles: OHLCCandle[]): Map<string, OHLCCandle> => new Map(candles.map((c) => [c.coinId, c]));
+
   describe('extractDailyVolume', () => {
     it('should return quoteVolume when available', () => {
-      const candles = [makeCandle({ quoteVolume: 50000 })];
-      expect(service.extractDailyVolume(candles, 'coin-1')).toBe(50000);
+      const priceMap = toMap([makeCandle({ quoteVolume: 50000 })]);
+      expect(service.extractDailyVolume(priceMap, 'coin-1')).toBe(50000);
     });
 
     it('should return volume * close as fallback', () => {
-      const candles = [makeCandle({ quoteVolume: undefined, volume: 1000, close: 105 })];
-      expect(service.extractDailyVolume(candles, 'coin-1')).toBe(105000);
+      const priceMap = toMap([makeCandle({ quoteVolume: undefined, volume: 1000, close: 105 })]);
+      expect(service.extractDailyVolume(priceMap, 'coin-1')).toBe(105000);
     });
 
     it('should return undefined for missing coin', () => {
-      const candles = [makeCandle({ coinId: 'coin-1' })];
-      expect(service.extractDailyVolume(candles, 'coin-999')).toBeUndefined();
+      const priceMap = toMap([makeCandle({ coinId: 'coin-1' })]);
+      expect(service.extractDailyVolume(priceMap, 'coin-999')).toBeUndefined();
     });
   });
 
   describe('buildSpreadContext', () => {
     it('should return undefined when no candle found', () => {
-      const candles = [makeCandle({ coinId: 'coin-1' })];
+      const priceMap = toMap([makeCandle({ coinId: 'coin-1' })]);
       const prevMap = new Map<string, OHLCCandle>();
-      expect(service.buildSpreadContext(candles, 'coin-999', prevMap)).toBeUndefined();
+      expect(service.buildSpreadContext(priceMap, 'coin-999', prevMap)).toBeUndefined();
     });
 
     it('should return undefined for invalid OHLC data (high <= low)', () => {
-      const candles = [makeCandle({ high: 90, low: 90, close: 90 })];
+      const priceMap = toMap([makeCandle({ high: 90, low: 90, close: 90 })]);
       const prevMap = new Map<string, OHLCCandle>();
-      expect(service.buildSpreadContext(candles, 'coin-1', prevMap)).toBeUndefined();
+      expect(service.buildSpreadContext(priceMap, 'coin-1', prevMap)).toBeUndefined();
     });
 
     it('should return undefined when high is zero', () => {
-      const candles = [makeCandle({ high: 0, low: 0, close: 0 })];
+      const priceMap = toMap([makeCandle({ high: 0, low: 0, close: 0 })]);
       const prevMap = new Map<string, OHLCCandle>();
-      expect(service.buildSpreadContext(candles, 'coin-1', prevMap)).toBeUndefined();
+      expect(service.buildSpreadContext(priceMap, 'coin-1', prevMap)).toBeUndefined();
     });
 
     it('should include prevHigh/prevLow from previous candle', () => {
-      const candles = [makeCandle()];
+      const priceMap = toMap([makeCandle()]);
       const prevCandle = makeCandle({ high: 108, low: 88 });
       const prevMap = new Map<string, OHLCCandle>([['coin-1', prevCandle]]);
 
-      const result = service.buildSpreadContext(candles, 'coin-1', prevMap);
+      const result = service.buildSpreadContext(priceMap, 'coin-1', prevMap);
       expect(result).toEqual({
         high: 110,
         low: 90,
@@ -79,10 +81,10 @@ describe('SlippageContextService', () => {
     });
 
     it('should set prevHigh/prevLow to undefined when no previous candle', () => {
-      const candles = [makeCandle()];
+      const priceMap = toMap([makeCandle()]);
       const prevMap = new Map<string, OHLCCandle>();
 
-      const result = service.buildSpreadContext(candles, 'coin-1', prevMap);
+      const result = service.buildSpreadContext(priceMap, 'coin-1', prevMap);
       expect(result).toEqual({
         high: 110,
         low: 90,
@@ -94,21 +96,21 @@ describe('SlippageContextService', () => {
     });
 
     it('should set prevHigh to undefined when previous high is not finite', () => {
-      const candles = [makeCandle()];
+      const priceMap = toMap([makeCandle()]);
       const prevCandle = makeCandle({ high: NaN, low: 88 });
       const prevMap = new Map<string, OHLCCandle>([['coin-1', prevCandle]]);
 
-      const result = service.buildSpreadContext(candles, 'coin-1', prevMap);
+      const result = service.buildSpreadContext(priceMap, 'coin-1', prevMap);
       expect(result?.prevHigh).toBeUndefined();
       expect(result?.prevLow).toBe(88);
     });
 
     it('should set prevLow to undefined when previous low is not finite', () => {
-      const candles = [makeCandle()];
+      const priceMap = toMap([makeCandle()]);
       const prevCandle = makeCandle({ high: 108, low: Infinity });
       const prevMap = new Map<string, OHLCCandle>([['coin-1', prevCandle]]);
 
-      const result = service.buildSpreadContext(candles, 'coin-1', prevMap);
+      const result = service.buildSpreadContext(priceMap, 'coin-1', prevMap);
       expect(result?.prevHigh).toBe(108);
       expect(result?.prevLow).toBeUndefined();
     });

@@ -6,10 +6,11 @@ import { SpreadEstimationContext } from '../slippage';
 @Injectable()
 export class SlippageContextService {
   /**
-   * Extract daily volume from OHLC candles for a specific coin
+   * Extract daily volume from OHLC candles for a specific coin.
+   * Accepts a pre-built Map<coinId, OHLCCandle> for O(1) lookup.
    */
-  extractDailyVolume(currentPrices: OHLCCandle[], coinId: string): number | undefined {
-    const candle = currentPrices.find((c) => c.coinId === coinId);
+  extractDailyVolume(priceMap: Map<string, OHLCCandle>, coinId: string): number | undefined {
+    const candle = priceMap.get(coinId);
     if (!candle) return undefined;
     // Convert base-currency volume to quote-currency (USD) for participation rate math.
     // quoteVolume is preferred but typically NULL (CCXT fetchOHLCV doesn't provide it).
@@ -18,14 +19,15 @@ export class SlippageContextService {
 
   /**
    * Build spread estimation context from current and previous candle data.
+   * Accepts a pre-built Map<coinId, OHLCCandle> for O(1) lookup.
    * Returns undefined if no candle found for the given coinId.
    */
   buildSpreadContext(
-    currentPrices: OHLCCandle[],
+    priceMap: Map<string, OHLCCandle>,
     coinId: string,
     prevCandleMap: Map<string, OHLCCandle>
   ): SpreadEstimationContext | undefined {
-    const candle = currentPrices.find((c) => c.coinId === coinId);
+    const candle = priceMap.get(coinId);
     if (!candle || candle.high <= 0 || candle.low <= 0 || candle.close <= 0 || candle.high <= candle.low)
       return undefined;
 

@@ -123,25 +123,39 @@ describe('CheckpointService', () => {
       } as unknown as Portfolio;
     };
 
-    it('should produce a valid checkpoint state with checksum', () => {
-      const portfolio = createMockPortfolio();
+    const defaultOpts = (overrides: Partial<Parameters<CheckpointService['buildCheckpointState']>[0]> = {}) => ({
+      lastProcessedIndex: 0,
+      lastProcessedTimestamp: '2024-01-01T00:00:00Z',
+      portfolio: createMockPortfolio(),
+      peakValue: 25000,
+      maxDrawdown: 0,
+      rngState: 1,
+      tradesCount: 0,
+      signalsCount: 0,
+      fillsCount: 0,
+      snapshotsCount: 0,
+      sellsCount: 0,
+      winningSellsCount: 0,
+      ...overrides
+    });
 
+    it('should produce a valid checkpoint state with checksum', () => {
       const state = service.buildCheckpointState(
-        100,
-        '2024-06-01T00:00:00Z',
-        portfolio,
-        26000,
-        0.05,
-        42,
-        10,
-        5,
-        8,
-        50,
-        4,
-        3,
-        undefined,
-        500,
-        100
+        defaultOpts({
+          lastProcessedIndex: 100,
+          lastProcessedTimestamp: '2024-06-01T00:00:00Z',
+          peakValue: 26000,
+          maxDrawdown: 0.05,
+          rngState: 42,
+          tradesCount: 10,
+          signalsCount: 5,
+          fillsCount: 8,
+          snapshotsCount: 50,
+          sellsCount: 4,
+          winningSellsCount: 3,
+          grossProfit: 500,
+          grossLoss: 100
+        })
       );
 
       expect(state.lastProcessedIndex).toBe(100);
@@ -163,9 +177,7 @@ describe('CheckpointService', () => {
     });
 
     it('should serialize portfolio positions from Map to array', () => {
-      const portfolio = createMockPortfolio();
-
-      const state = service.buildCheckpointState(0, '2024-01-01T00:00:00Z', portfolio, 25000, 0, 1, 0, 0, 0, 0, 0, 0);
+      const state = service.buildCheckpointState(defaultOpts());
 
       expect(state.portfolio.cashBalance).toBe(5000);
       expect(state.portfolio.positions).toHaveLength(1);
@@ -176,96 +188,46 @@ describe('CheckpointService', () => {
     });
 
     it('should produce consistent checksums for the same input', () => {
-      const portfolio = createMockPortfolio();
-
-      const state1 = service.buildCheckpointState(
-        50,
-        '2024-03-01T00:00:00Z',
-        portfolio,
-        25000,
-        0.02,
-        99,
-        5,
-        3,
-        4,
-        25,
-        2,
-        1
-      );
-      const state2 = service.buildCheckpointState(
-        50,
-        '2024-03-01T00:00:00Z',
-        portfolio,
-        25000,
-        0.02,
-        99,
-        5,
-        3,
-        4,
-        25,
-        2,
-        1
-      );
+      const opts = defaultOpts({
+        lastProcessedIndex: 50,
+        lastProcessedTimestamp: '2024-03-01T00:00:00Z',
+        peakValue: 25000,
+        maxDrawdown: 0.02,
+        rngState: 99,
+        tradesCount: 5,
+        signalsCount: 3,
+        fillsCount: 4,
+        snapshotsCount: 25,
+        sellsCount: 2,
+        winningSellsCount: 1
+      });
+      const state1 = service.buildCheckpointState(opts);
+      const state2 = service.buildCheckpointState(opts);
 
       expect(state1.checksum).toBe(state2.checksum);
     });
 
     it('should include throttle state when provided', () => {
-      const portfolio = createMockPortfolio();
       const throttleState = { lastSignalTime: { 'btc:BUY': 1000 }, tradeTimestamps: [500, 1000] };
 
-      const state = service.buildCheckpointState(
-        0,
-        '2024-01-01T00:00:00Z',
-        portfolio,
-        25000,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        throttleState
-      );
+      const state = service.buildCheckpointState(defaultOpts({ serializedThrottleState: throttleState }));
 
       expect(state.throttleState).toEqual(throttleState);
     });
 
     it('should omit throttle state when not provided', () => {
-      const portfolio = createMockPortfolio();
-
-      const state = service.buildCheckpointState(0, '2024-01-01T00:00:00Z', portfolio, 25000, 0, 1, 0, 0, 0, 0, 0, 0);
+      const state = service.buildCheckpointState(defaultOpts());
 
       expect(state).not.toHaveProperty('throttleState');
     });
 
     it('should include exit tracker state when provided', () => {
-      const portfolio = createMockPortfolio();
       const exitTrackerState = {
         positions: {},
         configHash: 'abc'
       } as unknown as import('../exits').SerializableExitTrackerState;
 
-      const state = service.buildCheckpointState(
-        0,
-        '2024-01-01T00:00:00Z',
-        portfolio,
-        25000,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        undefined,
-        0,
-        0,
-        exitTrackerState
-      );
+      const state = service.buildCheckpointState(defaultOpts({ exitTrackerState }));
 
       expect(state.exitTrackerState).toBeDefined();
     });
@@ -273,7 +235,7 @@ describe('CheckpointService', () => {
     it('should handle empty positions map', () => {
       const portfolio = createMockPortfolio(10000, new Map());
 
-      const state = service.buildCheckpointState(0, '2024-01-01T00:00:00Z', portfolio, 10000, 0, 1, 0, 0, 0, 0, 0, 0);
+      const state = service.buildCheckpointState(defaultOpts({ portfolio, peakValue: 10000 }));
 
       expect(state.portfolio.positions).toEqual([]);
       expect(state.portfolio.cashBalance).toBe(10000);
@@ -292,7 +254,7 @@ describe('CheckpointService', () => {
       ]);
       const portfolio = createMockPortfolio(5000, positions);
 
-      const state = service.buildCheckpointState(0, '2024-01-01T00:00:00Z', portfolio, 8000, 0, 1, 0, 0, 0, 0, 0, 0);
+      const state = service.buildCheckpointState(defaultOpts({ portfolio, peakValue: 8000 }));
 
       expect(state.portfolio.positions).toHaveLength(1);
       expect(state.portfolio.positions[0].coinId).toBe('eth');
@@ -306,7 +268,7 @@ describe('CheckpointService', () => {
       ]);
       const portfolio = createMockPortfolio(5000, positions);
 
-      const state = service.buildCheckpointState(0, '2024-01-01T00:00:00Z', portfolio, 30000, 0, 1, 0, 0, 0, 0, 0, 0);
+      const state = service.buildCheckpointState(defaultOpts({ portfolio, peakValue: 30000 }));
 
       expect(state.portfolio.positions).toHaveLength(2);
       expect(state.portfolio.positions[0].coinId).toBe('btc');

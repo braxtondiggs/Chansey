@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { Decimal } from 'decimal.js';
+
 import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
 import { Coin } from '../../../../coin/coin.entity';
 import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
@@ -107,6 +109,7 @@ export class ExitSignalProcessorService {
 
     if (exitTracker.size === 0) return;
 
+    const priceMap = new Map(currentPrices.map((c) => [c.coinId, c]));
     const lowPrices = new Map(currentPrices.map((c) => [c.coinId, c.low]));
     const highPrices = new Map(currentPrices.map((c) => [c.coinId, c.high]));
     const exitSignals = exitTracker.checkExits(marketData.prices, lowPrices, highPrices);
@@ -139,23 +142,23 @@ export class ExitSignalProcessorService {
         });
       }
 
-      const dailyVolume = fullFidelity ? callbacks.extractDailyVolumeFn(currentPrices, exitSig.coinId) : undefined;
+      const dailyVolume = fullFidelity ? callbacks.extractDailyVolumeFn(priceMap, exitSig.coinId) : undefined;
       const spreadCtx = opts.prevCandleMap
-        ? callbacks.buildSpreadContextFn(currentPrices, exitSig.coinId, opts.prevCandleMap)
+        ? callbacks.buildSpreadContextFn(priceMap, exitSig.coinId, opts.prevCandleMap)
         : undefined;
-      const tradeResult = await callbacks.executeTradeFn(
-        exitTradingSignal,
+      const tradeResult = await callbacks.executeTradeFn({
+        signal: exitTradingSignal,
         portfolio,
         marketData,
         tradingFee,
-        opts.slippageConfig ?? DEFAULT_SLIPPAGE_CONFIG,
+        slippageConfig: opts.slippageConfig ?? DEFAULT_SLIPPAGE_CONFIG,
         dailyVolume,
-        0, // bypass hold period for risk-control exits
-        opts.maxAllocation,
-        opts.minAllocation,
-        1,
-        spreadCtx
-      );
+        minHoldMs: 0, // bypass hold period for risk-control exits
+        maxAllocation: opts.maxAllocation,
+        minAllocation: opts.minAllocation,
+        defaultLeverage: 1,
+        spreadContext: spreadCtx
+      });
 
       if (tradeResult) {
         const { trade, slippageBps, fillStatus } = tradeResult;
@@ -220,7 +223,7 @@ export class ExitSignalProcessorService {
       const price = prices.get(coinId) ?? 0;
       holdings[coinId] = {
         quantity: position.quantity,
-        value: position.quantity * price,
+        value: new Decimal(position.quantity).times(price).toNumber(),
         price
       };
     }

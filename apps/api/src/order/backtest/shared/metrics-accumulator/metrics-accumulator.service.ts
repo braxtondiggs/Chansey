@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import * as dayjs from 'dayjs';
+import { Decimal } from 'decimal.js';
 
 import { BacktestPerformanceSnapshot } from '../../backtest-performance-snapshot.entity';
 import { BacktestFinalMetrics } from '../../backtest-result.service';
@@ -135,10 +136,13 @@ export class MetricsAccumulatorService {
     grossLoss: number
   ): BacktestFinalMetrics {
     const finalValue = portfolio.totalValue;
-    const totalReturn = (finalValue - initialCapital) / initialCapital;
+    const totalReturn = new Decimal(finalValue).minus(initialCapital).dividedBy(initialCapital).toNumber();
 
     const durationDays = dayjs(endDate).diff(dayjs(startDate), 'day');
-    const annualizedReturn = durationDays > 0 ? Math.pow(1 + totalReturn, 365 / durationDays) - 1 : totalReturn;
+    const annualizedReturn =
+      durationDays > 0
+        ? new Decimal(1).plus(totalReturn).pow(new Decimal(365).dividedBy(durationDays)).minus(1).toNumber()
+        : totalReturn;
 
     // Calculate Sharpe ratio from lightweight portfolio value array
     const returns: number[] = [];

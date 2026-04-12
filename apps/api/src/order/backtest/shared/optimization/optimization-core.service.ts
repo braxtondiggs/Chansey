@@ -327,6 +327,9 @@ export class OptimizationCoreService {
     // Reusable price map to avoid new Map() allocation per iteration
     const currentPriceMap = new Map<string, number>();
 
+    // Reusable candle map to avoid new Map() allocation per iteration
+    const candleMap = new Map<string, OHLCCandle>();
+
     // Track previous candle per coin for spread estimation context
     const prevCandleMap = new Map<string, OHLCCandle>();
 
@@ -342,8 +345,10 @@ export class OptimizationCoreService {
       const currentPrices = pricesByTimestamp[timestamps[i]];
 
       currentPriceMap.clear();
+      candleMap.clear();
       for (const price of currentPrices) {
         currentPriceMap.set(price.coinId, this.priceWindowService.getPriceValue(price));
+        candleMap.set(price.coinId, price);
       }
 
       const marketData: MarketData = {
@@ -446,24 +451,24 @@ export class OptimizationCoreService {
       for (const strategySignal of strategySignals) {
         const dailyVolume = volumeMap.get(`${timestamps[i]}:${strategySignal.coinId}`);
         const spreadCtx = this.slippageContextService.buildSpreadContext(
-          currentPrices,
+          candleMap,
           strategySignal.coinId,
           prevCandleMap
         );
 
-        const tradeResult = await executeTradeFn(
-          strategySignal,
+        const tradeResult = await executeTradeFn({
+          signal: strategySignal,
           portfolio,
           marketData,
           tradingFee,
           slippageConfig,
           dailyVolume,
-          DEFAULT_MIN_HOLD_MS,
-          optMaxAllocation,
-          optMinAllocation,
-          1,
-          spreadCtx
-        );
+          minHoldMs: DEFAULT_MIN_HOLD_MS,
+          maxAllocation: optMaxAllocation,
+          minAllocation: optMinAllocation,
+          defaultLeverage: 1,
+          spreadContext: spreadCtx
+        });
         if (tradeResult && tradeResult.fillStatus !== SimulatedOrderStatus.CANCELLED) {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
           if (exitTracker && tradeResult.trade.price != null && tradeResult.trade.quantity != null) {

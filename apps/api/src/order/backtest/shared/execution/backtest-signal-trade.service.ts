@@ -54,22 +54,23 @@ export class BacktestSignalTradeService {
     };
     ctx.signals.push(signalRecord);
 
-    const dailyVolume = this.slippageCtxSvc.extractDailyVolume(currentPrices, strategySignal.coinId);
-    const spreadCtx = this.slippageCtxSvc.buildSpreadContext(currentPrices, strategySignal.coinId, ctx.prevCandleMap);
+    const priceMap = new Map(currentPrices.map((c) => [c.coinId, c]));
+    const dailyVolume = this.slippageCtxSvc.extractDailyVolume(priceMap, strategySignal.coinId);
+    const spreadCtx = this.slippageCtxSvc.buildSpreadContext(priceMap, strategySignal.coinId, ctx.prevCandleMap);
 
-    let tradeResult = await this.tradeExecutor.executeTrade(
-      strategySignal,
-      ctx.portfolio,
+    let tradeResult = await this.tradeExecutor.executeTrade({
+      signal: strategySignal,
+      portfolio: ctx.portfolio,
       marketData,
-      ctx.backtest.tradingFee,
-      ctx.slippageConfig,
+      tradingFee: ctx.backtest.tradingFee,
+      slippageConfig: ctx.slippageConfig,
       dailyVolume,
-      ctx.minHoldMs,
-      barMaxAllocation,
-      barMinAllocation,
-      1,
-      spreadCtx
-    );
+      minHoldMs: ctx.minHoldMs,
+      maxAllocation: barMaxAllocation,
+      minAllocation: barMinAllocation,
+      defaultLeverage: 1,
+      spreadContext: spreadCtx
+    });
 
     // Opportunity selling: if BUY failed, attempt to sell positions to fund it
     if (!tradeResult && strategySignal.action === 'BUY' && ctx.oppSellingEnabled) {
@@ -96,19 +97,19 @@ export class BacktestSignalTradeService {
       );
 
       if (oppResult) {
-        tradeResult = await this.tradeExecutor.executeTrade(
-          strategySignal,
-          ctx.portfolio,
+        tradeResult = await this.tradeExecutor.executeTrade({
+          signal: strategySignal,
+          portfolio: ctx.portfolio,
           marketData,
-          ctx.backtest.tradingFee,
-          ctx.slippageConfig,
+          tradingFee: ctx.backtest.tradingFee,
+          slippageConfig: ctx.slippageConfig,
           dailyVolume,
-          ctx.minHoldMs,
-          barMaxAllocation,
-          barMinAllocation,
-          1,
-          spreadCtx
-        );
+          minHoldMs: ctx.minHoldMs,
+          maxAllocation: barMaxAllocation,
+          minAllocation: barMinAllocation,
+          defaultLeverage: 1,
+          spreadContext: spreadCtx
+        });
       }
     }
 

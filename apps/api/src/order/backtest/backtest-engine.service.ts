@@ -21,15 +21,6 @@ import { SimulatedOrderFill } from './simulated-order-fill.entity';
 import { Coin } from '../../coin/coin.entity';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 
-export { MarketData, TradingSignal } from './shared';
-export {
-  ExecuteOptions,
-  ImmutablePriceTrackingData,
-  OptimizationBacktestConfig,
-  OptimizationBacktestResult,
-  PrecomputedWindowData
-} from './shared';
-
 @Injectable()
 export class BacktestEngine {
   constructor(
@@ -73,42 +64,7 @@ export class BacktestEngine {
   }
 
   validateCheckpoint(checkpoint: BacktestCheckpointState, timestamps: string[]): { valid: boolean; reason?: string } {
-    // Check if the checkpoint index is within bounds
-    if (checkpoint.lastProcessedIndex < 0 || checkpoint.lastProcessedIndex >= timestamps.length) {
-      return {
-        valid: false,
-        reason: `Checkpoint index ${checkpoint.lastProcessedIndex} out of bounds (0-${timestamps.length - 1})`
-      };
-    }
-
-    // Verify the timestamp at the checkpoint index matches
-    const expectedTimestamp = timestamps[checkpoint.lastProcessedIndex];
-    if (checkpoint.lastProcessedTimestamp !== expectedTimestamp) {
-      return {
-        valid: false,
-        reason: `Timestamp mismatch at index ${checkpoint.lastProcessedIndex}: expected ${expectedTimestamp}, got ${checkpoint.lastProcessedTimestamp}`
-      };
-    }
-
-    // Verify checksum integrity using centralized helper for consistency
-    const throttleStateJson = checkpoint.throttleState ? JSON.stringify(checkpoint.throttleState) : undefined;
-    const checksumData = this.checkpointSvc.buildChecksumData(
-      checkpoint.lastProcessedIndex,
-      checkpoint.lastProcessedTimestamp,
-      checkpoint.portfolio.cashBalance,
-      checkpoint.portfolio.positions.length,
-      checkpoint.peakValue,
-      checkpoint.maxDrawdown,
-      checkpoint.rngState,
-      throttleStateJson
-    );
-    const expectedChecksum = this.checkpointSvc.computeChecksum(checksumData);
-
-    if (checkpoint.checksum !== expectedChecksum) {
-      return { valid: false, reason: 'Checkpoint checksum validation failed - data may be corrupted' };
-    }
-
-    return { valid: true };
+    return this.checkpointSvc.validateCheckpoint(checkpoint, timestamps);
   }
 
   /**

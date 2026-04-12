@@ -4,6 +4,7 @@ import { BacktestEngine } from './backtest-engine.service';
 import { ReplaySpeed } from './backtest-pacing.interface';
 import {
   BacktestBarProcessor,
+  BacktestContextFactory,
   BacktestLoopRunner,
   BacktestSignalTradeService,
   CheckpointService,
@@ -120,9 +121,7 @@ const createTestEngine = (
     opportunitySellService,
     signalTradeService
   );
-  const loopRunner = new BacktestLoopRunner(
-    backtestStream,
-    algorithmRegistry,
+  const contextFactory = new BacktestContextFactory(
     ohlcService,
     marketDataReader,
     quoteCurrencyResolver,
@@ -133,13 +132,15 @@ const createTestEngine = (
     priceWindowService,
     compositeRegimeService,
     slippageContextService,
-    checkpointService,
     exitSignalProcessor,
-    forcedExitService,
-    tradeExecutor,
+    metricsAccumulatorService
+  );
+  const loopRunner = new BacktestLoopRunner(
+    backtestStream,
+    priceWindowService,
     metricsAccumulatorService,
-    opportunitySellService,
-    barProcessor
+    barProcessor,
+    contextFactory
   );
   const optimizationCore = overrides.optimizationCore ?? ({} as any);
   return new BacktestEngine(checkpointService, optimizationCore, loopRunner);
@@ -1619,20 +1620,20 @@ describe('BacktestEngine checkpointing', () => {
       ])
     };
 
-    return checkpointService.buildCheckpointState(
-      1,
-      '2024-01-02T00:00:00.000Z',
+    return checkpointService.buildCheckpointState({
+      lastProcessedIndex: 1,
+      lastProcessedTimestamp: '2024-01-02T00:00:00.000Z',
       portfolio,
-      1250,
-      0.1,
-      12345,
-      2,
-      3,
-      4,
-      5,
-      0,
-      0
-    );
+      peakValue: 1250,
+      maxDrawdown: 0.1,
+      rngState: 12345,
+      tradesCount: 2,
+      signalsCount: 3,
+      fillsCount: 4,
+      snapshotsCount: 5,
+      sellsCount: 0,
+      winningSellsCount: 0
+    });
   };
 
   it('validates checkpoints with matching checksum', () => {

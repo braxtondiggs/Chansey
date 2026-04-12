@@ -2,6 +2,7 @@ export * from './checkpoint';
 // Named exports to avoid collision with order/services/ (e.g. OpportunitySellService, TradeExecutorService)
 export {
   BacktestBarProcessor,
+  BacktestContextFactory,
   BacktestLoopRunner,
   BacktestSignalTradeService,
   ExecuteOptions,

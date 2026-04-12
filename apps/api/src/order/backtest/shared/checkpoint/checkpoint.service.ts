@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import { Decimal } from 'decimal.js';
+
 import { createHash } from 'crypto';
 
 import { BacktestCheckpointState, CheckpointPortfolio } from '../../backtest-checkpoint.interface';
@@ -38,6 +40,28 @@ export interface EmergencyCheckpointParams {
   throttleState: ThrottleState;
   exitTracker: BacktestExitTracker | null | undefined;
   tradingTimestampCount: number;
+}
+
+/**
+ * Options for building a checkpoint state object.
+ */
+export interface BuildCheckpointStateOptions {
+  lastProcessedIndex: number;
+  lastProcessedTimestamp: string;
+  portfolio: Portfolio;
+  peakValue: number;
+  maxDrawdown: number;
+  rngState: number;
+  tradesCount: number;
+  signalsCount: number;
+  fillsCount: number;
+  snapshotsCount: number;
+  sellsCount: number;
+  winningSellsCount: number;
+  serializedThrottleState?: SerializableThrottleState;
+  grossProfit?: number;
+  grossLoss?: number;
+  exitTrackerState?: SerializableExitTrackerState;
 }
 
 /**
@@ -104,9 +128,9 @@ export class CheckpointService {
         const pnl = t.realizedPnL ?? 0;
         if (pnl > 0) {
           winningSells++;
-          grossProfit += pnl;
+          grossProfit = new Decimal(grossProfit).plus(pnl).toNumber();
         } else if (pnl < 0) {
-          grossLoss += Math.abs(pnl);
+          grossLoss = new Decimal(grossLoss).plus(new Decimal(pnl).abs()).toNumber();
         }
       }
     }
@@ -117,28 +141,55 @@ export class CheckpointService {
    * Build a checkpoint state object for persistence.
    * Includes all state needed to resume execution from this point.
    */
-  buildCheckpointState(
-    lastProcessedIndex: number,
-    lastProcessedTimestamp: string,
-    portfolio: Portfolio,
-    peakValue: number,
-    maxDrawdown: number,
-    rngState: number,
-    tradesCount: number,
-    signalsCount: number,
-    fillsCount: number,
-    snapshotsCount: number,
-    sellsCount: number,
-    winningSellsCount: number,
-    serializedThrottleState?: SerializableThrottleState,
-    grossProfit = 0,
-    grossLoss = 0,
-    exitTrackerState?: SerializableExitTrackerState
-  ): BacktestCheckpointState {
+  /**
+   * Validate a checkpoint against the current timestamp array.
+   * Checks index bounds, timestamp match, and checksum integrity.
+   */
+  validateCheckpoint(checkpoint: BacktestCheckpointState, timestamps: string[]): { valid: boolean; reason?: string } {
+    if (checkpoint.lastProcessedIndex < 0 || checkpoint.lastProcessedIndex >= timestamps.length) {
+      return {
+        valid: false,
+        reason: `Checkpoint index ${checkpoint.lastProcessedIndex} out of bounds (0-${timestamps.length - 1})`
+      };
+    }
+
+    const expectedTimestamp = timestamps[checkpoint.lastProcessedIndex];
+    if (checkpoint.lastProcessedTimestamp !== expectedTimestamp) {
+      return {
+        valid: false,
+        reason: `Timestamp mismatch at index ${checkpoint.lastProcessedIndex}: expected ${expectedTimestamp}, got ${checkpoint.lastProcessedTimestamp}`
+      };
+    }
+
+    const throttleStateJson = checkpoint.throttleState ? JSON.stringify(checkpoint.throttleState) : undefined;
+    const checksumData = this.buildChecksumData(
+      checkpoint.lastProcessedIndex,
+      checkpoint.lastProcessedTimestamp,
+      checkpoint.portfolio.cashBalance,
+      checkpoint.portfolio.positions.length,
+      checkpoint.peakValue,
+      checkpoint.maxDrawdown,
+      checkpoint.rngState,
+      throttleStateJson
+    );
+    const expectedChecksum = this.computeChecksum(checksumData);
+
+    if (checkpoint.checksum !== expectedChecksum) {
+      return { valid: false, reason: 'Checkpoint checksum validation failed - data may be corrupted' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Build a checkpoint state object for persistence.
+   * Includes all state needed to resume execution from this point.
+   */
+  buildCheckpointState(opts: BuildCheckpointStateOptions): BacktestCheckpointState {
     // Convert Map-based positions to array format for JSON serialization
     const checkpointPortfolio: CheckpointPortfolio = {
-      cashBalance: portfolio.cashBalance,
-      positions: Array.from(portfolio.positions.entries()).map(([coinId, pos]) => ({
+      cashBalance: opts.portfolio.cashBalance,
+      positions: Array.from(opts.portfolio.positions.entries()).map(([coinId, pos]) => ({
         coinId,
         quantity: pos.quantity,
         averagePrice: pos.averagePrice,
@@ -147,41 +198,44 @@ export class CheckpointService {
     };
 
     // Serialize throttle state to JSON for checksum inclusion (before computing checksum)
-    const throttleStateJson = serializedThrottleState ? JSON.stringify(serializedThrottleState) : undefined;
+    const throttleStateJson = opts.serializedThrottleState ? JSON.stringify(opts.serializedThrottleState) : undefined;
 
     // Build checksum for data integrity verification using centralized helper
     const checksumData = this.buildChecksumData(
-      lastProcessedIndex,
-      lastProcessedTimestamp,
-      portfolio.cashBalance,
-      portfolio.positions.size,
-      peakValue,
-      maxDrawdown,
-      rngState,
+      opts.lastProcessedIndex,
+      opts.lastProcessedTimestamp,
+      opts.portfolio.cashBalance,
+      opts.portfolio.positions.size,
+      opts.peakValue,
+      opts.maxDrawdown,
+      opts.rngState,
       throttleStateJson
     );
     const checksum = this.computeChecksum(checksumData);
 
+    const grossProfit = opts.grossProfit ?? 0;
+    const grossLoss = opts.grossLoss ?? 0;
+
     return {
-      lastProcessedIndex,
-      lastProcessedTimestamp,
+      lastProcessedIndex: opts.lastProcessedIndex,
+      lastProcessedTimestamp: opts.lastProcessedTimestamp,
       portfolio: checkpointPortfolio,
-      peakValue,
-      maxDrawdown,
-      rngState,
+      peakValue: opts.peakValue,
+      maxDrawdown: opts.maxDrawdown,
+      rngState: opts.rngState,
       persistedCounts: {
-        trades: tradesCount,
-        signals: signalsCount,
-        fills: fillsCount,
-        snapshots: snapshotsCount,
-        sells: sellsCount,
-        winningSells: winningSellsCount,
+        trades: opts.tradesCount,
+        signals: opts.signalsCount,
+        fills: opts.fillsCount,
+        snapshots: opts.snapshotsCount,
+        sells: opts.sellsCount,
+        winningSells: opts.winningSellsCount,
         grossProfit,
         grossLoss
       },
       checksum,
-      ...(serializedThrottleState && { throttleState: serializedThrottleState }),
-      ...(exitTrackerState && { exitTrackerState })
+      ...(opts.serializedThrottleState && { throttleState: opts.serializedThrottleState }),
+      ...(opts.exitTrackerState && { exitTrackerState: opts.exitTrackerState })
     };
   }
 }

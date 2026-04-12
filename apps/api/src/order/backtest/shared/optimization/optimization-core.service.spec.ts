@@ -260,11 +260,11 @@ describe('OptimizationCoreService', () => {
         executeTradeFn
       });
 
-      // The executeTradeFn should receive the quoteVolume (55000) as the dailyVolume arg (6th position)
+      // The executeTradeFn should receive the quoteVolume (55000) as dailyVolume in the params object
       expect(executeTradeFn).toHaveBeenCalled();
-      const callArgs = executeTradeFn.mock.calls[0];
-      expect(callArgs[0]).toEqual(expect.objectContaining({ coinId: 'coin-1' }));
-      expect(callArgs[5]).toBe(55000); // dailyVolume from volumeMap using quoteVolume
+      const params = executeTradeFn.mock.calls[0][0];
+      expect(params.signal).toEqual(expect.objectContaining({ coinId: 'coin-1' }));
+      expect(params.dailyVolume).toBe(55000); // dailyVolume from volumeMap using quoteVolume
     });
   });
 
