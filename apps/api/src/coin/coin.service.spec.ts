@@ -236,6 +236,21 @@ describe('CoinService', () => {
       const delistedCalls = qb.andWhere.mock.calls.filter((call: unknown[]) => call[0] === 'coin.delistedAt IS NULL');
       expect(delistedCalls).toHaveLength(0);
     });
+
+    it('omits currentPrice IS NOT NULL clause when skipCurrentPriceCheck is true', async () => {
+      const qb = mockQueryBuilder();
+      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
+
+      await service.getCoinsByIdsFiltered(['id1'], 100_000_000, 1_000_000, { skipCurrentPriceCheck: true });
+
+      const currentPriceCalls = qb.andWhere.mock.calls.filter(
+        (call: unknown[]) => call[0] === 'coin.currentPrice IS NOT NULL'
+      );
+      expect(currentPriceCalls).toHaveLength(0);
+      // Quality filters still applied
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.marketCap >= :minMarketCap', { minMarketCap: 100_000_000 });
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.totalVolume >= :minDailyVolume', { minDailyVolume: 1_000_000 });
+    });
   });
 
   // ===========================================================================
