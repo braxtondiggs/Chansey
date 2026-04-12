@@ -111,10 +111,12 @@ export class PipelineEventHandlerService {
   async handleBacktestFailed(backtestId: string, type: 'HISTORICAL' | 'LIVE_REPLAY', reason: string): Promise<void> {
     const whereClause =
       type === 'HISTORICAL' ? { historicalBacktestId: backtestId } : { liveReplayBacktestId: backtestId };
+    const stage = type === 'HISTORICAL' ? PipelineStage.HISTORICAL : PipelineStage.LIVE_REPLAY;
 
     const pipeline = await this.pipelineRepository.findOne({
       where: {
         ...whereClause,
+        currentStage: stage,
         status: In([PipelineStatus.RUNNING, PipelineStatus.PAUSED])
       },
       relations: ['user']
