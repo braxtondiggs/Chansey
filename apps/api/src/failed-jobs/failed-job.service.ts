@@ -22,14 +22,42 @@ const SEVERITY_MAP: Record<string, FailedJobSeverity> = {
   'order-queue': FailedJobSeverity.CRITICAL,
   'live-trading-cron': FailedJobSeverity.CRITICAL,
   'position-monitor': FailedJobSeverity.HIGH,
-  'liquidation-monitor': FailedJobSeverity.HIGH
+  'liquidation-monitor': FailedJobSeverity.HIGH,
+  // Failed delivery of risk/drift alerts is operationally serious — without
+  // notifications a user has no idea their strategy has degraded.
+  notification: FailedJobSeverity.HIGH
 };
 
 /** Queue name prefixes for MEDIUM severity */
 const MEDIUM_PREFIXES = ['backtest', 'pipeline', 'optimization'];
 
-/** Cron-driven queues that should not be manually retried */
-const NON_RETRYABLE_QUEUES = new Set(['live-trading-cron']);
+/**
+ * Cron-driven sync/maintenance queues — the next scheduled run will catch up,
+ * so manual retries from the admin dashboard add no value and only confuse
+ * audit trails. Event-driven queues (order-queue, trade-execution, position-
+ * monitor, liquidation-monitor, backtest-*, paper-trading, pipeline,
+ * optimization, notification) remain retryable.
+ */
+const NON_RETRYABLE_QUEUES = new Set([
+  'live-trading-cron',
+  'coin-queue',
+  'coin-snapshot-prune-queue',
+  'ticker-pairs-queue',
+  'ohlc-sync-queue',
+  'ohlc-prune-queue',
+  'balance-queue',
+  'exchange-queue',
+  'exchange-health-queue',
+  'category-queue',
+  'user-queue',
+  'coin-selection-queue',
+  'performance-ranking',
+  'regime-check-queue',
+  'drift-detection-queue',
+  'strategy-evaluation-queue',
+  'backtest-orchestration',
+  'pipeline-orchestration'
+]);
 
 @Injectable()
 export class FailedJobService {

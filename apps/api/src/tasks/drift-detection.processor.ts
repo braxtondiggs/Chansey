@@ -1,19 +1,24 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { Job } from 'bullmq';
 
 import { DriftDetectionTask } from './drift-detection.task';
 
+import { FailSafeWorkerHost } from '../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
 @Processor('drift-detection-queue')
-export class DriftDetectionProcessor extends WorkerHost {
+export class DriftDetectionProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(DriftDetectionProcessor.name);
 
-  constructor(private readonly driftDetectionTask: DriftDetectionTask) {
-    super();
+  constructor(
+    private readonly driftDetectionTask: DriftDetectionTask,
+    failedJobService: FailedJobService
+  ) {
+    super(failedJobService);
   }
 
   async process(job: Job<{ deploymentId: string }>): Promise<void> {

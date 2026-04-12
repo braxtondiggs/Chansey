@@ -16,7 +16,7 @@ describe('BacktestOrchestrationProcessor', () => {
   });
 
   it('should orchestrate and return results for a job', async () => {
-    const processor = new BacktestOrchestrationProcessor(mockService as any);
+    const processor = new BacktestOrchestrationProcessor(mockService as any, { recordFailure: jest.fn() } as any);
     const result: OrchestrationResult = {
       userId: 'user-1',
       backtestsCreated: 2,
@@ -39,7 +39,7 @@ describe('BacktestOrchestrationProcessor', () => {
   });
 
   it('should rethrow errors from orchestration', async () => {
-    const processor = new BacktestOrchestrationProcessor(mockService as any);
+    const processor = new BacktestOrchestrationProcessor(mockService as any, { recordFailure: jest.fn() } as any);
     mockService.orchestrateForUser.mockRejectedValue(new Error('Boom'));
 
     const job = createJob({

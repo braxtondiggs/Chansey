@@ -1,23 +1,26 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../../shared/error.util';
 import { ExchangeKeyHealthService } from '../exchange-key-health.service';
 
 @Processor('exchange-health-queue', { lockDuration: 30 * 60 * 1000 })
 @Injectable()
-export class ExchangeKeyHealthTask extends WorkerHost implements OnModuleInit {
+export class ExchangeKeyHealthTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ExchangeKeyHealthTask.name);
   private jobScheduled = false;
 
   constructor(
     @InjectQueue('exchange-health-queue') private readonly healthQueue: Queue,
-    private readonly healthService: ExchangeKeyHealthService
+    private readonly healthService: ExchangeKeyHealthService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async onModuleInit() {

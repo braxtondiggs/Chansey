@@ -80,7 +80,8 @@ describe('OHLCSyncTask', () => {
       exchangeService,
       configService as any,
       lockService as any,
-      backfillService as any
+      backfillService as any,
+      { recordFailure: jest.fn() } as any
     );
   });
 

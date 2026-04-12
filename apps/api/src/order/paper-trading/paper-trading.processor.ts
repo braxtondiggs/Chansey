@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -9,7 +9,10 @@ import { Repository } from 'typeorm';
 
 import { PaperTradingSession, PaperTradingStatus } from './entities';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
+import { classifyError, UnrecoverableError } from './paper-trading-error-classifier.util';
 import { PaperTradingJobService } from './paper-trading-job.service';
+import { PaperTradingRetryService } from './paper-trading-retry.service';
+import { applySuccessfulTickResult, evaluateStopReason } from './paper-trading-session.util';
 import { PaperTradingStreamService } from './paper-trading-stream.service';
 import { paperTradingConfig } from './paper-trading.config';
 import {
@@ -23,86 +26,18 @@ import {
 } from './paper-trading.job-data';
 
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 
-const MAX_RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_CLEANUP_CACHE = 500;
-
-// Error types for classification
-class RecoverableError extends Error {
-  constructor(
-    message: string,
-    public readonly cause?: Error
-  ) {
-    super(message);
-    this.name = 'RecoverableError';
-  }
-}
-
-class UnrecoverableError extends Error {
-  constructor(
-    message: string,
-    public readonly cause?: Error
-  ) {
-    super(message);
-    this.name = 'UnrecoverableError';
-  }
-}
-
-/**
- * Classify an error and wrap it in the appropriate error class.
- * Returns a RecoverableError or UnrecoverableError based on error characteristics.
- */
-function classifyError(error: Error): RecoverableError | UnrecoverableError {
-  const errorMessage = error.message?.toLowerCase() ?? '';
-  const errorName = error.name?.toLowerCase() ?? '';
-
-  // Configuration and authentication errors are unrecoverable
-  if (
-    errorMessage.includes('invalid api key') ||
-    errorMessage.includes('authentication') ||
-    errorMessage.includes('unauthorized') ||
-    errorMessage.includes('forbidden') ||
-    errorMessage.includes('401') ||
-    errorMessage.includes('403') ||
-    errorMessage.includes('not found') ||
-    errorMessage.includes('algorithm') ||
-    errorMessage.includes('configuration') ||
-    errorMessage.includes('invalid parameter')
-  ) {
-    return new UnrecoverableError(error.message, error);
-  }
-
-  // Network and rate limit errors are recoverable
-  if (
-    errorName.includes('network') ||
-    errorName.includes('timeout') ||
-    errorMessage.includes('network') ||
-    errorMessage.includes('timeout') ||
-    errorMessage.includes('econnrefused') ||
-    errorMessage.includes('enotfound') ||
-    errorMessage.includes('rate limit') ||
-    errorMessage.includes('too many requests') ||
-    errorMessage.includes('429') ||
-    errorMessage.includes('503') ||
-    errorMessage.includes('502') ||
-    errorMessage.includes('temporarily unavailable')
-  ) {
-    return new RecoverableError(error.message, error);
-  }
-
-  // Default to recoverable for unknown errors
-  return new RecoverableError(error.message, error);
-}
 
 @Injectable()
 @Processor('paper-trading')
-export class PaperTradingProcessor extends WorkerHost {
+export class PaperTradingProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PaperTradingProcessor.name);
   private readonly maxConsecutiveErrors: number;
-  private readonly maxRetryAttempts: number;
-  private readonly retryBackoffMs: number;
   private readonly cleanedUpSessions = new Set<string>();
 
   constructor(
@@ -115,12 +50,12 @@ export class PaperTradingProcessor extends WorkerHost {
     private readonly engineService: PaperTradingEngineService,
     private readonly streamService: PaperTradingStreamService,
     private readonly metricsService: MetricsService,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    failedJobService: FailedJobService,
+    private readonly retryService: PaperTradingRetryService
   ) {
-    super();
+    super(failedJobService);
     this.maxConsecutiveErrors = config.maxConsecutiveErrors;
-    this.maxRetryAttempts = config.maxRetryAttempts;
-    this.retryBackoffMs = config.retryBackoffMs;
   }
 
   async process(job: Job<AnyPaperTradingJobData>): Promise<void> {
@@ -136,7 +71,7 @@ export class PaperTradingProcessor extends WorkerHost {
         await this.handleTick(job.data as TickJobData);
         break;
       case PaperTradingJobType.RETRY_TICK:
-        await this.handleRetryTick(job.data as RetryTickJobData);
+        await this.retryService.handleRetryTick(job.data as RetryTickJobData);
         break;
       case PaperTradingJobType.STOP_SESSION:
         await this.handleStopSession(job.data as StopSessionJobData);
@@ -246,7 +181,7 @@ export class PaperTradingProcessor extends WorkerHost {
 
         if (session.consecutiveErrors >= this.maxConsecutiveErrors) {
           this.logger.warn(`Session ${sessionId} reached max consecutive errors, pausing`);
-          await this.pauseSessionDueToErrors(session, result.errors.join('; '));
+          await this.retryService.pauseSessionDueToErrors(session, result.errors.join('; '));
           return;
         }
 
@@ -266,18 +201,17 @@ export class PaperTradingProcessor extends WorkerHost {
         session.exitTrackerState = serializedExitTracker;
       }
 
-      // Apply successful tick result (reset counters, update metrics, save)
-      const currentDrawdown = await this.applySuccessfulTickResult(session, result);
+      // Apply successful tick result (reset counters, update metrics) and persist
+      const currentDrawdown = applySuccessfulTickResult(session, result);
+      await this.sessionRepository.save(session);
 
-      // Stop-condition precedence (order matters):
-      //   1. Safety overrides first — maxDrawdown / targetReturn protect capital
-      //   2. Min-trades gate — ensures statistical significance before graduation
-      //   3. Duration cap — hard time limit prevents runaway sessions
-      // Each check short-circuits by verifying session.status === ACTIVE,
-      // so the first triggered condition wins.
-      await this.checkStopConditions(session, result.portfolioValue, currentDrawdown);
-      await this.checkMinTrades(session);
-      await this.checkDuration(session);
+      // Stop-condition precedence (order matters): safety → min-trades → duration
+      const stopReason = evaluateStopReason(session, result.portfolioValue, currentDrawdown);
+      if (stopReason) {
+        this.logger.log(`Session ${session.id} stop condition triggered: ${stopReason}`);
+        await this.jobService.markCompleted(session.id, stopReason);
+        session.status = PaperTradingStatus.COMPLETED;
+      }
 
       // Emit tick event
       await this.streamService.publishTick(sessionId, {
@@ -320,7 +254,7 @@ export class PaperTradingProcessor extends WorkerHost {
       await this.sessionRepository.save(session);
 
       if (session.consecutiveErrors >= this.maxConsecutiveErrors) {
-        await this.pauseSessionDueToErrors(session, classifiedError.message);
+        await this.retryService.pauseSessionDueToErrors(session, classifiedError.message);
       } else {
         await this.streamService.publishLog(
           sessionId,
@@ -416,128 +350,6 @@ export class PaperTradingProcessor extends WorkerHost {
     });
   }
 
-  /**
-   * Check if stop conditions are met
-   */
-  private async checkStopConditions(
-    session: PaperTradingSession,
-    portfolioValue: number,
-    currentDrawdown: number
-  ): Promise<void> {
-    if (session.status !== PaperTradingStatus.ACTIVE) return;
-    if (!session.stopConditions) return;
-
-    const { maxDrawdown, targetReturn } = session.stopConditions;
-
-    if (maxDrawdown !== undefined && currentDrawdown > maxDrawdown) {
-      this.logger.log(`Session ${session.id} hit max drawdown limit (${(currentDrawdown * 100).toFixed(2)}%)`);
-      await this.jobService.markCompleted(session.id, 'max_drawdown');
-      session.status = PaperTradingStatus.COMPLETED;
-      return;
-    }
-
-    const currentReturn = (portfolioValue - session.initialCapital) / session.initialCapital;
-    if (targetReturn !== undefined && currentReturn >= targetReturn) {
-      this.logger.log(`Session ${session.id} hit target return (${(currentReturn * 100).toFixed(2)}%)`);
-      await this.jobService.markCompleted(session.id, 'target_reached');
-      session.status = PaperTradingStatus.COMPLETED;
-      return;
-    }
-  }
-
-  /**
-   * Check if minimum trade count gate is met
-   */
-  private async checkMinTrades(session: PaperTradingSession): Promise<void> {
-    if (session.status !== PaperTradingStatus.ACTIVE) return;
-    if (session.minTrades == null) return;
-
-    if (session.totalTrades >= session.minTrades) {
-      this.logger.log(
-        `Session ${session.id} reached minimum trade count (${session.totalTrades}/${session.minTrades})`
-      );
-      await this.jobService.markCompleted(session.id, 'min_trades_reached');
-      session.status = PaperTradingStatus.COMPLETED;
-    }
-  }
-
-  /**
-   * Check if duration limit is reached (hard time cap)
-   */
-  private async checkDuration(session: PaperTradingSession): Promise<void> {
-    if (session.status !== PaperTradingStatus.ACTIVE) return;
-    if (!session.duration || !session.startedAt) return;
-
-    const startTime = session.startedAt.getTime();
-    const now = Date.now();
-    const durationMs = this.parseDuration(session.duration);
-
-    if (now - startTime >= durationMs) {
-      this.logger.log(`Session ${session.id} reached duration limit (${session.duration})`);
-      await this.jobService.markCompleted(session.id, 'duration_reached');
-      session.status = PaperTradingStatus.COMPLETED;
-    }
-  }
-
-  /**
-   * Parse duration string to milliseconds
-   */
-  private parseDuration(duration: string): number {
-    const match = duration.match(/^(\d+)([smhdwMy])$/);
-    if (!match) return 0;
-
-    const value = parseInt(match[1], 10);
-    const unit = match[2];
-
-    const multipliers: Record<string, number> = {
-      s: 1000,
-      m: 60 * 1000,
-      h: 60 * 60 * 1000,
-      d: 24 * 60 * 60 * 1000,
-      w: 7 * 24 * 60 * 60 * 1000,
-      M: 30 * 24 * 60 * 60 * 1000,
-      y: 365 * 24 * 60 * 60 * 1000
-    };
-
-    return value * (multipliers[unit] ?? 0);
-  }
-
-  /**
-   * Apply successful tick result to session — shared by handleTick and handleRetryTick
-   */
-  private async applySuccessfulTickResult(
-    session: PaperTradingSession,
-    result: { portfolioValue: number; ordersExecuted: number }
-  ): Promise<number> {
-    session.consecutiveErrors = 0;
-    session.retryAttempts = 0;
-    session.tickCount++;
-    session.lastTickAt = new Date();
-    session.currentPortfolioValue = result.portfolioValue;
-
-    if (result.ordersExecuted > 0) {
-      session.totalTrades = (session.totalTrades ?? 0) + result.ordersExecuted;
-    }
-
-    if (result.portfolioValue > (session.peakPortfolioValue ?? session.initialCapital)) {
-      session.peakPortfolioValue = result.portfolioValue;
-    }
-
-    const currentDrawdown =
-      (session.peakPortfolioValue ?? 0) > 0
-        ? ((session.peakPortfolioValue ?? 0) - result.portfolioValue) / (session.peakPortfolioValue ?? 0)
-        : 0;
-
-    if (currentDrawdown > (session.maxDrawdown ?? 0)) {
-      session.maxDrawdown = currentDrawdown;
-    }
-
-    session.totalReturn = (result.portfolioValue - session.initialCapital) / session.initialCapital;
-    await this.sessionRepository.save(session);
-
-    return currentDrawdown;
-  }
-
   /** Track a cleaned-up session, pruning the set when it exceeds the threshold to prevent memory leaks */
   private trackCleanedUpSession(sessionId: string): void {
     if (this.cleanedUpSessions.size >= MAX_CLEANUP_CACHE) {
@@ -552,137 +364,5 @@ export class PaperTradingProcessor extends WorkerHost {
       this.engineService.restoreThrottleState(sessionId, session.throttleState);
       this.logger.log(`Restored throttle state from DB for session ${sessionId}`);
     }
-  }
-
-  /** Handle retry tick - attempt a single tick after backoff delay */
-  private async handleRetryTick(data: RetryTickJobData): Promise<void> {
-    const { sessionId, retryAttempt } = data;
-
-    const session = await this.sessionRepository.findOne({
-      where: { id: sessionId },
-      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange', 'user']
-    });
-
-    if (!session) {
-      this.logger.warn(`Session ${sessionId} not found during retry tick`);
-      return;
-    }
-
-    if (session.status !== PaperTradingStatus.ACTIVE) {
-      this.logger.debug(`Session ${sessionId} is no longer active (status: ${session.status}), skipping retry`);
-      return;
-    }
-
-    this.logger.log(`Retry tick ${retryAttempt}/${this.maxRetryAttempts} for session ${sessionId}`);
-
-    this.restoreThrottleStateIfNeeded(sessionId, session);
-
-    const endTimer = this.metricsService.startBacktestTimer('paper-trading');
-
-    try {
-      const result = await this.engineService.processTick(session, session.exchangeKey);
-
-      if (result.processed) {
-        // Clear error message before save (applySuccessfulTickResult saves the session)
-        session.errorMessage = undefined;
-        const currentDrawdown = await this.applySuccessfulTickResult(session, result);
-
-        // Check stop conditions before rescheduling (may complete the session)
-        await this.checkStopConditions(session, result.portfolioValue, currentDrawdown);
-        await this.checkMinTrades(session);
-        await this.checkDuration(session);
-
-        // Re-schedule normal repeating tick job
-        if (!session.user?.id) {
-          throw new Error(`User not loaded for session ${sessionId}, cannot schedule tick job.`);
-        }
-        await this.jobService.scheduleTickJob(sessionId, session.user.id, session.tickIntervalMs);
-
-        await this.streamService.publishStatus(sessionId, 'active', 'retry_recovered', {
-          retryAttempt,
-          portfolioValue: result.portfolioValue
-        });
-
-        this.logger.log(`Session ${sessionId} recovered after retry ${retryAttempt}, normal ticks resumed`);
-      } else {
-        // Tick processed but failed — trigger next retry or permanent pause
-        await this.pauseSessionDueToErrors(session, result.errors.join('; '));
-      }
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Retry tick error for session ${sessionId}: ${err.message}`, err.stack);
-
-      const classifiedError = classifyError(error instanceof Error ? error : new Error(err.message));
-
-      if (classifiedError instanceof UnrecoverableError) {
-        await this.jobService.markFailed(sessionId, `Unrecoverable error: ${classifiedError.message}`);
-        await this.streamService.publishStatus(sessionId, 'failed', 'unrecoverable_error', {
-          errorMessage: classifiedError.message,
-          errorType: 'unrecoverable'
-        });
-        this.engineService.clearThrottleState(sessionId);
-        this.engineService.clearExitTracker(sessionId);
-        return;
-      }
-
-      await this.pauseSessionDueToErrors(session, classifiedError.message);
-    } finally {
-      endTimer();
-    }
-  }
-
-  /**
-   * Pause session due to consecutive errors, with exponential backoff retry
-   */
-  private async pauseSessionDueToErrors(session: PaperTradingSession, errorMessage: string): Promise<void> {
-    if (session.retryAttempts < this.maxRetryAttempts) {
-      // Schedule retry with exponential backoff
-      const delay = Math.min(this.retryBackoffMs * Math.pow(2, session.retryAttempts), MAX_RETRY_DELAY_MS);
-      session.retryAttempts++;
-      session.consecutiveErrors = 0;
-      session.errorMessage = `Retry ${session.retryAttempts}/${this.maxRetryAttempts} scheduled (${delay / 1000}s): ${errorMessage}`;
-      await this.sessionRepository.save(session);
-
-      // Remove repeating tick scheduler — the retry job will re-schedule it on success
-      await this.jobService.removeTickJobs(session.id);
-
-      // Queue one-shot delayed retry
-      if (!session.user?.id) {
-        throw new Error(`User not loaded for session ${session.id}, cannot schedule retry tick.`);
-      }
-      await this.jobService.scheduleRetryTick(session.id, session.user.id, delay, session.retryAttempts);
-
-      await this.streamService.publishStatus(session.id, 'retry_scheduled', 'consecutive_errors', {
-        errorMessage,
-        retryAttempt: session.retryAttempts,
-        delayMs: delay
-      });
-
-      this.logger.warn(
-        `Session ${session.id} scheduling retry ${session.retryAttempts}/${this.maxRetryAttempts} in ${delay / 1000}s`
-      );
-      return;
-    }
-
-    // Exhausted retries — permanent pause
-    session.status = PaperTradingStatus.PAUSED;
-    session.pausedAt = new Date();
-    session.retryAttempts = 0;
-    session.errorMessage = `Auto-paused after ${this.maxRetryAttempts} retry attempts: ${errorMessage}`;
-    await this.sessionRepository.save(session);
-
-    await this.jobService.removeTickJobs(session.id);
-
-    // Clear throttle and exit tracker state so resumed sessions start fresh
-    this.engineService.clearThrottleState(session.id);
-    this.engineService.clearExitTracker(session.id);
-
-    await this.streamService.publishStatus(session.id, 'paused', 'consecutive_errors', {
-      errorMessage,
-      consecutiveErrors: session.consecutiveErrors,
-      retriesExhausted: true
-    });
-
-    this.logger.warn(`Session ${session.id} auto-paused after exhausting ${this.maxRetryAttempts} retry attempts`);
   }
 }

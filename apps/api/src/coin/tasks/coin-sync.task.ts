@@ -1,4 +1,4 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
@@ -7,6 +7,8 @@ import { Job, Queue } from 'bullmq';
 import { CoinDetailSyncService } from './coin-detail-sync.service';
 
 import { ExchangeService } from '../../exchange/exchange.service';
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
@@ -24,7 +26,7 @@ import { CoinService } from '../coin.service';
 // timeouts in process() bound runtime independently.
 @Processor('coin-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
-export class CoinSyncTask extends WorkerHost implements OnModuleInit {
+export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CoinSyncTask.name);
   private jobScheduled = false;
   private readonly API_RATE_LIMIT_DELAY = 2500;
@@ -38,9 +40,10 @@ export class CoinSyncTask extends WorkerHost implements OnModuleInit {
     private readonly snapshotService: CoinDailySnapshotService,
     private readonly coinMarketData: CoinMarketDataService,
     private readonly gecko: CoinGeckoClientService,
-    private readonly lockService: DistributedLockService
+    private readonly lockService: DistributedLockService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async onModuleInit() {

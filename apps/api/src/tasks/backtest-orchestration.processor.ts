@@ -5,7 +5,7 @@
  * Each job processes one user's algorithm activations and creates backtests.
  */
 
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { Job } from 'bullmq';
@@ -13,15 +13,20 @@ import { Job } from 'bullmq';
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { OrchestrationJobData, OrchestrationResult } from './dto/backtest-orchestration.dto';
 
+import { FailSafeWorkerHost } from '../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
 @Processor('backtest-orchestration')
-export class BacktestOrchestrationProcessor extends WorkerHost {
+export class BacktestOrchestrationProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(BacktestOrchestrationProcessor.name);
 
-  constructor(private readonly orchestrationService: BacktestOrchestrationService) {
-    super();
+  constructor(
+    private readonly orchestrationService: BacktestOrchestrationService,
+    failedJobService: FailedJobService
+  ) {
+    super(failedJobService);
   }
 
   /**

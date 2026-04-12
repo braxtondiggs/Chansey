@@ -57,7 +57,6 @@ import { DrawdownCalculator } from '../common/metrics/drawdown.calculator';
 import { SharpeRatioCalculator } from '../common/metrics/sharpe-ratio.calculator';
 import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { ExchangeModule } from '../exchange/exchange.module';
-import { FailedJobModule } from '../failed-jobs/failed-job.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { SignalThrottleService } from '../order/backtest/shared/throttle';
@@ -85,7 +84,6 @@ import { User } from '../users/users.entity';
     forwardRef(() => AdminModule),
     forwardRef(() => AlgorithmModule),
     AuditModule,
-    FailedJobModule,
     forwardRef(() => BalanceModule),
     forwardRef(() => ExchangeModule),
     ExchangeSelectionModule,

@@ -90,7 +90,6 @@ import { TickerPairService } from '../coin/ticker-pairs/ticker-pairs.service';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange-selection.module';
 import { ExchangeModule } from '../exchange/exchange.module';
-import { FailedJobModule } from '../failed-jobs/failed-job.module';
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
@@ -164,7 +163,6 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BullModule.registerQueue({ name: 'position-monitor' }),
     BullModule.registerQueue({ name: 'liquidation-monitor' }),
     SharedCacheModule,
-    FailedJobModule,
     forwardRef(() => AdminModule),
     forwardRef(() => AlgorithmModule),
     forwardRef(() => BalanceModule),

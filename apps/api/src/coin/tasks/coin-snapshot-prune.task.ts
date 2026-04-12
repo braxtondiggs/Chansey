@@ -1,15 +1,17 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 
 @Processor('coin-snapshot-prune-queue')
 @Injectable()
-export class CoinSnapshotPruneTask extends WorkerHost implements OnModuleInit {
+export class CoinSnapshotPruneTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CoinSnapshotPruneTask.name);
   private jobScheduled = false;
   private readonly DEFAULT_RETENTION_DAYS = 730; // 2 years
@@ -17,9 +19,10 @@ export class CoinSnapshotPruneTask extends WorkerHost implements OnModuleInit {
   constructor(
     @InjectQueue('coin-snapshot-prune-queue') private readonly pruneQueue: Queue,
     private readonly snapshotService: CoinDailySnapshotService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async onModuleInit() {

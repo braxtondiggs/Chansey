@@ -1,9 +1,11 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
@@ -44,7 +46,7 @@ interface CoinGeckoExchangeItem {
 // the distributed lock, not by this setting.
 @Processor('exchange-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
-export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
+export class ExchangeSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ExchangeSyncTask.name);
   private readonly API_RATE_LIMIT_DELAY = 2500;
   private jobScheduled = false;
@@ -53,9 +55,10 @@ export class ExchangeSyncTask extends WorkerHost implements OnModuleInit {
     @InjectQueue('exchange-queue') private readonly exchangeQueue: Queue,
     private readonly exchange: ExchangeService,
     private readonly gecko: CoinGeckoClientService,
-    private readonly lockService: DistributedLockService
+    private readonly lockService: DistributedLockService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async onModuleInit() {

@@ -21,7 +21,7 @@ describe('OptimizationProcessor', () => {
       get: jest.fn().mockReturnValue(3)
     } as unknown as jest.Mocked<ConfigService>;
 
-    processor = new OptimizationProcessor(orchestratorService, configService);
+    processor = new OptimizationProcessor(orchestratorService, configService, { recordFailure: jest.fn() } as any);
 
     // WorkerHost.worker is a getter — use Object.defineProperty to mock it
     mockWorker = { concurrency: 2 };

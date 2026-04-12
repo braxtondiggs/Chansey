@@ -1,10 +1,12 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import type { CategoryGetListResponse } from '@coingecko/coingecko-typescript/resources/coins/categories';
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
@@ -17,7 +19,7 @@ import { CategoryService } from '../category.service';
 // the distributed lock, not by this setting.
 @Processor('category-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
-export class CategorySyncTask extends WorkerHost implements OnModuleInit {
+export class CategorySyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CategorySyncTask.name);
   private jobScheduled = false;
 
@@ -25,9 +27,10 @@ export class CategorySyncTask extends WorkerHost implements OnModuleInit {
     @InjectQueue('category-queue') private readonly categoryQueue: Queue,
     private readonly category: CategoryService,
     private readonly gecko: CoinGeckoClientService,
-    private readonly lockService: DistributedLockService
+    private readonly lockService: DistributedLockService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   async onModuleInit() {

@@ -1,10 +1,12 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { Pipeline } from '../entities/pipeline.entity';
 import { PipelineJobData, PipelineStatus } from '../interfaces';
@@ -12,16 +14,17 @@ import { PipelineOrchestratorService } from '../services/pipeline-orchestrator.s
 
 @Injectable()
 @Processor('pipeline')
-export class PipelineProcessor extends WorkerHost {
+export class PipelineProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PipelineProcessor.name);
   private static readonly PENDING_RETRY_DELAY_MS = 2000;
 
   constructor(
     private readonly orchestratorService: PipelineOrchestratorService,
+    failedJobService: FailedJobService,
     @InjectRepository(Pipeline)
     private readonly pipelineRepository: Repository<Pipeline>
   ) {
-    super();
+    super(failedJobService);
   }
 
   async process(job: Job<PipelineJobData>): Promise<void> {

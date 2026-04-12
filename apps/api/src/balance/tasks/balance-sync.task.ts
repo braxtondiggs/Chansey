@@ -1,25 +1,28 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
+import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { BalanceHistoryService } from '../balance-history.service';
 import { BalanceService } from '../balance.service';
 
 @Processor('balance-queue')
 @Injectable()
-export class BalanceSyncTask extends WorkerHost implements OnModuleInit {
+export class BalanceSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(BalanceSyncTask.name);
   private jobScheduled = false;
 
   constructor(
     @InjectQueue('balance-queue') private readonly balanceQueue: Queue,
     private readonly balanceHistoryService: BalanceHistoryService,
-    private readonly balanceService: BalanceService
+    private readonly balanceService: BalanceService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   /**

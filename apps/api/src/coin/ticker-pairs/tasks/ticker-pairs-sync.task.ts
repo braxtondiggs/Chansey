@@ -1,10 +1,12 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
 import { ExchangeService } from '../../../exchange/exchange.service';
+import { FailSafeWorkerHost } from '../../../failed-jobs/fail-safe-worker-host';
+import { FailedJobService } from '../../../failed-jobs/failed-job.service';
 import { CoinGeckoClientService } from '../../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../../shared/distributed-lock.service';
@@ -23,7 +25,7 @@ const DEFAULT_MARGIN_TRADING_ALLOWED = false;
 // the distributed lock, not by this setting.
 @Processor('ticker-pairs-queue', { lockDuration: 60_000, stalledInterval: 30_000 })
 @Injectable()
-export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
+export class TickerPairSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(TickerPairSyncTask.name);
   private jobScheduled = false;
 
@@ -33,9 +35,10 @@ export class TickerPairSyncTask extends WorkerHost implements OnModuleInit {
     private readonly exchange: ExchangeService,
     private readonly tickerPair: TickerPairService,
     private readonly gecko: CoinGeckoClientService,
-    private readonly lockService: DistributedLockService
+    private readonly lockService: DistributedLockService,
+    failedJobService: FailedJobService
   ) {
-    super();
+    super(failedJobService);
   }
 
   /**

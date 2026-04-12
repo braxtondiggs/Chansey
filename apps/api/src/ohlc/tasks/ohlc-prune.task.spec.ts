@@ -27,7 +27,7 @@ describe('OHLCPruneTask', () => {
 
     configService = { get: jest.fn() };
 
-    task = new OHLCPruneTask(queue as any, ohlcService, configService as any);
+    task = new OHLCPruneTask(queue as any, ohlcService, configService as any, { recordFailure: jest.fn() } as any);
   });
 
   afterEach(() => {

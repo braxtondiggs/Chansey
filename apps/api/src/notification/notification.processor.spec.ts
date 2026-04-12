@@ -12,6 +12,8 @@ import { Notification } from './entities/notification.entity';
 import { type NotificationJobData } from './interfaces/notification-events.interface';
 import { NotificationProcessor } from './notification.processor';
 
+import { FailedJobService } from '../failed-jobs/failed-job.service';
+
 function makeJobData(overrides: Partial<NotificationJobData> = {}): NotificationJobData {
   return {
     userId: 'user-1',
@@ -46,7 +48,8 @@ describe('NotificationProcessor', () => {
         { provide: getRepositoryToken(Notification), useValue: notifRepo },
         { provide: EmailNotificationService, useValue: emailService },
         { provide: PushNotificationService, useValue: pushService },
-        { provide: SmsNotificationService, useValue: smsService }
+        { provide: SmsNotificationService, useValue: smsService },
+        { provide: FailedJobService, useValue: { recordFailure: jest.fn() } }
       ]
     }).compile();
 

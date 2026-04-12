@@ -38,6 +38,7 @@ describe('LiveReplayProcessor', () => {
       metricsService: any;
       configService: any;
       shutdownSignal: any;
+      failedJobService: any;
     }> = {}
   ) => {
     const backtestEngine = { executeHistoricalBacktest: jest.fn() };
@@ -71,6 +72,7 @@ describe('LiveReplayProcessor', () => {
       overrides.metricsService ?? (metricsService as any),
       overrides.configService ?? (configService as any),
       overrides.shutdownSignal ?? (shutdownSignal as any),
+      overrides.failedJobService ?? ({ recordFailure: jest.fn() } as any),
       overrides.backtestRepository ?? (backtestRepository as any),
       overrides.marketDataSetRepository ?? (marketDataSetRepository as any)
     );
