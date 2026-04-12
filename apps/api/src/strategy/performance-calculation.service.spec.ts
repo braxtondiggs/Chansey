@@ -1,10 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { LessThan } from 'typeorm';
 
 import { DeploymentMetricsService } from './deployment-metrics.service';
-import { Deployment } from './entities/deployment.entity';
+import type { Deployment } from './entities/deployment.entity';
 import { PerformanceMetric } from './entities/performance-metric.entity';
 import { PerformanceCalculationService } from './performance-calculation.service';
 import { PositionTrackingService } from './position-tracking.service';

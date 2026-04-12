@@ -1,10 +1,10 @@
 import { MarketRegimeTask } from './market-regime.task';
 
-import { CoinService } from '../coin/coin.service';
-import { CompositeRegimeService } from '../market-regime/composite-regime.service';
-import { MarketRegimeService } from '../market-regime/market-regime.service';
-import { OHLCService } from '../ohlc/ohlc.service';
-import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
+import type { CoinService } from '../coin/coin.service';
+import type { CompositeRegimeService } from '../market-regime/composite-regime.service';
+import type { MarketRegimeService } from '../market-regime/market-regime.service';
+import type { OHLCService } from '../ohlc/ohlc.service';
+import type { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 
 describe('MarketRegimeTask', () => {
   let task: MarketRegimeTask;

@@ -281,9 +281,12 @@ export class PaperTradingEngineService {
         }
       }
 
-      if (signal.action === 'SELL' && !heldCoins.has(signal.coinId)) {
-        this.logger.debug(`Skipping SELL for ${signal.symbol}: no position held`);
-        continue;
+      if (signal.action === 'SELL') {
+        const [baseCurrency] = signal.symbol.split('/');
+        if (!heldCoins.has(baseCurrency)) {
+          this.logger.debug(`Skipping SELL for ${signal.symbol}: no position held`);
+          continue;
+        }
       }
 
       const signalEntity = await this.signalService.save(session, signal);

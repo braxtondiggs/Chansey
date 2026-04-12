@@ -28,6 +28,7 @@ describe('PaperTradingRecoveryService', () => {
       ]),
       removeTickJobs: jest.fn(),
       scheduleTickJob: jest.fn(),
+      updateSessionMetrics: jest.fn(),
       markFailed: jest.fn(),
       getSessionStatus: jest.fn()
     };
@@ -46,6 +47,12 @@ describe('PaperTradingRecoveryService', () => {
     expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-2');
     expect(paperTradingService.scheduleTickJob).toHaveBeenCalledWith('session-1', 'user-1', 1000);
     expect(paperTradingService.scheduleTickJob).toHaveBeenCalledWith('session-2', 'user-2', 2000);
+    expect(paperTradingService.updateSessionMetrics).toHaveBeenCalledWith('session-1', {
+      lastTickAt: expect.any(Date)
+    });
+    expect(paperTradingService.updateSessionMetrics).toHaveBeenCalledWith('session-2', {
+      lastTickAt: expect.any(Date)
+    });
   });
 
   it('marks session failed when recovery fails', async () => {
@@ -55,6 +62,7 @@ describe('PaperTradingRecoveryService', () => {
         .mockResolvedValue([{ id: 'session-3', user: { id: 'user-3' }, tickIntervalMs: 5000 }]),
       removeTickJobs: jest.fn(),
       scheduleTickJob: jest.fn().mockRejectedValue(new Error('queue down')),
+      updateSessionMetrics: jest.fn(),
       markFailed: jest.fn(),
       getSessionStatus: jest.fn()
     };
@@ -77,6 +85,7 @@ describe('PaperTradingRecoveryService', () => {
         findActiveSessions: jest.fn().mockResolvedValue([]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn(),
         getSessionStatus: jest
           .fn()
@@ -114,6 +123,7 @@ describe('PaperTradingRecoveryService', () => {
         findActiveSessions: jest.fn().mockResolvedValue([]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn(),
         getSessionStatus: jest.fn().mockRejectedValue(new NotFoundException('not found'))
       };
@@ -141,6 +151,7 @@ describe('PaperTradingRecoveryService', () => {
         findActiveSessions: jest.fn().mockResolvedValue([]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn(),
         getSessionStatus: jest.fn()
       };
@@ -167,6 +178,7 @@ describe('PaperTradingRecoveryService', () => {
         findActiveSessions: jest.fn().mockResolvedValue([]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn(),
         getSessionStatus: jest.fn()
       };
@@ -217,6 +229,7 @@ describe('PaperTradingRecoveryService', () => {
         findActiveSessions: jest.fn().mockResolvedValue([]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn()
       };
 
@@ -242,6 +255,7 @@ describe('PaperTradingRecoveryService', () => {
         ]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn()
       };
 
@@ -251,6 +265,9 @@ describe('PaperTradingRecoveryService', () => {
 
       expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-stale');
       expect(paperTradingService.scheduleTickJob).toHaveBeenCalledWith('session-stale', 'user-1', 5000);
+      expect(paperTradingService.updateSessionMetrics).toHaveBeenCalledWith('session-stale', {
+        lastTickAt: expect.any(Date)
+      });
       expect(paperTradingService.markFailed).not.toHaveBeenCalled();
     });
 
@@ -267,6 +284,7 @@ describe('PaperTradingRecoveryService', () => {
         ]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn()
       };
 
@@ -295,6 +313,7 @@ describe('PaperTradingRecoveryService', () => {
         ]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn()
       };
 
@@ -304,6 +323,9 @@ describe('PaperTradingRecoveryService', () => {
 
       expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-no-tick');
       expect(paperTradingService.scheduleTickJob).toHaveBeenCalledWith('session-no-tick', 'user-1', 5000);
+      expect(paperTradingService.updateSessionMetrics).toHaveBeenCalledWith('session-no-tick', {
+        lastTickAt: expect.any(Date)
+      });
       expect(paperTradingService.markFailed).not.toHaveBeenCalled();
     });
 
@@ -320,6 +342,7 @@ describe('PaperTradingRecoveryService', () => {
         ]),
         removeTickJobs: jest.fn(),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn()
       };
 
@@ -354,6 +377,7 @@ describe('PaperTradingRecoveryService', () => {
           if (id === 'session-error') throw new Error('Redis down');
         }),
         scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
         markFailed: jest.fn()
       };
 
@@ -365,6 +389,88 @@ describe('PaperTradingRecoveryService', () => {
       expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-error');
       expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-ok');
       expect(paperTradingService.scheduleTickJob).toHaveBeenCalledWith('session-ok', 'user-2', 3000);
+    });
+
+    it('boot recovery resets heartbeat so watchdog does not kill session', async () => {
+      const now = Date.now();
+      const paperTradingService = {
+        findActiveSessions: jest.fn().mockResolvedValue([
+          {
+            id: 'session-boot',
+            user: { id: 'user-1' },
+            tickIntervalMs: 5000,
+            lastTickAt: new Date(now - 60 * 60 * 1000), // 1 hour ago (pre-restart)
+            updatedAt: new Date(now - 60 * 60 * 1000)
+          }
+        ]),
+        removeTickJobs: jest.fn(),
+        scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
+        markFailed: jest.fn(),
+        getSessionStatus: jest.fn()
+      };
+
+      const queue = createMockQueue();
+      const service = new PaperTradingRecoveryService(
+        paperTradingService as any,
+        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        queue as any
+      );
+
+      // Boot recovery runs
+      await service.onApplicationBootstrap();
+
+      // Verify heartbeat was reset
+      expect(paperTradingService.updateSessionMetrics).toHaveBeenCalledWith('session-boot', {
+        lastTickAt: expect.any(Date)
+      });
+
+      // Simulate watchdog running after grace period
+      (service as any).bootedAt = now - TWENTY_MINUTES;
+
+      // Now findActiveSessions returns the session with a fresh lastTickAt (as it would be in DB)
+      paperTradingService.findActiveSessions.mockResolvedValue([
+        {
+          id: 'session-boot',
+          user: { id: 'user-1' },
+          tickIntervalMs: 5000,
+          lastTickAt: new Date(now - 30 * 1000), // 30s ago — freshly reset by boot recovery
+          updatedAt: new Date(now - 60 * 60 * 1000)
+        }
+      ]);
+
+      await service.detectStaleSessions();
+
+      // Watchdog should NOT kill the session — heartbeat is fresh
+      expect(paperTradingService.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('watchdog recovery also resets heartbeat', async () => {
+      const paperTradingService = {
+        findActiveSessions: jest.fn().mockResolvedValue([
+          {
+            id: 'session-watchdog',
+            user: { id: 'user-1' },
+            tickIntervalMs: 5000,
+            lastTickAt: new Date(Date.now() - 15 * 60 * 1000), // 15 min ago — recovery tier
+            updatedAt: new Date(Date.now() - 30 * 60 * 1000)
+          }
+        ]),
+        removeTickJobs: jest.fn(),
+        scheduleTickJob: jest.fn(),
+        updateSessionMetrics: jest.fn(),
+        markFailed: jest.fn()
+      };
+
+      const service = createService(paperTradingService);
+
+      await service.detectStaleSessions();
+
+      // Watchdog recovery should reset heartbeat
+      expect(paperTradingService.updateSessionMetrics).toHaveBeenCalledWith('session-watchdog', {
+        lastTickAt: expect.any(Date)
+      });
+      expect(paperTradingService.markFailed).not.toHaveBeenCalled();
     });
   });
 });

@@ -90,6 +90,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
           // 10-20 min stale — attempt recovery
           await this.jobService.removeTickJobs(session.id);
           await this.jobService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
+          await this.jobService.updateSessionMetrics(session.id, { lastTickAt: new Date() });
           recovered++;
           this.logger.warn(
             `Recovered stale paper trading session ${session.id} (last heartbeat: ${new Date(heartbeat).toISOString()})`
@@ -187,6 +188,7 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
           // Remove stale tick job schedulers before re-scheduling to prevent duplicates
           await this.jobService.removeTickJobs(session.id);
           await this.jobService.scheduleTickJob(session.id, session.user?.id ?? '', session.tickIntervalMs);
+          await this.jobService.updateSessionMetrics(session.id, { lastTickAt: new Date() });
 
           this.logger.log(`Recovered paper trading session ${session.id}`);
         } catch (error: unknown) {
