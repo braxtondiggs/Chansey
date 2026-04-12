@@ -18,9 +18,11 @@ import {
   PaperTradingSignal,
   PaperTradingSnapshot
 } from './entities';
+import { PaperTradingCleanupService } from './paper-trading-cleanup.service';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
 import { PaperTradingJobService } from './paper-trading-job.service';
 import { PaperTradingMarketDataService } from './paper-trading-market-data.service';
+import { PaperTradingQueryService } from './paper-trading-query.service';
 import { PaperTradingRecoveryService } from './paper-trading-recovery.service';
 import { PaperTradingStreamService } from './paper-trading-stream.service';
 import { paperTradingConfig } from './paper-trading.config';
@@ -40,6 +42,7 @@ import { ExchangeModule } from '../../exchange/exchange.module';
 import { MarketRegimeModule } from '../../market-regime/market-regime.module';
 import { MetricsModule } from '../../metrics/metrics.module';
 import { OHLCModule } from '../../ohlc/ohlc.module';
+import { Pipeline } from '../../pipeline/entities/pipeline.entity';
 import { SharedCacheModule } from '../../shared-cache.module';
 import { UsersModule } from '../../users/users.module';
 import { BacktestSharedModule } from '../backtest/shared/shared.module';
@@ -56,7 +59,8 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
       PaperTradingSignal,
       PaperTradingSnapshot,
       Algorithm,
-      ExchangeKey
+      ExchangeKey,
+      Pipeline
     ]),
     BullModule.registerQueue({ name: PAPER_TRADING_CONFIG.queue }),
     EventEmitterModule.forRoot(),
@@ -76,6 +80,8 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
   controllers: [PaperTradingController],
   providers: [
     PaperTradingService,
+    PaperTradingQueryService,
+    PaperTradingCleanupService,
     PaperTradingJobService,
     PaperTradingEngineService,
     PaperTradingPortfolioService,
@@ -91,6 +97,13 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     PaperTradingGateway,
     PaperTradingRecoveryService
   ],
-  exports: [PaperTradingService, PaperTradingJobService, PaperTradingEngineService, PaperTradingMarketDataService]
+  exports: [
+    PaperTradingService,
+    PaperTradingQueryService,
+    PaperTradingCleanupService,
+    PaperTradingJobService,
+    PaperTradingEngineService,
+    PaperTradingMarketDataService
+  ]
 })
 export class PaperTradingModule {}

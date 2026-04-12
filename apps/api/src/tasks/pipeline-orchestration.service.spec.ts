@@ -214,20 +214,71 @@ describe('PipelineOrchestrationService', () => {
   });
 
   describe('checkDuplicate', () => {
-    it('should return false when no duplicate exists', async () => {
-      expect(await service.checkDuplicate('strategy-123', 'user-123')).toBe(false);
-    });
-
-    it('should return true when duplicate exists', async () => {
-      const mockQB = {
+    /**
+     * Helper that mocks the pipeline repository's query builder. The query builder used in
+     * checkDuplicate filters by strategyConfigId, userId, and status IN (PENDING, RUNNING, PAUSED).
+     * Pass `existing` to seed the row that getOne() will return.
+     */
+    const mockQueryBuilderWithResult = (existing: Partial<Pipeline> | null) => {
+      const qb = {
         innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue({ id: 'existing-pipeline' })
+        getOne: jest.fn().mockResolvedValue(existing)
       };
-      pipelineRepository.createQueryBuilder = jest.fn().mockReturnValue(mockQB);
+      pipelineRepository.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      return qb;
+    };
 
+    it('returns false when no active pipeline exists', async () => {
+      mockQueryBuilderWithResult(null);
+      expect(await service.checkDuplicate('strategy-123', 'user-123')).toBe(false);
+    });
+
+    it.each([
+      ['PENDING', PipelineStatus.PENDING],
+      ['RUNNING', PipelineStatus.RUNNING],
+      ['PAUSED', PipelineStatus.PAUSED]
+    ])('blocks when an active pipeline with status %s exists', async (_label, status) => {
+      mockQueryBuilderWithResult({ id: 'existing-pipeline', status });
       expect(await service.checkDuplicate('strategy-123', 'user-123')).toBe(true);
+    });
+
+    it.each([
+      ['COMPLETED', PipelineStatus.COMPLETED],
+      ['FAILED', PipelineStatus.FAILED],
+      ['CANCELLED', PipelineStatus.CANCELLED]
+    ])('does NOT block when only %s pipelines exist', async (_label, _status) => {
+      // The query filters by status IN (active), so terminal-status rows are excluded by SQL,
+      // not by the service. We simulate this by returning null from getOne().
+      mockQueryBuilderWithResult(null);
+      expect(await service.checkDuplicate('strategy-123', 'user-123')).toBe(false);
+    });
+
+    it('parameterizes the query with the active statuses (PENDING/RUNNING/PAUSED)', async () => {
+      const qb = mockQueryBuilderWithResult(null);
+      await service.checkDuplicate('strategy-123', 'user-123');
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('pipeline.status IN'),
+        expect.objectContaining({
+          activeStatuses: [PipelineStatus.PENDING, PipelineStatus.RUNNING, PipelineStatus.PAUSED]
+        })
+      );
+    });
+
+    it('scopes the query to the requested strategyConfigId and userId', async () => {
+      const qb = mockQueryBuilderWithResult(null);
+      await service.checkDuplicate('strategy-XYZ', 'user-ABC');
+
+      expect(qb.where).toHaveBeenCalledWith(
+        expect.stringContaining('pipeline.strategyConfigId'),
+        expect.objectContaining({ strategyConfigId: 'strategy-XYZ' })
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('user.id'),
+        expect.objectContaining({ userId: 'user-ABC' })
+      );
     });
   });
 
@@ -282,12 +333,12 @@ describe('PipelineOrchestrationService', () => {
       expect(result.skippedConfigs).toHaveLength(0);
     });
 
-    it('should skip duplicate pipelines', async () => {
+    it('should skip when an active pipeline already exists', async () => {
       const mockQB = {
         innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue({ id: 'existing-pipeline' })
+        getOne: jest.fn().mockResolvedValue({ id: 'existing-pipeline', status: PipelineStatus.RUNNING })
       };
       pipelineRepository.createQueryBuilder = jest.fn().mockReturnValue(mockQB);
 
@@ -295,7 +346,7 @@ describe('PipelineOrchestrationService', () => {
 
       expect(result.pipelinesCreated).toBe(0);
       expect(result.skippedConfigs).toHaveLength(1);
-      expect(result.skippedConfigs[0].reason).toContain('Duplicate');
+      expect(result.skippedConfigs[0].reason).toBe('Active pipeline already exists (PENDING/RUNNING/PAUSED)');
     });
 
     it('should use initialStage=HISTORICAL and record skip when no optimizable strategy', async () => {

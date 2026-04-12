@@ -3,26 +3,12 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Queue } from 'bullmq';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
-import { PipelineStartParams, SessionStatusResponse } from '@chansey/api-interfaces';
+import { PipelineStartParams } from '@chansey/api-interfaces';
 
-import {
-  CreatePaperTradingSessionDto,
-  PaperTradingOrderFiltersDto,
-  PaperTradingSessionFiltersDto,
-  PaperTradingSignalFiltersDto,
-  PaperTradingSnapshotFiltersDto,
-  UpdatePaperTradingSessionDto
-} from './dto';
-import {
-  PaperTradingAccount,
-  PaperTradingOrder,
-  PaperTradingSession,
-  PaperTradingSignal,
-  PaperTradingSnapshot,
-  PaperTradingStatus
-} from './entities';
+import { CreatePaperTradingSessionDto, UpdatePaperTradingSessionDto } from './dto';
+import { PaperTradingAccount, PaperTradingSession, PaperTradingStatus } from './entities';
 import { PaperTradingJobService } from './paper-trading-job.service';
 import {
   NotifyPipelineJobData,
@@ -32,12 +18,18 @@ import {
 } from './paper-trading.job-data';
 
 import { Algorithm } from '../../algorithm/algorithm.entity';
-import { DEFAULT_QUOTE_CURRENCY, getQuoteCurrency } from '../../exchange/constants';
+import { DEFAULT_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { forceRemoveJob } from '../../shared/queue.util';
 import { User } from '../../users/users.entity';
 import { ExitConfig } from '../interfaces/exit-config.interface';
 
+/**
+ * Lifecycle / write operations for paper trading sessions.
+ *
+ * Read-only queries live in {@link PaperTradingQueryService}; the legacy duplicate
+ * cleanup utility lives in {@link PaperTradingCleanupService}.
+ */
 @Injectable()
 export class PaperTradingService {
   private readonly logger = new Logger(PaperTradingService.name);
@@ -47,12 +39,6 @@ export class PaperTradingService {
     private readonly sessionRepository: Repository<PaperTradingSession>,
     @InjectRepository(PaperTradingAccount)
     private readonly accountRepository: Repository<PaperTradingAccount>,
-    @InjectRepository(PaperTradingOrder)
-    private readonly orderRepository: Repository<PaperTradingOrder>,
-    @InjectRepository(PaperTradingSignal)
-    private readonly signalRepository: Repository<PaperTradingSignal>,
-    @InjectRepository(PaperTradingSnapshot)
-    private readonly snapshotRepository: Repository<PaperTradingSnapshot>,
     @InjectRepository(Algorithm)
     private readonly algorithmRepository: Repository<Algorithm>,
     @InjectRepository(ExchangeKey)
@@ -119,39 +105,13 @@ export class PaperTradingService {
   }
 
   /**
-   * Find all sessions for a user with optional filters
+   * Find a session by ID + user ownership.
+   *
+   * Kept private here so the lifecycle methods can validate ownership without
+   * a cross-service dependency on `PaperTradingQueryService`. The public copy
+   * lives on `PaperTradingQueryService.findOne` for the controller to consume.
    */
-  async findAll(
-    user: User,
-    filters: PaperTradingSessionFiltersDto
-  ): Promise<{ data: PaperTradingSession[]; total: number }> {
-    const where: FindOptionsWhere<PaperTradingSession> = { user: { id: user.id } };
-
-    if (filters.status) {
-      where.status = filters.status;
-    }
-    if (filters.algorithmId) {
-      where.algorithm = { id: filters.algorithmId };
-    }
-    if (filters.pipelineId) {
-      where.pipelineId = filters.pipelineId;
-    }
-
-    const [data, total] = await this.sessionRepository.findAndCount({
-      where,
-      relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange'],
-      order: { createdAt: 'DESC' },
-      take: filters.limit ?? 50,
-      skip: filters.offset ?? 0
-    });
-
-    return { data, total };
-  }
-
-  /**
-   * Find a single session by ID
-   */
-  async findOne(id: string, user: User): Promise<PaperTradingSession> {
+  private async findOne(id: string, user: User): Promise<PaperTradingSession> {
     const session = await this.sessionRepository.findOne({
       where: { id, user: { id: user.id } },
       relations: ['algorithm', 'exchangeKey', 'exchangeKey.exchange', 'accounts']
@@ -351,163 +311,35 @@ export class PaperTradingService {
   }
 
   /**
-   * Get orders for a session
-   */
-  async getOrders(
-    sessionId: string,
-    user: User,
-    filters: PaperTradingOrderFiltersDto
-  ): Promise<{ data: PaperTradingOrder[]; total: number }> {
-    await this.findOne(sessionId, user); // Validates access
-
-    const where: FindOptionsWhere<PaperTradingOrder> = { session: { id: sessionId } };
-
-    if (filters.status) {
-      where.status = filters.status;
-    }
-    if (filters.side) {
-      where.side = filters.side;
-    }
-    if (filters.symbol) {
-      where.symbol = filters.symbol;
-    }
-
-    const [data, total] = await this.orderRepository.findAndCount({
-      where,
-      relations: ['signal'],
-      order: { createdAt: 'DESC' },
-      take: filters.limit ?? 100,
-      skip: filters.offset ?? 0
-    });
-
-    return { data, total };
-  }
-
-  /**
-   * Get signals for a session
-   */
-  async getSignals(
-    sessionId: string,
-    user: User,
-    filters: PaperTradingSignalFiltersDto
-  ): Promise<{ data: PaperTradingSignal[]; total: number }> {
-    await this.findOne(sessionId, user); // Validates access
-
-    const where: FindOptionsWhere<PaperTradingSignal> = { session: { id: sessionId } };
-
-    if (filters.signalType) {
-      where.signalType = filters.signalType;
-    }
-    if (filters.direction) {
-      where.direction = filters.direction;
-    }
-    if (filters.instrument) {
-      where.instrument = filters.instrument;
-    }
-    if (filters.processed !== undefined) {
-      where.processed = filters.processed;
-    }
-
-    const [data, total] = await this.signalRepository.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      take: filters.limit ?? 100,
-      skip: filters.offset ?? 0
-    });
-
-    return { data, total };
-  }
-
-  /**
-   * Get virtual balances for a session
-   */
-  async getBalances(sessionId: string, user: User): Promise<PaperTradingAccount[]> {
-    await this.findOne(sessionId, user); // Validates access
-
-    return this.accountRepository.find({
-      where: { session: { id: sessionId } },
-      order: { currency: 'ASC' }
-    });
-  }
-
-  /**
-   * Get snapshots for a session (for charting)
-   */
-  async getSnapshots(
-    sessionId: string,
-    user: User,
-    filters: PaperTradingSnapshotFiltersDto
-  ): Promise<PaperTradingSnapshot[]> {
-    await this.findOne(sessionId, user); // Validates access
-
-    const qb = this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .where('snapshot.sessionId = :sessionId', { sessionId })
-      .orderBy('snapshot.timestamp', 'ASC')
-      .take(filters.limit ?? 200);
-
-    if (filters.after) {
-      qb.andWhere('snapshot.timestamp > :after', { after: new Date(filters.after) });
-    }
-    if (filters.before) {
-      qb.andWhere('snapshot.timestamp < :before', { before: new Date(filters.before) });
-    }
-
-    return qb.getMany();
-  }
-
-  /**
-   * Get current positions for a session
-   */
-  async getPositions(
-    sessionId: string,
-    user: User
-  ): Promise<
-    Array<{
-      symbol: string;
-      quantity: number;
-      averageCost: number;
-      currentPrice?: number;
-      marketValue?: number;
-      unrealizedPnL?: number;
-      unrealizedPnLPercent?: number;
-    }>
-  > {
-    // Verify session exists and belongs to user
-    await this.findOne(sessionId, user);
-
-    // Get accounts that have holdings (not quote currency)
-    const accounts = await this.accountRepository.find({
-      where: { session: { id: sessionId } }
-    });
-
-    const quoteCurrency = getQuoteCurrency(accounts.map((a) => a.currency));
-
-    // Filter to only holding accounts with positive balances
-    const holdingAccounts = accounts.filter((a) => a.currency !== quoteCurrency && a.total > 0);
-
-    return holdingAccounts.map((account) => ({
-      symbol: `${account.currency}/${quoteCurrency}`,
-      quantity: account.total,
-      averageCost: account.averageCost ?? 0
-      // currentPrice, marketValue, unrealizedPnL populated by market data service
-    }));
-  }
-
-  /**
-   * Get performance metrics for a session
-   */
-  async getPerformance(sessionId: string, user: User): Promise<SessionStatusResponse['metrics']> {
-    const session = await this.findOne(sessionId, user);
-    return this.jobService.calculateMetrics(session);
-  }
-
-  /**
    * Start a paper trading session from pipeline orchestrator
    * Called by PipelineOrchestratorService
    */
   async startFromPipeline(params: PipelineStartParams): Promise<PaperTradingSession> {
     const user = { id: params.userId } as User;
+
+    // Defense-in-depth: block if an active session already exists for this
+    // (user, algorithm). Excludes the current pipeline's own session in case
+    // of retry. The orchestration-level checkDuplicate is the primary guard;
+    // this prevents silent duplicates if orchestration is bypassed.
+    const existing = await this.sessionRepository
+      .createQueryBuilder('s')
+      .where('s.userId = :userId', { userId: params.userId })
+      .andWhere('s.algorithmId = :algorithmId', { algorithmId: params.algorithmId })
+      .andWhere('s.status IN (:...active)', {
+        active: [PaperTradingStatus.ACTIVE, PaperTradingStatus.PAUSED]
+      })
+      .andWhere('(s.pipelineId IS NULL OR s.pipelineId != :pipelineId)', {
+        pipelineId: params.pipelineId
+      })
+      .getOne();
+
+    if (existing) {
+      throw new BadRequestException(
+        `Cannot start paper-trading from pipeline ${params.pipelineId}: ` +
+          `an active session (${existing.id}, status=${existing.status}) already exists ` +
+          `for user ${params.userId} and algorithm ${params.algorithmId}.`
+      );
+    }
 
     // Create session with pipeline context
     const dto: CreatePaperTradingSessionDto = {
