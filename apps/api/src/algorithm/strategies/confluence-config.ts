@@ -237,8 +237,8 @@ export function getConfluenceParameterConstraints(): ParameterConstraint[] {
           params.macdEnabled !== false,
           params.bbEnabled !== false
         ].filter(Boolean).length;
-        const minBuy = (params.minConfluence as number) ?? 2;
-        const minSell = (params.minSellConfluence as number) ?? minBuy;
+        const minBuy = typeof params.minConfluence === 'number' ? params.minConfluence : 2;
+        const minSell = typeof params.minSellConfluence === 'number' ? params.minSellConfluence : minBuy;
         return minBuy <= enabledDirectional && minSell <= enabledDirectional;
       },
       message:
