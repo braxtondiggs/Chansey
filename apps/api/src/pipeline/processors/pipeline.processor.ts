@@ -14,6 +14,7 @@ import { PipelineOrchestratorService } from '../services/pipeline-orchestrator.s
 @Processor('pipeline')
 export class PipelineProcessor extends WorkerHost {
   private readonly logger = new Logger(PipelineProcessor.name);
+  private static readonly PENDING_RETRY_DELAY_MS = 2000;
 
   constructor(
     private readonly orchestratorService: PipelineOrchestratorService,
@@ -30,7 +31,7 @@ export class PipelineProcessor extends WorkerHost {
 
     try {
       // Get pipeline and verify state
-      const pipeline = await this.pipelineRepository.findOne({
+      let pipeline = await this.pipelineRepository.findOne({
         where: { id: pipelineId }
       });
 
@@ -39,8 +40,27 @@ export class PipelineProcessor extends WorkerHost {
         return;
       }
 
-      // Only process if pipeline is still running
-      if (pipeline.status !== PipelineStatus.RUNNING) {
+      // Defense-in-depth against PG/Redis race: if the worker picks up the job
+      // before the orchestrator's transaction commits, we'll see PENDING. Wait
+      // briefly and re-read before giving up.
+      if (pipeline.status === PipelineStatus.PENDING) {
+        this.logger.warn(
+          `Pipeline ${pipelineId} is PENDING — possible race condition, retrying in ${PipelineProcessor.PENDING_RETRY_DELAY_MS}ms`
+        );
+        await new Promise((resolve) => setTimeout(resolve, PipelineProcessor.PENDING_RETRY_DELAY_MS));
+        const retried = await this.pipelineRepository.findOne({ where: { id: pipelineId } });
+        if (!retried || retried.status !== PipelineStatus.RUNNING) {
+          // Throw so the catch handler marks the pipeline FAILED — silently
+          // returning here would orphan the pipeline (no worker job, status
+          // never advances), recreating a narrower version of the original race.
+          throw new Error(
+            `Pipeline ${pipelineId} still PENDING after ${PipelineProcessor.PENDING_RETRY_DELAY_MS}ms retry (status: ${retried?.status}) — orchestrator transaction may not have committed`
+          );
+        }
+        pipeline = retried;
+      } else if (pipeline.status !== PipelineStatus.RUNNING) {
+        // Only process if pipeline is still running. CANCELLED/COMPLETED/PAUSED
+        // are intentional terminal states — silently skipping is correct here.
         this.logger.warn(`Pipeline ${pipelineId} is not running (status: ${pipeline.status}). Skipping stage ${stage}`);
         return;
       }

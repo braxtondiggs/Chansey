@@ -180,13 +180,23 @@ export class PipelineOrchestratorService {
       throw new BadRequestException('Pipeline has been cancelled');
     }
 
-    await this.dataSource.transaction(async (manager) => {
-      pipeline.status = PipelineStatus.RUNNING;
-      pipeline.startedAt = pipeline.startedAt ?? new Date();
-      await manager.save(pipeline);
+    pipeline.status = PipelineStatus.RUNNING;
+    pipeline.startedAt = pipeline.startedAt ?? new Date();
+    await this.pipelineRepository.save(pipeline);
 
+    try {
       await this.stageExecutionService.enqueueStageJob(pipeline, pipeline.currentStage, user.id);
-    });
+    } catch (error) {
+      // Enqueue failed after commit — mark pipeline FAILED so it doesn't sit RUNNING forever
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to enqueue stage job for pipeline ${id}: ${err.message}`);
+      await this.pipelineRepository.update(id, {
+        status: PipelineStatus.FAILED,
+        failureReason: `Failed to enqueue stage job: ${err.message}`,
+        completedAt: new Date()
+      });
+      throw error;
+    }
 
     this.logger.log(`Started pipeline ${id} at stage ${pipeline.currentStage}`);
     return this.findOne(id, user);

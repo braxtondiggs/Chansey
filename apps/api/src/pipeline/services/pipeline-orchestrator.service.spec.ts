@@ -58,7 +58,8 @@ describe('PipelineOrchestratorService', () => {
             save: jest.fn(),
             findOne: jest.fn(),
             findAndCount: jest.fn(),
-            remove: jest.fn()
+            remove: jest.fn(),
+            update: jest.fn()
           }
         },
         {
@@ -147,6 +148,9 @@ describe('PipelineOrchestratorService', () => {
     it('queues first stage when starting a pending pipeline', async () => {
       pipelineRepository.findOne.mockResolvedValue(makePipeline());
       await service.startPipeline('pipeline-123', mockUser);
+      expect(pipelineRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'pipeline-123', status: PipelineStatus.RUNNING })
+      );
       expect(stageExecutionService.enqueueStageJob).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'pipeline-123' }),
         PipelineStage.OPTIMIZE,
@@ -162,6 +166,22 @@ describe('PipelineOrchestratorService', () => {
         expect(stageExecutionService.enqueueStageJob).not.toHaveBeenCalled();
       }
     );
+
+    it('marks pipeline FAILED and rethrows when enqueueStageJob fails', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline());
+      stageExecutionService.enqueueStageJob.mockRejectedValueOnce(new Error('queue down'));
+
+      await expect(service.startPipeline('pipeline-123', mockUser)).rejects.toThrow('queue down');
+
+      expect(pipelineRepository.update).toHaveBeenCalledWith(
+        'pipeline-123',
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringMatching(/Failed to enqueue stage job: queue down/),
+          completedAt: expect.any(Date)
+        })
+      );
+    });
   });
 
   describe('pausePipeline', () => {
