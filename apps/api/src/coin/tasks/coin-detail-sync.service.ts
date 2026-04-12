@@ -2,21 +2,34 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { mapCoinGeckoDetailToUpdate } from './map-coingecko-detail.util';
 
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { withRetry } from '../../shared/retry.util';
+import { withRateLimitRetry } from '../../shared/retry.util';
 import { Coin } from '../coin.entity';
 import { CoinService } from '../coin.service';
 
 @Injectable()
 export class CoinDetailSyncService {
+  private static readonly CIRCUIT_KEY = 'coingecko-detail';
+  private static readonly CIRCUIT_RESET_MS = 45_000;
+  private static readonly MAX_BACKOFF_MS = 5 * 60_000;
+  private static readonly BACKOFF_MULTIPLIER = 2;
+  private static readonly NORMAL_BATCH_DELAY_MS = 2500;
+  private static readonly ELEVATED_BATCH_DELAY_MS = 5000;
+  private static readonly SUCCESS_BATCHES_TO_NORMALIZE = 3;
   private readonly logger = new Logger(CoinDetailSyncService.name);
-  private readonly API_RATE_LIMIT_DELAY = 2500;
 
   constructor(
     private readonly coinService: CoinService,
-    private readonly gecko: CoinGeckoClientService
-  ) {}
+    private readonly gecko: CoinGeckoClientService,
+    private readonly circuitBreaker: CircuitBreakerService
+  ) {
+    this.circuitBreaker.configure(CoinDetailSyncService.CIRCUIT_KEY, {
+      failureThreshold: 5,
+      resetTimeoutMs: CoinDetailSyncService.CIRCUIT_RESET_MS
+    });
+  }
 
   /**
    * Syncs detailed coin information from CoinGecko for all coins in the database.
@@ -42,16 +55,51 @@ export class CoinDetailSyncService {
     const batchSize = 3;
     const startedAt = Date.now();
     let batchIndex = 0;
+    let consecutivePauses = 0;
+    let currentBatchDelay = CoinDetailSyncService.NORMAL_BATCH_DELAY_MS;
+    let successBatchesSincePause = 0;
 
     for (let i = 0; i < allCoins.length; i += batchSize) {
+      if (this.circuitBreaker.isOpen(CoinDetailSyncService.CIRCUIT_KEY)) {
+        consecutivePauses++;
+        const backoffMs = Math.min(
+          CoinDetailSyncService.CIRCUIT_RESET_MS *
+            Math.pow(CoinDetailSyncService.BACKOFF_MULTIPLIER, consecutivePauses - 1),
+          CoinDetailSyncService.MAX_BACKOFF_MS
+        );
+        this.logger.warn(
+          `Circuit open — pausing ${CoinDetailSyncService.CIRCUIT_KEY} for ${(backoffMs / 1000).toFixed(0)}s (pause #${consecutivePauses})`
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        currentBatchDelay = CoinDetailSyncService.ELEVATED_BATCH_DELAY_MS;
+        successBatchesSincePause = 0;
+        i -= batchSize;
+        continue;
+      }
+
       const batch = allCoins.slice(i, i + batchSize);
       const results = await this.updateCoinBatch(batch);
 
-      updatedCount += results.filter((r) => r.success).length;
-      errorCount += results.filter((r) => !r.success).length;
+      const successCount = results.filter((r) => r.success).length;
+      const failCount = results.filter((r) => !r.success).length;
+      updatedCount += successCount;
+      errorCount += failCount;
 
-      // Heartbeat every 30 batches (~75s). Gives Loki enough datapoints to
-      // alert via `absent_over_time` with a tight window, without spamming.
+      if (successCount > 0) {
+        consecutivePauses = 0;
+        if (failCount === 0) {
+          successBatchesSincePause++;
+          if (successBatchesSincePause >= CoinDetailSyncService.SUCCESS_BATCHES_TO_NORMALIZE) {
+            currentBatchDelay = CoinDetailSyncService.NORMAL_BATCH_DELAY_MS;
+          }
+        } else {
+          successBatchesSincePause = 0;
+        }
+      }
+
+      // Heartbeat every 30 batches (~75–150s depending on batch delay).
+      // Gives Loki enough datapoints to alert via `absent_over_time`
+      // with a tight window, without spamming.
       batchIndex++;
       if (batchIndex % 30 === 0) {
         const elapsedMinutes = ((Date.now() - startedAt) / 60_000).toFixed(1);
@@ -64,7 +112,7 @@ export class CoinDetailSyncService {
       await onProgress?.(progressPercent);
 
       if (i + batchSize < allCoins.length) {
-        await new Promise((resolve) => setTimeout(resolve, this.API_RATE_LIMIT_DELAY));
+        await new Promise((resolve) => setTimeout(resolve, currentBatchDelay));
       }
     }
 
@@ -108,7 +156,7 @@ export class CoinDetailSyncService {
         try {
           this.logger.debug(`Updating details for ${symbol} (${slug})`);
 
-          const retryResult = await withRetry(
+          const retryResult = await withRateLimitRetry(
             () =>
               this.gecko.client.coins.getID(slug, {
                 localization: false,
@@ -116,12 +164,16 @@ export class CoinDetailSyncService {
               }),
             {
               maxRetries: 2,
-              initialDelayMs: 3000,
-              maxDelayMs: 10000,
               logger: this.logger,
               operationName: `coinId(${symbol})`
             }
           );
+
+          if (retryResult.success) {
+            this.circuitBreaker.recordSuccess(CoinDetailSyncService.CIRCUIT_KEY);
+          } else {
+            this.circuitBreaker.recordFailure(CoinDetailSyncService.CIRCUIT_KEY);
+          }
 
           if (!retryResult.success) {
             const { message } = toErrorInfo(retryResult.error);
