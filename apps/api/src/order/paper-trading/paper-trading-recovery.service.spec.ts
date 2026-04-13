@@ -504,6 +504,9 @@ describe('PaperTradingRecoveryService', () => {
       const service = new PaperTradingRecoveryService(
         paperTradingService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
+        {
+          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
+        } as any,
         queue as any
       );
 

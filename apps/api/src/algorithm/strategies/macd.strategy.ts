@@ -165,10 +165,10 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
 
     if (
       previousIndex < 0 ||
-      isNaN(macd[currentIndex]) ||
-      isNaN(signal[currentIndex]) ||
-      isNaN(macd[previousIndex]) ||
-      isNaN(signal[previousIndex])
+      !Number.isFinite(macd[currentIndex]) ||
+      !Number.isFinite(signal[currentIndex]) ||
+      !Number.isFinite(macd[previousIndex]) ||
+      !Number.isFinite(signal[previousIndex])
     ) {
       return null;
     }
@@ -252,7 +252,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
     let sumMagnitude = 0;
     let count = 0;
     for (let i = Math.max(0, currentIndex - 20); i <= currentIndex; i++) {
-      if (!isNaN(histogram[i])) {
+      if (Number.isFinite(histogram[i])) {
         sumMagnitude += Math.abs(histogram[i]);
         count++;
       }
@@ -288,18 +288,18 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
     let histogramGrowing = 0;
 
     for (let i = startIndex + 1; i <= currentIndex; i++) {
-      if (isNaN(histogram[i]) || isNaN(histogram[i - 1])) continue;
+      if (!Number.isFinite(histogram[i]) || !Number.isFinite(histogram[i - 1])) continue;
 
       if (direction === 'bullish') {
         // Check if histogram is growing (becoming more positive or less negative)
         if (histogram[i] > histogram[i - 1]) histogramGrowing++;
         // Check if MACD is above signal
-        if (!isNaN(macd[i]) && !isNaN(signal[i]) && macd[i] > signal[i]) trendingBars++;
+        if (Number.isFinite(macd[i]) && Number.isFinite(signal[i]) && macd[i] > signal[i]) trendingBars++;
       } else {
         // Check if histogram is shrinking (becoming more negative or less positive)
         if (histogram[i] < histogram[i - 1]) histogramGrowing++;
         // Check if MACD is below signal
-        if (!isNaN(macd[i]) && !isNaN(signal[i]) && macd[i] < signal[i]) trendingBars++;
+        if (Number.isFinite(macd[i]) && Number.isFinite(signal[i]) && macd[i] < signal[i]) trendingBars++;
       }
     }
 

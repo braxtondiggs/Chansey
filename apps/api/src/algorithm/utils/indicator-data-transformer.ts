@@ -152,7 +152,7 @@ export class IndicatorDataTransformer {
    */
   static getLatestValue(indicatorValues: number[]): number | null {
     for (let i = indicatorValues.length - 1; i >= 0; i--) {
-      if (!isNaN(indicatorValues[i])) {
+      if (Number.isFinite(indicatorValues[i])) {
         return indicatorValues[i];
       }
     }
@@ -168,7 +168,7 @@ export class IndicatorDataTransformer {
   static getPreviousValue(indicatorValues: number[]): number | null {
     let foundLatest = false;
     for (let i = indicatorValues.length - 1; i >= 0; i--) {
-      if (!isNaN(indicatorValues[i])) {
+      if (Number.isFinite(indicatorValues[i])) {
         if (foundLatest) {
           return indicatorValues[i];
         }

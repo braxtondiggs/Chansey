@@ -93,7 +93,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
             lower: preLower,
             pb: prePb,
             bandwidth: preBandwidth,
-            validCount: preUpper.filter((v) => !isNaN(v)).length,
+            validCount: preUpper.filter((v) => Number.isFinite(v)).length,
             period,
             stdDev: threshold,
             fromCache: false
@@ -111,7 +111,9 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
         // Extract SMA from middle band; derive SD from upper band distance
         const movingAverage = bollingerBandsResult.middle;
         const standardDeviation = bollingerBandsResult.upper.map((u, i) =>
-          isNaN(u) || isNaN(bollingerBandsResult.middle[i]) ? NaN : (u - bollingerBandsResult.middle[i]) / threshold
+          !Number.isFinite(u) || !Number.isFinite(bollingerBandsResult.middle[i])
+            ? NaN
+            : (u - bollingerBandsResult.middle[i]) / threshold
         );
 
         // Generate signals based on mean reversion
@@ -169,7 +171,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
     const currentMA = movingAverage[currentIndex];
     const currentStdDev = standardDeviation[currentIndex];
 
-    if (isNaN(currentMA) || isNaN(currentStdDev) || currentStdDev === 0) {
+    if (!Number.isFinite(currentMA) || !Number.isFinite(currentStdDev) || currentStdDev === 0) {
       return null;
     }
 
@@ -265,7 +267,9 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
         lowerBand: bollingerBands.lower[index] ?? movingAverage[index] - standardDeviation[index] * threshold,
         middleBand: bollingerBands.middle[index] ?? movingAverage[index],
         zScore:
-          isNaN(movingAverage[index]) || isNaN(standardDeviation[index]) || standardDeviation[index] === 0
+          !Number.isFinite(movingAverage[index]) ||
+          !Number.isFinite(standardDeviation[index]) ||
+          standardDeviation[index] === 0
             ? NaN
             : (price.avg - movingAverage[index]) / standardDeviation[index]
       }

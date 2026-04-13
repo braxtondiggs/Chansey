@@ -131,7 +131,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
 
-    if (previousIndex < 0 || isNaN(rsi[currentIndex]) || isNaN(rsi[previousIndex])) {
+    if (previousIndex < 0 || !Number.isFinite(rsi[currentIndex]) || !Number.isFinite(rsi[previousIndex])) {
       return null;
     }
 
@@ -211,7 +211,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
 
     let consistentBars = 0;
     for (let i = startIndex; i < rsi.length; i++) {
-      if (isNaN(rsi[i])) continue;
+      if (!Number.isFinite(rsi[i])) continue;
 
       if (condition === 'oversold' && rsi[i] < 50) {
         consistentBars++;

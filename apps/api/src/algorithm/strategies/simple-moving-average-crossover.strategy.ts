@@ -122,10 +122,10 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
 
     if (
       previousIndex < 0 ||
-      isNaN(fastSMA[currentIndex]) ||
-      isNaN(slowSMA[currentIndex]) ||
-      isNaN(fastSMA[previousIndex]) ||
-      isNaN(slowSMA[previousIndex])
+      !Number.isFinite(fastSMA[currentIndex]) ||
+      !Number.isFinite(slowSMA[currentIndex]) ||
+      !Number.isFinite(fastSMA[previousIndex]) ||
+      !Number.isFinite(slowSMA[previousIndex])
     ) {
       return null;
     }

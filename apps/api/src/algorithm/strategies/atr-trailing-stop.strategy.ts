@@ -206,13 +206,13 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
 
     // Calculate previous stop level for comparison
     const prevExtremum = this.findExtremum(prices, config, direction, lookbackStart, currentIndex - 1);
-    const prevATR = !isNaN(atr[currentIndex - 1]) ? atr[currentIndex - 1] : currentATR;
+    const prevATR = Number.isFinite(atr[currentIndex - 1]) ? atr[currentIndex - 1] : currentATR;
     const previousStopLevel = isLong
       ? prevExtremum - prevATR * config.atrMultiplier
       : prevExtremum + prevATR * config.atrMultiplier;
 
     // Ratchet: trailing stop should only move in the favorable direction
-    const ratchetedStopLevel = isNaN(previousStopLevel)
+    const ratchetedStopLevel = !Number.isFinite(previousStopLevel)
       ? stopLevel
       : isLong
         ? Math.max(stopLevel, previousStopLevel)
@@ -242,7 +242,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
     const currentIndex = prices.length - 1;
     const lookbackStart = Math.max(0, currentIndex - config.atrPeriod);
 
-    if (isNaN(atr[currentIndex])) return null;
+    if (!Number.isFinite(atr[currentIndex])) return null;
 
     const stopState = this.calculateTrailingStop(prices, atr, config, lookbackStart, currentIndex, direction);
     const isLong = direction === 'long';
@@ -296,7 +296,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
     if (currentIndex < 1) return null;
 
     const lookbackStart = Math.max(0, currentIndex - config.atrPeriod);
-    if (isNaN(atr[currentIndex]) || isNaN(atr[currentIndex - 1])) return null;
+    if (!Number.isFinite(atr[currentIndex]) || !Number.isFinite(atr[currentIndex - 1])) return null;
 
     const currentState = this.calculateTrailingStop(prices, atr, config, lookbackStart, currentIndex, direction);
     if (currentState.isTriggered) return null;
@@ -350,7 +350,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
     let atrSum = 0;
     let count = 0;
     for (let i = startIndex; i <= currentIndex; i++) {
-      if (!isNaN(atr[i])) {
+      if (Number.isFinite(atr[i])) {
         atrSum += atr[i];
         count++;
       }
@@ -361,7 +361,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
 
     let atrVariation = 0;
     for (let i = startIndex; i <= currentIndex; i++) {
-      if (!isNaN(atr[i])) {
+      if (Number.isFinite(atr[i])) {
         atrVariation += Math.abs(atr[i] - avgATR) / avgATR;
       }
     }
@@ -411,7 +411,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
       let longStop: number | undefined;
       let shortStop: number | undefined;
 
-      if (!isNaN(atr[index])) {
+      if (Number.isFinite(atr[index])) {
         const lookbackStart = Math.max(0, index - config.atrPeriod);
         const highestHigh = this.findExtremum(prices, config, 'long', lookbackStart, index);
         longStop = highestHigh - atr[index] * config.atrMultiplier;

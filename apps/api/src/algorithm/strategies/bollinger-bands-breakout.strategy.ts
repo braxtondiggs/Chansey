@@ -178,7 +178,11 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
   ): TradingSignal | null {
     const currentIndex = prices.length - 1;
 
-    if (isNaN(upper[currentIndex]) || isNaN(lower[currentIndex]) || isNaN(pb[currentIndex])) {
+    if (
+      !Number.isFinite(upper[currentIndex]) ||
+      !Number.isFinite(lower[currentIndex]) ||
+      !Number.isFinite(pb[currentIndex])
+    ) {
       return null;
     }
 
@@ -265,7 +269,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
     let bearishCount = 0;
 
     for (let i = currentIndex - config.confirmationBars + 1; i <= currentIndex; i++) {
-      if (i < 0 || isNaN(upper[i]) || isNaN(lower[i])) continue;
+      if (i < 0 || !Number.isFinite(upper[i]) || !Number.isFinite(lower[i])) continue;
 
       const price = prices[i].avg;
       if (price > upper[i]) bullishCount++;
@@ -313,7 +317,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
     // Check if bandwidth is expanding (volatility increasing)
     let bandwidthExpanding = 0;
     for (let i = startIndex + 1; i <= currentIndex; i++) {
-      if (!isNaN(bandwidth[i]) && !isNaN(bandwidth[i - 1]) && bandwidth[i] > bandwidth[i - 1]) {
+      if (Number.isFinite(bandwidth[i]) && Number.isFinite(bandwidth[i - 1]) && bandwidth[i] > bandwidth[i - 1]) {
         bandwidthExpanding++;
       }
     }
@@ -321,7 +325,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
     // Check momentum consistency
     let momentumConsistent = 0;
     for (let i = startIndex + 1; i <= currentIndex; i++) {
-      if (!isNaN(pb[i]) && !isNaN(pb[i - 1])) {
+      if (Number.isFinite(pb[i]) && Number.isFinite(pb[i - 1])) {
         if (direction === 'bullish' && pb[i] > pb[i - 1]) momentumConsistent++;
         if (direction === 'bearish' && pb[i] < pb[i - 1]) momentumConsistent++;
       }

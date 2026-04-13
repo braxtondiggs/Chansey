@@ -208,7 +208,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
 
     for (let i = windowStart; i <= currentIndex; i++) {
       // Check RSI signals
-      if (!isNaN(rsi[i])) {
+      if (Number.isFinite(rsi[i])) {
         if (rsi[i] < config.rsiOversold) {
           signalState.rsiSignal = 'buy';
           signalState.rsiBar = i;
@@ -221,10 +221,10 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
       // Check MACD crossover signals
       if (
         i > 0 &&
-        !isNaN(macd[i]) &&
-        !isNaN(macdSignalLine[i]) &&
-        !isNaN(macd[i - 1]) &&
-        !isNaN(macdSignalLine[i - 1])
+        Number.isFinite(macd[i]) &&
+        Number.isFinite(macdSignalLine[i]) &&
+        Number.isFinite(macd[i - 1]) &&
+        Number.isFinite(macdSignalLine[i - 1])
       ) {
         const isBullishCrossover = macd[i - 1] <= macdSignalLine[i - 1] && macd[i] > macdSignalLine[i];
         const isBearishCrossover = macd[i - 1] >= macdSignalLine[i - 1] && macd[i] < macdSignalLine[i];
@@ -347,7 +347,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
     let avgHistogram = 0;
     let count = 0;
     for (let i = Math.max(0, currentIndex - 20); i <= currentIndex; i++) {
-      if (!isNaN(histogram[i])) {
+      if (Number.isFinite(histogram[i])) {
         avgHistogram += Math.abs(histogram[i]);
         count++;
       }

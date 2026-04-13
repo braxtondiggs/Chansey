@@ -138,6 +138,55 @@ describe('RSIStrategy', () => {
       expect(result.signals[0].type).toBe(SignalType.BUY);
     });
 
+    it('should not crash when RSI values contain null (cache deserialization bug)', async () => {
+      const prices = createMockPrices(30);
+      // Simulate cache round-trip: NaN padding serialized as null
+      // Only last two values are valid numbers — previous are null from JSON.stringify(NaN)
+      const rsiValues: (number | null)[] = Array(30).fill(null);
+      rsiValues[28] = 28;
+      rsiValues[29] = 25; // oversold, previous (28) is also valid
+      mockRsi(rsiValues as number[]);
+
+      const result = await strategy.execute(
+        buildContext(prices, { period: 14, oversoldThreshold: 30, overboughtThreshold: 70, minConfidence: 0 })
+      );
+
+      expect(result.success).toBe(true);
+      // Should not crash — null values are treated as invalid by Number.isFinite
+      // Both rsi[28] and rsi[29] are valid numbers, so signal should generate
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('should safely skip when currentRSI is null from cache deserialization', async () => {
+      const prices = createMockPrices(30);
+      // All null — simulates fully padded NaN array after cache round-trip
+      const rsiValues: (number | null)[] = Array(30).fill(null);
+      mockRsi(rsiValues as number[]);
+
+      const result = await strategy.execute(
+        buildContext(prices, { period: 14, oversoldThreshold: 30, overboughtThreshold: 70 })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should skip when only currentRSI is valid but previousRSI is null', async () => {
+      const prices = createMockPrices(30);
+      const rsiValues: (number | null)[] = Array(30).fill(null);
+      rsiValues[29] = 25; // oversold, but rsi[28] is null
+      mockRsi(rsiValues as number[]);
+
+      const result = await strategy.execute(
+        buildContext(prices, { period: 14, oversoldThreshold: 30, overboughtThreshold: 70 })
+      );
+
+      expect(result.success).toBe(true);
+      // Number.isFinite(null) returns false, so previousRSI check blocks the signal
+      expect(result.signals).toHaveLength(0);
+    });
+
     it('should return no signal when previousRSI is NaN', async () => {
       const prices = createMockPrices(30);
       // Only the last RSI value is valid; previous is still NaN

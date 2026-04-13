@@ -120,7 +120,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   ): TradingSignal | null {
     const lastIndex = prices.length - 1;
 
-    if (lastIndex < 1 || isNaN(ema12[lastIndex]) || isNaN(ema26[lastIndex])) {
+    if (lastIndex < 1 || !Number.isFinite(ema12[lastIndex]) || !Number.isFinite(ema26[lastIndex])) {
       return null;
     }
 
@@ -131,10 +131,10 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
 
       if (
         prevIndex < 0 ||
-        isNaN(ema12[barIndex]) ||
-        isNaN(ema26[barIndex]) ||
-        isNaN(ema12[prevIndex]) ||
-        isNaN(ema26[prevIndex])
+        !Number.isFinite(ema12[barIndex]) ||
+        !Number.isFinite(ema26[barIndex]) ||
+        !Number.isFinite(ema12[prevIndex]) ||
+        !Number.isFinite(ema26[prevIndex])
       ) {
         continue;
       }
