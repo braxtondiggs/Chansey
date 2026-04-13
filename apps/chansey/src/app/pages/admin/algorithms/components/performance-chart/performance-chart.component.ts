@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, computed, EventEmitter, inject, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -20,7 +19,7 @@ interface PeriodOption {
 @Component({
   selector: 'app-performance-chart',
   standalone: true,
-  imports: [CommonModule, FormsModule, CardModule, ChartModule, SelectButtonModule, SkeletonModule],
+  imports: [FormsModule, CardModule, ChartModule, SelectButtonModule, SkeletonModule],
   template: `
     <p-card>
       <ng-template #header>

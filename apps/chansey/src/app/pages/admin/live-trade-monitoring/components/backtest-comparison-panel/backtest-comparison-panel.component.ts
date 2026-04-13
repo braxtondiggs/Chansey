@@ -1,4 +1,4 @@
-import { CommonModule, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -20,7 +20,7 @@ interface MetricRow {
   selector: 'app-backtest-comparison-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, CardModule, TableModule, TagModule, DecimalPipe],
+  imports: [CardModule, TableModule, TagModule, DecimalPipe],
   template: `
     <div class="mt-4">
       <!-- Summary Header -->

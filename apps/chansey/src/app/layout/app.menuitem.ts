@@ -1,5 +1,5 @@
 import { AnimationEvent, animate, state, style, transition, trigger } from '@angular/animations';
-import { CommonModule } from '@angular/common';
+import { NgClass } from '@angular/common';
 import {
   AfterViewChecked,
   Component,
@@ -27,7 +27,7 @@ import { LayoutService } from '../shared/services/layout.service';
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector
   selector: '[chansey-menuitem]',
-  imports: [CommonModule, RouterModule, RippleModule, TooltipModule],
+  imports: [RouterModule, RippleModule, TooltipModule, NgClass],
   template: `
     <ng-container>
       @if (root && item.visible !== false) {

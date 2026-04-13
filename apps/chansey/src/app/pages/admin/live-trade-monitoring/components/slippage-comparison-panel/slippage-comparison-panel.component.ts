@@ -1,4 +1,4 @@
-import { CommonModule, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
 import { ChartData, ChartOptions } from 'chart.js';
@@ -12,7 +12,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
   selector: 'app-slippage-comparison-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, CardModule, ChartModule, TableModule, DecimalPipe],
+  imports: [CardModule, ChartModule, TableModule, DecimalPipe],
   template: `
     <div class="mt-4">
       <!-- Overall Stats -->

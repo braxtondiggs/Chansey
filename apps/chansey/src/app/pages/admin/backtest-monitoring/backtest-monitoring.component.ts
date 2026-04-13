@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -51,7 +50,6 @@ type PipelineView = 'optimization' | 'historical' | 'live-replay' | 'paper-tradi
   selector: 'app-backtest-monitoring',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     ButtonModule,
     CardModule,

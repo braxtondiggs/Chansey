@@ -1,4 +1,4 @@
-import { enableProdMode } from '@angular/core';
+import { enableProdMode, provideZoneChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 
 import { AppComponent } from './app/app.component';
@@ -23,7 +23,10 @@ if (!environment.production) {
   }
 }
 
-bootstrapApplication(AppComponent, finalAppConfig)
+bootstrapApplication(AppComponent, {
+  ...finalAppConfig,
+  providers: [provideZoneChangeDetection({ eventCoalescing: true }), ...finalAppConfig.providers]
+})
   .then(() => {
     // Register custom service worker for push notifications (production only)
     if (environment.production && 'serviceWorker' in navigator) {

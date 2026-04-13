@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -10,7 +9,7 @@ import { PaginatedAlgorithmListDto } from '../../live-trade-monitoring.types';
   selector: 'app-algorithm-selector',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FormsModule, SelectModule],
+  imports: [FormsModule, SelectModule],
   template: `
     <div class="flex items-center gap-4">
       <label class="font-medium">Select Algorithm:</label>

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -10,7 +9,7 @@ import { AlgorithmStrategy } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-strategy-card',
   standalone: true,
-  imports: [CommonModule, CardModule, TagModule, PanelModule],
+  imports: [CardModule, TagModule, PanelModule],
   template: `
     <p-card>
       <ng-template #header>

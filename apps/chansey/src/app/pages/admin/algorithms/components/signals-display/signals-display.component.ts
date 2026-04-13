@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -11,7 +10,7 @@ import { TradingSignalType, TradingSignal } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-signals-display',
   standalone: true,
-  imports: [CommonModule, CardModule, TableModule, TagModule, TooltipModule],
+  imports: [CardModule, TableModule, TagModule, TooltipModule],
   template: `
     <p-card>
       <ng-template #header>

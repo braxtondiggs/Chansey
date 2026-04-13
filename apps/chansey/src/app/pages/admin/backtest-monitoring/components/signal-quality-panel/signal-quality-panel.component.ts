@@ -1,4 +1,4 @@
-import { CommonModule, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { ChartData, ChartOptions } from 'chart.js';
@@ -12,7 +12,7 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-signal-quality-panel',
   standalone: true,
-  imports: [CommonModule, CardModule, ChartModule, DecimalPipe, TableModule, TagModule],
+  imports: [CardModule, ChartModule, DecimalPipe, TableModule, TagModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

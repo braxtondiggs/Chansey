@@ -60,7 +60,7 @@ export class RedisHealthIndicator implements OnModuleDestroy {
       if (result !== 'PONG') {
         return indicator.down({ message: `Unexpected PING response: ${result}` });
       }
-      return indicator.up({ status: 'up' });
+      return indicator.up();
     } catch (error: unknown) {
       this.disconnect();
       const err = toErrorInfo(error);

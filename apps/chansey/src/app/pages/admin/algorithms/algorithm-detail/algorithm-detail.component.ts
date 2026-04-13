@@ -1,4 +1,4 @@
-import { CommonModule, Location } from '@angular/common';
+import { Location } from '@angular/common';
 import { Component, computed, inject, signal, ViewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -35,7 +35,6 @@ import { AlgorithmDetailQueries } from '../services/algorithm-detail.queries';
   selector: 'app-algorithm-detail',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     CardModule,
     SkeletonModule,

@@ -1,4 +1,4 @@
-import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe, SlicePipe } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
@@ -14,7 +14,6 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
   selector: 'app-backtests-table',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     CardModule,
     DatePipe,
@@ -22,7 +21,8 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
     ProgressBarModule,
     TableModule,
     TagModule,
-    TooltipModule
+    TooltipModule,
+    SlicePipe
   ],
   template: `
     <p-card header="Recent Backtests">

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { DatePipe, NgClass } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -27,7 +27,6 @@ import { ExchangesService } from './exchanges.service';
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     CheckboxModule,
     ConfirmDialogModule,
     DialogModule,
@@ -40,7 +39,9 @@ import { ExchangesService } from './exchanges.service';
     InputTextModule,
     ReactiveFormsModule,
     TableModule,
-    ToastModule
+    ToastModule,
+    DatePipe,
+    NgClass
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './exchanges.component.html'

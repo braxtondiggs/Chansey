@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { AsyncPipe, NgClass } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
@@ -30,11 +30,12 @@ import { PwaService } from '../shared/services/pwa.service';
     BadgeModule,
     RouterModule,
     StyleClassModule,
-    CommonModule,
     ButtonModule,
     RippleModule,
     TooltipModule,
-    TimeAgoPipe
+    TimeAgoPipe,
+    NgClass,
+    AsyncPipe
   ],
   templateUrl: './app.topbar.html'
 })

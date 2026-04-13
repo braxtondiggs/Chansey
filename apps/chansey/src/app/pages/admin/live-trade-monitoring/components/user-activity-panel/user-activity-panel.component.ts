@@ -1,4 +1,4 @@
-import { CommonModule, CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
@@ -13,17 +13,7 @@ import { PaginatedUserActivityDto } from '../../live-trade-monitoring.types';
   selector: 'app-user-activity-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CommonModule,
-    ButtonModule,
-    CardModule,
-    RippleModule,
-    TableModule,
-    TagModule,
-    DecimalPipe,
-    CurrencyPipe,
-    DatePipe
-  ],
+  imports: [ButtonModule, CardModule, RippleModule, TableModule, TagModule, DecimalPipe, CurrencyPipe, DatePipe],
   template: `
     <div class="mt-4">
       <p-card>

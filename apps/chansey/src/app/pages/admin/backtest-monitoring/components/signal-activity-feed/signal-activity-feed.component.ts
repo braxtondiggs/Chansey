@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { DatePipe, DecimalPipe, PercentPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -13,7 +13,7 @@ import { TimeAgoPipe } from '../../../../../shared/pipes';
 @Component({
   selector: 'app-signal-activity-feed',
   standalone: true,
-  imports: [CommonModule, CardModule, TableModule, TagModule, TimeAgoPipe, TooltipModule],
+  imports: [CardModule, TableModule, TagModule, TimeAgoPipe, TooltipModule, DatePipe, DecimalPipe, PercentPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Health Cards -->

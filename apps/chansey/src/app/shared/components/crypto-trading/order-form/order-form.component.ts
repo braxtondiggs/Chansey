@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { CurrencyPipe, DecimalPipe, UpperCasePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -20,7 +20,6 @@ import { ExitConfigComponent } from './exit-config/exit-config.component';
   selector: 'app-order-form',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     ReactiveFormsModule,
     ButtonModule,
@@ -30,7 +29,10 @@ import { ExitConfigComponent } from './exit-config/exit-config.component';
     SelectModule,
     SelectButtonModule,
     TooltipModule,
-    ExitConfigComponent
+    ExitConfigComponent,
+    CurrencyPipe,
+    DecimalPipe,
+    UpperCasePipe
   ],
   templateUrl: './order-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { Decimal } from 'decimal.js';
@@ -11,7 +11,7 @@ import { trackByPrice } from '../crypto-trading.utils';
 @Component({
   selector: 'app-order-book',
   standalone: true,
-  imports: [CommonModule, ButtonModule, SkeletonModule],
+  imports: [ButtonModule, SkeletonModule, DecimalPipe],
   templateUrl: './order-book.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

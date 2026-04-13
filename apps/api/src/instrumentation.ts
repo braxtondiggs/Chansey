@@ -68,10 +68,6 @@ if (isTracingEnabled) {
             );
           }
         },
-        // Instrument Fastify
-        '@opentelemetry/instrumentation-fastify': {
-          enabled: true
-        },
         // Instrument PostgreSQL
         '@opentelemetry/instrumentation-pg': {
           enabled: true

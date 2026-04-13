@@ -1,4 +1,4 @@
-import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -13,7 +13,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
 @Component({
   selector: 'app-live-replay-panel',
   standalone: true,
-  imports: [CommonModule, CardModule, DatePipe, DecimalPipe, ProgressBarModule, TableModule, TagModule, TooltipModule],
+  imports: [CardModule, DatePipe, DecimalPipe, ProgressBarModule, TableModule, TagModule, TooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { AsyncPipe } from '@angular/common';
 import { Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule } from '@angular/router';
@@ -22,7 +22,7 @@ const FROM_MAP: Record<string, { label: string; url: string }> = {
 @Component({
   selector: 'app-breadcrumb',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [RouterModule, AsyncPipe],
   template: `@if (!hideBreadcrumb()) {
     <nav class="layout-breadcrumb">
       <ol>

@@ -1,4 +1,4 @@
-import { CommonModule, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -10,7 +10,7 @@ import { TopAlgorithmDto } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-top-algorithms',
   standalone: true,
-  imports: [CommonModule, CardModule, DecimalPipe, TableModule, TagModule],
+  imports: [CardModule, DecimalPipe, TableModule, TagModule],
   template: `
     <p-card header="Top Performing Algorithms">
       <p-table [value]="algorithms" styleClass="p-datatable-sm">

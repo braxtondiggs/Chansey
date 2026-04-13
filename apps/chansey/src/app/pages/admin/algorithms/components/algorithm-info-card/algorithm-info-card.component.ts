@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -10,7 +9,7 @@ import { Algorithm, AlgorithmCategory, AlgorithmStatus } from '@chansey/api-inte
 @Component({
   selector: 'app-algorithm-info-card',
   standalone: true,
-  imports: [CommonModule, CardModule, TagModule, TooltipModule],
+  imports: [CardModule, TagModule, TooltipModule],
   template: `
     <p-card>
       <ng-template #header>

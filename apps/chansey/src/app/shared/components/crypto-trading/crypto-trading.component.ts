@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { CurrencyPipe, DecimalPipe, NgClass } from '@angular/common';
 import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ValidatorFn, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -70,7 +70,6 @@ import {
   selector: 'app-crypto-trading',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     ActiveOrdersComponent,
     AvatarModule,
@@ -81,7 +80,10 @@ import {
     SelectModule,
     SkeletonModule,
     TabsModule,
-    ToastModule
+    ToastModule,
+    CurrencyPipe,
+    DecimalPipe,
+    NgClass
   ],
   templateUrl: './crypto-trading.component.html',
   host: { class: 'block' }

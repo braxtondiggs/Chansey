@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -11,7 +10,7 @@ import { AlgorithmMetrics } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-metrics-card',
   standalone: true,
-  imports: [CommonModule, CardModule, TagModule, TooltipModule, ProgressBarModule],
+  imports: [CardModule, TagModule, TooltipModule, ProgressBarModule],
   template: `
     <p-card>
       <ng-template #header>

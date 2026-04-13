@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { DatePipe, NgClass, NgStyle } from '@angular/common';
 import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -27,7 +27,6 @@ import { RisksService } from './risks.service';
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     DialogModule,
     FloatLabelModule,
@@ -40,7 +39,10 @@ import { RisksService } from './risks.service';
     ReactiveFormsModule,
     TableModule,
     TextareaModule,
-    ToastModule
+    ToastModule,
+    DatePipe,
+    NgClass,
+    NgStyle
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './risks.component.html'

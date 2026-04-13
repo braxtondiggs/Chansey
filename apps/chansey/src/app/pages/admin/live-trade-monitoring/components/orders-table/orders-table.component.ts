@@ -1,4 +1,4 @@
-import { CommonModule, CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -12,16 +12,7 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.types';
   selector: 'app-orders-table',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CommonModule,
-    CardModule,
-    TableModule,
-    TagModule,
-    ProgressSpinnerModule,
-    DecimalPipe,
-    CurrencyPipe,
-    DatePipe
-  ],
+  imports: [CardModule, TableModule, TagModule, ProgressSpinnerModule, DecimalPipe, CurrencyPipe, DatePipe],
   template: `
     <p-card>
       <ng-template #header>

@@ -1,4 +1,4 @@
-import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
+import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -11,7 +11,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
   selector: 'app-overview-cards',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, CardModule, TableModule, TagModule, DecimalPipe, CurrencyPipe],
+  imports: [CardModule, TableModule, TagModule, DecimalPipe, CurrencyPipe],
   template: `
     <div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
       <!-- Summary Cards -->

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { DatePipe, NgClass } from '@angular/common';
 import { Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -26,7 +26,6 @@ import { CoinsService } from './coins.service';
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     DialogModule,
     FloatLabelModule,
@@ -38,7 +37,9 @@ import { CoinsService } from './coins.service';
     InputTextModule,
     ReactiveFormsModule,
     TableModule,
-    ToastModule
+    ToastModule,
+    DatePipe,
+    NgClass
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './coins.component.html'

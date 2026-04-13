@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -18,7 +17,7 @@ interface ExportRequest {
 @Component({
   selector: 'app-export-panel',
   standalone: true,
-  imports: [CommonModule, FormsModule, ButtonModule, CardModule, InputTextModule, SelectButtonModule],
+  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, SelectButtonModule],
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
       <!-- Export Backtests -->

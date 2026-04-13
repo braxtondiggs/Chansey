@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { Component, computed, ElementRef, inject, OnDestroy, Renderer2, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
@@ -19,7 +19,6 @@ import { LayoutService } from '../shared/services/layout.service';
   selector: 'app-layout',
   standalone: true,
   imports: [
-    CommonModule,
     AppTopBar,
     AppSidebar,
     RouterModule,
@@ -27,7 +26,8 @@ import { LayoutService } from '../shared/services/layout.service';
     AppBreadcrumb,
     AppFooter,
     AppSearch,
-    AppRightMenu
+    AppRightMenu,
+    NgClass
   ],
   template: `<div class="layout-wrapper" [ngClass]="containerClass()">
     <app-sidebar></app-sidebar>

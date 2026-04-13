@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -20,15 +19,7 @@ interface ExecutionMode {
 @Component({
   selector: 'app-execution-panel',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    CardModule,
-    ButtonModule,
-    SelectButtonModule,
-    TagModule,
-    SignalsDisplayComponent
-  ],
+  imports: [FormsModule, CardModule, ButtonModule, SelectButtonModule, TagModule, SignalsDisplayComponent],
   template: `
     <p-card>
       <ng-template #header>

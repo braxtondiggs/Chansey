@@ -1,10 +1,10 @@
-import { CommonModule } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { ChangeDetectorRef, Component, ElementRef, inject, Input, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
   selector: 'app-lazy-image',
   standalone: true,
-  imports: [CommonModule],
+  imports: [NgClass],
   template: `
     <img
       [src]="isIntersecting ? src : ''"
