@@ -175,7 +175,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
     // Count consecutive bars in squeeze ending at previous bar (not current)
     for (let i = currentIndex - 1; i >= 0 && i >= currentIndex - config.minSqueezeBars * 2; i--) {
-      if (isNaN(bandwidth[i])) break;
+      if (!Number.isFinite(bandwidth[i])) break;
 
       if (bandwidth[i] < config.squeezeThreshold) {
         squeezeBars++;
@@ -189,7 +189,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
       }
     }
 
-    const isInSqueeze = !isNaN(bandwidth[currentIndex]) && bandwidth[currentIndex] < config.squeezeThreshold;
+    const isInSqueeze = Number.isFinite(bandwidth[currentIndex]) && bandwidth[currentIndex] < config.squeezeThreshold;
     const avgBandwidthDuringSqueeze = squeezeBars > 0 ? totalBandwidth / squeezeBars : 0;
 
     return {
@@ -281,7 +281,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
 
-    if (isNaN(bands.bandwidth[currentIndex]) || isNaN(bands.bandwidth[previousIndex])) {
+    if (!Number.isFinite(bands.bandwidth[currentIndex]) || !Number.isFinite(bands.bandwidth[previousIndex])) {
       return null;
     }
 
@@ -377,7 +377,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     }
 
     let pbConfirmation = 0;
-    if (!isNaN(bands.pb[currentIndex])) {
+    if (Number.isFinite(bands.pb[currentIndex])) {
       if (isBullish && bands.pb[currentIndex] > 0.5) {
         pbConfirmation = (bands.pb[currentIndex] - 0.5) * 2;
       } else if (!isBullish && bands.pb[currentIndex] < 0.5) {
@@ -406,7 +406,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         lowerBand: bands.lower[index],
         percentB: bands.pb[index],
         bandwidth: bands.bandwidth[index],
-        isInSqueeze: !isNaN(bands.bandwidth[index]) && bands.bandwidth[index] < config.squeezeThreshold,
+        isInSqueeze: Number.isFinite(bands.bandwidth[index]) && bands.bandwidth[index] < config.squeezeThreshold,
         high: price.high,
         low: price.low
       }

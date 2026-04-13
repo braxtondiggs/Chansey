@@ -180,11 +180,11 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
 
     if (
       previousIndex < 0 ||
-      isNaN(fastEMA[currentIndex]) ||
-      isNaN(slowEMA[currentIndex]) ||
-      isNaN(fastEMA[previousIndex]) ||
-      isNaN(slowEMA[previousIndex]) ||
-      isNaN(rsi[currentIndex])
+      !Number.isFinite(fastEMA[currentIndex]) ||
+      !Number.isFinite(slowEMA[currentIndex]) ||
+      !Number.isFinite(fastEMA[previousIndex]) ||
+      !Number.isFinite(slowEMA[previousIndex]) ||
+      !Number.isFinite(rsi[currentIndex])
     ) {
       return null;
     }

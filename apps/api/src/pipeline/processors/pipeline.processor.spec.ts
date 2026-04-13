@@ -10,6 +10,7 @@ import { type PipelineOrchestratorService } from '../services/pipeline-orchestra
 describe('PipelineProcessor', () => {
   let processor: PipelineProcessor;
   let orchestratorService: jest.Mocked<PipelineOrchestratorService>;
+  let failedJobService: { recordFailure: jest.Mock };
   let pipelineRepository: jest.Mocked<Repository<Pipeline>>;
 
   const PIPELINE_ID = 'pipeline-123';
@@ -30,12 +31,14 @@ describe('PipelineProcessor', () => {
       executeStage: jest.fn().mockResolvedValue(undefined)
     } as unknown as jest.Mocked<PipelineOrchestratorService>;
 
+    failedJobService = { recordFailure: jest.fn() };
+
     pipelineRepository = {
       findOne: jest.fn(),
       update: jest.fn().mockResolvedValue(undefined)
     } as unknown as jest.Mocked<Repository<Pipeline>>;
 
-    processor = new PipelineProcessor(orchestratorService, pipelineRepository);
+    processor = new PipelineProcessor(orchestratorService, failedJobService as any, pipelineRepository);
   });
 
   afterEach(() => {

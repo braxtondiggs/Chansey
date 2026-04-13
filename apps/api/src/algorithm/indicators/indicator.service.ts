@@ -448,16 +448,44 @@ export class IndicatorService {
   }
 
   /**
-   * Get a value from cache
+   * Get a value from cache.
+   * Applies NaN restoration to counteract JSON serialization converting NaN → null.
    */
   private async getFromCache<T>(key: string): Promise<T | null> {
     try {
       const cached = await this.withTimeout(this.cacheManager.get<T>(key), null as T | undefined);
-      return cached ?? null;
+      if (cached == null) return null;
+      return this.restoreNaNValues(cached);
     } catch (error: unknown) {
       this.logger.warn(`Cache get failed for key ${key}:`, error);
       return null;
     }
+  }
+
+  /**
+   * Restore NaN values that were serialized as null by JSON.stringify.
+   * Walks the object and replaces null entries inside number arrays with NaN.
+   */
+  private restoreNaNValues<T>(obj: T): T {
+    if (obj == null || typeof obj !== 'object') return obj;
+
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        if (obj[i] === null) {
+          obj[i] = NaN;
+        }
+      }
+      return obj;
+    }
+
+    for (const key of Object.keys(obj)) {
+      const value = (obj as Record<string, unknown>)[key];
+      if (Array.isArray(value)) {
+        this.restoreNaNValues(value);
+      }
+    }
+
+    return obj;
   }
 
   /**

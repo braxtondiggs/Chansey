@@ -16,7 +16,7 @@ export function calculateArrayAverage(
 
   for (let i = startIndex; i <= endIndex; i++) {
     const value = values[i];
-    if (!isNaN(value)) {
+    if (Number.isFinite(value)) {
       sum += useAbsolute ? Math.abs(value) : value;
       count++;
     }
@@ -39,7 +39,7 @@ export function evaluateEMASignal(ema12: number[], ema26: number[], currentIndex
   const previousEma12 = ema12[currentIndex - 1];
   const previousEma26 = ema26[currentIndex - 1];
 
-  if (isNaN(currentEma12) || isNaN(currentEma26)) {
+  if (!Number.isFinite(currentEma12) || !Number.isFinite(currentEma26)) {
     return {
       name: 'EMA',
       signal: 'neutral',
@@ -51,8 +51,8 @@ export function evaluateEMASignal(ema12: number[], ema26: number[], currentIndex
 
   const spread = (currentEma12 - currentEma26) / currentEma26;
   const isCrossover =
-    !isNaN(previousEma12) &&
-    !isNaN(previousEma26) &&
+    Number.isFinite(previousEma12) &&
+    Number.isFinite(previousEma26) &&
     ((previousEma12 <= previousEma26 && currentEma12 > currentEma26) ||
       (previousEma12 >= previousEma26 && currentEma12 < currentEma26));
 
@@ -96,7 +96,7 @@ export function evaluateRSISignal(
 ): IndicatorSignal {
   const currentRSI = rsi[currentIndex];
 
-  if (isNaN(currentRSI)) {
+  if (!Number.isFinite(currentRSI)) {
     return {
       name: 'RSI',
       signal: 'neutral',
@@ -156,7 +156,7 @@ export function evaluateMACDSignal(
   const currentHistogram = histogram[currentIndex];
   const previousHistogram = histogram[currentIndex - 1];
 
-  if (isNaN(currentMACD) || isNaN(currentSignal) || isNaN(currentHistogram)) {
+  if (!Number.isFinite(currentMACD) || !Number.isFinite(currentSignal) || !Number.isFinite(currentHistogram)) {
     return {
       name: 'MACD',
       signal: 'neutral',
@@ -167,7 +167,7 @@ export function evaluateMACDSignal(
   }
 
   // Calculate histogram momentum (increasing or decreasing)
-  const histogramMomentum = !isNaN(previousHistogram) ? currentHistogram - previousHistogram : 0;
+  const histogramMomentum = Number.isFinite(previousHistogram) ? currentHistogram - previousHistogram : 0;
 
   // Use pre-calculated average, fallback to current value if zero
   const effectiveAvg = avgHistogram > 0 ? avgHistogram : Math.abs(currentHistogram);
@@ -219,7 +219,7 @@ export function evaluateATRSignal(
 ): IndicatorSignal {
   const currentATR = atr[currentIndex];
 
-  if (isNaN(currentATR)) {
+  if (!Number.isFinite(currentATR)) {
     return {
       name: 'ATR',
       signal: 'neutral',
@@ -274,7 +274,7 @@ export function evaluateBollingerBandsSignal(
   const currentPB = pb[currentIndex];
   const currentBandwidth = bandwidth[currentIndex];
 
-  if (isNaN(currentPB) || isNaN(currentBandwidth)) {
+  if (!Number.isFinite(currentPB) || !Number.isFinite(currentBandwidth)) {
     return {
       name: 'BB',
       signal: 'neutral',

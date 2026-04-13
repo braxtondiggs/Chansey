@@ -155,7 +155,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     const pivots: PivotPoint[] = [];
 
     for (let i = startIndex + strength; i <= endIndex - strength; i++) {
-      if (isNaN(rsi[i])) continue;
+      if (!Number.isFinite(rsi[i])) continue;
 
       let isPivotHigh = true;
       const currentPrice = prices[i].high;
@@ -194,7 +194,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     const pivots: PivotPoint[] = [];
 
     for (let i = startIndex + strength; i <= endIndex - strength; i++) {
-      if (isNaN(rsi[i])) continue;
+      if (!Number.isFinite(rsi[i])) continue;
 
       let isPivotLow = true;
       const currentPrice = prices[i].low;
@@ -371,7 +371,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     // RSI position: For bullish divergence, RSI near oversold is better; for bearish, near overbought
     let rsiPositionScore = 0;
     const currentRSI = rsi[currentIndex];
-    if (!isNaN(currentRSI)) {
+    if (Number.isFinite(currentRSI)) {
       if (divergence.type === 'bullish' && currentRSI < 40) {
         rsiPositionScore = (40 - currentRSI) / 40;
       } else if (divergence.type === 'bearish' && currentRSI > 60) {

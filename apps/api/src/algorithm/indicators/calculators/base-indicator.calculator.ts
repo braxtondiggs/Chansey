@@ -56,7 +56,7 @@ export abstract class BaseIndicatorCalculator<TOptions, TResult> implements IInd
    * @returns Count of non-NaN values
    */
   protected countValidValues(values: number[]): number {
-    return values.filter((v) => !isNaN(v)).length;
+    return values.filter((v) => Number.isFinite(v)).length;
   }
 
   /**
@@ -96,7 +96,7 @@ export abstract class BaseIndicatorCalculator<TOptions, TResult> implements IInd
       throw new Error('Values must be an array of numbers');
     }
     for (let i = 0; i < values.length; i++) {
-      if (typeof values[i] !== 'number' || isNaN(values[i])) {
+      if (typeof values[i] !== 'number' || !Number.isFinite(values[i])) {
         throw new Error(`Invalid value at index ${i}: ${values[i]}`);
       }
     }

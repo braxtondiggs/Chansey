@@ -178,12 +178,12 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
 
     if (
       previousIndex < 0 ||
-      isNaN(fastEMA[currentIndex]) ||
-      isNaN(mediumEMA[currentIndex]) ||
-      isNaN(slowEMA[currentIndex]) ||
-      isNaN(fastEMA[previousIndex]) ||
-      isNaN(mediumEMA[previousIndex]) ||
-      isNaN(slowEMA[previousIndex])
+      !Number.isFinite(fastEMA[currentIndex]) ||
+      !Number.isFinite(mediumEMA[currentIndex]) ||
+      !Number.isFinite(slowEMA[currentIndex]) ||
+      !Number.isFinite(fastEMA[previousIndex]) ||
+      !Number.isFinite(mediumEMA[previousIndex]) ||
+      !Number.isFinite(slowEMA[previousIndex])
     ) {
       return null;
     }
@@ -378,7 +378,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
     let consistentBars = 0;
     let validBars = 0;
     for (let i = startIndex; i < currentIndex; i++) {
-      if (isNaN(fastEMA[i]) || isNaN(mediumEMA[i]) || isNaN(slowEMA[i])) continue;
+      if (!Number.isFinite(fastEMA[i]) || !Number.isFinite(mediumEMA[i]) || !Number.isFinite(slowEMA[i])) continue;
 
       validBars++;
       const barAlignment = this.getAlignment(fastEMA[i], mediumEMA[i], slowEMA[i]);
@@ -411,7 +411,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
   ): ChartDataPoint[] {
     return prices.map((price, index) => {
       const alignment =
-        !isNaN(fastEMA[index]) && !isNaN(mediumEMA[index]) && !isNaN(slowEMA[index])
+        Number.isFinite(fastEMA[index]) && Number.isFinite(mediumEMA[index]) && Number.isFinite(slowEMA[index])
           ? this.getAlignment(fastEMA[index], mediumEMA[index], slowEMA[index])
           : 'neutral';
 
