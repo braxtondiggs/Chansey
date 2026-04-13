@@ -48,6 +48,15 @@ export interface BacktestFailedEvent {
 }
 
 /**
+ * Event payload for paper trading failure (stale watchdog or error)
+ */
+export interface PaperTradingFailedEvent {
+  sessionId: string;
+  pipelineId: string;
+  reason: string;
+}
+
+/**
  * Event payload for paper trading completion
  */
 export interface PaperTradingCompletedEvent {
@@ -132,6 +141,7 @@ export const PIPELINE_EVENTS = {
   BACKTEST_COMPLETED: 'backtest.completed',
   BACKTEST_FAILED: 'backtest.failed',
   PAPER_TRADING_COMPLETED: 'paper-trading.completed',
+  PAPER_TRADING_FAILED: 'paper-trading.failed',
   PIPELINE_STAGE_TRANSITION: 'pipeline.stage-transition',
   PIPELINE_STATUS_CHANGE: 'pipeline.status-change',
   PIPELINE_PROGRESS: 'pipeline.progress',

@@ -13,7 +13,7 @@ import { PipelineJobData, PipelineStatus } from '../interfaces';
 import { PipelineOrchestratorService } from '../services/pipeline-orchestrator.service';
 
 @Injectable()
-@Processor('pipeline')
+@Processor('pipeline', { lockDuration: 120_000, stalledInterval: 30_000 })
 export class PipelineProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PipelineProcessor.name);
   private static readonly PENDING_RETRY_DELAY_MS = 2000;

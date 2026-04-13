@@ -194,6 +194,42 @@ describe('PipelineEventHandlerService', () => {
     });
   });
 
+  describe('handleBacktestFailed', () => {
+    it('fails HISTORICAL pipeline with the provided reason', async () => {
+      pipelineRepository.findOne.mockResolvedValue(
+        makePipeline({ currentStage: PipelineStage.HISTORICAL, historicalBacktestId: 'bt-123' })
+      );
+
+      await service.handleBacktestFailed('bt-123', 'HISTORICAL', 'data unavailable');
+
+      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.stringContaining('data unavailable')
+      );
+    });
+
+    it('fails LIVE_REPLAY pipeline with the provided reason', async () => {
+      pipelineRepository.findOne.mockResolvedValue(
+        makePipeline({ currentStage: PipelineStage.LIVE_REPLAY, liveReplayBacktestId: 'bt-456' })
+      );
+
+      await service.handleBacktestFailed('bt-456', 'LIVE_REPLAY', 'timeout');
+
+      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.stringContaining('timeout')
+      );
+    });
+
+    it('is a no-op when no active pipeline found', async () => {
+      pipelineRepository.findOne.mockResolvedValue(null);
+
+      await service.handleBacktestFailed('bt-999', 'HISTORICAL', 'some error');
+
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
+    });
+  });
+
   describe('handleBacktestComplete', () => {
     it('fails pipeline when 0 trades produced', async () => {
       pipelineRepository.findOne.mockResolvedValue(
@@ -340,6 +376,27 @@ describe('PipelineEventHandlerService', () => {
         })
       );
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handlePaperTradingFailed', () => {
+    it('fails pipeline with the provided reason', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ currentStage: PipelineStage.PAPER_TRADE }));
+
+      await service.handlePaperTradingFailed('session-123', 'pipeline-123', 'out of funds');
+
+      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.stringContaining('out of funds')
+      );
+    });
+
+    it('is a no-op when no active pipeline found', async () => {
+      pipelineRepository.findOne.mockResolvedValue(null);
+
+      await service.handlePaperTradingFailed('session-123', 'pipeline-123', 'out of funds');
+
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
     });
   });
 

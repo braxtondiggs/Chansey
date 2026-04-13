@@ -8,7 +8,8 @@ import {
   OptimizationCompletedEvent,
   OptimizationFailedEvent,
   PIPELINE_EVENTS,
-  PaperTradingCompletedEvent
+  PaperTradingCompletedEvent,
+  PaperTradingFailedEvent
 } from '../interfaces';
 import { PipelineOrchestratorService } from '../services/pipeline-orchestrator.service';
 
@@ -85,6 +86,31 @@ export class PipelineEventListener {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to handle backtest failure for ${payload.backtestId}: ${err.message}`, err.stack);
+    }
+  }
+
+  /**
+   * Handle paper trading failure event (stale watchdog or error)
+   */
+  @OnEvent(PIPELINE_EVENTS.PAPER_TRADING_FAILED, { async: true })
+  async handlePaperTradingFailed(payload: PaperTradingFailedEvent): Promise<void> {
+    if (!payload.pipelineId) {
+      return;
+    }
+
+    this.logger.log(
+      `Received paper-trading.failed event for session ${payload.sessionId} ` +
+        `(pipeline ${payload.pipelineId}): ${payload.reason}`
+    );
+
+    try {
+      await this.orchestratorService.handlePaperTradingFailed(payload.sessionId, payload.pipelineId, payload.reason);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(
+        `Failed to handle paper trading failure for session ${payload.sessionId}: ${err.message}`,
+        err.stack
+      );
     }
   }
 

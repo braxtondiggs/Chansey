@@ -5,6 +5,8 @@ import { PaperTradingRetryService } from './paper-trading-retry.service';
 import { PaperTradingJobType } from './paper-trading.job-data';
 import { PaperTradingProcessor } from './paper-trading.processor';
 
+import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
+
 describe('PaperTradingProcessor', () => {
   const createJob = (data: any): Job<any> => ({ id: 'job-1', data }) as Job<any>;
 
@@ -731,7 +733,7 @@ describe('PaperTradingProcessor', () => {
       where: { id: 'session-notify' }
     });
     expect(paperTradingService.calculateMetrics).toHaveBeenCalledWith(session);
-    expect(eventEmitter.emit).toHaveBeenCalledWith('paper-trading.completed', {
+    expect(eventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.PAPER_TRADING_COMPLETED, {
       sessionId: 'session-notify',
       pipelineId: 'pipeline-1',
       metrics,

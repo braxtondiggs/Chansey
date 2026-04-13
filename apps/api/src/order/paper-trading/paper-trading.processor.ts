@@ -29,12 +29,13 @@ import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
 import { FailedJobService } from '../../failed-jobs/failed-job.service';
 import { MetricsService } from '../../metrics/metrics.service';
+import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { toErrorInfo } from '../../shared/error.util';
 
 const MAX_CLEANUP_CACHE = 500;
 
 @Injectable()
-@Processor('paper-trading')
+@Processor('paper-trading', { lockDuration: 60_000, stalledInterval: 30_000 })
 export class PaperTradingProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PaperTradingProcessor.name);
   private readonly maxConsecutiveErrors: number;
@@ -354,7 +355,7 @@ export class PaperTradingProcessor extends FailSafeWorkerHost {
 
     const metrics = await this.jobService.calculateMetrics(session);
 
-    this.eventEmitter.emit('paper-trading.completed', {
+    this.eventEmitter.emit(PIPELINE_EVENTS.PAPER_TRADING_COMPLETED, {
       sessionId,
       pipelineId,
       metrics,

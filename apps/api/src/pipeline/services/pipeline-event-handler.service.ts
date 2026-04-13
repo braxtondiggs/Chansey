@@ -276,6 +276,24 @@ export class PipelineEventHandlerService {
     }
   }
 
+  async handlePaperTradingFailed(sessionId: string, pipelineId: string, reason: string): Promise<void> {
+    const pipeline = await this.pipelineRepository.findOne({
+      where: {
+        id: pipelineId,
+        currentStage: PipelineStage.PAPER_TRADE,
+        status: In([PipelineStatus.RUNNING, PipelineStatus.PAUSED])
+      },
+      relations: ['user']
+    });
+
+    if (!pipeline) {
+      this.logger.debug(`No active pipeline found for failed paper trading session ${sessionId}`);
+      return;
+    }
+
+    await this.progressionService.failPipeline(pipeline, `Paper trading session failed: ${reason}`);
+  }
+
   async handlePaperTradingComplete(
     sessionId: string,
     pipelineId: string,

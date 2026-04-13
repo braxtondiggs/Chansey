@@ -348,6 +348,10 @@ export class PipelineOrchestratorService {
     return this.eventHandlerService.handleBacktestFailed(backtestId, type, reason);
   }
 
+  async handlePaperTradingFailed(sessionId: string, pipelineId: string, reason: string): Promise<void> {
+    return this.eventHandlerService.handlePaperTradingFailed(sessionId, pipelineId, reason);
+  }
+
   async handlePaperTradingComplete(
     sessionId: string,
     pipelineId: string,

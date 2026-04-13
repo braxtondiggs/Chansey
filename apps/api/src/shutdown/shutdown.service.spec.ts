@@ -5,7 +5,7 @@ import { type Queue } from 'bullmq';
 import { QUEUE_NAMES } from './queue-names.constant';
 import { ShutdownService } from './shutdown.service';
 
-type QueueMock = Pick<Queue, 'pause' | 'getActiveCount'>;
+type QueueMock = Pick<Queue, 'pause' | 'getActiveCount' | 'isPaused' | 'resume'>;
 
 const createQueueMocks = (overrides?: Partial<Record<(typeof QUEUE_NAMES)[number], Partial<QueueMock>>>) => {
   const queues: Record<string, QueueMock> = {};
@@ -14,6 +14,8 @@ const createQueueMocks = (overrides?: Partial<Record<(typeof QUEUE_NAMES)[number
     queues[name] = {
       pause: jest.fn().mockResolvedValue(undefined),
       getActiveCount: jest.fn().mockResolvedValue(0),
+      isPaused: jest.fn().mockResolvedValue(false),
+      resume: jest.fn().mockResolvedValue(undefined),
       ...(overrides?.[name] ?? {})
     } as QueueMock;
   }
@@ -112,6 +114,52 @@ describe('ShutdownService', () => {
     for (const name of QUEUE_NAMES) {
       expect(queues[name].pause).toHaveBeenCalled();
     }
+  });
+
+  describe('resumeAllQueues on bootstrap', () => {
+    it('resumes a paused queue and logs a warning', async () => {
+      const { queues, service } = createQueueMocks({
+        'order-queue': {
+          isPaused: jest.fn().mockResolvedValue(true)
+        }
+      });
+      const warnSpy = jest.spyOn(service['logger'] as Logger, 'warn');
+
+      await service.onApplicationBootstrap();
+
+      expect(queues['order-queue'].resume).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Resumed paused queue: order-queue'));
+    });
+
+    it('does not resume queues that are not paused', async () => {
+      const { queues, service } = createQueueMocks();
+
+      await service.onApplicationBootstrap();
+
+      for (const name of QUEUE_NAMES) {
+        expect(queues[name].resume).not.toHaveBeenCalled();
+      }
+    });
+
+    it('continues resuming other queues when one fails', async () => {
+      const { queues, service } = createQueueMocks({
+        'order-queue': {
+          isPaused: jest.fn().mockRejectedValue(new Error('redis down'))
+        },
+        'paper-trading': {
+          isPaused: jest.fn().mockResolvedValue(true)
+        }
+      });
+      const errorSpy = jest.spyOn(service['logger'] as Logger, 'error');
+
+      await service.onApplicationBootstrap();
+
+      expect(queues['paper-trading'].resume).toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to resume queue order-queue: redis down'),
+        expect.any(String)
+      );
+    });
   });
 
   it('returns zero for queues that fail to report active count', async () => {

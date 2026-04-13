@@ -154,7 +154,7 @@ export class BacktestResultService {
     const mappedType = typeMapping[backtest.type];
 
     if (mappedType) {
-      this.eventEmitter.emit('backtest.completed', {
+      this.eventEmitter.emit(PIPELINE_EVENTS.BACKTEST_COMPLETED, {
         backtestId: backtest.id,
         type: mappedType,
         metrics: {

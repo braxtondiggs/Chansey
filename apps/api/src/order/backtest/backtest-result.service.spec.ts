@@ -305,7 +305,7 @@ describe('BacktestResultService', () => {
 
       await service.persistSuccess(backtest, mockResults);
 
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith('backtest.completed', {
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_COMPLETED, {
         backtestId: 'backtest-123',
         type: 'HISTORICAL',
         metrics: {
@@ -334,7 +334,7 @@ describe('BacktestResultService', () => {
 
       await service.persistSuccess(backtest, mockResults);
 
-      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith('backtest.completed', expect.any(Object));
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_COMPLETED, expect.any(Object));
     });
   });
 
