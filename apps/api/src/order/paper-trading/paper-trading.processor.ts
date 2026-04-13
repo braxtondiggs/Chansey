@@ -34,7 +34,7 @@ import { toErrorInfo } from '../../shared/error.util';
 const MAX_CLEANUP_CACHE = 500;
 
 @Injectable()
-@Processor('paper-trading')
+@Processor('paper-trading', { lockDuration: 60_000, stalledInterval: 30_000 })
 export class PaperTradingProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PaperTradingProcessor.name);
   private readonly maxConsecutiveErrors: number;

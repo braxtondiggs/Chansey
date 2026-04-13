@@ -18,7 +18,7 @@ import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
-@Processor('pipeline-orchestration')
+@Processor('pipeline-orchestration', { lockDuration: 300_000, stalledInterval: 60_000 })
 export class PipelineOrchestrationProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(PipelineOrchestrationProcessor.name);
 

@@ -19,7 +19,7 @@ import { TradeOrchestratorService } from '../services/trade-orchestrator.service
  * This is a thin scheduling/routing layer — all orchestration logic lives
  * in TradeOrchestratorService and its dependencies.
  */
-@Processor('trade-execution')
+@Processor('trade-execution', { lockDuration: 120_000, stalledInterval: 30_000 })
 @Injectable()
 export class TradeExecutionTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(TradeExecutionTask.name);

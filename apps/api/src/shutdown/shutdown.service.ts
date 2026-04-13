@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 
 import { Queue } from 'bullmq';
 
@@ -17,7 +17,7 @@ import { toErrorInfo } from '../shared/error.util';
  * 3. Logs shutdown progress for visibility
  */
 @Injectable()
-export class ShutdownService implements OnApplicationShutdown {
+export class ShutdownService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(ShutdownService.name);
   private readonly JOB_DRAIN_TIMEOUT = 25000; // 25 seconds (leave 5s buffer for other cleanup)
   private readonly POLL_INTERVAL = 1000; // Check every second
@@ -77,6 +77,15 @@ export class ShutdownService implements OnApplicationShutdown {
     ];
   }
 
+  /**
+   * Resume all queues on boot in case the previous instance paused them during shutdown.
+   * BullMQ's queue.pause() persists a flag in Redis, so queues stay paused across restarts
+   * unless explicitly resumed.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    await this.resumeAllQueues();
+  }
+
   async onApplicationShutdown(signal?: string): Promise<void> {
     this.logger.log(`Shutdown signal received: ${signal || 'unknown'}. Starting graceful job shutdown...`);
 
@@ -90,6 +99,26 @@ export class ShutdownService implements OnApplicationShutdown {
     await this.waitForActiveJobs();
 
     this.logger.log('Graceful shutdown complete. All queues drained or timeout reached.');
+  }
+
+  /**
+   * Resume all queues that may have been left paused by a previous shutdown.
+   */
+  private async resumeAllQueues(): Promise<void> {
+    const resumePromises = this.queues.map(async ({ name, queue }) => {
+      try {
+        const isPaused = await queue.isPaused();
+        if (isPaused) {
+          await queue.resume();
+          this.logger.warn(`Resumed paused queue: ${name}`);
+        }
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to resume queue ${name}: ${err.message}`);
+      }
+    });
+
+    await Promise.allSettled(resumePromises);
   }
 
   /**

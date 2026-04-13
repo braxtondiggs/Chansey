@@ -18,7 +18,7 @@ import { FailedJobService } from '../failed-jobs/failed-job.service';
 import { toErrorInfo } from '../shared/error.util';
 
 @Injectable()
-@Processor('backtest-orchestration')
+@Processor('backtest-orchestration', { lockDuration: 300_000, stalledInterval: 60_000 })
 export class BacktestOrchestrationProcessor extends FailSafeWorkerHost {
   private readonly logger = new Logger(BacktestOrchestrationProcessor.name);
 
