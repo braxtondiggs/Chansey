@@ -5,7 +5,6 @@ import { Cron } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 
 import { PaperTradingStatus } from './entities';
-import { PaperTradingCleanupService } from './paper-trading-cleanup.service';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
 import { PaperTradingJobService } from './paper-trading-job.service';
 
@@ -29,7 +28,6 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
   constructor(
     private readonly jobService: PaperTradingJobService,
     private readonly engineService: PaperTradingEngineService,
-    private readonly cleanupService: PaperTradingCleanupService,
     @InjectQueue('paper-trading') private readonly paperTradingQueue: Queue
   ) {}
 
@@ -39,45 +37,9 @@ export class PaperTradingRecoveryService implements OnApplicationBootstrap {
     //
     // Order matters:
     //   1. cleanupOrphanedSchedulers — removes legacy schedulers for terminal sessions
-    //   2. cleanupDuplicateActiveSessions — stops duplicates so step 3 doesn't re-schedule them
-    //   3. recoverActiveSessions — re-schedules tick jobs for the survivors
+    //   2. recoverActiveSessions — re-schedules tick jobs for active sessions
     await this.cleanupOrphanedSchedulers();
-    // TODO: remove cleanupDuplicateActiveSessions once the 31 legacy duplicate sessions are
-    // cleared. Leaving this in long-term is risky — it would silently mask any future bug
-    // that re-introduces overlapping sessions instead of letting it surface loudly.
-    await this.cleanupDuplicateActiveSessions();
     await this.recoverActiveSessions();
-  }
-
-  /**
-   * One-shot self-healing pass for overlapping paper-trading sessions.
-   *
-   * Delegates to {@link PaperTradingCleanupService.cleanupDuplicateSessions}, which keeps the
-   * oldest session per `(userId, algorithmId)` group and stops the rest via the normal `stop()`
-   * flow (so per-session BullMQ tick schedulers and in-memory throttle/exit state are cleaned up).
-   * Linked pipelines are cancelled.
-   *
-   * TODO: delete this method (and its bootstrap call) — along with `PaperTradingCleanupService`
-   * itself — after the legacy duplicate sessions are cleared in production. The orchestration-level
-   * guard (`PipelineOrchestrationService.checkDuplicate`) and the `startFromPipeline` defense-in-depth
-   * check are the intended long-term protection. Keeping a silent boot-time fix would hide
-   * regressions that should fail loudly instead.
-   *
-   * Idempotent — a no-op when no duplicates exist, so it's safe to run on every boot until removed.
-   * Errors are logged but never rethrown so they don't block the rest of the boot sequence.
-   */
-  private async cleanupDuplicateActiveSessions(): Promise<void> {
-    try {
-      const result = await this.cleanupService.cleanupDuplicateSessions(false);
-      if (result.stopped.length > 0) {
-        this.logger.warn(
-          `Duplicate session cleanup: scanned=${result.scanned}, kept=${result.kept}, stopped=${result.stopped.length}`
-        );
-      }
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Duplicate session cleanup failed: ${err.message}`, err.stack);
-    }
   }
 
   /**

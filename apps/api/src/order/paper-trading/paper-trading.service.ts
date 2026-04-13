@@ -27,8 +27,7 @@ import { ExitConfig } from '../interfaces/exit-config.interface';
 /**
  * Lifecycle / write operations for paper trading sessions.
  *
- * Read-only queries live in {@link PaperTradingQueryService}; the legacy duplicate
- * cleanup utility lives in {@link PaperTradingCleanupService}.
+ * Read-only queries live in {@link PaperTradingQueryService}.
  */
 @Injectable()
 export class PaperTradingService {
