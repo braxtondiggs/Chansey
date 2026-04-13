@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -27,20 +27,20 @@ interface MetricRow {
       <p-card styleClass="mb-4">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h3 class="m-0 text-lg font-semibold">{{ comparison?.comparison?.algorithmName }}</h3>
+            <h3 class="m-0 text-lg font-semibold">{{ comparison()?.comparison?.algorithmName }}</h3>
             <p class="mt-1 text-sm text-gray-500">
-              {{ comparison?.comparison?.activeActivations }} active activations |
-              {{ comparison?.comparison?.totalLiveOrders }} live orders
+              {{ comparison()?.comparison?.activeActivations }} active activations |
+              {{ comparison()?.comparison?.totalLiveOrders }} live orders
             </p>
           </div>
           <div class="flex items-center gap-4">
-            @if (comparison?.comparison?.backtestName) {
+            @if (comparison()?.comparison?.backtestName) {
               <div class="text-sm">
                 <span class="text-gray-500">Comparing against:</span>
-                <span class="ml-1 font-medium">{{ comparison?.comparison?.backtestName }}</span>
+                <span class="ml-1 font-medium">{{ comparison()?.comparison?.backtestName }}</span>
               </div>
             }
-            @if (comparison?.comparison?.hasSignificantDeviation) {
+            @if (comparison()?.comparison?.hasSignificantDeviation) {
               <p-tag severity="danger" value="Significant Deviation" />
             } @else {
               <p-tag severity="success" value="Within Tolerance" />
@@ -87,7 +87,7 @@ interface MetricRow {
       </p-card>
 
       <!-- Alerts -->
-      @if (comparison?.comparison?.alerts?.length) {
+      @if (comparison()?.comparison?.alerts?.length) {
         <p-card class="mt-4">
           <ng-template #header>
             <div class="flex items-center gap-2 p-3">
@@ -96,7 +96,7 @@ interface MetricRow {
             </div>
           </ng-template>
           <ul class="m-0 list-none p-0">
-            @for (alert of comparison?.comparison?.alerts; track alert) {
+            @for (alert of comparison()?.comparison?.alerts; track alert) {
               <li class="flex items-center gap-2 border-b border-gray-200 py-2 last:border-0 dark:border-gray-700">
                 <i class="pi pi-exclamation-circle text-yellow-500"></i>
                 <span>{{ alert }}</span>
@@ -109,12 +109,12 @@ interface MetricRow {
   `
 })
 export class BacktestComparisonPanelComponent {
-  @Input() comparison: ComparisonDto | undefined;
+  readonly comparison = input<ComparisonDto>();
 
   get metricsRows(): MetricRow[] {
-    const live = this.comparison?.comparison?.liveMetrics;
-    const backtest = this.comparison?.comparison?.backtestMetrics;
-    const deviations = this.comparison?.comparison?.deviations;
+    const live = this.comparison()?.comparison?.liveMetrics;
+    const backtest = this.comparison()?.comparison?.backtestMetrics;
+    const deviations = this.comparison()?.comparison?.deviations;
 
     return [
       {

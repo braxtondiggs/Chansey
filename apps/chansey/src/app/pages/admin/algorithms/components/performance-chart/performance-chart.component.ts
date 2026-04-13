@@ -1,4 +1,4 @@
-import { Component, computed, EventEmitter, inject, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import { Component, computed, effect, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ChartData, ChartOptions, TooltipItem } from 'chart.js';
@@ -27,7 +27,7 @@ interface PeriodOption {
           <h3 class="m-0 text-lg font-semibold">Performance History</h3>
           <p-selectButton
             [options]="periodOptions"
-            [(ngModel)]="selectedPeriod"
+            [ngModel]="selectedPeriod()"
             (ngModelChange)="onPeriodChange($event)"
             optionLabel="label"
             optionValue="value"
@@ -36,11 +36,11 @@ interface PeriodOption {
         </div>
       </ng-template>
 
-      @if (isLoading) {
+      @if (isLoading()) {
         <div class="space-y-4">
           <p-skeleton height="300px"></p-skeleton>
         </div>
-      } @else if (performanceHistory && performanceHistory.length > 0) {
+      } @else if (performanceHistory() && performanceHistory()!.length > 0) {
         <div class="h-80">
           <p-chart type="line" [data]="chartData" [options]="chartOptions" height="100%"></p-chart>
         </div>
@@ -80,12 +80,12 @@ interface PeriodOption {
     </p-card>
   `
 })
-export class PerformanceChartComponent implements OnChanges {
-  @Input() performanceHistory?: AlgorithmPerformance[] | null;
-  @Input() isLoading: boolean = false;
-  @Input() selectedPeriod: TimePeriod = '7d';
+export class PerformanceChartComponent {
+  readonly performanceHistory = input<AlgorithmPerformance[] | null>();
+  readonly isLoading = input(false);
+  readonly selectedPeriod = input<TimePeriod>('7d');
 
-  @Output() periodChange = new EventEmitter<TimePeriod>();
+  periodChange = output<TimePeriod>();
 
   private readonly layoutService = inject(LayoutService);
   isDarkTheme = computed<boolean>(() => this.layoutService.isDarkTheme());
@@ -100,15 +100,17 @@ export class PerformanceChartComponent implements OnChanges {
     { label: '1y', value: '1y' }
   ];
 
-  get latestPerformance(): AlgorithmPerformance | undefined {
-    if (!this.performanceHistory || this.performanceHistory.length === 0) return undefined;
-    return this.performanceHistory[this.performanceHistory.length - 1];
+  constructor() {
+    effect(() => {
+      const history = this.performanceHistory();
+      this.updateChart(history);
+    });
   }
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['performanceHistory'] && this.performanceHistory) {
-      this.updateChart();
-    }
+  get latestPerformance(): AlgorithmPerformance | undefined {
+    const history = this.performanceHistory();
+    if (!history || history.length === 0) return undefined;
+    return history[history.length - 1];
   }
 
   onPeriodChange(period: TimePeriod): void {
@@ -128,15 +130,15 @@ export class PerformanceChartComponent implements OnChanges {
     return `${sign}${value.toFixed(2)}%`;
   }
 
-  private updateChart(): void {
-    if (!this.performanceHistory || this.performanceHistory.length === 0) {
+  private updateChart(performanceHistory?: AlgorithmPerformance[] | null): void {
+    if (!performanceHistory || performanceHistory.length === 0) {
       this.chartData = { labels: [], datasets: [] };
       return;
     }
 
-    const labels = this.performanceHistory.map((p) => this.formatChartDate(p.calculatedAt));
-    const roiData = this.performanceHistory.map((p) => p.roi ?? 0);
-    const winRateData = this.performanceHistory.map((p) => p.winRate ?? 0);
+    const labels = performanceHistory.map((p) => this.formatChartDate(p.calculatedAt));
+    const roiData = performanceHistory.map((p) => p.roi ?? 0);
+    const winRateData = performanceHistory.map((p) => p.winRate ?? 0);
 
     this.chartData = {
       labels,
@@ -225,7 +227,7 @@ export class PerformanceChartComponent implements OnChanges {
 
   private formatChartDate(date: Date | string): string {
     const d = new Date(date);
-    switch (this.selectedPeriod) {
+    switch (this.selectedPeriod()) {
       case '24h':
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       case '7d':

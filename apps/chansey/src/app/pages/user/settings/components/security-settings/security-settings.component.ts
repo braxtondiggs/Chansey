@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, inject, signal, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal, viewChild } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -43,7 +43,7 @@ export class SecuritySettingsComponent {
   readonly disableOtpMutation = this.settingsService.useDisableOtpMutation();
   readonly changePasswordMutation = this.settingsService.useChangePasswordMutation();
 
-  @ViewChild('changePasswordRef') changePasswordRef!: ChangePasswordComponent;
+  readonly changePasswordRef = viewChild.required<ChangePasswordComponent>('changePasswordRef');
 
   showPasswordDialog = signal(false);
   disablePassword = '';
@@ -165,7 +165,7 @@ export class SecuritySettingsComponent {
           summary: 'Password Changed',
           detail: 'Your password has been updated successfully'
         });
-        this.changePasswordRef?.resetForm();
+        this.changePasswordRef()?.resetForm();
       },
       onError: (error: Error & { status?: number }) => {
         const errorMessage =

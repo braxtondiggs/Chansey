@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { ChartData, ChartOptions } from 'chart.js';
 import { CardModule } from 'primeng/card';
@@ -20,7 +20,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
             <span class="text-3xl font-bold text-blue-500">
-              {{ slippageAnalysis?.overallLive?.avgBps | number: '1.1-1' }} bps
+              {{ slippageAnalysis()?.overallLive?.avgBps | number: '1.1-1' }} bps
             </span>
             <span class="mt-1 text-sm text-gray-500">Live Avg Slippage</span>
           </div>
@@ -29,7 +29,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
             <span class="text-3xl font-bold text-green-500">
-              {{ slippageAnalysis?.overallBacktest?.avgBps | number: '1.1-1' }} bps
+              {{ slippageAnalysis()?.overallBacktest?.avgBps | number: '1.1-1' }} bps
             </span>
             <span class="mt-1 text-sm text-gray-500">Backtest Avg Slippage</span>
           </div>
@@ -38,8 +38,8 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
             <span class="text-3xl font-bold" [class]="getDifferenceClass()">
-              {{ (slippageAnalysis?.overallDifferenceBps ?? 0) >= 0 ? '+' : ''
-              }}{{ slippageAnalysis?.overallDifferenceBps | number: '1.1-1' }} bps
+              {{ (slippageAnalysis()?.overallDifferenceBps ?? 0) >= 0 ? '+' : ''
+              }}{{ slippageAnalysis()?.overallDifferenceBps | number: '1.1-1' }} bps
             </span>
             <span class="mt-1 text-sm text-gray-500">Difference</span>
           </div>
@@ -56,8 +56,8 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
               <span class="font-semibold">Slippage by Time of Day</span>
             </div>
           </ng-template>
-          @if (timeOfDayChartData) {
-            <p-chart type="bar" [data]="timeOfDayChartData" [options]="chartOptions" height="250px" />
+          @if (timeOfDayChartData()) {
+            <p-chart type="bar" [data]="timeOfDayChartData()" [options]="chartOptions" height="250px" />
           } @else {
             <div class="flex h-64 items-center justify-center text-gray-500">No data available</div>
           }
@@ -71,8 +71,8 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
               <span class="font-semibold">Slippage by Order Size</span>
             </div>
           </ng-template>
-          @if (orderSizeChartData) {
-            <p-chart type="bar" [data]="orderSizeChartData" [options]="chartOptions" height="250px" />
+          @if (orderSizeChartData()) {
+            <p-chart type="bar" [data]="orderSizeChartData()" [options]="chartOptions" height="250px" />
           } @else {
             <div class="flex h-64 items-center justify-center text-gray-500">No data available</div>
           }
@@ -90,7 +90,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
             </div>
           </ng-template>
           <p-table
-            [value]="slippageAnalysis?.byAlgorithm || []"
+            [value]="slippageAnalysis()?.byAlgorithm || []"
             [tableStyle]="{ 'min-width': '100%' }"
             [scrollable]="true"
             scrollHeight="300px"
@@ -136,7 +136,7 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
             </div>
           </ng-template>
           <p-table
-            [value]="slippageAnalysis?.bySymbol || []"
+            [value]="slippageAnalysis()?.bySymbol || []"
             [tableStyle]="{ 'min-width': '100%' }"
             [scrollable]="true"
             scrollHeight="300px"
@@ -168,11 +168,44 @@ import { SlippageAnalysisDto } from '../../live-trade-monitoring.types';
     </div>
   `
 })
-export class SlippageComparisonPanelComponent implements OnChanges {
-  @Input() slippageAnalysis: SlippageAnalysisDto | undefined;
+export class SlippageComparisonPanelComponent {
+  readonly slippageAnalysis = input<SlippageAnalysisDto>();
 
-  timeOfDayChartData: ChartData<'bar'> | null = null;
-  orderSizeChartData: ChartData<'bar'> | null = null;
+  readonly timeOfDayChartData = computed<ChartData<'bar'> | null>(() => {
+    const analysis = this.slippageAnalysis();
+    const timeData = analysis?.byTimeOfDay ?? [];
+    if (timeData.length === 0) return null;
+    return {
+      labels: timeData.map((t) => `${t.hour}:00`),
+      datasets: [
+        {
+          label: 'Avg Slippage (bps)',
+          data: timeData.map((t) => t.avgBps),
+          backgroundColor: 'rgba(59, 130, 246, 0.6)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 1
+        }
+      ]
+    };
+  });
+
+  readonly orderSizeChartData = computed<ChartData<'bar'> | null>(() => {
+    const analysis = this.slippageAnalysis();
+    const sizeData = analysis?.byOrderSize ?? [];
+    if (sizeData.length === 0) return null;
+    return {
+      labels: sizeData.map((s) => s.bucket),
+      datasets: [
+        {
+          label: 'Avg Slippage (bps)',
+          data: sizeData.map((s) => s.avgBps),
+          backgroundColor: 'rgba(34, 197, 94, 0.6)',
+          borderColor: 'rgba(34, 197, 94, 1)',
+          borderWidth: 1
+        }
+      ]
+    };
+  });
 
   chartOptions: ChartOptions<'bar'> = {
     plugins: {
@@ -189,60 +222,8 @@ export class SlippageComparisonPanelComponent implements OnChanges {
     }
   };
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['slippageAnalysis']) {
-      this.updateCharts();
-    }
-  }
-
-  private updateCharts(): void {
-    if (!this.slippageAnalysis) {
-      this.timeOfDayChartData = null;
-      this.orderSizeChartData = null;
-      return;
-    }
-
-    // Time of day chart
-    const timeData = this.slippageAnalysis.byTimeOfDay || [];
-    if (timeData.length > 0) {
-      this.timeOfDayChartData = {
-        labels: timeData.map((t) => `${t.hour}:00`),
-        datasets: [
-          {
-            label: 'Avg Slippage (bps)',
-            data: timeData.map((t) => t.avgBps),
-            backgroundColor: 'rgba(59, 130, 246, 0.6)',
-            borderColor: 'rgba(59, 130, 246, 1)',
-            borderWidth: 1
-          }
-        ]
-      };
-    } else {
-      this.timeOfDayChartData = null;
-    }
-
-    // Order size chart
-    const sizeData = this.slippageAnalysis.byOrderSize || [];
-    if (sizeData.length > 0) {
-      this.orderSizeChartData = {
-        labels: sizeData.map((s) => s.bucket),
-        datasets: [
-          {
-            label: 'Avg Slippage (bps)',
-            data: sizeData.map((s) => s.avgBps),
-            backgroundColor: 'rgba(34, 197, 94, 0.6)',
-            borderColor: 'rgba(34, 197, 94, 1)',
-            borderWidth: 1
-          }
-        ]
-      };
-    } else {
-      this.orderSizeChartData = null;
-    }
-  }
-
   getDifferenceClass(): string {
-    const diff = this.slippageAnalysis?.overallDifferenceBps || 0;
+    const diff = this.slippageAnalysis()?.overallDifferenceBps || 0;
     return diff > 0 ? 'text-red-500' : 'text-green-500';
   }
 }

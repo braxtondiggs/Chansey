@@ -29,6 +29,15 @@ export const fillRegisterForm = async (page: Page, data: RegisterFormData): Prom
   await page.getByTestId('register-email').fill(data.email);
   await passwordInput(page, 'register-password').fill(data.password);
   await passwordInput(page, 'register-confirm-password').fill(data.confirmPassword ?? data.password);
+  // PrimeNG 21 p-password feedback overlay intermittently stays mounted after .fill() in
+  // Chromium — its footer <li> then intercepts clicks on the submit button. Force-hide any
+  // mounted overlays so the submit click is deterministic.
+  await page.evaluate(() => {
+    document.querySelectorAll<HTMLElement>('.p-password-overlay').forEach((el) => {
+      el.style.display = 'none';
+      el.style.pointerEvents = 'none';
+    });
+  });
 };
 
 type AuthFixtures = {

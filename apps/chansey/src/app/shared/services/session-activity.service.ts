@@ -159,9 +159,9 @@ export class SessionActivityService implements OnDestroy {
     document.body.appendChild(warningComponentRef.location.nativeElement);
 
     // Set initial values
-    warningComponentRef.instance.visible = true;
+    warningComponentRef.instance.visible.set(true);
     this.remainingSeconds = this.WARNING_BEFORE_TIMEOUT / 1000;
-    warningComponentRef.instance.remainingTime = this.remainingSeconds;
+    warningComponentRef.instance.remainingTime.set(this.remainingSeconds);
 
     // Set up event handlers
     warningComponentRef.instance.continue.subscribe(() => {
@@ -178,7 +178,7 @@ export class SessionActivityService implements OnDestroy {
       .subscribe(() => {
         this.remainingSeconds--;
         if (warningComponentRef && warningComponentRef.instance) {
-          warningComponentRef.instance.remainingTime = this.remainingSeconds;
+          warningComponentRef.instance.remainingTime.set(this.remainingSeconds);
         }
 
         if (this.remainingSeconds <= 0) {
@@ -202,7 +202,7 @@ export class SessionActivityService implements OnDestroy {
    */
   private hideWarning(): void {
     if (this.warningComponentRef) {
-      this.warningComponentRef.instance.visible = false;
+      this.warningComponentRef.instance.visible.set(false);
       this.warningComponentRef.changeDetectorRef.detectChanges();
 
       setTimeout(() => {

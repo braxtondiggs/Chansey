@@ -1,5 +1,5 @@
 import { DatePipe, NgClass } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -47,8 +47,8 @@ import { ExchangesService } from './exchanges.service';
   templateUrl: './exchanges.component.html'
 })
 export class ExchangesComponent {
-  @ViewChild('dt') dt: Table | undefined;
-  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
+  readonly dt = viewChild<Table>('dt');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   // Services
   private readonly exchangesService = inject(ExchangesService);
@@ -223,15 +223,16 @@ export class ExchangesComponent {
     // Handle empty search better by using empty string instead of null/undefined
     const safeFilterValue = filterValue?.trim() ?? '';
     this.searchFilter.set(safeFilterValue);
-    this.dt?.filterGlobal(safeFilterValue, 'contains');
+    this.dt()?.filterGlobal(safeFilterValue, 'contains');
   }
 
   clearSearch(): void {
     this.searchFilter.set('');
-    this.dt?.filterGlobal('', 'contains');
+    this.dt()?.filterGlobal('', 'contains');
     // Also clear the input field
-    if (this.searchInput?.nativeElement) {
-      this.searchInput.nativeElement.value = '';
+    const input = this.searchInput();
+    if (input?.nativeElement) {
+      input.nativeElement.value = '';
     }
   }
 

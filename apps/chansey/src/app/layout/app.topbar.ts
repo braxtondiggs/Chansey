@@ -1,5 +1,5 @@
 import { AsyncPipe, NgClass } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
@@ -103,7 +103,7 @@ export class AppTopBar {
     }
   });
 
-  @ViewChild('menubutton') menuButton!: ElementRef;
+  readonly menuButton = viewChild.required<ElementRef>('menubutton');
   profileDropdown = viewChild<ElementRef>('profileDropdown');
 
   logout() {

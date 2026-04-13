@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 
@@ -13,26 +13,28 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Pipeline Flow -->
-    @if (pipelineStageCounts) {
+    @if (pipelineStageCounts()) {
       <!-- Mobile: compact strip -->
       <div
         class="mb-3 rounded-lg border border-surface-200 bg-surface-0 p-3 md:hidden dark:border-surface-700 dark:bg-surface-900"
       >
         <div class="grid grid-cols-4 divide-x divide-surface-200 dark:divide-surface-700">
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-orange-500">{{ pipelineStageCounts.optimizationRuns.total }}</span>
+            <span class="text-lg font-bold text-orange-500">{{ pipelineStageCounts()!.optimizationRuns.total }}</span>
             <span class="text-[10px] text-surface-500">Optimize</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-blue-500">{{ pipelineStageCounts.historicalBacktests.total }}</span>
+            <span class="text-lg font-bold text-blue-500">{{ pipelineStageCounts()!.historicalBacktests.total }}</span>
             <span class="text-[10px] text-surface-500">Historical</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-teal-500">{{ pipelineStageCounts.liveReplayBacktests.total }}</span>
+            <span class="text-lg font-bold text-teal-500">{{ pipelineStageCounts()!.liveReplayBacktests.total }}</span>
             <span class="text-[10px] text-surface-500">Live Replay</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-lg font-bold text-purple-500">{{ pipelineStageCounts.paperTradingSessions.total }}</span>
+            <span class="text-lg font-bold text-purple-500">{{
+              pipelineStageCounts()!.paperTradingSessions.total
+            }}</span>
             <span class="text-[10px] text-surface-500">Paper Trade</span>
           </div>
         </div>
@@ -43,7 +45,9 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-orange-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-orange-500">{{ pipelineStageCounts.optimizationRuns.total }}</span>
+              <span class="text-2xl font-bold text-orange-500">{{
+                pipelineStageCounts()!.optimizationRuns.total
+              }}</span>
               <span class="text-sm text-surface-500">Optimization</span>
             </div>
           </p-card>
@@ -52,7 +56,9 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-blue-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-blue-500">{{ pipelineStageCounts.historicalBacktests.total }}</span>
+              <span class="text-2xl font-bold text-blue-500">{{
+                pipelineStageCounts()!.historicalBacktests.total
+              }}</span>
               <span class="text-sm text-surface-500">Historical</span>
             </div>
           </p-card>
@@ -61,7 +67,9 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
         <div class="min-w-0 flex-1">
           <p-card styleClass="pipeline-stage border-l-3 border-teal-500">
             <div class="flex items-center gap-3">
-              <span class="text-2xl font-bold text-teal-500">{{ pipelineStageCounts.liveReplayBacktests.total }}</span>
+              <span class="text-2xl font-bold text-teal-500">{{
+                pipelineStageCounts()!.liveReplayBacktests.total
+              }}</span>
               <span class="text-sm text-surface-500">Live Replay</span>
             </div>
           </p-card>
@@ -71,7 +79,7 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
           <p-card styleClass="pipeline-stage border-l-3 border-purple-500">
             <div class="flex items-center gap-3">
               <span class="text-2xl font-bold text-purple-500">{{
-                pipelineStageCounts.paperTradingSessions.total
+                pipelineStageCounts()!.paperTradingSessions.total
               }}</span>
               <span class="text-sm text-surface-500">Paper Trading</span>
             </div>
@@ -125,25 +133,25 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">Sharpe</span>
               <span class="font-semibold text-purple-500">
-                {{ overview?.averageMetrics?.sharpeRatio | number: '1.2-2' }}
+                {{ overview()?.averageMetrics?.sharpeRatio | number: '1.2-2' }}
               </span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">Return</span>
               <span class="font-semibold" [class]="getReturnClass()">
-                {{ overview?.averageMetrics?.totalReturn | number: '1.1-1' }}%
+                {{ overview()?.averageMetrics?.totalReturn | number: '1.1-1' }}%
               </span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">Drawdown</span>
               <span class="font-semibold text-red-400">
-                {{ overview?.averageMetrics?.maxDrawdown | number: '1.1-1' }}%
+                {{ overview()?.averageMetrics?.maxDrawdown | number: '1.1-1' }}%
               </span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">Win Rate</span>
               <span class="font-semibold text-blue-400">
-                {{ overview?.averageMetrics?.winRate | number: '1.1-1' }}%
+                {{ overview()?.averageMetrics?.winRate | number: '1.1-1' }}%
               </span>
             </div>
           </div>
@@ -155,19 +163,19 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
           <div class="grid grid-cols-2 gap-x-4 gap-y-1 md:flex md:flex-col md:gap-2">
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">24h</span>
-              <span class="font-semibold text-primary">{{ overview?.recentActivity?.last24h || 0 }}</span>
+              <span class="font-semibold text-primary">{{ overview()?.recentActivity?.last24h || 0 }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">7 days</span>
-              <span class="font-semibold text-blue-400">{{ overview?.recentActivity?.last7d || 0 }}</span>
+              <span class="font-semibold text-blue-400">{{ overview()?.recentActivity?.last7d || 0 }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-surface-500">30 days</span>
-              <span class="font-semibold text-indigo-400">{{ overview?.recentActivity?.last30d || 0 }}</span>
+              <span class="font-semibold text-indigo-400">{{ overview()?.recentActivity?.last30d || 0 }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium">Total</span>
-              <span class="font-bold">{{ overview?.totalBacktests || 0 }}</span>
+              <span class="font-bold">{{ overview()?.totalBacktests || 0 }}</span>
             </div>
           </div>
         </div>
@@ -181,18 +189,17 @@ import { BacktestOverviewDto, BacktestStatus, PipelineStageCountsDto } from '@ch
   `
 })
 export class OverviewCardsComponent {
-  @Input() overview: BacktestOverviewDto | undefined;
-  @Input() pipelineStageCounts: PipelineStageCountsDto | undefined;
+  readonly overview = input<BacktestOverviewDto>();
+  readonly pipelineStageCounts = input<PipelineStageCountsDto>();
 
   protected readonly BacktestStatus = BacktestStatus;
 
   getStatusCount(status: BacktestStatus): number {
-    if (!this.overview?.statusCounts) return 0;
-    return this.overview.statusCounts[status] || 0;
+    return this.overview()?.statusCounts?.[status] || 0;
   }
 
   getReturnClass(): string {
-    const returnValue = this.overview?.averageMetrics?.totalReturn || 0;
+    const returnValue = this.overview()?.averageMetrics?.totalReturn || 0;
     return returnValue >= 0 ? 'text-green-500' : 'text-red-500';
   }
 }

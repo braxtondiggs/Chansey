@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { ChartData, ChartOptions } from 'chart.js';
 import { CardModule } from 'primeng/card';
@@ -20,28 +20,28 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
       <p-card header="Signal Overview">
         <div class="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div class="text-center">
-            <div class="text-2xl font-bold">{{ analytics?.overall?.totalSignals || 0 }}</div>
+            <div class="text-2xl font-bold">{{ analytics()?.overall?.totalSignals || 0 }}</div>
             <div class="text-sm text-gray-500">Total Signals</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-green-500">{{ analytics?.overall?.entryCount || 0 }}</div>
+            <div class="text-2xl font-bold text-green-500">{{ analytics()?.overall?.entryCount || 0 }}</div>
             <div class="text-sm text-gray-500">Entry Signals</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-red-500">{{ analytics?.overall?.exitCount || 0 }}</div>
+            <div class="text-2xl font-bold text-red-500">{{ analytics()?.overall?.exitCount || 0 }}</div>
             <div class="text-sm text-gray-500">Exit Signals</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-yellow-500">{{ analytics?.overall?.adjustmentCount || 0 }}</div>
+            <div class="text-2xl font-bold text-yellow-500">{{ analytics()?.overall?.adjustmentCount || 0 }}</div>
             <div class="text-sm text-gray-500">Adjustments</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-orange-500">{{ analytics?.overall?.riskControlCount || 0 }}</div>
+            <div class="text-2xl font-bold text-orange-500">{{ analytics()?.overall?.riskControlCount || 0 }}</div>
             <div class="text-sm text-gray-500">Risk Control</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-purple-500">
-              {{ (analytics?.overall?.avgConfidence || 0) * 100 | number: '1.0-0' }}%
+              {{ (analytics()?.overall?.avgConfidence || 0) * 100 | number: '1.0-0' }}%
             </div>
             <div class="text-sm text-gray-500">Avg Confidence</div>
           </div>
@@ -50,8 +50,8 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
 
       <!-- Confidence vs Success Rate Chart -->
       <p-card header="Confidence vs Success Rate">
-        @if (confidenceChartData) {
-          <p-chart type="bar" [data]="confidenceChartData" [options]="chartOptions" />
+        @if (confidenceChartData()) {
+          <p-chart type="bar" [data]="confidenceChartData()" [options]="chartOptions" />
         } @else {
           <div class="py-8 text-center text-gray-500">No data available</div>
         }
@@ -59,8 +59,8 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
 
       <!-- By Signal Type -->
       <p-card header="Performance by Signal Type">
-        <p-table [value]="analytics?.bySignalType || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+        <p-table [value]="analytics()?.bySignalType || []" styleClass="p-datatable-sm">
+          <ng-template #header>
             <tr>
               <th>Type</th>
               <th class="text-right">Count</th>
@@ -68,7 +68,7 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
               <th class="text-right">Avg Return</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td>
                 <p-tag [severity]="getTypeSeverity(item.type)" [value]="formatType(item.type)" />
@@ -86,7 +86,7 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
               </td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No data available</td>
             </tr>
@@ -96,8 +96,8 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
 
       <!-- By Instrument -->
       <p-card header="Top Instruments by Signal Count">
-        <p-table [value]="analytics?.byInstrument || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+        <p-table [value]="analytics()?.byInstrument || []" styleClass="p-datatable-sm">
+          <ng-template #header>
             <tr>
               <th>Instrument</th>
               <th class="text-right">Signals</th>
@@ -105,7 +105,7 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
               <th class="text-right">Avg Return</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td class="font-medium">{{ item.instrument }}</td>
               <td class="text-right">{{ item.count }}</td>
@@ -121,7 +121,7 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
               </td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No data available</td>
             </tr>
@@ -132,44 +132,13 @@ import { SignalAnalyticsDto, SignalType } from '@chansey/api-interfaces';
   `
 })
 export class SignalQualityPanelComponent {
-  @Input() set analytics(value: SignalAnalyticsDto | undefined) {
-    this._analytics = value;
-    this.updateChartData();
-  }
+  readonly analytics = input<SignalAnalyticsDto>();
 
-  get analytics(): SignalAnalyticsDto | undefined {
-    return this._analytics;
-  }
-
-  private _analytics: SignalAnalyticsDto | undefined;
-  confidenceChartData: ChartData | null = null;
-
-  chartOptions: ChartOptions = {
-    responsive: true,
-    maintainAspectRatio: true,
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top'
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        max: 100
-      }
-    }
-  };
-
-  private updateChartData(): void {
-    if (!this._analytics?.byConfidenceBucket?.length) {
-      this.confidenceChartData = null;
-      return;
-    }
-
-    const buckets = this._analytics.byConfidenceBucket;
-
-    this.confidenceChartData = {
+  readonly confidenceChartData = computed<ChartData | null>(() => {
+    const analytics = this.analytics();
+    if (!analytics?.byConfidenceBucket?.length) return null;
+    const buckets = analytics.byConfidenceBucket;
+    return {
       labels: buckets.map((b) => b.bucket),
       datasets: [
         {
@@ -189,25 +158,17 @@ export class SignalQualityPanelComponent {
         }
       ]
     };
+  });
 
-    this.chartOptions = {
-      ...this.chartOptions,
-      scales: {
-        y: {
-          beginAtZero: true,
-          max: 100,
-          position: 'left'
-        },
-        y1: {
-          beginAtZero: true,
-          position: 'right',
-          grid: {
-            drawOnChartArea: false
-          }
-        }
-      }
-    };
-  }
+  chartOptions: ChartOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: { legend: { display: true, position: 'top' } },
+    scales: {
+      y: { beginAtZero: true, max: 100, position: 'left' },
+      y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } }
+    }
+  };
 
   getTypeSeverity(type: SignalType): 'success' | 'danger' | 'warn' | 'info' {
     switch (type) {

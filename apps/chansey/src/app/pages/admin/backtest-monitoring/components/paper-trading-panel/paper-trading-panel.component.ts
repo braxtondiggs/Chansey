@@ -116,7 +116,7 @@ import {
       <!-- Top Algorithms -->
       <p-card header="Top Algorithms">
         <p-table [value]="analytics()?.topAlgorithms || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Algorithm</th>
               <th class="text-right">Sessions</th>
@@ -124,7 +124,7 @@ import {
               <th class="text-right">Avg Sharpe</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td class="font-medium">{{ item.algorithmName }}</td>
               <td class="text-right">{{ item.sessionCount }}</td>
@@ -136,7 +136,7 @@ import {
               <td class="text-right">{{ item.avgSharpe | number: '1.2-2' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No paper trading data available</td>
             </tr>
@@ -147,7 +147,7 @@ import {
       <!-- By Symbol Breakdown -->
       <p-card header="Volume by Symbol">
         <p-table [value]="analytics()?.orderAnalytics?.bySymbol || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Symbol</th>
               <th class="text-right">Orders</th>
@@ -155,7 +155,7 @@ import {
               <th class="text-right">P&L</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td class="font-medium">{{ item.symbol }}</td>
               <td class="text-right">{{ item.orderCount }}</td>
@@ -167,7 +167,7 @@ import {
               </td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No order data available</td>
             </tr>
@@ -190,7 +190,7 @@ import {
           currentPageReportTemplate="{first} to {last} of {totalRecords}"
           styleClass="p-datatable-sm"
         >
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Name</th>
               <th>Algorithm</th>
@@ -200,7 +200,7 @@ import {
               <th>Created</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-session>
+          <ng-template #body let-session>
             <tr>
               <td>{{ session.name }}</td>
               <td>{{ session.algorithmName }}</td>
@@ -229,7 +229,7 @@ import {
               <td>{{ session.createdAt | date: 'short' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="6" class="py-4 text-center text-gray-500">No paper trading sessions found</td>
             </tr>

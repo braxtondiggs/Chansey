@@ -1,5 +1,5 @@
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
@@ -21,30 +21,30 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.types';
             <i class="pi pi-list text-xl text-primary"></i>
             <span class="font-semibold">Algorithmic Orders</span>
           </div>
-          @if (orders) {
+          @if (orders()) {
             <div class="flex items-center gap-4 text-sm text-gray-500">
-              <span>Volume: {{ orders.totalVolume | currency: 'USD' : 'symbol' : '1.0-0' }}</span>
-              <span [class]="orders.totalPnL >= 0 ? 'text-green-500' : 'text-red-500'">
-                P&L: {{ orders.totalPnL | currency: 'USD' : 'symbol' : '1.2-2' }}
+              <span>Volume: {{ orders()!.totalVolume | currency: 'USD' : 'symbol' : '1.0-0' }}</span>
+              <span [class]="orders()!.totalPnL >= 0 ? 'text-green-500' : 'text-red-500'">
+                P&L: {{ orders()!.totalPnL | currency: 'USD' : 'symbol' : '1.2-2' }}
               </span>
-              <span>Avg Slippage: {{ orders.avgSlippageBps | number: '1.1-1' }} bps</span>
+              <span>Avg Slippage: {{ orders()!.avgSlippageBps | number: '1.1-1' }} bps</span>
             </div>
           }
         </div>
       </ng-template>
 
-      @if (isLoading) {
+      @if (isLoading()) {
         <div class="flex items-center justify-center py-8">
           <p-progress-spinner strokeWidth="4" />
         </div>
       } @else {
         <p-table
-          [value]="orders?.data || []"
+          [value]="orders()?.data || []"
           [tableStyle]="{ 'min-width': '100%' }"
           [lazy]="true"
           [paginator]="true"
-          [rows]="orders?.limit || 10"
-          [totalRecords]="orders?.total || 0"
+          [rows]="orders()?.limit || 10"
+          [totalRecords]="orders()?.total || 0"
           [showCurrentPageReport]="true"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords} orders"
           (onLazyLoad)="onLazyLoad($event)"
@@ -107,9 +107,9 @@ import { PaginatedOrderListDto } from '../../live-trade-monitoring.types';
   `
 })
 export class OrdersTableComponent {
-  @Input() orders: PaginatedOrderListDto | undefined;
-  @Input() isLoading = false;
-  @Output() pageChange = new EventEmitter<number>();
+  readonly orders = input<PaginatedOrderListDto>();
+  readonly isLoading = input(false);
+  pageChange = output<number>();
 
   onLazyLoad(event: { first?: number | null; rows?: number | null }): void {
     const page = Math.floor((event.first ?? 0) / (event.rows ?? 10)) + 1;

@@ -1,6 +1,6 @@
 <p-card class="recent-transactions-container">
-  <ng-template pTemplate="header">
-    <div class="flex items-center justify-between p-4 border-b border-gray-100 dark:border-neutral-700">
+  <ng-template #header>
+    <div class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-neutral-700">
       <div class="flex items-center gap-4">
         <i class="pi pi-history text-primary"></i>
         <h2 class="m-0 text-xl font-semibold">Recent Transactions</h2>
@@ -21,7 +21,7 @@
   @if (transactionsQuery.isPending()) {
     <div class="mb-3 overflow-hidden">
       <!-- Skeleton for table header -->
-      <div class="flex p-3 mb-2 border-b border-gray-100 rounded-t dark:border-neutral-700">
+      <div class="mb-2 flex rounded-t border-b border-gray-100 p-3 dark:border-neutral-700">
         <p-skeleton width="120px" height="1.25rem" class="mr-6"></p-skeleton>
         <p-skeleton width="100px" height="1.25rem" class="mr-6"></p-skeleton>
         <p-skeleton width="120px" height="1.25rem" class="mr-6"></p-skeleton>
@@ -29,8 +29,8 @@
       </div>
       <!-- Skeleton for table rows -->
       @for (i of skeletonRows(); track i) {
-        <div class="flex p-3 mb-2 border-b border-gray-50 dark:border-neutral-700">
-          <div class="flex items-center mr-6">
+        <div class="mb-2 flex border-b border-gray-50 p-3 dark:border-neutral-700">
+          <div class="mr-6 flex items-center">
             <p-skeleton shape="circle" size="2.5rem" class="mr-2"></p-skeleton>
             <p-skeleton width="120px" height="1.25rem"></p-skeleton>
           </div>
@@ -57,7 +57,7 @@
   @if (!transactionsQuery.isPending() && transactions().length > 0) {
     <div>
       <p-table [value]="transactions()" [scrollable]="true" tableStyleClass="no-bottom-border transactions-table">
-        <ng-template pTemplate="header">
+        <ng-template #header>
           <tr>
             <th style="min-width: 100px">Asset</th>
             <th style="min-width: 80px">Type</th>
@@ -66,7 +66,7 @@
             <th style="min-width: 120px">Date</th>
           </tr>
         </ng-template>
-        <ng-template pTemplate="body" let-transaction>
+        <ng-template #body let-transaction>
           <tr>
             <td>
               <a
@@ -79,7 +79,7 @@
                   [image]="transaction.baseCoin?.image"
                   shape="circle"
                   size="large"
-                  class="mr-2 shadow-sm min-w-10"
+                  class="mr-2 min-w-10 shadow-sm"
                 />
                 <div class="flex flex-col">
                   <span class="font-medium text-primary-500 hover:text-primary-600">{{ transaction.symbol }}</span>

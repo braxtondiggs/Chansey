@@ -68,7 +68,7 @@ import { DialogModule } from 'primeng/dialog';
           </div>
         </div>
       </div>
-      <ng-template pTemplate="footer">
+      <ng-template #footer>
         <button pButton type="button" label="Cancel" class="p-button-text" (click)="onCancelCrop()"></button>
         <button pButton type="button" label="Apply" (click)="applyCrop()" [disabled]="!croppedImage"></button>
       </ng-template>

@@ -78,7 +78,7 @@ import { OptimizationAnalyticsDto, OptimizationStatus, PaginatedOptimizationRuns
       <!-- Top Strategies -->
       <p-card header="Top Strategies">
         <p-table [value]="analytics()?.topStrategies || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Algorithm</th>
               <th class="text-right">Runs</th>
@@ -86,7 +86,7 @@ import { OptimizationAnalyticsDto, OptimizationStatus, PaginatedOptimizationRuns
               <th class="text-right">Avg Best Score</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td class="font-medium">{{ item.algorithmName }}</td>
               <td class="text-right">{{ item.runCount }}</td>
@@ -98,7 +98,7 @@ import { OptimizationAnalyticsDto, OptimizationStatus, PaginatedOptimizationRuns
               <td class="text-right">{{ item.avgBestScore | number: '1.2-2' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No optimization data available</td>
             </tr>
@@ -121,7 +121,7 @@ import { OptimizationAnalyticsDto, OptimizationStatus, PaginatedOptimizationRuns
           currentPageReportTemplate="{first} to {last} of {totalRecords}"
           styleClass="p-datatable-sm"
         >
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Strategy</th>
               <th>Status</th>
@@ -131,7 +131,7 @@ import { OptimizationAnalyticsDto, OptimizationStatus, PaginatedOptimizationRuns
               <th>Created</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-run>
+          <ng-template #body let-run>
             <tr>
               <td>
                 <span [pTooltip]="run.algorithmName" tooltipPosition="top">{{ run.strategyName }}</span>
@@ -162,7 +162,7 @@ import { OptimizationAnalyticsDto, OptimizationStatus, PaginatedOptimizationRuns
               <td>{{ run.createdAt | date: 'short' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="6" class="py-4 text-center text-gray-500">No optimization runs found</td>
             </tr>

@@ -1,5 +1,5 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -18,28 +18,28 @@ import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.types';
       <div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-4">
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
-            <span class="text-3xl font-bold">{{ alerts?.total || 0 }}</span>
+            <span class="text-3xl font-bold">{{ alerts()?.total || 0 }}</span>
             <span class="mt-1 text-sm text-gray-500">Total Alerts</span>
           </div>
         </p-card>
 
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
-            <span class="text-3xl font-bold text-red-500">{{ alerts?.criticalCount || 0 }}</span>
+            <span class="text-3xl font-bold text-red-500">{{ alerts()?.criticalCount || 0 }}</span>
             <span class="mt-1 text-sm text-gray-500">Critical</span>
           </div>
         </p-card>
 
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
-            <span class="text-3xl font-bold text-yellow-500">{{ alerts?.warningCount || 0 }}</span>
+            <span class="text-3xl font-bold text-yellow-500">{{ alerts()?.warningCount || 0 }}</span>
             <span class="mt-1 text-sm text-gray-500">Warning</span>
           </div>
         </p-card>
 
         <p-card styleClass="text-center">
           <div class="flex flex-col items-center">
-            <span class="text-3xl font-bold text-blue-500">{{ alerts?.infoCount || 0 }}</span>
+            <span class="text-3xl font-bold text-blue-500">{{ alerts()?.infoCount || 0 }}</span>
             <span class="mt-1 text-sm text-gray-500">Info</span>
           </div>
         </p-card>
@@ -55,7 +55,7 @@ import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.types';
         </ng-template>
 
         <p-table
-          [value]="alerts?.alerts || []"
+          [value]="alerts()?.alerts || []"
           [tableStyle]="{ 'min-width': '100%' }"
           [paginator]="true"
           [rows]="10"
@@ -126,28 +126,28 @@ import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.types';
         <div class="grid grid-cols-2 gap-4 md:grid-cols-5">
           <div class="flex flex-col">
             <span class="text-sm font-medium">Sharpe Ratio</span>
-            <span class="text-xs text-yellow-500">Warning: -{{ alerts?.thresholds?.sharpeRatioWarning }}%</span>
-            <span class="text-xs text-red-500">Critical: -{{ alerts?.thresholds?.sharpeRatioCritical }}%</span>
+            <span class="text-xs text-yellow-500">Warning: -{{ alerts()?.thresholds?.sharpeRatioWarning }}%</span>
+            <span class="text-xs text-red-500">Critical: -{{ alerts()?.thresholds?.sharpeRatioCritical }}%</span>
           </div>
           <div class="flex flex-col">
             <span class="text-sm font-medium">Win Rate</span>
-            <span class="text-xs text-yellow-500">Warning: -{{ alerts?.thresholds?.winRateWarning }}%</span>
-            <span class="text-xs text-red-500">Critical: -{{ alerts?.thresholds?.winRateCritical }}%</span>
+            <span class="text-xs text-yellow-500">Warning: -{{ alerts()?.thresholds?.winRateWarning }}%</span>
+            <span class="text-xs text-red-500">Critical: -{{ alerts()?.thresholds?.winRateCritical }}%</span>
           </div>
           <div class="flex flex-col">
             <span class="text-sm font-medium">Max Drawdown</span>
-            <span class="text-xs text-yellow-500">Warning: +{{ alerts?.thresholds?.maxDrawdownWarning }}%</span>
-            <span class="text-xs text-red-500">Critical: +{{ alerts?.thresholds?.maxDrawdownCritical }}%</span>
+            <span class="text-xs text-yellow-500">Warning: +{{ alerts()?.thresholds?.maxDrawdownWarning }}%</span>
+            <span class="text-xs text-red-500">Critical: +{{ alerts()?.thresholds?.maxDrawdownCritical }}%</span>
           </div>
           <div class="flex flex-col">
             <span class="text-sm font-medium">Total Return</span>
-            <span class="text-xs text-yellow-500">Warning: -{{ alerts?.thresholds?.totalReturnWarning }}%</span>
-            <span class="text-xs text-red-500">Critical: -{{ alerts?.thresholds?.totalReturnCritical }}%</span>
+            <span class="text-xs text-yellow-500">Warning: -{{ alerts()?.thresholds?.totalReturnWarning }}%</span>
+            <span class="text-xs text-red-500">Critical: -{{ alerts()?.thresholds?.totalReturnCritical }}%</span>
           </div>
           <div class="flex flex-col">
             <span class="text-sm font-medium">Slippage</span>
-            <span class="text-xs text-yellow-500">Warning: +{{ alerts?.thresholds?.slippageWarningBps }} bps</span>
-            <span class="text-xs text-red-500">Critical: +{{ alerts?.thresholds?.slippageCriticalBps }} bps</span>
+            <span class="text-xs text-yellow-500">Warning: +{{ alerts()?.thresholds?.slippageWarningBps }} bps</span>
+            <span class="text-xs text-red-500">Critical: +{{ alerts()?.thresholds?.slippageCriticalBps }} bps</span>
           </div>
         </div>
       </p-card>
@@ -155,7 +155,7 @@ import { AlertsDto, AlertSeverity } from '../../live-trade-monitoring.types';
   `
 })
 export class AlertsPanelComponent {
-  @Input() alerts: AlertsDto | undefined;
+  readonly alerts = input<AlertsDto>();
 
   getSeverityColor(severity: AlertSeverity): 'danger' | 'warn' | 'info' {
     switch (severity) {

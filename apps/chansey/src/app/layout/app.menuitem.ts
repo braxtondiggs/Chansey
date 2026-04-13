@@ -4,13 +4,12 @@ import {
   AfterViewChecked,
   Component,
   ElementRef,
-  HostBinding,
-  Input,
   OnInit,
-  ViewChild,
   computed,
   effect,
-  inject
+  inject,
+  input,
+  viewChild
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
@@ -28,71 +27,75 @@ import { LayoutService } from '../shared/services/layout.service';
   // eslint-disable-next-line @angular-eslint/component-selector
   selector: '[chansey-menuitem]',
   imports: [RouterModule, RippleModule, TooltipModule, NgClass],
+  host: {
+    '[class.layout-root-menuitem]': 'root()',
+    '[class.active-menuitem]': 'active'
+  },
   template: `
     <ng-container>
-      @if (root && item.visible !== false) {
+      @if (root() && item().visible !== false) {
         <div class="layout-menuitem-root-text">
-          {{ item.label }}
+          {{ item().label }}
         </div>
       }
-      @if ((!item.routerLink || item.items) && item.visible !== false) {
+      @if ((!item().routerLink || item().items) && item().visible !== false) {
         <a
-          [attr.href]="item.url"
+          [attr.href]="item().url"
           (click)="itemClick($event)"
           (mouseenter)="onMouseEnter()"
-          [ngClass]="item.class"
-          [attr.target]="item.target"
+          [ngClass]="item().class"
+          [attr.target]="item().target"
           tabindex="0"
           pRipple
-          [pTooltip]="item.label"
-          [tooltipDisabled]="isCompactLayout() || !root || active"
+          [pTooltip]="item().label"
+          [tooltipDisabled]="isCompactLayout() || !root() || active"
         >
-          <i [ngClass]="item.icon" class="layout-menuitem-icon"></i>
-          <span class="layout-menuitem-text">{{ item.label }}</span>
-          @if (item.items) {
+          <i [ngClass]="item().icon" class="layout-menuitem-icon"></i>
+          <span class="layout-menuitem-text">{{ item().label }}</span>
+          @if (item().items) {
             <i class="pi pi-fw pi-angle-down layout-submenu-toggler"></i>
           }
         </a>
       }
-      @if (item.routerLink && !item.items && item.visible !== false) {
+      @if (item().routerLink && !item().items && item().visible !== false) {
         <a
           (click)="itemClick($event)"
           (mouseenter)="onMouseEnter()"
-          [ngClass]="item.class"
-          [routerLink]="item.routerLink"
+          [ngClass]="item().class"
+          [routerLink]="item().routerLink"
           routerLinkActive="active-route"
           [routerLinkActiveOptions]="
-            item.routerLinkActiveOptions || {
+            item().routerLinkActiveOptions || {
               paths: 'exact',
               queryParams: 'ignored',
               matrixParams: 'ignored',
               fragment: 'ignored'
             }
           "
-          [fragment]="item.fragment"
-          [queryParamsHandling]="item.queryParamsHandling"
-          [preserveFragment]="item.preserveFragment"
-          [skipLocationChange]="item.skipLocationChange"
-          [replaceUrl]="item.replaceUrl"
-          [state]="item.state"
-          [queryParams]="item.queryParams"
-          [attr.target]="item.target"
+          [fragment]="item().fragment"
+          [queryParamsHandling]="item().queryParamsHandling"
+          [preserveFragment]="item().preserveFragment"
+          [skipLocationChange]="item().skipLocationChange"
+          [replaceUrl]="item().replaceUrl"
+          [state]="item().state"
+          [queryParams]="item().queryParams"
+          [attr.target]="item().target"
           tabindex="0"
           pRipple
-          [pTooltip]="item.label"
-          [tooltipDisabled]="isCompactLayout() || !root"
+          [pTooltip]="item().label"
+          [tooltipDisabled]="isCompactLayout() || !root()"
         >
-          <i [ngClass]="item.icon" class="layout-menuitem-icon"></i>
-          <span class="layout-menuitem-text">{{ item.label }}</span>
-          @if (item.items) {
+          <i [ngClass]="item().icon" class="layout-menuitem-icon"></i>
+          <span class="layout-menuitem-text">{{ item().label }}</span>
+          @if (item().items) {
             <i class="pi pi-fw pi-angle-down layout-submenu-toggler"></i>
           }
         </a>
       }
 
-      @if (item.items && item.visible !== false) {
+      @if (item().items && item().visible !== false) {
         <ul #submenu [@children]="submenuAnimation" (@children.done)="onSubmenuAnimated($event)">
-          @for (child of item.items; track child; let i = $index) {
+          @for (child of item().items; track child; let i = $index) {
             <li chansey-menuitem [item]="child" [index]="i" [parentKey]="key" [ngClass]="child.badgeClass"></li>
           }
         </ul>
@@ -132,20 +135,15 @@ import { LayoutService } from '../shared/services/layout.service';
 
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppMenuitem implements OnInit, AfterViewChecked {
-  @Input() item!: MenuItem;
+  readonly item = input.required<MenuItem>();
 
-  @Input() index!: number;
+  readonly index = input.required<number>();
 
-  @Input() @HostBinding('class.layout-root-menuitem') root!: boolean;
+  readonly root = input(false);
 
-  @Input() parentKey!: string;
+  readonly parentKey = input<string>();
 
-  @ViewChild('submenu') submenu!: ElementRef;
-
-  @HostBinding('class.active-menuitem')
-  get activeClass() {
-    return this.active;
-  }
+  readonly submenu = viewChild<ElementRef>('submenu');
 
   active = false;
 
@@ -158,7 +156,7 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
   get submenuAnimation() {
     if (this.layoutService.isDesktop() && this.isCompactLayout()) {
       return this.active ? 'visible' : 'hidden';
-    } else return this.root ? 'expanded' : this.active ? 'expanded' : 'collapsed';
+    } else return this.root() ? 'expanded' : this.active ? 'expanded' : 'collapsed';
   }
 
   get isDesktop() {
@@ -196,7 +194,7 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
         if (this.isCompactLayout()) {
           this.active = false;
         } else {
-          if (this.item.routerLink) {
+          if (this.item().routerLink) {
             this.updateActiveStateFromRoute();
           }
         }
@@ -204,7 +202,7 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
 
     effect(() => {
       if (this.layoutService.isOverlay() && this.layoutService.isSidebarActive()) {
-        if (this.item.routerLink) {
+        if (this.item().routerLink) {
           this.updateActiveStateFromRoute();
         }
       }
@@ -212,23 +210,31 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
   }
 
   ngOnInit() {
-    this.key = this.parentKey ? this.parentKey + '-' + this.index : String(this.index);
+    this.key = this.parentKey() ? this.parentKey() + '-' + this.index() : String(this.index());
 
-    if (!this.isCompactLayout() && this.item.routerLink) {
+    if (!this.isCompactLayout() && this.item().routerLink) {
       this.updateActiveStateFromRoute();
     }
   }
 
   ngAfterViewChecked() {
-    if (this.root && this.active && this.isDesktop && this.isCompactLayout()) {
-      this.calculatePosition(this.submenu?.nativeElement, this.submenu?.nativeElement.parentElement);
+    if (this.root() && this.active && this.isDesktop && this.isCompactLayout()) {
+      const submenuElement = this.submenu()?.nativeElement;
+      const parentElement = submenuElement?.parentElement;
+
+      if (!submenuElement || !parentElement) {
+        return;
+      }
+
+      this.calculatePosition(submenuElement, parentElement);
     }
   }
 
   updateActiveStateFromRoute() {
-    if (!this.item.routerLink) return;
+    const currentItem = this.item();
+    if (!currentItem.routerLink) return;
 
-    const activeRoute = this.router.isActive(this.item.routerLink[0], {
+    const activeRoute = this.router.isActive(currentItem.routerLink[0], {
       paths: 'exact',
       queryParams: 'ignored',
       matrixParams: 'ignored',
@@ -272,14 +278,14 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
 
   itemClick(event: Event) {
     // avoid processing disabled items
-    if (this.item.disabled) {
+    if (this.item().disabled) {
       event.preventDefault();
       return;
     }
 
     // navigate with hover
     if (
-      (this.root && this.layoutService.isSlim()) ||
+      (this.root() && this.layoutService.isSlim()) ||
       this.layoutService.isHorizontal() ||
       this.layoutService.isCompact()
     ) {
@@ -290,15 +296,16 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
     }
 
     // execute command
-    if (this.item.command) {
-      this.item.command({ originalEvent: event, item: this.item });
+    const currentItem = this.item();
+    if (currentItem.command) {
+      currentItem.command({ originalEvent: event, item: currentItem });
     }
 
     // toggle active state
-    if (this.item.items) {
+    if (this.item().items) {
       this.active = !this.active;
 
-      if (this.root && this.active && this.isCompactLayout()) {
+      if (this.root() && this.active && this.isCompactLayout()) {
         this.layoutService.onOverlaySubmenuOpen();
       }
     } else {
@@ -323,7 +330,7 @@ export class AppMenuitem implements OnInit, AfterViewChecked {
 
   onMouseEnter() {
     // activate item on hover
-    if (this.root && this.isCompactLayout() && this.layoutService.isDesktop()) {
+    if (this.root() && this.isCompactLayout() && this.layoutService.isDesktop()) {
       if (this.layoutService.layoutState().menuHoverActive) {
         this.active = true;
         this.layoutService.onMenuStateChange({ key: this.key });

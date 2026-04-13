@@ -37,14 +37,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an Nx monorepo with Angular frontend and NestJS API backend:
 
 - **apps/api** - NestJS API server with TypeORM database integration
-- **apps/chansey** - Angular 20 frontend with PrimeNG UI components
+- **apps/chansey** - Angular 21 frontend with PrimeNG UI components
 - **apps/chansey-e2e** - Cypress end-to-end tests
 - **libs/api-interfaces** - Shared TypeScript interfaces between API and frontend
 
 ### Key Technologies
 
 - **Backend**: NestJS, TypeORM, PostgreSQL, Redis, BullMQ (job queues)
-- **Frontend**: Angular 20, PrimeNG, TailwindCSS, PWA support
+- **Frontend**: Angular 21, PrimeNG, TailwindCSS, PWA support
 - **External APIs**: CCXT (cryptocurrency exchanges), CoinGecko
 - **Infrastructure**: Railway deployment, Minio (file storage)
 

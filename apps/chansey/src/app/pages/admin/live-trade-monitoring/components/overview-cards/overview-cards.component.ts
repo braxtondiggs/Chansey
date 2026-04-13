@@ -1,5 +1,5 @@
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -17,21 +17,21 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
       <!-- Summary Cards -->
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
-          <span class="text-3xl font-bold text-blue-500">{{ overview?.summary?.activeAlgorithms || 0 }}</span>
+          <span class="text-3xl font-bold text-blue-500">{{ overview()?.summary?.activeAlgorithms || 0 }}</span>
           <span class="mt-1 text-sm text-gray-500">Active Algorithms</span>
         </div>
       </p-card>
 
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
-          <span class="text-3xl font-bold text-green-500">{{ overview?.summary?.totalOrders || 0 }}</span>
+          <span class="text-3xl font-bold text-green-500">{{ overview()?.summary?.totalOrders || 0 }}</span>
           <span class="mt-1 text-sm text-gray-500">Total Orders</span>
         </div>
       </p-card>
 
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
-          <span class="text-3xl font-bold text-purple-500">{{ overview?.summary?.activeUsers || 0 }}</span>
+          <span class="text-3xl font-bold text-purple-500">{{ overview()?.summary?.activeUsers || 0 }}</span>
           <span class="mt-1 text-sm text-gray-500">Active Users</span>
         </div>
       </p-card>
@@ -39,7 +39,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
           <span class="text-3xl font-bold text-yellow-500">
-            {{ overview?.summary?.totalVolume || 0 | currency: 'USD' : 'symbol' : '1.0-0' }}
+            {{ overview()?.summary?.totalVolume || 0 | currency: 'USD' : 'symbol' : '1.0-0' }}
           </span>
           <span class="mt-1 text-sm text-gray-500">Total Volume</span>
         </div>
@@ -48,7 +48,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
           <span class="text-3xl font-bold" [class]="getPnLClass()">
-            {{ overview?.summary?.totalPnL || 0 | currency: 'USD' : 'symbol' : '1.0-0' }}
+            {{ overview()?.summary?.totalPnL || 0 | currency: 'USD' : 'symbol' : '1.0-0' }}
           </span>
           <span class="mt-1 text-sm text-gray-500">Total P&L</span>
         </div>
@@ -57,7 +57,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
       <p-card styleClass="text-center">
         <div class="flex flex-col items-center">
           <span class="text-3xl font-bold text-indigo-500">
-            {{ overview?.summary?.avgSlippageBps || 0 | number: '1.1-1' }} bps
+            {{ overview()?.summary?.avgSlippageBps || 0 | number: '1.1-1' }} bps
           </span>
           <span class="mt-1 text-sm text-gray-500">Avg Slippage</span>
         </div>
@@ -73,11 +73,11 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
         </div>
         <div class="flex items-center justify-around">
           <div class="flex flex-col items-center">
-            <span class="text-2xl font-bold text-primary">{{ overview?.summary?.orders24h || 0 }}</span>
+            <span class="text-2xl font-bold text-primary">{{ overview()?.summary?.orders24h || 0 }}</span>
             <span class="text-xs text-surface-500">Last 24h</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-2xl font-bold text-blue-400">{{ overview?.summary?.orders7d || 0 }}</span>
+            <span class="text-2xl font-bold text-blue-400">{{ overview()?.summary?.orders7d || 0 }}</span>
             <span class="text-xs text-surface-500">Last 7 days</span>
           </div>
         </div>
@@ -90,15 +90,15 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
         </div>
         <div class="flex items-center justify-around">
           <div class="flex flex-col items-center">
-            <span class="text-2xl font-bold text-red-500">{{ overview?.alertsSummary?.critical || 0 }}</span>
+            <span class="text-2xl font-bold text-red-500">{{ overview()?.alertsSummary?.critical || 0 }}</span>
             <span class="text-xs text-surface-500">Critical</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-2xl font-bold text-yellow-500">{{ overview?.alertsSummary?.warning || 0 }}</span>
+            <span class="text-2xl font-bold text-yellow-500">{{ overview()?.alertsSummary?.warning || 0 }}</span>
             <span class="text-xs text-surface-500">Warning</span>
           </div>
           <div class="flex flex-col items-center">
-            <span class="text-2xl font-bold text-blue-500">{{ overview?.alertsSummary?.info || 0 }}</span>
+            <span class="text-2xl font-bold text-blue-500">{{ overview()?.alertsSummary?.info || 0 }}</span>
             <span class="text-xs text-surface-500">Info</span>
           </div>
         </div>
@@ -115,7 +115,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
             <span class="font-semibold">Top Performing Algorithms</span>
           </div>
         </ng-template>
-        <p-table [value]="overview?.topAlgorithms || []" [tableStyle]="{ 'min-width': '100%' }">
+        <p-table [value]="overview()?.topAlgorithms || []" [tableStyle]="{ 'min-width': '100%' }">
           <ng-template #header>
             <tr>
               <th>Algorithm</th>
@@ -150,7 +150,7 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
             <span class="font-semibold">Recent Orders</span>
           </div>
         </ng-template>
-        <p-table [value]="overview?.recentOrders || []" [tableStyle]="{ 'min-width': '100%' }">
+        <p-table [value]="overview()?.recentOrders || []" [tableStyle]="{ 'min-width': '100%' }">
           <ng-template #header>
             <tr>
               <th>Symbol</th>
@@ -180,10 +180,10 @@ import { LiveTradeOverviewDto } from '../../live-trade-monitoring.types';
   `
 })
 export class OverviewCardsComponent {
-  @Input() overview: LiveTradeOverviewDto | undefined;
+  readonly overview = input<LiveTradeOverviewDto>();
 
   getPnLClass(): string {
-    const pnl = this.overview?.summary?.totalPnL || 0;
+    const pnl = this.overview()?.summary?.totalPnL || 0;
     return pnl >= 0 ? 'text-green-500' : 'text-red-500';
   }
 }

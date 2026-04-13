@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { ProgressBarModule } from 'primeng/progressbar';
@@ -22,39 +22,39 @@ import { AlgorithmMetrics } from '@chansey/api-interfaces';
         </div>
       </ng-template>
 
-      @if (metrics) {
+      @if (metrics()) {
         <div class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="mb-1 block text-sm text-gray-500">Total Executions</label>
-              <span class="text-2xl font-bold">{{ metrics.totalExecutions ?? 0 }}</span>
+              <span class="text-2xl font-bold">{{ metrics()!.totalExecutions ?? 0 }}</span>
             </div>
 
             <div>
               <label class="mb-1 block text-sm text-gray-500">Success Rate</label>
               <div class="flex items-center gap-2">
                 <span class="text-2xl font-bold" [class]="getSuccessRateClass()">
-                  {{ formatPercent(metrics.successRate) }}
+                  {{ formatPercent(metrics()!.successRate) }}
                 </span>
               </div>
             </div>
 
             <div>
               <label class="mb-1 block text-sm text-gray-500">Successful</label>
-              <span class="text-lg font-medium text-green-600">{{ metrics.successfulExecutions ?? 0 }}</span>
+              <span class="text-lg font-medium text-green-600">{{ metrics()!.successfulExecutions ?? 0 }}</span>
             </div>
 
             <div>
               <label class="mb-1 block text-sm text-gray-500">Failed</label>
-              <span class="text-lg font-medium text-red-600">{{ metrics.failedExecutions ?? 0 }}</span>
+              <span class="text-lg font-medium text-red-600">{{ metrics()!.failedExecutions ?? 0 }}</span>
             </div>
           </div>
 
-          @if (metrics.totalExecutions && metrics.totalExecutions > 0) {
+          @if (metrics()!.totalExecutions && metrics()!.totalExecutions! > 0) {
             <div>
               <label class="mb-2 block text-sm text-gray-500">Success/Failure Ratio</label>
               <p-progressBar
-                [value]="metrics.successRate ?? 0"
+                [value]="metrics()!.successRate ?? 0"
                 [showValue]="false"
                 styleClass="h-2"
                 [style]="{ height: '8px' }"
@@ -65,28 +65,28 @@ import { AlgorithmMetrics } from '@chansey/api-interfaces';
           <div class="grid grid-cols-2 gap-4 border-t pt-4 dark:border-gray-700">
             <div>
               <label class="mb-1 block text-sm text-gray-500">Avg Execution Time</label>
-              <span class="font-medium">{{ formatExecutionTime(metrics.averageExecutionTime) }}</span>
+              <span class="font-medium">{{ formatExecutionTime(metrics()!.averageExecutionTime) }}</span>
             </div>
 
             <div>
               <label class="mb-1 block text-sm text-gray-500">Error Count</label>
-              <span class="font-medium" [class.text-red-600]="(metrics.errorCount ?? 0) > 0">
-                {{ metrics.errorCount ?? 0 }}
+              <span class="font-medium" [class.text-red-600]="(metrics()!.errorCount ?? 0) > 0">
+                {{ metrics()!.errorCount ?? 0 }}
               </span>
             </div>
           </div>
 
-          @if (metrics.lastExecuted) {
+          @if (metrics()!.lastExecuted) {
             <div class="border-t pt-4 dark:border-gray-700">
               <label class="mb-1 block text-sm text-gray-500">Last Executed</label>
-              <span class="font-medium">{{ formatDate(metrics.lastExecuted) }}</span>
+              <span class="font-medium">{{ formatDate(metrics()!.lastExecuted) }}</span>
             </div>
           }
 
-          @if (metrics.lastError) {
+          @if (metrics()!.lastError) {
             <div class="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
               <label class="mb-1 block text-sm font-medium text-red-600">Last Error</label>
-              <p class="m-0 text-sm text-red-700 dark:text-red-400">{{ metrics.lastError }}</p>
+              <p class="m-0 text-sm text-red-700 dark:text-red-400">{{ metrics()!.lastError }}</p>
             </div>
           }
         </div>
@@ -101,18 +101,20 @@ import { AlgorithmMetrics } from '@chansey/api-interfaces';
   `
 })
 export class MetricsCardComponent {
-  @Input() metrics?: AlgorithmMetrics | null;
+  readonly metrics = input<AlgorithmMetrics | null>();
 
   needsMaintenance(): boolean {
-    if (!this.metrics?.totalExecutions || this.metrics.totalExecutions < 10) {
+    const m = this.metrics();
+    const totalExecutions = m?.totalExecutions ?? 0;
+    if (!totalExecutions || totalExecutions < 10) {
       return false;
     }
-    const errorRate = ((this.metrics.failedExecutions || 0) / this.metrics.totalExecutions) * 100;
+    const errorRate = ((m?.failedExecutions || 0) / totalExecutions) * 100;
     return errorRate > 20;
   }
 
   getSuccessRateClass(): string {
-    const rate = this.metrics?.successRate ?? 0;
+    const rate = this.metrics()?.successRate ?? 0;
     if (rate >= 90) return 'text-green-600';
     if (rate >= 70) return 'text-yellow-600';
     return 'text-red-600';

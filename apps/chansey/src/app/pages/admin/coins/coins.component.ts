@@ -1,5 +1,5 @@
 import { DatePipe, NgClass } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -45,8 +45,8 @@ import { CoinsService } from './coins.service';
   templateUrl: './coins.component.html'
 })
 export class CoinsComponent {
-  @ViewChild('dt') dt: Table | undefined;
-  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
+  readonly dt = viewChild<Table>('dt');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   // Services
   private readonly coinsService = inject(CoinsService);
@@ -214,15 +214,16 @@ export class CoinsComponent {
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value?.trim() || '';
     this.searchFilter.set(filterValue);
-    this.dt?.filterGlobal(filterValue, 'contains');
+    this.dt()?.filterGlobal(filterValue, 'contains');
   }
 
   clearSearch(): void {
     this.searchFilter.set('');
-    if (this.searchInput?.nativeElement) {
-      this.searchInput.nativeElement.value = '';
+    const input = this.searchInput();
+    if (input?.nativeElement) {
+      input.nativeElement.value = '';
     }
-    this.dt?.filterGlobal('', 'contains');
+    this.dt()?.filterGlobal('', 'contains');
   }
 
   deleteSelectedCoins(): void {

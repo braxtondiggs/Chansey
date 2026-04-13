@@ -1,5 +1,4 @@
-
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, model, output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
@@ -21,11 +20,11 @@ import { DialogModule } from 'primeng/dialog';
       <div class="flex flex-col gap-4">
         <p>
           Your session is about to expire due to inactivity. You will be automatically logged out in
-          <span class="font-bold">{{ remainingTime }}</span> seconds.
+          <span class="font-bold">{{ remainingTime() }}</span> seconds.
         </p>
         <p>Do you want to continue your session?</p>
       </div>
-      <ng-template pTemplate="footer">
+      <ng-template #footer>
         <div class="justify-content-end flex gap-2">
           <p-button label="Logout" severity="danger" variant="outlined" (click)="onLogout()"></p-button>
           <p-button label="Continue Session" severity="secondary" (click)="onContinue()"></p-button>
@@ -35,11 +34,11 @@ import { DialogModule } from 'primeng/dialog';
   `
 })
 export class TimeoutWarningComponent {
-  @Input() visible = false;
-  @Input() remainingTime = 60;
+  readonly visible = model(false);
+  readonly remainingTime = model(60);
 
-  @Output() logout = new EventEmitter<void>();
-  @Output() continue = new EventEmitter<void>();
+  logout = output<void>();
+  continue = output<void>();
 
   onLogout(): void {
     this.logout.emit();

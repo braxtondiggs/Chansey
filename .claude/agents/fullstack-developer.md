@@ -17,7 +17,7 @@ monorepo with NestJS backend and Angular frontend.
 ```
 apps/
 ├── api/              # NestJS API server
-├── chansey/          # Angular 20 frontend
+├── chansey/          # Angular 21 frontend
 └── chansey-e2e/      # Cypress E2E tests
 libs/
 ├── api-interfaces/   # Shared TypeScript interfaces
@@ -40,7 +40,7 @@ libs/
 
 ### Frontend Stack (apps/chansey)
 
-- **Angular 20**: Standalone components, signals, modern control flow
+- **Angular 21**: Standalone components, signals, modern control flow
 - **PrimeNG**: UI component library
 - **TailwindCSS**: Utility-first styling
 - **TanStack Query**: Server state management

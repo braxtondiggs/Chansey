@@ -92,7 +92,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
           currentPageReportTemplate="{first} to {last} of {totalRecords}"
           styleClass="p-datatable-sm"
         >
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Name</th>
               <th>Algorithm</th>
@@ -104,7 +104,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
               <th>Created</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-run>
+          <ng-template #body let-run>
             <tr>
               <td>{{ run.name }}</td>
               <td>{{ run.algorithmName }}</td>
@@ -145,7 +145,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
               <td>{{ run.createdAt | date: 'short' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="8" class="py-4 text-center text-gray-500">No live replay runs found</td>
             </tr>
