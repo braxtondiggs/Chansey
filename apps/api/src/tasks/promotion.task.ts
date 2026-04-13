@@ -101,7 +101,11 @@ export class PromotionTask {
             // Queue deployment activation job (after 24-hour review period)
             await this.queueDeploymentActivation(deployment.id, strategy.name);
           } else {
-            this.logger.debug(`Strategy ${strategy.name} rejected for promotion: ${evaluation.failedGates.join(', ')}`);
+            const failedDetails = evaluation.gateResults
+              .filter((r) => !r.passed)
+              .map((r) => `${r.gateName}: ${r.message}`)
+              .join('; ');
+            this.logger.log(`Strategy ${strategy.name} rejected: ${failedDetails}`);
             results.rejected++;
           }
         } catch (error: unknown) {

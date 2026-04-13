@@ -237,6 +237,11 @@ export class PipelineOrchestrationService {
           `${result.pipelinesCreated} created, ${result.skippedConfigs.length} skipped`
       );
 
+      if (result.skippedConfigs.length > 0) {
+        const skipSummary = result.skippedConfigs.map((s) => `${s.strategyName}: ${s.reason}`).join('; ');
+        this.logger.log(`Skipped strategies: ${skipSummary}`);
+      }
+
       return result;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
