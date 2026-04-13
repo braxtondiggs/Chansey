@@ -180,11 +180,12 @@ export class OrderSyncService {
       const skippedCount = allSymbols.length - activeSymbols.length;
 
       this.logger.log(`Fetching historical ${operationName} since: ${since}`);
-      this.logger.log(`Active markets (${activeSymbols.length}/${allSymbols.length}): ${activeSymbols.join(', ')}`);
+      this.logger.log(`Active markets: ${activeSymbols.length}/${allSymbols.length}`);
+      this.logger.debug(`Active symbols: ${activeSymbols.join(', ')}`);
 
       if (skippedCount > 0) {
         this.logger.debug(
-          `Skipped ${skippedCount} inactive/delisted market(s): ${allSymbols.filter((s) => !markets[s]?.active).join(', ')}`
+          `Skipped ${skippedCount} inactive/delisted market(s): ${allSymbols.filter((s) => markets[s]?.active === false).join(', ')}`
         );
       }
 

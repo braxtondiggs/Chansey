@@ -199,18 +199,9 @@ export class CoinResolverService {
     // Compute instruments that resolved in DB but were dropped by quality/date filtering
     const filteredByQuality = instruments.filter((instrument) => {
       const symbol = instrument.toUpperCase();
-      const inDb =
-        dbResolvedSymbols.has(symbol) ||
-        (() => {
-          const base = this.extractBaseSymbol(symbol);
-          return base != null && dbResolvedSymbols.has(base);
-        })();
-      const inFinal =
-        resolvedSymbols.has(symbol) ||
-        (() => {
-          const base = this.extractBaseSymbol(symbol);
-          return base != null && resolvedSymbols.has(base);
-        })();
+      const base = this.extractBaseSymbol(symbol);
+      const inDb = dbResolvedSymbols.has(symbol) || (base != null && dbResolvedSymbols.has(base));
+      const inFinal = resolvedSymbols.has(symbol) || (base != null && resolvedSymbols.has(base));
       return inDb && !inFinal;
     });
 

@@ -88,8 +88,8 @@ describe('OrderSyncService', () => {
       expect(client.fetchOrders).toHaveBeenCalledTimes(2);
       expect(client.fetchOrders).toHaveBeenCalledWith('BTC/USD', undefined);
       expect(client.fetchOrders).toHaveBeenCalledWith('ETH/USD', undefined);
-      expect(client.fetchOrders).not.toHaveBeenCalledWith('RLC/USD', expect.anything());
-      expect(client.fetchOrders).not.toHaveBeenCalledWith('VOXEL/USD', expect.anything());
+      expect((client.fetchOrders as jest.Mock).mock.calls).not.toContainEqual(['RLC/USD', undefined]);
+      expect((client.fetchOrders as jest.Mock).mock.calls).not.toContainEqual(['VOXEL/USD', undefined]);
     });
 
     it('should treat markets with active === undefined as active (safe fallback)', async () => {
