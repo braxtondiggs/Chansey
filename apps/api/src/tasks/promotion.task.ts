@@ -105,7 +105,7 @@ export class PromotionTask {
               .filter((r) => !r.passed)
               .map((r) => `${r.gateName}: ${r.message}`)
               .join('; ');
-            this.logger.log(`Strategy ${strategy.name} rejected: ${failedDetails}`);
+            this.logger.log(`Strategy ${strategy.name} rejected: ${failedDetails || 'no gate details available'}`);
             results.rejected++;
           }
         } catch (error: unknown) {

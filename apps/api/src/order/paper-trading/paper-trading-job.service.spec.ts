@@ -9,6 +9,8 @@ import { PaperTradingEngineService } from './paper-trading-engine.service';
 import { PaperTradingJobService } from './paper-trading-job.service';
 import { PaperTradingJobType } from './paper-trading.job-data';
 
+import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
+
 jest.mock('../../shared/queue.util', () => ({
   forceRemoveJob: jest.fn().mockResolvedValue(undefined)
 }));
@@ -170,7 +172,7 @@ describe('PaperTradingJobService', () => {
       expect(session.completedAt).toBeInstanceOf(Date);
       expect(engineService.clearThrottleState).toHaveBeenCalledWith('sess-1');
       expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'paper-trading.completed',
+        PIPELINE_EVENTS.PAPER_TRADING_COMPLETED,
         expect.objectContaining({
           sessionId: 'sess-1',
           pipelineId: 'pipe-1',
@@ -215,7 +217,7 @@ describe('PaperTradingJobService', () => {
       await service.markCompleted('sess-1', 'duration_reached');
 
       expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'paper-trading.completed',
+        PIPELINE_EVENTS.PAPER_TRADING_COMPLETED,
         expect.objectContaining({
           metrics: expect.objectContaining({
             currentPortfolioValue: 10000,

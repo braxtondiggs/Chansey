@@ -114,7 +114,7 @@ export class ShutdownService implements OnApplicationBootstrap, OnApplicationShu
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
-        this.logger.error(`Failed to resume queue ${name}: ${err.message}`);
+        this.logger.error(`Failed to resume queue ${name}: ${err.message}`, err.stack);
       }
     });
 
