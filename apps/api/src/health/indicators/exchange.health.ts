@@ -5,6 +5,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 import { toErrorInfo } from '../../shared/error.util';
 
 type ExchangeStatus = 'healthy' | 'slow' | 'unhealthy';
+type OverallExchangeStatus = 'all_healthy' | 'degraded' | 'all_unavailable';
 
 interface ExchangeHealthResult {
   latencyMs: number;
@@ -36,9 +37,9 @@ export class ExchangeHealthIndicator {
   ) {}
 
   /**
-   * Check exchange connectivity and latency
-   * Fails if all exchanges are unhealthy
-   * Runs all exchange checks in parallel to avoid sequential timeout accumulation
+   * Check exchange connectivity and latency.
+   * Always reports UP — exchange availability is informational, not application health.
+   * Includes overallStatus for dashboard observability.
    */
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
     const indicator = this.healthIndicatorService.check(key);
@@ -68,12 +69,18 @@ export class ExchangeHealthIndicator {
       }
     }
 
-    // Fail only if ALL exchanges are unhealthy
-    if (healthyCount === 0) {
-      return indicator.down({ ...results, message: 'All monitored exchanges are unavailable' });
+    const totalExchanges = this.exchanges.length;
+    let overallStatus: OverallExchangeStatus;
+    if (healthyCount === totalExchanges) {
+      overallStatus = 'all_healthy';
+    } else if (healthyCount > 0) {
+      overallStatus = 'degraded';
+    } else {
+      overallStatus = 'all_unavailable';
+      this.logger.warn('All monitored exchanges are unavailable');
     }
 
-    return indicator.up(results);
+    return indicator.up({ ...results, overallStatus, healthyCount, totalExchanges });
   }
 
   private async checkExchange(slug: string, pair: string): Promise<ExchangeHealthResult> {
