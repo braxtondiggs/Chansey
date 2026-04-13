@@ -235,6 +235,31 @@ describe('CoinResolverService', () => {
     expect(result.warnings).toContain('instrument_universe_truncated');
   });
 
+  it('logs coins dropped by quality filtering as "filtered by quality" not "unresolved"', async () => {
+    const coinService = {
+      getMultipleCoinsBySymbol: jest.fn(async (symbols: string[]) => symbols.map((s) => createCoin(s.toUpperCase()))),
+      getCoinsByIdsFilteredAtDate: jest.fn(async () => ({
+        coins: [createCoin('BTC')],
+        usedHistoricalData: true
+      }))
+    };
+    const ohlcService = {
+      getCoinsWithCandleDataInRange: jest.fn(async () => ['BTC', 'ETH', 'AKT'])
+    };
+    const service = createService(coinService, ohlcService);
+    const loggerSpy = jest.spyOn(service['logger'], 'warn');
+    const dataset = createDataset({ instrumentUniverse: ['BTC', 'ETH', 'AKT'] });
+
+    const result = await service.resolveCoins(dataset, {
+      startDate: new Date('2022-01-01'),
+      endDate: new Date('2022-12-31')
+    });
+
+    expect(result.coins.map((c) => c.symbol)).toEqual(['BTC']);
+    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('filtered by quality: [ETH, AKT]'));
+    expect(loggerSpy).toHaveBeenCalledWith(expect.not.stringContaining('unresolved'));
+  });
+
   it('resolves partial universe without throwing', async () => {
     const coinService = {
       getMultipleCoinsBySymbol: jest.fn(async (symbols: string[]) =>

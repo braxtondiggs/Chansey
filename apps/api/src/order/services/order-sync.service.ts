@@ -175,11 +175,23 @@ export class OrderSyncService {
         logger: this.logger,
         operationName: `loadMarkets (${operationName})`
       });
+      const allSymbols = Object.keys(markets);
+      const activeSymbols = allSymbols.filter((s) => markets[s]?.active !== false);
+      const skippedCount = allSymbols.length - activeSymbols.length;
+
       this.logger.log(`Fetching historical ${operationName} since: ${since}`);
-      this.logger.log(`Available markets: ${Object.keys(markets).join(', ')}`);
+      this.logger.log(`Active markets: ${activeSymbols.length}/${allSymbols.length}`);
+      this.logger.debug(`Active symbols: ${activeSymbols.join(', ')}`);
+
+      if (skippedCount > 0) {
+        this.logger.debug(
+          `Skipped ${skippedCount} inactive/delisted market(s): ${allSymbols.filter((s) => markets[s]?.active === false).join(', ')}`
+        );
+      }
+
       const allItems: T[] = [];
 
-      for (const symbol of Object.keys(markets)) {
+      for (const symbol of activeSymbols) {
         const result = await withRateLimitRetry(() => fetchFn(symbol, since), {
           logger: this.logger,
           operationName: `${operationName}(${symbol})`
