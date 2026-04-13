@@ -21,7 +21,8 @@ describe('PaperTradingProcessor', () => {
       removeTickJobs: jest.fn(),
       scheduleRetryTick: jest.fn(),
       markFailed: jest.fn(),
-      markCompleted: jest.fn()
+      markCompleted: jest.fn(),
+      calculateMetrics: jest.fn()
     };
 
     const engineService = {
@@ -710,7 +711,12 @@ describe('PaperTradingProcessor', () => {
   });
 
   it('emits event for notify-pipeline job', async () => {
-    const { processor, eventEmitter } = createProcessor();
+    const { processor, sessionRepository, paperTradingService, eventEmitter } = createProcessor();
+
+    const session = { id: 'session-notify', user: { id: 'user-1' } };
+    const metrics = { totalReturn: 0.05, sharpeRatio: 1.2, maxDrawdown: 0.1 };
+    sessionRepository.findOne.mockResolvedValue(session);
+    paperTradingService.calculateMetrics.mockResolvedValue(metrics);
 
     const job = createJob({
       type: PaperTradingJobType.NOTIFY_PIPELINE,
@@ -721,11 +727,34 @@ describe('PaperTradingProcessor', () => {
 
     await processor.process(job);
 
+    expect(sessionRepository.findOne).toHaveBeenCalledWith({
+      where: { id: 'session-notify' },
+      relations: ['user']
+    });
+    expect(paperTradingService.calculateMetrics).toHaveBeenCalledWith(session);
     expect(eventEmitter.emit).toHaveBeenCalledWith('paper-trading.completed', {
       sessionId: 'session-notify',
       pipelineId: 'pipeline-1',
+      metrics,
       stoppedReason: 'duration_reached'
     });
+  });
+
+  it('skips pipeline notification when session not found', async () => {
+    const { processor, sessionRepository, eventEmitter } = createProcessor();
+
+    sessionRepository.findOne.mockResolvedValue(null);
+
+    const job = createJob({
+      type: PaperTradingJobType.NOTIFY_PIPELINE,
+      sessionId: 'session-missing',
+      pipelineId: 'pipeline-1',
+      stoppedReason: 'duration_reached'
+    });
+
+    await processor.process(job);
+
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
 
   it('marks session failed on unrecoverable error during retry tick', async () => {
