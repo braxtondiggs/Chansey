@@ -122,6 +122,10 @@ export class PaperTradingJobService {
    * Mark session as failed
    */
   async markFailed(sessionId: string, errorMessage: string): Promise<void> {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId }
+    });
+
     await this.sessionRepository.update(sessionId, {
       status: PaperTradingStatus.FAILED,
       errorMessage,
@@ -130,6 +134,15 @@ export class PaperTradingJobService {
     });
 
     await this.cleanupSession(sessionId);
+
+    // Emit event so the pipeline transitions to FAILED instead of staying RUNNING forever
+    if (session?.pipelineId) {
+      this.eventEmitter.emit('paper-trading.failed', {
+        sessionId,
+        pipelineId: session.pipelineId,
+        reason: errorMessage
+      });
+    }
 
     this.logger.error(`Paper trading session ${sessionId} marked as failed: ${errorMessage}`);
   }
