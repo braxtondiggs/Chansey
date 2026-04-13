@@ -257,6 +257,23 @@ describe('CoinDailySnapshotService', () => {
       expect(result.qualifiedIds).toEqual(['coin-large', 'coin-medium', 'coin-small']);
     });
 
+    it('qualifies coin with null currentPrice when marketCap and volume are valid', async () => {
+      const snapshots = [
+        {
+          coinId: 'coin-akt',
+          marketCap: 116_000_000,
+          totalVolume: 4_500_000,
+          currentPrice: null
+        }
+      ] as unknown as CoinDailySnapshot[];
+
+      mockQb.getMany.mockResolvedValueOnce(snapshots);
+
+      const result = await service.getQualifiedCoinIdsAtDate(['coin-akt'], new Date('2025-06-15'));
+
+      expect(result).toEqual({ qualifiedIds: ['coin-akt'], hasSnapshots: true });
+    });
+
     it('returns empty for empty coinIds', async () => {
       const result = await service.getQualifiedCoinIdsAtDate([], new Date());
 

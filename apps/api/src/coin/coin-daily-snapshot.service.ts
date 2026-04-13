@@ -94,8 +94,7 @@ export class CoinDailySnapshotService {
           s.marketCap != null &&
           Number(s.marketCap) >= minMarketCap &&
           s.totalVolume != null &&
-          Number(s.totalVolume) >= minDailyVolume &&
-          s.currentPrice != null
+          Number(s.totalVolume) >= minDailyVolume
       )
       .sort((a, b) => Number(b.marketCap ?? 0) - Number(a.marketCap ?? 0))
       .map((s) => s.coinId);

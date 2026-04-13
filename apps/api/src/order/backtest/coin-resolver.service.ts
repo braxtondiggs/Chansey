@@ -164,6 +164,9 @@ export class CoinResolverService {
       resolved = filtered;
     }
 
+    // Capture DB-resolved symbols before quality filtering for accurate logging
+    const dbResolvedSymbols = new Set(resolved.map((c) => c.symbol.toUpperCase()));
+
     // Date-aware filtering: only keep coins that were tradeable and met quality thresholds during the backtest period
     if (options.startDate && options.endDate) {
       const tradeableCoinIds = await this.ohlcService.getCoinsWithCandleDataInRange(
@@ -184,13 +187,31 @@ export class CoinResolverService {
       resolved = tradeableCoins.filter((c) => qualifiedIdSet.has(c.id));
     }
 
-    // Compute unresolved instruments
+    // Compute truly unresolved instruments (not found in DB at all)
     const resolvedSymbols = new Set(resolved.map((c) => c.symbol.toUpperCase()));
     const unresolved = instruments.filter((instrument) => {
       const symbol = instrument.toUpperCase();
-      if (resolvedSymbols.has(symbol)) return false;
+      if (dbResolvedSymbols.has(symbol)) return false;
       const base = this.extractBaseSymbol(symbol);
-      return !base || !resolvedSymbols.has(base);
+      return !base || !dbResolvedSymbols.has(base);
+    });
+
+    // Compute instruments that resolved in DB but were dropped by quality/date filtering
+    const filteredByQuality = instruments.filter((instrument) => {
+      const symbol = instrument.toUpperCase();
+      const inDb =
+        dbResolvedSymbols.has(symbol) ||
+        (() => {
+          const base = this.extractBaseSymbol(symbol);
+          return base != null && dbResolvedSymbols.has(base);
+        })();
+      const inFinal =
+        resolvedSymbols.has(symbol) ||
+        (() => {
+          const base = this.extractBaseSymbol(symbol);
+          return base != null && resolvedSymbols.has(base);
+        })();
+      return inDb && !inFinal;
     });
 
     if (!resolved.length) {
@@ -199,13 +220,17 @@ export class CoinResolverService {
       throw new InstrumentUniverseUnresolvedException(dataset.id, instruments, unresolved);
     }
 
-    if (unresolved.length > 0) {
+    if (unresolved.length > 0 || filteredByQuality.length > 0) {
       // Record partial resolution
       this.metricsService?.recordCoinResolution('partial');
-      this.logger.warn(
-        `Partial instrument resolution for dataset ${dataset.id}: ` +
-          `resolved ${resolved.length}/${instruments.length}, unresolved: [${unresolved.join(', ')}]`
-      );
+      const parts = [`resolved ${resolved.length}/${instruments.length}`];
+      if (unresolved.length > 0) {
+        parts.push(`unresolved: [${unresolved.join(', ')}]`);
+      }
+      if (filteredByQuality.length > 0) {
+        parts.push(`filtered by quality: [${filteredByQuality.join(', ')}]`);
+      }
+      this.logger.warn(`Partial instrument resolution for dataset ${dataset.id}: ${parts.join(', ')}`);
     } else {
       // Record successful resolution (all instruments resolved)
       this.metricsService?.recordCoinResolution('success');
