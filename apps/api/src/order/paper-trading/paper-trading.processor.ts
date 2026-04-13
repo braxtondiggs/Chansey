@@ -344,8 +344,7 @@ export class PaperTradingProcessor extends FailSafeWorkerHost {
     this.logger.log(`Notifying pipeline ${pipelineId} about session ${sessionId} completion`);
 
     const session = await this.sessionRepository.findOne({
-      where: { id: sessionId },
-      relations: ['user']
+      where: { id: sessionId }
     });
 
     if (!session) {

@@ -728,8 +728,7 @@ describe('PaperTradingProcessor', () => {
     await processor.process(job);
 
     expect(sessionRepository.findOne).toHaveBeenCalledWith({
-      where: { id: 'session-notify' },
-      relations: ['user']
+      where: { id: 'session-notify' }
     });
     expect(paperTradingService.calculateMetrics).toHaveBeenCalledWith(session);
     expect(eventEmitter.emit).toHaveBeenCalledWith('paper-trading.completed', {

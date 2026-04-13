@@ -37,9 +37,6 @@ describe('PaperTradingRecoveryService', () => {
     const service = new PaperTradingRecoveryService(
       paperTradingService as any,
       { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-      {
-        cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-      } as any,
       queue as any
     );
 
@@ -74,9 +71,6 @@ describe('PaperTradingRecoveryService', () => {
     const service = new PaperTradingRecoveryService(
       paperTradingService as any,
       { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-      {
-        cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-      } as any,
       queue as any
     );
 
@@ -112,9 +106,6 @@ describe('PaperTradingRecoveryService', () => {
       const service = new PaperTradingRecoveryService(
         paperTradingService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        {
-          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-        } as any,
         queue as any
       );
 
@@ -147,9 +138,6 @@ describe('PaperTradingRecoveryService', () => {
       const service = new PaperTradingRecoveryService(
         paperTradingService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        {
-          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-        } as any,
         queue as any
       );
 
@@ -176,9 +164,6 @@ describe('PaperTradingRecoveryService', () => {
       const service = new PaperTradingRecoveryService(
         paperTradingService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        {
-          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-        } as any,
         queue as any
       );
 
@@ -202,9 +187,6 @@ describe('PaperTradingRecoveryService', () => {
       const service = new PaperTradingRecoveryService(
         paperTradingService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        {
-          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-        } as any,
         queue as any
       );
 
@@ -214,86 +196,14 @@ describe('PaperTradingRecoveryService', () => {
     });
   });
 
-  describe('cleanupDuplicateActiveSessions on bootstrap', () => {
-    it('invokes PaperTradingService.cleanupDuplicateSessions before recovering active sessions', async () => {
-      const callOrder: string[] = [];
-
-      const jobService = {
-        findActiveSessions: jest.fn().mockImplementation(async () => {
-          callOrder.push('findActiveSessions');
-          return [];
-        }),
-        removeTickJobs: jest.fn(),
-        scheduleTickJob: jest.fn(),
-        markFailed: jest.fn(),
-        getSessionStatus: jest.fn()
-      };
-
-      const paperTradingService = {
-        cleanupDuplicateSessions: jest.fn().mockImplementation(async () => {
-          callOrder.push('cleanupDuplicateSessions');
-          return {
-            scanned: 5,
-            kept: 2,
-            stopped: [{ sessionId: 'a' }, { sessionId: 'b' }, { sessionId: 'c' }],
-            dryRun: false
-          };
-        })
-      };
-
-      const queue = createMockQueue();
-      const service = new PaperTradingRecoveryService(
-        jobService as any,
-        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        paperTradingService as any,
-        queue as any
-      );
-
-      await service.onApplicationBootstrap();
-
-      expect(paperTradingService.cleanupDuplicateSessions).toHaveBeenCalledWith(false);
-      // cleanup must run before recovery so duplicates are stopped before tick jobs are re-scheduled
-      expect(callOrder.indexOf('cleanupDuplicateSessions')).toBeLessThan(callOrder.indexOf('findActiveSessions'));
-    });
-
-    it('does not abort bootstrap when cleanup throws', async () => {
-      const jobService = {
-        findActiveSessions: jest.fn().mockResolvedValue([]),
-        removeTickJobs: jest.fn(),
-        scheduleTickJob: jest.fn(),
-        markFailed: jest.fn(),
-        getSessionStatus: jest.fn()
-      };
-
-      const paperTradingService = {
-        cleanupDuplicateSessions: jest.fn().mockRejectedValue(new Error('boom'))
-      };
-
-      const queue = createMockQueue();
-      const service = new PaperTradingRecoveryService(
-        jobService as any,
-        { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        paperTradingService as any,
-        queue as any
-      );
-
-      await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
-      // Recovery still ran despite cleanup failure
-      expect(jobService.findActiveSessions).toHaveBeenCalled();
-    });
-  });
-
   describe('detectStaleSessions', () => {
     const TWENTY_MINUTES = 20 * 60 * 1000;
 
-    function createService(paperTradingService: any, bootedAgo = TWENTY_MINUTES): PaperTradingRecoveryService {
+    function createService(jobService: any, bootedAgo = TWENTY_MINUTES): PaperTradingRecoveryService {
       const queue = createMockQueue();
       const service = new PaperTradingRecoveryService(
-        paperTradingService as any,
+        jobService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        {
-          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-        } as any,
         queue as any
       );
       // Override bootedAt to simulate time since boot
@@ -504,9 +414,6 @@ describe('PaperTradingRecoveryService', () => {
       const service = new PaperTradingRecoveryService(
         paperTradingService as any,
         { sweepOrphanedState: jest.fn().mockReturnValue(0) } as any,
-        {
-          cleanupDuplicateSessions: jest.fn().mockResolvedValue({ scanned: 0, kept: 0, stopped: [], dryRun: false })
-        } as any,
         queue as any
       );
 
