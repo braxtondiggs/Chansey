@@ -5,6 +5,8 @@ import * as ccxt from 'ccxt';
 import * as http from 'http';
 import * as https from 'https';
 
+const CCXT_REQUEST_TIMEOUT_MS = 15_000;
+
 let cachedAgents: { httpAgent: http.Agent; httpsAgent: https.Agent } | null = null;
 
 /**
@@ -48,6 +50,7 @@ export function createCcxtClient(
     agent: httpsAgent,
     httpAgent,
     httpsAgent,
-    ...options?.additionalConfig
+    ...options?.additionalConfig,
+    timeout: CCXT_REQUEST_TIMEOUT_MS
   });
 }

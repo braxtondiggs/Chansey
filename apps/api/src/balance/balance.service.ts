@@ -11,11 +11,10 @@ import { AssetBalanceDto, AssetDetailsDto, BalanceResponseDto, ExchangeBalanceDt
 
 import { Coin } from '../coin/coin.entity';
 import { CoinService } from '../coin/coin.service';
+import { USD_QUOTE_CURRENCIES } from '../exchange/constants';
 import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
-
-const EXCHANGE_TIMEOUT_MS = 15_000;
 
 @Injectable()
 export class BalanceService {
@@ -127,7 +126,7 @@ export class BalanceService {
   }
 
   /**
-   * Fetch balance for a single exchange with timeout protection
+   * Fetch balance for a single exchange
    */
   private async fetchExchangeBalance(
     exchange: { exchangeId: string; slug: string; name: string },
@@ -142,23 +141,13 @@ export class BalanceService {
       return this.buildExchangeBalanceDto(exchange);
     }
 
-    let timeoutId: NodeJS.Timeout | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () => reject(new Error(`Timeout getting balances from ${exchange.name} after ${EXCHANGE_TIMEOUT_MS}ms`)),
-        EXCHANGE_TIMEOUT_MS
-      );
-    });
-
     let balances: AssetBalanceDto[];
     try {
-      balances = await Promise.race([exchangeService.getBalance(user), timeoutPromise]);
-    } catch (timeoutError: unknown) {
-      const err = toErrorInfo(timeoutError);
-      this.logger.warn(`Timeout or error getting balances from ${exchange.name}: ${err.message}`);
+      balances = await exchangeService.getBalance(user);
+    } catch (balanceError: unknown) {
+      const err = toErrorInfo(balanceError);
+      this.logger.warn(`Error getting balances from ${exchange.name}: ${err.message}`);
       return this.buildExchangeBalanceDto(exchange);
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     if (balances.length === 0) {
@@ -207,7 +196,7 @@ export class BalanceService {
       balances.map(async (balance): Promise<AssetBalanceDto> => {
         const totalAmount = new Decimal(balance.free).plus(balance.locked);
 
-        if (balance.asset === 'USDT' || balance.asset === 'USD') {
+        if (USD_QUOTE_CURRENCIES.has(balance.asset.toUpperCase())) {
           return { ...balance, usdValue: totalAmount.toNumber() };
         }
 
