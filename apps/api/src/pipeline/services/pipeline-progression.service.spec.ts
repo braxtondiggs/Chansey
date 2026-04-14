@@ -9,6 +9,7 @@ import { PipelineStageExecutionService } from './pipeline-stage-execution.servic
 
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { ScoringService } from '../../scoring/scoring.service';
+import { DegradationCalculator } from '../../scoring/walk-forward/degradation.calculator';
 import { type User } from '../../users/users.entity';
 import { Pipeline } from '../entities/pipeline.entity';
 import {
@@ -26,6 +27,7 @@ describe('PipelineProgressionService', () => {
   let eventEmitter: jest.Mocked<EventEmitter2>;
   let scoringService: jest.Mocked<ScoringService>;
   let marketRegimeService: jest.Mocked<MarketRegimeService>;
+  let degradationCalculator: jest.Mocked<DegradationCalculator>;
 
   const mockUser: User = { id: 'user-123' } as User;
 
@@ -70,6 +72,10 @@ describe('PipelineProgressionService', () => {
         {
           provide: MarketRegimeService,
           useValue: { getCurrentRegime: jest.fn() }
+        },
+        {
+          provide: DegradationCalculator,
+          useValue: { calculateFromValues: jest.fn().mockReturnValue(50) }
         }
       ]
     }).compile();
@@ -80,6 +86,7 @@ describe('PipelineProgressionService', () => {
     eventEmitter = module.get(EventEmitter2);
     scoringService = module.get(ScoringService);
     marketRegimeService = module.get(MarketRegimeService);
+    degradationCalculator = module.get(DegradationCalculator);
   });
 
   describe('evaluateOptimizationProgression', () => {
@@ -185,14 +192,26 @@ describe('PipelineProgressionService', () => {
       } as never);
     });
 
-    it('computes degradation from historical return and passes to scoring service', async () => {
+    it('delegates degradation to DegradationCalculator and passes result to scoring service', async () => {
       marketRegimeService.getCurrentRegime.mockResolvedValue({ regime: 'BULL' } as never);
-      const pipeline = makePipeline({ stageResults: { historical: { totalReturn: 0.3 } } as never });
+      degradationCalculator.calculateFromValues.mockReturnValue(50);
+      const pipeline = makePipeline({
+        stageResults: {
+          historical: { sharpeRatio: 2.0, totalReturn: 0.3, maxDrawdown: 0.05, winRate: 0.7, totalTrades: 60 }
+        } as never
+      });
 
       const result = await service.calculatePipelineScore(pipeline, metrics);
 
-      // degradation = (0.3 - 0.15) / 0.3 * 100 = 50
-      expect(result.degradation).toBeCloseTo(50);
+      expect(degradationCalculator.calculateFromValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sharpeRatio: { train: 2.0, test: metrics.sharpeRatio },
+          totalReturn: { train: 0.3, test: metrics.totalReturn },
+          maxDrawdown: { train: 0.05, test: metrics.maxDrawdown },
+          winRate: { train: 0.7, test: metrics.winRate }
+        })
+      );
+      expect(result.degradation).toBe(50);
       expect(result.regime).toBe('BULL');
       expect(result.overallScore).toBe(75);
       expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(
@@ -202,7 +221,7 @@ describe('PipelineProgressionService', () => {
       );
     });
 
-    it('falls back to unknown regime when market regime lookup fails', async () => {
+    it('falls back to unknown regime when market regime lookup fails and skips degradation when no historical', async () => {
       marketRegimeService.getCurrentRegime.mockRejectedValue(new Error('boom'));
       const pipeline = makePipeline({ stageResults: {} });
 
@@ -210,14 +229,20 @@ describe('PipelineProgressionService', () => {
 
       expect(result.regime).toBe('unknown');
       expect(result.degradation).toBe(0);
+      expect(degradationCalculator.calculateFromValues).not.toHaveBeenCalled();
       expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 0, {
         marketRegime: undefined
       });
     });
 
-    it('passes degradation clamped at 0 when return improved over historical', async () => {
+    it('passes degradation clamped at 0 when calculator returns negative (improvement)', async () => {
       marketRegimeService.getCurrentRegime.mockResolvedValue(null as never);
-      const pipeline = makePipeline({ stageResults: { historical: { totalReturn: 0.05 } } as never });
+      degradationCalculator.calculateFromValues.mockReturnValue(-10);
+      const pipeline = makePipeline({
+        stageResults: {
+          historical: { sharpeRatio: 1.0, totalReturn: 0.05, maxDrawdown: 0.1, winRate: 0.5, totalTrades: 30 }
+        } as never
+      });
 
       await service.calculatePipelineScore(pipeline, metrics);
 
@@ -269,8 +294,9 @@ describe('PipelineProgressionService', () => {
     });
 
     it('returns DEPLOY for strong metrics with low degradation', () => {
+      degradationCalculator.calculateFromValues.mockReturnValue(10);
       const result = service.generateRecommendation({
-        historical: { status: 'COMPLETED', totalReturn: 0.2 },
+        historical: { status: 'COMPLETED', sharpeRatio: 1.5, totalReturn: 0.2, maxDrawdown: 0.1, winRate: 0.65 },
         liveReplay: { status: 'COMPLETED' },
         paperTrading: {
           status: 'COMPLETED',
@@ -284,8 +310,9 @@ describe('PipelineProgressionService', () => {
     });
 
     it('returns NEEDS_REVIEW for moderate metrics', () => {
+      degradationCalculator.calculateFromValues.mockReturnValue(25);
       const result = service.generateRecommendation({
-        historical: { status: 'COMPLETED', totalReturn: 0.15 },
+        historical: { status: 'COMPLETED', sharpeRatio: 0.8, totalReturn: 0.15, maxDrawdown: 0.2, winRate: 0.5 },
         liveReplay: { status: 'COMPLETED' },
         paperTrading: {
           status: 'COMPLETED',
@@ -299,8 +326,9 @@ describe('PipelineProgressionService', () => {
     });
 
     it('returns DO_NOT_DEPLOY for weak metrics', () => {
+      degradationCalculator.calculateFromValues.mockReturnValue(80);
       const result = service.generateRecommendation({
-        historical: { status: 'COMPLETED', totalReturn: 0.2 },
+        historical: { status: 'COMPLETED', sharpeRatio: 1.5, totalReturn: 0.2, maxDrawdown: 0.1, winRate: 0.65 },
         liveReplay: { status: 'COMPLETED' },
         paperTrading: {
           status: 'COMPLETED',
@@ -313,9 +341,28 @@ describe('PipelineProgressionService', () => {
       expect(result).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
     });
 
-    it('accepts STOPPED as a valid paper trading terminal state', () => {
+    it('clamps negative degradation to 0 (improvement does not block deployment)', () => {
+      degradationCalculator.calculateFromValues.mockReturnValue(-15);
       const result = service.generateRecommendation({
-        historical: { status: 'COMPLETED', totalReturn: 0.2 },
+        historical: { status: 'COMPLETED', sharpeRatio: 1.0, totalReturn: 0.1, maxDrawdown: 0.15, winRate: 0.5 },
+        liveReplay: { status: 'COMPLETED' },
+        paperTrading: {
+          status: 'COMPLETED',
+          totalReturn: 0.25,
+          sharpeRatio: 1.5,
+          maxDrawdown: 0.1,
+          winRate: 0.65
+        }
+      } as never);
+      // With Math.abs, -15 would become 15 (penalizing improvement).
+      // With Math.max(0, -15) it becomes 0, so strong metrics should yield DEPLOY.
+      expect(result).toBe(DeploymentRecommendation.DEPLOY);
+    });
+
+    it('accepts STOPPED as a valid paper trading terminal state', () => {
+      degradationCalculator.calculateFromValues.mockReturnValue(10);
+      const result = service.generateRecommendation({
+        historical: { status: 'COMPLETED', sharpeRatio: 1.5, totalReturn: 0.2, maxDrawdown: 0.1, winRate: 0.65 },
         liveReplay: { status: 'COMPLETED' },
         paperTrading: {
           status: 'STOPPED',

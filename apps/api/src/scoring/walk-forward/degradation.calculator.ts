@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 
 import { WindowMetrics } from '@chansey/api-interfaces';
 
+import { DEGRAD_CLAMP, DEGRAD_MIN_DENOMINATOR, DEGRADATION_WEIGHTS, INVERTED_METRICS } from './degradation.constants';
+
 export interface DegradationAnalysis {
   overallDegradation: number;
   metricDegradations: {
@@ -24,25 +26,24 @@ export interface DegradationAnalysis {
 @Injectable()
 export class DegradationCalculator {
   /**
-   * Calculate comprehensive degradation analysis
+   * Calculate comprehensive degradation analysis from full WindowMetrics
    */
   calculate(trainMetrics: WindowMetrics, testMetrics: WindowMetrics): DegradationAnalysis {
     const metricDegradations = {
-      sharpeRatio: this.calculateSharpeDegrad(trainMetrics.sharpeRatio, testMetrics.sharpeRatio),
-      totalReturn: this.calculateReturnDegrad(trainMetrics.totalReturn, testMetrics.totalReturn),
-      maxDrawdown: this.calculateDrawdownDegrad(trainMetrics.maxDrawdown, testMetrics.maxDrawdown),
-      winRate: this.calculateWinRateDegrad(trainMetrics.winRate, testMetrics.winRate),
-      profitFactor: this.calculateProfitFactorDegrad(trainMetrics.profitFactor || 1, testMetrics.profitFactor || 1),
-      volatility: this.calculateVolatilityDegrad(trainMetrics.volatility, testMetrics.volatility)
+      sharpeRatio: this.calculateMetricDegrad('sharpeRatio', trainMetrics.sharpeRatio, testMetrics.sharpeRatio),
+      totalReturn: this.calculateMetricDegrad('totalReturn', trainMetrics.totalReturn, testMetrics.totalReturn),
+      maxDrawdown: this.calculateMetricDegrad('maxDrawdown', trainMetrics.maxDrawdown, testMetrics.maxDrawdown),
+      winRate: this.calculateMetricDegrad('winRate', trainMetrics.winRate, testMetrics.winRate),
+      profitFactor: this.calculateMetricDegrad(
+        'profitFactor',
+        trainMetrics.profitFactor || 1,
+        testMetrics.profitFactor || 1
+      ),
+      volatility: this.calculateMetricDegrad('volatility', trainMetrics.volatility, testMetrics.volatility)
     };
 
-    // Weighted overall degradation
     const overallDegradation = this.calculateWeightedDegradation(metricDegradations);
-
-    // Determine severity
     const severity = this.determineSeverity(overallDegradation);
-
-    // Generate recommendation
     const recommendation = this.generateRecommendation(severity, metricDegradations);
 
     return {
@@ -54,128 +55,82 @@ export class DegradationCalculator {
   }
 
   /**
-   * Calculate Sharpe ratio degradation
-   * Higher Sharpe in train but lower in test indicates overfitting
+   * Calculate degradation from partial metric values.
+   * Accepts a subset of metrics, renormalizes weights to sum to 1.0.
+   * Returns overall degradation percentage.
    */
-  private calculateSharpeDegrad(trainSharpe: number, testSharpe: number): number {
-    if (trainSharpe === 0) return 0;
+  calculateFromValues(values: Record<string, { train: number; test: number }>): number {
+    const entries = Object.entries(values).filter(([key]) => DEGRADATION_WEIGHTS[key] !== undefined);
 
-    return ((trainSharpe - testSharpe) / Math.abs(trainSharpe)) * 100;
+    if (entries.length === 0) return 0;
+
+    const totalWeight = entries.reduce((sum, [key]) => sum + DEGRADATION_WEIGHTS[key], 0);
+    if (totalWeight === 0) return 0;
+
+    let weighted = 0;
+    for (const [key, { train, test }] of entries) {
+      const degrad = this.calculateMetricDegrad(key, train, test);
+      weighted += degrad * (DEGRADATION_WEIGHTS[key] / totalWeight);
+    }
+
+    return weighted;
   }
 
   /**
-   * Calculate return degradation
+   * Shared degradation helper with minimum denominator floor and output clamping.
+   * Prevents near-zero train values from producing extreme degradation percentages.
+   *
+   * When trainValue is 0:
+   * - If testValue is worse (positive degradation direction), scale by |testValue| / minDenominator
+   * - If testValue is equal or better, return 0
    */
-  private calculateReturnDegrad(trainReturn: number, testReturn: number): number {
-    if (trainReturn === 0) return 0;
+  private calculateMetricDegrad(metric: string, trainValue: number, testValue: number): number {
+    const minDenominator = DEGRAD_MIN_DENOMINATOR[metric] ?? 0.1;
+    const invert = INVERTED_METRICS.has(metric);
 
-    return ((trainReturn - testReturn) / Math.abs(trainReturn)) * 100;
-  }
+    if (trainValue === 0) {
+      const diff = invert ? testValue - trainValue : trainValue - testValue;
+      if (diff > 0) {
+        // Test is worse: scale degradation against minDenominator
+        const change = (diff / minDenominator) * 100;
+        return Math.max(DEGRAD_CLAMP.min, Math.min(DEGRAD_CLAMP.max, change));
+      }
+      return 0;
+    }
 
-  /**
-   * Calculate drawdown degradation
-   * Worse drawdown in test (more negative) indicates poor generalization
-   */
-  private calculateDrawdownDegrad(trainDrawdown: number, testDrawdown: number): number {
-    // Drawdowns are negative, so worse test = more negative
-    if (trainDrawdown === 0) return 0;
+    const denominator = Math.max(Math.abs(trainValue), minDenominator);
+    const diff = invert ? testValue - trainValue : trainValue - testValue;
+    const change = (diff / denominator) * 100;
 
-    // Positive degradation = test drawdown is worse
-    return ((testDrawdown - trainDrawdown) / Math.abs(trainDrawdown)) * 100;
-  }
-
-  /**
-   * Calculate win rate degradation
-   */
-  private calculateWinRateDegrad(trainWinRate: number, testWinRate: number): number {
-    if (trainWinRate === 0) return 0;
-
-    return ((trainWinRate - testWinRate) / trainWinRate) * 100;
-  }
-
-  /**
-   * Calculate profit factor degradation
-   */
-  private calculateProfitFactorDegrad(trainPF: number, testPF: number): number {
-    if (trainPF === 0) return 0;
-
-    return ((trainPF - testPF) / trainPF) * 100;
-  }
-
-  /**
-   * Calculate volatility degradation
-   * Higher volatility in test indicates unstable performance
-   */
-  private calculateVolatilityDegrad(trainVol: number, testVol: number): number {
-    if (trainVol === 0) return 0;
-
-    return ((testVol - trainVol) / trainVol) * 100;
+    return Math.max(DEGRAD_CLAMP.min, Math.min(DEGRAD_CLAMP.max, change));
   }
 
   /**
    * Calculate weighted overall degradation
-   * Weights based on research.md scoring framework
    */
-  private calculateWeightedDegradation(metricDegradations: {
-    sharpeRatio: number;
-    totalReturn: number;
-    maxDrawdown: number;
-    winRate: number;
-    profitFactor: number;
-    volatility: number;
-  }): number {
-    const weights = {
-      sharpeRatio: 0.3, // Most important
-      totalReturn: 0.25,
-      winRate: 0.15,
-      profitFactor: 0.15,
-      maxDrawdown: 0.1,
-      volatility: 0.05
-    };
-
-    return (
-      metricDegradations.sharpeRatio * weights.sharpeRatio +
-      metricDegradations.totalReturn * weights.totalReturn +
-      metricDegradations.winRate * weights.winRate +
-      metricDegradations.profitFactor * weights.profitFactor +
-      metricDegradations.maxDrawdown * weights.maxDrawdown +
-      metricDegradations.volatility * weights.volatility
-    );
+  private calculateWeightedDegradation(metricDegradations: Record<string, number>): number {
+    let result = 0;
+    for (const [key, weight] of Object.entries(DEGRADATION_WEIGHTS)) {
+      result += (metricDegradations[key] ?? 0) * weight;
+    }
+    return result;
   }
 
   /**
    * Determine severity level based on degradation percentage
    */
   private determineSeverity(degradation: number): 'excellent' | 'good' | 'acceptable' | 'warning' | 'critical' {
-    if (degradation < 0) {
-      return 'excellent'; // Performance improved in test!
-    } else if (degradation < 10) {
-      return 'excellent'; // Minimal degradation
-    } else if (degradation < 20) {
-      return 'good'; // Acceptable degradation
-    } else if (degradation < 30) {
-      return 'acceptable'; // Within threshold
-    } else if (degradation < 50) {
-      return 'warning'; // Concerning degradation
-    } else {
-      return 'critical'; // Severe overfitting
-    }
+    if (degradation < 10) return 'excellent';
+    if (degradation < 20) return 'good';
+    if (degradation < 30) return 'acceptable';
+    if (degradation < 50) return 'warning';
+    return 'critical';
   }
 
   /**
    * Generate recommendation based on severity and metric degradations
    */
-  private generateRecommendation(
-    severity: string,
-    metricDegradations: {
-      sharpeRatio: number;
-      totalReturn: number;
-      maxDrawdown: number;
-      winRate: number;
-      profitFactor: number;
-      volatility: number;
-    }
-  ): string {
+  private generateRecommendation(severity: string, metricDegradations: Record<string, number>): string {
     if (severity === 'excellent') {
       return 'Strategy generalizes well to out-of-sample data. Proceed with confidence.';
     }
@@ -188,27 +143,18 @@ export class DegradationCalculator {
       return 'Strategy within acceptable degradation threshold. Monitor closely during live trading.';
     }
 
-    // Identify problem areas
     const problems: string[] = [];
+    if (metricDegradations.sharpeRatio > 30) problems.push('significant Sharpe ratio drop');
+    if (metricDegradations.totalReturn > 40) problems.push('large return degradation');
+    if (metricDegradations.winRate > 25) problems.push('win rate decline');
+    if (metricDegradations.maxDrawdown > 50) problems.push('increased drawdown risk');
 
-    if (metricDegradations.sharpeRatio > 30) {
-      problems.push('significant Sharpe ratio drop');
-    }
-    if (metricDegradations.totalReturn > 40) {
-      problems.push('large return degradation');
-    }
-    if (metricDegradations.winRate > 25) {
-      problems.push('win rate decline');
-    }
-    if (metricDegradations.maxDrawdown > 50) {
-      problems.push('increased drawdown risk');
-    }
+    if (problems.length === 0) problems.push('overall metric decline');
 
     if (severity === 'warning') {
       return `Strategy shows concerning degradation (${problems.join(', ')}). Consider parameter optimization or reject.`;
     }
 
-    // Critical
     return `Critical overfitting detected (${problems.join(', ')}). DO NOT deploy. Revise strategy parameters.`;
   }
 

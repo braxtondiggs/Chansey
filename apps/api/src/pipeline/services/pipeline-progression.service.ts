@@ -10,6 +10,7 @@ import { PipelineStageExecutionService } from './pipeline-stage-execution.servic
 
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
 import { ScoringService } from '../../scoring/scoring.service';
+import { DegradationCalculator } from '../../scoring/walk-forward/degradation.calculator';
 import { Pipeline } from '../entities/pipeline.entity';
 import {
   DeploymentRecommendation,
@@ -33,7 +34,9 @@ export class PipelineProgressionService {
     @Inject(forwardRef(() => ScoringService))
     private readonly scoringService: ScoringService,
     @Inject(forwardRef(() => MarketRegimeService))
-    private readonly marketRegimeService: MarketRegimeService
+    private readonly marketRegimeService: MarketRegimeService,
+    @Inject(forwardRef(() => DegradationCalculator))
+    private readonly degradationCalculator: DegradationCalculator
   ) {}
 
   evaluateOptimizationProgression(pipeline: Pipeline, improvement: number): { passed: boolean; failures: string[] } {
@@ -92,9 +95,21 @@ export class PipelineProgressionService {
       volatility: number;
     }
   ): Promise<PipelineScoreResult> {
-    const historicalReturn = pipeline.stageResults?.historical?.totalReturn ?? 0;
-    const degradation =
-      historicalReturn !== 0 ? ((historicalReturn - metrics.totalReturn) / Math.abs(historicalReturn)) * 100 : 0;
+    const historical = pipeline.stageResults?.historical;
+    const degradation = historical
+      ? this.degradationCalculator.calculateFromValues({
+          sharpeRatio: { train: historical.sharpeRatio, test: metrics.sharpeRatio },
+          totalReturn: { train: historical.totalReturn, test: metrics.totalReturn },
+          maxDrawdown: { train: historical.maxDrawdown, test: metrics.maxDrawdown },
+          winRate: { train: historical.winRate, test: metrics.winRate },
+          ...(historical.profitFactor != null
+            ? { profitFactor: { train: historical.profitFactor, test: metrics.profitFactor } }
+            : {}),
+          ...(historical.volatility != null
+            ? { volatility: { train: historical.volatility, test: metrics.volatility } }
+            : {})
+        })
+      : 0;
 
     let regimeType: MarketRegimeType | undefined;
     try {
@@ -156,12 +171,21 @@ export class PipelineProgressionService {
       return DeploymentRecommendation.DO_NOT_DEPLOY;
     }
 
-    const historicalReturn = stageResults.historical?.totalReturn ?? 0;
-    const paperTradingReturn = stageResults.paperTrading?.totalReturn ?? 0;
+    const hist = stageResults.historical;
+    const paper = stageResults.paperTrading;
 
-    const avgDegradation = Math.abs(
-      ((historicalReturn - paperTradingReturn) / Math.max(Math.abs(historicalReturn), 0.01)) * 100
-    );
+    const avgDegradation =
+      hist && paper
+        ? Math.max(
+            0,
+            this.degradationCalculator.calculateFromValues({
+              sharpeRatio: { train: hist.sharpeRatio, test: paper.sharpeRatio ?? 0 },
+              totalReturn: { train: hist.totalReturn, test: paper.totalReturn ?? 0 },
+              maxDrawdown: { train: hist.maxDrawdown, test: paper.maxDrawdown ?? 0 },
+              winRate: { train: hist.winRate, test: paper.winRate ?? 0 }
+            })
+          )
+        : 0;
 
     const finalSharpe = stageResults.paperTrading?.sharpeRatio ?? 0;
     const finalDrawdown = stageResults.paperTrading?.maxDrawdown ?? 1;
@@ -172,7 +196,7 @@ export class PipelineProgressionService {
       finalDrawdown <= 0.25 &&
       finalWinRate >= 0.5 &&
       avgDegradation <= 20 &&
-      paperTradingReturn > 0
+      (paper?.totalReturn ?? 0) > 0
     ) {
       return DeploymentRecommendation.DEPLOY;
     }
