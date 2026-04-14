@@ -1,4 +1,5 @@
-import { Controller, Get, HttpStatus, UseGuards } from '@nestjs/common';
+import { CacheTTL } from '@nestjs/cache-manager';
+import { Controller, Get, HttpStatus, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { PortfolioAggregationService } from './portfolio-aggregation.service';
@@ -7,6 +8,8 @@ import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { UserPerformanceService } from '../strategy/user-performance.service';
 import { User } from '../users/users.entity';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Portfolio')
 @ApiBearerAuth('token')
@@ -20,6 +23,9 @@ export class PortfolioController {
   ) {}
 
   @Get('summary')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `portfolio:summary:${ctx.switchToHttp().getRequest().user.id}`)
+  @CacheTTL(30_000)
   @ApiOperation({
     summary: 'Get aggregated algo trading portfolio',
     description: 'Retrieves the aggregated portfolio across all algo trading strategies, combining positions by symbol.'
@@ -33,6 +39,9 @@ export class PortfolioController {
   }
 
   @Get('performance')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `portfolio:performance:${ctx.switchToHttp().getRequest().user.id}`)
+  @CacheTTL(60_000)
   @ApiOperation({
     summary: 'Get algo trading performance metrics',
     description:
@@ -47,6 +56,9 @@ export class PortfolioController {
   }
 
   @Get('positions')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `portfolio:positions:${ctx.switchToHttp().getRequest().user.id}`)
+  @CacheTTL(30_000)
   @ApiOperation({
     summary: 'Get all algo trading positions',
     description: 'Retrieves all positions across all strategies, grouped by strategy.'
@@ -60,6 +72,9 @@ export class PortfolioController {
   }
 
   @Get('performance/by-strategy')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `portfolio:perf-by-strategy:${ctx.switchToHttp().getRequest().user.id}`)
+  @CacheTTL(60_000)
   @ApiOperation({
     summary: 'Get performance breakdown by strategy',
     description: 'Shows which strategies are performing best/worst with individual P&L metrics.'
@@ -73,6 +88,9 @@ export class PortfolioController {
   }
 
   @Get('allocation')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `portfolio:allocation:${ctx.switchToHttp().getRequest().user.id}`)
+  @CacheTTL(30_000)
   @ApiOperation({
     summary: 'Get portfolio allocation breakdown',
     description: 'Shows allocation percentages by symbol across all algo trading positions.'

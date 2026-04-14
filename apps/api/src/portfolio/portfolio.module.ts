@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 
 import { PortfolioAggregationService } from './portfolio-aggregation.service';
+import { PortfolioCacheListener } from './portfolio-cache.listener';
 import { PortfolioController } from './portfolio.controller';
 
 import { CoinModule } from '../coin/coin.module';
@@ -16,7 +17,7 @@ import { StrategyModule } from '../strategy/strategy.module';
     SharedCacheModule
   ],
   controllers: [PortfolioController],
-  providers: [PortfolioAggregationService],
+  providers: [PortfolioAggregationService, PortfolioCacheListener],
   exports: [PortfolioAggregationService]
 })
 export class PortfolioModule {}

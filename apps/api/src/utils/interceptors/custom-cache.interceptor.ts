@@ -56,13 +56,13 @@ export class CustomCacheInterceptor implements NestInterceptor {
       const handlerName = handler.name;
 
       if (!isNil(value)) {
-        Logger.log(`Cache HIT for ${controllerName}.${handlerName} with key: ${key}`, 'CacheInterceptor');
+        Logger.debug(`Cache HIT for ${controllerName}.${handlerName} with key: ${key}`, 'CacheInterceptor');
         return of(value);
       }
 
-      Logger.log(`Cache MISS for ${controllerName}.${handlerName} with key: ${key}`, 'CacheInterceptor');
+      Logger.debug(`Cache MISS for ${controllerName}.${handlerName} with key: ${key}`, 'CacheInterceptor');
       const ttl = isFunction(ttlValueOrFactory) ? await ttlValueOrFactory(context) : ttlValueOrFactory;
-      Logger.log(`Using TTL: ${ttl}`, 'CacheInterceptor');
+      Logger.debug(`Using TTL: ${ttl}`, 'CacheInterceptor');
 
       return next.handle().pipe(
         tap(async (response) => {
@@ -73,10 +73,10 @@ export class CustomCacheInterceptor implements NestInterceptor {
           try {
             if (!isNil(ttl)) {
               await this.cacheManager.set(key, response, ttl);
-              Logger.log(`Caching result with key: ${key} for ${ttl} seconds`, 'CacheInterceptor');
+              Logger.debug(`Caching result with key: ${key} for ${ttl}ms`, 'CacheInterceptor');
             } else {
               await this.cacheManager.set(key, response);
-              Logger.log(`Caching result with key: ${key} (no TTL specified)`, 'CacheInterceptor');
+              Logger.debug(`Caching result with key: ${key} (no TTL specified)`, 'CacheInterceptor');
             }
           } catch (err: unknown) {
             const errInfo = toErrorInfo(err);

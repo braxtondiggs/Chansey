@@ -1,3 +1,4 @@
+import { CacheTTL } from '@nestjs/cache-manager';
 import {
   BadRequestException,
   Controller,
@@ -9,7 +10,8 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
-  UseGuards
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -35,6 +37,8 @@ import { OrderHoldingsService } from '../order/services/order-holdings.service';
 import { RiskService } from '../risk/risk.service';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Coin')
 @ApiBearerAuth('token')
@@ -48,6 +52,9 @@ export class CoinController {
   ) {}
 
   @Get()
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey(() => 'coin:list:all')
+  @CacheTTL(300_000)
   @ApiOperation({ summary: 'Get all coins', description: 'Retrieve a list of all coins.' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -59,6 +66,9 @@ export class CoinController {
   }
 
   @Get('with-prices')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey(() => 'coin:list:with-prices')
+  @CacheTTL(30_000)
   @ApiOperation({
     summary: 'Get all coins with current prices',
     description:
@@ -74,6 +84,9 @@ export class CoinController {
   }
 
   @Get('suggested')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `coin:suggested:${ctx.switchToHttp().getRequest().user.id}`)
+  @CacheTTL(120_000)
   @ApiOperation({
     summary: 'Get suggested coins',
     description: 'Retrieves the suggested coins for the authenticated user based on their risk profile.'

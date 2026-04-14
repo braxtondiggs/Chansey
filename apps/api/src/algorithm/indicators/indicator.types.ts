@@ -110,8 +110,8 @@ export const INDICATOR_METADATA: Record<IndicatorType, IndicatorMetadata> = {
  * Cache configuration constants
  */
 export const INDICATOR_CACHE_CONFIG = {
-  /** Default TTL for cached results in seconds */
-  DEFAULT_TTL: 300, // 5 minutes
+  /** Default TTL for cached results in milliseconds */
+  DEFAULT_TTL: 300_000, // 5 minutes
   /** Number of recent prices to use in data hash */
   HASH_SAMPLE_SIZE: 5,
   /** Cache key prefix */

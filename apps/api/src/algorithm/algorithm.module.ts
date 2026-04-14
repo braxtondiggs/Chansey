@@ -90,7 +90,6 @@ import { UsersModule } from '../users/users.module';
     ConfluenceStrategy,
     AlgorithmScoreService,
     PerformanceRankingTask,
-
     // Strategy registration factory
     {
       provide: 'ALGORITHM_STRATEGIES_INIT',

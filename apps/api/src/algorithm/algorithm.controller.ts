@@ -1,3 +1,4 @@
+import { CacheTTL } from '@nestjs/cache-manager';
 import {
   Body,
   Controller,
@@ -10,7 +11,8 @@ import {
   Post,
   Query,
   Req,
-  UseGuards
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
@@ -31,6 +33,8 @@ import { AlgorithmContextBuilder } from './services/algorithm-context-builder.se
 import { Roles } from '../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Algorithm')
 @ApiBearerAuth('token')
@@ -45,6 +49,9 @@ export class AlgorithmController {
   ) {}
 
   @Get()
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey(() => 'algorithm:list:all')
+  @CacheTTL(60_000)
   @ApiOperation({
     summary: 'Get all algorithms',
     description: 'Retrieve a list of all available algorithms with their strategies.'
@@ -78,6 +85,9 @@ export class AlgorithmController {
   }
 
   @Get('strategies')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey(() => 'algorithm:strategies:all')
+  @CacheTTL(60_000)
   @ApiOperation({
     summary: 'Get all available strategies',
     description: 'Retrieve a list of all registered algorithm strategies.'

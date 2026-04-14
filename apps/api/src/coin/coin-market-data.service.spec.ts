@@ -212,12 +212,26 @@ describe('CoinMarketDataService', () => {
       await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow(CoinNotFoundException);
     });
 
-    it('returns empty array and skips API call when circuit breaker is open', async () => {
-      circuitBreaker.isOpen.mockReturnValue(true);
+    it('returns cached data on cache hit without calling API', async () => {
+      const cachedData = [{ timestamp: Date.now(), price: 43000, volume: 1000, marketCap: 800000000000 }];
+      cacheManager.get.mockResolvedValueOnce(cachedData);
 
       const result = await service.getCoinHistoricalData('coin-123');
 
-      expect(result).toEqual([]);
+      expect(result).toBe(cachedData);
+      expect(geckoMock.marketChartGet).not.toHaveBeenCalled();
+    });
+
+    it('returns stale data and skips API call when circuit breaker is open', async () => {
+      const staleData = [{ timestamp: Date.now(), price: 42000, volume: 900, marketCap: 790000000000 }];
+      circuitBreaker.isOpen.mockReturnValue(true);
+      cacheManager.get
+        .mockResolvedValueOnce(null) // primary cache miss
+        .mockResolvedValueOnce(staleData); // stale cache hit
+
+      const result = await service.getCoinHistoricalData('coin-123');
+
+      expect(result).toBe(staleData);
       expect(geckoMock.marketChartGet).not.toHaveBeenCalled();
     });
 
@@ -228,22 +242,12 @@ describe('CoinMarketDataService', () => {
       expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
     });
 
-    it('records circuit breaker failure on non-404 errors', async () => {
+    it('returns stale data and records circuit breaker failure on non-404 errors', async () => {
+      const staleData = [{ timestamp: Date.now(), price: 41000, volume: 800, marketCap: 780000000000 }];
       geckoMock.marketChartGet.mockRejectedValue(new Error('Network error'));
-
-      setTimeoutSpy.mockImplementation(((fn: (...args: any[]) => void) => {
-        fn();
-        return 0 as any;
-      }) as any);
-
-      await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow('Network error');
-      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
-
-      geckoMock.marketChartGet.mockReset();
-    });
-
-    it('re-throws non-404 errors after retries are exhausted', async () => {
-      geckoMock.marketChartGet.mockRejectedValue(new Error('Network error'));
+      cacheManager.get
+        .mockResolvedValueOnce(null) // primary cache miss
+        .mockResolvedValueOnce(staleData); // stale cache hit
 
       // Bypass retry delays so the test doesn't time out
       setTimeoutSpy.mockImplementation(((fn: (...args: any[]) => void) => {
@@ -251,7 +255,9 @@ describe('CoinMarketDataService', () => {
         return 0 as any;
       }) as any);
 
-      await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow('Network error');
+      const result = await service.getCoinHistoricalData('coin-123');
+      expect(result).toBe(staleData);
+      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
 
       geckoMock.marketChartGet.mockReset();
     });
@@ -265,7 +271,7 @@ describe('CoinMarketDataService', () => {
       const result = await (service as any).fetchCoinDetail('bitcoin');
 
       expect(result.id).toBe('bitcoin');
-      expect(cacheManager.set).toHaveBeenCalledWith('coingecko:detail:bitcoin', result, 300);
+      expect(cacheManager.set).toHaveBeenCalledWith('coingecko:detail:bitcoin', result, 300_000);
     });
 
     it('returns cached data on cache hit without calling API', async () => {
@@ -316,7 +322,7 @@ describe('CoinMarketDataService', () => {
         'bitcoin',
         expect.objectContaining({ vs_currency: 'usd', days: '7' })
       );
-      expect(cacheManager.set).toHaveBeenCalledWith('coingecko:chart:bitcoin:7d', result, 900);
+      expect(cacheManager.set).toHaveBeenCalledWith('coingecko:chart:bitcoin:7d', result, 900_000);
       expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('coingecko-chart');
     });
 

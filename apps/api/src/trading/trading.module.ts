@@ -7,9 +7,10 @@ import { BalanceModule } from '../balance/balance.module';
 import { CoinModule } from '../coin/coin.module';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
+import { SharedCacheModule } from '../shared-cache.module';
 
 @Module({
-  imports: [BalanceModule, CoinModule, ExchangeKeyModule, ExchangeModule],
+  imports: [BalanceModule, CoinModule, ExchangeKeyModule, ExchangeModule, SharedCacheModule],
   controllers: [TradingController],
   providers: [TradingService],
   exports: [TradingService]

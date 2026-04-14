@@ -40,7 +40,7 @@ export class BalanceController {
     const periods = Array.isArray(period) ? period.join('-') : period;
     return `user-balance:${user.id}:${includeHistorical}:${periods}`;
   })
-  @CacheTTL(60)
+  @CacheTTL(60_000) // 1 minute in ms
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Successfully retrieved balances',
@@ -84,7 +84,7 @@ export class BalanceController {
     const days = request.query.days || 30;
     return `account-value-history:${user.id}:${days}`;
   })
-  @CacheTTL(900) // 15 minutes in seconds
+  @CacheTTL(900_000) // 15 minutes in ms
   @UseInterceptors(CustomCacheInterceptor)
   @ApiOperation({
     summary: 'Get account value history',
@@ -117,7 +117,7 @@ export class BalanceController {
     const user = request.user;
     return `user-assets:${user.id}`;
   })
-  @CacheTTL(900) // 15 minutes in seconds
+  @CacheTTL(900_000) // 15 minutes in ms
   @UseInterceptors(CustomCacheInterceptor)
   @ApiOperation({
     summary: 'Get detailed assets with current prices and values',

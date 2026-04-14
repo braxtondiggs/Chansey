@@ -1,3 +1,4 @@
+import { CacheTTL } from '@nestjs/cache-manager';
 import {
   Body,
   Controller,
@@ -9,7 +10,8 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
@@ -21,6 +23,8 @@ import { ExchangeService } from './exchange.service';
 import { Roles } from '../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Exchange')
 @Controller('exchange')
@@ -28,6 +32,13 @@ export class ExchangeController {
   constructor(private readonly exchange: ExchangeService) {}
 
   @Get()
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => {
+    const supported = ctx.switchToHttp().getRequest().query.supported;
+    const normalized = ['true', 'false'].includes(supported) ? supported : 'all';
+    return `exchange:list:${normalized}`;
+  })
+  @CacheTTL(300_000)
   @ApiOperation({
     summary: 'Get exchanges',
     description: 'Retrieves a list of exchanges with optional filtering.'
@@ -49,6 +60,9 @@ export class ExchangeController {
   }
 
   @Get(':id')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => `exchange:detail:${ctx.switchToHttp().getRequest().params.id}`)
+  @CacheTTL(300_000)
   @ApiOperation({
     summary: 'Get exchange by ID',
     description: 'Retrieves a specific exchange by its unique identifier.'

@@ -12,7 +12,6 @@ import { CoinModule } from '../coin/coin.module';
 import { ExchangeModule } from '../exchange/exchange.module';
 import { SharedCacheModule } from '../shared-cache.module';
 import { UsersModule } from '../users/users.module';
-import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @Module({
   controllers: [BalanceController],
@@ -24,7 +23,7 @@ import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.inter
     forwardRef(() => ExchangeModule),
     forwardRef(() => UsersModule)
   ],
-  providers: [BalanceService, BalanceHistoryService, BalanceSyncTask, CustomCacheInterceptor],
+  providers: [BalanceService, BalanceHistoryService, BalanceSyncTask],
   exports: [BalanceService, BalanceHistoryService]
 })
 export class BalanceModule {}
